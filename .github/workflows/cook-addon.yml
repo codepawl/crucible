@@ -30,7 +30,7 @@ concurrency:
 jobs:
   addon:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
@@ -56,6 +56,19 @@ jobs:
             vulkaninfo 2>&1 | grep -E 'VK_KHR_(ray_query|acceleration_structure)' | sort -u || echo 'no VK_KHR_ray_query or VK_KHR_acceleration_structure'
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
+      # TEMPORARY for #1186, drop before merge: peak Node RSS of a native + OIDN video job on lavapipe at three sizes.
+      - name: Probe native video memory on lavapipe (#1186)
+        timeout-minutes: 150
+        env:
+          PROBE_FRAMES: '2'
+          PROBE_SAMPLES: '1'
+          PROBE_MAX_SECONDS: '3000'
+          PROBE_RUNTIME_BACKEND: cpu
+        run: |
+          sudo apt-get install -y -qq ffmpeg
+          npm run build
+          node scripts/build-mcp.mjs
+          node scripts/probe-1186.mjs "$PWD" 960x540 1280x720 1920x1080 2>&1 | grep -E "RESULT|Error|error" | tail -40
       - name: Run the addon tests
         run: |
           start=$(date +%s)
