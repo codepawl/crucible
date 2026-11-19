@@ -66,40 +66,76 @@ export async function createWebGpuRealtimeTracer(scene, resolved, suppliedCanvas
   // tells the denoiser where each part was (path-tracer-reprojection.js, partMotionTable).
   const loadScene = async (parts, environment, motion = null) => {
     const keepHistory = motion !== null;
-    pendingMotion = motion;
-    currentParts = parts;
-    currentEnvironment = environment;
-    traceScene = await buildTraceSceneForDevice(parts, environment, webGpuTracer);
-    refuseLocalVolumes(traceScene, 'the WebGPU realtime path tracer');
-    const next = await webGpuTracer.prepareRealtimeKernel(traceScene, options, REALTIME_KERNEL_PIECES);
+    const nextTraceScene = await buildTraceSceneForDevice(parts, environment, webGpuTracer);
+    refuseLocalVolumes(nextTraceScene, 'the WebGPU realtime path tracer');
+    const next = await webGpuTracer.prepareRealtimeKernel(nextTraceScene, options, REALTIME_KERNEL_PIECES);
     const previousKernel = kernel;
-    kernel = next;
-    device = kernel.device;
-    reportDeviceErrors(device);
-    if (!traced) {
-      traced = [0, 1].map(index => device.createBuffer({ label: `traced ${index}`, size: pixelCount * 16 * 3, usage: GPUBufferUsage.STORAGE }));
-      recordBuffer = device.createBuffer({ label: 'cache records', size: pixelCount * 16, usage: GPUBufferUsage.STORAGE });
-      parameterBuffer = device.createBuffer({ label: 'realtime parameters', size: 512, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-      motionBuffer = device.createBuffer({ label: 'part motion', size: MAX_TRACE_PARTS * PART_MOTION_FLOATS * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-      cache = await createWebGpuRadianceCache(device);
-      denoiser = await createWebGpuDenoiser(device, { traceWidth, traceHeight, outputWidth, outputHeight, tracedBuffers: traced, motionBuffer, historyLimit, filterIterations, swapped });
-      canvas = suppliedCanvas ?? createOutputCanvas(outputWidth, outputHeight);
-      context = canvas.getContext('webgpu');
-      context.configure({ device, format: navigator.gpu.getPreferredCanvasFormat(), usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST, alphaMode: 'opaque' });
-    }
-    previousKernel?.uploaded.buffers.forEach(buffer => buffer.destroy());
-    traceGroups = [0, 1].map(set => device.createBindGroup({
-      layout: kernel.bindGroupLayout,
-      entries: [
-        { binding: 0, resource: { buffer: parameterBuffer, size: kernel.parameterBytes } },
-        ...[...kernel.uploaded.buffers, traced[set], cache.table, recordBuffer].map((buffer, index) => ({ binding: index + 1, resource: { buffer } })),
-      ],
-    }));
-    cellSizes = cacheCellSizes(traceScene, cacheCellSize);
-    if (!keepHistory) {
-      view = null;
-      resetHistory = true;
-      clearCache = true;
+    const firstLoad = !traced;
+    const created = [];
+    const create = descriptor => {
+      const buffer = next.device.createBuffer(descriptor);
+      created.push(buffer);
+      return buffer;
+    };
+    let nextTraced = traced;
+    let nextRecord = recordBuffer;
+    let nextParameter = parameterBuffer;
+    let nextMotion = motionBuffer;
+    let nextCache = cache;
+    let nextDenoiser = denoiser;
+    let nextCanvas = canvas;
+    let nextContext = context;
+    try {
+      if (firstLoad) {
+        nextTraced = [0, 1].map(index => create({ label: `traced ${index}`, size: pixelCount * 16 * 3, usage: GPUBufferUsage.STORAGE }));
+        nextRecord = create({ label: 'cache records', size: pixelCount * 16, usage: GPUBufferUsage.STORAGE });
+        nextParameter = create({ label: 'realtime parameters', size: 512, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        nextMotion = create({ label: 'part motion', size: MAX_TRACE_PARTS * PART_MOTION_FLOATS * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+        nextCache = await createWebGpuRadianceCache(next.device);
+        nextDenoiser = await createWebGpuDenoiser(next.device, { traceWidth, traceHeight, outputWidth, outputHeight, tracedBuffers: nextTraced, motionBuffer: nextMotion, historyLimit, filterIterations, swapped });
+        nextCanvas = suppliedCanvas ?? createOutputCanvas(outputWidth, outputHeight);
+        nextContext = nextCanvas.getContext('webgpu');
+        nextContext.configure({ device: next.device, format: navigator.gpu.getPreferredCanvasFormat(), usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST, alphaMode: 'opaque' });
+      }
+      const nextTraceGroups = [0, 1].map(set => next.device.createBindGroup({
+        layout: next.bindGroupLayout,
+        entries: [
+          { binding: 0, resource: { buffer: nextParameter, size: next.parameterBytes } },
+          ...[...next.uploaded.buffers, nextTraced[set], nextCache.table, nextRecord].map((buffer, index) => ({ binding: index + 1, resource: { buffer } })),
+        ],
+      }));
+      // The previous kernel stays usable until its replacement has its bind groups.
+      previousKernel?.uploaded.buffers.forEach(buffer => buffer.destroy());
+      reportDeviceErrors(next.device);
+      traceScene = nextTraceScene;
+      kernel = next;
+      device = next.device;
+      traced = nextTraced;
+      recordBuffer = nextRecord;
+      parameterBuffer = nextParameter;
+      motionBuffer = nextMotion;
+      cache = nextCache;
+      denoiser = nextDenoiser;
+      canvas = nextCanvas;
+      context = nextContext;
+      traceGroups = nextTraceGroups;
+      pendingMotion = motion;
+      currentParts = parts;
+      currentEnvironment = environment;
+      cellSizes = cacheCellSizes(traceScene, cacheCellSize);
+      if (!keepHistory) {
+        view = null;
+        resetHistory = true;
+        clearCache = true;
+      }
+    } catch (error) {
+      for (const buffer of created) buffer.destroy();
+      for (const buffer of next.uploaded.buffers) buffer.destroy();
+      if (firstLoad) {
+        nextCache?.dispose();
+        nextDenoiser?.dispose();
+      }
+      throw error;
     }
   };
 
