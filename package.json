@@ -272,7 +272,7 @@
     "three": "0.187.0"
   },
   "dependencies": {
-    "playwright-core": "1.65.0"
+    "playwright-core": "1.65.1"
   },
   "peerDependenciesMeta": {
     "@dimforge/rapier3d-compat": {
