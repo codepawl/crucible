@@ -105,3 +105,15 @@ The popping foam is the ocean `wake` option (filed as #2849). The particle cards
 Full clips (camera moving, 144 frames, same hull crop): round 5 6.89 / 66.1, round 6 3.49 / 23.1 (mean / p99). The remaining 3.5 is the ship's own bob, the camera move and the moving sea.
 
 Things to know: without the wake's water lift (height 0.45) the sea near the ship sits lower, so the hull hung above the water at draft 3.9; round 6 uses draft 4.8 (1.5 m of hull under the mean waterline). The contact rim drew nothing visible on the imported hull at widths 3, 6 and 12 (commented on #2034), so the hull meets the water with no foam at all. Not judged here: how the dry-looking waterline reads, a look call for An.
+
+## Round 7 (galleon-preview-7.png, galleon-preview-7.mp4, sheet7.png, hull12-r7.png; builder preview/build-round7.mjs)
+
+An rejected rounds 5 and 6: round 5 still flickered, round 6 had no foam and the ship looked like it was sinking through the water.
+
+Mesh verdict (measured on the GLB, keel at y 0): not a broken mesh. The hull is widest (half beam 4.29 m) 2 to 3 m above the keel, its flat bottom is 97 m2 facing down, and the main deck surfaces (57 to 106 m2 facing up) sit 4 to 6 m above the keel. About 5 percent of the hull's edges are open seams, none of it at the waterline band, and 34 of 110,616 faces wind against their normals. The sinking was the draft: round 6 used 4.8 m, which puts the mean waterline at the main deck, and the sea near the ship rises 1.3 m above and falls 1.3 m below its calm level (min -1.27, p5 -0.91, median -0.16, p95 0.53, max 1.33 over 0 to 6 s), so crests washed the deck. A hull at draft 6 shows only deck and rigging, draft 0 a hull floating above the sea.
+
+Fix: draft 2.2 m (waterline about 2.5 m above the keel, at the widest part of the hull; main deck 1.5 m clear on average, crests plus the 0.36 m bob reach it only at the highest peaks).
+
+Foam: the engine `contactFoam` rim still draws nothing on the imported hull (commented on #2034; at a grazing view the sea pixels beside a vertical hull never see the hull within the rim's 0.5 m gap). Round 7 paints a static band on the water instead: a `waterHook` on the sea material, in world space around the hull outline, noise fixed, no time term, no wake points, no spray, no particles. It rides the waves and cannot pop. No engine PR.
+
+Numbers (480x270, 24 fps, 6 s, moving camera, hull crop as in round 6): hull mean / p99 frame difference 2.80 / 19.5 (round 6: 3.49 / 23.1). One-frame-only white pixels above 220 in the water: 3602 (round 6: 751). The increase is almost all in the 15-row bands at y 196 to 226 and the columns 96 to 240, the foam band, where its edge crosses grey 220 as waves slide under it. Round 7 first try: 4129. This is the open problem: the band is steady in the 12-frame tile but its edge shimmers at the threshold.
