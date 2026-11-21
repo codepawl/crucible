@@ -83,3 +83,25 @@ The sea uses the new water material control `ripples { strength, speed, windDire
 - Frozen near-water mean is under 2 on both crops at strength 0.15 (measured); 0.25 passes on the left crop only (2.26 on the right), so I kept 0.15. One retune only.
 - Moving near-water mean fell by about 24 percent left and 27 percent right against round 4. The p99 did not fall on the left (35.2 against 30.6): the remaining difference is camera motion, the ship's own heave, the wake and the particles, which the ripple control does not touch. Mid crop 1.31 against 1.14 and far 0.98 against 0.90 are the moving hull and the clip's own motion, within the noise of round 4.
 - Not judged here: how the calmer water looks. Strength 0.15 lowers the sun-glint facets too, which is a look call for An.
+
+## Round 6 (galleon-preview-6.png, galleon-preview-6.mp4, sheet6.png, hull12-r5.png, hull12-r6.png; builder preview/build-round6.mjs)
+
+An rejected round 5: the ship stands still, yet foam kept popping around the hull and the bow threw spray. Round 6 is a stationary ship: no wake, no spray and mist emitters, ripples strength 0.15 kept, the ship's bob kept, a thin static contact rim requested (`contactFoam` width 3, drift 0). Engine: branch 2843-water-ripple-control (#2844). 480x270, 24 fps, 6 s.
+
+Cause, by toggling each source (fixed camera, 36 frames, hull crop 19 to 75 percent of the width and 63 to 84 percent of the height, mean / p99 grey difference per frame pair):
+
+| Case | hull mean / p99 |
+|---|---|
+| Round 5 setup (wake 90 points, spray and mist emitters) | 6.53 / 60.4 |
+| No wake | 3.92 / 32.2 |
+| No particle emitters | 6.39 / 62.2 |
+| Ocean `spray: false` | 6.53 / 60.4 (identical) |
+| No wake, no particles | 2.95 / 20.4 |
+| ... and ocean time frozen | 1.85 / 15.0 |
+| Wake cut to 10 hull-ring points | 4.35 / 34.9 against 3.25 / 22.4 with none (draft 4.8) |
+
+The popping foam is the ocean `wake` option (filed as #2849). The particle cards and the ocean `spray` flag add almost nothing at the hull. Ocean foam coverage -0.7 and the contact rim changed the number by less than 0.15.
+
+Full clips (camera moving, 144 frames, same hull crop): round 5 6.89 / 66.1, round 6 3.49 / 23.1 (mean / p99). The remaining 3.5 is the ship's own bob, the camera move and the moving sea.
+
+Things to know: without the wake's water lift (height 0.45) the sea near the ship sits lower, so the hull hung above the water at draft 3.9; round 6 uses draft 4.8 (1.5 m of hull under the mean waterline). The contact rim drew nothing visible on the imported hull at widths 3, 6 and 12 (commented on #2034), so the hull meets the water with no foam at all. Not judged here: how the dry-looking waterline reads, a look call for An.
