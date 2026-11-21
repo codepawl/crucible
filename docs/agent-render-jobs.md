@@ -16,6 +16,12 @@ For MP4 jobs, FFmpeg must be on PATH or configured with `--ffmpeg` and an absolu
 The job store must be private, absolute and dedicated to this runtime.
 The store records UUIDs that `scene_capabilities` lists after a restart.
 
+Artifact publication checks that the opened file still matches the checked path before
+hashing, and rejects linked artifacts or bytes changed during the read. On Windows,
+a path stat can report device `0` while the opened handle reports a volume serial
+(observed on Node 22.13.1). In that case the inode must still match. Reported device
+mismatches remain errors on other platforms, and on Windows when the path device is nonzero.
+
 ```json
 {
   "sessionId": "<session UUID>",

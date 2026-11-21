@@ -1,4 +1,5 @@
 import { readFileSync, unlinkSync, constants as fsConstants } from 'node:fs';
+import { sameFile } from './file-identity.mjs';
 import { mkdir, open, readFile, writeFile, rename, link, unlink, rmdir, readdir, lstat, realpath } from 'node:fs/promises';
 import { randomUUID, createHash } from 'node:crypto';
 import { basename, isAbsolute, join, resolve } from 'node:path';
@@ -533,7 +534,7 @@ async function hashFile(path, maximum) {
   const handle = await open(path, 'r');
   try {
     const opened = await handle.stat();
-    if (opened.dev !== before.dev || opened.ino !== before.ino || opened.nlink !== 1) throw new Error('Artifact changed while opening.');
+    if (!sameFile(before, opened) || opened.nlink !== 1) throw new Error('Artifact changed while opening.');
     const hash = createHash('sha256');
     let bytes = 0;
     for await (const chunk of handle.createReadStream({ autoClose: false })) {

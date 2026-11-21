@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { sameFile } from './file-identity.mjs';
 import { open, readdir, realpath, lstat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 
@@ -255,7 +256,7 @@ export async function readCatalogFile(directory, filename, { enforceImageLimits 
     if (current.isFile() && current.size > MAXIMUM_BYTES) {
       throw new RangeError(`${filename}: ${assetBytesLimitMessage(current.size)}`);
     }
-    if (!current.isFile() || current.dev !== original.dev || current.ino !== original.ino || current.size < 20) {
+    if (!current.isFile() || !sameFile(original, current) || current.size < 20) {
       throw new Error('Asset changed during opening or is too small to be a GLB.');
     }
     let bytes = Buffer.alloc(current.size);
