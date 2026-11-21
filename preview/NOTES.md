@@ -125,3 +125,22 @@ Round 7 judged: no blinking, no spray, but the ship floated. Cause: the sea unde
 Foam: a `waterHook` band tied to the hull outline read from the GLB at the waterline (2.2 to 3.0 m above the keel; the hull there runs 14.4 m behind the middle to 10 m ahead, not the 34 m of the model with its bowsprit): 0.55 m on the sides, 1.3 m at bow and stern, outer edge broken by fixed cellular noise, opacity 0.6, a thin darker band (0.35 m) where hull meets water, no time term.
 
 Numbers (hull crop as before): mean / p99 2.90 / 19.6 (round 7: 2.80 / 19.5). One-frame-only white pixels above 220: 608 (round 7: 3602, round 6: 751).
+
+## Round 9 (galleon-preview-9.png at 960x540, galleon-preview-9.mp4, sheet9.png, hull12-r9.png; builder preview/build-round9.mjs, preview/ship-follow.mjs, measurement scripts in preview/r9/)
+
+Round 8 read as floating: the green lower hull and its rounded bottom showed. Waterline sweep (height above the keel at which the ship floats, ship following the sea, 480x270 stills at 0 to 5 s from the clip camera):
+
+| Waterline | Main deck (6 m) lowest clearance over the formula sea | Gun-deck floor (4 m) lowest clearance | Hull bottom, seen in the renders |
+|---|---|---|---|
+| 3.2 | +2.27 m | +0.27 m | green lower hull and its round bottom exposed in most frames |
+| 3.8 | +1.67 m | -0.33 m (11 of 15 points under) | still exposed in frames at 0 and 1 s |
+| 4.3 | +1.17 m | -0.83 m | hull sits on the water in every sampled frame |
+| 4.8 | +0.67 m | -1.33 m | not rendered in the final pictures (ship-only pass only); deck rail nearly at the sea |
+
+Chosen: 4.3 m. The renders, not the formula, decide it: the formula (`seaHeightAt` plus the 0.5 m calm level) says the lower hull is hidden already at 3.2 (1.4 percent of near-side lower-hull points seen, none below 3 m), but the pictures show it exposed, so the sea is drawn lower than the formula near the hull. Pole check (a thin red post standing in the sea, side camera, pole foot against the predicted water row): the rendered water is lower than predicted by 20 px (about 0.9 m) at x 3, z -12 at 0 s and 2 s, and by 0 to 6 px (0 to 0.25 m) at x -6, z -8 at 1, 3 and 5 s. Five samples, one fov assumption; not filed as an engine bug, a candidate for a proper check. The gun-deck floor at 4 m is inside the hull; the visible waist deck is the 6 m surface (65 m2, the largest). The image-mask version of the hull-visible count failed (the ship-only pass changes the whole lower frame), so the table's last column is read from pictures.
+
+Foam: the flat painted band cannot reach 3 px at this camera (a 1 m flat band lies at about 5 degrees to the view, so it shows 1 px). Round 9 stands the foam up: flattened torus rings attached to the ship at its waterline, an ellipse of 12.3 by about 3.9 m fitted to the hull outline: a foam collar 0.9 m tall (fixed cell noise on the uv, opacity 0.7, colour 0.68 to stay under grey 220), a thin dark ring just under it for the contact shadow, and a thicker arc around the stem for the bow wave. The collar shows about 4 to 5 px tall at 480 width. The painted water band stays, narrower (0.8 m sides, 1.2 m ends). No time term anywhere.
+
+Pitch and roll: gain 1.0, limit 4 degrees; over the clip up to 2.2 degrees pitch and 3.9 degrees roll.
+
+Numbers (hull crop as before): mean / p99 3.50 / 23.6 (round 8: 2.90 / 19.6; the larger tilt moves the hull more). One-frame-only white pixels above 220: 814 (round 8: 608; first try with a brighter collar 1860).
