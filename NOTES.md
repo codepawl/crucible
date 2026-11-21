@@ -22,3 +22,9 @@ Known faults: the wood still blurs along the grain (no anisotropic filtering); o
 - Props sit on soft contact-shadow quads; notebook and spectacles moved clear of the camera; postcards lighter and spread apart; pens and postcards moved to the sides (outside the phone frame).
 - Phone: a portrait focus box puts the camera at about 58 percent of the canvas width.
 - GLB: 3,929,324 bytes.
+
+## Round 3 (seamless tabletop)
+
+- The mirrored atlas crop showed a mirror axis and a dark blob, so the tabletop now uses the CC0 Poly Haven `black_walnut_veneer_02` diffuse (2K reduced to 1536 px, mapped at 1 m per tile, about 1,536 px per metre, no mirroring), darkened, with a faint low-frequency brightness drift; constant roughness.
+- Phone: the notebook corner and the pens reach into the frame; the camera stays at about 58 percent of the width. Desktop: postcards moved nearer the camera, tighter glasses shadow.
+- GLB: 4,033,412 bytes. `assets/wood-after.png` is the new wood crop (`wood-before.png` is unchanged).
