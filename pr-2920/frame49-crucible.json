@@ -1,0 +1,7 @@
+{
+  "tool": "Crucible MCP scene_look, retargeted Mixamo X Bot",
+  "subject": "CMU 02_01.bvh retargeted onto the X Bot, in place",
+  "dataFrame": 49, "clipTimeSeconds": 0.4, "width": 640, "height": 640, "backend": "cpu (SwiftShader)",
+  "camera": {"target": [0, 1.9, 0], "eye": [0, 2.0, 3.2], "up": [0, 1, 0], "fov": 45, "view": "front"},
+  "note": "render driver: artifacts/2889/render-walk.mjs, VIEW=front CENTER=1.9 LOOK_TIMES=0.4 LOOK_SIZE=640"
+}
