@@ -162,7 +162,7 @@ try {
     return result;
   });
   assert.equal(report.asset.error, 0);
-  assert.equal(report.asset.draws, 2, 'Different textures require distinct batches.');
+  assert.equal(report.asset.draws, 3, 'Different textures require distinct batches, and the viewer floor draws apart.');
   assert.equal(report.asset.position, 0.5);
   assert.equal(report.asset.repeated, report.asset.position);
   assert.deepEqual(report.asset.textures, [[16, 16], [16, 16]]);

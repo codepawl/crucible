@@ -1,10 +1,11 @@
 import './site-chrome.js';
 import './view2d.css';
 import './asset-viewer.css';
-import { vec3 } from 'gl-matrix';
-import { CrucibleRenderer, exportGlb, cameraView, fitOrthographicHeight } from './index.js';
-import { loadGltf, parseGltf } from './gltf.js';
-import { createMotionScene } from './motion.js';
+import { mat4, vec3 } from 'gl-matrix';
+import { CrucibleRenderer, cameraView, fitOrthographicHeight } from './index.js';
+import { loadGltf } from './gltf.js';
+import { loadHdri } from './hdri.js';
+import { sceneFileLighting, sunShadowBounds } from './dense-lods.js';
 import { readQueryNumber } from './query-number.js';
 
 const canvas = document.querySelector('#viewport');
@@ -18,7 +19,30 @@ if (parameters.get('export') === '1') {
     document.querySelector('.workspace').style.height = `${height}px`;
   }
 }
-const state = { view: 'perspective', yaw: 0.65, pitch: 0.3, zoom: 1, time: 0, clip: 0, playing: false };
+// An asset opened from disk gets this sky, a warm floor and the sky's own sun.
+const DEFAULT_SETTING = { skyUrl: new URL('hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr', document.baseURI).href, skyRotation: 1.32, skyIntensity: undefined, environment: {}, exposure: 1, effects: {}, yaw: 0.65, pitch: 0.3, focus: null };
+// The demo is a flat lay: a camera on a walnut table in soft overcast window light, seen from high up, with the sun
+// shining through a window out of frame. `focus` is the box in metres (x, y up, z) the view fits instead of the whole table.
+const DEMO_URL = new URL('desk-flat-lay.glb', document.baseURI).href;
+const DEMO_TITLE = 'Camera on a desk';
+const DEMO_SETTING = {
+  skyUrl: new URL('hdri/kloofendal_28d_misty_puresky_1k.hdr', document.baseURI).href,
+  skyRotation: 0,
+  skyIntensity: 0.7,
+  environment: { lightDirection: [-0.25, 0.7, -0.66], keyColor: [1.3, 1.15, 1], sunAngularRadius: 0.09, pointLights: [{ position: [-0.4, 1.8, 0.7], color: [1, 0.82, 0.62], intensity: 4 }] },
+  exposure: 0.8,
+  effects: { saturation: 0.85, ambientOcclusion: 0.6 },
+  yaw: 0,
+  pitch: 1.15,
+  focus: { minimum: [-0.34, 1.16, -0.3], maximum: [0.34, 1.3, 0.3] },
+  portraitFocus: { minimum: [-0.218, 1.16, -0.29], maximum: [0.372, 1.3, 0.41] },
+};
+const FLOOR_COLOR = [0.34, 0.22, 0.13];
+const FRAME_MARGIN = 1.08;
+// Distance, in picture heights, at which the lens shows that height of the table; measured on the desk at pitch 1.15.
+const FOCUS_DISTANCE_FACTOR = 0.86;
+const state = { view: 'perspective', yaw: DEFAULT_SETTING.yaw, pitch: DEFAULT_SETTING.pitch, zoom: 1, time: 0, clip: 0, playing: false };
+let setting = DEFAULT_SETTING;
 let asset;
 let renderer;
 let bounds;
@@ -26,6 +50,34 @@ let scheduledFrame = 0;
 let lastTime = 0;
 let pointer;
 let loadingRequest = 0;
+const skyRequests = new Map();
+
+// Each sky is fetched once; a page that cannot fetch it still shows the asset, lit by the default sky.
+function loadSky({ skyUrl, skyRotation, skyIntensity }) {
+  if (!skyRequests.has(skyUrl)) {
+    skyRequests.set(skyUrl, loadHdri(skyUrl, { showBackground: true, rotation: skyRotation, intensity: skyIntensity }).catch(error => {
+      notice(`Sky unavailable: ${error.message}`, true);
+      return null;
+    }));
+  }
+  return skyRequests.get(skyUrl);
+}
+
+// A warm floor under the asset, wide enough to reach the horizon, so the asset sits on something that takes its shadow.
+function floorUnder(assetBounds, extent) {
+  const half = extent * 60;
+  const height = assetBounds.minimum[1];
+  return {
+    name: 'Viewer floor',
+    geometry: {
+      positions: new Float32Array([-half, height, -half, -half, height, half, half, height, half, half, height, -half]),
+      normals: new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+    },
+    matrix: mat4.create(),
+    material: { color: FLOOR_COLOR, metallic: 0, roughness: 0.9, emission: 0 },
+  };
+}
 
 function notice(message, failed = false, waiting = false) {
   const element = document.querySelector('#notice');
@@ -53,20 +105,31 @@ function duration() {
   return asset?.animations[state.clip]?.duration ?? 0;
 }
 
+// The height of the picture that holds a focus box seen from above: its depth, or its width divided by the canvas shape.
+function focusHeight(box, aspect) {
+  const width = box.maximum[0] - box.minimum[0];
+  const depth = box.maximum[2] - box.minimum[2];
+  return Math.max(depth, width / aspect) * FRAME_MARGIN;
+}
+
 function frame() {
   const aspect = canvas.width / canvas.height;
-  const target = bounds.minimum.map((value, axis) => (value + bounds.maximum[axis]) / 2);
+  // A narrow canvas (a phone) fits a tighter box, so the subject keeps most of the width instead of a third.
+  const framed = (aspect < 1 && setting.portraitFocus) || setting.focus || bounds;
+  const target = framed.minimum.map((value, axis) => (value + framed.maximum[axis]) / 2);
   const extent = Math.max(...bounds.maximum.map((value, axis) => value - bounds.minimum[axis]), 0.01);
-  const view = cameraView(state.view, { target, distance: extent * 2.5 });
-  const height = Math.max(extent * 0.01, fitOrthographicHeight(bounds, view, aspect, 1.25)) * state.zoom;
+  const focusExtent = Math.max(...framed.maximum.map((value, axis) => value - framed.minimum[axis]), 0.01);
+  const view = cameraView(state.view, { target, distance: focusExtent * 2.5 });
+  const fitted = setting.focus && state.view === 'perspective' ? focusHeight(framed, aspect) : fitOrthographicHeight(framed, view, aspect, FRAME_MARGIN);
+  const height = Math.max(focusExtent * 0.01, fitted) * state.zoom;
   view.orthographicHeight = height;
   view.near = Math.max(0.0001, extent / 1000);
   view.far = extent * 100;
   if (state.view === 'perspective') {
-    const distance = height * 1.7;
+    const distance = height * (setting.focus ? FOCUS_DISTANCE_FACTOR : 1.7);
     view.eye = [target[0] + Math.sin(state.yaw) * Math.cos(state.pitch) * distance, target[1] + Math.sin(state.pitch) * distance, target[2] + Math.cos(state.yaw) * Math.cos(state.pitch) * distance];
   }
-  return { ...view, time: state.time, exposure: Number(document.querySelector('#exposure').value), effects: { bloom: { strength: Number(document.querySelector('#bloom').value), threshold: 0.8 } } };
+  return { ...view, time: state.time, exposure: Number(document.querySelector('#exposure').value), effects: { ...setting.effects, bloom: { strength: Number(document.querySelector('#bloom').value), threshold: 0.8 } } };
 }
 
 function renderAt(time = state.time) {
@@ -107,17 +170,20 @@ function syncAnimation() {
   document.querySelector('#play').disabled = !duration();
 }
 
-function showAsset(loaded, title) {
+async function showAsset(loaded, title, nextSetting = DEFAULT_SETTING) {
   const nextBounds = measureBounds(loaded.parts);
   const center = nextBounds.minimum.map((value, axis) => (value + nextBounds.maximum[axis]) / 2);
   const extent = Math.max(...nextBounds.maximum.map((value, axis) => value - nextBounds.minimum[axis]), 0.01);
+  const sky = await loadSky(nextSetting);
+  const lighting = sceneFileLighting(sky, loaded.lights, nextSetting.environment);
+  const sunShadow = lighting.sunSplit ? sunShadowBounds(loaded.parts, lighting.environment.lightDirection) : null;
   renderer?.dispose();
   renderer = null;
   asset?.dispose();
   asset = null;
   let nextRenderer;
   try {
-    nextRenderer = new CrucibleRenderer(canvas, loaded.parts, { ground: false, hdr: true, samples: readQueryNumber(parameters, 'samples', 4, { minimum: 1, integer: true }), pixelRatio: parameters.get('export') === '1' ? 1 : Math.min(devicePixelRatio, 1.5), memoryBudgetMiB: readQueryNumber(parameters, 'memory', 256, { minimum: 1 }), shadowBounds: { target: center, eye: [center[0] - extent, center[1] + extent * 2, center[2] + extent], extent: extent * 1.5, near: extent * 0.01, far: extent * 8 } });
+    nextRenderer = new CrucibleRenderer(canvas, loaded.parts, { ground: floorUnder(nextBounds, extent), hdr: true, environment: { ...lighting.environment, map: lighting.map }, samples: readQueryNumber(parameters, 'samples', 4, { minimum: 1, integer: true }), pixelRatio: parameters.get('export') === '1' ? 1 : Math.min(devicePixelRatio, 2), memoryBudgetMiB: readQueryNumber(parameters, 'memory', 256, { minimum: 1 }), shadowBounds: sunShadow ?? { target: center, eye: [center[0] - extent, center[1] + extent * 2, center[2] + extent], extent: extent * 1.5, near: extent * 0.01, far: extent * 8 } });
   } catch (error) {
     loaded.dispose();
     throw error;
@@ -125,6 +191,10 @@ function showAsset(loaded, title) {
   renderer = nextRenderer;
   asset = loaded;
   bounds = nextBounds;
+  setting = nextSetting;
+  state.yaw = nextSetting.yaw;
+  state.pitch = nextSetting.pitch;
+  document.querySelector('#exposure').value = String(nextSetting.exposure);
   state.zoom = 1;
   state.time = 0;
   state.clip = 0;
@@ -152,7 +222,7 @@ async function openFile(file) {
       loaded.dispose();
       return;
     }
-    showAsset(loaded, file.name);
+    await showAsset(loaded, file.name);
   } catch (error) {
     if (request === loadingRequest) notice(error.message, true);
   }
@@ -218,6 +288,8 @@ document.querySelector('#save').addEventListener('click', async () => {
 
 window.__assetViewer = { state, openFile, showAsset, get renderer() { return renderer; }, get asset() { return asset; }, renderAt };
 window.__scene = { get renderer() { return renderer; }, get duration() { return duration(); }, pause, renderAt };
-const demo = createMotionScene();
-demo.sample(3);
-try { showAsset(await parseGltf(exportGlb(demo.parts)), 'Clockwork GLB study'); } catch (error) { notice(error.message, true); }
+try {
+  await showAsset(await loadGltf(DEMO_URL, { maxBytes: 8 * 1024 * 1024 }), DEMO_TITLE, DEMO_SETTING);
+} catch (error) {
+  notice(error.message, true);
+}

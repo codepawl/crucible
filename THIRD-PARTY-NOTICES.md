@@ -167,3 +167,9 @@ Source: https://dejavu-fonts.github.io/ (version 2.37).
 ## Website fonts in public/fonts
 
 The site serves Plus Jakarta Sans, Inter and JetBrains Mono, subset by Google Fonts (latin, latin-ext and vietnamese). All three are under the SIL Open Font License 1.1 (https://openfontlicense.org): Plus Jakarta Sans by Tokotype, Inter by Rasmus Andersson, JetBrains Mono by JetBrains. Sources: https://fonts.google.com/specimen/Plus+Jakarta+Sans, https://fonts.google.com/specimen/Inter, https://fonts.google.com/specimen/JetBrains+Mono.
+
+
+## Desk with a camera in public/desk-flat-lay.glb
+
+The asset viewer opens on Poly Haven models `Camera_01` by Rajil Jose Macatangay, `wooden_table_02`, `black_walnut_veneer_02` (the tabletop texture), `binder_notebook`, `postcard_set_01`, `round_spectacles` and `stationery_supplies` (https://polyhaven.com/a/<name>), composed in Blender with their textures reduced, and lit by the 1K HDRI `kloofendal_28d_misty_puresky` in public/hdri (https://polyhaven.com/a/kloofendal_28d_misty_puresky). All are published under CC0 1.0 (https://polyhaven.com/license).
+

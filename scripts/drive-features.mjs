@@ -63,8 +63,8 @@ export function formatFeatureList(features, surface = null) {
   return selected.map(feature => `${feature.id.padEnd(idWidth)}  [${feature.surface}] ${feature.reach}  ${feature.name}`).join('\n');
 }
 
-const VALUE_FLAGS = new Set(['out', 'origin', 'width', 'height', 'surface', 'settle']);
-const POSITIVE_NUMBER_FLAGS = new Set(['width', 'height']);
+const VALUE_FLAGS = new Set(['out', 'origin', 'width', 'height', 'surface', 'settle', 'scale']);
+const POSITIVE_NUMBER_FLAGS = new Set(['width', 'height', 'scale']);
 const BOOLEAN_FLAGS = new Set(['no-gpu-lock', 'full-page']);
 
 function readFlagValue(name, value) {

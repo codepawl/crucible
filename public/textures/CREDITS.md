@@ -29,3 +29,13 @@ atlases (1K PNG, downloaded 2026-10-29), all CC0 1.0 by Lennart Demes / ambientC
 | `broadleaf`, `birch` | [LeafSet024](https://ambientcg.com/view?id=LeafSet024) |
 | `bush` | [LeafSet022](https://ambientcg.com/view?id=LeafSet022) |
 | `conifer` | [LeafSet019](https://ambientcg.com/view?id=LeafSet019) |
+
+## Desk with a camera (`../desk-flat-lay.glb`)
+
+The asset viewer opens on a flat lay: [Camera 01](https://polyhaven.com/a/Camera_01) by Rajil Jose Macatangay on a
+[wooden table](https://polyhaven.com/a/wooden_table_02) whose top carries the seamless [black walnut veneer 02](https://polyhaven.com/a/black_walnut_veneer_02) diffuse map (2K reduced to 1.5K, darkened, with a faint brightness drift), with a [binder notebook](https://polyhaven.com/a/binder_notebook), three [postcards](https://polyhaven.com/a/postcard_set_01) (darkened),
+[round spectacles](https://polyhaven.com/a/round_spectacles) and two pens from
+[stationery supplies](https://polyhaven.com/a/stationery_supplies). All CC0 1.0 from Poly Haven. They were composed in Blender 5.2
+(table scaled 1.45x, camera scaled up with its strap tucked in), with the camera textures cut to 1024 px, the
+props to 512 px and everything saved as JPEG at quality 72, which brings the scene to about 4.8 MB. The light is the CC0 Poly Haven sky
+[kloofendal_28d_misty_puresky](https://polyhaven.com/a/kloofendal_28d_misty_puresky) (`../hdri/kloofendal_28d_misty_puresky_1k.hdr`, 1K).
