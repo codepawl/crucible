@@ -1,4 +1,5 @@
 import { answerCapabilities, MAX_TOPICS_PER_CALL } from './capabilities-topics.mjs';
+import { configureAssetByteLimit } from '../src/agent-asset-limits.js';
 import { MOTION_TRACK_KIND_NAMES } from '../src/motion-track-kinds.js';
 import { CONSTRAINT_TYPE_NAMES } from '../src/motion-constraint-types.js';
 import { DRIVER_VARIABLE_KIND_NAMES } from '../src/motion-driver-variable-kinds.js';
@@ -1252,7 +1253,7 @@ export async function runMcpCli({ argumentsValue = process.argv.slice(2),
       throw new Error(`Use ${mcpOptionSummary()}. Run crucible-mcp --help for the same list.`);
     }
     if (name === '--allow-addon') allowedAddonNames.push(value);
-    else options[name.slice(2)] = name === '--memory' ? Number(value) : value;
+    else options[name.slice(2)] = name === '--memory' || name === '--max-asset-bytes' ? Number(value) : value;
   }
   options.gpuQueue = createGpuQueueFromFlags({ queue: options['gpu-queue'], wait: options['gpu-queue-wait'] });
   delete options['gpu-queue'];
@@ -1264,6 +1265,11 @@ export async function runMcpCli({ argumentsValue = process.argv.slice(2),
     if (options[flag] !== undefined && !['on', 'off'].includes(options[flag])) {
       throw new Error(`--${flag} must be on or off, got "${options[flag]}".`);
     }
+  }
+  if (options['max-asset-bytes'] !== undefined) {
+    configureAssetByteLimit(options['max-asset-bytes']);
+    options.maxAssetBytes = options['max-asset-bytes'];
+    delete options['max-asset-bytes'];
   }
   if (!['cpu', 'gpu'].includes(options.backend)) {
     throw new Error('Backend must be cpu or gpu.');

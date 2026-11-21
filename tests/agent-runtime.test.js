@@ -979,6 +979,7 @@ function countingCatalog(sizeByAssetId) {
       counts.sizeCalls++;
       return sizeByAssetId[assetId];
     },
+    describeSize: async assetId => ({ name: `${assetId.slice(0, 4)}.glb`, bytes: await catalog.size(assetId) }),
     read: async () => {
       counts.reads++;
       return Buffer.alloc(0);
@@ -1009,7 +1010,7 @@ runTest('placed catalog assets over the combined limit are refused from sizes be
   const { runtime, catalog } = await catalogLimitHarness(sizeEach);
   const recipe = { format: 'crucible.scene', schemaVersion: 1, geometries: [], materials: [],
     nodes: catalogAssetIds.map((assetId, index) => ({ id: `placed-${index}`, asset: { id: assetId } })) };
-  await assert.rejects(runtime.create({ recipe }), refusedAtTotal(3 * sizeEach));
+  await assert.rejects(runtime.create({ recipe }), error => refusedAtTotal(3 * sizeEach)(error) && /Largest: aaaa.glb 30.0 MiB, bbbb.glb 30.0 MiB, cccc.glb 30.0 MiB./.test(error.message) && error.message.includes("gltf-transform simplify"));
   assert.equal(catalog.counts.sizeCalls, 3);
   assert.equal(catalog.counts.reads, 0);
 });
@@ -1124,6 +1125,7 @@ async function namedAssetHarness(context) {
   const recordingCatalog = {
     list: () => realCatalog.list(),
     size: assetId => realCatalog.size(assetId),
+    describeSize: assetId => realCatalog.describeSize(assetId),
     resolveName: name => realCatalog.resolveName(name),
     read: assetId => {
       readIds.push(assetId);
@@ -1269,6 +1271,7 @@ runTest('two textured GLBs whose embedded images pass the combined limit are ref
     const countingRealCatalog = {
       list: () => realCatalog.list(),
       size: assetId => realCatalog.size(assetId),
+      describeSize: assetId => realCatalog.describeSize(assetId),
       read: assetId => {
         reads++;
         return realCatalog.read(assetId);

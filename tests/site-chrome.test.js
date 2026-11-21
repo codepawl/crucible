@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { applyChrome, CHROME_PAGES, FOOTERLESS_PAGES, renderFooter, renderHeader } from '../scripts/site-chrome.mjs';
+import { applyChrome, CHROME_PAGES, FOOTERLESS_PAGES, renderFooter, renderHeader, THEME_COLOR_META } from '../scripts/site-chrome.mjs';
 
 function readPage(pageName) {
   return readFileSync(new URL(`../site/${pageName}.html`, import.meta.url), 'utf8');
@@ -67,6 +67,53 @@ test('each page marks its own place in the top bar with aria-current', () => {
     const marked = [...renderHeader(pageName).matchAll(/<a[^>]*href="([^"]+)" aria-current="page"/g)].map((match) => match[1]);
     assert.deepEqual(marked, href ? [href] : [], pageName);
   }
+});
+
+const SITE_NAV_ENTRIES = [
+  { href: '/docs.html', label: 'Docs' },
+  { href: '/recipes.html', label: 'Recipes' },
+  { href: '/showcase.html', label: 'Showcase' },
+  { href: '/marketplace.html', label: 'Marketplace' },
+  { href: '/changelog.html', label: 'Changelog' },
+];
+
+function navEntries(source) {
+  const navMatch = source.match(/<nav class="nav-links" aria-label="Site">([\s\S]*?)<\/nav>/);
+  assert.ok(navMatch, 'the Site nav is missing');
+  const anchors = [...navMatch[1].matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)];
+  return anchors.map((anchor) => ({ href: anchor[1], label: textOutsideTags(anchor[2]) }));
+}
+
+// The label is compared with a fixed word and never written back into a page, so this only drops the icon markup around it.
+function textOutsideTags(markup) {
+  const pieces = markup.split(/<[^>]*>/);
+  return pieces.join('').trim();
+}
+
+test('every site page shows Docs, Recipes, Showcase, Marketplace and Changelog in that order, with no Studio', () => {
+  for (const pageName of CHROME_PAGES) {
+    const entries = navEntries(readPage(pageName));
+    const publicEntries = entries.filter((entry) => SITE_NAV_ENTRIES.some((expected) => expected.href === entry.href));
+    assert.deepEqual(publicEntries, SITE_NAV_ENTRIES, `site/${pageName}.html nav entries or their order differ from the shared nav`);
+    for (const entry of entries) assert.ok(!/studio/i.test(entry.href + entry.label), `site/${pageName}.html links Studio, which is not on the public web`);
+  }
+});
+
+test('every real site page is covered by the shared chrome; only redirects and the render canvas are left out', () => {
+  const redirectsAndCanvas = new Set(['downloads', 'getting-started', 'modeling', 'file']);
+  const fileNames = readdirSync(new URL('../site/', import.meta.url)).filter((fileName) => fileName.endsWith('.html'));
+  for (const fileName of fileNames) {
+    const pageName = fileName.replace(/\.html$/, '');
+    if (redirectsAndCanvas.has(pageName)) continue;
+    assert.ok(CHROME_PAGES.includes(pageName), `site/${fileName} is not in CHROME_PAGES in scripts/site-chrome.mjs, so its nav can drift`);
+  }
+});
+
+test('every site page head carries the same theme-color tags and the modeling redirect uses relative links', () => {
+  for (const pageName of CHROME_PAGES) {
+    assert.ok(readPage(pageName).includes(THEME_COLOR_META), `site/${pageName}.html needs THEME_COLOR_META from scripts/site-chrome.mjs`);
+  }
+  assert.ok(!/(href|url)="?\/docs\.html/.test(readPage('modeling')), 'site/modeling.html must link ./docs.html, not an absolute path');
 });
 
 test('every page wears the shared theme class and loads the shared styles', () => {

@@ -13,7 +13,6 @@ import { findSequenceRuns } from './agent-asset-sequences.mjs';
 
 const MAXIMUM_ASSETS = AGENT_ASSET_LIMITS.maxAssets;
 const IMAGE_FILE_PATTERN = /\.(png|jpe?g|webp)$/i;
-const MAXIMUM_BYTES = AGENT_ASSET_LIMITS.maxBytes;
 
 const IMAGE_EXTENSIONS = { png: /\.png$/i, jpeg: /\.jpe?g$/i, webp: /\.webp$/i };
 /**
@@ -142,7 +141,7 @@ async function embedSiblingImages(bytes, parsed, filename, readSibling) {
       const { imageBytes, format } = await readSibling(filename, image.uri, segments);
       const imageChunk = padded(imageBytes, 0);
       const total = bytes.length + (size - binaryLength) + imageChunk.length;
-      if (total > MAXIMUM_BYTES) throw new RangeError(`${filename}: with its images next to it the asset reaches ${total} bytes. ${assetBytesLimitMessage(total)}`);
+      if (total > AGENT_ASSET_LIMITS.maxBytes) throw new RangeError(`${filename}: with its images next to it the asset reaches ${total} bytes. ${assetBytesLimitMessage(total)}`);
       document.bufferViews.push({ buffer: 0, byteOffset: size, byteLength: imageBytes.length });
       embeddedByPath.set(key, { view: document.bufferViews.length - 1, mimeType: IMAGE_MIME[format] });
       chunks.push(imageChunk);
@@ -186,7 +185,7 @@ async function readSiblingImage(directory, glbName, uri, segments) {
   const resolved = await realpath(path);
   const offset = relative(directory, resolved);
   if (offset.startsWith(`..${sep}`) || offset === '..' || isAbsolute(offset)) throw new Error(`${label} leaves the GLB's folder. Copy the image into the folder and use a relative path.`);
-  if (original.size > MAXIMUM_BYTES) throw new RangeError(`${label}: ${assetBytesLimitMessage(original.size)}`);
+  if (original.size > AGENT_ASSET_LIMITS.maxBytes) throw new RangeError(`${label}: ${assetBytesLimitMessage(original.size)}`);
   const handle = await open(resolved, 'r');
   try {
     const imageBytes = Buffer.alloc(original.size);
@@ -218,7 +217,7 @@ async function decompressedDraco(bytes, filename) {
   } catch (error) {
     throw new SkippableCatalogFileError(`${filename}: ${error.message}`);
   }
-  if (result.bytes.length > MAXIMUM_BYTES) {
+  if (result.bytes.length > AGENT_ASSET_LIMITS.maxBytes) {
     throw new SkippableCatalogFileError(`${filename}: decoded from Draco the asset reaches ${result.bytes.length} bytes. ${assetBytesLimitMessage(result.bytes.length)}`);
   }
   return result.bytes;
@@ -232,7 +231,7 @@ async function transcodedKtx2(bytes, filename) {
   } catch (error) {
     throw new SkippableCatalogFileError(`${filename}: ${error.message}`);
   }
-  if (result.bytes.length > MAXIMUM_BYTES) {
+  if (result.bytes.length > AGENT_ASSET_LIMITS.maxBytes) {
     throw new SkippableCatalogFileError(`${filename}: transcoded from KTX2 the asset reaches ${result.bytes.length} bytes. ${assetBytesLimitMessage(result.bytes.length)}`);
   }
   return result.bytes;
@@ -252,7 +251,7 @@ export async function readCatalogFile(directory, filename, { enforceImageLimits 
   const handle = await open(resolved, 'r');
   try {
     const current = await handle.stat();
-    if (current.isFile() && current.size > MAXIMUM_BYTES) {
+    if (current.isFile() && current.size > AGENT_ASSET_LIMITS.maxBytes) {
       throw new RangeError(`${filename}: ${assetBytesLimitMessage(current.size)}`);
     }
     if (!current.isFile() || current.dev !== original.dev || current.ino !== original.ino || current.size < 20) {
@@ -455,7 +454,7 @@ export async function createAgentAssetCatalog(root, packFiles = []) {
   }
   return Object.freeze({
     list() {
-      return { assets: structuredClone([...entries.values()].map(entry => entry.metadata)), ...(sequences.size ? { sequences: [...sequences.values()].map(sequence => ({ ...sequence.metadata })) } : {}), maximumBytes: MAXIMUM_BYTES, maximumAssets: MAXIMUM_ASSETS, ...(skipped.length ? { skipped: structuredClone(skipped) } : {}) };
+      return { assets: structuredClone([...entries.values()].map(entry => entry.metadata)), ...(sequences.size ? { sequences: [...sequences.values()].map(sequence => ({ ...sequence.metadata })) } : {}), maximumBytes: AGENT_ASSET_LIMITS.maxBytes, maximumAssets: MAXIMUM_ASSETS, ...(skipped.length ? { skipped: structuredClone(skipped) } : {}) };
     },
     /**
      * The asset id of the GLB listed under exactly this name (a file in --assets, or `pack/file` for a pack), so a recipe can name
@@ -498,6 +497,12 @@ export async function createAgentAssetCatalog(root, packFiles = []) {
       const entry = await lookupEntry(assetId);
       if (!entry) throw new Error(`Unknown asset ID ${String(assetId).slice(0, 12)}. Call scene_asset_catalog and pass an assetId it lists.`);
       return entry.metadata.bytes;
+    },
+    /** The file name and byte length of an entry, for an error that names the largest assets of a call. */
+    async describeSize(assetId) {
+      const entry = await lookupEntry(assetId);
+      if (!entry) throw new Error(`Unknown asset ID ${String(assetId).slice(0, 12)}. Call scene_asset_catalog and pass an assetId it lists.`);
+      return { name: entry.metadata.name, bytes: entry.metadata.bytes };
     },
     async read(assetId) {
       const entry = await lookupEntry(assetId);

@@ -192,6 +192,33 @@ When an agent edits the scene, Studio shows a pointer with the agent's name, the
 
 Each agent gets its own colour, picked from its name out of five brand colours, so two agents are easy to tell apart; the pointer, the name tag and the outline share it. The pointer keeps to its object while you orbit, visits at most eight objects for one edit, and with reduced motion it steps from object to object without gliding.
 
+## Diagnostics
+
+Studio keeps a short list of what went wrong or ran slow, so a bug report can come with facts. The list lives in memory (the last 200 entries) and goes nowhere on its own: Studio makes no network call and does no work for it while the scene is idle.
+
+Recorded:
+
+- `error` and `rejection`: an uncaught error or an unhandled promise rejection on the page, with its name, message and stack.
+- `contextLost` and `contextRestored`: the graphics context going away and coming back.
+- `longTask`: a stretch of 50 ms or more that blocked the page, where the browser reports it.
+- `slowOperation`: an add, duplicate, paste, delete, undo, redo, recipe load or change that took 100 ms or longer, with its name, duration and the scene's size.
+
+Never recorded: the recipe, node, material or file names, paths and keys. A scene is described by numbers only (`nodes`, `triangles`). Messages are cut to 300 characters, stacks to 2,000, and a URL or path in either keeps only its last segment. An error message from validation can still name an id, so read a report before you share it.
+
+To save the report, open **Help** and choose **Save diagnostics report**. It downloads `crucible-studio-diagnostics.json`: the Crucible version, the browser, the graphics vendor and renderer when the browser exposes them, the viewport size and pixel ratio, the scene size, a count per kind and the entries, oldest first.
+
+```js
+const studio = createStudio(container, {
+  diagnostics: { limit: 200, slowOperationMilliseconds: 100 }, // both optional
+  onDiagnostic: entry => hostLog.write(entry), // each entry as it is recorded; a throwing hook is ignored
+});
+
+studio.diagnostics.report(); // the same object the menu saves
+studio.diagnostics.entries(); // a copy of the entries
+```
+
+Entries are recorded only while the Studio exists: `dispose()` removes every listener.
+
 ## Headless controller for tools and tests
 
 Import `createStudioController` to drive picking, gizmo drags, surface snapping, look edits and camera bookmarks without DOM rendering.

@@ -1,0 +1,1 @@
+- The render skill tells agents to run `scripts/check-preview.mjs` on look previews before review (#2762)

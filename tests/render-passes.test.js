@@ -131,6 +131,7 @@ test('render passes need the addon, reject unknown names and bind per-pass unifo
     renderTargets: { record: (name, description) => recordedTargets.push([name, description.format]), release: () => {} },
     requireFeatureNames: () => {},
     drawsInOpaqueLoop: batch => batch === batchOpaque,
+    takesObjectIds: batch => batch === batchOpaque,
     createTexture: desc => desc,
     drawAlphaBatch: (batch, _tex, culled) => drawn.push({ batch, tex4: batch.textures[4], culled }),
     batches: [batchOpaque, batchGlass],

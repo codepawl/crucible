@@ -4,7 +4,7 @@
 // Usage: node scripts/make-recipe-pages.mjs        write the pages
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { applyChrome } from './site-chrome.mjs';
+import { applyChrome, THEME_COLOR_META } from './site-chrome.mjs';
 import { beforeSource, RECIPES, recipeSource } from './recipe-catalog.mjs';
 
 const siteFolder = fileURLToPath(new URL('../site/', import.meta.url));
@@ -24,6 +24,7 @@ function pageShell({ title, description, path, body }) {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    ${THEME_COLOR_META}
     <meta name="description" content="${escapeHtml(description)}" />
     <link rel="canonical" href="${ORIGIN}${path}" />
     <title>${escapeHtml(title)} · Crucible</title>

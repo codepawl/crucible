@@ -6,6 +6,10 @@ Short answers to the questions that came up most after the launch. Each answer l
 
 No. You can use them side by side. three.js is a general 3D library that you program in JavaScript. Crucible is a smaller renderer with a scene format that an AI agent can edit through MCP tools, without writing engine code. Crucible uses the three.js Draco, meshopt and KTX2 decoders when you pass them in ([import and export](#import-and-export-models)).
 
+## Is there a visual editor?
+
+Yes, Studio, an optional addon that edits the same scene recipe as the MCP tools. It is not a page of the public site. The [Studio guide](https://github.com/codepawl/crucible/blob/main/docs/studio.md) says how to use it.
+
 ## Is it faster or smaller than three.js?
 
 It is smaller. A lit box is 49,858 bytes gzip in Crucible and 133,652 bytes in three.js 0.186.1. A box loaded from a GLB is 77,122 against 155,814 bytes. Both were measured on 2026-11-03 ([size bench](https://github.com/codepawl/crucible/blob/main/bench/size/README.md)).

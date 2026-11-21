@@ -29,7 +29,7 @@ test('a sealed room whose parts share one name is still called a closed room', (
 });
 
 function fakeRenderer(parts) {
-  return { batches: [{ parts }], drawsInOpaqueLoop: () => true };
+  return { batches: [{ parts }], drawsInOpaqueLoop: () => true, takesObjectIds: () => true };
 }
 
 test('two moving parts with one name each get their own motion', () => {

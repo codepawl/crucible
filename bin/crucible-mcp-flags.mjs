@@ -6,6 +6,7 @@ export const MCP_OPTION_FLAGS = Object.freeze([
   { name: '--browser', value: '<local Chrome/Chromium executable path>', note: 'default is the installed Chrome' },
   { name: '--memory', value: '<32..4096 MiB>', note: 'default 192; the top is half of the machine RAM, at most 4096, and it also raises the Node RSS and heap guard of a job' },
   { name: '--assets', value: '<absolute GLB directory>' },
+  { name: '--max-asset-bytes', value: '<1048576..268435456>', note: 'default 67108864 (64 MiB) for one GLB and for the assets of one call; raise it on a machine you control for large scans, a local Chrome test lost the preview page from 80 MiB' },
   { name: '--packs', value: '<absolute folder of data-only packs>' },
   { name: '--jobs', value: '<absolute private output directory>', note: 'required for render jobs' },
   { name: '--gpu-queue', value: '<absolute executable, or JSON array ["bash","/path/queue.sh"]>', note: 'optional: a command that runs the program it is given once the GPU has room; looks, reviews, bakes and render jobs wait for it' },

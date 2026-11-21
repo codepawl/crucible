@@ -526,6 +526,7 @@ export function createStudioController({
   viewportHeight = 540,
   maxHistory = 32,
   onChange,
+  measureOperation = (name, operation) => operation(),
 } = {}) {
   let currentScene = validateSceneHandle(initialScene);
   let moveSnapStep = TRANSLATION_SNAP_STEP;
@@ -536,6 +537,10 @@ export function createStudioController({
   if (!Number.isInteger(maxHistory) || maxHistory < 1 || maxHistory > 128) {
     throw new RangeError(`maxHistory must be an integer from 1 to 128, got ${JSON.stringify(maxHistory)}.`);
   }
+  if (typeof measureOperation !== 'function') {
+    throw new TypeError('measureOperation must be a function that takes an operation name and a function to run.');
+  }
+  const timed = (name, operation) => (...args) => measureOperation(name, () => operation(...args));
   if (onChange !== undefined && typeof onChange !== 'function') {
     throw new TypeError('onChange must be a function when provided.');
   }
@@ -2324,7 +2329,7 @@ export function createStudioController({
     moveSceneObject,
     describeSceneObject,
     updateSceneLight,
-    deleteSceneObject,
+    deleteSceneObject: timed('delete', deleteSceneObject),
     setTool,
     setActiveTab,
     projectWorldPoint,
@@ -2347,13 +2352,13 @@ export function createStudioController({
     get dragging() { return Boolean(dragState); },
     snapSelectedToAt,
     updateNodeTransform,
-    addPrimitive,
-    addSceneLight,
-    duplicateSelected,
+    addPrimitive: timed('add', addPrimitive),
+    addSceneLight: timed('add', addSceneLight),
+    duplicateSelected: timed('duplicate', duplicateSelected),
     copySelected,
-    pasteCopy,
+    pasteCopy: timed('paste', pasteCopy),
     get canPaste() { return copiedNode !== null; },
-    deleteSelected,
+    deleteSelected: timed('delete', deleteSelected),
     updateMaterial,
     createMaterial,
     assignNodeMaterial,
@@ -2378,9 +2383,9 @@ export function createStudioController({
     insertNodeKeyframe,
     beginUndoGroup,
     endUndoGroup,
-    undo,
-    redo,
-    loadRecipe,
+    undo: timed('undo', undo),
+    redo: timed('redo', redo),
+    loadRecipe: timed('load', loadRecipe),
     exportRecipe() {
       return currentScene.exportRecipe();
     },

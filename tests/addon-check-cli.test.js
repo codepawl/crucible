@@ -140,11 +140,11 @@ test('--help exits 0 and prints the usage', () => {
 });
 
 const EXPECTED_MCP_FLAGS = [
-  '--addons', '--allow-addon', '--backend', '--browser', '--memory', '--assets', '--packs',
+  '--addons', '--allow-addon', '--backend', '--browser', '--memory', '--assets', '--max-asset-bytes', '--packs',
   '--jobs', '--gpu-queue', '--gpu-queue-wait', '--ffmpeg', '--audio', '--branches', '--relations', '--findings',
 ];
 
-test('the flag table names exactly the 15 flags crucible-mcp accepts', () => {
+test('the flag table names exactly the 16 flags crucible-mcp accepts', () => {
   assert.deepEqual([...MCP_OPTION_NAMES], EXPECTED_MCP_FLAGS);
 });
 

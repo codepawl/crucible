@@ -33,7 +33,7 @@ test('naming a crowd reaches every person part under one node', async () => {
   };
   const assets = new Map([[assetCopyKey(assetId, 0), await loadRobot()], [assetCopyKey(assetId, 1), robot]]);
   const scene = createAgentScene(recipe, {}, { assets });
-  const renderer = { batches: [{ parts: scene.parts }], drawsInOpaqueLoop: () => true };
+  const renderer = { batches: [{ parts: scene.parts }], drawsInOpaqueLoop: () => true, takesObjectIds: () => true };
   installRenderPasses(renderer);
   const nodes = renderer.passSupport.objectNodes();
   assert.deepEqual(Object.keys(nodes).sort(), ['floor', 'people']);

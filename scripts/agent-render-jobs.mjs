@@ -83,7 +83,6 @@ const MINIMUM_REGION_SIDE = 16;
 /** A 16-bit PNG or an EXR of a busy 1920x1080 frame is bigger than the 8-bit PNG the frame limit was sized for. */
 export const HIGH_PRECISION_FRAME_FACTOR = 4;
 const MAXIMUM_JSON_BYTES = 1024 ** 2;
-const MAXIMUM_ASSET_BYTES = AGENT_ASSET_LIMITS.maxBytes;
 /** Sibling folder of the job directories where the runtime keeps GLB exports; the store never reads or counts it. */
 export const EXPORT_DIRECTORY_NAME = 'exports';
 /** Recent estimate-versus-measured pairs the runtime keeps beside the jobs; the store counts its bytes and never reads it. */
@@ -1062,9 +1061,9 @@ export async function createAgentRenderJobs({ root, run, acquireGpu, limits: inp
       objectKeys(snapshot, ['recipe', 'clips'], 'snapshot');
       validateClips(snapshot.clips ?? []);
       if (!snapshot.recipe || typeof snapshot.recipe !== 'object' || Array.isArray(snapshot.recipe)) throw new Error('Persisted snapshot recipe must be an object.');
-      if ((await readdir(directory)).includes('asset.glb') && (await regularFile(join(directory, 'asset.glb'))).size > MAXIMUM_ASSET_BYTES) throw new Error('Persisted asset exceeds its byte budget.');
+      if ((await readdir(directory)).includes('asset.glb') && (await regularFile(join(directory, 'asset.glb'))).size > AGENT_ASSET_LIMITS.maxBytes) throw new Error('Persisted asset exceeds its byte budget.');
       if (snapshot.recipe.format === 'crucible.asset') {
-        const asset = await hashFile(join(directory, 'asset.glb'), MAXIMUM_ASSET_BYTES);
+        const asset = await hashFile(join(directory, 'asset.glb'), AGENT_ASSET_LIMITS.maxBytes);
         if (asset.sha256 !== snapshot.recipe.assetId) throw new Error('Persisted asset does not match its recipe digest.');
       }
       const { frameCount, ...storedSettings } = record.settings;
@@ -1264,7 +1263,7 @@ export async function createAgentRenderJobs({ root, run, acquireGpu, limits: inp
       if (!recipe || typeof recipe !== 'object' || Array.isArray(recipe)) throw new TypeError('Snapshot recipe must be a JSON object.');
       const snapshotMetadata = jsonCopy({ recipe, clips });
       const settings = settingsFrom(input.settings, clips, recipe);
-      if (input.snapshot.assetBytes !== undefined && (!Buffer.isBuffer(input.snapshot.assetBytes) || input.snapshot.assetBytes.length > MAXIMUM_ASSET_BYTES || !input.snapshot.assetBytes.length)) throw new RangeError(`Asset snapshot must be a nonempty Buffer of at most ${MAXIMUM_ASSET_BYTES} bytes (${describeAssetBytes(MAXIMUM_ASSET_BYTES)}).`);
+      if (input.snapshot.assetBytes !== undefined && (!Buffer.isBuffer(input.snapshot.assetBytes) || input.snapshot.assetBytes.length > AGENT_ASSET_LIMITS.maxBytes || !input.snapshot.assetBytes.length)) throw new RangeError(`Asset snapshot must be a nonempty Buffer of at most ${AGENT_ASSET_LIMITS.maxBytes} bytes (${describeAssetBytes(AGENT_ASSET_LIMITS.maxBytes)}).`);
       const snapshot = { recipe, clips, ...(input.snapshot.assetBytes ? { assetBytes: Buffer.from(input.snapshot.assetBytes) } : {}) };
       if (recipe.format === 'crucible.asset' && (!snapshot.assetBytes || createHash('sha256').update(snapshot.assetBytes).digest('hex') !== recipe.assetId)) throw new Error('Asset snapshot bytes must match the recipe SHA256 assetId.');
       const operation = (async () => {

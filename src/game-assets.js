@@ -8,7 +8,7 @@ import { TEXTURE_SEQUENCE_LIMITS } from './texture-sequence-limits.js';
 // The catalog assets a game recipe places or retargets clips from, decoded for startGame. The web export writes each asset
 // as assets/<id>.glb and tells the page its URL (images the materials read too, see loadGameImages); this file fetches and decodes them, one decoded copy per copy the scene needs.
 
-export const GAME_ASSET_LIMITS = Object.freeze({ maxAssets: 16, maxCopiesPerAsset: 18 });
+export const GAME_ASSET_LIMITS = Object.freeze({ maxAssets: 32, maxCopiesPerAsset: 18 });
 const ASSET_ID = /^[a-f0-9]{64}$/;
 
 /** The ids of every catalog asset the game needs: the placed ones and the sources of its animation clips. */

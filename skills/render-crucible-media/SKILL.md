@@ -56,6 +56,9 @@ submit call fails: tell the user which launch option is missing.
   it too, one trace per frame; passes, `transparent`, `format` and `region` need the rasterizer.
 - Do not stop another session's process. Heavy local exports run at below-normal priority, one job at a time.
 - A GLB for Blender is `scene_export_glb`, not a render job.
+- A preview that shows a look change (shaders, lighting, materials, default render, post steps) goes through
+  `node scripts/check-preview.mjs <still or clip> [--reference <Cook or Cycles still>]` before you send it for review. It
+  reports exposure, shimmer and the camera inside a wall, and exits 1 on a fail (`docs/check-preview.md`).
 
 ## Deliver
 

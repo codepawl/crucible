@@ -15,6 +15,7 @@ import { findKeymapAction, formatShortcutKeys, keyLabel, resolveKeymap, SHORTCUT
 import { createStudioCatalog } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
 import { detectStudioHardware, gatherStudioHardwareInputs, rendererChangeFor, resolveStudioPerformanceTier, studioViewportSettingsFor } from './studio-hardware.js';
+import { createStudioDiagnostics, describeStudioEnvironment, watchStudioDiagnostics } from './studio-diagnostics.js';
 import {
   STUDIO_GIZMO_PIXELS,
   STUDIO_PREFERENCE_CHOICES,
@@ -951,6 +952,11 @@ function browserPreferenceStorage() {
   }
 }
 
+function describeSceneSize(controller) {
+  const triangles = controller.scene.parts.reduce((count, part) => count + (part.geometry?.indices?.length ?? 0) / 3, 0);
+  return { nodes: controller.exportRecipe().nodes.length, triangles: Math.round(triangles) };
+}
+
 /**
  * Mounts Crucible Studio: 3-zone 3D editor with outliner, SVG 3D gizmos, 4-tab inspector, timeline and desktop IPC hooks.
  */
@@ -971,6 +977,8 @@ export function createStudio(container, {
   catalog: catalogHooks = {},
   onDirtyChange,
   onThemeChange,
+  onDiagnostic,
+  diagnostics: diagnosticsOptions = {},
 } = {}) {
   const catalog = createStudioCatalog(catalogHooks);
   let preferences = normalizeStudioPreferences({ ...loadStudioPreferences(preferenceStorage), ...suppliedPreferences });
@@ -987,7 +995,25 @@ export function createStudio(container, {
   const initialRecipe = pendingRecipe ? buildTemplateRecipe(template) : suppliedRecipe ?? (suppliedScene ? null : buildTemplateRecipe(template));
   const initialScene = suppliedScene ?? createAgentScene(initialRecipe);
   let handleChange = () => {};
-  const controller = createStudioController({ scene: initialScene, assets: catalog.pool, onChange: detail => handleChange(detail) });
+  const studioDiagnostics = createStudioDiagnostics({
+    limit: diagnosticsOptions.limit,
+    now: diagnosticsOptions.now,
+    slowOperationMilliseconds: diagnosticsOptions.slowOperationMilliseconds,
+    onEntry: onDiagnostic,
+    describeScene: () => describeSceneSize(controller),
+    describeEnvironment: () => describeStudioEnvironment({
+      windowReference: documentReference.defaultView,
+      renderer,
+      viewportWidth: controller.viewportWidth,
+      viewportHeight: controller.viewportHeight,
+    }),
+  });
+  const controller = createStudioController({
+    scene: initialScene,
+    assets: catalog.pool,
+    onChange: detail => studioDiagnostics.measure('handleChange', () => handleChange(detail)),
+    measureOperation: studioDiagnostics.measure,
+  });
 
   async function prepareRecipe(recipe) {
     await loadAgentSceneModules(recipe);
@@ -1196,6 +1222,7 @@ export function createStudio(container, {
     'crucible-studio-pop-help',
     createMenuItem('Keyboard shortcuts', keyLabel(keymap, 'help.shortcuts'), () => shortcutsDialog.showModal(), 'keyboard'),
     createMenuItem('Set up Studio…', '', () => openSetup(), 'settings'),
+    createMenuItem('Save diagnostics report', '', () => saveDiagnosticsReport(), 'saveAs'),
   );
   const exportMenuButton = createElement(
     documentReference,
@@ -1661,6 +1688,7 @@ export function createStudio(container, {
     onRestore: () => restoreDraft(),
     onDiscard: () => discardDraft(),
   });
+  const stopWatchingDiagnostics = watchStudioDiagnostics(studioDiagnostics, { windowReference: documentReference.defaultView, canvas });
   const stopWatchingContextLoss = watchContextLoss(canvas, { onLost: pauseForContextLoss, onRestored: recoverFromContextLoss });
   viewportElement.append(canvas, gizmoSvg, agentPresence.element, viewWidget.element, readout, hintBar, statusRegion, dropOverlay, pausedNotice.element, draftNotice.element);
 
@@ -2338,6 +2366,13 @@ export function createStudio(container, {
     const link = createElement(documentReference, 'a', { href: url, download: filename });
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function saveDiagnosticsReport() {
+    const reportText = `${JSON.stringify(studioDiagnostics.report(), null, 2)}
+`;
+    triggerBlobDownload(reportText, 'crucible-studio-diagnostics.json', 'application/json');
+    announce('Saved the diagnostics report');
   }
 
   function capturePngDataUrl() {
@@ -3808,6 +3843,11 @@ export function createStudio(container, {
     /** Settles when the recipe createStudio was given is on screen; it waits only for a recipe that names catalog files. */
     ready,
     exportRecipe: () => controller.exportRecipe(),
+    /** What went wrong and what was slow, in numbers and messages only: never the recipe, node names or file names. */
+    diagnostics: {
+      report: () => studioDiagnostics.report(),
+      entries: () => studioDiagnostics.entries(),
+    },
     /** Synchronous: the recipe's catalog files must be loaded already. `openRecipe` loads them first. */
     loadRecipe: (recipeInput, options) => controller.loadRecipe(recipeInput, options),
     async openRecipe(recipeInput, options) {
@@ -3860,6 +3900,7 @@ export function createStudio(container, {
       documentReference.removeEventListener('visibilitychange', flushDraftWhenHidden);
       documentReference.defaultView?.removeEventListener?.('pagehide', flushDraftSave);
       stopWatchingContextLoss();
+      stopWatchingDiagnostics();
       pausedNotice.hide();
       resizeObserver?.disconnect();
       intersectionObserver?.disconnect();

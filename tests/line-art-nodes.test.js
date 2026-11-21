@@ -50,7 +50,7 @@ test('objectNodes groups the object IDs by node, and a placed asset is one node'
     nodes: [{ id: 'floor', geometry: 'ground', material: 'grass' }, { id: 'prop', asset: { id: assetId } }],
   };
   const scene = createAgentScene(recipe, {}, { assets: new Map([[assetCopyKey(assetId, 0), asset]]) });
-  const renderer = { batches: [{ parts: scene.parts }], drawsInOpaqueLoop: () => true };
+  const renderer = { batches: [{ parts: scene.parts }], drawsInOpaqueLoop: () => true, takesObjectIds: () => true };
   installRenderPasses(renderer);
   const names = renderer.passSupport.objectNames();
   const nodes = renderer.passSupport.objectNodes();
@@ -75,7 +75,7 @@ function sceneWithNodeIds(ids, lines) {
 test('a node named like an Object.prototype member is an ordinary node', () => {
   const ids = ['constructor', 'toString', 'hasOwnProperty', 'valueOf', '__proto__'];
   const scene = sceneWithNodeIds(ids);
-  const renderer = { batches: [{ parts: scene.parts }], drawsInOpaqueLoop: () => true };
+  const renderer = { batches: [{ parts: scene.parts }], drawsInOpaqueLoop: () => true, takesObjectIds: () => true };
   installRenderPasses(renderer);
   const nodes = renderer.passSupport.objectNodes();
   assert.deepEqual(Object.keys(nodes).sort(), [...ids].sort());
@@ -115,7 +115,7 @@ test('naming the node that grows vegetation reaches every generated part', () =>
     environment: { lines: { nodes: { oak: { lines: false } } } },
   };
   const scene = createAgentScene(recipe, {});
-  const renderer = { batches: [{ parts: scene.parts }], drawsInOpaqueLoop: () => true };
+  const renderer = { batches: [{ parts: scene.parts }], drawsInOpaqueLoop: () => true, takesObjectIds: () => true };
   installRenderPasses(renderer);
   const nodes = renderer.passSupport.objectNodes();
   assert.deepEqual(Object.keys(nodes), ['oak']);
