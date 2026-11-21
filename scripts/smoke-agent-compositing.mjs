@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtemp } from 'node:fs/promises';
-import { tmpdir, constants, setPriority } from 'node:os';
+import { constants, setPriority } from 'node:os';
 import { join, resolve } from 'node:path';
 import sharp from 'sharp';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { createAgentPreviewFixture } from './agent-preview-fixture.mjs';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 // Proves two compositing steps on real pixels through the MCP server (#707): a grade masked to one part changes the
 // pixels of that part and leaves the rest of the frame alone, and a luma key over a background replaces the dark
@@ -15,7 +15,7 @@ setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
 const WIDTH = 320;
 const HEIGHT = 240;
 const HERO = 'glow';
-const directory = await mkdtemp(join(tmpdir(), 'crucible-mcp-compositing-'));
+const directory = await createScratchDirectory('crucible-mcp-compositing-');
 const cli = resolve(process.argv[2] ?? 'bin/crucible-mcp.mjs');
 let diagnostics = '';
 

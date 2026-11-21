@@ -3,9 +3,9 @@
 //   node scripts/capture-water-aliasing.mjs <output directory>
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
-import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { writeFile, mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 const repositoryRoot = resolve(import.meta.dirname, '..');
 const outputDirectory = resolve(process.argv[2] ?? 'artifacts/water-aliasing');
@@ -46,7 +46,7 @@ async function printMedianLookTime(client, sessionId, view) {
 }
 
 await mkdir(outputDirectory, { recursive: true });
-const workDirectory = await mkdtemp(join(tmpdir(), 'crucible-water-aliasing-'));
+const workDirectory = await createScratchDirectory('crucible-water-aliasing-');
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: [join(repositoryRoot, 'bin/crucible-mcp.mjs'), '--backend', 'gpu', '--memory', '384', '--jobs', join(workDirectory, 'jobs')],

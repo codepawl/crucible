@@ -6,9 +6,9 @@
 //   node bench/instancing/native-job-check.mjs compare <candidate.png> <reference.png>
 //     Mean ratio, relative MSE (epsilon 0.01) and 8x8 tiles within 5 percent between two job images (8-bit, sRGB).
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createScratchDirectory } from '../../scripts/scratch-directory.mjs';
 import { spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { recipeFor } from './native-job-scenes.mjs';
@@ -25,7 +25,7 @@ function cardMemoryMiB() {
 async function run(scene, outputFolder, samples, entry) {
   const { Client } = await import('@modelcontextprotocol/client');
   const { StdioClientTransport } = await import('@modelcontextprotocol/client/stdio');
-  const workFolder = mkdtempSync(join(tmpdir(), 'crucible-native-job-'));
+  const workFolder = await createScratchDirectory('crucible-native-job-');
   const transport = new StdioClientTransport({ command: process.execPath,
     args: [resolve(entry), '--backend', 'gpu', '--memory', '192', '--jobs', join(workFolder, 'jobs'), ...(process.env.CHROME_PATH ? ['--browser', process.env.CHROME_PATH] : [])],
     cwd: workFolder, env: { ...process.env }, stderr: 'pipe' });

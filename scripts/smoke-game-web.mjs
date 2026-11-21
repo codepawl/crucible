@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir, constants, setPriority } from 'node:os';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { constants, setPriority } from 'node:os';
 import { dirname, extname, join, resolve } from 'node:path';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { chromium } from 'playwright-core';
 import { MIXAMO_LIKE, UNREAL_LIKE, humanoidGlb, humanoidJoints, walkTracks } from '../tests/fixtures/humanoid-glb.js';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 // Proves the game path end to end: an agent builds a creature that runs and jumps to collect 3 coins and reach a goal using
 // only MCP tools, exports it as a static web build, and a recorded input replay wins the game in headless Chrome on the GPU.
@@ -17,7 +18,7 @@ import { MIXAMO_LIKE, UNREAL_LIKE, humanoidGlb, humanoidJoints, walkTracks } fro
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
 const CHROME_PATH = process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const directory = await mkdtemp(join(tmpdir(), 'crucible-game-web-'));
+const directory = await createScratchDirectory('crucible-game-web-');
 const cli = resolve(process.argv[2] ?? 'bin/crucible-mcp.mjs');
 const MIME_TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.glb': 'model/gltf-binary', '.wasm': 'application/wasm' };
 

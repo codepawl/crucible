@@ -3,15 +3,16 @@
 // and a job that passes maxSeconds fails without writing an image.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile } from 'node:fs/promises';
-import { tmpdir, constants, setPriority } from 'node:os';
+import { readFile } from 'node:fs/promises';
+import { constants, setPriority } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
-const directory = await mkdtemp(join(tmpdir(), 'crucible-mcp-path-tracer-'));
+const directory = await createScratchDirectory('crucible-mcp-path-tracer-');
 const jobs = join(directory, 'jobs');
 const cli = resolve(process.argv[2] ?? 'bin/crucible-mcp.mjs');
 const transport = new StdioClientTransport({ command: process.execPath,

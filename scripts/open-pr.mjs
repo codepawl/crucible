@@ -5,7 +5,7 @@
 // `gh pr create`, push evidence for the new number and insert it under "## Evidence", then read the body back.
 // --dry-run runs the local checks and prints the commands and the final body; it writes nothing on the network.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -115,7 +115,9 @@ export function defaultServices(cwd = process.cwd()) {
     gh: args => run('gh', args, cwd),
     pushEvidence: options => pushEvidence({ ...options, cwd }),
     writeTempBody: text => {
-      const path = join(mkdtempSync(join(tmpdir(), 'open-pr-')), 'body.md');
+      const folder = mkdtempSync(join(tmpdir(), 'open-pr-'));
+      process.once('exit', () => rmSync(folder, { recursive: true, force: true }));
+      const path = join(folder, 'body.md');
       writeFileSync(path, text);
       return path;
     },

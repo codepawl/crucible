@@ -3,11 +3,12 @@
 //   node bench/native-tracer/recipe-bake.mjs <output directory> [--recipe tests/fixtures/demo-room.recipe.json] [--label run1]
 // Writes recipe-bake-<label>.json (seconds, the `bake` block of scene_inspect). The native package is used when it is built;
 // set COOK_DISABLE=1 to see the fallback.
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { constants, setPriority, tmpdir } from 'node:os';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { constants, setPriority } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { createScratchDirectory } from '../../scripts/scratch-directory.mjs';
 
 const argumentsGiven = process.argv.slice(2);
 const outputDirectory = resolve(argumentsGiven[0]);
@@ -22,7 +23,7 @@ const recipePath = valueAfter('--recipe', 'tests/fixtures/demo-room.recipe.json'
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
 await mkdir(outputDirectory, { recursive: true });
-const workDirectory = await mkdtemp(join(tmpdir(), 'crucible-native-bake-'));
+const workDirectory = await createScratchDirectory('crucible-native-bake-');
 const transport = new StdioClientTransport({ command: process.execPath,
   args: [resolve('bin/crucible-mcp.mjs'), '--backend', 'gpu', '--memory', '384', '--jobs', join(workDirectory, 'jobs')], cwd: workDirectory, stderr: 'pipe' });
 let diagnostics = '';

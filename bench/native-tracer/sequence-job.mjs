@@ -9,12 +9,12 @@
 // A run with sessions off carries no `nativeSession` in its reports, so its route list is empty by design.
 // Prints one SEQUENCE_JOB line of JSON and exits 1 when a frame differs or a route is not the expected one.
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { createScratchDirectory } from '../../scripts/scratch-directory.mjs';
 
 const argumentList = process.argv.slice(2);
 const outputDirectory = resolve(argumentList[0]);
@@ -48,7 +48,7 @@ function buildVariants(recipe) {
 }
 
 async function runJob(variantRecipe, sessions) {
-  const workDirectory = await mkdtemp(join(tmpdir(), 'crucible-sequence-job-'));
+  const workDirectory = await createScratchDirectory('crucible-sequence-job-');
   const transport = new StdioClientTransport({ command: process.execPath,
     args: [resolve('bin/crucible-mcp.mjs'), '--backend', runtimeBackend, '--memory', '384', '--jobs', join(workDirectory, 'jobs'), ...(browserPath ? ['--browser', browserPath] : [])],
     cwd: workDirectory, stderr: 'pipe', env: { ...process.env, JS67_NATIVE_SESSIONS: sessions ? 'on' : 'off' } });

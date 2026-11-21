@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir, constants, setPriority } from 'node:os';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { constants, setPriority } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import sharp from 'sharp';
@@ -8,6 +8,7 @@ import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { createAgentPreviewFixture } from './agent-preview-fixture.mjs';
 import { assertToolListMatchesServer } from './mcp-tool-list.mjs';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 // Proves the user post pass through the MCP server: a scene with an ordered dither and a quarter-size downscale looks
 // quantised and blocky, a broken snippet returns the mapped compile log and leaves the session usable, a snippet that
@@ -19,7 +20,7 @@ const HEIGHT = 240;
 const SCALE = 0.25;
 const LEVELS = 4;
 const BLOCK = 4;
-const directory = await mkdtemp(join(tmpdir(), 'crucible-mcp-post-pass-'));
+const directory = await createScratchDirectory('crucible-mcp-post-pass-');
 const jobs = join(directory, 'jobs');
 const cli = resolve(process.argv[2] ?? 'bin/crucible-mcp.mjs');
 let diagnostics = '';

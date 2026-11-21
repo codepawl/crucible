@@ -1,16 +1,17 @@
 // Proves the wireframe pass through the real MCP runtime and a browser: a clean box, a box with its top deleted and a box with
 // one flipped face are drawn in one render job, and the picture holds the fault colours in the right amounts.
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir, constants, setPriority } from 'node:os';
+import { readFile, writeFile } from 'node:fs/promises';
+import { constants, setPriority } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { inflateSync } from 'node:zlib';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
-const directory = await mkdtemp(join(tmpdir(), 'crucible-mcp-wireframe-'));
+const directory = await createScratchDirectory('crucible-mcp-wireframe-');
 const cli = resolve(process.argv[2] ?? 'bin/crucible-mcp.mjs');
 const backend = process.argv[3] ?? 'cpu';
 const SIZE = 320;

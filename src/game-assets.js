@@ -1,9 +1,12 @@
 import { parseGltf } from './gltf.js';
 import { agentAssetDecodeOptions } from './agent-asset-limits.js';
 import { assetCopyKey, recipeAssetNeeds } from './agent-scene-assets.js';
+import { sequenceFrameIds } from './agent-texture-sequence.js';
+import { decodeCatalogImage } from './decode-catalog-image.js';
+import { TEXTURE_SEQUENCE_LIMITS } from './texture-sequence-limits.js';
 
 // The catalog assets a game recipe places or retargets clips from, decoded for startGame. The web export writes each asset
-// as assets/<id>.glb and tells the page its URL; this file fetches and decodes them, one decoded copy per copy the scene needs.
+// as assets/<id>.glb and tells the page its URL (images the materials read too, see loadGameImages); this file fetches and decodes them, one decoded copy per copy the scene needs.
 
 export const GAME_ASSET_LIMITS = Object.freeze({ maxAssets: 16, maxCopiesPerAsset: 18 });
 const ASSET_ID = /^[a-f0-9]{64}$/;
@@ -56,4 +59,37 @@ async function defaultFetchBytes(url) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Could not load ${url}: HTTP ${response.status}.`);
   return response.arrayBuffer();
+}
+
+export const GAME_IMAGE_LIMITS = Object.freeze({ maxImages: 64 });
+
+/** The ids of the catalog images the game's materials read: material graph `image` nodes and map sequence frames. */
+export function gameImageIds(recipe) {
+  return sequenceFrameIds(recipe);
+}
+
+/**
+ * Fetch and decode the catalog images of a recipe, the way the MCP preview does before it creates the scene. `imageUrls` maps an
+ * image id to its URL. Returns the Map of decoded pixels that createAgentScene takes as `sequenceFrames`.
+ */
+export async function loadGameImages(recipe, imageUrls, fetchBytes = defaultFetchBytes, decode = decodeCatalogImage) {
+  const ids = gameImageIds(recipe);
+  if (ids.length > GAME_IMAGE_LIMITS.maxImages) {
+    throw new RangeError(`This game uses ${ids.length} catalog images; the limit is ${GAME_IMAGE_LIMITS.maxImages}.`);
+  }
+  const images = new Map();
+  let decodedBytes = 0;
+  for (const id of ids) {
+    const url = imageUrls?.[id];
+    if (typeof url !== 'string') {
+      throw new RangeError(`A material reads the catalog image ${id.slice(0, 12)}, but imageUrls has no URL for it. Export the game again with the web export, which writes assets/<id> for each image.`);
+    }
+    const frame = await decode(id, new Uint8Array(await fetchBytes(url)));
+    decodedBytes += frame.data.length;
+    if (decodedBytes > TEXTURE_SEQUENCE_LIMITS.maxDecodedBytes) {
+      throw new RangeError(`The game's images decode to more than ${TEXTURE_SEQUENCE_LIMITS.maxDecodedBytes / 1048576} MiB. Use fewer or smaller images.`);
+    }
+    images.set(id, frame);
+  }
+  return images;
 }

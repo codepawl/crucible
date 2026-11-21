@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
-import { tmpdir, constants, setPriority } from 'node:os';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { constants, setPriority } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -9,9 +9,10 @@ import { PatientStdioClientTransport } from './patient-stdio-transport.mjs';
 import { createAgentCharacterFixture } from './agent-character-fixture.mjs';
 import { createTexturedRigFixture } from './agent-asset-fixture.mjs';
 import { assertToolListMatchesServer } from './mcp-tool-list.mjs';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
-const directory = await mkdtemp(join(tmpdir(), 'crucible-review-proof-'));
+const directory = await createScratchDirectory('crucible-review-proof-');
 const assets = join(directory, 'assets');
 await mkdir(assets);
 const fixture = await createAgentCharacterFixture();

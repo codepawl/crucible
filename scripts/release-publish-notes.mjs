@@ -1,10 +1,10 @@
 // Creates the v<version> tag and release page after npm publish. Skips quietly when the release already exists.
 // Needs the `gh` CLI and GH_TOKEN with contents: write, and runs only in Actions (GITHUB_SHA is the pushed commit).
-import { readFile, writeFile, mkdtemp } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { releaseNotes } from './release-notes.mjs';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 const metadata = JSON.parse(await readFile('package.json', 'utf8'));
 const tag = `v${metadata.version}`;
@@ -18,7 +18,7 @@ function releaseExists() {
 if (releaseExists()) {
   console.log(`Release ${tag} already exists.`);
 } else {
-  const notesFile = join(await mkdtemp(join(tmpdir(), 'release-notes-')), 'notes.md');
+  const notesFile = join(await createScratchDirectory('release-notes-'), 'notes.md');
   await writeFile(notesFile, releaseNotes(await readFile('CHANGELOG.md', 'utf8'), metadata.version, metadata.name));
   const created = spawnSync('gh', ['release', 'create', tag, '--target', commit, '--title', `Crucible ${metadata.version}`, '--notes-file', notesFile], { stdio: 'inherit' });
   // A run that lost a race to create the same release is not a failed publish.

@@ -7,7 +7,7 @@ import { postFragment, createPostFragment, GRID_MOTION_STEP, GRID_DETAIL_STEP, N
 import { createGlazeBackend } from './glaze-backend.js';
 import { fullscreenVertex, compileProgram, ProgramNotReady, isLinkComplete, setPreparing, releaseStartedPrograms } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
-import { planRenderSize, estimateTextureBytes, estimateFrameBytes, memoryBudgetError } from './budget.js';
+import { planRenderSize, estimateTextureBytes, estimateFrameBytes, memoryBudgetError, automaticBudgetCeilingMiB } from './budget.js';
 import { applyProjection } from './camera.js';
 import { fittedNearPlane, sceneBoundsOfParts } from './near-plane-fit.js';
 import { installReversedDepth, prepareCameraRelativeProgram } from './reversed-depth.js';
@@ -903,6 +903,8 @@ export class CrucibleRenderer {
     const expectedGeometryBytes = groups.reduce((total, group) => total + geometryBufferBytes(group[0].geometry) + group.length * INSTANCE_STRIDE * 4, 0);
     this.memoryBudgetMiB = planRenderSize({ width: Math.max(1, canvas.clientWidth), height: Math.max(1, canvas.clientHeight), pixelRatio, samples: this.samples, memoryBudgetMiB, geometryBytes: expectedGeometryBytes, textureBytes: this.textureBytes, hdr: this.hdr, bloom: !benchmark, depth: this.depth, maximumSize: textureLimit, maximumMemoryBudgetMiB }).memoryBudgetMiB;
     this.maximumMemoryBudgetMiB = maximumMemoryBudgetMiB;
+    // A budget the caller did not set was sized for the first scene; it follows later scene changes up to its ceiling instead of freezing the page (#2828).
+    this.memoryBudgetFollowsScene = memoryBudgetMiB === undefined;
     this.view = mat4.create();
     this.projection = mat4.create();
     this.viewProjection = mat4.create();
@@ -1467,6 +1469,19 @@ export class CrucibleRenderer {
     return batch;
   }
 
+  /**
+   * Raises a budget the caller did not set so it holds `neededBytes`, when that fits under the automatic ceiling and the runtime's
+   * own ceiling. Returns whether the budget now holds it; a budget the caller set is never changed.
+   */
+  growAutomaticBudgetTo(neededBytes) {
+    if (!this.memoryBudgetFollowsScene) return false;
+    const neededMiB = Math.ceil(neededBytes / (1024 * 1024));
+    const ceilingMiB = Math.min(automaticBudgetCeilingMiB(), this.maximumMemoryBudgetMiB ?? Infinity);
+    if (neededMiB > ceilingMiB) return false;
+    this.memoryBudgetMiB = neededMiB;
+    return true;
+  }
+
   /** Reconcile immutable rigid, untextured geometry without rebuilding programs or render targets. `retainedUnchanged` skips the re-sync of parts in kept batches, for a world that grows in slices. */
   replaceParts(parts, { regroupOnly = false, retainedUnchanged = false } = {}) {
     if (!Array.isArray(parts) || new Set(parts).size !== parts.length) {
@@ -1529,7 +1544,7 @@ export class CrucibleRenderer {
     const newInstanceBytes = replacements.filter(item => !item.batch).reduce((total, item) => total + item.group.length * INSTANCE_STRIDE * 4, 0);
     const frameBytes = estimateFrameBytes(this.canvas.width, this.canvas.height, this.samples, 2048, { hdr: this.hdr, bloom: !this.benchmark, depth: this.depth });
     const peakBytes = frameBytes + this.textureBytes + this.geometryBytes + newGeometryBytes + newInstanceBytes;
-    if (peakBytes > this.memoryBudgetMiB * 1024 * 1024) {
+    if (peakBytes > this.memoryBudgetMiB * 1024 * 1024 && !this.growAutomaticBudgetTo(peakBytes)) {
       throw memoryBudgetError(this.geometryBytes + newGeometryBytes + newInstanceBytes, this.textureBytes, frameBytes, this.memoryBudgetMiB, { maximumMemoryBudgetMiB: this.maximumMemoryBudgetMiB });
     }
     const previousLocations = this.partLocations;

@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
-import { tmpdir, constants, setPriority } from 'node:os';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { constants, setPriority } from 'node:os';
 import { join, resolve } from 'node:path';
 import sharp from 'sharp';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { assertToolListMatchesServer } from './mcp-tool-list.mjs';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 // Proves the material fragment hook through the MCP server: a valid hook changes pixels and takes new uniform values, a
 // discarded caster casts no shadow, a snippet that breaks a validator rule is refused before any compile, a snippet the
@@ -14,7 +15,7 @@ import { assertToolListMatchesServer } from './mcp-tool-list.mjs';
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
 const WIDTH = 320;
 const HEIGHT = 240;
-const directory = await mkdtemp(join(tmpdir(), 'crucible-mcp-material-snippet-'));
+const directory = await createScratchDirectory('crucible-mcp-material-snippet-');
 const jobs = join(directory, 'jobs');
 const cli = resolve(process.argv[2] ?? 'bin/crucible-mcp.mjs');
 let diagnostics = '';

@@ -3838,9 +3838,6 @@ test('Discard drops the draft, and a draft equal to the opened scene is not offe
 
   const second = mountStudio(testContext, { preferenceStorage: storage, sharedDom: first.dom });
   await second.studio.ready;
-  second.controller.updateNodeTransform('hero', { translation: [9, 0.5, 0] });
-  second.dom.runTimers();
-  assert.equal(JSON.parse(storage.entries.get(DRAFT_KEY)).recipe.nodes.find(node => node.id === 'hero').translation[0], 3, 'edits do not overwrite a draft that is still on offer');
   second.button('Discard').click();
   assert.equal(second.root.querySelector('.crucible-studio-draft').hidden, true);
   assert.equal(storage.entries.has(DRAFT_KEY), false);
@@ -3850,6 +3847,48 @@ test('Discard drops the draft, and a draft equal to the opened scene is not offe
   const third = mountStudio(testContext, { preferenceStorage: storage, sharedDom: first.dom });
   await third.studio.ready;
   assert.equal(third.root.querySelector('.crucible-studio-draft').hidden, true);
+});
+
+test('edits made while the restore notice is showing close it and survive a reload (#2838)', async testContext => {
+  const storage = draftStorage();
+  const first = mountStudio(testContext, { preferenceStorage: storage });
+  first.controller.updateNodeTransform('hero', { translation: [3, 0.5, 0] });
+  first.dom.runTimers();
+  first.studio.dispose();
+
+  const second = mountStudio(testContext, { preferenceStorage: storage, sharedDom: first.dom });
+  await second.studio.ready;
+  const notice = second.root.querySelector('.crucible-studio-draft');
+  assert.equal(notice.hidden, false);
+  second.controller.updateNodeTransform('hero', { translation: [9, 0.5, 0] });
+  assert.equal(notice.hidden, true, 'the first edit answers the notice: the person carries on with the current scene');
+  second.dom.runTimers();
+  const keptTranslation = JSON.parse(storage.entries.get(DRAFT_KEY)).recipe.nodes.find(node => node.id === 'hero').translation;
+  assert.deepEqual(keptTranslation, [9, 0.5, 0], 'the draft holds the new edit, not the older draft');
+  second.studio.dispose();
+
+  const third = mountStudio(testContext, { preferenceStorage: storage, sharedDom: first.dom });
+  await third.studio.ready;
+  assert.equal(third.root.querySelector('.crucible-studio-draft').hidden, false, 'the reload offers the newest work');
+  third.button('Restore').click();
+  await third.dom.settle();
+  assert.deepEqual(third.node('hero').translation, [9, 0.5, 0]);
+});
+
+test('Restore pressed before any edit still replaces the scene as one undo step (#2838)', async testContext => {
+  const storage = draftStorage();
+  const first = mountStudio(testContext, { preferenceStorage: storage });
+  first.controller.updateNodeTransform('hero', { translation: [3, 0.5, 0] });
+  first.dom.runTimers();
+  first.studio.dispose();
+
+  const second = mountStudio(testContext, { preferenceStorage: storage, sharedDom: first.dom });
+  await second.studio.ready;
+  second.button('Restore').click();
+  await second.dom.settle();
+  assert.deepEqual(second.node('hero').translation, [3, 0.5, 0]);
+  second.controller.undo();
+  assert.equal(second.node('hero').translation[0], 0);
 });
 
 test('choosing a new scene on purpose clears the draft and its notice', async testContext => {

@@ -38,7 +38,7 @@ import { readVolumeGridFiles, volumeGridFileBytes } from '../src/mcp-volume-grid
 import { catalogLookReferences, BUNDLED_ENVIRONMENT_NAMES, BUNDLED_CUBE_LOOK_NAMES } from '../src/look-catalog.js';
 import { TEXTURE_SEQUENCE_CAPABILITIES, TEXTURE_SEQUENCE_LIMITS } from '../src/texture-sequence-limits.js';
 import { writeWebBuild } from './web-export.mjs';
-import { gameAssetIds } from '../src/game-assets.js';
+import { gameAssetIds, gameImageIds } from '../src/game-assets.js';
 import { resolveJobRoot } from './agent-job-root.mjs';
 import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME, HIGH_PRECISION_FRAME_FACTOR, MAXIMUM_JOB_FRAME_BYTES, MAXIMUM_JOB_OUTPUT_BYTES, RENDER_HISTORY_FILE, normalizeJobSettings, frameByteLimitFor, oversizeFrameBudgetError, requireTracerBackendAvailable } from './agent-render-jobs.mjs';
 import { RENDER_QUALITY_NOTE, applyQuality, tierReport } from './agent-render-quality.mjs';
@@ -1737,7 +1737,10 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         try {
           const assets = new Map();
           for (const id of gameAssetIds(recipe)) assets.set(id, await (await catalog()).read(id));
-          summary = await writeWebBuild({ recipe, buildDirectory: fileURLToPath(new URL('../', previewUrl)), outputDirectory, title, assets });
+          // The catalog images the materials read (graph image nodes, map sequences) travel with the page, which decodes them before the scene is created.
+          const images = new Map();
+          for (const id of gameImageIds(recipe)) images.set(id, await (await catalog()).read(id));
+          summary = await writeWebBuild({ recipe, buildDirectory: fileURLToPath(new URL('../', previewUrl)), outputDirectory, title, assets, images });
         } catch (error) {
           // A refused or half-written build never uses up a retention slot or evicts a good one.
           await rm(outputDirectory, { recursive: true, force: true });

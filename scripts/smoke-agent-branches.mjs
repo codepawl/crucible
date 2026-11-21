@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile } from 'node:fs/promises';
-import { tmpdir, constants, setPriority } from 'node:os';
+import { writeFile } from 'node:fs/promises';
+import { constants, setPriority } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { Client } from '@modelcontextprotocol/client';
 import { PatientStdioClientTransport } from './patient-stdio-transport.mjs';
 import { createAgentPreviewFixture } from './agent-preview-fixture.mjs';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 // Drives the installed MCP server on SwiftShader: branches, a branch review and labels, through real tool calls.
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
-const directory = await mkdtemp(join(tmpdir(), 'crucible-branches-proof-'));
+const directory = await createScratchDirectory('crucible-branches-proof-');
 const cli = resolve(process.argv[2] ?? 'bin/crucible-mcp.mjs');
 const transport = new PatientStdioClientTransport({ command: process.execPath,
   args: [cli, '--backend', 'cpu', '--memory', '96'], cwd: directory, stderr: 'pipe' });

@@ -13,13 +13,13 @@
 // reference video, which shows a blend that lags or dims the picture. Prints one TEMPORAL_JOB line of JSON and exits 1 when
 // the blended video scores 1.5 or more, or when a frame did not render on the native tracer.
 import { execFile } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { createScratchDirectory } from '../../scripts/scratch-directory.mjs';
 
 const runFile = promisify(execFile);
 const argumentList = process.argv.slice(2);
@@ -108,7 +108,7 @@ function windowLitRoom(recipe) {
 }
 
 async function renderVideo(recipe, { name, blend, jobSamples }) {
-  const workDirectory = await mkdtemp(join(tmpdir(), 'crucible-temporal-job-'));
+  const workDirectory = await createScratchDirectory('crucible-temporal-job-');
   const transport = new StdioClientTransport({ command: process.execPath,
     args: [resolve('bin/crucible-mcp.mjs'), '--backend', runtimeBackend, '--memory', '384', '--jobs', join(workDirectory, 'jobs'), ...(browserPath ? ['--browser', browserPath] : [])],
     cwd: workDirectory, stderr: 'pipe', env: { ...process.env, JS67_NATIVE_TEMPORAL: blend ? 'on' : 'off' } });

@@ -2,12 +2,13 @@
 // the MCP runtime and prints the estimate next to the measured time and memory as a table.
 //   node scripts/measure-render-estimate.mjs [--backend gpu|cpu] [--json]
 // On a shared machine run it through your GPU job lock, so it waits for a free card.
-import { mkdtemp, mkdir, copyFile } from 'node:fs/promises';
-import { tmpdir, constants, setPriority } from 'node:os';
+import { mkdir, copyFile } from 'node:fs/promises';
+import { constants, setPriority } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
 const backendArgument = process.argv.indexOf('--backend');
@@ -50,7 +51,7 @@ function recipeFor({ spheres, segments, rings, pointLights }) {
   };
 }
 
-const directory = await mkdtemp(join(tmpdir(), 'crucible-estimate-'));
+const directory = await createScratchDirectory('crucible-estimate-');
 const assetDirectory = join(directory, 'assets');
 if (assetFile) {
   await mkdir(assetDirectory);

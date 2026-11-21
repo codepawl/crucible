@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
+import { createScratchDirectory } from './scratch-directory.mjs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { DEFAULT_BASE_REF, baseRefExists, measureBaseArchive, readAcceptedBundles } from './size-base.mjs';
@@ -33,7 +33,7 @@ async function checkArchiveSize(archiveBytes) {
   if (ceilingFailure && process.argv.includes('--absolute')) assert.fail(ceilingFailure);
   if (ceilingFailure) console.log(ceilingFailure);
 }
-const consumer = await mkdtemp(resolve(tmpdir(), 'crucible-consumer-'));
+const consumer = await createScratchDirectory('crucible-consumer-');
 await writeFile(resolve(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
 const npmCli = process.env.npm_execpath ?? resolve(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
 const published = process.argv.includes('--published');

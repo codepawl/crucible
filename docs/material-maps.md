@@ -199,7 +199,7 @@ A material on a standard tag (`surface` in recipes, `gltf` and `armor` in code) 
 | Field | Range | Meaning |
 | --- | --- | --- |
 | `clearcoat`, `clearcoatRoughness` | 0 to 1 | A clear lacquer lobe over the base (car paint, varnish). Light it reflects never reaches the base. |
-| `transmission` | 0 to 1 | The share of light that passes through. The material draws after the opaque scene and refracts it. |
+| `transmission` | 0 to 1 | The share of light that passes through. The material draws after the opaque scene and refracts it. A metal does not transmit: the share is multiplied by `1 - metallic` (per texel from `metallicRoughnessMap`), as in Blender and glTF, so `metallic: 1` stays opaque and reflective. |
 | `thickness` | 0 to 1000 metres | How far light travels inside. 0 is a thin sheet that does not bend the view. |
 | `ior` | 1 to 2.5 | Index of refraction. It bends transmitted light and sets the reflectance at normal incidence, 4 percent at 1.5. |
 | `dispersion` | 0 to 10 | Colour fringes through glass, 20 over the Abbe number (diamond 0.36), as in `KHR_materials_dispersion`. The path tracer renders it; the rasterizer ignores it. |

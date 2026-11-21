@@ -340,6 +340,8 @@ fn fillHit(origin: vec3<f32>, direction: vec3<f32>, distance: f32) -> f32 {
     hitRoughness *= texel.g;
     hitMetallic *= texel.b;
   }
+  // A metal does not transmit: only the dielectric share of the surface lets light through (#2827).
+  hitTransmission *= 1.0 - hitMetallic;
   let normalRectangle = materials[material + 7];
   if (normalRectangle.z > 0.0) {
     let normalOnSecondSet = mapReadsSecondUvSet(flagsTwo.z, 2);

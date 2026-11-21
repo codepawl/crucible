@@ -420,13 +420,13 @@ A job that traces on the native path tracer holds more in the Node process, beca
 | Duration | 0.1 to 60 seconds |
 | Maximum video frames | 900 |
 | Still frames | 8, or 2 to 300 with `settings.stillCount` |
-| Job elapsed deadline | 60 seconds plus 2 seconds per frame, multiplied for frames larger than 1024x576 (360 frames at 1024x576 get 13 minutes), never more than 30 minutes; it counts render time only and starts once the job has its turn and the scene page is handed over |
+| Job elapsed deadline | 60 seconds plus 2 seconds per frame, multiplied for frames larger than 1024x576 (360 frames at 1024x576 get 13 minutes), never more than 30 minutes; a video that has finished frames is held to 1.5 times its measured time per frame for all its frames instead when that is longer, so a heavy scene is not cut off at the 2 second guess; it counts render time only and starts once the job has its turn and the scene page is handed over |
 | Job queue wait | Five minutes behind other calls and the page handoff, counted apart from the elapsed deadline; the failure says "queue wait deadline" |
 | Video encoder drain and finalization | 30 seconds each |
 | Close settlement deadline | Five seconds |
 
 Handing the scene page to a job, or to a review, and bringing it back each get four times the ordinary 30 second call limit, 120 seconds, because a job that ran out of time usually shared the GPU with another process.
-A job that passes its elapsed deadline fails alone. Retry it once the card is free. If the scene page still does not come back within 120 seconds, the runtime is `failed`, and calls on the lost scene say so. The next `scene_create` starts a fresh runtime (a new browser, no scenes carried over) and the call after it works as usual; no server restart is needed.
+A job that passes its elapsed deadline fails alone, and the failure says how many frames it finished and about how many seconds a frame took, so a shorter clip can be sized from it. Retry it once the card is free. If the scene page still does not come back within 120 seconds, the runtime is `failed`, and calls on the lost scene say so. The next `scene_create` starts a fresh runtime (a new browser, no scenes carried over) and the call after it works as usual; no server restart is needed.
 Other calls (`scene_inspect`, `scene_apply`) queue behind that handoff, so after a deadline failure they can wait up to 120 seconds, and the job stays `cancelling` for that long.
 One server owns one `--jobs` folder. A second server given the same folder fails with "The job store is already owned by a live process", and the error says to start it with its own `--jobs` folder.
 

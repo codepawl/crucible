@@ -3,8 +3,8 @@
 // Each scene of scenes.mjs `recipeFor` is rendered as one native path-traced image job. <scene>.png and <scene>.json (the job
 // report and the SHA-256 of the PNG) land in the output folder; run it once per checkout and compare the digests.
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createScratchDirectory } from '../../scripts/scratch-directory.mjs';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Client } from '@modelcontextprotocol/client';
@@ -22,7 +22,7 @@ if (!entry || !outputFolder || !samples || scenes.length === 0) {
 }
 
 async function renderScene(sceneName) {
-  const workFolder = mkdtempSync(join(tmpdir(), 'crucible-job-materials-'));
+  const workFolder = await createScratchDirectory('crucible-job-materials-');
   const transport = new StdioClientTransport({ command: process.execPath,
     args: [resolve(entry), '--backend', 'gpu', '--memory', '192', '--jobs', join(workFolder, 'jobs'), ...(browser ? ['--browser', browser] : [])],
     cwd: workFolder, env: { ...process.env }, stderr: 'pipe' });

@@ -85,3 +85,63 @@ test('sparkles are four-point stars unless the shape says dot (#2036)', () => {
   assert.equal(normalizeWaterGlint({ sparkle: { density: 0.5 } }).sparkle.shape, 'star');
   assert.equal(normalizeWaterGlint({ sparkle: { shape: 'dot' } }).sparkle.shape, 'dot');
 });
+
+function countArguments(argumentText) {
+  if (argumentText.trim() === '') return 0;
+  let depth = 0;
+  let count = 1;
+  for (const character of argumentText) {
+    if (character === '(') depth += 1;
+    if (character === ')') depth -= 1;
+    if (character === ',' && depth === 0) count += 1;
+  }
+  return count;
+}
+
+function readCallArguments(source, openIndex) {
+  let depth = 0;
+  for (let index = openIndex; index < source.length; index += 1) {
+    if (source[index] === '(') depth += 1;
+    if (source[index] === ')') depth -= 1;
+    if (depth === 0) return source.slice(openIndex + 1, index);
+  }
+  return source.slice(openIndex + 1);
+}
+
+const GLSL_TYPES = 'void|bool|int|uint|float|vec[234]|ivec[234]|uvec[234]|mat[234]';
+
+// A GLSL compiler is not available in Node, so this applies the compiler's overload rule to the assembled source: every call to a
+// function the shader defines must match the parameter count of one of its definitions.
+function findArityMismatches(shaderSource) {
+  const code = shaderSource.replace(/\/\/[^\n]*/g, '');
+  const definitions = new Map();
+  const definitionPattern = new RegExp(`(?:^|\\n)[ \\t]*(?:${GLSL_TYPES})\\s+(\\w+)\\s*\\(([^)]*)\\)\\s*\\{`, 'g');
+  for (const match of code.matchAll(definitionPattern)) {
+    definitions.set(match[1], [...(definitions.get(match[1]) ?? []), countArguments(match[2])]);
+  }
+  const mismatches = [];
+  for (const [name, parameterCounts] of definitions) {
+    for (const match of code.matchAll(new RegExp(`(?<!(?:${GLSL_TYPES})\\s+)\\b${name}\\s*\\(`, 'g'))) {
+      const argumentText = readCallArguments(code, match.index + match[0].length - 1);
+      const argumentCount = countArguments(argumentText);
+      if (!parameterCounts.includes(argumentCount)) {
+        mismatches.push(`${name} takes ${parameterCounts.join(' or ')} arguments but is called with ${argumentCount}: ${name}(${argumentText.trim()})`);
+      }
+    }
+  }
+  return { mismatches, definitionCount: definitions.size };
+}
+
+test('every call to a shader function in the water glint shader matches a definition (#2821)', () => {
+  const waterFeatures = SHADER_FEATURES.filter(feature => !['crowd', 'skin', 'morph'].includes(feature));
+  const fragment = createFragmentShader([...waterFeatures, 'water', 'waterGlint']);
+  const { mismatches, definitionCount } = findArityMismatches(fragment);
+  assert.ok(definitionCount > 20, 'the check found the shader functions');
+  assert.match(fragment, /waterDetailSlope\(centre, /, 'the glitter shader calls waterDetailSlope');
+  assert.deepEqual(mismatches, []);
+});
+
+test('the arity check reports a call with the old waterDetailSlope signature', () => {
+  const stale = 'vec2 waterDetailSlope(vec2 position, vec2 positionDx, vec2 positionDy, out float lostVariance) {\n return position;\n}\nvoid main() {\n  vec2 slope = waterDetailSlope(centre, footprint, lost);\n}\n';
+  assert.deepEqual(findArityMismatches(stale).mismatches, ['waterDetailSlope takes 4 arguments but is called with 3: waterDetailSlope(centre, footprint, lost)']);
+});

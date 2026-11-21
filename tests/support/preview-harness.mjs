@@ -26,7 +26,9 @@ import { sceneQueryFor, partMaterialsFor, summarizeWalkMap, walkOptionsFor, crea
 import { describeMarks, validateMarks } from '../../src/agent-annotate.js';
 
 // Runs the preview page's adapter code in a VM with a fault-injected renderer, the way the MCP preview runs it in a browser.
-const source = (await readFile(new URL('../../scripts/agent-preview-browser.js', import.meta.url), 'utf8')).replace(/^import .+;\r?$/gm, '');
+// decodeCatalogImage is a src module the page bundles; it runs here in the VM too, so it sees the stubbed createImageBitmap.
+const decodeSource = (await readFile(new URL('../../src/decode-catalog-image.js', import.meta.url), 'utf8')).replace(/^import .+;\r?$/gm, '').replace(/^export /gm, '');
+const source = decodeSource + (await readFile(new URL('../../scripts/agent-preview-browser.js', import.meta.url), 'utf8')).replace(/^import .+;\r?$/gm, '');
 
 export function previewHarness({ createImageBitmap = async () => { throw new Error('createImageBitmap is not stubbed'); } } = {}) {
   let renderError = 0;

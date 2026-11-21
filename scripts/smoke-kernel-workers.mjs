@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { cp, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { cp, readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
-import { constants, setPriority, tmpdir } from 'node:os';
+import { constants, setPriority } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { Client } from '@modelcontextprotocol/client';
 import { PatientStdioClientTransport } from './patient-stdio-transport.mjs';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 // Proves the heavy scene kernels run on a worker in Chrome, from the installed package: the worker file ships and
 // resolves, scene_create sends kernels to it, and none fell back to the main thread. A failing worker falls back
@@ -19,7 +20,7 @@ const recipePath = process.argv.slice(2).find((argument, index, all) => argument
   ?? 'tests/fixtures/demo-room.recipe.json';
 const recipe = JSON.parse(await readFile(recipePath, 'utf8'));
 const metadata = JSON.parse(await readFile('package.json', 'utf8'));
-const consumer = await mkdtemp(join(tmpdir(), 'crucible-kernel-consumer-'));
+const consumer = await createScratchDirectory('crucible-kernel-consumer-');
 await writeFile(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
 
 const npmCli = process.env.npm_execpath ?? resolve(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');

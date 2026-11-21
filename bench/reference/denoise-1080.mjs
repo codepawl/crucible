@@ -1,12 +1,13 @@
 // Times a 1920 by 1080 path traced still of the demo room through the real MCP image job, for each denoiser:
 //   node bench/reference/denoise-1080.mjs [--samples 16] [--denoisers oidn,wavelet] [--out artifacts/denoise-1080.json]
 // Needs `npm run build`. Prints the job wall time, the tracer's own seconds, the denoise seconds and what actually ran.
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir, constants, setPriority } from 'node:os';
+import { readFile, writeFile } from 'node:fs/promises';
+import { constants, setPriority } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { createScratchDirectory } from '../../scripts/scratch-directory.mjs';
 
 function optionValue(name, fallback) {
   const index = process.argv.indexOf(name);
@@ -18,7 +19,7 @@ const denoisers = optionValue('--denoisers', 'oidn,wavelet').split(',');
 const outputPath = optionValue('--out', 'artifacts/denoise-1080.json');
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
-const directory = await mkdtemp(join(tmpdir(), 'crucible-denoise-1080-'));
+const directory = await createScratchDirectory('crucible-denoise-1080-');
 const transport = new StdioClientTransport({ command: process.execPath, args: [resolve('bin/crucible-mcp.mjs'), '--backend', 'cpu', '--memory', '256', '--jobs', join(directory, 'jobs')], cwd: resolve('.'), stderr: 'pipe' });
 const client = new Client({ name: 'crucible-denoise-1080', version: '1' });
 const call = (name, argumentsValue) => client.callTool({ name, arguments: argumentsValue }, { timeout: 900000 });

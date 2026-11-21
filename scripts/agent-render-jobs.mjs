@@ -56,6 +56,29 @@ export function jobDeadlineMs({ kind, frameCount, width, height, renderer, scale
   const traceDeadline = renderer?.type === 'pathTracer' ? Math.ceil(renderer.maxSeconds * 1000 * frameCount) + PATH_TRACE_OVERHEAD_MS : 0;
   return Math.min(maximumMs, Math.max(frameDeadline, traceDeadline));
 }
+/** A job that has rendered frames is held to this multiple of the time its measured frame cost projects for the whole job. */
+const MEASURED_DEADLINE_HEADROOM = 1.5;
+
+/**
+ * The deadline a running job is held to once some frames are done: the larger of the fixed deadline and the measured time per
+ * frame times every frame, with headroom, never above the ceiling. The fixed 2 s a frame guess cannot fit a heavy scene that
+ * costs 5 s a frame, but a job that keeps finishing frames at a steady cost is not stuck.
+ */
+export function measuredDeadlineMs({ fixedDeadlineMs, elapsedMs, framesDone, frameCount }, maximumMs = MAXIMUM_JOB_DEADLINE_MS) {
+  if (!(framesDone > 0)) return Math.min(maximumMs, fixedDeadlineMs);
+  const projected = Math.ceil((elapsedMs / framesDone) * frameCount * MEASURED_DEADLINE_HEADROOM);
+  return Math.min(maximumMs, Math.max(fixedDeadlineMs, projected));
+}
+
+/** Says how far the job got and how fast, so the caller can size a shorter clip without guessing. */
+export function deadlineFailureMessage({ elapsedMs, framesDone, frameCount }) {
+  const seconds = Math.round(elapsedMs / 1000);
+  const progress = framesDone > 0
+    ? `after ${framesDone} of ${frameCount} frames in ${seconds} s (about ${(elapsedMs / framesDone / 1000).toFixed(1)} s a frame)`
+    : `before the first of ${frameCount} frames finished (${seconds} s)`;
+  return `Render job exceeded its elapsed deadline ${progress}. If another process was using the GPU, submit the job again; if the scene is simply slow, submit a shorter clip or a lower quality tier.`;
+}
+
 const MINIMUM_REGION_SIDE = 16;
 /** A 16-bit PNG or an EXR of a busy 1920x1080 frame is bigger than the 8-bit PNG the frame limit was sized for. */
 export const HIGH_PRECISION_FRAME_FACTOR = 4;
@@ -1105,11 +1128,26 @@ export async function createAgentRenderJobs({ root, run, acquireGpu, limits: inp
       timer = setTimeout(() => expire(`Render job exceeded its queue wait deadline of ${Math.round(queueWaitMs / 1000)} seconds before rendering started. Submit the job again.`), queueWaitMs);
     }
     let renderClockStarted = false;
+    let renderStartedAt = 0;
+    let fixedDeadlineMs = 0;
+    const renderElapsedMs = () => Date.now() - renderStartedAt;
+    const armRenderTimer = deadlineMs => {
+      clearTimeout(timer);
+      const failure = () => deadlineFailureMessage({ elapsedMs: renderElapsedMs(), framesDone: record.progress.frames, frameCount: record.settings.frameCount });
+      timer = setTimeout(() => expire(failure()), Math.max(1, deadlineMs - renderElapsedMs()));
+    };
     const startRenderClock = () => {
       if (renderClockStarted) return;
       renderClockStarted = true;
-      clearTimeout(timer);
-      timer = setTimeout(() => expire('Render job exceeded its elapsed deadline. If another process was using the GPU, submit the job again.'), jobDeadlineMs(record.settings, limits.deadlineMs));
+      renderStartedAt = Date.now();
+      fixedDeadlineMs = jobDeadlineMs(record.settings, limits.deadlineMs);
+      armRenderTimer(fixedDeadlineMs);
+    };
+    // Finished frames show the real cost of this scene, so a video's deadline follows it instead of staying at the 2 s a frame guess.
+    const followMeasuredFrameCost = () => {
+      if (!renderClockStarted || record.settings.kind !== 'video') return;
+      const deadlineMs = measuredDeadlineMs({ fixedDeadlineMs, elapsedMs: renderElapsedMs(), framesDone: record.progress.frames, frameCount: record.settings.frameCount }, limits.deadlineMs);
+      armRenderTimer(deadlineMs);
     };
     let releaseGpu;
     const renamed = [];
@@ -1132,6 +1170,7 @@ export async function createAgentRenderJobs({ root, run, acquireGpu, limits: inp
           const frames = boundedNumber(update.frames ?? record.progress.frames, record.progress.frames, record.settings.frameCount, 'captured frames', true);
           const maximumPendingFrames = boundedNumber(update.maximumPendingFrames ?? record.progress.maximumPendingFrames, 0, 1, 'pending frames', true);
           record.progress = { frames, maximumPendingFrames: Math.max(record.progress.maximumPendingFrames, maximumPendingFrames) };
+          followMeasuredFrameCost();
           return persist(job);
         },
       });

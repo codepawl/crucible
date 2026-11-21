@@ -2,12 +2,12 @@
 // middle and a loose budget through the MCP runtime, and prints what each budget picked beside the measured time per frame.
 //   node scripts/measure-render-budget.mjs [--backend gpu|cpu] [--json]
 // On a shared machine run it through your GPU job lock, so it waits for a free card.
-import { mkdtemp } from 'node:fs/promises';
-import { tmpdir, constants, setPriority } from 'node:os';
+import { constants, setPriority } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
 const backendArgument = process.argv.indexOf('--backend');
@@ -45,7 +45,7 @@ function recipeFor({ spheres, segments, rings, pointLights }) {
   };
 }
 
-const directory = await mkdtemp(join(tmpdir(), 'crucible-budget-'));
+const directory = await createScratchDirectory('crucible-budget-');
 const transport = new StdioClientTransport({ command: process.execPath,
   args: [resolve('bin/crucible-mcp.mjs'), '--backend', backend, '--memory', '256', '--jobs', join(directory, 'jobs')], cwd: directory, stderr: 'pipe' });
 const client = new Client({ name: 'crucible-budget-measure', version: '1' });

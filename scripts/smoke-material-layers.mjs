@@ -6,15 +6,16 @@
 // Usage: node scripts/smoke-material-layers.mjs [cli] [cpu|gpu]. Stills land in the folder named by LAYER_STILLS if set.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, readFile } from 'node:fs/promises';
-import { tmpdir, constants, setPriority } from 'node:os';
+import { copyFile, mkdir, readFile } from 'node:fs/promises';
+import { constants, setPriority } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
-const directory = await mkdtemp(join(tmpdir(), 'crucible-mcp-layers-'));
+const directory = await createScratchDirectory('crucible-mcp-layers-');
 const jobs = join(directory, 'jobs');
 const cli = resolve(process.argv[2] ?? 'bin/crucible-mcp.mjs');
 const backend = process.argv[3] ?? 'cpu';

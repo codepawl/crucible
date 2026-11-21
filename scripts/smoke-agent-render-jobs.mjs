@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
-import { tmpdir, constants, setPriority } from 'node:os';
+import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { constants, setPriority } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -9,6 +9,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { createTexturedRigFixture } from './agent-asset-fixture.mjs';
 import { assertToolListMatchesServer } from './mcp-tool-list.mjs';
 import { inflateSync } from 'node:zlib';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 /** The alpha of each pixel in the first row of an 8-bit RGBA PNG; the first row has nothing above it, so only the left neighbour matters. */
 function firstRowAlpha(png) {
@@ -31,7 +32,7 @@ function firstRowAlpha(png) {
 }
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
-const directory = await mkdtemp(join(tmpdir(), 'crucible-mcp-jobs-'));
+const directory = await createScratchDirectory('crucible-mcp-jobs-');
 const assets = join(directory, 'assets');
 const jobs = join(directory, 'jobs');
 await mkdir(assets);

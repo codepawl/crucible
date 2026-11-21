@@ -5,12 +5,12 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, extname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 const tarball = process.argv[2];
 const urlFlag = process.argv.indexOf('--published-url');
@@ -21,7 +21,7 @@ let moduleUrl = publishedUrl;
 let server;
 if (!publishedUrl) {
   assert.ok(tarball, 'Pass the packed tarball path.');
-  const unpacked = await mkdtemp(join(tmpdir(), 'crucible-cdn-'));
+  const unpacked = await createScratchDirectory('crucible-cdn-');
   const extracted = spawnSync('tar', ['-xzf', resolve(tarball), '-C', unpacked], { encoding: 'utf8' });
   assert.equal(extracted.status, 0, extracted.stderr);
   const packageFolder = join(unpacked, 'package');

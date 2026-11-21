@@ -2,8 +2,7 @@
 // 200k triangles, places it through MCP, renders one still and prints the job's peak heap per triangle.
 // Usage: node scripts/measure-glb-heap.mjs [segments] [outputPng]   (backend: CRUCIBLE_BACKEND, default cpu)
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, copyFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, writeFile, copyFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { mat4 } from 'gl-matrix';
@@ -11,13 +10,14 @@ import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { exportGlb } from '../src/export.js';
 import { sphere } from '../src/geometry.js';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 const segments = Number(process.argv[2] ?? 316);
 const outputPng = process.argv[3];
 const backend = process.env.CRUCIBLE_BACKEND ?? 'cpu';
 const geometry = sphere(segments, segments);
 const triangles = geometry.indices.length / 3;
-const directory = await mkdtemp(join(tmpdir(), 'crucible-glb-heap-'));
+const directory = await createScratchDirectory('crucible-glb-heap-');
 const assets = join(directory, 'assets');
 await mkdir(assets);
 const material = { color: [0.6, 0.5, 0.4], roughness: 0.7, metallic: 0 };

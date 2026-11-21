@@ -1,10 +1,10 @@
 // Checks that the first native render job on a fresh runner completes under the memory guard (#1186): a demo room video job at
 // each size, on the native backend, exits 1 when one fails. CI runs it with the Mesa shader cache off, so the kernel compiles cold.
 //   node scripts/check-first-native-job.mjs <checkout> <width>x<height> [...] (env PROBE_FRAMES, PROBE_SAMPLES, PROBE_MAX_SECONDS)
-import { mkdtemp, readFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 const checkout = resolve(process.argv[2]);
 const sizes = process.argv.slice(3).map(text => text.split('x').map(Number));
@@ -13,7 +13,7 @@ const samples = Number(process.env.PROBE_SAMPLES ?? '16');
 const { Client } = await import('@modelcontextprotocol/client');
 const { StdioClientTransport } = await import('@modelcontextprotocol/client/stdio');
 
-const directory = await mkdtemp(join(tmpdir(), 'crucible-first-native-job-'));
+const directory = await createScratchDirectory('crucible-first-native-job-');
 const transport = new StdioClientTransport({ command: process.execPath,
   args: [join(checkout, 'bin/crucible-mcp.mjs'), '--backend', process.env.PROBE_RUNTIME_BACKEND ?? 'gpu', '--jobs', join(directory, 'jobs')],
   cwd: directory, stderr: 'inherit', env: { ...process.env } });

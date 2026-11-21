@@ -1,19 +1,20 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { constants, setPriority, tmpdir } from 'node:os';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { constants, setPriority } from 'node:os';
 import { join, resolve } from 'node:path';
 import { mat4 } from 'gl-matrix';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { FACE_TARGETS, MIXAMO_LIKE, UNREAL_LIKE, humanoidGlb, humanoidJoints, walkTracks } from '../tests/fixtures/humanoid-glb.js';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 // Proof through MCP for retargeting: a walk from one humanoid file plays on a second humanoid with another rest pose and
 // proportions, the feet are pinned during contact, the sole follows a slope, and a face blinks and opens its jaw from keyed
 // morph weights. Foot positions are read from GLB files the server exports at sampled motion times.
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
-const directory = await mkdtemp(join(tmpdir(), 'crucible-mcp-retarget-'));
+const directory = await createScratchDirectory('crucible-mcp-retarget-');
 const jobs = join(directory, 'jobs');
 const assets = join(directory, 'assets');
 await mkdir(assets);

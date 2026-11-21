@@ -134,6 +134,23 @@ test('invalid geometry and peak staging budgets reject before allocation and pre
   assert.equal(state.uploads.length, allocations);
 });
 
+test('a budget nobody set grows with the scene up to its ceiling, and a set budget never does (#2828)', () => {
+  const state = allocationRenderer();
+  const first = part('first', box());
+  state.renderer.replaceParts([first]);
+  const larger = [first, part('new', sphere(24, 16))];
+  state.renderer.memoryBudgetMiB = 16;
+  state.renderer.memoryBudgetFollowsScene = false;
+  assert.throws(() => state.renderer.replaceParts(larger), /over memoryBudgetMiB 16\./);
+  assert.equal(state.renderer.memoryBudgetMiB, 16);
+  state.renderer.memoryBudgetFollowsScene = true;
+  state.renderer.replaceParts(larger);
+  assert.ok(state.renderer.memoryBudgetMiB > 16 && state.renderer.memoryBudgetMiB <= 512, `grown to ${state.renderer.memoryBudgetMiB} MiB`);
+  state.renderer.memoryBudgetMiB = 16;
+  state.renderer.maximumMemoryBudgetMiB = 16;
+  assert.throws(() => state.renderer.replaceParts([...larger, part('third', sphere(24, 16))]), /over memoryBudgetMiB 16\./, 'the runtime ceiling still stops growth');
+});
+
 test('replaceParts and resize carry the runtime memory ceiling into the budget error (#1313)', () => {
   const state = allocationRenderer();
   const renderer = state.renderer;

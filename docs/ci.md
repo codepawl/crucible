@@ -26,7 +26,10 @@ All jobs start at once.
 - stops the file `CRUCIBLE_TEST_GRACE_AFTER_TIMEOUT_MS` (default 10000) after node:test reports a test timeout, so a hang ends about 310 seconds after it starts (a test that sets its own longer `timeout` ends that much after its own limit, up to 610 seconds for the tests that set 600000);
 - also stops the file after `CRUCIBLE_TEST_FILE_LIMIT_MS` (default 660000) for a hang that never trips a test timeout;
 - a stop kills every child process the file started together with its descendants (`taskkill /T` on Windows, a walk over `ps` on Linux and macOS), prints `TEST FILE HUNG: <file>` and exits 1;
-- kills a child a file left running when it exits normally (a child started with `detached: true` is left alone there).
+- kills a child a file left running when it exits normally (a child started with `detached: true` is left alone there);
+- gives the file its own temp folder (`TMPDIR`, `TEMP` and `TMP` point at `<temp>/crucible-test-temp-<pid>-<time>`, children inherit them) and removes it when the file exits, pass or fail, so a test that calls `mkdtemp(join(tmpdir(), ...))` or starts a Chrome with a user-data folder leaves nothing behind (#2848). `CRUCIBLE_KEEP_TEST_TEMP=1` keeps the folder and prints its path. A file killed from outside (not through its own exit) can still leave its folder, which carries its process id in the name.
+
+Smoke and bench scripts run outside the test runner, so they use `createScratchDirectory(prefix)` from `scripts/scratch-directory.mjs`, which removes the folder when the script exits (`CRUCIBLE_KEEP_TEMP=1` keeps it). `tests/script-temp-folder-hygiene.test.js` fails when a script under `scripts/` or `bench/` calls `mkdtemp` and never removes the folder; a script whose folder is its output carries a `// keeps-temp: <reason>` comment.
 
 A stop ends the whole file, so tests after the hung one in that file do not run; the run is already failed.
 

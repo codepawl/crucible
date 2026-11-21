@@ -38,6 +38,10 @@ uniform vec4 liquidOptics;
 // A transmissive PBR material: x: transmission, y: index of refraction, z: thickness in metres, w: attenuation distance
 uniform vec4 glassState;
 uniform vec3 glassTint;
+// The glTF metallic-roughness texture; a flag of 2 or more reads the second UV set, as in the opaque shader.
+uniform sampler2D metallicRoughnessMap;
+uniform float hasMetallicRoughnessMap;
+in vec2 lightmapUV;
 // x: foam opacity, y: foam edge softness
 uniform vec2 foamShape;
 out vec4 outputColor;
@@ -118,6 +122,10 @@ void main() {
   vec2 screen = gl_FragCoord.xy / resolution;
   // A convex body is thickest where it faces the camera and thins to nothing at its silhouette.
   bool glass = glassState.x > 0.0;
+  // A metal does not transmit: only the dielectric share of the surface lets light through (#2827).
+  float metallic = glass ? surface.x : 0.0;
+  if (glass && hasMetallicRoughnessMap > 0.5) metallic *= texture(metallicRoughnessMap, hasMetallicRoughnessMap > 1.5 ? lightmapUV : textureUV).b;
+  float transmissionShare = glassState.x * (1.0 - metallic);
   float indexOfRefraction = glass ? glassState.y : liquidOptics.y;
   float thickness = (glass ? glassState.z : liquidOptics.x) * mix(0.15, 1.0, facing);
   vec3 bent = refract(-viewDirection, normal, 1.0 / indexOfRefraction);
@@ -131,15 +139,18 @@ void main() {
   vec3 transmittance = glass ? color * absorption : absorption;
   float surfaceReflectance = pow((indexOfRefraction - 1.0) / (indexOfRefraction + 1.0), 2.0);
   float reflectance = surfaceReflectance + (1.0 - surfaceReflectance) * pow(1.0 - facing, 5.0);
+  // A metal reflects all of it, tinted by its colour.
+  reflectance = mix(reflectance, 1.0, metallic);
+  vec3 reflectionTint = mix(vec3(1.0), color, metallic);
   vec3 inScatter = color * (ambientLight(normal) + keyColor * max(dot(normal, light), 0.0) * 0.2) * (glass ? 0.0 : liquidOptics.w) * (1.0 - transmittance);
   // The share of a PBR material that does not transmit is lit like a diffuse surface.
-  vec3 diffuseShare = glass ? color * (1.0 - glassState.x) * (ambientLight(normal) + keyColor * max(dot(normal, light), 0.0) / PI) : vec3(0.0);
+  vec3 diffuseShare = glass ? color * (1.0 - transmissionShare) * (1.0 - metallic) * (ambientLight(normal) + keyColor * max(dot(normal, light), 0.0) / PI) : vec3(0.0);
   vec3 reflection = environmentColor(reflect(-viewDirection, normal), roughness) * ambientIntensity;
   if (waterReflectionEnabled > 0.5) reflection = mix(reflection, waterMirrorColor(worldPosition, roughness), waterMirrorWeight(roughness));
   vec3 highlight = keyColor * specularLobe(normal, viewDirection, light, roughness);
-  vec3 surfaceLight = (inScatter + diffuseShare) * (1.0 - reflectance) + reflection * reflectance + highlight;
+  vec3 surfaceLight = (inScatter + diffuseShare) * (1.0 - reflectance) + reflection * reflectionTint * reflectance + highlight * reflectionTint;
   surfaceLight = mix(surfaceLight, fogColor, fog);
-  float transmitted = glass ? glassState.x : 1.0;
+  float transmitted = glass ? transmissionShare : 1.0;
   outputColor = vec4(behind * transmittance * transmitted * (1.0 - reflectance) * (1.0 - fog) + displayed(surfaceLight), 1.0);
 }`;
 

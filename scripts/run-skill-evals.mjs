@@ -13,6 +13,7 @@ const skillsFolder = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'ski
 const repositoryRoot = resolve(skillsFolder, '..');
 const options = Object.fromEntries(process.argv.slice(2).reduce((pairs, value, index, all) => (value.startsWith('--') ? [...pairs, [value.slice(2), all[index + 1]]] : pairs), []));
 const model = options.model ?? 'haiku';
+// keeps-temp: the results folder is the output of this script, and a person reads it after the run.
 const outputFolder = resolve(options.out ?? mkdtempSync(join(tmpdir(), 'skill-evals-')));
 mkdirSync(outputFolder, { recursive: true });
 

@@ -2,12 +2,13 @@
 //   node bench/native-tracer/job.mjs <output directory> --backend native|gpu|cpu [--recipe tests/fixtures/demo-room.recipe.json]
 //     [--samples 64] [--width 1920] [--height 1080] [--label run1] [--denoise true] [--browser <chrome path>]
 // Writes job-<label>.png and job-<label>.json (seconds, the metrics.pathTracer report and the job state).
-import { copyFile, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { constants, setPriority, tmpdir } from 'node:os';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { constants, setPriority } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { createScratchDirectory } from '../../scripts/scratch-directory.mjs';
 
 const argumentsGiven = process.argv.slice(2);
 const outputDirectory = resolve(argumentsGiven[0]);
@@ -27,7 +28,7 @@ const recipePath = valueAfter('--recipe', 'tests/fixtures/demo-room.recipe.json'
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
 await mkdir(outputDirectory, { recursive: true });
-const workDirectory = await mkdtemp(join(tmpdir(), 'crucible-native-job-'));
+const workDirectory = await createScratchDirectory('crucible-native-job-');
 const transport = new StdioClientTransport({ command: process.execPath,
   args: [resolve('bin/crucible-mcp.mjs'), '--backend', 'gpu', '--memory', '384', '--jobs', join(workDirectory, 'jobs'), ...(valueAfter('--browser', '') ? ['--browser', valueAfter('--browser', '')] : [])], cwd: workDirectory, stderr: 'pipe', env: { ...process.env } });
 let diagnostics = '';

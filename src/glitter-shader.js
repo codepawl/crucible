@@ -42,7 +42,8 @@ float waterGlintLobe(vec3 surfaceNormal, vec3 viewDirection, vec3 sunDirection, 
 // Glitter at a water position: 1 inside a sparkle shape whose facet mirrors the sun, 0 elsewhere. The facet normal is the wave
 // normal at the cell centre (the wind ripples' slope there, moving with time) plus a tilt that turns around the vertical; that
 // makes the lit cells shift with the waves and the camera. A cell under two pixels fades out, so far water does not shimmer.
-float waterGlintSparkles(vec3 surfaceNormal, vec3 viewDirection, vec3 sunDirection, float footprint) {
+float waterGlintSparkles(vec3 surfaceNormal, vec3 viewDirection, vec3 sunDirection, vec2 positionDx, vec2 positionDy) {
+  float footprint = length(abs(positionDx) + abs(positionDy));
   float cellSize = waterGlintSparkle.y;
   float cellPixels = cellSize / max(footprint, 0.00001);
   float visible = smoothstep(1.5, 4.0, cellPixels);
@@ -65,8 +66,8 @@ float waterGlintSparkles(vec3 surfaceNormal, vec3 viewDirection, vec3 sunDirecti
   if (shape <= 0.0) return 0.0;
   vec2 centre = (cell + 0.5 + offset) * cellSize;
   float lost;
-  vec2 slope = waterDetailSlope(centre, footprint, lost);
-  vec2 pixelSlope = waterDetailSlope(worldPosition.xz, footprint, lost);
+  vec2 slope = waterDetailSlope(centre, positionDx, positionDy, lost);
+  vec2 pixelSlope = waterDetailSlope(worldPosition.xz, positionDx, positionDy, lost);
   vec3 smoothNormal = normalize(surfaceNormal - vec3(pixelSlope.x, 0.0, pixelSlope.y));
   float turn = 6.2831853 * (waterGlintHash(cell, 3.0) + time * waterGlintLook.y * (0.4 + waterGlintHash(cell, 4.0)));
   float tilt = 0.3 * sqrt(waterGlintHash(cell, 5.0));
@@ -89,8 +90,7 @@ const FINAL = `  if (TAG_WATER && (waterGlintEdge.x > 0.0 || waterGlintSparkle.w
       radiance += glintTint * smoothstep(waterGlintEdge.x - edgeWidth, waterGlintEdge.x + edgeWidth, lobe) * waterGlintEdge.y * 4.0;
     }
     if (waterGlintSparkle.w > 0.0) {
-      float footprint = length(fwidth(worldPosition.xz));
-      radiance += glintTint * waterGlintSparkles(normal, viewDirection, glintSun, footprint) * waterGlintSparkle.w * 12.0 * visibility;
+      radiance += glintTint * waterGlintSparkles(normal, viewDirection, glintSun, dFdx(worldPosition.xz), dFdy(worldPosition.xz)) * waterGlintSparkle.w * 12.0 * visibility;
     }
   }
 `;

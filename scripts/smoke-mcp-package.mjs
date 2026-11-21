@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { constants, setPriority, tmpdir } from 'node:os';
+import { constants, setPriority } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { Client } from '@modelcontextprotocol/client';
@@ -11,12 +11,13 @@ import { PatientStdioClientTransport } from './patient-stdio-transport.mjs';
 import { createAgentPreviewFixture } from './agent-preview-fixture.mjs';
 import { createTexturedRigFixture } from './agent-asset-fixture.mjs';
 import { assertToolListMatchesServer } from './mcp-tool-list.mjs';
+import { createScratchDirectory } from './scratch-directory.mjs';
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
 const metadata = JSON.parse(await readFile('package.json', 'utf8'));
 const published = process.argv.includes('--published');
 const protocolOnly = process.argv.includes('--protocol-only');
-const consumer = await mkdtemp(join(tmpdir(), 'crucible-mcp-consumer-'));
+const consumer = await createScratchDirectory('crucible-mcp-consumer-');
 await writeFile(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
 const npmCli = process.env.npm_execpath ?? resolve(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
 function npm(argumentsValue) {

@@ -5,13 +5,14 @@
 // VRAM is the rise of the card's used memory over its idle value while a job runs (nvidia-smi, sampled every 100 ms); it counts
 // every process on the card, so read it on an idle one. RAM is the job's sampled Node RSS plus browser heap (metrics.report).
 import { execFile } from 'node:child_process';
-import { mkdtemp, writeFile } from 'node:fs/promises';
-import { tmpdir, constants, setPriority } from 'node:os';
+import { writeFile } from 'node:fs/promises';
+import { constants, setPriority } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { createScratchDirectory } from '../../scripts/scratch-directory.mjs';
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
 const argumentValue = (name, fallback) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : fallback);
@@ -49,7 +50,7 @@ async function cardMemoryMiB() {
   }
 }
 
-const directory = await mkdtemp(join(tmpdir(), 'crucible-quality-'));
+const directory = await createScratchDirectory('crucible-quality-');
 const transport = new StdioClientTransport({ command: process.execPath,
   args: [resolve('bin/crucible-mcp.mjs'), '--backend', backend, '--memory', '384', '--jobs', join(directory, 'jobs')], cwd: directory, stderr: 'pipe' });
 const client = new Client({ name: 'crucible-quality-measure', version: '1' });

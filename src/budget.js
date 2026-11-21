@@ -41,6 +41,11 @@ export function estimateFrameBytes(width, height, samples, shadowResolution = 20
   return frameBytes + bloomBytes + (depth ? width * height * 4 : 0) + shadowResolution ** 2 * 4;
 }
 
+/** The most an automatic budget may grow to: 1024 MiB on a device that reports 8 GiB of memory or more, 512 MiB otherwise. */
+export function automaticBudgetCeilingMiB() {
+  return globalThis.navigator?.deviceMemory >= 8 ? 1024 : 512;
+}
+
 /**
  * Without memoryBudgetMiB the budget is sized to the scene: its geometry, textures and one full frame, at least 256 MiB
  * and at most 1024 MiB on a device that reports 8 GiB of memory or more (512 MiB otherwise). The plan returns it.
@@ -49,7 +54,7 @@ export function planRenderSize({ width, height, pixelRatio = 1, samples = 4, mem
   const requestedWidth = Math.max(1, Math.round(width * pixelRatio));
   const requestedHeight = Math.max(1, Math.round(height * pixelRatio));
   const fullFrameBytes = estimateFrameBytes(Math.min(requestedWidth, maximumSize), Math.min(requestedHeight, maximumSize), samples, shadowResolution, { hdr, bloom, depth });
-  memoryBudgetMiB ??= Math.min(globalThis.navigator?.deviceMemory >= 8 ? 1024 : 512, Math.max(256, Math.ceil((geometryBytes + textureBytes + fullFrameBytes) / MEBIBYTE)));
+  memoryBudgetMiB ??= Math.min(automaticBudgetCeilingMiB(), Math.max(256, Math.ceil((geometryBytes + textureBytes + fullFrameBytes) / MEBIBYTE)));
   for (const value of [width, height, pixelRatio, samples, memoryBudgetMiB, maximumSize]) {
     if (!Number.isFinite(value) || value <= 0) throw new Error('Render dimensions, sample count and budget must be positive finite numbers.');
   }

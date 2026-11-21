@@ -149,7 +149,7 @@ async function loadAnimationRuntime() {
 
 /**
  * Start the game a recipe describes on a canvas and return its parts: `scene`, `runtime`, `rules`, `input`, `controller`, `renderer`,
- * `restart()` (puts the player, camera, NPCs, animation graphs, physics bodies and rules back at the start; returns a promise that settles once the physics world is rebuilt) and `dispose()`. Options: `replay` (a recording from recordInput; the keyboard is not attached) `showStatus` (default true) `touchControls` (default false; true draws a virtual stick under the finger on a game with `input: "touch"`) `assets` (decoded catalog assets by assetCopyKey) or `assetUrls` (asset id to GLB URL, which startGame fetches and decodes), `physicsUrl` (where the page keeps jolt-physics.wasm.js, on its own origin; a recipe with game.physics true needs it unless the jolt-physics package resolves) and `createRenderer` (tests pass a stand-in for the WebGL renderer).
+ * `restart()` (puts the player, camera, NPCs, animation graphs, physics bodies and rules back at the start; returns a promise that settles once the physics world is rebuilt) and `dispose()`. Options: `replay` (a recording from recordInput; the keyboard is not attached) `showStatus` (default true) `touchControls` (default false; true draws a virtual stick under the finger on a game with `input: "touch"`) `assets` (decoded catalog assets by assetCopyKey) or `assetUrls` (asset id to GLB URL, which startGame fetches and decodes), `images` (decoded catalog images the materials read, by asset id) or `imageUrls` (image id to URL, fetched and decoded the same way), `physicsUrl` (where the page keeps jolt-physics.wasm.js, on its own origin; a recipe with game.physics true needs it unless the jolt-physics package resolves) and `createRenderer` (tests pass a stand-in for the WebGL renderer).
  */
 export async function startGame(canvas, recipe, options = {}) {
   const cleanups = [];
@@ -211,7 +211,7 @@ export function operationsToSend(operations, lastSentOperations) {
   return candidates.filter(operation => changedTargets.has(operationTarget(operation)));
 }
 
-async function buildGame(canvas, recipe, { replay, showStatus = true, touchControls = false, assets: providedAssets, assetUrls, physicsUrl, createRenderer = (...rendererArguments) => new CrucibleRenderer(...rendererArguments) }, cleanups) {
+async function buildGame(canvas, recipe, { replay, showStatus = true, touchControls = false, assets: providedAssets, assetUrls, images: providedImages, imageUrls, physicsUrl, createRenderer = (...rendererArguments) => new CrucibleRenderer(...rendererArguments) }, cleanups) {
   const setup = recipe.game;
   if (!setup) throw new Error('startGame needs a recipe with a game section. Add one with the set-game operation.');
   // Live physics replaces the recorded bake of the same section, so the scene is built without it.
@@ -220,7 +220,8 @@ async function buildGame(canvas, recipe, { replay, showStatus = true, touchContr
   if (hasTexturedMaterial(recipe)) await import('./replace-textured-parts.js');
   // The exported page gives URLs; the assets load only for a recipe that places or retargets a catalog asset.
   const assets = providedAssets ?? (assetUrls ? await (await import('./game-assets.js')).loadGameAssets(recipe, assetUrls) : undefined);
-  const scene = createAgentScene(sceneRecipe, {}, { assets });
+  const sequenceFrames = providedImages ?? (imageUrls ? await (await import('./game-assets.js')).loadGameImages(recipe, imageUrls) : undefined);
+  const scene = createAgentScene(sceneRecipe, {}, { assets, sequenceFrames });
   const { game } = scene.exportRecipe();
   const placement = agentGroundPlacement(scene.parts, scene.environment);
   const environment = litEnvironment(scene, Boolean(placement));
