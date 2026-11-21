@@ -1,0 +1,374 @@
+{
+  "effect": "fade",
+  "order": "forward",
+  "backend": "gpu",
+  "width": 640,
+  "height": 360,
+  "fps": 24,
+  "seed": 0,
+  "camera": {
+    "eye": [
+      0,
+      0.4,
+      9
+    ],
+    "target": [
+      0,
+      0.3,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ],
+    "fov": 35,
+    "near": 0.1,
+    "far": 100
+  },
+  "light": "default sun and sky of the recipe",
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "title-glyphs-0",
+        "type": "text",
+        "text": "C",
+        "size": 1.2,
+        "depth": 0.35,
+        "align": "left",
+        "curveSegments": 4
+      },
+      {
+        "id": "title-glyphs-1",
+        "type": "text",
+        "text": "R",
+        "size": 1.2,
+        "depth": 0.35,
+        "align": "left",
+        "curveSegments": 4
+      },
+      {
+        "id": "title-glyphs-2",
+        "type": "text",
+        "text": "U",
+        "size": 1.2,
+        "depth": 0.35,
+        "align": "left",
+        "curveSegments": 4
+      },
+      {
+        "id": "title-glyphs-3",
+        "type": "text",
+        "text": "I",
+        "size": 1.2,
+        "depth": 0.35,
+        "align": "left",
+        "curveSegments": 4
+      },
+      {
+        "id": "title-glyphs-4",
+        "type": "text",
+        "text": "B",
+        "size": 1.2,
+        "depth": 0.35,
+        "align": "left",
+        "curveSegments": 4
+      },
+      {
+        "id": "title-glyphs-5",
+        "type": "text",
+        "text": "L",
+        "size": 1.2,
+        "depth": 0.35,
+        "align": "left",
+        "curveSegments": 4
+      },
+      {
+        "id": "title-glyphs-6",
+        "type": "text",
+        "text": "E",
+        "size": 1.2,
+        "depth": 0.35,
+        "align": "left",
+        "curveSegments": 4
+      }
+    ],
+    "materials": [
+      {
+        "id": "gold",
+        "color": [
+          0.9,
+          0.65,
+          0.2
+        ],
+        "metallic": 0,
+        "roughness": 0.3
+      }
+    ],
+    "nodes": [
+      {
+        "id": "title-0",
+        "geometry": "title-glyphs-0",
+        "translation": [
+          -2.9958984375,
+          0,
+          0
+        ],
+        "material": "gold"
+      },
+      {
+        "id": "title-1",
+        "geometry": "title-glyphs-1",
+        "translation": [
+          -2.1580078125,
+          0,
+          0
+        ],
+        "material": "gold"
+      },
+      {
+        "id": "title-2",
+        "geometry": "title-glyphs-2",
+        "translation": [
+          -1.3242187500000002,
+          0,
+          0
+        ],
+        "material": "gold"
+      },
+      {
+        "id": "title-3",
+        "geometry": "title-glyphs-0",
+        "translation": [
+          -0.44589843750000024,
+          0,
+          0
+        ],
+        "material": "gold"
+      },
+      {
+        "id": "title-4",
+        "geometry": "title-glyphs-3",
+        "translation": [
+          0.39199218749999976,
+          0,
+          0
+        ],
+        "material": "gold"
+      },
+      {
+        "id": "title-5",
+        "geometry": "title-glyphs-4",
+        "translation": [
+          0.7458984374999997,
+          0,
+          0
+        ],
+        "material": "gold"
+      },
+      {
+        "id": "title-6",
+        "geometry": "title-glyphs-5",
+        "translation": [
+          1.5691406249999997,
+          0,
+          0
+        ],
+        "material": "gold"
+      },
+      {
+        "id": "title-7",
+        "geometry": "title-glyphs-6",
+        "translation": [
+          2.2376953124999996,
+          0,
+          0
+        ],
+        "material": "gold"
+      }
+    ],
+    "camera": {
+      "eye": [
+        0,
+        0.4,
+        9
+      ],
+      "target": [
+        0,
+        0.3,
+        0
+      ],
+      "up": [
+        0,
+        1,
+        0
+      ],
+      "fov": 35,
+      "near": 0.1,
+      "far": 100
+    },
+    "motion": {
+      "duration": 2.66,
+      "tracks": [
+        {
+          "kind": "node",
+          "id": "title-0",
+          "property": "opacity",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0,
+              "easing": "easeOutCubic"
+            },
+            {
+              "time": 0.6,
+              "value": 1
+            }
+          ]
+        },
+        {
+          "kind": "node",
+          "id": "title-1",
+          "property": "opacity",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 0.18,
+              "value": 0,
+              "easing": "easeOutCubic"
+            },
+            {
+              "time": 0.78,
+              "value": 1
+            }
+          ]
+        },
+        {
+          "kind": "node",
+          "id": "title-2",
+          "property": "opacity",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 0.36,
+              "value": 0,
+              "easing": "easeOutCubic"
+            },
+            {
+              "time": 0.96,
+              "value": 1
+            }
+          ]
+        },
+        {
+          "kind": "node",
+          "id": "title-3",
+          "property": "opacity",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 0.54,
+              "value": 0,
+              "easing": "easeOutCubic"
+            },
+            {
+              "time": 1.14,
+              "value": 1
+            }
+          ]
+        },
+        {
+          "kind": "node",
+          "id": "title-4",
+          "property": "opacity",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 0.72,
+              "value": 0,
+              "easing": "easeOutCubic"
+            },
+            {
+              "time": 1.32,
+              "value": 1
+            }
+          ]
+        },
+        {
+          "kind": "node",
+          "id": "title-5",
+          "property": "opacity",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 0.9,
+              "value": 0,
+              "easing": "easeOutCubic"
+            },
+            {
+              "time": 1.5,
+              "value": 1
+            }
+          ]
+        },
+        {
+          "kind": "node",
+          "id": "title-6",
+          "property": "opacity",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1.08,
+              "value": 0,
+              "easing": "easeOutCubic"
+            },
+            {
+              "time": 1.68,
+              "value": 1
+            }
+          ]
+        },
+        {
+          "kind": "node",
+          "id": "title-7",
+          "property": "opacity",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1.26,
+              "value": 0,
+              "easing": "easeOutCubic"
+            },
+            {
+              "time": 1.86,
+              "value": 1
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
