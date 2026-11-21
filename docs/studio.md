@@ -85,7 +85,7 @@ The keys follow Blender where Studio has the same action. **Help ▸ Keyboard sh
 | Shift+A | Add an object or a light |
 | Ctrl+C, Ctrl+V | Copy the selected object, paste a copy of it (one undo step, still works after the original is deleted) |
 | Shift+D or Ctrl+D | Duplicate |
-| X or Delete | Delete |
+| X, Delete or Backspace | Delete |
 | Esc | Deselect |
 | H, Alt+H | Hide the selection, show everything that is hidden |
 | Alt+G, Alt+R, Alt+S | Reset the position, rotation or scale of the selection |
@@ -97,8 +97,9 @@ The keys follow Blender where Studio has the same action. **Help ▸ Keyboard sh
 | I or K | Insert a keyframe |
 | Space | Play |
 | Ctrl+Z, Ctrl+Shift+Z | Undo, redo |
-| Ctrl+O, Ctrl+S | Open, save |
+| Ctrl+O, Ctrl+S, Ctrl+Shift+S | Open, save, save as |
 | Ctrl+, | Settings |
+| ? | List the keys |
 
 F keeps the direction you look from and stands back just far enough for the object to fill the view. The camera flies there in a third of a second, so you can follow where the view went; any other camera input takes over at once, and with reduced motion the view jumps. Like an orbit, it is not an undo step.
 

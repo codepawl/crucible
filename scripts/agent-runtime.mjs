@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { withSnapshotSkyColors } from './snapshot-sky-colors.mjs';
 import { previewCallTimeoutMs, recipeHasGridVolume, operationsAddGridVolume } from './agent-evaluation-timeout.mjs';
 import { createHash, randomUUID, randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -1548,11 +1549,11 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
       return gpuUnit('light', () => enqueue(async () => {
         await requirePreviewRenderer();
         requireSession(settings.sessionId);
-        const snapshot = await invoke('snapshot', settings);
+        const snapshot = withSnapshotSkyColors(await invoke('snapshot', settings));
         await assertSceneFitsBeforeJob(snapshot.recipe);
         const branchRecipes = new Map();
         for (const name of settings.branchNames) {
-          branchRecipes.set(name, await invoke('branchRecipe', { sessionId: settings.sessionId, name }));
+          branchRecipes.set(name, withSnapshotSkyColors(await invoke('branchRecipe', { sessionId: settings.sessionId, name })));
         }
         const assetBytes = snapshot.recipe.format === 'crucible.asset' ? await (await catalog()).read(snapshot.recipe.assetId) : undefined;
         let privateSessionId;
@@ -1760,7 +1761,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
           if (!audioLibrary) throw new Error('Configure --audio with an absolute folder before submitting a job with audio.');
           await audioLibrary.resolve(settings.audio.file);
         }
-        const snapshot = await invoke('snapshot', { sessionId, expectedRevision });
+        const snapshot = withSnapshotSkyColors(await invoke('snapshot', { sessionId, expectedRevision }));
         const assetBytes = snapshot.recipe.format === 'crucible.asset' ? await (await catalog()).read(snapshot.recipe.assetId) : undefined;
         phase = 'rendering';
         try {

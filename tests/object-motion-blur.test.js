@@ -26,7 +26,7 @@ test('only a non-zero objects value loads the object blur module', () => {
 });
 
 function fakeRenderer(names, parts = names.map(name => ({ name }))) {
-  return { batches: [{ parts }], drawsInOpaqueLoop: () => true, postStages: [], passSupport: {} };
+  return { batches: [{ parts }], drawsInOpaqueLoop: () => true, takesObjectIds: () => true, postStages: [], passSupport: {} };
 }
 
 test('each part gets the transform back to where it was, and a part that did not move gets the identity', () => {

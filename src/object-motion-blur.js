@@ -73,7 +73,7 @@ export function packObjectMotion(renderer, current, previous) {
       throw invalidField(name, matrices, 'the Map from sampleWorldMatrices(parts)');
     }
   }
-  const drawnParts = renderer.batches.filter(batch => renderer.drawsInOpaqueLoop(batch)).flatMap(batch => batch.parts);
+  const drawnParts = renderer.batches.filter(batch => renderer.takesObjectIds(batch)).flatMap(batch => batch.parts);
   const rows = Math.max(1, Math.ceil(drawnParts.length / MATRICES_PER_ROW));
   const matrices = new Float32Array(TEXTURE_WIDTH * rows * 4);
   const inverse = mat4.create();

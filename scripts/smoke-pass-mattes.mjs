@@ -81,11 +81,14 @@ function recipe() {
     materials: [
       { id: 'red', color: [0.8, 0.1, 0.1], roughness: 0.6 },
       { id: 'glow', color: [0.1, 0.3, 0.9], emission: 2 },
+      { id: 'foliage', color: [0.1, 0.6, 0.15], alphaMode: 'blend', opacity: 0.8 },
     ],
     nodes: [
       { id: 'floor', geometry: 'box', material: 'red', translation: [0, -0.1, 0], scale: [12, 0.2, 12] },
       { id: 'near-ball', geometry: 'sphere', material: 'glow', translation: [-0.6, 0.5, 1.5], scale: [1, 1, 1] },
       { id: 'far-block', geometry: 'box', material: 'red', translation: [1.4, 0.5, -3], scale: [1, 1, 1] },
+      // A blended material (tree leaves exported as BLEND): its own ID in the ID passes, and the block behind it stays visible.
+      { id: 'leaf-canopy', geometry: 'sphere', material: 'foliage', translation: [2.8, 0.9, -2], scale: [1.2, 1.2, 1.2] },
     ],
     environment: { ground: false },
     camera: { eye: [0, 1.6, 6], target: [0, 0.5, 0], fov: 40 },
@@ -116,10 +119,10 @@ try {
   const created = (await call('scene_create', { recipe: recipe() }, 180000)).structuredContent;
   const sessionId = created.sessionId;
   const first = await runJob(sessionId, { kind: 'image', width: SIZE, height: SIZE, passes: ['objectId'],
-    mattes: [{ object: 'near-ball' }, { object: 'far-block' }, { material: 'glow' }] });
+    mattes: [{ object: 'near-ball' }, { object: 'far-block' }, { material: 'glow' }, { object: 'leaf-canopy' }, { material: 'foliage' }] });
   assert.equal(first.error, undefined, first.error);
   const { files, metrics } = first;
-  assert.deepEqual([...files.keys()].sort(), ['render-matte-0.png', 'render-matte-1.png', 'render-matte-2.png', 'render-objectId.png', 'render.png']);
+  assert.deepEqual([...files.keys()].sort(), ['render-matte-0.png', 'render-matte-1.png', 'render-matte-2.png', 'render-matte-3.png', 'render-matte-4.png', 'render-objectId.png', 'render.png']);
   const ids = decodePng(files.get('render-objectId.png'));
   const idOf = name => metrics.objectNames.indexOf(name) + 1;
   const expectedCoverage = name => {
@@ -136,7 +139,13 @@ try {
   assert.equal(whitePixels(ball), expectedCoverage('near-ball'), 'object matte equals the object ID pass');
   assert.equal(whitePixels(block), expectedCoverage('far-block'));
   assert.deepEqual(glow.pixels, ball.pixels, 'the glow material is only on the near ball');
-  assert.deepEqual(metrics.mattes.map(matte => matte.coveragePixels), [whitePixels(ball), whitePixels(block), whitePixels(glow)]);
+  const canopy = decodePng(files.get('render-matte-3.png'));
+  const foliage = decodePng(files.get('render-matte-4.png'));
+  assert.ok(whitePixels(canopy) > 200, 'a blended part must get its own ID, not black');
+  assert.equal(whitePixels(canopy), expectedCoverage('leaf-canopy'), 'blended object matte equals the object ID pass');
+  assert.deepEqual(foliage.pixels, canopy.pixels, 'the blended material matte covers the blended part');
+  assert.ok(whitePixels(block) > 100, 'the block behind the canopy keeps its ID where the canopy is absent');
+  assert.deepEqual(metrics.mattes.slice(0, 3).map(matte => matte.coveragePixels), [whitePixels(ball), whitePixels(block), whitePixels(glow)]);
 
   const refused = await runJob(sessionId, { kind: 'image', width: SIZE, height: SIZE, mattes: [{ object: 'chair' }] });
   assert.match(refused.error ?? "", /no part named "chair" in this scene. Pass one of: .*near-ball/);

@@ -1,0 +1,1 @@
+- Studio keeps every keyboard shortcut in one table, ready for keymap presets (#2847)

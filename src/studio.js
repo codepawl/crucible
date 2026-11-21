@@ -11,6 +11,7 @@ import { encodePack } from './scene-pack-format.js';
 import { encodePackOrRefuse } from './studio-pack-refusal.js';
 import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shaders.js';
 import { STUDIO_CSS } from './studio-styles.js';
+import { findKeymapAction, formatShortcutKeys, keyLabel, resolveKeymap, SHORTCUT_ROWS } from './studio-keymap.js';
 import { createStudioCatalog } from './studio-catalog.js';
 import {
   STUDIO_GIZMO_PIXELS,
@@ -929,14 +930,16 @@ function depthSortedNodes(nodes) {
   return ordered;
 }
 
-const AXIS_KEYS = Object.freeze(['x', 'y', 'z']);
-const MODAL_TOOL_BY_KEY = Object.freeze({ g: 'translate', r: 'rotate', s: 'scale' });
+const MODAL_AXES = Object.freeze(['x', 'y', 'z']);
+const MODAL_AXIS_BY_ACTION = Object.freeze({ 'modal.axisX': 'x', 'modal.axisY': 'y', 'modal.axisZ': 'z' });
+const MODAL_TOOL_BY_ACTION = Object.freeze({ 'modal.translate': 'translate', 'modal.rotate': 'rotate', 'modal.scale': 'scale' });
+const PICK_UP_TOOL_BY_ACTION = Object.freeze({ 'tool.translate': 'translate', 'tool.rotate': 'rotate', 'tool.scale': 'scale' });
 const MODAL_FREE_AXIS = Object.freeze({ translate: 'screen', scale: 'uniform' });
 const MODAL_TOOL_WORDS = Object.freeze({ translate: 'Move', rotate: 'Rotate', scale: 'Scale' });
-const TRANSFORM_PART_BY_KEY = Object.freeze({ g: 'translation', r: 'rotation', s: 'scale' });
+const TRANSFORM_PART_BY_ACTION = Object.freeze({ 'edit.resetPosition': 'translation', 'edit.resetRotation': 'rotation', 'edit.resetScale': 'scale' });
 const TRANSFORM_AT_REST = Object.freeze({ translation: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] });
 const TRANSFORM_PART_WORDS = Object.freeze({ translation: 'Position', rotation: 'Rotation', scale: 'Scale' });
-const VIEW_PRESET_BY_KEY = Object.freeze({ 1: 'front', 3: 'right', 7: 'top' });
+const VIEW_PRESET_BY_ACTION = Object.freeze({ 'view.front': 'front', 'view.right': 'right', 'view.top': 'top' });
 
 // One row of the Settings dialog each: the preference, what the row is called and, for a choice, how a value reads.
 const STUDIO_SETTING_ROWS = Object.freeze([
@@ -1057,9 +1060,10 @@ export function createStudio(container, {
     title: 'Reloads when the agent edits this file',
     attributes: { role: 'img', 'aria-label': 'Reloads when the agent edits this file' },
   });
-  const openButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Open…', dataset: { shortcut: 'Ctrl+O' } });
-  const saveButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Save', dataset: { shortcut: 'Ctrl+S' } });
-  const saveAsButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Save as…', dataset: { shortcut: 'Ctrl+Shift+S' } });
+  const keymap = resolveKeymap();
+  const openButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Open…', dataset: { shortcut: keyLabel(keymap, 'file.open') } });
+  const saveButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Save', dataset: { shortcut: keyLabel(keymap, 'file.save') } });
+  const saveAsButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Save as…', dataset: { shortcut: keyLabel(keymap, 'file.saveAs') } });
   const addMenuButton = createIconButton(documentReference, 'add', 'Add an object or a light', { attributes: { popovertarget: 'crucible-studio-pop-add' } });
   // The menus of the top bar, as a desktop app lays them out. Each one opens a popover of rows.
   const createMenuButton = (label, popoverId, attributes = {}) => createElement(documentReference, 'button', {
@@ -1110,31 +1114,31 @@ export function createStudio(container, {
   };
   const editPopover = createMenuPopover(
     'crucible-studio-pop-edit',
-    createMenuItem('Undo', 'Ctrl+Z', () => undoButton.click(), 'undo'),
-    createMenuItem('Redo', 'Ctrl+Shift+Z', () => redoButton.click(), 'redo'),
-    createMenuItem('Copy', 'Ctrl+C', () => copySelection(), 'duplicate'),
-    createMenuItem('Paste', 'Ctrl+V', () => pasteCopy(), 'duplicate'),
-    createMenuItem('Duplicate', 'Shift+D', () => duplicateSelection(), 'duplicate'),
-    createMenuItem('Delete', 'X', () => deleteButton.click(), 'remove'),
-    createMenuItem('Deselect', 'Esc', () => controller.selectNode(null)),
-    createMenuItem('Hide', 'H', () => hideSelection(), 'eyeOff'),
-    createMenuItem('Show all', 'Alt+H', () => showAllHidden(), 'eye'),
-    createMenuItem('Reset position', 'Alt+G', () => resetSelectionTransform('translation'), 'translate'),
-    createMenuItem('Reset rotation', 'Alt+R', () => resetSelectionTransform('rotation'), 'rotate'),
-    createMenuItem('Reset scale', 'Alt+S', () => resetSelectionTransform('scale'), 'scale'),
-    createMenuItem('Settings…', 'Ctrl+,', () => settingsDialog.showModal(), 'settings'),
+    createMenuItem('Undo', keyLabel(keymap, 'edit.undo'), () => undoButton.click(), 'undo'),
+    createMenuItem('Redo', keyLabel(keymap, 'edit.redo'), () => redoButton.click(), 'redo'),
+    createMenuItem('Copy', keyLabel(keymap, 'edit.copy'), () => copySelection(), 'duplicate'),
+    createMenuItem('Paste', keyLabel(keymap, 'edit.paste'), () => pasteCopy(), 'duplicate'),
+    createMenuItem('Duplicate', keyLabel(keymap, 'edit.duplicate'), () => duplicateSelection(), 'duplicate'),
+    createMenuItem('Delete', keyLabel(keymap, 'edit.delete'), () => deleteButton.click(), 'remove'),
+    createMenuItem('Deselect', keyLabel(keymap, 'edit.deselect'), () => controller.selectNode(null)),
+    createMenuItem('Hide', keyLabel(keymap, 'edit.hide'), () => hideSelection(), 'eyeOff'),
+    createMenuItem('Show all', keyLabel(keymap, 'edit.showAll'), () => showAllHidden(), 'eye'),
+    createMenuItem('Reset position', keyLabel(keymap, 'edit.resetPosition'), () => resetSelectionTransform('translation'), 'translate'),
+    createMenuItem('Reset rotation', keyLabel(keymap, 'edit.resetRotation'), () => resetSelectionTransform('rotation'), 'rotate'),
+    createMenuItem('Reset scale', keyLabel(keymap, 'edit.resetScale'), () => resetSelectionTransform('scale'), 'scale'),
+    createMenuItem('Settings…', keyLabel(keymap, 'settings.open'), () => settingsDialog.showModal(), 'settings'),
   );
   // A right click on an object, in the viewport or in the Scene list, opens the actions on that object where the
   // pointer is. The rows are the Edit menu's own, so a key learned in one place works in the other.
   const objectPopover = createMenuPopover(
     'crucible-studio-pop-object',
-    createMenuItem('Frame', 'F', () => flyToSelection(), 'frame'),
-    createMenuItem('Duplicate', 'Shift+D', () => duplicateSelection(), 'duplicate'),
-    createMenuItem('Hide', 'H', () => hideSelection(), 'eyeOff'),
-    createMenuItem('Reset position', 'Alt+G', () => resetSelectionTransform('translation'), 'translate'),
-    createMenuItem('Reset rotation', 'Alt+R', () => resetSelectionTransform('rotation'), 'rotate'),
-    createMenuItem('Reset scale', 'Alt+S', () => resetSelectionTransform('scale'), 'scale'),
-    createMenuItem('Delete', 'X', () => deleteButton.click(), 'remove'),
+    createMenuItem('Frame', keyLabel(keymap, 'view.frame'), () => flyToSelection(), 'frame'),
+    createMenuItem('Duplicate', keyLabel(keymap, 'edit.duplicate'), () => duplicateSelection(), 'duplicate'),
+    createMenuItem('Hide', keyLabel(keymap, 'edit.hide'), () => hideSelection(), 'eyeOff'),
+    createMenuItem('Reset position', keyLabel(keymap, 'edit.resetPosition'), () => resetSelectionTransform('translation'), 'translate'),
+    createMenuItem('Reset rotation', keyLabel(keymap, 'edit.resetRotation'), () => resetSelectionTransform('rotation'), 'rotate'),
+    createMenuItem('Reset scale', keyLabel(keymap, 'edit.resetScale'), () => resetSelectionTransform('scale'), 'scale'),
+    createMenuItem('Delete', keyLabel(keymap, 'edit.delete'), () => deleteButton.click(), 'remove'),
   );
   function openObjectMenu(clientX, clientY) {
     const windowWidth = documentReference.defaultView?.innerWidth ?? 1280;
@@ -1151,7 +1155,7 @@ export function createStudio(container, {
   function hideSelection() {
     if (!controller.selectedNodeId) return;
     controller.updateNodeTransform(controller.selectedNodeId, { visible: false });
-    announce('Hidden. Alt+H shows everything again');
+    announce(`Hidden. ${keyLabel(keymap, 'edit.showAll')} shows everything again`);
   }
   function showAllHidden() {
     const hiddenNodes = controller.exportRecipe().nodes.filter(node => node.visible === false);
@@ -1182,15 +1186,15 @@ export function createStudio(container, {
   }, () => !controller.freeView, 'camera');
   const viewPopover = createMenuPopover(
     'crucible-studio-pop-view',
-    createMenuItem('Front view', '1', () => showView('front')),
-    createMenuItem('Right view', '3', () => showView('right')),
-    createMenuItem('Top view', '7', () => showView('top')),
-    createMenuItem('Perspective / Orthographic', '5', () => controller.toggleCameraProjection(), 'camera'),
-    createMenuItem('Frame the selection', 'F', () => flyToSelection(), 'frame'),
+    createMenuItem('Front view', keyLabel(keymap, 'view.front'), () => showView('front')),
+    createMenuItem('Right view', keyLabel(keymap, 'view.right'), () => showView('right')),
+    createMenuItem('Top view', keyLabel(keymap, 'view.top'), () => showView('top')),
+    createMenuItem('Perspective / Orthographic', keyLabel(keymap, 'view.projection'), () => controller.toggleCameraProjection(), 'camera'),
+    createMenuItem('Frame the selection', keyLabel(keymap, 'view.frame'), () => flyToSelection(), 'frame'),
     createMenuToggle('Grid', '', () => gridButton.click(), () => gridVisible, 'grid'),
     sceneCameraToggle,
     createMenuToggle('Scene and Properties', '', () => toggleDocksButton.click(), () => root.dataset.outlinerCollapsed !== 'true' || root.dataset.inspectorCollapsed !== 'true', 'panels'),
-    createMenuToggle('Properties', 'N', () => setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true'), () => root.dataset.inspectorCollapsed !== 'true', 'settings'),
+    createMenuToggle('Properties', keyLabel(keymap, 'view.properties'), () => setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true'), () => root.dataset.inspectorCollapsed !== 'true', 'settings'),
   );
   // A row that switches something shows whether it is on each time its menu opens.
   viewPopover.addEventListener('toggle', () => {
@@ -1200,7 +1204,7 @@ export function createStudio(container, {
   syncMenuToggles();
   const helpPopover = createMenuPopover(
     'crucible-studio-pop-help',
-    createMenuItem('Keyboard shortcuts', '?', () => shortcutsDialog.showModal(), 'keyboard'),
+    createMenuItem('Keyboard shortcuts', keyLabel(keymap, 'help.shortcuts'), () => shortcutsDialog.showModal(), 'keyboard'),
   );
   const exportMenuButton = createElement(
     documentReference,
@@ -1550,11 +1554,11 @@ export function createStudio(container, {
     button.addEventListener('click', () => controller.setTool(button.dataset.tool));
   });
 
-  const undoButton = createIconButton(documentReference, 'undo', 'Undo (Ctrl+Z)', { attributes: { 'aria-disabled': 'true' } });
-  const redoButton = createIconButton(documentReference, 'redo', 'Redo (Ctrl+Shift+Z)', { attributes: { 'aria-disabled': 'true' } });
-  const duplicateButton = createIconButton(documentReference, 'duplicate', 'Duplicate (Ctrl+D)');
+  const undoButton = createIconButton(documentReference, 'undo', `Undo (${keyLabel(keymap, 'edit.undo')})`, { attributes: { 'aria-disabled': 'true' } });
+  const redoButton = createIconButton(documentReference, 'redo', `Redo (${keyLabel(keymap, 'edit.redo')})`, { attributes: { 'aria-disabled': 'true' } });
+  const duplicateButton = createIconButton(documentReference, 'duplicate', `Duplicate (${keyLabel(keymap, 'edit.duplicate', 1)})`);
   const deleteButton = createIconButton(documentReference, 'remove', 'Delete (Del)');
-  const frameButton = createIconButton(documentReference, 'frame', 'Frame in view (F)');
+  const frameButton = createIconButton(documentReference, 'frame', `Frame in view (${keyLabel(keymap, 'view.frame')})`);
   const toggleDocksButton = createIconButton(documentReference, 'panels', 'Show or hide the panels', { attributes: { 'aria-pressed': 'true' } });
   const gridButton = createIconButton(documentReference, 'grid', 'Show or hide the grid', { attributes: { 'aria-pressed': 'true' } });
   gridButton.addEventListener('click', () => {
@@ -1994,8 +1998,8 @@ export function createStudio(container, {
   );
 
   // Bottom Timeline & Telemetry Bar
-  const playButton = createIconButton(documentReference, 'play', 'Play (Space)', { attributes: { 'aria-pressed': 'false' } });
-  const keyframeButton = createIconButton(documentReference, 'keyframe', 'Add a keyframe here (K)');
+  const playButton = createIconButton(documentReference, 'play', `Play (${keyLabel(keymap, 'animate.play')})`, { attributes: { 'aria-pressed': 'false' } });
+  const keyframeButton = createIconButton(documentReference, 'keyframe', `Add a keyframe here (${keyLabel(keymap, 'animate.keyframe', 1)})`);
   const timeOutput = createElement(documentReference, 'output', { textContent: '0.00 s' });
   const scrubInput = createElement(documentReference, 'input', { type: 'range', min: '0', max: '4', step: '0.02', value: '0', attributes: { 'aria-label': 'Timeline scrub' } });
   const quickBookmarksRow = createElement(documentReference, 'div', { className: 'crucible-studio-shots' });
@@ -2003,14 +2007,14 @@ export function createStudio(container, {
 
   playButton.addEventListener('click', () => {
     if (!hasAnimatedData(controller.exportRecipe())) {
-      announce('Add a keyframe first (K)');
+      announce(`Add a keyframe first (${keyLabel(keymap, 'animate.keyframe', 1)})`);
       return;
     }
     selectWorkspace('animate');
     playing = !playing;
     lastFrameTime = 0;
     playButton.setAttribute('aria-pressed', playing ? 'true' : 'false');
-    setButtonIcon(playButton, playing ? 'pause' : 'play', playing ? 'Pause (Space)' : 'Play (Space)');
+    setButtonIcon(playButton, playing ? 'pause' : 'play', playing ? `Pause (${keyLabel(keymap, 'animate.play')})` : `Play (${keyLabel(keymap, 'animate.play')})`);
     if (playing) requestFrame();
   });
   keyframeButton.addEventListener('click', async () => {
@@ -2078,43 +2082,16 @@ export function createStudio(container, {
   });
 
   const shortcutsHeading = createElement(documentReference, 'h2', { id: 'crucible-studio-shortcuts-title', textContent: 'Studio keyboard shortcuts' });
-  const shortcutEntries = [
-    ['Q', 'Select'],
-    ['G / R / S', 'Pick up to move / rotate / scale'],
-    ['X / Y / Z', 'While holding: keep to that axis'],
-    ['Click or Enter / Esc', 'While holding: place / put back'],
-    ['T', 'Snap to a surface'],
-    ['Shift + drag', 'Snap to a step or an angle'],
-    ['Shift+A', 'Add an object or a light'],
-    ['Ctrl+C / Ctrl+V', 'Copy / Paste'],
-    ['Shift+D / Ctrl+D', 'Duplicate'],
-    ['X / Delete', 'Delete'],
-    ['Esc', 'Deselect'],
-    ['H / Alt+H', 'Hide the selection / show all'],
-    ['Alt+G / Alt+R / Alt+S', 'Reset position / rotation / scale'],
-    ['Right click', 'Menu of the object under the pointer'],
-    ['F / .', 'Frame the selection'],
-    ['1 / 3 / 7', 'Front / Right / Top view'],
-    ['5', 'Perspective or orthographic'],
-    ['N', 'Show or hide Properties'],
-    ['I / K', 'Insert a keyframe'],
-    ['Space', 'Play'],
-    ['Ctrl+Z / Ctrl+Shift+Z', 'Undo / Redo'],
-    ['Ctrl+O / Ctrl+S', 'Open / Save'],
-    ['Ctrl+,', 'Settings'],
-    ['Drag X / Y / Z', 'Scrub a number'],
-    ['?', 'This list'],
-  ];
   const shortcutsGrid = createElement(
     documentReference,
     'div',
     { className: 'crucible-studio-shortcuts' },
-    ...shortcutEntries.map(([keys, label]) => createElement(
+    ...SHORTCUT_ROWS.map(({ keys, label }) => createElement(
       documentReference,
       'div',
       { className: 'crucible-studio-shortcut-item' },
       createElement(documentReference, 'span', { textContent: label }),
-      createElement(documentReference, 'kbd', { textContent: keys }),
+      createElement(documentReference, 'kbd', { textContent: formatShortcutKeys(keymap, keys) }),
     )),
   );
   const shortcutsCloseButton = createElement(documentReference, 'button', { type: 'submit', value: 'close', autofocus: true, textContent: 'Done' });
@@ -3025,7 +3002,7 @@ export function createStudio(container, {
     scrubInput.disabled = !animated;
     playButton.setAttribute('aria-disabled', animated ? 'false' : 'true');
     playButton.setAttribute('aria-pressed', playing ? 'true' : 'false');
-    setButtonIcon(playButton, playing ? 'pause' : 'play', playing ? 'Pause (Space)' : 'Play (Space)');
+    setButtonIcon(playButton, playing ? 'pause' : 'play', playing ? `Pause (${keyLabel(keymap, 'animate.play')})` : `Play (${keyLabel(keymap, 'animate.play')})`);
     timeOutput.textContent = `${controller.motionTime.toFixed(1)} / ${duration.toFixed(1)} s`;
     syncPropertyPanels();
     syncHintBar();
@@ -3062,8 +3039,8 @@ export function createStudio(container, {
       word,
     );
     const lockedAxis = modalTransform.locked ? modalTransform.axis : null;
-    const axisChips = AXIS_KEYS.map(axis => {
-      const key = createElement(documentReference, 'kbd', { textContent: axis.toUpperCase(), dataset: { axis } });
+    const axisChips = MODAL_AXES.map(axis => {
+      const key = createElement(documentReference, 'kbd', { textContent: keyLabel(keymap, `modal.axis${axis.toUpperCase()}`), dataset: { axis } });
       key.setAttribute('aria-pressed', lockedAxis === axis ? 'true' : 'false');
       return key;
     });
@@ -3071,7 +3048,7 @@ export function createStudio(container, {
       createElement(documentReference, 'span', { className: 'crucible-studio-hint-delta', textContent: (liveDeltaLabel || MODAL_TOOL_WORDS[modalTransform.tool]).replace(/^SCREEN/, MODAL_TOOL_WORDS.translate) }),
       createElement(documentReference, 'span', { className: 'crucible-studio-hint-chip' }, ...axisChips, 'axis'),
       chip('Click', 'place'),
-      chip('Esc', 'cancel'),
+      chip(keyLabel(keymap, 'modal.cancel'), 'cancel'),
     );
   }
 
@@ -3191,24 +3168,29 @@ export function createStudio(container, {
   }
 
   function handleModalKey(event) {
-    const lowerKey = event.key.toLowerCase();
     if (event.key === 'Shift') {
       return;
     }
     event.preventDefault();
-    // A key held down repeats, and Ctrl+Z is not the Z axis: neither may flip the lock or swap the tool.
-    if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) {
+    // A key held down repeats: it may not flip the lock or swap the tool. Ctrl+Z is not the Z axis because the
+    // modal bindings carry no Ctrl.
+    if (event.repeat) {
       return;
     }
-    if (event.key === 'Escape') {
+    const match = findKeymapAction(keymap, event, 'modal');
+    if (!match) {
+      return;
+    }
+    const { actionId } = match;
+    if (actionId === 'modal.cancel') {
       finishModalTransform(false);
-    } else if (event.key === 'Enter' || event.key === ' ') {
+    } else if (actionId === 'modal.place') {
       finishModalTransform(true);
-    } else if (AXIS_KEYS.includes(lowerKey)) {
-      lockModalAxis(lowerKey);
-    } else if (MODAL_TOOL_BY_KEY[lowerKey] && MODAL_TOOL_BY_KEY[lowerKey] !== modalTransform.tool) {
+    } else if (MODAL_AXIS_BY_ACTION[actionId]) {
+      lockModalAxis(MODAL_AXIS_BY_ACTION[actionId]);
+    } else if (MODAL_TOOL_BY_ACTION[actionId] !== modalTransform.tool) {
       finishModalTransform(false);
-      pickUpWithTool(MODAL_TOOL_BY_KEY[lowerKey]);
+      pickUpWithTool(MODAL_TOOL_BY_ACTION[actionId]);
     }
   }
 
@@ -3465,6 +3447,89 @@ export function createStudio(container, {
     return Boolean(selection && !selection.isCollapsed && selection.toString() !== '');
   }
 
+  // Handlers of the normal context by action id. A handler calls preventDefault for the keys the browser would
+  // otherwise use itself (save, open, copy, undo and so on).
+  const keyHandlers = {
+    'tool.select': () => controller.setTool('select'),
+    'tool.snap': () => controller.setTool('snap'),
+    'add.open': () => addMenuButton.click(),
+    'edit.copy': event => {
+      if (pageTextIsSelected()) return;
+      event.preventDefault();
+      copySelection();
+    },
+    'edit.paste': event => {
+      if (pageTextIsSelected()) return;
+      event.preventDefault();
+      pasteCopy();
+    },
+    'edit.duplicate': (event, binding) => {
+      if (binding.ctrl) event.preventDefault();
+      duplicateSelection();
+    },
+    'edit.delete': event => {
+      if (!controller.selectedNodeId && !selectedObjectIsDeletable()) return;
+      event.preventDefault();
+      deleteSelection();
+    },
+    'edit.deselect': () => {
+      if (controller.selectedNodeId || controller.selectedObjectKey) controller.selectNode(null);
+    },
+    'edit.hide': () => hideSelection(),
+    'edit.showAll': event => {
+      event.preventDefault();
+      showAllHidden();
+    },
+    'edit.undo': event => {
+      event.preventDefault();
+      controller.undo();
+    },
+    'edit.redo': event => {
+      event.preventDefault();
+      controller.redo();
+    },
+    'view.frame': () => flyToSelection(),
+    'view.projection': () => controller.toggleCameraProjection(),
+    'view.properties': () => setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true'),
+    'animate.keyframe': () => keyframeButton.click(),
+    'animate.play': event => {
+      event.preventDefault();
+      playButton.click();
+    },
+    'file.open': event => {
+      event.preventDefault();
+      performOpenFile();
+    },
+    'file.save': event => {
+      event.preventDefault();
+      performSaveFile({ forceAs: false });
+    },
+    'file.saveAs': event => {
+      event.preventDefault();
+      performSaveFile({ forceAs: true });
+    },
+    'settings.open': event => {
+      event.preventDefault();
+      settingsDialog.showModal();
+    },
+    'help.shortcuts': () => shortcutsDialog.showModal(),
+  };
+  for (const [actionId, tool] of Object.entries(PICK_UP_TOOL_BY_ACTION)) {
+    keyHandlers[actionId] = () => pickUpWithTool(tool);
+  }
+  for (const [actionId, part] of Object.entries(TRANSFORM_PART_BY_ACTION)) {
+    keyHandlers[actionId] = event => {
+      event.preventDefault();
+      resetSelectionTransform(part);
+    };
+  }
+  for (const [actionId, viewPreset] of Object.entries(VIEW_PRESET_BY_ACTION)) {
+    keyHandlers[actionId] = () => {
+      controller.setCameraViewPreset(viewPreset);
+      announce(`${viewPreset[0].toUpperCase()}${viewPreset.slice(1)} view`);
+    };
+  }
+
   const onWindowKeyDown = async event => {
     if (!root.isConnected) {
       return;
@@ -3476,83 +3541,16 @@ export function createStudio(container, {
     if (isEditableTarget(event.target, event.key)) {
       return;
     }
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
-      event.preventDefault();
-      performSaveFile({ forceAs: event.shiftKey });
+    const match = findKeymapAction(keymap, event, 'normal');
+    if (!match) {
       return;
     }
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'o') {
-      event.preventDefault();
-      performOpenFile();
+    // A Ctrl key works over an open dialog; a plain key does not.
+    const dialogIsOpen = recipeDialog.open || shortcutsDialog.open || settingsDialog.open;
+    if (dialogIsOpen && !match.binding.ctrl) {
       return;
     }
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') {
-      event.preventDefault();
-      duplicateSelection();
-      return;
-    }
-    const copyOrPasteKey = event.key.toLowerCase();
-    if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && (copyOrPasteKey === 'c' || copyOrPasteKey === 'v') && !pageTextIsSelected()) {
-      event.preventDefault();
-      if (copyOrPasteKey === 'c') copySelection();
-      else pasteCopy();
-      return;
-    }
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
-      event.preventDefault();
-      if (event.shiftKey) controller.redo();
-      else controller.undo();
-      return;
-    }
-    if (event.metaKey || event.ctrlKey) {
-      if (event.key === ',') {
-        event.preventDefault();
-        settingsDialog.showModal();
-      }
-      return;
-    }
-    if (recipeDialog.open || shortcutsDialog.open || settingsDialog.open) {
-      return;
-    }
-    const lowerKey = event.key.toLowerCase();
-    if (event.altKey) {
-      // Alt takes the plain key's action back: G, R and S change a transform and Alt+key resets it, H hides and
-      // Alt+H shows.
-      if (lowerKey === 'h') {
-        event.preventDefault();
-        showAllHidden();
-      } else if (TRANSFORM_PART_BY_KEY[lowerKey]) {
-        event.preventDefault();
-        resetSelectionTransform(TRANSFORM_PART_BY_KEY[lowerKey]);
-      }
-      return;
-    }
-    const viewPreset = VIEW_PRESET_BY_KEY[event.key];
-    if (event.shiftKey && lowerKey === 'd') duplicateSelection();
-    else if (event.shiftKey && lowerKey === 'a') addMenuButton.click();
-    else if (viewPreset) {
-      controller.setCameraViewPreset(viewPreset);
-      announce(`${viewPreset[0].toUpperCase()}${viewPreset.slice(1)} view`);
-    } else if (event.key === '.') flyToSelection();
-    else if (lowerKey === 'h') hideSelection();
-    else if (lowerKey === 'n') setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true');
-    else if (lowerKey === 'i') keyframeButton.click();
-    else if (event.key === 'Escape') {
-      if (controller.selectedNodeId || controller.selectedObjectKey) controller.selectNode(null);
-    } else if (lowerKey === 'q') controller.setTool('select');
-    else if (MODAL_TOOL_BY_KEY[lowerKey]) pickUpWithTool(MODAL_TOOL_BY_KEY[lowerKey]);
-    else if (lowerKey === 't') controller.setTool('snap');
-    else if (lowerKey === 'f') flyToSelection();
-    else if (event.key === '5') controller.toggleCameraProjection();
-    else if (event.key === '?') shortcutsDialog.showModal();
-    else if (lowerKey === 'k') keyframeButton.click();
-    else if (event.key === ' ') {
-      event.preventDefault();
-      playButton.click();
-    } else if ((event.key === 'Delete' || event.key === 'Backspace' || lowerKey === 'x') && (controller.selectedNodeId || selectedObjectIsDeletable())) {
-      event.preventDefault();
-      deleteSelection();
-    }
+    keyHandlers[match.actionId](event, match.binding);
   };
   documentReference.addEventListener('keydown', onWindowKeyDown);
 

@@ -222,7 +222,7 @@ test('model respects the renderer contract, instancing and authored bounds', () 
   console.log(JSON.stringify({ parts: parts.length, geometries: geometries.size, triangleCount, meshBytes, sections: sections.size, bounds: { minimum, maximum }, expandedBounds: { minimum: expandedMinimum, maximum: expandedMaximum } }));
 });
 
-test('assembled WALL-E geometry and instance snapshot stays stable after exact seam closure', () => {
+test('assembled tracked-robot sample model geometry and instance snapshot stays stable after exact seam closure', () => {
   const parts = createModel();
   const hash = createHash('sha256');
   for (const part of parts) {

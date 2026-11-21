@@ -409,6 +409,9 @@ function packInstance(data, index, part, normalMatrix) {
 
 // The objectId mode of RENDER_PASS_MODES in render-passes.js.
 const OBJECT_ID_PASS_MODE = 5;
+const CRYPTOMATTE_PASS_MODE = 17;
+/** Alpha at or above which a blended texel counts as part of its object in the ID passes. */
+const ID_PASS_BLEND_CUTOFF = 0.5;
 
 function isCullable(parts) {
   const first = parts[0];
@@ -2125,9 +2128,22 @@ export class CrucibleRenderer {
     this.occlusionTarget = null;
   }
 
-  /** Whether a batch is drawn by the opaque loop, and so by render passes. Its parts take object IDs in this order. */
+  /** Whether a batch is drawn by the opaque loop, and so by render passes. */
   drawsInOpaqueLoop(batch) {
     return batchPass(batch) === 'opaque' && !isTranslucentMode(batch.alphaMode);
+  }
+
+  /**
+   * Whether a batch's parts take object IDs, in draw order. A blended batch (tree leaves exported as BLEND) takes them too:
+   * the object ID and Cryptomatte passes draw it as a cutout, so a matte covers its texels instead of leaving them black.
+   */
+  takesObjectIds(batch) {
+    return this.drawsInOpaqueLoop(batch) || (batchPass(batch) === 'opaque' && batch.alphaMode === 'blend');
+  }
+
+  /** The batch an ID pass draws: a blended batch becomes a cutout at half alpha, so see-through texels write nothing and hide nothing. */
+  idPassBatch(batch) {
+    return batch.alphaMode === 'blend' ? { ...batch, alphaMode: 'mask', alphaCutoff: ID_PASS_BLEND_CUTOFF } : batch;
   }
 
   // Compiled and allocated on first use, so scenes without occlusion pay nothing.
@@ -2909,16 +2925,22 @@ export class CrucibleRenderer {
     context.uniform1f(this.uniforms.renderPassDepthRange, frame.passDepthRange ?? 100);
     if (passMode > 5) this.passSupport.bindFrame(frame, environment, volume);
     let objectBase = 0;
+    const idPass = passMode === OBJECT_ID_PASS_MODE || passMode === CRYPTOMATTE_PASS_MODE;
     for (const batch of this.batches) {
       if (this.benchmark) {
         this.drawBatch(batch, true);
-      } else if ((passMode > 5 ? this.passSupport.drawsInPass(batch, passMode) : this.drawsInOpaqueLoop(batch)) && !(mirrorTarget && batch.mapState[20])) {
-        context.uniform1f(this.uniforms.renderPassObjectBase, objectBase);
-        objectBase += batch.instanceCount;
-        // Object IDs are the instance ordinal, which culling and level selection renumber, so that pass draws every instance.
-        if (passMode > 5) this.passSupport.drawBatch(batch, passMode, frame, objectBase - batch.instanceCount);
-        else this.drawAlphaBatch(batch, true, passMode !== OBJECT_ID_PASS_MODE);
+        continue;
       }
+      const drawn = idPass ? this.takesObjectIds(batch) : (passMode > 5 ? this.passSupport.drawsInPass(batch, passMode) : this.drawsInOpaqueLoop(batch));
+      const firstObject = objectBase;
+      // A batch that takes object IDs keeps its numbers even when this pass does not draw it, so IDs agree across passes.
+      if (drawn || this.takesObjectIds(batch)) objectBase += batch.instanceCount;
+      if (!drawn || (mirrorTarget && batch.mapState[20])) continue;
+      context.uniform1f(this.uniforms.renderPassObjectBase, firstObject);
+      const drawnBatch = idPass ? this.idPassBatch(batch) : batch;
+      // Object IDs are the instance ordinal, which culling and level selection renumber, so that pass draws every instance.
+      if (passMode > 5) this.passSupport.drawBatch(drawnBatch, passMode, frame, firstObject);
+      else this.drawAlphaBatch(drawnBatch, true, passMode !== OBJECT_ID_PASS_MODE);
     }
     this.applyDepthRank(0);
     context.disable(context.SAMPLE_ALPHA_TO_COVERAGE);

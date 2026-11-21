@@ -171,7 +171,7 @@ export function installRenderPasses(renderer) {
 
   // Part names by object ID minus one, in the order the object ID pass numbers them (draw order, grouped by geometry).
   function objectParts() {
-    return renderer.batches.filter(batch => renderer.drawsInOpaqueLoop(batch)).flatMap(batch => batch.parts);
+    return renderer.batches.filter(batch => renderer.takesObjectIds(batch)).flatMap(batch => batch.parts);
   }
 
   function objectNames() {
@@ -194,7 +194,7 @@ export function installRenderPasses(renderer) {
   function materialTable() {
     const table = new Map();
     for (const batch of renderer.batches) {
-      if (!renderer.drawsInOpaqueLoop(batch)) continue;
+      if (!renderer.takesObjectIds(batch)) continue;
       for (const part of batch.parts) {
         const material = part.material;
         const key = material.id ?? material.name ?? material;

@@ -431,6 +431,8 @@ function fillHit(scene, triangleId, originX, originY, originZ, directionX, direc
     hit.roughness *= hit.mapTexel[1];
     hit.metallic *= hit.mapTexel[2];
   }
+  // A metal does not transmit: only the dielectric share of the surface lets light through (glTF KHR_materials_transmission, #2827).
+  hit.transmission *= 1 - hit.metallic;
   if (material.normalTexture) {
     TANGENT_EDGES[0] = edgeOneX;
     TANGENT_EDGES[1] = edgeOneY;

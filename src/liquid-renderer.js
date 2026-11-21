@@ -5,9 +5,13 @@ import { liquidProbeSupport, liquidWaterSupport } from './shader-registry.js';
 // The renderer's liquid and foam pass, kept apart from renderer.js so a scene without liquid or foam does not carry it.
 // liquid-shader.js registers drawLiquidPass; the renderer calls it with the frame state it needs.
 
+// The renderer binds the metallic-roughness map to unit 3 in its main pass too (MAP_UNIFORMS order, offset 1).
+const METALLIC_ROUGHNESS_UNIT = 3;
+const METALLIC_ROUGHNESS_MAP_INDEX = 2;
+
 const LIQUID_UNIFORMS = [
   'viewProjection', 'lightProjection', 'eye', 'sceneColor', 'resolution', 'exposure', 'hdrEnabled', 'worldMode', 'daylight', 'lightDirection',
-  'keyColor', 'ambientIntensity', 'fogColor', 'fogDensity', 'glassState', 'glassTint', 'liquidOptics', 'foamShape',
+  'keyColor', 'ambientIntensity', 'fogColor', 'fogDensity', 'glassState', 'glassTint', 'liquidOptics', 'foamShape', 'metallicRoughnessMap', 'hasMetallicRoughnessMap',
   'environmentSpecular', 'environmentEnabled', 'environmentIntensity', 'environmentRotation', 'environmentLevelMax',
   'time', 'probeEnabled', 'probeFloor', 'waterReflection', 'waterReflectionMatrix', 'waterClip', 'waterReflectionEnabled', 'wind', 'explosionProgress', 'explosionCenter', 'assemblyAmount',
   'skinEnabled', 'skinInfluences', 'jointPalette',
@@ -21,6 +25,7 @@ function ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fr
   renderer.liquidProgram = compileProgram(context, vertexSource, renderer.withViewTransform(fragmentSource, 'liquid'));
   renderer.liquidUniforms = Object.fromEntries(LIQUID_UNIFORMS.map(name => [name, context.getUniformLocation(renderer.liquidProgram, name)]));
   context.useProgram(renderer.liquidProgram);
+  context.uniform1i(renderer.liquidUniforms.metallicRoughnessMap, METALLIC_ROUGHNESS_UNIT);
   context.uniform1i(renderer.liquidUniforms.skinInfluences, 6);
   context.uniform1i(renderer.liquidUniforms.jointPalette, 7);
   context.uniform1i(renderer.liquidUniforms.morphTargets, 8);
@@ -73,6 +78,10 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
     const layers = batch.layerState;
     context.uniform4f(uniforms.glassState, layers[9], layers[10], layers[11], Math.min(layers[12], maximumDistance));
     context.uniform3f(uniforms.glassTint, layers[13], layers[14], layers[15]);
+    const metallicRoughnessState = batch.mapState[METALLIC_ROUGHNESS_MAP_INDEX];
+    context.activeTexture(context.TEXTURE0 + METALLIC_ROUGHNESS_UNIT);
+    context.bindTexture(context.TEXTURE_2D, batch.textures[METALLIC_ROUGHNESS_MAP_INDEX]);
+    context.uniform1f(uniforms.hasMetallicRoughnessMap, metallicRoughnessState ? 1 + (metallicRoughnessState.uvChannel ?? 0) : 0);
     liquidWaterSupport.bind?.(renderer, uniforms, batch);
     liquidProbeSupport.bind?.(renderer, uniforms, batch);
     context.bindVertexArray(batch.vertexArray);

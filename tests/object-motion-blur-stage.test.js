@@ -21,7 +21,7 @@ function recordingContext(calls) {
 }
 
 function fakeBatchRenderer(names) {
-  return { batches: [{ parts: names.map(name => ({ name })) }], drawsInOpaqueLoop: () => true };
+  return { batches: [{ parts: names.map(name => ({ name })) }], drawsInOpaqueLoop: () => true, takesObjectIds: () => true };
 }
 
 test('the object stage uploads the part deltas and the ID texture, then frees them', () => {

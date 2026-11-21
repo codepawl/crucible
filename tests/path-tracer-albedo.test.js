@@ -60,8 +60,31 @@ test('glass writes the Fresnel blend of its reflected share and its colour, not 
 test('a part with transmission blends the surface lobes and the glass lobe by that share, without noise from the glass choice', async () => {
   const color = [0.6, 0.6, 0.6];
   const glass = GLASS_NORMAL_REFLECTANCE + color[0] * (1 - GLASS_NORMAL_REFLECTANCE);
-  const expected = 0.5 * color[0] + 0.5 * glass;
-  assertClose(await centerAlbedo({ metallic: 1, transmission: 0.5, roughness: 0.3, color }), [expected, expected, expected], 'half glass metal');
+  const [opaque] = await centerAlbedo({ metallic: 0, transmission: 0, roughness: 0.3, color });
+  const expected = 0.5 * opaque + 0.5 * glass;
+  assertClose(await centerAlbedo({ metallic: 0, transmission: 0.5, roughness: 0.3, color }), [expected, expected, expected], 'half glass dielectric');
+});
+
+test('a metal does not transmit: transmission scales by one minus metallic (#2827)', async () => {
+  const color = [0.9, 0.5, 0.2];
+  const opaqueMetal = await centerAlbedo({ metallic: 1, transmission: 0, roughness: 0.4, color });
+  assertClose(await centerAlbedo({ metallic: 1, transmission: 1, roughness: 0.4, color }), opaqueMetal, 'metal with full transmission');
+  // At metallic 0.5 half of the transmission is left: the albedo is half the opaque surface and half the glass lobe.
+  const opaqueHalfMetal = await centerAlbedo({ metallic: 0.5, transmission: 0, roughness: 0.4, color });
+  const glass = color.map(channel => GLASS_NORMAL_REFLECTANCE + channel * (1 - GLASS_NORMAL_REFLECTANCE));
+  const expected = opaqueHalfMetal.map((channel, index) => 0.5 * channel + 0.5 * glass[index]);
+  assertClose(await centerAlbedo({ metallic: 0.5, transmission: 1, roughness: 0.4, color }), expected, 'half metal with full transmission');
+});
+
+test('a metal with transmission renders the same picture as the metal without it, and glass still lets the sky through (#2827)', async () => {
+  const meanOf = async material => {
+    const part = { name: 'floor', geometry: QUAD, matrix: IDENTITY, material: { tag: 'surface', color: [0.9, 0.5, 0.2], metallic: 0, roughness: 0.4, ...material } };
+    const result = await renderPathTracedImage({ parts: [part], environment: { map: constantSky(0.5) }, camera: LOOKING_DOWN }, SMALL);
+    return Array.from(result.linear).reduce((sum, value) => sum + value, 0) / result.linear.length;
+  };
+  const opaqueMetal = await meanOf({ metallic: 1, transmission: 0 });
+  assert.equal(await meanOf({ metallic: 1, transmission: 1 }), opaqueMetal);
+  assert.notEqual(await meanOf({ metallic: 0, transmission: 1 }), await meanOf({ metallic: 0, transmission: 0 }));
 });
 
 test('a matte dielectric writes its diffuse colour plus the specular layer on top, and a clear coat adds its share', async () => {
