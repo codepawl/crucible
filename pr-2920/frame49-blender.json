@@ -1,0 +1,26 @@
+{
+  "tool": "Blender 5.3.0",
+  "engine": "Workbench",
+  "subject": "CMU 02_01.bvh imported by import_anim.bvh, one tube per bone",
+  "dataFrame": 49,
+  "blenderFrame": 50,
+  "width": 640,
+  "height": 640,
+  "backend": "Workbench (GPU viewport engine, headless)",
+  "camera": {
+    "type": "orthographic",
+    "orthoScale": 2.2,
+    "location": [
+      0.564304530620575,
+      -4.756482124328613,
+      1.0562459230422974
+    ],
+    "looking": [
+      -0.0,
+      1.0,
+      -0.0
+    ],
+    "view": "front, from file +Z like the Crucible camera"
+  },
+  "colors": "red left bones, blue right bones"
+}
