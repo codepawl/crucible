@@ -3,7 +3,7 @@
 Stills of the real asset viewer page (`/assets.html`), headless Chrome on the GPU, 4 samples: `assets/deskC-desktop.png` (1440x900), `assets/deskC-phone.png` (390x844).
 
 Bytes (old to new):
-- demo model: `treasure-chest.glb` 972,316 -> `desk-flat-lay.glb` 3,849,660 (textures about 2.2 MB, geometry about 1.6 MB; table and camera 1024 px, props 512 px, JPEG quality 72; the spectacles' alpha texture stays PNG)
+- demo model: `treasure-chest.glb` 972,316 -> `desk-flat-lay.glb` 3,834,312 (table and camera 1024 px, props 512 px, JPEG quality 72; the spectacles alpha texture stays PNG)
 - sky: `kloofendal_48d_partly_cloudy_puresky_1k.hdr` (kept, used for files you open) plus new `kloofendal_28d_misty_puresky_1k.hdr` 1,235,831
 - the first desk C candidate was 4,862,168 bytes with a room, window, plant and eight props; this one has no room and four props
 
