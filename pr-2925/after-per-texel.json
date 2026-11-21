@@ -1,0 +1,125 @@
+{
+  "size": [
+    1280,
+    960
+  ],
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "crate",
+        "type": "mesh",
+        "base": {
+          "type": "box",
+          "bevel": 0.06,
+          "subdivisions": 1
+        },
+        "edits": [
+          {
+            "op": "subdivide_edges",
+            "edges": {
+              "all": true
+            },
+            "cuts": 3
+          },
+          {
+            "op": "uv_project",
+            "mode": "cube"
+          }
+        ]
+      }
+    ],
+    "materials": [
+      {
+        "id": "steel",
+        "pattern": {
+          "type": "graph",
+          "mapping": "uv",
+          "resolution": 1024,
+          "graph": {
+            "color": {
+              "mix": [
+                [
+                  0.45,
+                  0.06,
+                  0.04
+                ],
+                [
+                  0.62,
+                  0.63,
+                  0.66
+                ],
+                {
+                  "smoothstep": [
+                    0.55,
+                    0.68,
+                    {
+                      "meshMap": {
+                        "name": "curvature"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "metallic": {
+              "smoothstep": [
+                0.55,
+                0.68,
+                {
+                  "meshMap": {
+                    "name": "curvature"
+                  }
+                }
+              ]
+            },
+            "roughness": {
+              "mix": [
+                0.6,
+                0.3,
+                {
+                  "smoothstep": [
+                    0.55,
+                    0.68,
+                    {
+                      "meshMap": {
+                        "name": "curvature"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "id": "crate",
+        "geometry": "crate",
+        "material": "steel",
+        "rotation": [
+          0,
+          0.2955,
+          0,
+          0.9553
+        ]
+      }
+    ],
+    "camera": {
+      "eye": [
+        1.9,
+        1.3,
+        2.2
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "fov": 38
+    }
+  }
+}
