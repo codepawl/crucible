@@ -73,3 +73,17 @@ test('a shape larger than the mask budget is outlined at its true size', () => {
   const rights = Array.from({ length: contour.length / 4 }, (_, index) => contour[index * 4]);
   assert.ok(Math.max(...rights) >= 2999 && Math.max(...rights) <= 3002);
 });
+
+test('a long triangle thinner than a pixel stays one unbroken line, as a rope does', () => {
+  const screen = new Float32Array([10, 10, 60, 40, 60.2, 40.1]);
+  const contour = silhouetteContourSegments([{ screen, indices: [0, 1, 2] }], 100, 100);
+  const columns = new Set();
+  for (let offset = 0; offset < contour.length; offset += 4) {
+    for (let column = Math.floor(Math.min(contour[offset], contour[offset + 2])); column <= Math.ceil(Math.max(contour[offset], contour[offset + 2])); column += 1) {
+      columns.add(column);
+    }
+  }
+  for (let column = 10; column < 60; column += 1) {
+    assert.ok(columns.has(column), `column ${column} has part of the line`);
+  }
+});

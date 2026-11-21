@@ -6,10 +6,30 @@
 // screen stays interactive.
 const MAXIMUM_MASK_PIXELS = 1_500_000;
 
+// Marks the pixels along one line, so a triangle thinner than a pixel (a rope, a blade of grass) still shows as a line.
+function markLine(mask, maskWidth, maskHeight, fromX, fromY, toX, toY) {
+  const steps = Math.max(1, Math.ceil(Math.max(Math.abs(toX - fromX), Math.abs(toY - fromY))));
+  for (let step = 0; step <= steps; step += 1) {
+    const column = Math.floor(fromX + ((toX - fromX) * step) / steps);
+    const row = Math.floor(fromY + ((toY - fromY) * step) / steps);
+    if (column >= 0 && column < maskWidth && row >= 0 && row < maskHeight) {
+      mask[row * maskWidth + column] = 1;
+    }
+  }
+}
+
 function fillTriangle(mask, maskWidth, maskHeight, ax, ay, bx, by, cx, cy) {
+  const twiceArea = Math.abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay));
+  const longestSide = Math.max(Math.hypot(bx - ax, by - ay), Math.hypot(cx - bx, cy - by), Math.hypot(ax - cx, ay - cy));
+  if (twiceArea < longestSide) {
+    // Under a pixel thick: sampling pixel centres would drop pieces of it and leave dashes, so its three sides are drawn.
+    markLine(mask, maskWidth, maskHeight, ax, ay, bx, by);
+    markLine(mask, maskWidth, maskHeight, bx, by, cx, cy);
+    markLine(mask, maskWidth, maskHeight, cx, cy, ax, ay);
+    return;
+  }
   const top = Math.max(0, Math.ceil(Math.min(ay, by, cy) - 0.5));
   const bottom = Math.min(maskHeight - 1, Math.floor(Math.max(ay, by, cy) - 0.5));
-  let filledAny = false;
   for (let row = top; row <= bottom; row += 1) {
     const sampleY = row + 0.5;
     let left = Infinity;
@@ -30,15 +50,6 @@ function fillTriangle(mask, maskWidth, maskHeight, ax, ay, bx, by, cx, cy) {
     const last = Math.min(maskWidth - 1, Math.floor(right - 0.5));
     if (first <= last) {
       mask.fill(1, row * maskWidth + first, row * maskWidth + last + 1);
-      filledAny = true;
-    }
-  }
-  if (!filledAny) {
-    // A triangle thinner than a pixel still counts, or fine geometry such as leaves would leave holes in the outline.
-    const column = Math.floor((ax + bx + cx) / 3);
-    const row = Math.floor((ay + by + cy) / 3);
-    if (column >= 0 && column < maskWidth && row >= 0 && row < maskHeight) {
-      mask[row * maskWidth + column] = 1;
     }
   }
 }
