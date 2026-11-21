@@ -220,3 +220,12 @@ test('probing a water snippet compiles it with the struct declared and reports i
   assert.doesNotMatch(compiled, /\bmaterialHook\(/);
   assert.match(MATERIAL_SNIPPET_CAPABILITIES.waterHook, /WaterInputs water/);
 });
+
+test('a snippet missing its feature name is reported instead of "undefined"', () => {
+  assert.throws(() => createFragmentShader([undefined]), error => {
+    assert.match(error.message, /material snippet.*feature name/i);
+    assert.match(error.message, /Fix:/);
+    assert.doesNotMatch(error.message, /undefined feature/);
+    return true;
+  });
+});

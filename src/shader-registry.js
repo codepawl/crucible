@@ -65,6 +65,9 @@ export function registerShaderFeatureCode(feature, slots) {
 const FEATURE_ADDONS = { splat: 'splat-shader', liquid: 'liquid-shader', worldMaterials: 'world-material-shader', subsurface: 'subsurface-shader', volumeFog: 'fog-shader', linearOutput: 'linear-output-shader', retro: 'retro-shader', waterGlint: 'glitter-shader' };
 
 export function requireFeatureCode(feature) {
+  if (typeof feature !== 'string' || feature.length === 0) {
+    throw new Error(`A material snippet needs its registered feature name. Fix: pass the snippet through normalizeMaterialSnippet, or use material.snippet.feature from the normalized snippet.`);
+  }
   const slots = registeredFeatureCode.get(feature);
   if (!slots) {
     const addon = FEATURE_ADDONS[feature] ?? 'material-layer-shaders';
