@@ -67,3 +67,19 @@ Water diff = mean absolute grey difference between consecutive frames in the nea
 - Ship motion: heave 0.28 m, roll 1.7 degrees, pitch 1.1 degrees on periods of 4.2, 5.1 and 4.2 s (`translation` and `rotation` node tracks, keys every 0.25 s, smooth). The ship bobs in place; it does not sail, because the wake points are static and the emitters do not follow a moving node (#2829).
 - Mid-water crop (left, 55 to 68 percent of the height) rose from 0.74 to 1.14 because the hull now moves through it.
 - Still weak: the glitch itself (see above), mist faint, sails grey, the z-fighting warning between the two sea sheets remains.
+
+## Round 5 (galleon-preview-5.png, galleon-preview-5.mp4, sheet5.png; builder preview/build-round5.mjs)
+
+The sea uses the new water material control `ripples { strength, speed, windDirection }` (PR #2844, issue #2843): strength 0.15, speed 1, windDirection 0 (downwind with the ocean). The 48 fps blend workaround is gone: the clip is rendered at 24 fps directly. Ship bob from round 4 kept. 480x270, 24 fps, 6 s, COOK_DISABLE=1, engine build of branch 2843-water-ripple-control at e6ec7f16. Same `diff.py` and crops as round 4.
+
+| Case | nearL mean / p99 | nearR mean / p99 |
+|---|---|---|
+| Frozen, default ripples (24 fps, no blend) | 4.35 / 23.5 | 4.23 / 23.6 |
+| Frozen, ripples strength 0.25, wind-aligned | 1.78 / 10.7 | 2.26 / 11.9 |
+| Frozen, ripples strength 0.15, wind-aligned | 1.24 / 8.1 | 1.63 / 9.0 |
+| Round 4 clip (moving, 48 fps blended to 24) | 6.27 / 30.6 | 5.72 / 28.9 |
+| Round 5 clip (moving, 24 fps, strength 0.15) | 4.77 / 35.2 | 4.17 / 29.2 |
+
+- Frozen near-water mean is under 2 on both crops at strength 0.15 (measured); 0.25 passes on the left crop only (2.26 on the right), so I kept 0.15. One retune only.
+- Moving near-water mean fell by about 24 percent left and 27 percent right against round 4. The p99 did not fall on the left (35.2 against 30.6): the remaining difference is camera motion, the ship's own heave, the wake and the particles, which the ripple control does not touch. Mid crop 1.31 against 1.14 and far 0.98 against 0.90 are the moving hull and the clip's own motion, within the noise of round 4.
+- Not judged here: how the calmer water looks. Strength 0.15 lowers the sun-glint facets too, which is a look call for An.
