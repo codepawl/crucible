@@ -1,0 +1,71 @@
+{
+  "note": "Ours: retargeted X Bot joints (rootMotion false), front orthographic stick figure, 2.2 m over 640 px, centred on the hips, data frame 49. Spreads are lateral (x) distances in metres between the left and right joints; each pair is [ours, Blender with the CMU skeleton at 5.64 cm per unit].",
+  "spreads": [
+    {
+      "dataFrame": 1,
+      "hipSpread": [
+        0.16152664806675765,
+        0.1814749264187283
+      ],
+      "kneeSpread": [
+        0.04972308366307196,
+        0.058899451785617396
+      ],
+      "ankleSpread": [
+        0.03875887123749766,
+        0.03955518680148651
+      ]
+    },
+    {
+      "dataFrame": 25,
+      "hipSpread": [
+        0.16178112436361625,
+        0.1817608155144585
+      ],
+      "kneeSpread": [
+        0.07602437853198375,
+        0.08424878735012475
+      ],
+      "ankleSpread": [
+        0.01683385575951428,
+        0.010473036448160888
+      ]
+    },
+    {
+      "dataFrame": 49,
+      "hipSpread": [
+        0.16400526869166113,
+        0.18425969399346248
+      ],
+      "kneeSpread": [
+        0.08306627201619088,
+        0.09189517678154835
+      ],
+      "ankleSpread": [
+        0.09843257368286533,
+        0.08439891815185552
+      ]
+    },
+    {
+      "dataFrame": 60,
+      "hipSpread": [
+        0.16380523792354634,
+        0.1840447523328993
+      ],
+      "kneeSpread": [
+        0.08437588900079177,
+        0.09300126775105799
+      ],
+      "ankleSpread": [
+        0.08750168902321409,
+        0.07339958953857423
+      ]
+    }
+  ],
+  "camera": {
+    "type": "orthographic",
+    "orthoScale": 2.2,
+    "size": 640,
+    "view": "front"
+  }
+}
