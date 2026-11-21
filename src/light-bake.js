@@ -37,6 +37,7 @@ const SKY_VISIBLE_ENOUGH = 0.98;
 // The renderer's own soft edge for a spot light that gives none.
 const DEFAULT_SPOT_PENUMBRA = 0.15;
 
+const BACK_FACE_ATTRIBUTES = ['positions', 'normals', 'uvs', 'colors', 'skyVisibility', 'surfaceMasks'];
 const MAP_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
 const SURFACE_UTILIZATION_FLOOR = 0.05;
 const MINIMUM_AXIS_SCALE = 1e-6;
@@ -647,6 +648,36 @@ function unscaledAfterUnwrap(extracted, scale) {
 }
 
 /** Gives a geometry its lightmap UVs in channel 0, from the unwrap that `uv_unwrap` uses. */
+/**
+ * A copy of the geometry followed by its back faces: the same corners in reverse winding with flipped normals. A two-sided part
+ * unwraps and bakes this doubled mesh, so each face has its own lightmap texels and the lit side never lends its light to the other.
+ */
+function withBackFaces(geometry) {
+  const vertexCount = geometry.positions.length / 3;
+  const doubled = { indices: new Uint32Array(geometry.indices.length * 2) };
+  doubled.indices.set(geometry.indices);
+  for (let triangle = 0; triangle < geometry.indices.length / 3; triangle++) {
+    const first = triangle * 3;
+    doubled.indices[geometry.indices.length + first] = geometry.indices[first] + vertexCount;
+    doubled.indices[geometry.indices.length + first + 1] = geometry.indices[first + 2] + vertexCount;
+    doubled.indices[geometry.indices.length + first + 2] = geometry.indices[first + 1] + vertexCount;
+  }
+  for (const attribute of BACK_FACE_ATTRIBUTES) {
+    const values = geometry[attribute];
+    if (!values) continue;
+    const copy = new Float32Array(values.length * 2);
+    copy.set(values);
+    for (let slot = 0; slot < values.length; slot++) copy[values.length + slot] = attribute === 'normals' ? -values[slot] : values[slot];
+    doubled[attribute] = copy;
+  }
+  return doubled;
+}
+
+/** Leaves the part single-sided once its back faces are real triangles, so no face is drawn twice. */
+function withoutDoubleSided(part) {
+  return { ...part, material: { ...part.material, doubleSided: false } };
+}
+
 function unwrapForLightmap(geometry, scale, margin) {
   const { positions, normals, indices } = scaledForUnwrap(geometry, scale);
   const mesh = meshFromGeometry({ positions, normals, indices }, { quads: false, tags: 'none' });
@@ -1026,12 +1057,15 @@ export function planLightmaps(parts, lighting, options = {}) {
     const cache = slot ? secondSetCache : unwrapCache;
     if (!cache.has(part.geometry)) cache.set(part.geometry, new Map());
     const unwraps = cache.get(part.geometry);
-    const key = scaleKey(scale);
+    const twoSided = part.material.doubleSided === true;
+    const key = `${scaleKey(scale)}|${twoSided}`;
+    const area = worldTriangleArea(part) * (twoSided ? 2 : 1);
     if (!unwraps.has(key)) {
-      const margin = chartMargin(worldTriangleArea(part), settings);
-      unwraps.set(key, slot ? unwrapIntoSecondUvSet(part.geometry, scale, margin) : unwrapForLightmap(part.geometry, scale, margin));
+      const source = twoSided ? withBackFaces(part.geometry) : part.geometry;
+      const margin = chartMargin(area, settings);
+      unwraps.set(key, slot ? unwrapIntoSecondUvSet(source, scale, margin) : unwrapForLightmap(source, scale, margin));
     }
-    entries.push({ part, index, unwrapped: unwraps.get(key), area: worldTriangleArea(part), slot });
+    entries.push({ part, index, unwrapped: unwraps.get(key), area, slot, twoSided });
   });
   return { parts, lights, settings, started, entries, skipped };
 }
@@ -1108,7 +1142,7 @@ export function finishLightmaps(plan, settings, rasterized, gathered, sizes) {
   const baked = plan.parts.slice();
   const partReports = [];
   rasterized.forEach(({ entry, resolution, positions, normals, covered, nearestDistance }, entryNumber) => {
-    const { part, index, unwrapped, area, slot } = entry;
+    const { part, index, unwrapped, area, slot, twoSided } = entry;
     const { light, escaped } = gathered[entryNumber];
     const albedo = diffuseAlbedo(part.material);
     const radiance = new Float32Array(resolution * resolution * 3);
@@ -1142,7 +1176,7 @@ export function finishLightmaps(plan, settings, rasterized, gathered, sizes) {
     const smoothPeak = smoothRadiance.reduce((largest, value) => Math.max(largest, value), 0);
     if (smoothPeak > 0) bakedResult = (slot ? lightMappedPart : bakedPart)(part, unwrapped.geometry, lightmapTexture(smoothRadiance, resolution, smoothPeak), smoothPeak);
     if (sealed) bakedResult = skyVisibilityPart(bakedResult, unwrapped.geometry, skyVisibilityTexture(smoothSkyVisibility, resolution), slot);
-    baked[index] = bakedResult;
+    baked[index] = twoSided && bakedResult !== part ? withoutDoubleSided(bakedResult) : bakedResult;
   });
   const report = { parts: partReports, skipped: plan.skipped, texels: sizes.texels, rayWork: sizes.rayWork, backend: settings.backend, seconds: (performance.now() - plan.started) / 1000 };
   return { parts: baked, report };

@@ -15,7 +15,7 @@ const PRESET_SAMPLES_FLOOR = 16;
 // without a bake never download the ray tracer.
 
 const BAKE_FIELDS = ['preset', 'samples', 'bounces', 'texelsPerUnit', 'probes', 'irradianceGrid', 'gridFog', 'rebake'];
-const BAKED_MATERIAL_FIELDS = ['emission', 'emissiveColor', 'emissiveMap', 'lightMap', 'lightMapScale', 'occlusionMap', 'occlusionStrength'];
+const BAKED_MATERIAL_FIELDS = ['emission', 'emissiveColor', 'emissiveMap', 'lightMap', 'lightMapScale', 'occlusionMap', 'occlusionStrength', 'doubleSided'];
 
 /** Validates a recipe bake section and returns the plain, resolved form stored in the recipe (null clears it). */
 export function normalizeAgentBake(input) {
@@ -247,7 +247,7 @@ function timeLimitMessage(error, settings) {
   return `${error.message} The scene is unchanged. Try samples ${lowerSamples}, or texelsPerUnit ${Math.max(BAKE_RANGES.texelsPerUnit[0], Math.round(settings.texelsPerUnit / 2 * 100) / 100)}.`;
 }
 
-// The baked part keeps reading every other material field from the live material, so motion tracks still drive it.
+// The baked part keeps reading every other material field from the live material (doubleSided is baked: a two-sided part bakes its back faces as triangles), so motion tracks still drive it.
 function liveBakedMaterial(liveMaterial, bakedMaterial) {
   const output = {};
   for (const field of Object.keys(bakedMaterial)) {
