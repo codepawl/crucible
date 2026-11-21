@@ -179,3 +179,29 @@ test('a recipe fixed joint with breakImpulse breaks under a hard hit and the rep
   assert.throws(() => createAgentScene(recipe(physics({ ...glue, type: 'spherical' }), [slab])), /breakImpulse/);
   assert.throws(() => createAgentScene(recipe(physics({ ...glue, breakImpulse: 0 }), [slab])), /breakImpulse/);
 });
+
+test('recipe bodies can be spawned or enabled at a tick', () => {
+  const scene = createAgentScene(recipe({
+    duration: 2,
+    bodies: [
+      { node: 'floor', type: 'fixed' },
+      { node: 'ball', shape: 'ball', enabled: false },
+    ],
+    events: [{ time: 0.5, type: 'spawn', body: 'ball' }],
+  }));
+  scene.sampleMotion(0.5);
+  assert.equal(scene.parts[1].matrix[13], 2);
+  scene.sampleMotion(0.9);
+  assert.ok(scene.parts[1].matrix[13] < 1.8);
+
+  const enabled = createAgentScene(recipe({
+    duration: 2,
+    bodies: [
+      { node: 'floor', type: 'fixed' },
+      { node: 'ball', shape: 'ball', enabled: false },
+    ],
+    events: [{ time: 0.5, type: 'enable', body: 'ball' }],
+  }));
+  enabled.sampleMotion(0.5);
+  assert.equal(enabled.parts[1].matrix[13], 2);
+});

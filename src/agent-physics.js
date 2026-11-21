@@ -27,7 +27,7 @@ const BODY_TYPES = ['dynamic', 'fixed', 'kinematic'];
 const SHAPES = PHYSICS_BODY_SHAPES;
 export const COMPOUND_PART_SHAPES = ['box', 'ball', 'capsule', 'cylinder', 'cone'];
 const JOINT_TYPES = ['spherical', 'revolute', 'prismatic', 'fixed', 'spring'];
-const BODY_FIELDS = ['node', 'type', 'shape', 'shapes', 'mass', 'density', 'friction', 'restitution', 'sensor', 'velocity', 'angularVelocity', 'layer', 'collidesWith', 'float'];
+const BODY_FIELDS = ['node', 'type', 'shape', 'shapes', 'mass', 'density', 'friction', 'restitution', 'sensor', 'velocity', 'angularVelocity', 'layer', 'collidesWith', 'float', 'enabled'];
 const COMPOUND_PART_FIELDS = ['shape', 'translation', 'rotation', 'halfExtents', 'radius', 'halfHeight'];
 const JOINT_FIELDS = ['name', 'type', 'bodyA', 'bodyB', 'anchorA', 'anchorB', 'axis', 'limits', 'motor', 'restLength', 'stiffness', 'damping', 'contactsEnabled', 'breakImpulse'];
 const MOTOR_FIELDS = ['mode', 'target', 'stiffness', 'damping', 'maxForce'];
@@ -138,6 +138,12 @@ function normalizeBody(input, recipeNodes, motionNodeIds, claimedNodes, path) {
       throw invalidField(`${path}.float`, input.float, `no float since the body is ${type}; only dynamic bodies float, such as type "dynamic"`, TypeError);
     }
     body.float = normalizeFloat(input.float, `${path}.float`);
+  }
+  if (input.enabled !== undefined) {
+    if (typeof input.enabled !== 'boolean') {
+      throw invalidField(`${path}.enabled`, input.enabled, 'true or false', TypeError);
+    }
+    body.enabled = input.enabled;
   }
   if (shape === 'compound') {
     const parts = boundedArray(input.shapes, MAX_COMPOUND_SHAPES, `${path}.shapes`);
@@ -255,8 +261,8 @@ function normalizeJoint(input, bodyNodeIds, jointNames, path) {
 function normalizeEvent(input, duration, bodyTypes, jointNames, path) {
   knownKeys(input, EVENT_FIELDS, path);
   const type = input.type ?? 'impulse';
-  if (!['impulse', 'kinematicPose', 'jointMotor'].includes(type)) {
-    throw invalidField(`${path}.type`, type, 'one of impulse, kinematicPose, jointMotor');
+  if (!['impulse', 'kinematicPose', 'jointMotor', 'spawn', 'enable'].includes(type)) {
+    throw invalidField(`${path}.type`, type, 'one of impulse, kinematicPose, jointMotor, spawn, enable');
   }
   const maxTick = Math.max(0, Math.round(duration * FRAMES_PER_SECOND) - 1);
   let tick;
@@ -274,6 +280,9 @@ function normalizeEvent(input, duration, bodyTypes, jointNames, path) {
   }
   if (!bodyTypes.has(input.body)) {
     throw invalidField(`${path}.body`, input.body, `the node of a physics body, one of ${[...bodyTypes.keys()].slice(0, 5).join(', ') || 'none yet'}`);
+  }
+  if (type === 'spawn' || type === 'enable') {
+    return { tick, type: 'spawn', body: input.body };
   }
   const event = { tick, type, body: input.body };
   if (type === 'impulse') {
@@ -513,6 +522,7 @@ function physicsDefinition(physics, recipe, geometries, ragdoll) {
       name: node.id, type: body.type, translation: node.translation, rotation: node.rotation,
       ...(body.velocity ? { linearVelocity: body.velocity } : {}),
       ...(body.angularVelocity ? { angularVelocity: body.angularVelocity } : {}),
+      ...(body.enabled === false ? { enabled: false } : {}),
     });
     const commonCollider = {
       body: node.id,

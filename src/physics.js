@@ -311,7 +311,7 @@ function prepare(definition, options) {
     throw new RangeError(`physics memory plan ${estimatedPeakBytes} exceeds maxMemoryBytes ${maxMemoryBytes}`);
   }
   const bodies = rawBodies.map(body => {
-    fields(body, ['name', 'type', 'translation', 'rotation', 'linearVelocity', 'angularVelocity', 'linearDamping', 'angularDamping', 'ccd', 'float'], `body ${body.name}`);
+    fields(body, ['name', 'type', 'translation', 'rotation', 'linearVelocity', 'angularVelocity', 'linearDamping', 'angularDamping', 'ccd', 'float', 'enabled'], `body ${body.name}`);
     const type = body.type ?? 'dynamic';
     if (!['dynamic', 'fixed', 'kinematic'].includes(type)) {
       throw new TypeError(`body ${body.name} has unsupported type`);
@@ -328,9 +328,13 @@ function prepare(definition, options) {
     if (body.float !== undefined && definition.ocean === undefined) {
       throw new TypeError(`body ${body.name} floats but the definition has no ocean; add ocean, such as { windSpeed: 5 }`);
     }
+    if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
+      throw new TypeError('enabled must be boolean');
+    }
     return {
       name: body.name,
       type,
+      enabled: body.enabled ?? true,
       float: body.float === undefined ? undefined : requireBuoyancy(`body ${body.name}`).normalizeFloat(body.float, `body ${body.name}.float`),
       translation: vector(body.translation, 3, 'translation', ZERO),
       rotation: rotation(body.rotation, 'rotation'),
@@ -541,6 +545,11 @@ function prepare(definition, options) {
       if (!['revolute', 'prismatic'].includes(joints[joint].type)) throw new TypeError('motor events require a revolute or prismatic joint');
       initialJointCoordinate(joints[joint], bodies);
       return { tick, type, order, joint, motor: jointMotor(event.motor, joints[joint]) };
+    }
+    if (type === 'spawn' || type === 'enable') {
+      fields(event, ['tick', 'body', 'type'], `event ${order}`);
+      const body = bodyIndex(event.body);
+      return { tick, body, type: 'spawn', order };
     }
     fields(event, ['tick', 'body', 'type', 'impulse', 'torqueImpulse', 'point', 'translation', 'rotation'], `event ${order}`);
     const body = bodyIndex(event.body);
@@ -818,6 +827,13 @@ function colliderDescriptor(rapier, collider) {
   return descriptor;
 }
 
+function setBodyEnabled(body, colliders, enabled) {
+  if (typeof body.setEnabled === 'function') body.setEnabled(enabled);
+  for (const collider of colliders) {
+    if (typeof collider.setEnabled === 'function') collider.setEnabled(enabled);
+  }
+}
+
 /** Build the Rapier world for a prepared scene. Shared by the recorded bake and the live runtime. Frees itself on failure. */
 export function createRapierWorld(rapier, preparedScene) {
   const world = new rapier.World(xyz(preparedScene.gravity));
@@ -836,6 +852,7 @@ export function createRapierWorld(rapier, preparedScene) {
       }
       descriptor.setTranslation(...body.translation);
       descriptor.setRotation(xyzw(body.rotation));
+      descriptor.setEnabled(body.enabled ?? true);
       if (body.type === 'dynamic') {
         descriptor.setLinvel(...body.linearVelocity);
         descriptor.setAngvel(xyz(body.angularVelocity));
@@ -845,8 +862,12 @@ export function createRapierWorld(rapier, preparedScene) {
       }
       return world.createRigidBody(descriptor);
     });
+    const bodyColliders = bodies.map(() => []);
     preparedScene.colliders.forEach((collider, colliderIndex) => {
-      const created = world.createCollider(colliderDescriptor(rapier, collider), bodies[collider.body]);
+      const descriptor = colliderDescriptor(rapier, collider);
+      if (typeof descriptor.setEnabled === 'function') descriptor.setEnabled(preparedScene.bodies[collider.body].enabled ?? true);
+      const created = world.createCollider(descriptor, bodies[collider.body]);
+      bodyColliders[collider.body].push(created);
       colliderIndices.set(created.handle, colliderIndex);
     });
     const joints = preparedScene.joints.map(joint => {
@@ -870,7 +891,11 @@ export function createRapierWorld(rapier, preparedScene) {
       if (joint.motor !== undefined) applyJointMotor(rapier, created, joint.motor);
       return created;
     });
-    return { world, bodies, joints, colliderIndices };
+    for (let bodyIndex = 0; bodyIndex < bodies.length; bodyIndex++) {
+      const enabled = preparedScene.bodies[bodyIndex].enabled ?? true;
+      if (!enabled) setBodyEnabled(bodies[bodyIndex], bodyColliders[bodyIndex], false);
+    }
+    return { world, bodies, joints, colliderIndices, bodyColliders };
   } catch (error) {
     world.free();
     throw error;
@@ -936,7 +961,7 @@ function breakJointsHitHard(world, eventQueue, preparedScene, colliderIndices, b
 
 function bakePrepared(preparedScene) {
   const rapier = rapierEngine;
-  const { world, bodies, joints, colliderIndices } = createRapierWorld(rapier, preparedScene);
+  const { world, bodies, joints, colliderIndices, bodyColliders } = createRapierWorld(rapier, preparedScene);
   const eventQueue = new rapier.EventQueue(true);
   const contactEvents = [];
   const jointBreaks = [];
@@ -954,6 +979,19 @@ function bakePrepared(preparedScene) {
           eventIndex++;
           if (event.type === 'jointMotor') {
             applyJointMotor(rapier, joints[event.joint], event.motor);
+            continue;
+          }
+          if (event.type === 'spawn') {
+            const body = bodies[event.body];
+            const definition = preparedScene.bodies[event.body];
+            body.setTranslation(xyz(definition.translation), true);
+            body.setRotation(xyzw(definition.rotation), true);
+            if (definition.type === 'dynamic') {
+              body.setLinvel(xyz(definition.linearVelocity), true);
+              body.setAngvel(xyz(definition.angularVelocity), true);
+            }
+            setBodyEnabled(body, bodyColliders[event.body], true);
+            if (definition.type === 'dynamic' && typeof body.wakeUp === 'function') body.wakeUp();
             continue;
           }
           const body = bodies[event.body];

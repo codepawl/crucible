@@ -135,7 +135,7 @@ The addon requires the optional peer dependency `@dimforge/rapier3d-compat@0.21.
 
 Colliders are `ball` (`radius`), `cuboid` (`halfExtents`) and `capsule` (`radius`, `halfHeight` along local Y). Joints are `spherical`, `revolute` and `prismatic` (with a unit `axis`, and optional `limits` and `motor`) and `fixed`. A position motor takes `target`, positive `stiffness`, nonnegative `damping` and positive `maxForce`. A velocity motor takes `target`, positive `damping` and positive `maxForce`.
 
-Tick events run before their tick's integration step. Frame zero records the initial pose, tick zero events affect frame one, and the last valid tick is `frameCount - 2`. An `impulse` event targets a dynamic body with world-space `impulse` and `torqueImpulse` vectors, and an optional world `point`. `duration` equals `(frameCount - 1) * timestep`. `planPhysicsScene` validates the whole definition without loading Rapier, and its frozen result holds the exact `timelineBytes` and an estimated `solverReserveBytes`.
+Tick events run before their tick's integration step. Frame zero records the initial pose, tick zero events affect frame one, and the last valid tick is `frameCount - 2`. An `impulse` event targets a dynamic body with world-space `impulse` and `torqueImpulse` vectors, and an optional world `point`. A `spawn` (or `enable`) event activates a body declared with `enabled: false` at its definition pose and velocity. `duration` equals `(frameCount - 1) * timestep`. `planPhysicsScene` validates the whole definition without loading Rapier, and its frozen result holds the exact `timelineBytes` and an estimated `solverReserveBytes`.
 
 ## Limits
 

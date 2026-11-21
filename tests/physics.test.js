@@ -701,3 +701,22 @@ test('a force-field and spring bake matches the output recorded before the live-
   scene.dispose();
   assert.equal(hash.digest('hex'), '0ca9567131bd01531d04580283f2ea10009cc2180e1f08c60b1d3bd523e8fb1c');
 });
+
+test('a disabled body stays out of the simulation until a spawn or enable event', async () => {
+  const definition = fallingBoxDefinition();
+  definition.bodies[1].enabled = false;
+  definition.events = [{ tick: 30, type: 'spawn', body: 'box' }];
+  const scene = await createPhysicsScene(definition, { frameCount: 121 });
+  const initial = bodyPose(scene, 0, 'box');
+  near(bodyPose(scene, 30 * scene.timestep, 'box')[1], initial[1], 1e-5);
+  assert.ok(bodyPose(scene, 0.8, 'box')[1] < initial[1] - 0.2);
+  scene.dispose();
+
+  const enabled = fallingBoxDefinition();
+  enabled.bodies[1].enabled = false;
+  enabled.events = [{ tick: 30, type: 'enable', body: 'box' }];
+  const enabledScene = await createPhysicsScene(enabled, { frameCount: 121 });
+  near(bodyPose(enabledScene, 30 * enabledScene.timestep, 'box')[1], initial[1], 1e-5);
+  assert.ok(bodyPose(enabledScene, 0.8, 'box')[1] < initial[1] - 0.2);
+  enabledScene.dispose();
+});
