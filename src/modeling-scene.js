@@ -2,6 +2,11 @@ import { mat4, quat } from 'gl-matrix';
 import { lathe, extrude, tube } from './modeling.js';
 import { cylinder, sphere, torus } from './geometry.js';
 import { createSceneGraph } from './scene-graph.js';
+import { groundPart } from './renderer.js';
+
+// A warm mid-tone floor, and a backdrop of the same tone so no sky band shows behind the lantern.
+const FLOOR_COLOR = [0.17, 0.135, 0.105];
+const FLOOR_BACKGROUND = [0.34, 0.16, 0.065];
 
 /** Original mechanical lantern study built with reusable profile, contour and path tools. */
 export function createLanternScene({ textures = {} } = {}) {
@@ -63,13 +68,15 @@ export function createLanternScene({ textures = {} } = {}) {
     add(`Emitter suspension ${index}`, meshes.innerArch, steel, [0, 0.2, 0], [0.4, 0.8, 0.4], [0, index / 8 * 360, 0]);
     add(`Crown fastener ${index}`, meshes.bolt, steel, [Math.cos(angle) * 0.5, 2.355, Math.sin(angle) * 0.5], [0.021, 0.012, 0.021]);
   }
+  const ground = groundPart(0.04);
+  ground.material = { ...ground.material, color: FLOOR_COLOR };
   const graph = createSceneGraph([
     { name: 'Lantern assembly' },
     ...parts.map(part => ({ ...part, parent: 'Lantern assembly' })),
   ]);
   for (const entry of rotating) entry.localMatrix = graph.getNode(entry.part.name).localMatrix;
   return {
-    name: 'Aster lantern', parts: graph.parts, graph,
+    name: 'Aster lantern', parts: graph.parts, graph, ground, background: FLOOR_BACKGROUND,
     sample(time = 0, aspect = 16 / 9) {
       if (!Number.isFinite(time) || !Number.isFinite(aspect) || aspect <= 0) throw new TypeError('Scene time and aspect must be finite, with positive aspect.');
       for (const entry of rotating) {

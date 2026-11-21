@@ -99,7 +99,7 @@ const save = mountButton(document.querySelector('#modeling-save'), { onClick: as
   finally { save.update({ disabled: false, label: 'Save PNG' }); }
 } });
 try {
-  renderer = new CrucibleRenderer(canvas, scene.parts, { ground: true, hdr: true, samples: boundedOption('samples', 4, 1, 8), pixelRatio: exporting ? 1 : Math.min(devicePixelRatio, 1.5), memoryBudgetMiB: boundedOption('memory', 256, 32, 1024) });
+  renderer = new CrucibleRenderer(canvas, scene.parts, { ground: scene.ground, background: scene.background, hdr: true, samples: boundedOption('samples', 4, 1, 8), pixelRatio: exporting ? 1 : Math.min(devicePixelRatio, 1.5), memoryBudgetMiB: boundedOption('memory', 256, 32, 1024) });
   const triangles = scene.parts.reduce((total, part) => total + part.geometry.indices.length / 3, 0);
   document.querySelector('#modeling-stat').textContent = `${scene.parts.length} parts · ${renderer.batches.length} draws · ${Math.round(triangles / 1000)}k triangles`;
   window.__scene = { scene, renderer, duration: 12, renderAt, pause: () => setPlaying(false) };
