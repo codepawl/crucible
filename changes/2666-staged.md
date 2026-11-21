@@ -1,1 +1,0 @@
-- Lights of the later parts of a staged showcase world reach the scene like the first part's (#2666).

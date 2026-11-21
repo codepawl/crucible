@@ -1,1 +1,0 @@
-- `crucible pack` renders the poster itself in headless Chrome (`--poster-size <w>x<h>`, default 1280x720, writes `poster.webp`); `--poster <picture>` uses your own and `--no-poster` skips it (#2178)

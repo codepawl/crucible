@@ -1,6 +1,6 @@
 {
   "name": "@codepawlhq/crucible",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "private": false,
   "type": "module",
   "description": "3D engine that AI agents drive: a WebGL2 rasterizer, a path tracer on CPU and WebGL2 (Vulkan with an optional package, WebGPU opt-in), an MCP server, and PNG, MP4 and GLB export",
@@ -293,7 +293,7 @@
   },
   "devDependencies": {
     "@codepawlhq/crucible-denoise-oidn": "file:packages/denoise-oidn",
-    "@codepawlhq/cook": "git+https://github.com/codepawl/cook.git#e95e91daf84010ce8d6a0df48d823fc77444ad3e",
+    "@codepawlhq/cook": "git+https://github.com/codepawl/cook.git#7121681d94c434e3f293885a4eb31981354bdecd",
     "@dimforge/rapier3d-compat": "0.21.0",
     "@modelcontextprotocol/client": "2.4.0",
     "@modelcontextprotocol/server": "2.4.0",

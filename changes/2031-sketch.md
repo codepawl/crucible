@@ -1,1 +1,0 @@
-- Icon jobs gain `style: "sketch"`, which inks the outline and hatches the shadow with pencil lines that still read at 64 px; `angles: 4|8` draws a turnaround sheet per item, and `breakdown: true` writes a shaded, outline, hatching, final strip per item (#2031)

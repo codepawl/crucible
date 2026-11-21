@@ -1,3 +1,0 @@
-- Studio marks the file as unsaved after a camera, lens or view edit (orbiting still does not), and picking a mesh after the Sun, a light or the camera leaves the Look or Camera tab instead of leaving the Properties card on the old object (#2177)
-- Studio undo and redo apply the difference to the scene in place when only fields, materials, looks or sections changed, so a large scene no longer freezes for seconds on each step; adding, deleting or a change that removes a field still rebuilds it (#2787)
-- Studio keyboard shortcuts keep working after a drag on the timeline or a slider; before, the tools, play and keyframe keys were ignored until another control was clicked (#2177)

@@ -1,2 +1,0 @@
-- entry:studio: the optional Studio addon gains its whole editing surface in this step (object-axis move, rotate and scale handles, the selection outline, scene templates, the icon set and the floating layout with its stylesheet); nothing of it is loaded by the core or by a scene that does not open Studio.
-- entry:studio+lazy: the same Studio growth, counted with its lazy chunks; the lazy chunks themselves did not change.

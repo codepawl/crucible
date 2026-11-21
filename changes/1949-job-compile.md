@@ -1,1 +1,0 @@
-- A film or stills job whose first frame compiled kernels now says so in its render report, also in the concise result, and the render estimate no longer counts that one-time compile (#1949).

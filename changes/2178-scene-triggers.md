@@ -1,1 +1,0 @@
-- `<crucible-scene>` takes `scroll="orbit 0 90"`, `hover-tilt="6"` and `view="close"` attributes that move the camera from the page, drawing frames only while one is moving (#2178)

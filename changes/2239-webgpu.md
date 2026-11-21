@@ -1,1 +1,0 @@
-- The WebGPU path tracer (`backend: "webgpu"`, megakernel) keeps parts that share one mesh as instances, like the `gpu` backend, so the triangle limit counts a shared mesh once and memory grows with the copies, not their triangles (#2239)

@@ -1,1 +1,0 @@
-- `crucible pack` now carries a recipe's baked lightmaps: the bake runs in Node at pack time, the texels travel as bytes, and `<crucible-scene>` draws them with no bake code and no tracing on the page; a bake over 262,144 texels is refused with the field to lower (#2178)

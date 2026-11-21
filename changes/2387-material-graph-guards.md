@@ -1,1 +1,0 @@
-- Wear packs a NaN vertex weight as no wear and refuses a dirt group with a different weight count, the material graph refuses a bake resolution that is not a whole number of at least 1, and a sliced texture upload refuses a fractional size and names the field in its errors (#2387, #2388, #2389)

@@ -1,4 +1,0 @@
-- entry:modeling: the cloud builder (puff layout, smooth union, base cut) is about 1.5 KB gzip and is the whole feature; it loads only for recipes that contain a cloud geometry.
-- scene:agent-scene: 244 bytes gzip in the core for the cloud geometry's schema, field list and capability text, so agents can find and validate it without loading the builder.
-- scene:agent-scene+lazy: the lazy modeling chunk carries the cloud builder, 1.5 KB gzip, loaded only by recipes that use it.
-- goal:agent-scene: an agent-facing capability (anime cumulus from one geometry record); the builder itself is outside the core bundle.

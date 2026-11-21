@@ -1,2 +1,0 @@
-- scene:agent-scene+lazy: three guards that stop a NaN vertex attribute, a zero-sized bake and a fractional texture upload, 124 bytes gzip.
-- goal:agent-scene: the same guards, 62 bytes gzip, mostly the upload size check that runs for every sliced texture.

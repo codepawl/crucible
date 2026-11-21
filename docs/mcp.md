@@ -10,7 +10,7 @@ Release `0.7.0` adds [procedural motion](agent-motion.md), transient preview see
 Release `0.8.0` adds [imported character motion](agent-character-motion.md) with source joints and independent clip timing.
 Release `0.9.0` adds [visual review](agent-review.md) for several labeled views or poses from one isolated snapshot.
 
-This guide follows `main`, and the npm release can be older. A field, tool or behavior that the last release does not have carries a tag such as `{since 0.22.0}`: it needs that release or a later one, and an older server refuses it by name. `npx -y -p @codepawlhq/crucible crucible-mcp --version` prints the installed version. `npm run check:guide-fields` fails when this guide or the [game guide](game.md) names a field that is newer than the last release without the tag.
+This guide follows `main`, and the npm release can be older. A field, tool or behavior that the last release does not have carries a tag such as `{since 0.23.0}`: it needs that release or a later one, and an older server refuses it by name. `npx -y -p @codepawlhq/crucible crucible-mcp --version` prints the installed version. `npm run check:guide-fields` fails when this guide or the [game guide](game.md) names a field that is newer than the last release without the tag.
 
 To see what changed, including changes not yet released, read `https://crucible.codepawl.com/changelog.json`: `released` sections, `unreleased` entries and each entry's issue number and `breaking` flag.
 
@@ -218,7 +218,7 @@ A `mesh` geometry starts from one of the others as `base` and replays an edit lo
 Geometry fields remain flat inside each geometry record.
 Set operations use `set-node`, `set-material`, or `set-camera`, with fields directly on each command.
 
-`set-motion` accepts a complete motion record or `null` to clear it, or `removeTracks` selectors to drop some tracks {since 0.22.0}.
+`set-motion` accepts a complete motion record or `null` to clear it, or `removeTracks` selectors to drop some tracks.
 `scene_look` can seek procedural `motionTime` without changing revisions. Omission preserves the last preview pose.
 An explicit `null` restores the authored base pose. Release `0.8.0` also supports imported source-node motion.
 Imported clip sampling remains available through `set-animation`.

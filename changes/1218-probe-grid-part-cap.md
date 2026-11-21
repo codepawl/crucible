@@ -1,1 +1,0 @@
-- Light probes, object reflection probes and the irradiance grid now take up to 1,024 parts instead of 256, so a house-sized scene built through MCP keeps its baked light and reflections (#1218).

@@ -1,1 +1,0 @@
-- entry:crucible-scene: a packed lightmap is plain bytes, and the page must wrap them in the ImageData the renderer uploads (188 bytes gzip); without it a baked pack fails with a texImage2D error in Chrome.

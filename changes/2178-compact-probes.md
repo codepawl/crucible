@@ -1,1 +1,0 @@
-- `crucible pack` stores reflection probes as RGBE bytes instead of Float32, which cuts the gzip data of a scene with metal parts by 55 percent (#2178)

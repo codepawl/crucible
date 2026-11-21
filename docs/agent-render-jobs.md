@@ -160,7 +160,7 @@ Videos hold the lit image only.
 A seek to any frame gives the same pixels: a job samples each frame from its time and keeps no state between frames.
 `npm run smoke:render-passes` proves it through MCP: it renders eight stills with every pass, then renders frame 3 again as an image in a different order of seeks and compares the bytes of the lit image and all five passes.
 
-### ID mattes {since 0.22.0}
+### ID mattes
 
 `settings.mattes` on an `image` or `stills` job writes one gray PNG per entry next to the lit image: `render-matte-<n>.png` (`frame-N-matte-<n>.png` for stills), where `<n>` is the entry's position. A pixel is white where the named part is drawn and black elsewhere.
 
@@ -206,7 +206,7 @@ Passes in these formats are drawn into half-float targets, so albedo, normal and
 The path tracer writes an 8-bit PNG of the whole frame: `transparent`, `format` and `region` are refused with `renderer`. H.264 has no alpha, so `transparent` and `format` are refused for video. 16-bit and EXR output need `EXT_color_buffer_float`; without it the job fails with a message that says to use `png`.
 A `png16` or `exr` frame is up to four times the 8-bit frame limit (48 MiB). A region with the browser H.264 encoder (`encoder: "nvenc"`) uses screenshot frames instead.
 
-## Icons {since 0.22.0}
+## Icons
 
 `kind: "icons"` renders a set of GLBs as matching transparent square icons in one job, for inventories, asset browsers and docs. It is a job kind of `scene_render_submit`, so status, result and release work as for any job. The scene you submit it with is not drawn (any open scene will do, for instance an empty one).
 

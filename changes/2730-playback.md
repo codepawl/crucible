@@ -1,1 +1,0 @@
-- Playing a scene with an ocean time track no longer searches the whole scene for overlapping faces on every frame: on a lighthouse scene with a 66,000-vertex sea each new frame takes about 0.5 seconds instead of about 6 (#2730)

@@ -1,7 +1,0 @@
-- entry:core: Slicing the sky prefilter's map passes and caching the layer state per call costs under 100 bytes gzip and removes 50 to 150 ms blocks on a hero world build
-- entry:core+lazy: Slicing the sky prefilter's map passes and caching the layer state per call costs under 100 bytes gzip and removes 50 to 150 ms blocks on a hero world build
-- scene:agent-scene: Slicing the sky prefilter's map passes and caching the layer state per call costs under 100 bytes gzip and removes 50 to 150 ms blocks on a hero world build
-- scene:agent-scene+lazy: Slicing the sky prefilter's map passes and caching the layer state per call costs under 100 bytes gzip and removes 50 to 150 ms blocks on a hero world build
-- goal:lit-box: Slicing the sky prefilter's map passes and caching the layer state per call costs under 100 bytes gzip and removes 50 to 150 ms blocks on a hero world build
-- goal:gltf-box: Slicing the sky prefilter's map passes and caching the layer state per call costs under 100 bytes gzip and removes 50 to 150 ms blocks on a hero world build
-- goal:agent-scene: Slicing the sky prefilter's map passes and caching the layer state per call costs under 100 bytes gzip and removes 50 to 150 ms blocks on a hero world build

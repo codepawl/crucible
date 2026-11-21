@@ -1,1 +1,0 @@
-- A part with foam or a wear mask, such as an ocean with a water material, now counts in the placement check, so a buoy on the sea is no longer reported floating above a far backing plane, and `specular` and `specularColor` are no longer reported as ignored on a water material (#2288)

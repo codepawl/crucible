@@ -1,4 +1,0 @@
-- entry:studio: Studio's own entry gains the property panels for lights, the sun, the camera, the world, fog, film, effects, shadows and quality, and the grips that resize each floating card; before this a person could only reach those scene values by editing the file. The core entry is unchanged.
-- entry:studio+lazy: the same panels and grips counted with Studio's lazy chunks; nothing new is loaded lazily in this step.
-- entry:studio: Studio now pauses the picture with a notice instead of freezing when the WebGL context is lost or a frame throws (#2739); it is a small Studio-only module and the core entry is unchanged.
-- entry:studio: the page's catalog hooks and the named web pack refusal are small Studio-side modules (bench/studio is not in the core entry); the core entry is unchanged.

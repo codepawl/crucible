@@ -1,1 +1,0 @@
-- The home hero's world build hands the thread back more often: the sky prefilter's pass over the whole map runs in steps of a fixed texel count, `replaceParts` slices are sized from how long the last one took, and `replaceParts` computes each material's layer state once instead of once per value (#779)

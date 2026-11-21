@@ -1,4 +1,0 @@
-- entry:modeling: the level growth and grid union are the whole feature, loaded only for recipes that contain a cloud geometry.
-- scene:agent-scene: three more cloud fields in the schema and capability text, in the core so agents can find them without loading the builder.
-- scene:agent-scene+lazy: the lazy modeling chunk carries the level builder, loaded only by recipes that use a cloud.
-- goal:agent-scene: an agent-facing capability (anime cumulus tower from one geometry record).

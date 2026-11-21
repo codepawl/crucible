@@ -1,5 +1,0 @@
-- tool:scene_apply: one removeTracks field (238 bytes) lets an agent drop a single motion track in one apply instead of resending the whole scene with scene_create.
-- tool-total: the same 238 bytes in scene_apply.
-- scene:agent-scene: the track removal code loads on demand; the core only gains the branch that calls it and the report line (about 225 bytes gzip).
-- scene:agent-scene+lazy: the on-demand chunk adds about 900 bytes gzip, loaded only by a batch that names removeTracks.
-- goal:agent-scene: removing one track otherwise costs a full scene_create round trip, so the bytes buy a visible agent capability.

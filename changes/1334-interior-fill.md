@@ -1,1 +1,0 @@
-- A closed room with a window renders closer to the path tracer: its surfaces now get the sky light they bounce on to each other, so the window probe is 1.3 times darker than the tracer instead of 2.6 times (#1334)

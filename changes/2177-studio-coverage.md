@@ -1,7 +1,0 @@
-- Studio has property panels for lights, the sun, the camera, the world, fog, film, effects, shadows and quality, laid out one line per row in groups that fold; its panels dock to the window edges by default, the axis widget sits at the top right, and floating cards resize one at a time (#2177)
-- Studio pauses the picture with a notice and a Reload button when the browser drops the WebGL context or a frame throws, and draws again by itself when the context returns instead of freezing for good (#2739)
-- Studio's bundled HDRIs (`sky-clouds`, `studio-softbox`) and looks (`teal-orange`, `noir`) now load in the page build with no catalog folder, so the World HDRI choice no longer snaps back to None (#2177)
-- Studio shows the recipe validation message instead of "nodes.some is not a function" when the Recipe JSON dialog gets `nodes` that is not a list (#2177)
-- Ctrl or Meta with a double click on a floating card grip puts both cards back to automatic in that direction, as Ctrl-drag and Ctrl with the arrows already change both (#2177)
-- In a compact window Studio's Properties card starts right of the tool rail and the Scene and Properties cards share the height without overlapping (#2177)
-- Studio's Web pack export refuses a scene with imported textures (placed catalog scans) by naming the part and offering GLB export, instead of "got a ImageData; expected plain data" (#2177)
