@@ -197,6 +197,38 @@ function trackOutput(track) {
 
 const GLTF_INTERPOLATION = { LINEAR: 'LINEAR', STEP: 'STEP', SMOOTH: 'CUBICSPLINE', CUBICSPLINE: 'CUBICSPLINE' };
 
+const ROTATION_ZERO_LENGTH = 1e-8;
+const ROTATION_UNIT_TOLERANCE = 0.01;
+
+function rotationKeyLabel(track, keyframe, index) {
+  const clip = track.clipName ? ` in clip ${track.clipName}` : '';
+  return `GLB rotation track on ${track.target}${clip} key ${index} (time ${keyframe.time})`;
+}
+
+function normalizedRotationKeyframes(track) {
+  if (track.property !== 'rotation') return track.keyframes;
+  let keyframes = track.keyframes;
+  if (!Array.isArray(keyframes) || keyframes.length === 0) return keyframes;
+  keyframes.forEach((keyframe, index) => {
+    const value = Array.isArray(keyframe.value) ? keyframe.value : Array.from(keyframe.value);
+    if (value.length !== 4 || !value.every(Number.isFinite)) return;
+    const length = Math.hypot(value[0], value[1], value[2], value[3]);
+    if (length <= ROTATION_ZERO_LENGTH) {
+      throw new RangeError(`${rotationKeyLabel(track, keyframe, index)} needs a finite nonzero quaternion. Rotation keyframes must be unit quaternions.`);
+    }
+    const delta = Math.abs(length - 1);
+    if (delta > ROTATION_UNIT_TOLERANCE) {
+      throw new RangeError(`${rotationKeyLabel(track, keyframe, index)} is not a unit quaternion (length ${length}). Normalize rotation keyframes before export.`);
+    }
+    if (delta <= 1e-7) return;
+    const normalized = value.map(component => component / length);
+    if (normalized.every((component, componentIndex) => Math.fround(component) === Math.fround(value[componentIndex]))) return;
+    if (keyframes === track.keyframes) keyframes = track.keyframes.map(frame => ({ ...frame }));
+    keyframes[index] = { ...keyframes[index], value: normalized };
+  });
+  return keyframes;
+}
+
 // glTF needs strictly increasing finite times and finite values of the path's width; anything else makes a file loaders reject or misread.
 function validateKeyframes(track) {
   const keyframes = track.keyframes;
@@ -214,9 +246,11 @@ function validateKeyframes(track) {
 }
 
 function writeTrack(writer, animation, sourceTrack, nodeIndex) {
-  validateKeyframes(sourceTrack);
-  const bakedKeyframes = bakeEasedKeyframes(sourceTrack, EASING_BAKE_STEPS_PER_SEGMENT);
-  const track = bakedKeyframes === sourceTrack.keyframes ? sourceTrack : { ...sourceTrack, keyframes: bakedKeyframes, interpolation: 'LINEAR' };
+  const normalizedKeyframes = normalizedRotationKeyframes(sourceTrack);
+  const normalizedTrack = normalizedKeyframes === sourceTrack.keyframes ? sourceTrack : { ...sourceTrack, keyframes: normalizedKeyframes };
+  validateKeyframes(normalizedTrack);
+  const bakedKeyframes = bakeEasedKeyframes(normalizedTrack, EASING_BAKE_STEPS_PER_SEGMENT);
+  const track = bakedKeyframes === normalizedTrack.keyframes ? normalizedTrack : { ...normalizedTrack, keyframes: bakedKeyframes, interpolation: 'LINEAR' };
   const path = GLTF_PATHS[track.property];
   if (!path) {
     throw new RangeError(`GLB export cannot write ${track.property} tracks (target ${track.target}). Only translation, rotation, scale and weights tracks are exported; remove the others from the clip.`);
@@ -242,7 +276,7 @@ export function writeAnimations(writer, clips, nodeIndexByName, prepareNodeForAn
         throw new RangeError(`GLB clip ${animation.name} targets ${track.target}, which is no exported node. Pass options.nodes from the parsed asset, or name a part or joint.`);
       }
       prepareNodeForAnimation(nodeIndex);
-      writeTrack(writer, animation, track, nodeIndex);
+      writeTrack(writer, animation, { ...track, clipName: animation.name }, nodeIndex);
     }
     writer.document.animations.push(animation);
   });
