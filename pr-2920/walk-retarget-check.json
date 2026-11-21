@@ -1,0 +1,140 @@
+{
+  "clip": "CMU subject 2 trial 1 (02_01.bvh) on Mixamo X Bot",
+  "times": [
+    0,
+    0.4,
+    0.8,
+    1.2,
+    1.6
+  ],
+  "restPoses": {
+    "offsets": {
+      "chosenRestPose": "offsets",
+      "playedFrames": 344,
+      "unit": "cmu",
+      "hipsHeightAtStart": 1.04,
+      "degreesOffSourceByBone": {
+        "LeftArm->LeftForeArm": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "LeftForeArm->LeftHand": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "RightArm->RightForeArm": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "RightForeArm->RightHand": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "LeftUpLeg->LeftLeg": [
+          20,
+          20,
+          20,
+          20,
+          20
+        ],
+        "LeftLeg->LeftFoot": [
+          20.4,
+          20.4,
+          20.4,
+          20.4,
+          20.4
+        ],
+        "RightUpLeg->RightLeg": [
+          20,
+          20,
+          20,
+          20,
+          20
+        ],
+        "Spine->Neck": [
+          6.1,
+          6.1,
+          6.5,
+          6.2,
+          7.4
+        ]
+      }
+    },
+    "auto": {
+      "chosenRestPose": "firstFrame",
+      "playedFrames": 343,
+      "unit": "cmu",
+      "hipsHeightAtStart": 1.04,
+      "degreesOffSourceByBone": {
+        "LeftArm->LeftForeArm": [
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "LeftForeArm->LeftHand": [
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "RightArm->RightForeArm": [
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "RightForeArm->RightHand": [
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "LeftUpLeg->LeftLeg": [
+          1.1,
+          1.1,
+          1.1,
+          1.1,
+          1.1
+        ],
+        "LeftLeg->LeftFoot": [
+          4,
+          4,
+          4,
+          4,
+          4
+        ],
+        "RightUpLeg->RightLeg": [
+          1.1,
+          1.1,
+          1.1,
+          1.1,
+          1.1
+        ],
+        "Spine->Neck": [
+          6.6,
+          6.1,
+          6.5,
+          6.2,
+          7.3
+        ]
+      }
+    }
+  }
+}
