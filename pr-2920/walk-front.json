@@ -1,0 +1,6 @@
+{
+  "tool": "Crucible MCP scene_render_submit (video), freshly built MCP bundle",
+  "subject": "CMU 02_01.bvh retargeted onto the Mixamo X Bot, in place (rootMotion false)",
+  "view": "front", "camera": {"target": [0, 0.9, 0], "eye": [0, 1.0, 3.2], "up": [0, 1, 0], "fov": 45},
+  "width": 640, "height": 640, "fps": 24, "duration": 2.8, "frames": 68, "quality": "draft", "backend": "cpu (SwiftShader), libx264"
+}
