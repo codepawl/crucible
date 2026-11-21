@@ -44,3 +44,26 @@ Low-quality preview only. Not the showcase scene, no PR.
 - Colour and contrast: fog 0.0011 (was 0.0022), key light 1.4, darker water body (0.001, 0.008, 0.028), roughness 0.035. The hull is browner; the lower hull still has green paint of its own.
 - Wake: a V of two stern arms (16 points each side, widening 0.24 m per metre), a short central trail, a bow wave and a foam ring along the hull. Still faint at its far end.
 - Still weak: the sea and far-sea sheets raise a z-fighting warning (0.6 m apart at the far edge), a single ocean spectrum so waves still repeat at long range, the mist is faint, the sails read grey.
+
+## Round 4 (galleon-preview-4.png, galleon-preview-4.mp4, sheet4.png; builder preview/build-round4.mjs)
+
+Root cause of the water glitch (measured, engine commit 3d85dae2 for rounds 3 and 4 alike in the controls; round 3 itself was rendered on an older build): the clock-driven wind ripples of the water shader (`waterDetailSlope`), not the far-sea sheet, foam, spray, mist, `oceanTime` or the camera. Filed as #2843.
+
+Water diff = mean absolute grey difference between consecutive frames in the near-water crop (bottom 30 % of the frame; left 30 % and right 30 %), 480x270, 24 fps, extracted from the mp4 of each round. Script: `diff.py`.
+
+| Case | nearL mean / p99 | nearR mean / p99 |
+|---|---|---|
+| Round 3 clip (moving) | 7.65 / 39.2 | 6.96 / 36.8 |
+| Round 4 clip (moving, ship swell, 48 fps blended to 24) | 6.27 / 30.6 | 5.72 / 28.9 |
+| Frozen control, stills (camera fixed, flat `oceanTime`, no particles) | 4.68 / 26.5 | 4.49 / 26.3 |
+| Frozen control, 48 fps blended to 24 | 4.17 / 21.2 | 4.20 / 22.2 |
+| Frozen, ripple clock multiplied by 0 | 0.78 / 5.8 | 0.76 / 6.4 |
+| Frozen, ripple speed capped at 12 rad/s | 4.67 / 26.8 | 4.47 / 26.6 |
+| Frozen, 960x540 area-downscaled | 4.49 / 24.0 | 4.24 / 24.3 |
+
+- Proof: a frozen scene has 0.0 difference in the sky rows and 4.7 in the near water; stopping the ripple clock removes about 85 % of it. The ripples that matter are the 0.6 to 3 m ones (4.5 to 12 rad/s), they run in all directions and not with the wind.
+- Ruled out by measurement: the far-sea sheet (no far sheet: 7.99 against 7.87, within noise; the z-fighting warning is real but its overlap is 2 m2), wake foam, spray and mist (no particles: frozen 4.68 against 5.05), `oceanTime` and camera motion (frozen 4.68 of a moving 10.7 is the ripple floor), 480p point sampling (960 downscaled: 4.49), video encoding (lossless stills show the same 4.7 to 5.1).
+- Not fixed: the engine has no knob for the ripples, so the clip still has the strobing. Round 4 only lowers the moving number by 18 percent with a workaround: render at 48 fps and blend pairs of frames to 24 fps (a wider shutter). A real fix needs an engine change (issue #2843), which alters every water look and needs look approval, so no PR was opened.
+- Ship motion: heave 0.28 m, roll 1.7 degrees, pitch 1.1 degrees on periods of 4.2, 5.1 and 4.2 s (`translation` and `rotation` node tracks, keys every 0.25 s, smooth). The ship bobs in place; it does not sail, because the wake points are static and the emitters do not follow a moving node (#2829).
+- Mid-water crop (left, 55 to 68 percent of the height) rose from 0.74 to 1.14 because the hull now moves through it.
+- Still weak: the glitch itself (see above), mist faint, sails grey, the z-fighting warning between the two sea sheets remains.
