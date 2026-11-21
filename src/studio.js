@@ -621,6 +621,18 @@ function appendSelectionSilhouette(documentReference, gizmoSvg, triangles) {
   }));
 }
 
+// The exact edge of a dense object: the border of the shape its triangles cover, drawn as one stroked path.
+function appendSelectionContour(documentReference, gizmoSvg, contour) {
+  const pieces = [];
+  for (let offset = 0; offset < contour.length; offset += 4) {
+    pieces.push(`M${contour[offset].toFixed(1)} ${contour[offset + 1].toFixed(1)}L${contour[offset + 2].toFixed(1)} ${contour[offset + 3].toFixed(1)}`);
+  }
+  gizmoSvg.append(createSvgElement(documentReference, 'path', {
+    class: 'crucible-studio-selection-contour',
+    d: pieces.join(''),
+  }));
+}
+
 // How far from a handle a press still takes it, in pixels: the drawn handle stays thin, the area that answers is wide.
 const GIZMO_HIT_LINE_WIDTH = 22;
 const GIZMO_HIT_TIP_RADIUS = 16;
@@ -672,9 +684,12 @@ function renderGizmoMarkup(documentReference, gizmoSvg, controller) {
   const height = controller.viewportHeight;
   gizmoSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
   const silhouette = controller.selectionSilhouette();
-  const outline = silhouette ? null : controller.selectionOutline();
+  const contour = silhouette ? null : controller.selectionContour();
+  const outline = silhouette || contour ? null : controller.selectionOutline();
   if (silhouette) {
     appendSelectionSilhouette(documentReference, gizmoSvg, silhouette);
+  } else if (contour) {
+    appendSelectionContour(documentReference, gizmoSvg, contour);
   } else if (outline) {
     gizmoSvg.append(createSvgElement(documentReference, 'polygon', {
       class: 'crucible-studio-selection-outline',

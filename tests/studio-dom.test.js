@@ -825,6 +825,19 @@ test('playback stops by itself when the animation is deleted while playing', asy
   assert.equal(ui.label('Play (Space)').getAttribute('aria-disabled'), 'true');
 });
 
+test('a dense selection is drawn from its pixel contour, one path, and no hull polygon', testContext => {
+  const recipe = makeRecipe();
+  recipe.geometries.push({ id: 'dense-ball', type: 'sphere', segments: 96, rings: 64 });
+  recipe.nodes.push({ id: 'dense', geometry: 'dense-ball', material: recipe.materials[0].id, translation: [0, 1, 0] });
+  const ui = mountStudio(testContext, { recipe });
+  ui.selectRow('dense');
+  ui.studio.renderNow();
+  const contour = ui.gizmo.querySelector('.crucible-studio-selection-contour');
+  assert.ok(contour.getAttribute('d').startsWith('M') && contour.getAttribute('d').includes('L'), 'the edge of the object is one path');
+  assert.equal(ui.gizmo.querySelector('.crucible-studio-selection-silhouette'), null, 'not the per triangle drawing');
+  assert.equal(ui.gizmo.querySelector('.crucible-studio-selection-outline'), null, 'and not the hull');
+});
+
 test('the gizmo draws handles for each tool and clears them when nothing is selected', testContext => {
   const ui = mountStudio(testContext);
   const axesDrawn = () => new Set(ui.gizmo.descendants().map(element => element.getAttribute('data-gizmo-axis')).filter(Boolean));

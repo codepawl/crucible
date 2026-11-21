@@ -221,6 +221,13 @@ export const STUDIO_CSS = `
 .crucible-studio-silhouette-colour {
   flood-color: var(--studio-accent);
 }
+.crucible-studio-selection-contour {
+  fill: none;
+  stroke: var(--studio-accent);
+  stroke-width: 1.5;
+  stroke-linecap: square;
+  pointer-events: none;
+}
 .crucible-studio-selection-outline {
   fill: none;
   stroke: var(--studio-accent);

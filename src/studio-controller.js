@@ -1,4 +1,5 @@
 import { mat4, quat, vec3 } from 'gl-matrix';
+import { silhouetteContourSegments, silhouetteRectangleSegments } from './studio-silhouette-mask.js';
 import { applyProjection, cameraFieldOfView } from './camera.js';
 import { viewportClipPlanes } from './studio-viewport-aids.js';
 import { createAgentScene } from './agent-scene.js';
@@ -32,8 +33,11 @@ const ROTATION_RING_SEGMENTS = 32;
 const WORLD_BASIS = Object.freeze({ x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] });
 const AXIS_PARALLEL_LIMIT = 0.002;
 const OUTLINE_VERTEX_BUDGET = 4000;
-// Above this many triangles the selection falls back to the hull outline: the silhouette is redrawn on every camera move.
+// Above this many triangles the selection is outlined from a pixel mask, not one path entry per triangle redrawn on every camera move.
 const SILHOUETTE_TRIANGLE_BUDGET = 8000;
+// Past this many triangles even the pixel mask is too slow to fill on every camera move (measured: 168k triangles about 30 ms,
+// 1M about 110 ms), so the selection gets the rectangle around it instead.
+const CONTOUR_TRIANGLE_BUDGET = 250000;
 const RING_EDGE_ON_LIMIT = 0.12;
 const RING_RADIUS_FACTOR = 0.92;
 const MINIMUM_AXIS_SCREEN_SHARE = 0.8;
@@ -240,6 +244,29 @@ function projectPointWithMatrix(viewProjection, point, width, height) {
     depth: normalizedZ,
     visible: normalizedZ >= -1 && normalizedZ <= 1,
   };
+}
+
+// Every vertex of a mesh on screen as x, y pairs, with one matrix for the whole mesh. False when a vertex is behind the
+// camera or outside its depth range, so the caller can leave the object without an outline.
+function projectVerticesToScreen(matrix, positions, screen, width, height) {
+  for (let vertex = 0; vertex < positions.length / 3; vertex += 1) {
+    const worldX = positions[vertex * 3];
+    const worldY = positions[vertex * 3 + 1];
+    const worldZ = positions[vertex * 3 + 2];
+    const clipW = matrix[3] * worldX + matrix[7] * worldY + matrix[11] * worldZ + matrix[15];
+    if (clipW <= 1e-6) {
+      return false;
+    }
+    const depth = (matrix[2] * worldX + matrix[6] * worldY + matrix[10] * worldZ + matrix[14]) / clipW;
+    if (depth < -1 || depth > 1) {
+      return false;
+    }
+    const normalizedX = (matrix[0] * worldX + matrix[4] * worldY + matrix[8] * worldZ + matrix[12]) / clipW;
+    const normalizedY = (matrix[1] * worldX + matrix[5] * worldY + matrix[9] * worldZ + matrix[13]) / clipW;
+    screen[vertex * 2] = (normalizedX * 0.5 + 0.5) * width;
+    screen[vertex * 2 + 1] = (0.5 - normalizedY * 0.5) * height;
+  }
+  return true;
 }
 
 function buildNodeWorldMatrices(nodes) {
@@ -1016,74 +1043,75 @@ export function createStudioController({
     return hull.length >= 3 ? hull : null;
   }
 
-  let silhouetteCache = { scene: null, key: '', triangles: null };
+  let silhouetteCache = { scene: null, key: '', triangles: null, contour: null };
+
+  // The selection's parts with their vertices on screen, or null when it draws nothing or part of it is behind the camera.
+  function projectSelectionMeshes() {
+    const memberIds = descendantIdsOf(currentScene.exportRecipe().nodes, selectedNodeId);
+    const memberParts = currentScene.parts.filter(part => ownsPart(memberIds, part) && part.matrix && part.geometry?.positions && part.geometry.indices?.length);
+    if (memberParts.length === 0) {
+      return null;
+    }
+    const { viewProjection } = cameraMatrices(viewCamera(), width / height, Boolean(currentScene.environment?.world));
+    const partMatrix = mat4.create();
+    const meshes = [];
+    for (const part of memberParts) {
+      const positions = part.geometry.positions;
+      const screen = new Float32Array((positions.length / 3) * 2);
+      mat4.multiply(partMatrix, viewProjection, part.matrix);
+      if (!projectVerticesToScreen(partMatrix, positions, screen, width, height)) {
+        return null;
+      }
+      meshes.push({ screen, indices: part.geometry.indices });
+    }
+    return meshes;
+  }
+
+  function refreshSilhouetteCache() {
+    const camera = viewCamera();
+    const key = [currentScene.revision, selectedNodeId, width, height, camera.eye, camera.target, camera.fov, camera.focalLength, camera.orthoScale, camera.projection].join('|');
+    if (silhouetteCache.scene === currentScene && silhouetteCache.key === key) {
+      return;
+    }
+    silhouetteCache = { scene: currentScene, key, ...computeSelectionShape() };
+  }
 
   // The selected object's triangles on screen, as a flat list of x, y pairs (six numbers a triangle), all wound the same
   // way so a filled drawing of them has no holes where a back face meets a front face. The viewport draws the edge of
   // that shape, which follows a star or a letter where the hull would cut across. Null when there is nothing to draw,
-  // or part of the object is behind the camera. An object with more triangles than the budget gets its hull instead.
+  // or part of the object is behind the camera. An object with more triangles than the budget has none: it is outlined
+  // by selectionContour instead.
   function selectionSilhouette() {
     if (!selectedNodeId) {
       return null;
     }
-    const camera = viewCamera();
-    const key = [currentScene.revision, selectedNodeId, width, height, camera.eye, camera.target, camera.fov, camera.focalLength, camera.orthoScale, camera.projection].join('|');
-    if (silhouetteCache.scene !== currentScene || silhouetteCache.key !== key) {
-      silhouetteCache = { scene: currentScene, key, triangles: computeSelectionSilhouette() };
-    }
+    refreshSilhouetteCache();
     return silhouetteCache.triangles;
   }
 
-  // A dense mesh, such as a scan, is too many triangles to outline one by one on every camera move. It gets the outline
-  // of its hull on screen instead: looser than its shape, but it shows what is selected.
-  function hullSilhouette() {
-    const corners = nodeOutline(selectedNodeId);
-    if (!corners || corners.length < 3) {
+  // The edge of a dense selection (a scan) on screen: flat x1, y1, x2, y2 line segments along the border of the shape its
+  // triangles cover, exact to the pixel, so a draw needs no path entry per triangle. Past CONTOUR_TRIANGLE_BUDGET it is the
+  // four sides of the rectangle around the selection. Null for a selection that selectionSilhouette draws, and for none.
+  function selectionContour() {
+    if (!selectedNodeId) {
       return null;
     }
-    const triangles = [];
-    for (let corner = 1; corner < corners.length - 1; corner += 1) {
-      const first = corners[0];
-      let second = corners[corner];
-      let third = corners[corner + 1];
-      const signedArea = (second[0] - first[0]) * (third[1] - first[1]) - (third[0] - first[0]) * (second[1] - first[1]);
-      if (signedArea === 0) {
-        continue;
-      }
-      if (signedArea < 0) {
-        [second, third] = [third, second];
-      }
-      triangles.push(first[0], first[1], second[0], second[1], third[0], third[1]);
-    }
-    return triangles.length ? triangles : null;
+    refreshSilhouetteCache();
+    return silhouetteCache.contour;
   }
 
-  function computeSelectionSilhouette() {
-    const memberIds = descendantIdsOf(currentScene.exportRecipe().nodes, selectedNodeId);
-    const memberParts = currentScene.parts.filter(part => ownsPart(memberIds, part) && part.matrix && part.geometry?.positions && part.geometry.indices?.length);
-    const triangleCount = memberParts.reduce((count, part) => count + part.geometry.indices.length / 3, 0);
-    if (triangleCount === 0) {
-      return null;
+  function computeSelectionShape() {
+    const meshes = projectSelectionMeshes();
+    if (!meshes) {
+      return { triangles: null, contour: null };
     }
+    const triangleCount = meshes.reduce((count, mesh) => count + mesh.indices.length / 3, 0);
     if (triangleCount > SILHOUETTE_TRIANGLE_BUDGET) {
-      return hullSilhouette();
+      const contour = triangleCount > CONTOUR_TRIANGLE_BUDGET ? silhouetteRectangleSegments(meshes) : silhouetteContourSegments(meshes, width, height);
+      return { triangles: null, contour };
     }
-    const point = vec3.create();
     const triangles = [];
-    for (const part of memberParts) {
-      const positions = part.geometry.positions;
-      const screen = new Float32Array((positions.length / 3) * 2);
-      for (let vertex = 0; vertex < positions.length / 3; vertex += 1) {
-        vec3.set(point, positions[vertex * 3], positions[vertex * 3 + 1], positions[vertex * 3 + 2]);
-        vec3.transformMat4(point, point, part.matrix);
-        const projected = projectWorldPoint([point[0], point[1], point[2]]);
-        if (!projected.visible) {
-          return null;
-        }
-        screen[vertex * 2] = projected.x;
-        screen[vertex * 2 + 1] = projected.y;
-      }
-      const indices = part.geometry.indices;
+    for (const { screen, indices } of meshes) {
       for (let offset = 0; offset < indices.length; offset += 3) {
         const first = indices[offset] * 2;
         let second = indices[offset + 1] * 2;
@@ -1098,7 +1126,7 @@ export function createStudioController({
         triangles.push(screen[first], screen[first + 1], screen[second], screen[second + 1], screen[third], screen[third + 1]);
       }
     }
-    return triangles.length ? triangles : null;
+    return { triangles: triangles.length ? triangles : null, contour: null };
   }
 
   function computeSnapTranslation(nodeId, pixelX, pixelY) {
@@ -2337,6 +2365,7 @@ export function createStudioController({
     get interactionSettings() { return { moveSnapStep, rotateSnapDegrees, gizmoPixels }; },
     selectionOutline,
     selectionSilhouette,
+    selectionContour,
     nodeOutline,
     nodeBounds,
     beginGizmoDrag,

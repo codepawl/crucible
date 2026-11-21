@@ -765,7 +765,7 @@ test('selectionSilhouette gives the triangles of the selection on screen, all wo
   controller.dispose();
 });
 
-test('a mesh too dense to outline triangle by triangle is outlined by its hull on screen', () => {
+test('a mesh too dense to outline triangle by triangle is outlined exactly from a pixel mask', () => {
   const recipe = makeStudioRecipe();
   recipe.geometries.push({ id: 'dense-ball', type: 'sphere', segments: 96, rings: 64 });
   recipe.nodes.push({ id: 'dense', geometry: 'dense-ball', material: recipe.materials[0].id, translation: [0, 1, 0] });
@@ -773,13 +773,64 @@ test('a mesh too dense to outline triangle by triangle is outlined by its hull o
   controller.selectNode('dense');
   const densePart = controller.scene.parts.find(part => part.name === 'dense');
   assert.ok(densePart.geometry.indices.length / 3 > 8000, 'the ball is past the triangle budget');
-  const triangles = controller.selectionSilhouette();
+  assert.equal(controller.selectionSilhouette(), null, 'it is not outlined triangle by triangle');
+  const contour = controller.selectionContour();
+  assert.ok(contour.length >= 16 && contour.length % 4 === 0, 'it has a contour of line segments');
   const hull = controller.selectionOutline();
-  assert.equal(triangles.length, (hull.length - 2) * 6, 'one fan over the hull corners');
-  for (let offset = 0; offset < triangles.length; offset += 6) {
-    const [ax, ay, bx, by, cx, cy] = triangles.slice(offset, offset + 6);
-    assert.ok((bx - ax) * (cy - ay) - (cx - ax) * (by - ay) > 0, 'wound like every other outline triangle');
+  const distanceToHull = (x, y) => Math.min(...hull.map((corner, index) => {
+    const next = hull[(index + 1) % hull.length];
+    const edgeX = next[0] - corner[0];
+    const edgeY = next[1] - corner[1];
+    const along = Math.max(0, Math.min(1, ((x - corner[0]) * edgeX + (y - corner[1]) * edgeY) / (edgeX * edgeX + edgeY * edgeY)));
+    return Math.hypot(x - corner[0] - along * edgeX, y - corner[1] - along * edgeY);
+  }));
+  for (let offset = 0; offset < contour.length; offset += 2) {
+    assert.ok(distanceToHull(contour[offset], contour[offset + 1]) < 2.5, 'a ball is its own hull, so its edge runs along it');
   }
+  controller.selectNode('hero');
+  assert.equal(controller.selectionContour(), null, 'a mesh within the budget has no contour');
+  controller.selectNode(null);
+  assert.equal(controller.selectionContour(), null);
+  controller.dispose();
+});
+
+test('a dense ring is outlined around its hole, which the hull of its points would close', () => {
+  const recipe = makeStudioRecipe();
+  recipe.geometries.push({ id: 'dense-ring', type: 'torus', tubeRadius: 0.2, segments: 128, sides: 48 });
+  recipe.nodes.push({ id: 'ring', geometry: 'dense-ring', material: recipe.materials[0].id, translation: [0, 1, 0] });
+  const controller = createStudioController({ scene: createAgentScene(recipe), viewportWidth: 800, viewportHeight: 600 });
+  controller.selectNode('ring');
+  controller.setCameraViewPreset('front');
+  const ringPart = controller.scene.parts.find(part => part.name === 'ring');
+  assert.ok(ringPart.geometry.indices.length / 3 > 8000, 'the ring is past the triangle budget');
+  const contour = controller.selectionContour();
+  const hull = controller.selectionOutline();
+  const centre = hull.reduce((sum, point) => [sum[0] + point[0] / hull.length, sum[1] + point[1] / hull.length], [0, 0]);
+  const outerRadius = Math.max(...hull.map(point => Math.hypot(point[0] - centre[0], point[1] - centre[1])));
+  let innerSegments = 0;
+  for (let offset = 0; offset < contour.length; offset += 4) {
+    const radius = Math.hypot(contour[offset] - centre[0], contour[offset + 1] - centre[1]);
+    if (radius < outerRadius * 0.6) {
+      innerSegments += 1;
+    }
+  }
+  assert.ok(innerSegments > 20, 'the edge of the hole is outlined');
+  controller.dispose();
+});
+
+test('a model past the contour budget is outlined by the rectangle around it', () => {
+  const recipe = makeStudioRecipe();
+  recipe.geometries.push({ id: 'huge-ball', type: 'sphere', segments: 400, rings: 320 });
+  recipe.nodes.push({ id: 'huge', geometry: 'huge-ball', material: recipe.materials[0].id, translation: [0, 1, 0] });
+  const controller = createStudioController({ scene: createAgentScene(recipe), viewportWidth: 800, viewportHeight: 600 });
+  controller.selectNode('huge');
+  assert.ok(controller.scene.parts.find(part => part.name === 'huge').geometry.indices.length / 3 > 250000);
+  const contour = controller.selectionContour();
+  assert.equal(contour.length, 16, 'four sides');
+  const hull = controller.selectionOutline();
+  const left = Math.min(...hull.map(point => point[0]));
+  const right = Math.max(...hull.map(point => point[0]));
+  assert.ok(Math.abs(Math.min(contour[0], contour[2]) - left) < 3 && Math.abs(Math.max(contour[0], contour[2]) - right) < 3);
   controller.dispose();
 });
 
