@@ -1,0 +1,683 @@
+{
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "walls",
+        "type": "floorPlan",
+        "part": "walls",
+        "height": 2.7,
+        "walls": [
+          {
+            "from": [
+              0,
+              0
+            ],
+            "to": [
+              8,
+              0
+            ]
+          },
+          {
+            "from": [
+              8,
+              0
+            ],
+            "to": [
+              8,
+              5
+            ]
+          },
+          {
+            "from": [
+              8,
+              5
+            ],
+            "to": [
+              0,
+              5
+            ]
+          },
+          {
+            "from": [
+              0,
+              5
+            ],
+            "to": [
+              0,
+              0
+            ]
+          },
+          {
+            "from": [
+              4,
+              0
+            ],
+            "to": [
+              4,
+              5
+            ],
+            "thickness": 0.12
+          }
+        ],
+        "openings": [
+          {
+            "wall": 0,
+            "offset": 1.2,
+            "kind": "door"
+          },
+          {
+            "wall": 0,
+            "offset": 5.2,
+            "kind": "window",
+            "width": 1.6
+          },
+          {
+            "wall": 4,
+            "offset": 2.1,
+            "kind": "door"
+          },
+          {
+            "wall": 2,
+            "offset": 1.3,
+            "kind": "window",
+            "width": 1.5
+          },
+          {
+            "wall": 2,
+            "offset": 5.6,
+            "kind": "window"
+          },
+          {
+            "wall": 1,
+            "offset": 1.9,
+            "kind": "window"
+          },
+          {
+            "wall": 3,
+            "offset": 1.9,
+            "kind": "window"
+          }
+        ]
+      },
+      {
+        "id": "floor",
+        "type": "floorPlan",
+        "part": "floor",
+        "height": 2.7,
+        "walls": [
+          {
+            "from": [
+              0,
+              0
+            ],
+            "to": [
+              8,
+              0
+            ]
+          },
+          {
+            "from": [
+              8,
+              0
+            ],
+            "to": [
+              8,
+              5
+            ]
+          },
+          {
+            "from": [
+              8,
+              5
+            ],
+            "to": [
+              0,
+              5
+            ]
+          },
+          {
+            "from": [
+              0,
+              5
+            ],
+            "to": [
+              0,
+              0
+            ]
+          },
+          {
+            "from": [
+              4,
+              0
+            ],
+            "to": [
+              4,
+              5
+            ],
+            "thickness": 0.12
+          }
+        ],
+        "openings": [
+          {
+            "wall": 0,
+            "offset": 1.2,
+            "kind": "door"
+          },
+          {
+            "wall": 0,
+            "offset": 5.2,
+            "kind": "window",
+            "width": 1.6
+          },
+          {
+            "wall": 4,
+            "offset": 2.1,
+            "kind": "door"
+          },
+          {
+            "wall": 2,
+            "offset": 1.3,
+            "kind": "window",
+            "width": 1.5
+          },
+          {
+            "wall": 2,
+            "offset": 5.6,
+            "kind": "window"
+          },
+          {
+            "wall": 1,
+            "offset": 1.9,
+            "kind": "window"
+          },
+          {
+            "wall": 3,
+            "offset": 1.9,
+            "kind": "window"
+          }
+        ]
+      },
+      {
+        "id": "doors",
+        "type": "floorPlan",
+        "part": "doors",
+        "height": 2.7,
+        "walls": [
+          {
+            "from": [
+              0,
+              0
+            ],
+            "to": [
+              8,
+              0
+            ]
+          },
+          {
+            "from": [
+              8,
+              0
+            ],
+            "to": [
+              8,
+              5
+            ]
+          },
+          {
+            "from": [
+              8,
+              5
+            ],
+            "to": [
+              0,
+              5
+            ]
+          },
+          {
+            "from": [
+              0,
+              5
+            ],
+            "to": [
+              0,
+              0
+            ]
+          },
+          {
+            "from": [
+              4,
+              0
+            ],
+            "to": [
+              4,
+              5
+            ],
+            "thickness": 0.12
+          }
+        ],
+        "openings": [
+          {
+            "wall": 0,
+            "offset": 1.2,
+            "kind": "door"
+          },
+          {
+            "wall": 0,
+            "offset": 5.2,
+            "kind": "window",
+            "width": 1.6
+          },
+          {
+            "wall": 4,
+            "offset": 2.1,
+            "kind": "door"
+          },
+          {
+            "wall": 2,
+            "offset": 1.3,
+            "kind": "window",
+            "width": 1.5
+          },
+          {
+            "wall": 2,
+            "offset": 5.6,
+            "kind": "window"
+          },
+          {
+            "wall": 1,
+            "offset": 1.9,
+            "kind": "window"
+          },
+          {
+            "wall": 3,
+            "offset": 1.9,
+            "kind": "window"
+          }
+        ]
+      },
+      {
+        "id": "frames",
+        "type": "floorPlan",
+        "part": "windows",
+        "height": 2.7,
+        "walls": [
+          {
+            "from": [
+              0,
+              0
+            ],
+            "to": [
+              8,
+              0
+            ]
+          },
+          {
+            "from": [
+              8,
+              0
+            ],
+            "to": [
+              8,
+              5
+            ]
+          },
+          {
+            "from": [
+              8,
+              5
+            ],
+            "to": [
+              0,
+              5
+            ]
+          },
+          {
+            "from": [
+              0,
+              5
+            ],
+            "to": [
+              0,
+              0
+            ]
+          },
+          {
+            "from": [
+              4,
+              0
+            ],
+            "to": [
+              4,
+              5
+            ],
+            "thickness": 0.12
+          }
+        ],
+        "openings": [
+          {
+            "wall": 0,
+            "offset": 1.2,
+            "kind": "door"
+          },
+          {
+            "wall": 0,
+            "offset": 5.2,
+            "kind": "window",
+            "width": 1.6
+          },
+          {
+            "wall": 4,
+            "offset": 2.1,
+            "kind": "door"
+          },
+          {
+            "wall": 2,
+            "offset": 1.3,
+            "kind": "window",
+            "width": 1.5
+          },
+          {
+            "wall": 2,
+            "offset": 5.6,
+            "kind": "window"
+          },
+          {
+            "wall": 1,
+            "offset": 1.9,
+            "kind": "window"
+          },
+          {
+            "wall": 3,
+            "offset": 1.9,
+            "kind": "window"
+          }
+        ]
+      },
+      {
+        "id": "glass",
+        "type": "floorPlan",
+        "part": "glass",
+        "height": 2.7,
+        "walls": [
+          {
+            "from": [
+              0,
+              0
+            ],
+            "to": [
+              8,
+              0
+            ]
+          },
+          {
+            "from": [
+              8,
+              0
+            ],
+            "to": [
+              8,
+              5
+            ]
+          },
+          {
+            "from": [
+              8,
+              5
+            ],
+            "to": [
+              0,
+              5
+            ]
+          },
+          {
+            "from": [
+              0,
+              5
+            ],
+            "to": [
+              0,
+              0
+            ]
+          },
+          {
+            "from": [
+              4,
+              0
+            ],
+            "to": [
+              4,
+              5
+            ],
+            "thickness": 0.12
+          }
+        ],
+        "openings": [
+          {
+            "wall": 0,
+            "offset": 1.2,
+            "kind": "door"
+          },
+          {
+            "wall": 0,
+            "offset": 5.2,
+            "kind": "window",
+            "width": 1.6
+          },
+          {
+            "wall": 4,
+            "offset": 2.1,
+            "kind": "door"
+          },
+          {
+            "wall": 2,
+            "offset": 1.3,
+            "kind": "window",
+            "width": 1.5
+          },
+          {
+            "wall": 2,
+            "offset": 5.6,
+            "kind": "window"
+          },
+          {
+            "wall": 1,
+            "offset": 1.9,
+            "kind": "window"
+          },
+          {
+            "wall": 3,
+            "offset": 1.9,
+            "kind": "window"
+          }
+        ]
+      },
+      {
+        "id": "lawn",
+        "type": "box",
+        "bevel": 0
+      }
+    ],
+    "materials": [
+      {
+        "id": "grass",
+        "color": [
+          0.28,
+          0.4,
+          0.2
+        ],
+        "roughness": 1
+      },
+      {
+        "id": "plaster",
+        "color": [
+          0.86,
+          0.82,
+          0.74
+        ],
+        "roughness": 0.9
+      },
+      {
+        "id": "oak",
+        "color": [
+          0.5,
+          0.33,
+          0.18
+        ],
+        "roughness": 0.55
+      },
+      {
+        "id": "ceiling",
+        "color": [
+          0.93,
+          0.92,
+          0.9
+        ],
+        "roughness": 0.95
+      },
+      {
+        "id": "door",
+        "color": [
+          0.3,
+          0.17,
+          0.09
+        ],
+        "roughness": 0.6
+      },
+      {
+        "id": "frame",
+        "color": [
+          0.12,
+          0.13,
+          0.15
+        ],
+        "roughness": 0.5
+      },
+      {
+        "id": "glass",
+        "color": [
+          0.6,
+          0.78,
+          0.88
+        ],
+        "roughness": 0.05,
+        "opacity": 0.35
+      }
+    ],
+    "nodes": [
+      {
+        "id": "lawn",
+        "geometry": "lawn",
+        "material": "grass",
+        "translation": [
+          4,
+          -0.05,
+          2.5
+        ],
+        "scale": [
+          30,
+          0.1,
+          24
+        ]
+      },
+      {
+        "id": "walls",
+        "geometry": "walls",
+        "material": "plaster"
+      },
+      {
+        "id": "floor",
+        "geometry": "floor",
+        "material": "oak"
+      },
+      {
+        "id": "doors",
+        "geometry": "doors",
+        "material": "door"
+      },
+      {
+        "id": "frames",
+        "geometry": "frames",
+        "material": "frame"
+      },
+      {
+        "id": "glass",
+        "geometry": "glass",
+        "material": "glass"
+      }
+    ],
+    "camera": {
+      "eye": [
+        0.8,
+        2.8,
+        4.4
+      ],
+      "target": [
+        4,
+        1.3,
+        0.1
+      ],
+      "fov": 45
+    },
+    "environment": {
+      "world": true,
+      "lightDirection": [
+        0.55,
+        1,
+        0.45
+      ],
+      "keyIntensity": 2.2,
+      "ambientIntensity": 0.55,
+      "skyTop": [
+        0.5,
+        0.68,
+        0.9
+      ],
+      "skyBottom": [
+        0.85,
+        0.88,
+        0.9
+      ]
+    }
+  },
+  "camera": {
+    "eye": [
+      0.8,
+      2.8,
+      4.4
+    ],
+    "target": [
+      4,
+      1.3,
+      0.1
+    ],
+    "fov": 45
+  },
+  "light": {
+    "world": true,
+    "lightDirection": [
+      0.55,
+      1,
+      0.45
+    ],
+    "keyIntensity": 2.2,
+    "ambientIntensity": 0.55,
+    "skyTop": [
+      0.5,
+      0.68,
+      0.9
+    ],
+    "skyBottom": [
+      0.85,
+      0.88,
+      0.9
+    ]
+  },
+  "size": [
+    1000,
+    700
+  ],
+  "backend": "gpu (Chrome WebGL through the MCP render job)",
+  "seed": "none: floorPlan and the scene are deterministic"
+}
