@@ -20,3 +20,8 @@ Low-quality preview only. Not the showcase scene, no PR.
 - A bright cyan line at the horizon where the 300 m sheet ends.
 - The wake and foam ring are blobs at 1.1 m cells; no contact foam where waves slap the hull.
 - Ship sails read flat white-grey.
+
+## Issues
+
+- Opened: #2829 (emitter follows a moving node), #2830 (camera-facing billboard particles, non-darkening fade).
+- Already open and relevant: #2034 (contact foam at hulls), #2040 (spray from bows and crests), #2823 (spray emitter on a 74k-vertex sea exceeds 30 s in `scene_create`; not hit here because no crest emitter was added).
