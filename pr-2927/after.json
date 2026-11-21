@@ -1,0 +1,183 @@
+{
+  "name": "after",
+  "backend": "gpu",
+  "width": 960,
+  "height": 540,
+  "seed": null,
+  "hdri": "polyhaven kloofendal_43d_clear_puresky 1k (CC0)",
+  "camera": {
+    "eye": [
+      -4.8498,
+      1.2,
+      -3.5471999999999997
+    ],
+    "target": [
+      0,
+      3.383821405597214,
+      0
+    ],
+    "fov": 70
+  },
+  "sunTowardFromHdri": [
+    0.591,
+    0.681,
+    0.432
+  ],
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "cube",
+        "type": "box",
+        "bevel": 0
+      }
+    ],
+    "materials": [
+      {
+        "id": "ground",
+        "color": [
+          0.45,
+          0.42,
+          0.36
+        ],
+        "roughness": 0.9
+      },
+      {
+        "id": "wood",
+        "color": [
+          0.62,
+          0.48,
+          0.34
+        ],
+        "roughness": 0.7
+      }
+    ],
+    "nodes": [
+      {
+        "id": "floor",
+        "geometry": "cube",
+        "material": "ground",
+        "translation": [
+          0,
+          -0.05,
+          0
+        ],
+        "scale": [
+          40,
+          0.1,
+          40
+        ]
+      },
+      {
+        "id": "post0",
+        "geometry": "cube",
+        "material": "wood",
+        "translation": [
+          -1.6,
+          1,
+          -0.6
+        ],
+        "scale": [
+          0.18,
+          2,
+          0.18
+        ]
+      },
+      {
+        "id": "post1",
+        "geometry": "cube",
+        "material": "wood",
+        "translation": [
+          -0.6,
+          1,
+          1.4
+        ],
+        "scale": [
+          0.18,
+          2,
+          0.18
+        ]
+      },
+      {
+        "id": "post2",
+        "geometry": "cube",
+        "material": "wood",
+        "translation": [
+          0.8,
+          1,
+          -1.2
+        ],
+        "scale": [
+          0.18,
+          2,
+          0.18
+        ]
+      },
+      {
+        "id": "post3",
+        "geometry": "cube",
+        "material": "wood",
+        "translation": [
+          1.8,
+          1,
+          0.8
+        ],
+        "scale": [
+          0.18,
+          2,
+          0.18
+        ]
+      },
+      {
+        "id": "post4",
+        "geometry": "cube",
+        "material": "wood",
+        "translation": [
+          0,
+          1,
+          0
+        ],
+        "scale": [
+          0.18,
+          2,
+          0.18
+        ]
+      },
+      {
+        "id": "crate",
+        "geometry": "cube",
+        "material": "wood",
+        "translation": [
+          0.9,
+          0.35,
+          1.9
+        ],
+        "scale": [
+          0.7,
+          0.7,
+          0.7
+        ]
+      }
+    ],
+    "camera": {
+      "eye": [
+        -4.8498,
+        1.2,
+        -3.5471999999999997
+      ],
+      "target": [
+        0,
+        3.383821405597214,
+        0
+      ],
+      "fov": 70
+    },
+    "environment": {
+      "hdri": "de7ba9d0b070470dbb70d0144294c8708068df353537b26ab59c394707e84377",
+      "world": true,
+      "ground": false,
+      "keyFromHdri": true
+    }
+  }
+}
