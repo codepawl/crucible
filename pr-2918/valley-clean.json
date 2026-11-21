@@ -1,0 +1,14 @@
+{
+  "recipe": {
+    "format": "crucible.scene", "schemaVersion": 1,
+    "geometries": [{ "id": "ground", "type": "terrain", "size": 500, "resolution": 250, "featureSize": 100, "warp": 35, "mountainMask": 0.6, "mountainAmplitude": 60, "octaves": 5 }],
+    "materials": [{ "id": "grass", "color": [0.6, 0.7, 0.4], "roughness": 0.9 }],
+    "nodes": [{ "id": "hills", "geometry": "ground", "material": "grass" }],
+    "camera": { "eye": [150, 50, 150], "target": [0, 20, 0], "fov": 50 }
+  },
+  "sun": "recipe default (no light given)",
+  "render": { "kind": "image", "width": 960, "height": 540 },
+  "backend": "gpu (RTX 3060, COOK_DISABLE=1)",
+  "seed": "recipe default",
+  "branch": "2870-recipe-terrain-noise @ a2229279"
+}
