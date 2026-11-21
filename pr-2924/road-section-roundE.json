@@ -1,0 +1,260 @@
+{
+ "view": "section",
+ "terrain": {
+  "size": 40,
+  "resolution": 400,
+  "seed": 7,
+  "amplitude": 0.25,
+  "featureSize": 20,
+  "octaves": 3,
+  "paths": [
+   {
+    "name": "road",
+    "points": [
+     [
+      -18,
+      0
+     ],
+     [
+      0,
+      0.4
+     ],
+     [
+      18,
+      0
+     ]
+    ],
+    "width": 2.4,
+    "depth": 0.9,
+    "falloff": 1.2,
+    "ruts": 0.35,
+    "crown": 0,
+    "shoulder": 0.35
+   }
+  ]
+ },
+ "path": {
+  "name": "road",
+  "points": [
+   [
+    -18,
+    0
+   ],
+   [
+    0,
+    0.4
+   ],
+   [
+    18,
+    0
+   ]
+  ],
+  "width": 2.4,
+  "depth": 0.9,
+  "falloff": 1.2,
+  "ruts": 0.35,
+  "crown": 0,
+  "shoulder": 0.35
+ },
+ "textures": {
+  "base": "leafy_grass",
+  "road": "brown_mud_dry (Poly Haven, CC0)"
+ },
+ "splat": {
+  "rules": "grass, then road layer with mask r",
+  "heightInfluence": 0,
+  "edgeNoise": 0,
+  "triplanar": "12 to 32 degrees"
+ },
+ "camera": {
+  "eye": [
+   -16,
+   0.3813737392425538,
+   0.5
+  ],
+  "target": [
+   8,
+   -0.5412629008293152,
+   0.5
+  ],
+  "fov": 55
+ },
+ "maskCoverageFraction": 0.0576,
+ "crossSectionAtZ": [
+  0,
+  0.4
+ ],
+ "section": [
+  {
+   "offsetZ": -8,
+   "carvedY": -2.28,
+   "uncarvedY": -2.28
+  },
+  {
+   "offsetZ": -7.5,
+   "carvedY": -2.13,
+   "uncarvedY": -2.13
+  },
+  {
+   "offsetZ": -7,
+   "carvedY": -1.98,
+   "uncarvedY": -1.98
+  },
+  {
+   "offsetZ": -6.5,
+   "carvedY": -1.83,
+   "uncarvedY": -1.83
+  },
+  {
+   "offsetZ": -6,
+   "carvedY": -1.68,
+   "uncarvedY": -1.68
+  },
+  {
+   "offsetZ": -5.5,
+   "carvedY": -1.53,
+   "uncarvedY": -1.53
+  },
+  {
+   "offsetZ": -5,
+   "carvedY": -1.38,
+   "uncarvedY": -1.38
+  },
+  {
+   "offsetZ": -4.5,
+   "carvedY": -1.23,
+   "uncarvedY": -1.23
+  },
+  {
+   "offsetZ": -4,
+   "carvedY": -1.08,
+   "uncarvedY": -1.08
+  },
+  {
+   "offsetZ": -3.5,
+   "carvedY": -0.93,
+   "uncarvedY": -0.93
+  },
+  {
+   "offsetZ": -3,
+   "carvedY": -0.78,
+   "uncarvedY": -0.78
+  },
+  {
+   "offsetZ": -2.5,
+   "carvedY": -0.63,
+   "uncarvedY": -0.63
+  },
+  {
+   "offsetZ": -2,
+   "carvedY": -0.31,
+   "uncarvedY": -0.48
+  },
+  {
+   "offsetZ": -1.5,
+   "carvedY": -0.549,
+   "uncarvedY": -0.33
+  },
+  {
+   "offsetZ": -1,
+   "carvedY": -0.815,
+   "uncarvedY": -0.18
+  },
+  {
+   "offsetZ": -0.5,
+   "carvedY": -1.124,
+   "uncarvedY": -0.03
+  },
+  {
+   "offsetZ": 0,
+   "carvedY": -0.795,
+   "uncarvedY": 0.12
+  },
+  {
+   "offsetZ": 0.5,
+   "carvedY": -1.124,
+   "uncarvedY": 0.27
+  },
+  {
+   "offsetZ": 1,
+   "carvedY": -0.815,
+   "uncarvedY": 0.42
+  },
+  {
+   "offsetZ": 1.5,
+   "carvedY": -0.409,
+   "uncarvedY": 0.57
+  },
+  {
+   "offsetZ": 2,
+   "carvedY": 0.578,
+   "uncarvedY": 0.72
+  },
+  {
+   "offsetZ": 2.5,
+   "carvedY": 0.87,
+   "uncarvedY": 0.87
+  },
+  {
+   "offsetZ": 3,
+   "carvedY": 1.02,
+   "uncarvedY": 1.02
+  },
+  {
+   "offsetZ": 3.5,
+   "carvedY": 1.17,
+   "uncarvedY": 1.17
+  },
+  {
+   "offsetZ": 4,
+   "carvedY": 1.32,
+   "uncarvedY": 1.32
+  },
+  {
+   "offsetZ": 4.5,
+   "carvedY": 1.47,
+   "uncarvedY": 1.47
+  },
+  {
+   "offsetZ": 5,
+   "carvedY": 1.62,
+   "uncarvedY": 1.62
+  },
+  {
+   "offsetZ": 5.5,
+   "carvedY": 1.77,
+   "uncarvedY": 1.77
+  },
+  {
+   "offsetZ": 6,
+   "carvedY": 1.92,
+   "uncarvedY": 1.92
+  },
+  {
+   "offsetZ": 6.5,
+   "carvedY": 2.07,
+   "uncarvedY": 2.07
+  },
+  {
+   "offsetZ": 7,
+   "carvedY": 2.22,
+   "uncarvedY": 2.22
+  },
+  {
+   "offsetZ": 7.5,
+   "carvedY": 2.37,
+   "uncarvedY": 2.37
+  },
+  {
+   "offsetZ": 8,
+   "carvedY": 2.52,
+   "uncarvedY": 2.52
+  }
+ ],
+ "size": [
+  1280,
+  720
+ ],
+ "backend": "headless Chrome, ANGLE d3d11 GPU",
+ "sun": "renderer default world sun"
+}
