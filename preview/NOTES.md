@@ -37,3 +37,10 @@ Low-quality preview only. Not the showcase scene, no PR.
 - 1440x900 desktop still not made: `scene_look` caps width at 1024.
 - Workarounds for #2829 and #2830 are commented on those issues.
 - Still weak: the mist is barely visible, the hull looks green under the water, the wake trail is faint at the far end, the water is still pale at distance.
+
+## Round 3 (galleon-preview-3.png, galleon-preview-3.mp4)
+
+- Hull: camera raised to y 3.6 and 3.3, swell lowered (`windSpeed` 10, `size` 70, `resolution` 6, new seed), draft 3.9 m. The hull shows in every sampled clip frame (0, 50, 100, 143).
+- Colour and contrast: fog 0.0011 (was 0.0022), key light 1.4, darker water body (0.001, 0.008, 0.028), roughness 0.035. The hull is browner; the lower hull still has green paint of its own.
+- Wake: a V of two stern arms (16 points each side, widening 0.24 m per metre), a short central trail, a bow wave and a foam ring along the hull. Still faint at its far end.
+- Still weak: the sea and far-sea sheets raise a z-fighting warning (0.6 m apart at the far edge), a single ocean spectrum so waves still repeat at long range, the mist is faint, the sails read grey.
