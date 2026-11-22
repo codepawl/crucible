@@ -1,0 +1,75 @@
+{
+ "backend": "gpu",
+ "size": [
+  960,
+  540
+ ],
+ "camera": {
+  "eye": [
+   0,
+   0.25,
+   0.8
+  ],
+  "target": [
+   0,
+   0,
+   -0.6
+  ],
+  "fov": 40
+ },
+ "sunDirection": [
+  -0.12,
+  0.62,
+  -0.78
+ ],
+ "maxAnisotropy": 16,
+ "scene": {
+  "glb": "grain-floor.glb",
+  "hdri": "/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr",
+  "hdriOptions": {
+   "intensity": 0.45,
+   "rotation": 0,
+   "showBackground": true
+  },
+  "exposure": 0.85,
+  "renderer": {
+   "ground": false,
+   "hdr": true,
+   "samples": 2,
+   "environment": {
+    "lightDirection": [
+     -0.12,
+     0.62,
+     -0.78
+    ],
+    "keyColor": [
+     2.3,
+     2,
+     1.65
+    ],
+    "keyIntensity": 1,
+    "fillIntensity": 0.6,
+    "ambientIntensity": 0.8,
+    "sunAngularRadius": 0.02,
+    "shadowCascades": 3
+   },
+   "maxAnisotropy": 16
+  },
+  "frame": {
+   "fov": 40,
+   "near": 0.05,
+   "far": 30,
+   "effects": {}
+  },
+  "eye": [
+   0,
+   0.25,
+   0.8
+  ],
+  "target": [
+   0,
+   0,
+   -0.6
+  ]
+ }
+}
