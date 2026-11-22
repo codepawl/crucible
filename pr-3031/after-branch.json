@@ -1,0 +1,71 @@
+{
+ "terrain": {
+  "size": 40,
+  "resolution": 400,
+  "seed": 7,
+  "amplitude": 0.25,
+  "featureSize": 20,
+  "octaves": 3,
+  "paths": [
+   {
+    "name": "road",
+    "points": [
+     [
+      -20,
+      0
+     ],
+     [
+      0,
+      0.5
+     ],
+     [
+      20,
+      0
+     ]
+    ],
+    "width": 2.4,
+    "depth": 0.3,
+    "falloff": 1.2,
+    "ruts": 0.35,
+    "crown": 0,
+    "shoulder": 0.35
+   }
+  ]
+ },
+ "layers": "leafy_grass scale 3 and brown_mud_leaves_01 scale 2.2, both triplanar true, road layer rule mask r (pathMasks.image road 1024)",
+ "splat": {
+  "heightInfluence": 0,
+  "edgeNoise": 0,
+  "triplanarStart": 12,
+  "triplanarEnd": 32,
+  "parallax": 0.03,
+  "antiTiling": 1
+ },
+ "camera": {
+  "eye": [
+   -10,
+   0.11426614522933964,
+   0
+  ],
+  "target": [
+   6,
+   -0.5419827759265899,
+   0.1
+  ],
+  "fov": 55,
+  "up": [
+   0,
+   1,
+   0
+  ]
+ },
+ "sun": "renderer default world sun",
+ "size": [
+  1280,
+  720
+ ],
+ "backend": "headless Chrome, ANGLE d3d11 GPU, world+hdr, 4 frames",
+ "seed": 7,
+ "script": "artifacts/2937w/ruts.html + shoot.mjs",
+ "build": "branch 2937-triplanar-smear"
+}
