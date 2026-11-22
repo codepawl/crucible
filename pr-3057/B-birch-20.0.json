@@ -1,0 +1,122 @@
+{
+  "preset": "birch",
+  "seed": 4,
+  "tree": {
+    "leafSize": 0.8,
+    "leafCount": 8
+  },
+  "level": 0,
+  "distance": 20,
+  "side": "at",
+  "backend": "gpu",
+  "size": [
+    640,
+    480
+  ],
+  "camera": {
+    "eye": [
+      0.08245420455932617,
+      5.9543754160404205,
+      19.092894351276446
+    ],
+    "target": [
+      0.08245420455932617,
+      5.9543754160404205,
+      0
+    ],
+    "fov": 39.269071802500676
+  },
+  "sun": [
+    0.6,
+    0.6,
+    0.45
+  ],
+  "treeHeightFraction": 0.88,
+  "photo": {
+    "url": "https://commons.wikimedia.org/wiki/File:Betula_pendula_tree_Bulgaria.jpg",
+    "author": "Georgi Kunev",
+    "licence": "CC BY 2.5"
+  },
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "ground",
+        "type": "box",
+        "bevel": 0
+      }
+    ],
+    "materials": [
+      {
+        "id": "soil",
+        "color": [
+          0.16,
+          0.24,
+          0.07
+        ],
+        "metallic": 0,
+        "roughness": 0.95
+      }
+    ],
+    "nodes": [
+      {
+        "id": "ground",
+        "geometry": "ground",
+        "material": "soil",
+        "translation": [
+          0,
+          -0.05,
+          0
+        ],
+        "scale": [
+          300,
+          0.1,
+          300
+        ]
+      },
+      {
+        "id": "tree",
+        "vegetation": {
+          "preset": "birch",
+          "seed": 4,
+          "tree": {
+            "leafSize": 0.8,
+            "leafCount": 8
+          }
+        }
+      }
+    ],
+    "camera": {
+      "eye": [
+        0.08245420455932617,
+        5.9543754160404205,
+        19.092894351276446
+      ],
+      "target": [
+        0.08245420455932617,
+        5.9543754160404205,
+        0
+      ],
+      "fov": 39.269071802500676
+    },
+    "environment": {
+      "world": true,
+      "lightDirection": [
+        0.6,
+        0.6,
+        0.45
+      ]
+    },
+    "shadow": {
+      "target": [
+        0,
+        6.279034465551376,
+        0
+      ],
+      "extent": 20.092910289764404,
+      "distance": 37.67420679330826,
+      "far": 100.46455144882202
+    }
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "preset": "birch",
+  "seed": 4,
+  "tree": {},
+  "level": 1,
+  "distance": 70,
+  "side": "at",
+  "backend": "gpu",
+  "size": [
+    640,
+    480
+  ],
+  "camera": {
+    "eye": [
+      0.4099154472351074,
+      6.240987613797188,
+      69.72002612542933
+    ],
+    "target": [
+      0.4099154472351074,
+      6.240987613797188,
+      0
+    ],
+    "fov": 12.161270427561268
+  },
+  "sun": [
+    0.6,
+    0.6,
+    0.45
+  ],
+  "treeHeightFraction": 0.88,
+  "photo": {
+    "url": "https://commons.wikimedia.org/wiki/File:Betula_pendula_tree_Bulgaria.jpg",
+    "author": "Georgi Kunev",
+    "licence": "CC BY 2.5"
+  },
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "ground",
+        "type": "box",
+        "bevel": 0
+      }
+    ],
+    "materials": [
+      {
+        "id": "soil",
+        "color": [
+          0.16,
+          0.24,
+          0.07
+        ],
+        "metallic": 0,
+        "roughness": 0.95
+      }
+    ],
+    "nodes": [
+      {
+        "id": "ground",
+        "geometry": "ground",
+        "material": "soil",
+        "translation": [
+          0,
+          -0.05,
+          0
+        ],
+        "scale": [
+          300,
+          0.1,
+          300
+        ]
+      },
+      {
+        "id": "tree",
+        "vegetation": {
+          "preset": "birch",
+          "seed": 4,
+          "tree": {}
+        }
+      }
+    ],
+    "camera": {
+      "eye": [
+        0.4099154472351074,
+        6.240987613797188,
+        69.72002612542933
+      ],
+      "target": [
+        0.4099154472351074,
+        6.240987613797188,
+        0
+      ],
+      "fov": 12.161270427561268
+    },
+    "environment": {
+      "world": true,
+      "lightDirection": [
+        0.6,
+        0.6,
+        0.45
+      ]
+    },
+    "shadow": {
+      "target": [
+        0,
+        6.377269119024277,
+        0
+      ],
+      "extent": 20.407261180877686,
+      "distance": 38.26361471414566,
+      "far": 102.03630590438843
+    }
+  }
+}

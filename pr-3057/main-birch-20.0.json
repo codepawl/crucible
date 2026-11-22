@@ -1,0 +1,116 @@
+{
+  "preset": "birch",
+  "seed": 4,
+  "tree": {},
+  "level": 0,
+  "distance": 20,
+  "side": "at",
+  "backend": "gpu",
+  "size": [
+    640,
+    480
+  ],
+  "camera": {
+    "eye": [
+      0.7083121538162231,
+      5.89381805062294,
+      19.098722540497505
+    ],
+    "target": [
+      0.7083121538162231,
+      5.89381805062294,
+      0
+    ],
+    "fov": 38.918927607840615
+  },
+  "sun": [
+    0.6,
+    0.6,
+    0.45
+  ],
+  "treeHeightFraction": 0.88,
+  "photo": {
+    "url": "https://commons.wikimedia.org/wiki/File:Betula_pendula_tree_Bulgaria.jpg",
+    "author": "Georgi Kunev",
+    "licence": "CC BY 2.5"
+  },
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "ground",
+        "type": "box",
+        "bevel": 0
+      }
+    ],
+    "materials": [
+      {
+        "id": "soil",
+        "color": [
+          0.16,
+          0.24,
+          0.07
+        ],
+        "metallic": 0,
+        "roughness": 0.95
+      }
+    ],
+    "nodes": [
+      {
+        "id": "ground",
+        "geometry": "ground",
+        "material": "soil",
+        "translation": [
+          0,
+          -0.05,
+          0
+        ],
+        "scale": [
+          300,
+          0.1,
+          300
+        ]
+      },
+      {
+        "id": "tree",
+        "vegetation": {
+          "preset": "birch",
+          "seed": 4,
+          "tree": {}
+        }
+      }
+    ],
+    "camera": {
+      "eye": [
+        0.7083121538162231,
+        5.89381805062294,
+        19.098722540497505
+      ],
+      "target": [
+        0.7083121538162231,
+        5.89381805062294,
+        0
+      ],
+      "fov": 38.918927607840615
+    },
+    "environment": {
+      "world": true,
+      "lightDirection": [
+        0.6,
+        0.6,
+        0.45
+      ]
+    },
+    "shadow": {
+      "target": [
+        0,
+        6.218477100133896,
+        0
+      ],
+      "extent": 19.89912672042847,
+      "distance": 37.310862600803375,
+      "far": 99.49563360214233
+    }
+  }
+}
