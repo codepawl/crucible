@@ -1,0 +1,108 @@
+{
+ "checkout": "after",
+ "backend": "cpu",
+ "settings": {
+  "kind": "image",
+  "width": 960,
+  "height": 480,
+  "renderer": {
+   "type": "pathTracer",
+   "backend": "cpu",
+   "samples": 48,
+   "bounces": 4,
+   "denoise": false,
+   "seed": 1,
+   "maxSeconds": 300
+  }
+ },
+ "recipe": {
+  "format": "crucible.scene",
+  "schemaVersion": 1,
+  "geometries": [
+   {
+    "id": "ball",
+    "type": "sphere",
+    "segments": 96,
+    "rings": 64
+   },
+   {
+    "id": "sheet",
+    "type": "plane",
+    "segments": 1
+   }
+  ],
+  "materials": [
+   {
+    "id": "picture",
+    "colorMap": "ebd4a6e8921981c3b08632edc81b08e285338a3ef024141e5f45fa92ab98cc65",
+    "roughness": 0.6,
+    "doubleSided": true
+   }
+  ],
+  "nodes": [
+   {
+    "id": "sphere",
+    "geometry": "ball",
+    "material": "picture",
+    "translation": [
+     -1.15,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0.70710678,
+     0,
+     0.70710678
+    ],
+    "scale": [
+     1,
+     1,
+     1
+    ]
+   },
+   {
+    "id": "plane",
+    "geometry": "sheet",
+    "material": "picture",
+    "translation": [
+     1.15,
+     0,
+     0
+    ],
+    "scale": [
+     2,
+     2,
+     2
+    ]
+   }
+  ],
+  "camera": {
+   "eye": [
+    0,
+    0,
+    6
+   ],
+   "target": [
+    0,
+    0,
+    0
+   ],
+   "fov": 32
+  }
+ },
+ "camera": {
+  "eye": [
+   0,
+   0,
+   6
+  ],
+  "target": [
+   0,
+   0,
+   0
+  ],
+  "fov": 32
+ },
+ "seed": 1
+}
