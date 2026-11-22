@@ -1,0 +1,128 @@
+{
+ "recipe": {
+  "format": "crucible.scene",
+  "schemaVersion": 1,
+  "geometries": [
+   {
+    "id": "block",
+    "type": "box"
+   }
+  ],
+  "materials": [
+   {
+    "id": "floor",
+    "color": [
+     0.7,
+     0.7,
+     0.7
+    ],
+    "roughness": 0.9
+   },
+   {
+    "id": "lamp",
+    "color": [
+     0.4,
+     0.5,
+     0.8
+    ],
+    "roughness": 0.6,
+    "snippet": {
+     "fragment": "void materialHook(inout vec3 color, inout float alpha, vec2 uv, vec3 worldPosition, float time) {\n  float wave = 0.5 + 0.5 * sin(time * 4.0 + worldPosition.x * 6.0);\n  color = mix(color, vec3(1.0, 0.45, 0.1), wave);\n}"
+    }
+   }
+  ],
+  "nodes": [
+   {
+    "id": "ground",
+    "geometry": "block",
+    "material": "floor",
+    "scale": [
+     20,
+     0.2,
+     20
+    ],
+    "translation": [
+     0,
+     -0.1,
+     0
+    ]
+   },
+   {
+    "id": "caster",
+    "geometry": "block",
+    "material": "lamp",
+    "scale": [
+     1.6,
+     1.6,
+     1.6
+    ],
+    "translation": [
+     0,
+     0.8,
+     0
+    ]
+   }
+  ],
+  "camera": {
+   "eye": [
+    5,
+    4,
+    6
+   ],
+   "target": [
+    0,
+    0.6,
+    0
+   ],
+   "fov": 35,
+   "near": 0.5,
+   "far": 60
+  },
+  "environment": {
+   "world": true,
+   "lightDirection": [
+    -1,
+    1.4,
+    0.6
+   ],
+   "keyColor": [
+    3,
+    2.8,
+    2.5
+   ],
+   "ambientIntensity": 0.25,
+   "ground": false
+  }
+ },
+ "camera": {
+  "eye": [
+   5,
+   4,
+   6
+  ],
+  "target": [
+   0,
+   0.6,
+   0
+  ],
+  "fov": 35,
+  "near": 0.5,
+  "far": 60
+ },
+ "sunDirection": [
+  -1,
+  1.4,
+  0.6
+ ],
+ "size": [
+  480,
+  360
+ ],
+ "fps": 12,
+ "motionTimes": [
+  0,
+  1.9166666666666667
+ ],
+ "backend": "default (GPU preview)",
+ "seed": "none"
+}
