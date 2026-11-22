@@ -1,0 +1,115 @@
+{
+  "preset": "oak",
+  "seed": 4,
+  "tree": null,
+  "level": 3,
+  "distance": 200,
+  "side": "at",
+  "backend": "gpu",
+  "size": [
+    480,
+    360
+  ],
+  "camera": {
+    "eye": [
+      0.5229547023773193,
+      5.992448210716248,
+      199.9095222414909
+    ],
+    "target": [
+      0.5229547023773193,
+      5.992448210716248,
+      0
+    ],
+    "fov": 4.04621529320179
+  },
+  "sun": [
+    0.6,
+    0.6,
+    0.45
+  ],
+  "treeHeightFraction": 0.9,
+  "photo": {
+    "url": "https://commons.wikimedia.org/wiki/File:English_Oak_(Quercus_robur),_Elgood%27s_Brewery_Garden,_Wisbech.jpg",
+    "author": "Jim Linwood",
+    "licence": "CC BY 2.0"
+  },
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "ground",
+        "type": "box",
+        "bevel": 0
+      }
+    ],
+    "materials": [
+      {
+        "id": "soil",
+        "color": [
+          0.16,
+          0.24,
+          0.07
+        ],
+        "metallic": 0,
+        "roughness": 0.95
+      }
+    ],
+    "nodes": [
+      {
+        "id": "ground",
+        "geometry": "ground",
+        "material": "soil",
+        "translation": [
+          0,
+          -0.05,
+          0
+        ],
+        "scale": [
+          300,
+          0.1,
+          300
+        ]
+      },
+      {
+        "id": "tree",
+        "vegetation": {
+          "preset": "oak",
+          "seed": 4
+        }
+      }
+    ],
+    "camera": {
+      "eye": [
+        0.5229547023773193,
+        5.992448210716248,
+        199.9095222414909
+      ],
+      "target": [
+        0.5229547023773193,
+        5.992448210716248,
+        0
+      ],
+      "fov": 4.04621529320179
+    },
+    "environment": {
+      "world": true,
+      "lightDirection": [
+        0.6,
+        0.6,
+        0.45
+      ]
+    },
+    "shadow": {
+      "target": [
+        0,
+        6.148770332336426,
+        0
+      ],
+      "extent": 19.676065063476564,
+      "distance": 36.892621994018555,
+      "far": 98.38032531738281
+    }
+  }
+}

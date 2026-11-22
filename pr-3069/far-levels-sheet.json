@@ -1,0 +1,194 @@
+{
+  "seed": 4,
+  "distances": [
+    60,
+    120,
+    200
+  ],
+  "size": [
+    480,
+    360
+  ],
+  "numbers": [
+    {
+      "side": "before",
+      "preset": "oak",
+      "level": 1,
+      "still": "before/oak/oak-level1-60.0m.png",
+      "width": 15.031153678894043,
+      "widthVersusLevel1": 1,
+      "solidity": 0.8974080509029171,
+      "foliageTriangles": 2048
+    },
+    {
+      "side": "before",
+      "preset": "oak",
+      "level": 2,
+      "still": "before/oak/oak-level2-120.0m.png",
+      "width": 16.89528465270996,
+      "widthVersusLevel1": 1.1240178241563343,
+      "solidity": 0.9507322495033276,
+      "foliageTriangles": 186
+    },
+    {
+      "side": "before",
+      "preset": "oak",
+      "level": 3,
+      "still": "before/oak/oak-level3-200.0m.png",
+      "width": 21.310694694519043,
+      "widthVersusLevel1": 1.4177683995369166,
+      "solidity": 0.9578126547445832,
+      "foliageTriangles": 186
+    },
+    {
+      "side": "before",
+      "preset": "birch",
+      "level": 1,
+      "still": "before/birch/birch-level1-60.0m.png",
+      "width": 7.355643272399902,
+      "widthVersusLevel1": 1,
+      "solidity": 0.8935210166124267,
+      "foliageTriangles": 1184
+    },
+    {
+      "side": "before",
+      "preset": "birch",
+      "level": 2,
+      "still": "before/birch/birch-level2-120.0m.png",
+      "width": 9.135322570800781,
+      "widthVersusLevel1": 1.241947472504363,
+      "solidity": 0.9878075176032297,
+      "foliageTriangles": 156
+    },
+    {
+      "side": "before",
+      "preset": "birch",
+      "level": 3,
+      "still": "before/birch/birch-level3-200.0m.png",
+      "width": 11.632135391235352,
+      "widthVersusLevel1": 1.5813892762964525,
+      "solidity": 0.9858993325478155,
+      "foliageTriangles": 156
+    },
+    {
+      "side": "before",
+      "preset": "palm",
+      "level": 1,
+      "still": "before/palm/palm-level1-60.0m.png",
+      "width": 6.828100204467773,
+      "widthVersusLevel1": 1,
+      "solidity": 0.46865870338739574,
+      "foliageTriangles": 892
+    },
+    {
+      "side": "before",
+      "preset": "palm",
+      "level": 2,
+      "still": "before/palm/palm-level2-120.0m.png",
+      "width": 8.4374418258667,
+      "widthVersusLevel1": 1.235693907998875,
+      "solidity": 0.9625267382379488,
+      "foliageTriangles": 162
+    },
+    {
+      "side": "before",
+      "preset": "palm",
+      "level": 3,
+      "still": "before/palm/palm-level3-200.0m.png",
+      "width": 10.582369804382324,
+      "widthVersusLevel1": 1.5498263773952894,
+      "solidity": 0.9728189137972104,
+      "foliageTriangles": 162
+    },
+    {
+      "side": "after",
+      "preset": "oak",
+      "level": 1,
+      "still": "after/oak/oak-level1-60.0m.png",
+      "width": 15.031153678894043,
+      "widthVersusLevel1": 1,
+      "solidity": 0.8974080509029171,
+      "foliageTriangles": 2048
+    },
+    {
+      "side": "after",
+      "preset": "oak",
+      "level": 2,
+      "still": "after/oak/oak-level2-120.0m.png",
+      "width": 14.44464635848999,
+      "widthVersusLevel1": 0.960980551930116,
+      "solidity": 0.9416066385718719,
+      "foliageTriangles": 616
+    },
+    {
+      "side": "after",
+      "preset": "oak",
+      "level": 3,
+      "still": "after/oak/oak-level3-200.0m.png",
+      "width": 14.50002908706665,
+      "widthVersusLevel1": 0.9646650813920444,
+      "solidity": 0.9469470560006015,
+      "foliageTriangles": 440
+    },
+    {
+      "side": "after",
+      "preset": "birch",
+      "level": 1,
+      "still": "after/birch/birch-level1-60.0m.png",
+      "width": 7.355643272399902,
+      "widthVersusLevel1": 1,
+      "solidity": 0.8935210166124267,
+      "foliageTriangles": 1184
+    },
+    {
+      "side": "after",
+      "preset": "birch",
+      "level": 2,
+      "still": "after/birch/birch-level2-120.0m.png",
+      "width": 7.250934839248657,
+      "widthVersusLevel1": 0.98576488428359,
+      "solidity": 0.958731023532174,
+      "foliageTriangles": 360
+    },
+    {
+      "side": "after",
+      "preset": "birch",
+      "level": 3,
+      "still": "after/birch/birch-level3-200.0m.png",
+      "width": 8.086459159851074,
+      "widthVersusLevel1": 1.099354449418906,
+      "solidity": 0.9684154390340246,
+      "foliageTriangles": 256
+    },
+    {
+      "side": "after",
+      "preset": "palm",
+      "level": 1,
+      "still": "after/palm/palm-level1-60.0m.png",
+      "width": 6.828100204467773,
+      "widthVersusLevel1": 1,
+      "solidity": 0.46865870338739574,
+      "foliageTriangles": 892
+    },
+    {
+      "side": "after",
+      "preset": "palm",
+      "level": 2,
+      "still": "after/palm/palm-level2-120.0m.png",
+      "width": 6.643355131149292,
+      "widthVersusLevel1": 0.9729434150369383,
+      "solidity": 0.5127936533918519,
+      "foliageTriangles": 268
+    },
+    {
+      "side": "after",
+      "preset": "palm",
+      "level": 3,
+      "still": "after/palm/palm-level3-200.0m.png",
+      "width": 6.812397718429565,
+      "widthVersusLevel1": 0.9977003140598415,
+      "solidity": 0.4958707966409704,
+      "foliageTriangles": 192
+    }
+  ]
+}

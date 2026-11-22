@@ -1,0 +1,115 @@
+{
+  "preset": "palm",
+  "seed": 4,
+  "tree": null,
+  "level": 3,
+  "distance": 200,
+  "side": "at",
+  "backend": "gpu",
+  "size": [
+    480,
+    360
+  ],
+  "camera": {
+    "eye": [
+      1.1752678155899048,
+      4.808725759387016,
+      199.93872786964673
+    ],
+    "target": [
+      1.1752678155899048,
+      4.808725759387016,
+      0
+    ],
+    "fov": 3.462952264263799
+  },
+  "sun": [
+    0.6,
+    0.6,
+    0.45
+  ],
+  "treeHeightFraction": 0.85,
+  "photo": {
+    "url": "https://commons.wikimedia.org/wiki/File:Cocos_nucifera_Kratie_Cambodia.JPG",
+    "author": "Pamputt",
+    "licence": "CC0"
+  },
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "ground",
+        "type": "box",
+        "bevel": 0
+      }
+    ],
+    "materials": [
+      {
+        "id": "soil",
+        "color": [
+          0.16,
+          0.24,
+          0.07
+        ],
+        "metallic": 0,
+        "roughness": 0.95
+      }
+    ],
+    "nodes": [
+      {
+        "id": "ground",
+        "geometry": "ground",
+        "material": "soil",
+        "translation": [
+          0,
+          -0.05,
+          0
+        ],
+        "scale": [
+          300,
+          0.1,
+          300
+        ]
+      },
+      {
+        "id": "tree",
+        "vegetation": {
+          "preset": "palm",
+          "seed": 4
+        }
+      }
+    ],
+    "camera": {
+      "eye": [
+        1.1752678155899048,
+        4.808725759387016,
+        199.93872786964673
+      ],
+      "target": [
+        1.1752678155899048,
+        4.808725759387016,
+        0
+      ],
+      "fov": 3.462952264263799
+    },
+    "environment": {
+      "world": true,
+      "lightDirection": [
+        0.6,
+        0.6,
+        0.45
+      ]
+    },
+    "shadow": {
+      "target": [
+        0,
+        4.94957423210144,
+        0
+      ],
+      "extent": 15.83863754272461,
+      "distance": 29.697445392608643,
+      "far": 79.19318771362305
+    }
+  }
+}
