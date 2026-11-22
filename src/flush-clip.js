@@ -6,6 +6,7 @@
 // instead of meeting on a line that rounding could open. And a vertex a cut puts on an edge is given to every triangle on
 // that edge, in this face and in the next one, so no edge has a vertex on one side only (a T-junction leaks single pixels).
 import { float32Step } from './flush-search.js';
+import { drainSteps } from './flush-search-runner.js';
 
 /** Numbers per cut: the triangle that is cut, then the three corners (x, y, z) of the winner in the geometry's own space. */
 export const FLUSH_CUT_STRIDE = 10;
@@ -15,6 +16,10 @@ const PER_VERTEX_FIELDS = ['positions', 'normals', 'uvs', 'lightUvs', 'colors', 
 const MARGIN_STEPS = 4;
 const DEGENERATE_AREA_SHARE = 1e-12;
 const CACHED_CUTS_PER_GEOMETRY = 8;
+// Work between two checkpoints of a cut (issue #2905): an uncut triangle counts one unit, a cut one costs CUT_WORK, a new vertex
+// is one unit per stride value.
+const CHECKPOINT_WORK = 2048;
+const CUT_WORK = 64;
 
 const clippedByGeometry = new WeakMap();
 
@@ -324,7 +329,7 @@ function fanRing(ring, pointSet) {
 
 // Every per-vertex array grown by the new vertices, each the weighted mix of the three corners of the triangle it was cut
 // from. A vertex on a seam takes the position the seam holds, so both sides of the seam get the same bits.
-function extendVertexArrays(geometry, added) {
+function* extendVertexArrays(geometry, added) {
   const vertexCount = geometry.positions.length / 3;
   const extended = {};
   for (const field of PER_VERTEX_FIELDS) {
@@ -333,24 +338,26 @@ function extendVertexArrays(geometry, added) {
     const stride = values.length / vertexCount;
     const grown = new values.constructor(values.length + added.length * stride);
     grown.set(values);
-    added.forEach(({ corners, point }, vertex) => {
+    for (let vertex = 0; vertex < added.length; vertex++) {
+      if (vertex % CHECKPOINT_WORK === CHECKPOINT_WORK - 1) yield;
+      const { corners, point } = added[vertex];
       const target = values.length + vertex * stride;
       if (field === 'positions' && point.position) {
         grown.set(point.position, target);
-        return;
+        continue;
       }
       for (let component = 0; component < stride; component++) {
         grown[target + component] = values[corners[0] * stride + component] * point.weights[0]
           + values[corners[1] * stride + component] * point.weights[1]
           + values[corners[2] * stride + component] * point.weights[2];
       }
-    });
+    }
     extended[field] = grown;
   }
   return extended;
 }
 
-function clipGeometry(geometry, cuts, coordinateStep) {
+function* clipGeometry(geometry, cuts, coordinateStep) {
   const { indices } = geometry;
   const triangleCount = indices.length / 3;
   const vertexCount = geometry.positions.length / 3;
@@ -358,9 +365,15 @@ function clipGeometry(geometry, cuts, coordinateStep) {
   const cutTriangles = new Map();
   const seams = new Map();
   let cut = 0;
+  let workSinceCheckpoint = 0;
   for (let triangle = 0; triangle < triangleCount && cut < cutCount; triangle++) {
     const cutStart = cut;
     while (cut < cutCount && cuts[cut * FLUSH_CUT_STRIDE] === triangle) cut++;
+    workSinceCheckpoint += cut === cutStart ? 1 : CUT_WORK;
+    if (workSinceCheckpoint >= CHECKPOINT_WORK) {
+      workSinceCheckpoint = 0;
+      yield;
+    }
     if (cut === cutStart) continue;
     const result = cutTriangle(geometry, triangle, cuts, cutStart, cut, coordinateStep);
     if (!result) continue;
@@ -371,8 +384,14 @@ function clipGeometry(geometry, cuts, coordinateStep) {
   const clippedIndices = [];
   const sources = [];
   const added = [];
+  workSinceCheckpoint = 0;
   for (let triangle = 0; triangle < triangleCount; triangle++) {
     let result = cutTriangles.get(triangle);
+    workSinceCheckpoint += result ? CUT_WORK : 1;
+    if (workSinceCheckpoint >= CHECKPOINT_WORK) {
+      workSinceCheckpoint = 0;
+      yield;
+    }
     if (!result && seams.size > 0) {
       // An uncut triangle on a seam is split at the seam's vertices too.
       const frame = triangleFrame(geometry, triangle);
@@ -402,8 +421,9 @@ function clipGeometry(geometry, cuts, coordinateStep) {
       }
     }
   }
+  const extendedArrays = yield* extendVertexArrays(geometry, added);
   return {
-    geometry: { ...geometry, ...extendVertexArrays(geometry, added), indices: new Uint32Array(clippedIndices) },
+    geometry: { ...geometry, ...extendedArrays, indices: new Uint32Array(clippedIndices) },
     sources: new Uint32Array(sources),
   };
 }
@@ -418,12 +438,17 @@ function clipGeometry(geometry, cuts, coordinateStep) {
  * A fully covered triangle is dropped. The result is kept per geometry, so the same cuts return the same object.
  */
 export function clipFlushOverlaps(geometry, cuts, coordinateStep = 0) {
+  return drainSteps(clipFlushOverlapsSteps(geometry, cuts, coordinateStep));
+}
+
+/** clipFlushOverlaps as a generator that yields at checkpoints (issue #2905); the result is the one it returns. */
+export function* clipFlushOverlapsSteps(geometry, cuts, coordinateStep = 0) {
   if (cuts.length === 0) return { geometry, sources: null };
   const cached = clippedByGeometry.get(geometry) ?? [];
   clippedByGeometry.set(geometry, cached);
   let entry = cached.find(candidate => sameNumbers(candidate.cuts, cuts));
   if (!entry) {
-    entry = { cuts, clipped: clipGeometry(geometry, cuts, coordinateStep) };
+    entry = { cuts, clipped: yield* clipGeometry(geometry, cuts, coordinateStep) };
     cached.push(entry);
     if (cached.length > CACHED_CUTS_PER_GEOMETRY) cached.shift();
   }

@@ -4,7 +4,7 @@ import { extrude } from './modeling.js';
 import { DEFAULT_FONT_DATA } from './font-default.js';
 import { CURVE_TEXT_LIMITS } from './agent-scene-capabilities.js';
 
-const DEFAULT_FONT_NAME = 'default';
+export const DEFAULT_FONT_NAME = 'default';
 const MAX_TEXT_CHARACTERS = CURVE_TEXT_LIMITS.maxTextCharacters;
 const MAX_TEXT_LINES = CURVE_TEXT_LIMITS.maxTextLines;
 const MAX_GLYPHS_PER_FONT = 2048;
@@ -191,11 +191,8 @@ function lineWidth(line, font, fontName, factor) {
   return width;
 }
 
-/**
- * Text in the XY plane, its first baseline on y = 0, reading along +X and facing +Z, centred through its depth.
- * Lines split at "\n". Every printable character must exist in the font.
- */
-export function text(content, { size = 1, depth = 0.2, font: fontName = DEFAULT_FONT_NAME, align = 'left', curveSegments = 4, maxVertices = 250_000 } = {}) {
+/** Checks the options every text builder shares and returns the font, its lines and the scale from font units to scene units. */
+export function checkedTextInput(content, { size, depth, fontName, align, curveSegments }) {
   if (typeof content !== 'string' || content.length === 0 || [...content].length > MAX_TEXT_CHARACTERS) throw new RangeError(`text needs 1 to ${MAX_TEXT_CHARACTERS} characters.`);
   checkNumber(size, 'size');
   checkNumber(depth, 'depth');
@@ -206,25 +203,42 @@ export function text(content, { size = 1, depth = 0.2, font: fontName = DEFAULT_
   if (!font) throw new RangeError(`Unknown font ${JSON.stringify(fontName)}. Known fonts: ${[...fonts.keys()].join(', ')}.`);
   const lines = content.split('\n');
   if (lines.length > MAX_TEXT_LINES) throw new RangeError(`text has at most ${MAX_TEXT_LINES} lines.`);
-  const factor = size / font.unitsPerEm;
-  const cache = new Map();
-  const meshes = [];
-  let vertexCount = 0;
+  return { font, lines, factor: size / font.unitsPerEm };
+}
+
+/** Where every character of every line starts: x along the baseline of its line, y the baseline. The one layout `text` and `splitText` share. */
+export function layoutGlyphs(lines, font, fontName, factor, align, size) {
+  const placements = [];
   lines.forEach((line, lineIndex) => {
     const width = lineWidth(line, font, fontName, factor);
     let cursor = align === 'center' ? -width / 2 : align === 'right' ? -width : 0;
     const baseline = -lineIndex * LINE_HEIGHT_EMS * size;
     for (const character of line) {
       const record = glyphRecord(font, fontName, character);
-      if (!cache.has(character)) cache.set(character, glyphMesh(record, font.unitsPerEm, { size, depth, curveSegments, maxVertices }));
-      for (const mesh of cache.get(character)) {
-        vertexCount += mesh.positions.length / 3;
-        if (vertexCount > maxVertices) throw new RangeError(`Text requires more than maxVertices ${maxVertices}. Shorten it or lower curveSegments.`);
-        meshes.push(translated(mesh, cursor, baseline, -depth / 2));
-      }
+      placements.push({ character, record, lineIndex, x: cursor, y: baseline });
       cursor += record[0] * factor;
     }
   });
+  return placements;
+}
+
+/**
+ * Text in the XY plane, its first baseline on y = 0, reading along +X and facing +Z, centred through its depth.
+ * Lines split at "\n". Every printable character must exist in the font.
+ */
+export function text(content, { size = 1, depth = 0.2, font: fontName = DEFAULT_FONT_NAME, align = 'left', curveSegments = 4, maxVertices = 250_000 } = {}) {
+  const { font, lines, factor } = checkedTextInput(content, { size, depth, fontName, align, curveSegments });
+  const cache = new Map();
+  const meshes = [];
+  let vertexCount = 0;
+  for (const { character, record, x, y } of layoutGlyphs(lines, font, fontName, factor, align, size)) {
+    if (!cache.has(character)) cache.set(character, glyphMesh(record, font.unitsPerEm, { size, depth, curveSegments, maxVertices }));
+    for (const mesh of cache.get(character)) {
+      vertexCount += mesh.positions.length / 3;
+      if (vertexCount > maxVertices) throw new RangeError(`Text requires more than maxVertices ${maxVertices}. Shorten it or lower curveSegments.`);
+      meshes.push(translated(mesh, x, y, -depth / 2));
+    }
+  }
   if (meshes.length === 0) throw new RangeError('text has no visible characters.');
   return merged(meshes);
 }

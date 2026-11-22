@@ -106,7 +106,7 @@ test('a recipe terrain has hills, a hole and a stable seed', async () => {
 test('recipe terrain rejects out-of-range, hostile and unknown fields before building', async () => {
   const bad = [
     { type: 'terrain', size: 0 }, { type: 'terrain', size: 5000 }, { type: 'terrain', size: NaN },
-    { type: 'terrain', resolution: 1 }, { type: 'terrain', resolution: 257 }, { type: 'terrain', resolution: 12.5 },
+    { type: 'terrain', resolution: 1 }, { type: 'terrain', resolution: 500 }, { type: 'terrain', resolution: 12.5 },
     { type: 'terrain', amplitude: -1 }, { type: 'terrain', amplitude: 1e9 },
     { type: 'terrain', holes: 'one' }, { type: 'terrain', holes: Array.from({ length: 17 }, () => ({ center: [0, 0], radius: 1 })) },
     { type: 'terrain', holes: [{ center: [0, 0], radius: -2 }] }, { type: 'terrain', holes: [null] },

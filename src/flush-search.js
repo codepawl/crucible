@@ -7,6 +7,9 @@
 // thousand small faces on it meet without the wall being listed in a thousand cells. Nothing is cut short silently: parts
 // past the triangle budget come back in `unchecked`, and `truncated` says the pair budget ran out.
 
+import { drainSteps } from './flush-search-runner.js';
+import { entryStarts, partSignature, rememberSearch, reusableSearch, subTableOf, triangleIdsNearChanged } from './flush-search-reuse.js';
+
 /** Shared area under this share of the smaller triangle is edge contact or rounding, not a fight. */
 export const FLUSH_MINIMUM_AREA_SHARE = 1e-4;
 const FLUSH_MINIMUM_AREA = 1e-8;
@@ -22,6 +25,13 @@ const NORMAL_REACH = 0.0088;
 const NORMAL_RANGE = 2 * NORMAL_STEPS + 3;
 const NEAR_DOMINANT = 0.02;
 const NATIVE_CELL_LIMIT = 64;
+// How much work a search does between two checkpoints (issue #2905), where the runner may hand the thread back: triangles read,
+// triangles listed in the grid, grid cells flattened, and pair tests (one unit is about a box test).
+const READ_CHECKPOINT_TRIANGLES = 8192;
+const LIST_CHECKPOINT_TRIANGLES = 512;
+const FLATTEN_CHECKPOINT_CELLS = 16384;
+const TEST_CHECKPOINT_WORK = 16384;
+const SWEEP_WORK_CAP = 256;
 const GRID_LEVEL_SCALE = 16;
 const GRID_LEVELS = 2;
 const CELL_SAMPLES = 4096;
@@ -139,7 +149,7 @@ function withinTriangleBudget(parts, triangleBudget) {
 }
 
 // World-space corners (9 numbers), unit normal (3), box (6) and area of every non-degenerate triangle, part after part.
-function readTriangles(entries) {
+function* readTriangles(entries) {
   const capacity = entries.reduce((sum, entry) => sum + entry.triangles, 0);
   const table = {
     count: 0,
@@ -150,16 +160,19 @@ function readTriangles(entries) {
     owner: new Uint32Array(capacity),
     local: new Uint32Array(capacity),
   };
-  entries.forEach((entry, partIndex) => readPartTriangles(table, entry.part, partIndex));
+  for (let partIndex = 0; partIndex < entries.length; partIndex++) {
+    yield* readPartTriangles(table, entries[partIndex].part, partIndex);
+  }
   return table;
 }
 
-function readPartTriangles(table, part, partIndex) {
+function* readPartTriangles(table, part, partIndex) {
   const { positions, indices } = part.geometry;
   const matrix = part.matrix;
   const flip = determinantSign(matrix);
   const { corners, normals, boxes } = table;
   for (let triangle = 0; triangle < indices.length; triangle += 3) {
+    if (triangle > 0 && triangle % (READ_CHECKPOINT_TRIANGLES * 3) === 0) yield;
     const base = table.count * 9;
     for (let corner = 0; corner < 3; corner++) {
       const vertex = indices[triangle + corner] * 3;
@@ -292,7 +305,7 @@ function cellKey(normalCell, level, cellX, cellY, cellZ) {
 // Lists every triangle in the cells of its own level (`natives`), then as a guest in the coarser cells that hold a native.
 // The last level is one cell per normal cell, for triangles too large for any grid. Returns null when the natives would pass
 // MAXIMUM_GRID_ENTRIES, so the caller can try wider cells.
-function buildCells(table, cellSize, reach) {
+function* buildCells(table, cellSize, reach) {
   const levels = Array.from({ length: GRID_LEVELS + 1 }, () => new Map());
   const nativeLevel = new Uint8Array(table.count);
   const normalCells = [];
@@ -324,6 +337,7 @@ function buildCells(table, cellSize, reach) {
       else cells.set(key, { natives: [id], guests: [] });
     });
     if (nativeEntries > MAXIMUM_GRID_ENTRIES) return null;
+    if (id % LIST_CHECKPOINT_TRIANGLES === LIST_CHECKPOINT_TRIANGLES - 1) yield;
   }
   for (let id = 0; id < table.count; id++) {
     for (let level = nativeLevel[id] + 1; level <= GRID_LEVELS; level++) {
@@ -331,17 +345,31 @@ function buildCells(table, cellSize, reach) {
       if (cells.size === 0) continue;
       visitCells(id, level, key => cells.get(key)?.guests.push(id));
     }
+    if (id % LIST_CHECKPOINT_TRIANGLES === LIST_CHECKPOINT_TRIANGLES - 1) yield;
   }
-  return levels.flatMap(cells => [...cells.values()]);
+  const flattened = [];
+  let flattenedSinceCheckpoint = 0;
+  for (const cells of levels) {
+    for (const cell of cells.values()) {
+      flattened.push(cell);
+      if (++flattenedSinceCheckpoint === FLATTEN_CHECKPOINT_CELLS) {
+        flattenedSinceCheckpoint = 0;
+        yield;
+      }
+    }
+  }
+  return flattened;
 }
 
 // Wider cells list each triangle in fewer of them and leave the pairs found the same. A grid is made wider only when a sample
 // of the triangles projects past MAXIMUM_GRID_ENTRIES, or when building it passes that, so every scene that fit keeps its grid.
-function buildCoarsenedCells(table, reach) {
+function* buildCoarsenedCells(table, reach) {
   let cellSize = gridCellSize(table, reach);
   for (let coarsening = 0; coarsening <= MAXIMUM_GRID_COARSENINGS; coarsening++, cellSize *= 2) {
-    if (estimateNativeEntries(table, cellSize, reach) > MAXIMUM_GRID_ENTRIES) continue;
-    const cells = buildCells(table, cellSize, reach);
+    const projectedEntries = estimateNativeEntries(table, cellSize, reach);
+    yield;
+    if (projectedEntries > MAXIMUM_GRID_ENTRIES) continue;
+    const cells = yield* buildCells(table, cellSize, reach);
     if (cells) return cells;
   }
   throw new RangeError(`The coplanar search has ${table.count} triangles in a scene too large to index. Pass environment.resolveCoplanar: false to skip the search, or split the scene into smaller ones.`);
@@ -439,7 +467,7 @@ function createPairTest(table, entries, reach, pairBudget, testedPairLimit, resu
     }
     return tolerance;
   };
-  return function testPair(one, other) {
+  function testPair(one, other) {
     // Two cells of one triangle can hash to one key, which lists it twice.
     if (one === other) return;
     const first = Math.min(one, other);
@@ -498,7 +526,10 @@ function createPairTest(table, entries, reach, pairBudget, testedPairLimit, resu
     let largestCoordinate = 0;
     for (let value = 0; value < 6; value++) largestCoordinate = Math.max(largestCoordinate, Math.abs(boxes[first * 6 + value]), Math.abs(boxes[second * 6 + value]));
     result.pairs.push({ first, second, gap, area, opposite, flush: Math.abs(gap) <= flushTolerance(largestCoordinate) });
-  };
+  }
+  // How many pairs were measured, which the tested-pair limit counts.
+  testPair.testedCount = () => seen.size;
+  return testPair;
 }
 
 // A triangle never drops an axis its normal barely leans on (the dropped axis has a component of at least 0.577), so that axis
@@ -511,15 +542,35 @@ function inPlaneSweepAxis(normals, id) {
   return Math.abs(normals[id * 3 + axis]) < SWEEP_AXIS_LEAN ? axis : -1;
 }
 
-// Natives are swept along one axis against each other; every native is also tested against every guest of the cell.
-function testCell(cell, table, reach, testPair) {
-  const { natives, guests } = cell;
+// Natives are swept along one axis against each other; every native is also tested against every guest of the cell. A cell is
+// tested a range of natives at a time, so a cell with a great many natives can be split across checkpoints.
+function* testCells(cells, table, reach, testPair) {
   const { boxes, normals } = table;
-  const sweepAxis = natives.length > 2 ? inPlaneSweepAxis(normals, natives[0]) : -1;
+  let workSinceCheckpoint = 0;
+  for (const cell of cells) {
+    const { natives, guests } = cell;
+    const sweepAxis = natives.length > 2 ? inPlaneSweepAxis(normals, natives[0]) : -1;
+    const sweepFrom = Math.max(sweepAxis, 0);
+    if (natives.length > 2) natives.sort((first, second) => boxes[first * 6 + sweepFrom] - boxes[second * 6 + sweepFrom]);
+    const workPerNative = guests.length + Math.min(natives.length, SWEEP_WORK_CAP) + 1;
+    const nativesPerRange = Math.max(1, Math.floor(TEST_CHECKPOINT_WORK / workPerNative));
+    for (let from = 0; from < natives.length; from += nativesPerRange) {
+      const to = Math.min(natives.length, from + nativesPerRange);
+      testNativeRange(cell, boxes, sweepAxis, from, to, reach, testPair);
+      workSinceCheckpoint += (to - from) * workPerNative;
+      if (workSinceCheckpoint >= TEST_CHECKPOINT_WORK) {
+        workSinceCheckpoint = 0;
+        yield;
+      }
+    }
+  }
+}
+
+function testNativeRange(cell, boxes, sweepAxis, from, to, reach, testPair) {
+  const { natives, guests } = cell;
   const sweepReach = sweepAxis < 0 ? reach : 0;
   const sweepFrom = Math.max(sweepAxis, 0);
-  if (natives.length > 2) natives.sort((first, second) => boxes[first * 6 + sweepFrom] - boxes[second * 6 + sweepFrom]);
-  for (let index = 0; index < natives.length; index++) {
+  for (let index = from; index < to; index++) {
     const native = natives[index];
     const end = boxes[native * 6 + 3 + sweepFrom] + sweepReach;
     for (let other = index + 1; other < natives.length; other++) {
@@ -539,10 +590,20 @@ function testCell(cell, table, reach, testPair) {
  * two lie on one plane; `opposite` marks a pair that faces opposite ways (one part is double sided). `unchecked` lists parts
  * past `triangleBudget`.
  */
-export function findFlushPairs(parts, { triangleBudget = DEFAULT_TRIANGLE_BUDGET, pairBudget = DEFAULT_PAIR_BUDGET, testedPairLimit = MAXIMUM_TESTED_PAIRS } = {}) {
+export function findFlushPairs(parts, options) {
+  return drainSteps(findFlushPairsSteps(parts, options));
+}
+
+/**
+ * The same search as findFlushPairs, written as a generator that yields at checkpoints (issue #2905): a runner can stop at any
+ * of them and go on later, and the result is the one findFlushPairs returns. Nothing outside the search is changed before it
+ * returns, so a search that is dropped at a checkpoint leaves no trace; another search may run between two checkpoints.
+ */
+export function* findFlushPairsSteps(parts, { triangleBudget = DEFAULT_TRIANGLE_BUDGET, pairBudget = DEFAULT_PAIR_BUDGET, testedPairLimit = MAXIMUM_TESTED_PAIRS } = {}) {
   const { entries, unchecked } = withinTriangleBudget(searchableParts(parts), triangleBudget);
-  const table = readTriangles(entries);
-  const result = { parts: entries.map(entry => entry.part), count: table.count, owner: table.owner, local: table.local, areas: table.areas, corners: table.corners, pairs: [], unchecked, truncated: false };
+  yield;
+  const table = yield* readTriangles(entries);
+  const result = { parts: entries.map(entry => entry.part), count: table.count, owner: table.owner, local: table.local, areas: table.areas, corners: table.corners, pairs: [], unchecked, truncated: false, searched: 0, testedPairs: 0 };
   if (table.count < 2) return result;
   const sceneBounds = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
   for (const { bounds } of entries) {
@@ -553,8 +614,51 @@ export function findFlushPairs(parts, { triangleBudget = DEFAULT_TRIANGLE_BUDGET
   }
   // No pair of parts spans more than the scene, so this is the widest gap any pair is tested with.
   const reach = nearTolerance(boundsDiagonal(sceneBounds));
-  const testPair = createPairTest(table, entries, reach, pairBudget, testedPairLimit, result);
-  for (const cell of buildCoarsenedCells(table, reach)) testCell(cell, table, reach, testPair);
+  const signatures = entries.map(entry => partSignature(entry.part));
+  const starts = entryStarts(table, entries.length);
+  const limitsKey = `${triangleBudget}|${pairBudget}|${testedPairLimit}`;
+  const reused = unchecked.length === 0 ? reusableSearch(signatures, starts, reach, limitsKey) : null;
+  const limits = { pairBudget, testedPairLimit };
+  yield;
+  if (!(reused && (yield* searchChangedParts(table, entries, reused, reach, limits, result)))) {
+    result.pairs = [];
+    result.truncated = false;
+    delete result.truncatedAt;
+    yield* searchAllParts(table, entries, reach, limits, result);
+  }
   result.pairs.sort((first, second) => first.first - second.first || first.second - second.second);
+  rememberSearch({ signatures, starts, pairs: result.pairs, testedPairs: result.testedPairs, reach, complete: !result.truncated && unchecked.length === 0, limitsKey });
   return result;
+}
+
+function* searchAllParts(table, entries, reach, { pairBudget, testedPairLimit }, result) {
+  const testPair = createPairTest(table, entries, reach, pairBudget, testedPairLimit, result);
+  yield* testCells(yield* buildCoarsenedCells(table, reach), table, reach, testPair);
+  result.searched = table.count;
+  result.testedPairs = testPair.testedCount();
+}
+
+// Keeps the pairs between parts that did not change and searches only the triangles near a part that did. Returns false
+// when a budget ran out, so the caller searches everything and the result never depends on what was searched before.
+function* searchChangedParts(table, entries, reused, reach, { pairBudget, testedPairLimit }, result) {
+  const nearIds = yield* triangleIdsNearChanged(table, entries, reused.changed, reach);
+  const near = yield* subTableOf(table, nearIds);
+  const fresh = { pairs: [], truncated: false };
+  const testPair = createPairTest(near, entries, reach, pairBudget - reused.pairs.length, testedPairLimit, fresh);
+  const testChangedPair = (one, other) => {
+    if (reused.changed[near.owner[one]] || reused.changed[near.owner[other]]) testPair(one, other);
+  };
+  yield;
+  if (near.count > 1) {
+    yield* testCells(yield* buildCoarsenedCells(near, reach), near, reach, testChangedPair);
+  }
+  // A cold search counts every pair it measured, also those with no shared area. The earlier count plus this one bounds it.
+  const testedPairs = reused.testedPairs + testPair.testedCount();
+  if (fresh.truncated || testedPairs >= testedPairLimit || reused.pairs.length + fresh.pairs.length > pairBudget) return false;
+  result.testedPairs = testedPairs;
+  for (const pair of fresh.pairs) result.pairs.push({ ...pair, first: nearIds[pair.first], second: nearIds[pair.second] });
+  // A loop, not push(...reused.pairs): a spread of a few hundred thousand pairs overflows the call stack.
+  for (const pair of reused.pairs) result.pairs.push(pair);
+  result.searched = near.count;
+  return true;
 }

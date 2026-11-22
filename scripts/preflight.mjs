@@ -29,6 +29,8 @@ const userFacingPattern = /^(src|bin|packages|skills)\//;
 const shippedCodePattern = /^(src|bin|packages)\/|^package(-lock)?\.json$|^(config\/)?vite\.lib\.config\.js$|^scripts\/(build-mcp|vite-cook-optional)\.mjs$/;
 const toolCodePattern = /^(src\/agent-|src\/mcp|bin\/)|^scripts\/(build-mcp|measure-tool-cost|check-tool-cost|mcp-server|mcp-(input|union)-errors|capabilities-topics|tool-examples)/;
 const linkedTextPattern = /\.(md|html)$/;
+// Files whose change can break a link inside the npm package: a shipped doc, or the "files" list that decides what ships.
+const packageDocPattern = /^(docs|skills)\/|^(README|ROADMAP)\.md$|^package\.json$|^assets\/looks\//;
 const blenderAddonPattern = /^packages\/blender-addon\//;
 
 // Checks a GPU or a person's eyes must run. CONTRIBUTING.md lists them; these patterns only point out the ones that may apply.
@@ -96,6 +98,7 @@ export function planChecks(changedPaths, { skipTests = false, release = false, b
   });
 
   checks.push(linkedTextCheck(paths));
+  checks.push(packageLinksCheck(paths));
   checks.push({
     name: 'names',
     command: ['node', 'scripts/check-names.mjs'],
@@ -175,6 +178,16 @@ function linkedTextCheck(paths) {
     command: ['npm', 'run', 'check:links'],
     skipped: changesLinkedText ? null : 'no Markdown or HTML changed',
     fix: 'Fix or remove each link the report names.',
+  };
+}
+
+function packageLinksCheck(paths) {
+  const changesPackageDocs = paths.some(path => packageDocPattern.test(path));
+  return {
+    name: 'package links',
+    command: ['node', 'scripts/check-package-links.mjs'],
+    skipped: changesPackageDocs ? null : 'no doc or package file list changed',
+    fix: 'A doc that ships in the npm package links to a guide that does not. Use https://crucible.codepawl.com/<guide>.md for that guide, or add it to "files" in package.json. npm run check:links:package is the full check on the packed archive.',
   };
 }
 

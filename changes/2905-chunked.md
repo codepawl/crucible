@@ -1,0 +1,1 @@
+- The near-coplanar search of a large scan runs in slices of about 8 ms instead of one long task, and Studio redraws once when it lands, even when the viewport is idle (#2905)

@@ -63,6 +63,10 @@ export const STUDIO_CSS = `
   padding: 0;
   flex-shrink: 0;
 }
+.crucible-studio-icon[data-brand] {
+  fill: currentColor;
+  stroke: none;
+}
 .crucible-studio-icon {
   inline-size: 17px;
   block-size: 17px;
@@ -1804,12 +1808,14 @@ export const STUDIO_CSS = `
 .crucible-studio-setup-card-label { font-weight: 600; }
 .crucible-studio-setup-card-name > .crucible-studio-icon { align-self: center; }
 /* A tier card is tall, so its icon is the picture of the tier: large, above the name. */
-.crucible-studio-setup-cards-wide .crucible-studio-setup-card-name {
+.crucible-studio-setup-cards-wide .crucible-studio-setup-card-name,
+.crucible-studio-setup-cards-keys .crucible-studio-setup-card-name {
   flex-direction: column;
   align-items: start;
   gap: 10px;
 }
-.crucible-studio-setup-cards-wide .crucible-studio-setup-card-name > .crucible-studio-icon {
+.crucible-studio-setup-cards-wide .crucible-studio-setup-card-name > .crucible-studio-icon,
+.crucible-studio-setup-cards-keys .crucible-studio-setup-card-name > .crucible-studio-icon {
   align-self: start;
   inline-size: 44px;
   block-size: 44px;
@@ -1890,6 +1896,41 @@ export const STUDIO_CSS = `
 .crucible-studio-miniature[data-half="right"] { clip-path: inset(0 0 0 50%); }
 .crucible-studio-setup-cards-wide {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.crucible-studio-setup-cards-keys {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+/* The key caps of a keymap card: each tool's icon over its key, the same four in every card so the rows compare. */
+.crucible-studio-setup-keycaps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  justify-self: stretch;
+  margin-block-start: 6px;
+}
+.crucible-studio-setup-keycap {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  color: var(--studio-text);
+}
+.crucible-studio-setup-keycap > .crucible-studio-icon {
+  inline-size: 18px;
+  block-size: 18px;
+}
+.crucible-studio .crucible-studio-setup-keycap kbd {
+  box-sizing: border-box;
+  inline-size: 100%;
+  padding: 12px 0;
+  border: 1px solid var(--studio-border);
+  border-radius: 6px;
+  background: var(--studio-bg);
+  color: var(--studio-text);
+  font-family: var(--studio-font);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
 }
 .crucible-studio-setup-row {
   display: grid;

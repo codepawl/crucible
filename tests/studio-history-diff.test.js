@@ -5,6 +5,8 @@ import { createAgentScene } from '../src/agent-scene.js';
 import { createStudioController } from '../src/studio.js';
 import { operationsBetweenRecipes } from '../src/studio-history-diff.js';
 
+const HISTORY_STEP = { allowRecordChanges: true };
+
 function makeRecipe({ animated = false } = {}) {
   const recipe = {
     format: 'crucible.scene',
@@ -111,10 +113,54 @@ test('redo of a lens change on a field-of-view camera runs in place, and its und
   assert.equal(controller.scene, sceneAfterUndo, 'redo applied the camera in place');
 });
 
-test('undo of add, duplicate and delete rebuilds the scene and still restores the recipe', () => {
+test('undo and redo of add primitive keep the same scene object', () => {
+  const controller = makeController();
+  const sceneBefore = controller.scene;
+  const before = controller.exportRecipe();
+  controller.addPrimitive('torus');
+  const afterAdd = controller.exportRecipe();
+  controller.undo();
+  assert.equal(controller.scene, sceneBefore, 'undo removed the parts in place');
+  assert.deepEqual(controller.exportRecipe(), before);
+  controller.redo();
+  assert.equal(controller.scene, sceneBefore, 'redo added the parts in place');
+  assert.deepEqual(controller.exportRecipe(), afterAdd);
+});
+
+test('undo and redo of duplicate keep the same scene object', () => {
+  const controller = makeController();
+  const sceneBefore = controller.scene;
+  const before = controller.exportRecipe();
+  controller.selectNode('hero');
+  controller.duplicateSelected();
+  const afterDuplicate = controller.exportRecipe();
+  assert.equal(afterDuplicate.nodes.length, before.nodes.length + 1);
+  controller.undo();
+  assert.equal(controller.scene, sceneBefore);
+  assert.deepEqual(controller.exportRecipe(), before);
+  controller.redo();
+  assert.equal(controller.scene, sceneBefore);
+  assert.deepEqual(controller.exportRecipe(), afterDuplicate);
+});
+
+test('undo of deleting a middle node restores the recipe, redo removes it in place', () => {
   const controller = makeController();
   const before = controller.exportRecipe();
-  const sceneBefore = controller.scene;
+  controller.selectNode('hero');
+  controller.deleteSelected();
+  const afterDelete = controller.exportRecipe();
+  assert.deepEqual(afterDelete.nodes.map(node => node.id), ['ground', 'orb']);
+  controller.undo();
+  assert.deepEqual(controller.exportRecipe(), before, 'a node back in the middle of the list is rebuilt');
+  const sceneAfterUndo = controller.scene;
+  controller.redo();
+  assert.equal(controller.scene, sceneAfterUndo);
+  assert.deepEqual(controller.exportRecipe(), afterDelete);
+});
+
+test('undo of add, duplicate and delete in a row still restores every recipe', () => {
+  const controller = makeController();
+  const before = controller.exportRecipe();
   controller.addPrimitive('torus');
   const afterAdd = controller.exportRecipe();
   controller.selectNode('hero');
@@ -123,7 +169,6 @@ test('undo of add, duplicate and delete rebuilds the scene and still restores th
   controller.selectNode('orb');
   controller.deleteSelected();
   controller.undo();
-  assert.notEqual(controller.scene, sceneBefore);
   assert.deepEqual(controller.exportRecipe(), afterDuplicate);
   controller.undo();
   assert.deepEqual(controller.exportRecipe(), afterAdd);
@@ -173,7 +218,17 @@ test('operationsBetweenRecipes returns operations only for differences a scene o
 
   const extraNode = structuredClone(base);
   extraNode.nodes.push({ id: 'extra', geometry: 'cube', material: 'paint' });
-  assert.equal(operationsBetweenRecipes(base, extraNode), null, 'a different node list needs a rebuild');
+  assert.deepEqual(operationsBetweenRecipes(base, extraNode, HISTORY_STEP), [{ type: 'add-node', node: extraNode.nodes[3] }], 'a node added at the tail is an add');
+
+  assert.equal(operationsBetweenRecipes(base, extraNode), null, 'loading a file with another set of nodes still builds a new scene');
+
+  const insertedNode =structuredClone(base);
+  insertedNode.nodes.splice(1, 0, { id: 'extra', geometry: 'cube', material: 'paint' });
+  assert.equal(operationsBetweenRecipes(base, insertedNode, HISTORY_STEP), null, 'a node inserted in the middle needs a rebuild');
+
+  const reordered = structuredClone(base);
+  reordered.nodes.reverse();
+  assert.equal(operationsBetweenRecipes(base, reordered, HISTORY_STEP), null, 'a reordered list needs a rebuild');
 
   const otherGeometry = structuredClone(base);
   otherGeometry.geometries[1].bevel = 0.2;
@@ -188,4 +243,36 @@ test('operationsBetweenRecipes returns operations only for differences a scene o
   const shorterMotion = structuredClone(withMotion);
   shorterMotion.motion.duration = 3;
   assert.deepEqual(operationsBetweenRecipes(withMotion, shorterMotion), [{ type: 'set-motion', motion: shorterMotion.motion }]);
+});
+
+test('operationsBetweenRecipes orders removals, patches and additions so the scene accepts them', () => {
+  const base = makeRecipe();
+  base.nodes.push({ id: 'child', parent: 'orb', geometry: 'cube', material: 'paint' });
+  const target = makeRecipe();
+  target.geometries.splice(1, 1);
+  target.geometries.push({ id: 'ball', type: 'sphere' });
+  target.materials.splice(1, 1);
+  target.materials.push({ id: 'glass', tag: 'surface', color: [1, 1, 1], roughness: 0.1, metallic: 0 });
+  target.nodes = [target.nodes[0], { id: 'globe', geometry: 'ball', material: 'glass' }];
+  target.nodes[0].translation = [0, -1, 0];
+  const operations = operationsBetweenRecipes(base, target, HISTORY_STEP);
+  assert.deepEqual(operations.map(operation => operation.type), [
+    'remove-node', 'remove-node', 'remove-node', 'remove-material', 'remove-geometry',
+    'set-node', 'add-geometry', 'add-material', 'add-node',
+  ]);
+  assert.deepEqual(operations.slice(0, 3).map(operation => operation.id), ['child', 'hero', 'orb'], 'children go before their parents');
+  const scene = createAgentScene(base);
+  scene.apply(operations, { expectedRevision: scene.revision });
+  assert.deepEqual(scene.exportRecipe().nodes.map(node => node.id), ['ground', 'globe']);
+  assert.deepEqual(scene.exportRecipe().geometries.map(geometry => geometry.id), ['floor', 'ball']);
+});
+
+test('operationsBetweenRecipes adds geometry and material before the node that uses them', () => {
+  const base = makeRecipe();
+  const target = structuredClone(base);
+  target.geometries.push({ id: 'ball', type: 'sphere' });
+  target.materials.push({ id: 'glass', tag: 'surface', color: [1, 1, 1], roughness: 0.1, metallic: 0 });
+  target.nodes.push({ id: 'globe', geometry: 'ball', material: 'glass' });
+  const types = operationsBetweenRecipes(base, target, HISTORY_STEP).map(operation => operation.type);
+  assert.deepEqual(types, ['add-geometry', 'add-material', 'add-node']);
 });

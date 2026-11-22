@@ -6,7 +6,7 @@ import { compactType, outlineSchema, unionBranches } from './schema-outline.mjs'
 import { AGENT_TOOL_EXAMPLES } from './tool-examples.mjs';
 import { MODIFIER_OPERATIONS } from '../src/mesh-operations.js';
 
-const RUNTIME_SECTIONS = ['sceneLimits', 'preview', 'review', 'assets', 'packs', 'jobs', 'export', 'addons', 'unsupported'];
+const RUNTIME_SECTIONS = ['sceneLimits', 'preview', 'review', 'wedge', 'assets', 'packs', 'jobs', 'export', 'addons', 'unsupported'];
 const SUMMARY_LENGTH = 110;
 // Scalars (booleans and numbers) of the scene capabilities share one topic instead of one each.
 const FLAGS_TOPIC = 'flags';

@@ -146,7 +146,7 @@ export function findKeymapConflicts(actions) {
  * The keymap in force: the defaults, with `overrides` (`{ actionId: binding }`, or an array of bindings for an action
  * with several keys) replacing the bindings of the actions it names.
  */
-export function resolveKeymap(overrides = {}) {
+export function resolveKeymap(overrides = {}, { unbound = [], toolKeysGrab = true, mouse = [] } = {}) {
   if (overrides === null || typeof overrides !== 'object' || Array.isArray(overrides)) {
     throw new TypeError('Keymap overrides must be an object of { actionId: binding }.');
   }
@@ -156,7 +156,13 @@ export function resolveKeymap(overrides = {}) {
       throw new RangeError(`Unknown keymap action "${actionId}": pass one of ${[...knownIds].join(', ')}.`);
     }
   }
+  for (const actionId of unbound) {
+    if (!knownIds.has(actionId)) {
+      throw new RangeError(`Unknown keymap action "${actionId}" in unbound: pass one of ${[...knownIds].join(', ')}.`);
+    }
+  }
   const actions = DEFAULT_KEYMAP_ACTIONS.map(item => {
+    if (unbound.includes(item.id)) return Object.freeze({ ...item, bindings: Object.freeze([]) });
     if (!(item.id in overrides)) return item;
     const replacement = Array.isArray(overrides[item.id]) ? overrides[item.id] : [overrides[item.id]];
     if (replacement.length === 0) {
@@ -169,7 +175,7 @@ export function resolveKeymap(overrides = {}) {
     const [first, second] = conflicts[0];
     throw new RangeError(`Keymap actions "${first}" and "${second}" share a key in the same context: give one of them another binding.`);
   }
-  return Object.freeze({ actions: Object.freeze(actions) });
+  return Object.freeze({ actions: Object.freeze(actions), toolKeysGrab, mouse: Object.freeze(mouse.map(item => Object.freeze({ ...item }))) });
 }
 
 function bindingMatchesEvent(value, event) {
@@ -226,5 +232,111 @@ export function keyLabel(keymap, actionId, bindingIndex = 0) {
 
 /** The text of a shortcuts dialog row's keys, with its `{action}` and `{action#1}` placeholders filled in. */
 export function formatShortcutKeys(keymap, template) {
-  return template.replace(/\{([\w.]+)(?:#(\d+))?\}/g, (_match, actionId, bindingIndex) => keyLabel(keymap, actionId, Number(bindingIndex ?? 0)));
+  const filled = template.replace(/\{([\w.]+)(?:#(\d+))?\}/g, (_match, actionId, bindingIndex) => keyLabel(keymap, actionId, Number(bindingIndex ?? 0)));
+  // An action a preset leaves with one key has no second label: its slot leaves the row instead of showing "F / ".
+  return filled.split(' / ').filter(part => part.trim() !== '').join(' / ');
+}
+
+/** The last binding of an action, the key a tooltip names when an action has a long and a short one. */
+export function lastKeyLabel(keymap, actionId) {
+  const { bindings } = findAction(keymap, actionId);
+  const value = bindings[bindings.length - 1];
+  return value ? formatBinding(value) : '';
+}
+
+// Alt with a mouse button drives the camera in Maya and in Cinema 4D alike: left orbits, middle pans, right zooms.
+const ALT_MOUSE_NAVIGATION = Object.freeze([
+  Object.freeze({ button: 0, alt: true, mode: 'orbit' }),
+  Object.freeze({ button: 1, alt: true, mode: 'pan' }),
+  Object.freeze({ button: 2, alt: true, mode: 'zoom' }),
+]);
+
+// Maya: Autodesk, "All Maya Hotkeys", https://help.autodesk.com/cloudhelp/2025/ENU/Maya-KeyboardShortcuts/files/GUID-30CACC9D-8FBE-4B85-8A8F-C5ADF32DDD4E.htm
+// Only keys that page lists are set. Delete is not on it, so Delete and Backspace stay and X goes (Maya's X is a snap key).
+// The page's "Show Last Hidden" is Ctrl+Shift+H; Studio's action shows everything.
+const MAYA_BINDINGS = Object.freeze({
+  'tool.select': binding('q'),
+  'tool.translate': binding('w'),
+  'tool.rotate': binding('e'),
+  'tool.scale': binding('r'),
+  'tool.snap': binding('j'),
+  'edit.duplicate': binding('d', { ctrl: true }),
+  'edit.delete': [binding('Delete'), binding('Backspace')],
+  'edit.undo': binding('z', { ctrl: true, shift: false }),
+  'edit.redo': [binding('y', { ctrl: true }), binding('z', { ctrl: true, shift: true })],
+  'edit.hide': binding('h', { ctrl: true, shift: false }),
+  'edit.showAll': binding('h', { ctrl: true, shift: true }),
+  'view.frame': binding('f'),
+  'view.properties': binding('a', { ctrl: true }),
+  'animate.keyframe': binding('s'),
+  'animate.play': binding('v', { alt: true }),
+  'modal.translate': binding('w'),
+  'modal.rotate': binding('e'),
+  'modal.scale': binding('r'),
+});
+
+// Cinema 4D: Maxon, "Keyboard Shortcuts", https://help.maxon.net/c4d/en-us/Content/html/Shortcuts.html
+// Only keys that page lists are set. Frame has two: O (object) and S (elements), so S must say Shift is up, or it would
+// also be Shift+S, the snapping key.
+const CINEMA_4D_BINDINGS = Object.freeze({
+  'tool.select': binding('9'),
+  'tool.translate': binding('e'),
+  'tool.rotate': binding('r'),
+  'tool.scale': binding('t'),
+  'tool.snap': binding('s', { shift: true }),
+  'edit.delete': [binding('Backspace'), binding('Delete')],
+  'edit.deselect': [binding('a', { ctrl: true, shift: true }), binding('Escape')],
+  'view.frame': [binding('o'), binding('s', { shift: false })],
+  'view.properties': binding('F5', { shift: true }),
+  'animate.keyframe': binding('F9'),
+  'animate.play': binding('F8'),
+  'modal.translate': binding('e'),
+  'modal.rotate': binding('r'),
+  'modal.scale': binding('t'),
+});
+
+/**
+ * The keymaps a person can pick. `crucible` is the default, the keys of Blender. In `maya` and `cinema4d` a tool key only
+ * selects the tool (`toolKeysGrab` false), because those programs show handles to drag instead of picking the object up.
+ * `mouse` is extra camera navigation on top of the drag, middle drag and wheel that every preset keeps.
+ */
+export const KEYMAP_PRESETS = Object.freeze({
+  crucible: Object.freeze({ label: 'Blender', bindings: Object.freeze({}), toolKeysGrab: true, mouse: Object.freeze([]) }),
+  maya: Object.freeze({ label: 'Maya', bindings: MAYA_BINDINGS, toolKeysGrab: false, mouse: ALT_MOUSE_NAVIGATION }),
+  cinema4d: Object.freeze({ label: 'Cinema 4D', bindings: CINEMA_4D_BINDINGS, toolKeysGrab: false, mouse: ALT_MOUSE_NAVIGATION }),
+});
+
+export const KEYMAP_PRESET_IDS = Object.freeze(Object.keys(KEYMAP_PRESETS));
+
+/** The keymap of a preset, resolved over the defaults. */
+export function resolveKeymapPreset(presetId) {
+  const preset = KEYMAP_PRESETS[presetId];
+  if (!preset) {
+    throw new RangeError(`Unknown keymap preset "${presetId}": pass one of ${KEYMAP_PRESET_IDS.join(', ')}.`);
+  }
+  return resolveKeymap(preset.bindings, { unbound: preset.unbound, toolKeysGrab: preset.toolKeysGrab, mouse: preset.mouse });
+}
+
+/** The camera move a mouse press starts under this keymap ('orbit', 'pan' or 'zoom'), or null for the default drag. */
+export function findMouseNavigation(keymap, event) {
+  const matched = keymap.mouse.find(item => item.button === event.button && Boolean(item.alt) === Boolean(event.altKey));
+  return matched ? matched.mode : null;
+}
+
+const MOUSE_ROW_WORDS = Object.freeze({ orbit: 'Orbit', pan: 'Pan', zoom: 'Zoom' });
+const MOUSE_BUTTON_WORDS = Object.freeze(['left', 'middle', 'right']);
+
+/** The rows of the shortcuts dialog for a keymap: a preset where tool keys only select a tool has no "holding" rows. */
+export function shortcutRowsFor(keymap) {
+  const rows = SHORTCUT_ROWS.flatMap(row => {
+    if (keymap.toolKeysGrab) return [row];
+    if (row.label.startsWith('While holding')) return [];
+    if (row.label === 'Pick up to move / rotate / scale') return [Object.freeze({ ...row, label: 'Move / Rotate / Scale tool' })];
+    return [row];
+  });
+  const mouseRows = keymap.mouse.map(item => Object.freeze({
+    keys: `Alt + ${MOUSE_BUTTON_WORDS[item.button]} drag`,
+    label: MOUSE_ROW_WORDS[item.mode],
+  }));
+  return Object.freeze([...rows, ...mouseRows]);
 }

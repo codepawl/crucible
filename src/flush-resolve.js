@@ -4,8 +4,9 @@
 // wins every frame and at every distance. Ranks are per triangle, not per part: a whole-part offset moved faces that had
 // no conflict and made things worse (issue #593).
 import { depthLayerOf, MAXIMUM_FLUSH_RANK, setFlushOrder } from './depth-layer.js';
-import { clipFlushOverlaps, FLUSH_CUT_MINIMUM_AREA, FLUSH_CUT_STRIDE, sameNumbers } from './flush-clip.js';
-import { findFlushPairs, float32Step, worldBounds } from './flush-search.js';
+import { clipFlushOverlapsSteps, FLUSH_CUT_MINIMUM_AREA, FLUSH_CUT_STRIDE, sameNumbers } from './flush-clip.js';
+import { findFlushPairsSteps, float32Step, worldBounds } from './flush-search.js';
+import { drainSteps } from './flush-search-runner.js';
 import { invertAffine } from './path-tracer-reprojection.js';
 
 // A 2 cm slab 400 m wide is a ground, not a collapse (issue #1216): only an axis a millionth of the longest one is scaled to nothing.
@@ -19,6 +20,8 @@ const CACHED_ORDERS_PER_GEOMETRY = 8;
 const NEAR_FLUSH_CUT_GAP_SHARE = 1e-3;
 const NEAR_FLUSH_CUT_MINIMUM_GAP = 1e-3;
 const NEAR_FLUSH_CUT_MAXIMUM_GAP = 1e-2;
+// Pairs sorted into cuts and edges between two checkpoints (issue #2905).
+const RESOLVE_CHECKPOINT_PAIRS = 4096;
 
 function nearFlushCutGap(sharedArea) {
   const relative = NEAR_FLUSH_CUT_GAP_SHARE * Math.sqrt(sharedArea);
@@ -56,14 +59,15 @@ function liftFronts(ranks, edges, overflow) {
 // Rank = the longest chain of triangles behind this one. A chain longer than the top rank (or a cycle of slightly tilted
 // planes) stops there and is marked. `seamEdges` are pairs that were cut: what is left of them shares only the hair of
 // overlap a cut leaves, so they take a rank where one is free and are dropped without a mark where the ranks ran out.
-function rankTriangles(count, edges, seamEdges) {
+function* rankTriangles(count, edges, seamEdges) {
   const ranks = new Uint8Array(count);
   const overflow = new Uint8Array(count);
-  for (let pass = 0; pass <= MAXIMUM_FLUSH_RANK + 1 && liftFronts(ranks, edges, overflow); pass++);
+  for (let pass = 0; pass <= MAXIMUM_FLUSH_RANK + 1 && liftFronts(ranks, edges, overflow); pass++) yield;
   for (let pass = 0; pass <= MAXIMUM_FLUSH_RANK + 1; pass++) {
     const seamMoved = liftFronts(ranks, seamEdges, null);
     const moved = liftFronts(ranks, edges, null);
     if (!seamMoved && !moved) break;
+    yield;
   }
   return { ranks, overflow };
 }
@@ -121,12 +125,12 @@ function cutRecords(found, partIndex, cutPairs) {
 // A part's geometry with its hidden flush faces cut away, as `{ geometry, sources }` of clipFlushOverlaps. A part that
 // cannot be cut, or that would lose every triangle, keeps its geometry and its pairs are ranked instead. A pair whose back
 // triangle is still partly there goes to `seamEdges`.
-function clipPart(found, partIndex, cutPairs, edges, seamEdges) {
+function* clipPart(found, partIndex, cutPairs, edges, seamEdges) {
   const part = found.parts[partIndex];
   const uncut = { geometry: part.geometry, sources: null };
   if (cutPairs.length === 0) return uncut;
   const cuts = cutRecords(found, partIndex, cutPairs);
-  const clipped = cuts ? clipFlushOverlaps(part.geometry, cuts, coordinateStep(part)) : uncut;
+  const clipped = cuts ? yield* clipFlushOverlapsSteps(part.geometry, cuts, coordinateStep(part)) : uncut;
   if (!cuts || clipped.geometry.indices.length === 0) {
     for (const { back, front } of cutPairs) edges.push(back, front);
     return uncut;
@@ -195,7 +199,16 @@ function hasCollapsedAxis(matrix) {
  * `collapsed-node` (an axis scaled to nothing).
  */
 export function resolveFlush(parts, options) {
-  const found = findFlushPairs(parts, options);
+  return drainSteps(resolveFlushSteps(parts, options));
+}
+
+/**
+ * resolveFlush as a generator that yields at checkpoints (issue #2905); the result is the one resolveFlush returns. The draw
+ * orders are all made before the first part is given one, and nothing yields after that, so a search stopped at a checkpoint
+ * has changed no part.
+ */
+export function* resolveFlushSteps(parts, options) {
+  const found = yield* findFlushPairsSteps(parts, options);
   const { owner, local, areas, pairs, count } = found;
   const leftovers = new Map();
   const note = (reason, part, triangles = 1) => {
@@ -207,7 +220,9 @@ export function resolveFlush(parts, options) {
   const edges = [];
   const seamEdges = [];
   const cutPairs = found.parts.map(() => []);
+  let pairIndex = 0;
   for (const pair of pairs) {
+    if (++pairIndex % RESOLVE_CHECKPOINT_PAIRS === 0) yield;
     const firstPart = found.parts[owner[pair.first]];
     const secondPart = found.parts[owner[pair.second]];
     // Parts on different layers are already a whole layer of ranks apart.
@@ -222,8 +237,11 @@ export function resolveFlush(parts, options) {
     if (canCut(pair, found.parts[owner[front]], found.parts[owner[back]])) cutPairs[owner[back]].push({ back, front });
     else edges.push(back, front);
   }
-  const clippedParts = found.parts.map((part, partIndex) => clipPart(found, partIndex, cutPairs[partIndex], edges, seamEdges));
-  const { ranks, overflow } = rankTriangles(count, edges, seamEdges);
+  const clippedParts = [];
+  for (let partIndex = 0; partIndex < found.parts.length; partIndex++) {
+    clippedParts.push(yield* clipPart(found, partIndex, cutPairs[partIndex], edges, seamEdges));
+  }
+  const { ranks, overflow } = yield* rankTriangles(count, edges, seamEdges);
   const partRanks = found.parts.map(() => null);
   for (let id = 0; id < count; id++) {
     if (overflow[id]) note('rank-overflow', found.parts[owner[id]]);
@@ -232,13 +250,18 @@ export function resolveFlush(parts, options) {
     partRanks[owner[id]][local[id]] = ranks[id];
   }
   const searched = new Map(found.parts.map((part, index) => [part, index]));
-  let ranked = 0;
+  const orders = [];
   for (const part of parts) {
     const partIndex = searched.get(part);
-    const order = partIndex === undefined ? null : flushOrderFor(clippedParts[partIndex], partRanks[partIndex]);
-    setFlushOrder(part, order);
-    if (order) ranked++;
+    orders.push(partIndex === undefined ? null : flushOrderFor(clippedParts[partIndex], partRanks[partIndex]));
+    yield;
   }
+  // No checkpoint from here on: a part is never left with an order of this search while the rest wait for it.
+  let ranked = 0;
+  parts.forEach((part, index) => {
+    setFlushOrder(part, orders[index]);
+    if (orders[index]) ranked++;
+  });
   for (const part of found.unchecked) note('unchecked', part, part.geometry.indices.length / 3);
   if (found.truncated) note('unchecked', { name: found.truncatedAt ?? 'scene' }, 0);
   for (const part of parts) {

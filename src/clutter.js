@@ -312,7 +312,7 @@ function resolveSettings(options) {
  * counts per square metre `pebbles`, `rocks`, `twigs`, `leaves`, `pebbleSize` and `rockSize` radius ranges,
  * `moss` (0..1), `clumping` (0..1), linear `stoneColor`, `mossColor`, `soilColor`, `twigColor` and `leafColors`,
  * `castShadow` (stones only), `tileSize`, `levels`, `cullDistance`, `seed`, `eye`.
- * Returns `{ parts, update(eye), stats(), materials, settings }`. When `update` returns true, call
+ * Returns `{ parts, update(eye), stats(), materials, settings }`; `stats()` counts `items` drawn as well as tiles and triangles. When `update` returns true, call
  * `renderer.replaceParts([...otherParts, ...clutter.parts])`.
  */
 export function createClutter(options = {}) {
@@ -323,6 +323,9 @@ export function createClutter(options = {}) {
     litter: { color: [1, 1, 1], roughness: 0.8, metallic: 0, emission: 0, doubleSided: true },
   };
 
+  // Items drawn in each tile at its current level; a tile that left the cull distance has no parts and counts for nothing.
+  const keptItems = new Map();
+
   function buildParts(tile, levelIndex) {
     const level = settings.levels[levelIndex];
     tile.cache.items ??= planTileItems(tile, settings);
@@ -330,13 +333,16 @@ export function createClutter(options = {}) {
     const rocks = createMeshBuilder({ withColors: true });
     const pebbles = createMeshBuilder({ withColors: true });
     const litter = createMeshBuilder({ withColors: true });
+    let kept = 0;
     for (const item of tile.cache.items) {
       if (item.keepKey >= level.keep) continue;
+      kept++;
       if (item.kind === 'rocks') addStone(rocks, item, tileOrigin, settings, level.detail);
       else if (item.kind === 'pebbles') addStone(pebbles, item, tileOrigin, settings, level.detail);
       else if (item.kind === 'twigs') addTwig(litter, item, tileOrigin, settings, level.detail);
       else addLeaf(litter, item, tileOrigin, settings, level.detail);
     }
+    keptItems.set(tile, kept);
     const parts = [];
     const matrix = tileMatrix(tile);
     if (rocks.vertexCount > 0) parts.push({ name: `Clutter rocks ${tile.column},${tile.row}`, geometry: rocks.build(), matrix, material: materials.rock, castShadow: settings.castShadow });
@@ -347,6 +353,14 @@ export function createClutter(options = {}) {
 
   const field = createTileField({ ...settings, buildParts });
   field.update(settings.eye ?? [(settings.area.minX + settings.area.maxX) / 2, 2, (settings.area.minZ + settings.area.maxZ) / 2]);
-  return { get parts() { return field.parts; }, update: field.update, stats: field.stats, materials, settings };
+  function stats() {
+    let items = 0;
+    for (const [tile, kept] of keptItems) {
+      if (tile.parts.length > 0) items += kept;
+    }
+    return { ...field.stats(), items };
+  }
+
+  return { get parts() { return field.parts; }, update: field.update, stats, materials, settings };
 }
 

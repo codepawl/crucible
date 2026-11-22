@@ -1,5 +1,6 @@
 import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS } from './agent-scene-capabilities.js';
-import { bakeMaterialGraph, graphImageData, graphVertexGroupNames, normalizeMaterialGraph } from './material-graph.js';
+import { bakeMaterialGraph, graphImageData, graphMeshMapNames, graphVertexGroupNames, MESH_MAP_KEY_PREFIX, normalizeMaterialGraph } from './material-graph.js';
+import { meshMapForGeometry } from './mesh-map-bake.js';
 import { vertexGroupMap } from './material-vertex-group-map.js';
 import { kernelKey, runKernel } from './kernel-offload.js';
 
@@ -176,8 +177,8 @@ function normalizeGraphPattern(value, mappingField) {
   const resolution = value.resolution ?? 512;
   if (!RESOLUTIONS.includes(resolution)) throw patternError(`resolution must be one of ${RESOLUTIONS.join(', ')}.`);
   const graph = normalizeMaterialGraph(value.graph, resolution);
-  if (graphVertexGroupNames(graph).length > 0 && mappingField.mapping !== 'uv') {
-    throw patternError('uses a vertexGroup node, which reads the mesh in UV space: set "mapping": "uv" on the pattern (the mesh needs UVs).');
+  if ((graphVertexGroupNames(graph).length > 0 || graphMeshMapNames(graph).length > 0) && mappingField.mapping !== 'uv') {
+    throw patternError('uses a vertexGroup or meshMap node, which reads the mesh in UV space: set "mapping": "uv" on the pattern (the mesh needs UVs).');
   }
   return {
     type: GRAPH_TYPE,
@@ -320,6 +321,10 @@ function bakeWithGroups(pattern, images, groups) {
 const viewsByGeometry = new WeakMap();
 const groupNamesByPattern = new WeakMap();
 
+function meshMapNamesOf(pattern) {
+  return pattern?.graph ? graphMeshMapNames(pattern.graph) : [];
+}
+
 function vertexGroupNamesOf(pattern) {
   if (!pattern?.graph) return [];
   let names = groupNamesByPattern.get(pattern);
@@ -333,6 +338,7 @@ function vertexGroupNamesOf(pattern) {
 function groupMapsOf(pattern, geometry, nodeId) {
   const maps = {};
   for (const name of vertexGroupNamesOf(pattern)) maps[name] = vertexGroupMap(geometry, name, pattern.resolution, nodeId);
+  for (const name of meshMapNamesOf(pattern)) maps[MESH_MAP_KEY_PREFIX + name] = meshMapForGeometry(geometry, name, pattern.resolution);
   return maps;
 }
 
@@ -343,7 +349,7 @@ function groupMapsOf(pattern, geometry, nodeId) {
  */
 export function materialViewForGeometry(material, geometry, nodeId, imagePool) {
   const pattern = material.pattern;
-  if (vertexGroupNamesOf(pattern).length === 0) return material;
+  if (vertexGroupNamesOf(pattern).length === 0 && meshMapNamesOf(pattern).length === 0) return material;
   // The groups are checked now, so a mesh without UVs or without the group fails when the part is built.
   const groups = groupMapsOf(pattern, geometry, nodeId);
   let views = viewsByGeometry.get(geometry);

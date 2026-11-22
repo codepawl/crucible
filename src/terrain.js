@@ -5,6 +5,7 @@
 import './world-material-shader.js';
 import { createSkyVisibilitySampler } from './terrain-sky.js';
 import { requireSeed } from './seeded-random.js';
+import { createTerrainPaths } from './terrain-paths.js';
 
 const DEFAULT_NOISE = Object.freeze({
   amplitude: 14,
@@ -206,17 +207,20 @@ function pointInsideHoles(holes, pointX, pointZ) {
 
 /**
  * Returns { parts, heightAt, normalAt, isHole, bounds, update, triangleCount }.
+ * `paths` ([{ points: [[x, z], ...], width, depth, falloff, ruts, crown, shoulder }], see terrain-paths.js) carve roads into the ground; `pathMasks` then names each path's 0 to 1 mask: at(name, x, z), and image(name, resolution) for a splat `maskMap` over `maskBounds` [-size / 2, -size / 2, size / 2, size / 2].
  * `holes` ([{ center: [x, z], radius }]) cuts round openings through the ground; isHole(x, z) tells whether a point is in one.
  * Ground spans x and z from -size / 2 to size / 2. Call update(eye) each frame (or when the camera moves) and, when it
  * returns a non-empty list, pass the scene parts to renderer.replaceParts.
  */
-export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels = 4, height, seed = 1, material = DEFAULT_MATERIAL, lodDistance, eye, holes, mirrorLevels } = {}) {
+export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels = 4, height, seed = 1, material = DEFAULT_MATERIAL, lodDistance, eye, holes, mirrorLevels, paths } = {}) {
   const mirrorLevelsExplicit = mirrorLevels !== undefined;
   let activeMirrorLevels = mirrorLevelsExplicit ? mirrorLevels : 0;
   validateOptions({ size, resolution, chunks, levels, mirrorLevels: activeMirrorLevels, lodDistance });
   const holeCircles = normalizeTerrainHoles(holes);
   const isHole = (worldX, worldZ) => holeCircles !== null && pointInsideHoles(holeCircles, worldX, worldZ);
-  const heightFunction = resolveHeightFunction(height, size, seed);
+  const baseHeightFunction = resolveHeightFunction(height, size, seed);
+  const terrainPaths = paths === undefined ? null : createTerrainPaths(paths, baseHeightFunction);
+  const heightFunction = terrainPaths ? terrainPaths.height : baseHeightFunction;
   const chunkSize = size / chunks;
   const gridCells = chunks * resolution;
   const gridSide = gridCells + 1;
@@ -500,7 +504,12 @@ export function createTerrain({ size = 512, resolution = 32, chunks = 8, levels 
   }
 
   update(eye ?? [0, highest + size * 0.5, 0]);
-  return { parts, heightAt, normalAt, isHole, bounds, update, get triangleCount() { return triangleTotal; }, chunkSize, resolution, levels, chunkLevels: () => chunkStates.map(state => state.level) };
+  const pathMasks = terrainPaths && {
+    names: terrainPaths.maskNames,
+    at: terrainPaths.maskAt,
+    image: (name, resolution) => terrainPaths.maskImage(name, [origin, origin, -origin, -origin], resolution),
+  };
+  return { parts, heightAt, normalAt, isHole, bounds, pathMasks, update, get triangleCount() { return triangleTotal; }, chunkSize, resolution, levels, chunkLevels: () => chunkStates.map(state => state.level) };
 }
 
 function identityMatrix() {

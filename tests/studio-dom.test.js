@@ -2260,6 +2260,7 @@ test('Settings change the snap, the handles and what the viewport shows, and are
     startWorkspace: 'animate',
     theme: 'system',
     performance: 'automatic',
+    keymap: 'crucible',
     setupDone: false,
     gridVisible: false,
     readoutVisible: false,
@@ -4097,11 +4098,12 @@ test('the setup shows one group a page, with Back, Next and Done (#2847)', testC
   assert.deepEqual(visibleTitles(), ['Performance']);
   setupButton(ui, 'Next').click();
   setupButton(ui, 'Next').click();
+  setupButton(ui, 'Next').click();
   assert.deepEqual(visibleTitles(), ['Work with an AI agent']);
   assert.equal(setupButton(ui, 'Next').hidden, true);
   assert.equal(setupButton(ui, 'Done').hidden, false);
   setupButton(ui, 'Back').click();
-  assert.deepEqual(visibleTitles(), ['Modelling']);
+  assert.deepEqual(visibleTitles(), ['Keys']);
   setupButton(ui, 'Skip').click();
 });
 
@@ -4159,13 +4161,13 @@ test('the setup names its steps in a row, jumps between them and rests focus on 
   const ui = mountStudio(testContext);
   const stepNames = () => ui.root.querySelectorAll('.crucible-studio-setup-step').map(button => button.textContent);
   ui.studio.openSetup();
-  assert.deepEqual(stepNames(), ['Theme', 'Performance', 'Modelling', 'AI agent']);
+  assert.deepEqual(stepNames(), ['Theme', 'Performance', 'Modelling', 'Keys', 'AI agent']);
   assert.equal(ui.dom.document.activeElement, ui.root.querySelector('.crucible-studio-setup-dialog'), 'the dialog holds the focus, so no control starts with a ring');
   const performanceStep = ui.root.querySelectorAll('.crucible-studio-setup-step')[1];
   performanceStep.click();
   assert.equal(performanceStep.getAttribute('aria-current'), 'step');
   assert.equal(ui.root.querySelectorAll('.crucible-studio-setup-group').filter(group => !group.inert).length, 1);
-  ui.root.querySelectorAll('.crucible-studio-setup-step')[3].click();
+  ui.root.querySelectorAll('.crucible-studio-setup-step')[4].click();
   assert.equal(setupButton(ui, 'Done').hidden, false);
 });
 
@@ -4256,4 +4258,187 @@ test('the agent step shows the prompt and the button says Copied once it is on t
   assert.ok(copied, 'the button shows Copied');
   assert.ok(copied.querySelector('svg') ?? copied.children[0], 'with the check icon');
   assert.equal(ui.dom.clipboardTexts[0], prompt.value);
+});
+
+// Keymap presets (#2847): the preference swaps the keys live.
+function keyboardUi(testContext, keymap) {
+  const ui = mountStudio(testContext);
+  chooseSetting(ui, 'keymap', keymap);
+  ui.selectRow('hero');
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  const press = (key, properties = {}) => dispatch(ui.dom.document, 'keydown', { key, ...properties });
+  return { ui, press };
+}
+
+test('the Maya keymap: W, E and R choose the tool without picking the object up, and S keys', async testContext => {
+  const { ui, press } = keyboardUi(testContext, 'maya');
+  assert.equal(ui.studio.preferences.keymap, 'maya');
+  press('w');
+  assert.equal(ui.controller.tool, 'translate');
+  assert.equal(ui.root.dataset.modal, undefined, 'a Maya tool key does not start a grab');
+  assert.equal(ui.controller.dragging, false);
+  press('e');
+  assert.equal(ui.controller.tool, 'rotate');
+  press('r');
+  assert.equal(ui.controller.tool, 'scale');
+  assert.equal(ui.root.dataset.modal, undefined);
+  press('q');
+  assert.equal(ui.controller.tool, 'select');
+  press('g');
+  assert.notEqual(ui.controller.tool, 'translate', 'G is Blender\'s key, not Maya\'s');
+  press('s');
+  await ui.dom.settle();
+  assert.equal(ui.studio.exportRecipe().motion.tracks.length > 0, true, 'S sets a key');
+  assert.notEqual(ui.controller.tool, 'scale', 'S no longer scales');
+  const nodeCount = ui.studio.exportRecipe().nodes.length;
+  press('x');
+  assert.equal(ui.studio.exportRecipe().nodes.length, nodeCount, 'X no longer deletes');
+  press('Delete');
+  assert.equal(ui.studio.exportRecipe().nodes.length, nodeCount - 1);
+});
+
+test('the Cinema 4D keymap: E, R and T choose the tool, 9 selects and F9 keys', async testContext => {
+  const { ui, press } = keyboardUi(testContext, 'cinema4d');
+  press('e');
+  assert.equal(ui.controller.tool, 'translate');
+  assert.equal(ui.root.dataset.modal, undefined);
+  press('r');
+  assert.equal(ui.controller.tool, 'rotate');
+  press('t');
+  assert.equal(ui.controller.tool, 'scale');
+  assert.equal(ui.root.dataset.modal, undefined);
+  press('9');
+  assert.equal(ui.controller.tool, 'select');
+  press('S', { shiftKey: true });
+  assert.equal(ui.controller.tool, 'snap');
+  press('F9');
+  await ui.dom.settle();
+  assert.equal(ui.studio.exportRecipe().motion.tracks.length > 0, true, 'F9 sets a key');
+});
+
+test('the Blender keymap still picks the object up on G, and switching keymaps back restores it', testContext => {
+  const { ui, press } = keyboardUi(testContext, 'maya');
+  chooseSetting(ui, 'keymap', 'crucible');
+  press('g');
+  assert.equal(ui.root.dataset.modal, 'translate');
+  press('Escape');
+  assert.equal(ui.root.dataset.modal, undefined);
+});
+
+test('choosing a keymap rewrites the menu keys, the tooltips and the shortcuts dialog at once', testContext => {
+  const ui = mountStudio(testContext);
+  const editMenu = ui.root.querySelector('#crucible-studio-pop-edit');
+  const objectMenu = ui.root.querySelector('#crucible-studio-pop-object');
+  const shortcutsText = () => ui.root.querySelector('.crucible-studio-shortcuts').textContent;
+  assert.equal(byText(editMenu, 'Hide').dataset.shortcut, 'H');
+  assert.equal(byText(editMenu, 'Duplicate').dataset.shortcut, 'Shift+D');
+  assert.ok(ui.label('Move (G)'));
+  assert.match(shortcutsText(), /Pick up to move/);
+
+  chooseSetting(ui, 'keymap', 'maya');
+  assert.equal(byText(editMenu, 'Hide').dataset.shortcut, 'Ctrl+H');
+  assert.equal(byText(editMenu, 'Show all').dataset.shortcut, 'Ctrl+Shift+H');
+  assert.equal(byText(editMenu, 'Duplicate').dataset.shortcut, 'Ctrl+D');
+  assert.equal(byText(objectMenu, 'Frame').dataset.shortcut, 'F');
+  assert.equal(byText(ui.root.querySelector('#crucible-studio-pop-view'), 'Properties').dataset.shortcut, 'Ctrl+A');
+  assert.ok(ui.label('Move (W)'));
+  assert.ok(ui.label('Scale (R)'));
+  assert.ok(ui.label('Redo (Ctrl+Y)'));
+  assert.ok(ui.label('Play (Alt+V)'));
+  assert.ok(ui.label('Add a keyframe here (S)'));
+  assert.match(shortcutsText(), /W \/ E \/ R/);
+  assert.match(shortcutsText(), /Alt \+ left drag/);
+  assert.doesNotMatch(shortcutsText(), /While holding/);
+
+  chooseSetting(ui, 'keymap', 'cinema4d');
+  assert.equal(byText(editMenu, 'Hide').dataset.shortcut, 'H');
+  assert.equal(byText(ui.root.querySelector('#crucible-studio-pop-view'), 'Properties').dataset.shortcut, 'Shift+F5');
+  assert.ok(ui.label('Scale (T)'));
+  assert.ok(ui.label('Play (F8)'));
+
+  chooseSetting(ui, 'keymap', 'crucible');
+  assert.equal(byText(editMenu, 'Hide').dataset.shortcut, 'H');
+  assert.ok(ui.label('Move (G)'));
+  assert.match(shortcutsText(), /Pick up to move/);
+});
+
+test('the keymap starts from the saved preference', testContext => {
+  const ui = mountStudio(testContext, { preferences: { keymap: 'cinema4d' } });
+  assert.ok(ui.label('Rotate (R)'));
+  assert.ok(ui.label('Move (E)'));
+  assert.equal(byText(ui.root.querySelector('#crucible-studio-pop-view'), 'Properties').dataset.shortcut, 'Shift+F5');
+});
+
+test('Settings has a Keys row with Blender, Maya and Cinema 4D', testContext => {
+  const ui = mountStudio(testContext);
+  const control = ui.root.querySelector('.crucible-studio-settings-dialog').descendants().find(element => element.dataset?.setting === 'keymap');
+  assert.deepEqual(control.querySelectorAll('option').map(option => [option.value, option.textContent]), [['crucible', 'Blender'], ['maya', 'Maya'], ['cinema4d', 'Cinema 4D']]);
+  assert.equal(control.value, 'crucible');
+});
+
+test('the setup has a Keys step after Modelling with a card per program, each with its logo and its real keys', testContext => {
+  const ui = mountStudio(testContext);
+  ui.studio.openSetup();
+  const names = ui.root.querySelectorAll('.crucible-studio-setup-step').map(button => button.textContent);
+  assert.deepEqual(names.slice(2, 5), ['Modelling', 'Keys', 'AI agent']);
+  const expectedKeys = { crucible: ['G', 'R', 'S', 'F'], maya: ['W', 'E', 'R', 'F'], cinema4d: ['E', 'R', 'T', 'O'] };
+  const expectedLabels = { crucible: 'Blender', maya: 'Maya', cinema4d: 'Cinema 4D' };
+  for (const [preset, keys] of Object.entries(expectedKeys)) {
+    const card = setupCard(ui, 'keymap', preset).parentNode;
+    assert.equal(card.querySelector('.crucible-studio-setup-card-label').textContent, expectedLabels[preset]);
+    const logo = card.querySelector('.crucible-studio-setup-card-name svg');
+    assert.equal(logo.dataset.brand, 'true', `${preset} has a brand logo`);
+    assert.equal(logo.querySelectorAll('path').length, 1);
+    assert.deepEqual(card.querySelectorAll('kbd').map(key => key.textContent), keys);
+  }
+  assert.equal(setupCard(ui, 'keymap', 'crucible').checked, true);
+  const maya = setupCard(ui, 'keymap', 'maya');
+  maya.checked = true;
+  dispatch(maya, 'change');
+  assert.equal(ui.studio.preferences.keymap, 'maya');
+  assert.equal(setupCard(ui, 'keymap', 'maya').parentNode.dataset.selected, 'true');
+  assert.ok(ui.label('Move (W)'), 'the live Studio behind the dialog follows');
+});
+
+test('Maya and Cinema 4D navigate with Alt and a mouse button, and the Blender keymap does not', testContext => {
+  const ui = mountStudio(testContext);
+  const start = ui.clientPoint({ x: 400, y: 300 });
+  const distance = () => Math.hypot(...ui.controller.scene.camera.eye.map((value, index) => value - ui.controller.scene.camera.target[index]));
+  const drag = (button, to) => {
+    dispatch(ui.canvas, 'pointerdown', { ...start, button, altKey: true });
+    dispatch(ui.canvas, 'pointermove', ui.clientPoint(to));
+    dispatch(ui.canvas, 'pointerup', ui.clientPoint(to));
+  };
+
+  ui.controller.selectNode(null);
+  chooseSetting(ui, 'keymap', 'maya');
+  let eyeBefore = ui.controller.scene.camera.eye.slice();
+  drag(0, { x: 500, y: 320 });
+  assert.notDeepEqual(ui.controller.scene.camera.eye, eyeBefore, 'Alt and the left button orbit');
+  assert.equal(ui.controller.selectedNodeId, null, 'a navigation drag does not select');
+  let targetBefore = ui.controller.scene.camera.target.slice();
+  drag(1, { x: 480, y: 340 });
+  assert.notDeepEqual(ui.controller.scene.camera.target, targetBefore, 'Alt and the middle button pan');
+  const distanceBefore = distance();
+  drag(2, { x: 460, y: 240 });
+  assert.ok(distance() < distanceBefore, 'Alt and the right button zoom in when dragged right and up');
+  assert.equal(ui.controller.selectedNodeId, null);
+  const orbPoint = ui.clientPoint(ui.controller.projectWorldPoint([2.2, 0.5, 0]));
+  dispatch(ui.canvas, 'pointerdown', { ...orbPoint, altKey: true });
+  dispatch(ui.canvas, 'pointerup', { ...orbPoint, altKey: true });
+  assert.equal(ui.controller.selectedNodeId, null, 'an Alt click over an object does not pick it');
+  dispatch(ui.canvas, 'pointerdown', orbPoint);
+  dispatch(ui.canvas, 'pointerup', orbPoint);
+  assert.equal(ui.controller.selectedNodeId, 'orb', 'a plain click still picks');
+  ui.controller.selectNode(null);
+
+  chooseSetting(ui, 'keymap', 'cinema4d');
+  eyeBefore = ui.controller.scene.camera.eye.slice();
+  drag(0, { x: 560, y: 330 });
+  assert.notDeepEqual(ui.controller.scene.camera.eye, eyeBefore);
+
+  chooseSetting(ui, 'keymap', 'crucible');
+  targetBefore = ui.controller.scene.camera.target.slice();
+  drag(2, { x: 420, y: 300 });
+  assert.notDeepEqual(ui.controller.scene.camera.target, targetBefore, 'the default right drag still pans, whatever the keymap');
 });

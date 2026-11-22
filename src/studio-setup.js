@@ -1,6 +1,7 @@
-// The first-run setup dialog: four steps of choice cards (theme, performance, modelling, working with an agent) that
+// The first-run setup dialog: five steps of choice cards (theme, performance, modelling, keys, working with an agent) that
 // change the live Studio behind it, one step a page. It is built from the preferences Studio already keeps, so nothing
 // here is saved anywhere new.
+import { KEYMAP_PRESET_IDS, KEYMAP_PRESETS, keyLabel, resolveKeymapPreset } from './studio-keymap.js';
 import { STUDIO_PREFERENCE_CHOICES } from './studio-preferences.js';
 import { STUDIO_TOOLS } from './studio-templates.js';
 
@@ -22,6 +23,15 @@ const MODELLING_ROWS = Object.freeze([
   { name: 'rotateSnapDegrees', label: 'Rotate snap', icon: 'rotate', describe: value => `${value}°` },
   { name: 'gizmoSize', label: 'Handle size', icon: 'handle', describe: capitalize },
   { name: 'startWorkspace', label: 'Open in', icon: 'panels', describe: capitalize },
+]);
+
+// Each keymap shows the logo of the program whose keys it follows and four of its real keys: the three tools and Frame.
+const KEYMAP_LOGOS = Object.freeze({ crucible: 'brandBlender', maya: 'brandMaya', cinema4d: 'brandCinema4d' });
+const KEYMAP_SAMPLE_KEYS = Object.freeze([
+  { icon: 'translate', actionId: 'tool.translate' },
+  { icon: 'rotate', actionId: 'tool.rotate' },
+  { icon: 'scale', actionId: 'tool.scale' },
+  { icon: 'frame', actionId: 'view.frame' },
 ]);
 
 // The icons Studio's own workspace tabs use, so a chip shows the workspace it opens.
@@ -215,6 +225,31 @@ export function createStudioSetup({
     );
   });
 
+  // Each key cap is read from the resolved keymap, so a card never shows a key the preset does not have.
+  function createKeycaps(presetId) {
+    const presetKeymap = resolveKeymapPreset(presetId);
+    return createElement(
+      documentReference,
+      'span',
+      { className: 'crucible-studio-setup-keycaps' },
+      ...KEYMAP_SAMPLE_KEYS.map(({ icon, actionId }) => createElement(
+        documentReference,
+        'span',
+        { className: 'crucible-studio-setup-keycap' },
+        createIcon(documentReference, icon),
+        createElement(documentReference, 'kbd', { textContent: keyLabel(presetKeymap, actionId) }),
+      )),
+    );
+  }
+  const keymapCards = KEYMAP_PRESET_IDS.map(presetId => createChoiceCard({
+    groupName: 'keymap',
+    preferenceName: 'keymap',
+    value: presetId,
+    label: KEYMAP_PRESETS[presetId].label,
+    iconName: KEYMAP_LOGOS[presetId],
+    details: [createKeycaps(presetId)],
+  }));
+
   // The agent step shows the prompt itself, and the button copies it.
   const promptBlock = createElement(documentReference, 'textarea', {
     className: 'crucible-studio-setup-prompt',
@@ -238,6 +273,7 @@ export function createStudioSetup({
     { title: 'Theme', stepName: 'Theme', icon: 'theme', content: [createCardGroup('Theme', themeCards, 'crucible-studio-setup-cards-theme')] },
     { title: 'Performance', stepName: 'Performance', icon: 'speed', content: [createCardGroup('Performance', performanceCards, 'crucible-studio-setup-cards-wide')] },
     { title: 'Modelling', stepName: 'Modelling', icon: 'node', content: modellingRows },
+    { title: 'Keys', stepName: 'Keys', icon: 'keyboard', content: [createCardGroup('Keys', keymapCards, 'crucible-studio-setup-cards-keys')] },
     { title: 'Work with an AI agent', stepName: 'AI agent', icon: 'agent', content: [createElement(
       documentReference,
       'div',

@@ -8,7 +8,7 @@ import { AGENT_SCENE_CAPABILITIES } from './agent-scene-capabilities.js';
 
 const DEFAULT_PHYSICS_DURATION = 3;
 const FRACTURE_CACHE_SIZE = 4;
-const UNSUPPORTED_NODE_FIELDS = ['instances', 'asset', 'vegetation', 'relations'];
+const UNSUPPORTED_NODE_FIELDS = ['instances', 'asset', 'vegetation', 'clutter', 'relations'];
 const FRACTURE_NODE_FIELDS = ['type', 'node', 'cells', 'strength', 'seed', 'impact', 'impactRadius', 'density', 'friction'];
 
 const fractureCache = new Map();

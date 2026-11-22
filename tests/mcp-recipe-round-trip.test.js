@@ -194,7 +194,7 @@ test('scene_create names the valid kinds and properties for a motion track with 
     const wrongKind = await createdWith({ kind: 'sky', id: 'a', property: 'translation', keyframes });
     assert.match(wrongKind.text, /Unknown motion track kind: "sky"\. Kinds: node, material/);
     const wrongProperty = await createdWith({ kind: 'node', id: 'a', property: 'bogus', keyframes });
-    assert.match(wrongProperty.text, /Unknown node track property: "bogus"\. node properties: translation, rotation, scale\./);
+    assert.match(wrongProperty.text, /Unknown node track property: "bogus"\. node properties: translation, rotation, scale, opacity\./);
   });
 });
 

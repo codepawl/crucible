@@ -18,6 +18,7 @@ import { projectUv, packUvIslands, UV_PROJECTION_MODES } from './mesh-uv-project
 import { runKernel, KernelDeferred } from './kernel-offload.js';
 import { validateField } from './mesh-fields.js';
 import { setPosition, displaceMesh, DISPLACE_DIRECTIONS } from './mesh-field-edits.js';
+import { normalizeDisplaceSource } from './mesh-displace-keys.js';
 import { normalizeVertexColorEdit, normalizeVertexGroupEdit, setVertexColor, setVertexGroup } from './mesh-attribute-edits.js';
 import { subdivideMesh, subdivisionSize, MAX_SUBDIVISION_LEVELS, MAX_CREASE_SHARPNESS } from './mesh-subdivide.js';
 import { decimateMesh } from './mesh-decimate.js';
@@ -65,6 +66,20 @@ function finiteNumber(value, index, label, { minimum = -MAX_OFFSET, maximum = MA
 function vector(value, index, label) {
   if (!Array.isArray(value) || value.length !== 3) throw editField(index, label, value, 'an array of three numbers, such as [0, 1, 0]');
   return value.map(component => finiteNumber(component, index, label));
+}
+
+// A displace edit reads its height from a field expression or from a material graph or image `source`, never both.
+function normalizeDisplaceHeight(edit, normalized, index) {
+  if (edit.field !== undefined && edit.source !== undefined) throw editField(index, 'source', edit.source, 'left out when the edit has a field; pass either "field" or "source"');
+  if (edit.source === undefined) {
+    normalized.field = checkedField(edit.field, index, 'field', 'scalar');
+    return;
+  }
+  try {
+    normalized.source = normalizeDisplaceSource(edit.source);
+  } catch (error) {
+    throw editField(index, 'source', edit.source, error.message);
+  }
 }
 
 function checkedField(expression, index, label, kind) {
@@ -334,7 +349,7 @@ export function normalizeMeshEdits(edits) {
         if (edit.offset !== undefined) normalized.offset = checkedField(edit.offset, index, 'offset', 'vector');
         break;
       case 'displace':
-        normalized.field = checkedField(edit.field, index, 'field', 'scalar');
+        normalizeDisplaceHeight(edit, normalized, index);
         normalized.strength = edit.strength === undefined ? 1 : finiteNumber(edit.strength, index, 'strength');
         normalized.midlevel = edit.midlevel === undefined ? 0.5 : finiteNumber(edit.midlevel, index, 'midlevel');
         if (edit.direction !== undefined && !DISPLACE_DIRECTIONS.includes(edit.direction)) throw editField(index, 'direction', edit.direction, `one of ${DISPLACE_DIRECTIONS.join(', ')}`);
@@ -455,7 +470,7 @@ function surfaceLoader(resolveCutter) {
   };
 }
 
-function runEdit(current, edit, index, { resolveCutter, limits }) {
+function runEdit(current, edit, index, { resolveCutter, resolveHeight, limits }) {
   const loadSurface = surfaceLoader(resolveCutter);
   const result = { op: edit.op };
   if (edit.name) result.name = edit.name;
@@ -537,7 +552,7 @@ function runEdit(current, edit, index, { resolveCutter, limits }) {
   if (edit.op === 'set_position' || edit.op === 'displace') {
     let outcome;
     try {
-      outcome = edit.op === 'set_position' ? setPosition(current, edit, loadSurface) : displaceMesh(current, edit, loadSurface);
+      outcome = edit.op === 'set_position' ? setPosition(current, edit, loadSurface) : displaceMesh(current, edit, loadSurface, resolveHeight);
     } catch (error) {
       throw editFailure(error, index, `${edit.op}`);
     }
@@ -711,14 +726,14 @@ function tagSummary(mesh, name) {
  * the tags it created (and their face counts) and the mesh size after it.
  * An edit that selects no faces throws, because silently doing nothing hides a wrong selection from the agent.
  */
-export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 250_000, resolveCutter } = {}) {
+export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 250_000, resolveCutter, resolveHeight } = {}) {
   const normalized = normalizeMeshEdits(edits);
   const limits = { maxVertices, maxFaces };
   const results = [];
   let current = mesh;
   normalized.forEach((edit, index) => {
     checkArrayBudget(current, edit, limits, index);
-    const outcome = runEdit(current, edit, index, { resolveCutter, limits });
+    const outcome = runEdit(current, edit, index, { resolveCutter, resolveHeight, limits });
     current = outcome.mesh;
     checkBudget(current, limits, index, edit.op);
     outcome.result.after = { vertices: current.vertexCount, faces: current.faceCount };
@@ -747,7 +762,7 @@ export function normalizeMeshStack(stack) {
  * ({ get(key), set(key, value) }) and a key for the input, every prefix of the stack is cached, so changing a late
  * node reuses the earlier ones. Returns the mesh and one result per node, marked `cached` when reused.
  */
-export function evaluateMeshStack(mesh, stack, { maxVertices = 250_000, maxFaces = 250_000, cache, cacheKey } = {}) {
+export function evaluateMeshStack(mesh, stack, { maxVertices = 250_000, maxFaces = 250_000, cache, cacheKey, resolveHeight } = {}) {
   const normalized = normalizeMeshStack(stack);
   const limits = { maxVertices, maxFaces };
   const results = [];
@@ -764,7 +779,7 @@ export function evaluateMeshStack(mesh, stack, { maxVertices = 250_000, maxFaces
       result = { ...hit.result, cached: true };
     } else {
       checkArrayBudget(current, node, limits, index);
-      const outcome = runEdit(current, node, index, { limits });
+      const outcome = runEdit(current, node, index, { resolveHeight, limits });
       current = outcome.mesh;
       checkBudget(current, limits, index, node.op);
       outcome.result.after = { vertices: current.vertexCount, faces: current.faceCount };

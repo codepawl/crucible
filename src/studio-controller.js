@@ -28,6 +28,7 @@ const SCENE_RECORD_PANELS = Object.freeze({
 });
 const SHOT_NAME_PATTERN =/^[A-Za-z0-9_-]{1,24}$/;
 const GIZMO_SCREEN_PIXELS = 74;
+const FLUSH_WATCH_MILLISECONDS = 32;
 const ROTATION_RING_SEGMENTS = 32;
 const WORLD_BASIS = Object.freeze({ x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] });
 const AXIS_PARALLEL_LIMIT = 0.002;
@@ -572,6 +573,31 @@ export function createStudioController({
         ...detail,
       });
     }
+    watchPendingFlush();
+  }
+
+  // An edit of a heavy scene returns before its near-coplanar search is done, and the search then ends with no edit to say so
+  // (#2905). While the scene says one is pending, one short timer waits for it; when it is done the viewport is told once, so a
+  // viewport that draws on demand shows the ranked result. An idle controller has no timer.
+  let flushTimer = null;
+
+  function watchPendingFlush() {
+    if (flushTimer !== null || !currentScene.flushPending) {
+      return;
+    }
+    flushTimer = setTimeout(() => {
+      flushTimer = null;
+      if (currentScene.flushPending) {
+        watchPendingFlush();
+      } else {
+        notify({ kind: 'flush' });
+      }
+    }, FLUSH_WATCH_MILLISECONDS);
+  }
+
+  function stopWatchingFlush() {
+    clearTimeout(flushTimer);
+    flushTimer = null;
   }
 
   function invalidateQuery() {
@@ -646,15 +672,15 @@ export function createStudioController({
     const nextRecipe = entry.restoresCamera || currentRecipe.camera === undefined
       ? entry.recipe
       : { ...entry.recipe, camera: currentRecipe.camera };
-    if (!restoreRecipeInPlace(currentRecipe, nextRecipe)) {
+    if (!restoreRecipeInPlace(currentRecipe, nextRecipe, { allowRecordChanges: true })) {
       swapRecipe(nextRecipe);
     }
   }
 
   // Applies the difference as scene operations on the scene already built, which takes milliseconds where a rebuild
   // freezes a large scene. The exported recipe must match the target exactly, or the caller rebuilds from it.
-  function restoreRecipeInPlace(currentRecipe, targetRecipe) {
-    const operations = operationsBetweenRecipes(currentRecipe, targetRecipe);
+  function restoreRecipeInPlace(currentRecipe, targetRecipe, { allowRecordChanges = false } = {}) {
+    const operations = operationsBetweenRecipes(currentRecipe, targetRecipe, { allowRecordChanges });
     if (operations === null) {
       return false;
     }
@@ -719,12 +745,27 @@ export function createStudioController({
   }
 
   function swapRecipe(recipeInput) {
+    // `assets` is the host's pool of decoded catalog assets. It outlives each scene, so undo and redo rebuild from it.
+    installScene(createAgentScene(recipeInput, {}, assets ? { assets } : {}));
+  }
+
+  function installScene(scene) {
     invalidateQuery();
+    stopWatchingFlush();
     // A drag in progress belongs to the scene it began on.
     dragState = null;
-    // `assets` is the host's pool of decoded catalog assets. It outlives each scene, so undo and redo rebuild from it.
-    currentScene = createAgentScene(recipeInput, {}, assets ? { assets } : {});
+    currentScene = scene;
     settleSelectionAndMotion();
+  }
+
+  // A recipe from a file or an agent leaves out the fields the scene fills in, so it is built once on the side to learn the
+  // recipe it stands for. When the scene on screen differs from that only by what scene operations can set, they are applied
+  // there and the parts, and the textures the renderer holds for them, stay (#2842). Otherwise the built scene is the new one.
+  function loadRecipeKeepingScene(recipeInput) {
+    const candidate = createAgentScene(recipeInput, {}, assets ? { assets } : {});
+    if (!restoreRecipeInPlace(currentScene.exportRecipe(), candidate.exportRecipe())) {
+      installScene(candidate);
+    }
   }
 
   // Keeps the selection, the motion time and the free view valid for whichever recipe the scene now holds.
@@ -2295,7 +2336,7 @@ export function createStudioController({
     const before = recordUndo ? currentScene.exportRecipe() : null;
     endUndoGroup();
     freeViewPose = null;
-    swapRecipe(recipeInput);
+    loadRecipeKeepingScene(recipeInput);
     if (before) {
       pushUndoSnapshot(before, { restoresCamera: true });
     }
@@ -2390,6 +2431,7 @@ export function createStudioController({
       return currentScene.exportRecipe();
     },
     dispose() {
+      stopWatchingFlush();
       invalidateQuery();
     },
   });

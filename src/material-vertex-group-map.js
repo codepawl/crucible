@@ -44,7 +44,7 @@ function fillTriangle(texels, covered, resolution, uvs, weights, corners) {
   }
 }
 
-function dilate(texels, covered, resolution) {
+export function dilateTexels(texels, covered, resolution) {
   for (let pass = 0; pass < DILATION_PASSES; pass++) {
     const spread = [];
     for (let row = 0; row < resolution; row++) {
@@ -99,7 +99,7 @@ export function vertexGroupMap(geometry, name, resolution, nodeId) {
     const corners = indices ? [indices[corner], indices[corner + 1], indices[corner + 2]] : [corner, corner + 1, corner + 2];
     fillTriangle(texels, covered, resolution, uvs, weights, corners);
   }
-  dilate(texels, covered, resolution);
+  dilateTexels(texels, covered, resolution);
   const data = new Uint8ClampedArray(resolution * resolution * 4);
   for (let pixel = 0; pixel < texels.length; pixel++) {
     data[pixel * 4] = texels[pixel];

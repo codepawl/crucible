@@ -71,7 +71,7 @@ async function connect(context) {
       return { data: png, mimeType: 'image/png', metadata: { sessionId, revision: scene.revision,
         motionTime: scene.motionTime, width, height, backend: 'fake' } };
     },
-    async review({ expectedRevision, width, height, shots }) {
+    async review({ expectedRevision, width = 384, height = 384, shots }) {
       calls++;
       assert.equal(expectedRevision, scene.revision);
       return { data: png, mimeType: 'image/png', metadata: { sessionId,
@@ -163,7 +163,7 @@ test('SDK advertises the complete strict JSON contract and truthful annotations'
   assert.equal(recipeSchema.properties.materials.maxItems, 256);
   assert.equal(recipeSchema.properties.geometries.maxItems, 256);
   // The tool lists the common fields; the strict schema still validates and scene_capabilities serves the full outline.
-  assert.deepEqual(recipeSchema.properties.geometries.items.properties.type.enum, ['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'curve', 'sdf', 'text', 'cloud', 'terrain', 'grid', 'plane', 'cone', 'icoSphere', 'circle', 'line', 'fragment', 'dented', 'mesh']);
+  assert.deepEqual(recipeSchema.properties.geometries.items.properties.type.enum, ['box', 'cylinder', 'sphere', 'torus', 'lathe', 'extrude', 'tube', 'curve', 'sdf', 'text', 'cloud', 'terrain', 'floorPlan', 'grid', 'plane', 'cone', 'icoSphere', 'circle', 'line', 'fragment', 'dented', 'mesh']);
   assert.ok(recipeSchema.properties.environment.properties.setup);
   assert.equal(recipeSchema.properties.shadow.additionalProperties, false);
   for (const topic of ['geometries', 'environment', 'effects', 'motion', 'physics', 'cloth', 'armatures', 'materialFields', 'meshEdit', 'meshStack']) {
@@ -209,6 +209,8 @@ test('review SDK exposes one image and rejects unknown or unbounded shot fields 
   assert.equal(tools.length, 25);
   assert.equal(tool.annotations.readOnlyHint, true);
   assert.equal(tool.inputSchema.properties.shots.maxItems, 4);
+  assert.equal(tool.inputSchema.properties.wedge.properties.values.maxItems, 8);
+  assert.equal(tool.inputSchema.properties.wedge.properties.values.minItems, 2);
   assert.equal(tool.inputSchema.properties.shots.items.additionalProperties, false);
   assert.equal(tool.inputSchema.properties.shots.items.properties.camera.additionalProperties, false);
   const input = { sessionId, expectedRevision: 0, shots: [{ label: 'Front', camera: { eye: [4, 2, 1] } }, {}] };

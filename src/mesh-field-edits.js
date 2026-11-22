@@ -53,13 +53,18 @@ export function setPosition(mesh, { select, position, offset }, loadSurface) {
   return { mesh: withPositions(mesh, positions), movedVertices };
 }
 
+// The height of a material graph or an image at each vertex. The resolver comes from the scene, which holds the materials and decoded images.
+function displaceSourceValues(mesh, source, resolveHeight) {
+  if (!resolveHeight) throw new TypeError('displace source needs the scene materials and images, so it works on a recipe mesh geometry. Use "field" for a mesh outside a recipe.');
+  return resolveHeight(source, mesh);
+}
+
 /**
  * Blender's Displace modifier with a field as the texture: each vertex of the selected faces moves by
  * (field - midlevel) * strength along its normal or an axis.
  */
-export function displaceMesh(mesh, { select, field, strength = 1, midlevel = 0.5, direction = 'normal', group }, loadSurface) {
-  const context = meshFieldContext(mesh, 'point', loadSurface);
-  const { values } = evaluateField(field, context, { kind: 'scalar' });
+export function displaceMesh(mesh, { select, field, source, strength = 1, midlevel = 0.5, direction = 'normal', group }, loadSurface, resolveHeight) {
+  const values = source ? displaceSourceValues(mesh, source, resolveHeight) : evaluateField(field, meshFieldContext(mesh, 'point', loadSurface), { kind: 'scalar' }).values;
   const axis = AXIS_DIRECTIONS.get(direction);
   const flags = selectedVertices(mesh, select);
   // A vertex group scales the move per vertex, as the vertex group of Blender's Displace modifier.

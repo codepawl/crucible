@@ -51,6 +51,7 @@ export default defineConfig({
         canvas2d: 'src/canvas2d.js',
         gltf: 'src/gltf.js',
         modeling: 'src/modeling.js',
+        'kinetic-text': 'src/kinetic-text.js',
         sculpt: 'src/sculpt.js',
         surface: 'src/surface.js',
         'mesh-query': 'src/mesh-query.js',

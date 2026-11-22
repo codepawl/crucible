@@ -1,0 +1,3 @@
+- entry:coplanar-overlap: about 700 bytes gzip of generator checkpoints and the slice runner turn the one 2.5 to 3.9 s task of a scan edit into slices of about 8 ms, with the same result and the same cold time
+- scene:agent-scene+lazy: same code, bundled with the lazy scene code
+- goal:agent-scene: 59 bytes gzip in the core scene for the runner handle and its failure hook, which a scan edit needs so the page never holds for seconds; the search itself lives in the coplanar add-on

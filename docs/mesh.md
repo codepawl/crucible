@@ -315,6 +315,21 @@ Uses:
   along the surface, twice as wide as the largest requested move, so a face eases into its rim instead of stepping up from it
   and the look does not change with the segment count; the rim's own inward move stays within half its shortest edge.
   Smooth surfaces are unchanged.
+  `displace` takes a `source` in place of `field` (give one, never both): `{ "material": "rock" }` reads the `height` output of
+  that recipe material's graph, and `{ "image": "<catalog image ID>" }` reads the red channel of a catalog image as 0 to 1,
+  with no colour decode. Both are sampled at the mesh UVs, the way a baked texture is: `u` runs left to right, `v` runs
+  down the image, the image repeats, and a vertex on a UV seam takes the mean over its corners so the surface stays closed.
+  The material needs `"mapping": "uv"`, and its height may not read a vertex group. A mesh without UVs is refused with a
+  pointer to `uv_project`. Put `subdivide` before it so there are vertices to move, and read `normal` so the lit normals follow
+  the new surface. Use a periodic height (`noise` tiles by default) on a mesh whose UVs wrap, such as a sphere, because a
+  gradient from 0 to 1 across the seam tears it open. The same graph height then shades the bumps through the material's
+  normal map and shapes the silhouette here, so the two cannot drift apart. It works on recipe mesh geometries and
+  stack nodes, and an image source needs the host to decode that image, as a graph `image` node does. The image is filtered
+  bilinearly, but the mesh only samples it at its vertices, so a steep or slanted ridge in a small mesh shows as a sawtooth
+  along its crest: subdivide until a quad is no wider than a texel (a 256 pixel image on a plane wants about 256 segments),
+  and expect faint terraces on a gentle slope, because an 8 bit image has 256 height steps.
+  Displace when the silhouette or the shadow must change (a rock edge against the sky, a wall that casts relief). Bump is
+  enough for fine grain on a flat or distant surface, and parallax for relief that is only seen from the front.
 - Both are also stack nodes, so a late change reuses the cached earlier nodes.
 - `vertex_group` (`name`, `select`, and one of `weight`, `field`, `gradient` or `measure`) writes the weights, 0 to 1, of a named group for the
   vertices of the selected faces; the others keep theirs (0 in a new group). `gradient` is `{ "axis": "y", "range": [0, 1], "weights": [0, 1] }`,

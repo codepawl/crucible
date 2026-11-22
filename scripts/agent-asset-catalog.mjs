@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { open, readdir, realpath, lstat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 
+import { bvhToGlb } from '../src/bvh-gltf.js';
 import { clipDisplayName } from '../src/clip-name.js';
 import { AGENT_ASSET_LIMITS, assetBytesLimitMessage } from '../src/agent-asset-limits.js';
 import { MAXIMUM_CATALOG_ENVIRONMENT_BYTES, MAXIMUM_CATALOG_LOOK_BYTES } from '../src/look-catalog.js';
@@ -10,6 +11,9 @@ import { TEXTURE_SEQUENCE_LIMITS } from '../src/texture-sequence-limits.js';
 import { decompressDracoGlb, usesDraco } from './agent-draco.mjs';
 import { transcodeKtx2Glb, usesKtx2 } from './agent-ktx2.mjs';
 import { findSequenceRuns } from './agent-asset-sequences.mjs';
+import { scanTextureSets, textureSetFields } from './agent-texture-sets.mjs';
+import { MAXIMUM_TEXTURE_SET_FOLDERS } from '../src/texture-set-names.js';
+import { TEXTURE_MAP_FIELD_BY_ROLE } from '../src/texture-set-fields.js';
 
 const MAXIMUM_ASSETS = AGENT_ASSET_LIMITS.maxAssets;
 const IMAGE_FILE_PATTERN = /\.(png|jpe?g|webp)$/i;
@@ -237,6 +241,21 @@ async function transcodedKtx2(bytes, filename) {
   return result.bytes;
 }
 
+/**
+ * A .bvh motion capture file as the bytes of a skeleton-only GLB (src/bvh-gltf.js), so the catalog stores, hashes and serves it like
+ * any GLB: the clip is the file's motion and the joints are its skeleton. A syntax error stops the catalog with the line it names;
+ * a file over a BVH limit is skipped with the reason.
+ */
+function bvhFileAsGlb(bytes, filename) {
+  const clipName = filename.replace(/^.*[\\/]/, '').replace(/\.bvh$/i, '');
+  try {
+    return bvhToGlb(bytes.toString('utf8'), { name: clipName }).glb;
+  } catch (error) {
+    if (error instanceof RangeError) throw new SkippableCatalogFileError(`${filename}: ${error.message}`);
+    throw new error.constructor(`${filename}: ${error.message}`);
+  }
+}
+
 export async function readCatalogFile(directory, filename, { enforceImageLimits = true } = {}) {
   const path = join(directory, filename);
   const original = await lstat(path);
@@ -274,9 +293,10 @@ export async function readCatalogFile(directory, filename, { enforceImageLimits 
     // The header gives the size, so an oversized frame is refused here, before the preview page decodes its pixels.
     const imageProblem = imageFormat && enforceImageLimits ? imageLimitProblem(bytes, filename, TEXTURE_SEQUENCE_LIMITS, 'Resize it before adding it to the --assets or --packs folder.') : null;
     if (imageProblem) throw new SkippableCatalogFileError(imageProblem);
-    if (!imageFormat && !lookKind && !/\.glb$/i.test(filename)) throw new Error('Catalog files must be GLB, PNG, JPEG, WebP, HDR or CUBE, with a matching extension.');
+    if (!imageFormat && !lookKind && !/\.(glb|bvh)$/i.test(filename)) throw new Error('Catalog files must be GLB, BVH, PNG, JPEG, WebP, HDR or CUBE, with a matching extension.');
     let document = null;
     if (!imageFormat && !lookKind) {
+      if (/\.bvh$/i.test(filename)) bytes = bvhFileAsGlb(bytes, filename);
       const parsed = selfContainedGlb(bytes);
       document = parsed.document;
       if (document.images?.some(image => Object.hasOwn(image, 'uri'))) {
@@ -356,6 +376,20 @@ async function hashFrames(sequence, frameEntries) {
   return frameIds;
 }
 
+/** Name, size and modification time of the image files in the sub-folders texture sets are read from, so a map added or rewritten there changes the fingerprint. */
+async function fingerprintTextureSetFolders(directory, listing) {
+  const parts = [];
+  const folders = listing.filter(entry => entry.isDirectory()).map(entry => entry.name).sort().slice(0, MAXIMUM_TEXTURE_SET_FOLDERS);
+  for (const folder of folders) {
+    const files = await readdir(join(directory, folder)).catch(() => []);
+    for (const file of files.filter(name => IMAGE_FILE_PATTERN.test(name)).sort()) {
+      const status = await lstat(join(directory, folder, file)).catch(() => null);
+      parts.push(`${folder}/${file}:${status ? `${status.size}:${status.mtimeMs}` : 'gone'}`);
+    }
+  }
+  return parts;
+}
+
 /**
  * A cheap summary of the catalog files in `root` (name, size and modification time, no bytes read), so the runtime can tell whether a
  * file was added, removed or rewritten since the catalog was built (#2209). Only the files the catalog lists are looked at, and at
@@ -371,12 +405,13 @@ export async function fingerprintAssetDirectory(root) {
     // An unreadable folder has no fingerprint; building the catalog reports the real error with its own advice.
     return 'unreadable';
   }
-  const names = listing.filter(entry => /\.(glb|png|jpe?g|webp|hdr|cube)$/i.test(entry.name)).map(entry => entry.name).sort();
+  const names = listing.filter(entry => /\.(glb|bvh|png|jpe?g|webp|hdr|cube)$/i.test(entry.name)).map(entry => entry.name).sort();
   const parts = [`${names.length}`];
   for (const name of names.slice(0, MAXIMUM_ASSETS + TEXTURE_SEQUENCE_LIMITS.maxFrames + 1)) {
     const status = await lstat(join(directory, name)).catch(() => null);
     parts.push(`${name}:${status ? `${status.size}:${status.mtimeMs}` : 'gone'}`);
   }
+  parts.push(...await fingerprintTextureSetFolders(directory, listing));
   return parts.join('|');
 }
 
@@ -389,6 +424,8 @@ export async function createAgentAssetCatalog(root, packFiles = []) {
   const entries = new Map();
   const skipped = [];
   const sequences = new Map();
+  const textureSets = new Map();
+  const memberEntries = new Map();
   if (root !== null) {
     if (typeof root !== 'string' || !isAbsolute(root)) {
       throw new TypeError('Asset root must be an explicit absolute directory path.');
@@ -398,7 +435,7 @@ export async function createAgentAssetCatalog(root, packFiles = []) {
       throw new TypeError('Asset root must be a directory.');
     }
     const files = (await readdir(directory, { withFileTypes: true }))
-      .filter(entry => /\.(glb|png|jpe?g|webp|hdr|cube)$/i.test(entry.name)).sort((left, right) => left.name.localeCompare(right.name));
+      .filter(entry => /\.(glb|bvh|png|jpe?g|webp|hdr|cube)$/i.test(entry.name)).sort((left, right) => left.name.localeCompare(right.name));
     // Image files are sequence frames, so they have their own cap: a film that changes a texture over time needs thousands.
     const imageFileCount = files.filter(entry => IMAGE_FILE_PATTERN.test(entry.name)).length;
     const otherFileCount = files.length - imageFileCount;
@@ -424,6 +461,11 @@ export async function createAgentAssetCatalog(root, packFiles = []) {
       const metadata = await describeSequenceRun(directory, run, skipped);
       if (metadata) sequences.set(run.pattern, { directory, names: run.names, metadata, frameIds: null });
     }
+    const sets = await scanTextureSets(directory, { readCatalogFile, isSkippable: error => error instanceof SkippableCatalogFileError, skipped });
+    for (const set of sets) {
+      textureSets.set(set.name, set.metadata);
+      for (const member of set.members) memberEntries.set(member.metadata.assetId, member);
+    }
   }
   for (const file of packFiles) {
     if (!entries.has(file.assetId)) entries.set(file.assetId, { directory: file.directory, filename: file.filename, metadata: file.metadata });
@@ -447,14 +489,14 @@ export async function createAgentAssetCatalog(root, packFiles = []) {
     return hashing.get(pattern);
   }
   async function lookupEntry(assetId) {
-    const known = entries.get(assetId) ?? frameEntries.get(assetId);
+    const known = entries.get(assetId) ?? memberEntries.get(assetId) ?? frameEntries.get(assetId);
     if (known) return known;
     for (const pattern of sequences.keys()) await hashSequenceFrames(pattern);
     return frameEntries.get(assetId);
   }
   return Object.freeze({
     list() {
-      return { assets: structuredClone([...entries.values()].map(entry => entry.metadata)), ...(sequences.size ? { sequences: [...sequences.values()].map(sequence => ({ ...sequence.metadata })) } : {}), maximumBytes: AGENT_ASSET_LIMITS.maxBytes, maximumAssets: MAXIMUM_ASSETS, ...(skipped.length ? { skipped: structuredClone(skipped) } : {}) };
+      return { assets: structuredClone([...entries.values()].map(entry => entry.metadata)), ...(sequences.size ? { sequences: [...sequences.values()].map(sequence => ({ ...sequence.metadata })) } : {}), ...(textureSets.size ? { textureSets: structuredClone([...textureSets.values()]) } : {}), maximumBytes: AGENT_ASSET_LIMITS.maxBytes, maximumAssets: MAXIMUM_ASSETS, ...(skipped.length ? { skipped: structuredClone(skipped) } : {}) };
     },
     /**
      * The asset id of the GLB listed under exactly this name (a file in --assets, or `pack/file` for a pack), so a recipe can name
@@ -488,6 +530,33 @@ export async function createAgentAssetCatalog(root, packFiles = []) {
         throw new RangeError(`map.sequence.catalog must be the pattern of a catalog sequence, such as "frame_####.png"; no sequence matches ${typeof pattern === 'string' ? `"${pattern.slice(0, 80)}"` : String(pattern)}. ${advice}`);
       }
       return [...(await hashSequenceFrames(pattern))];
+    },
+    /**
+     * The material fields the texture set of this folder name fills (`{ colorMap, normalMap, ... }` with asset IDs, and normalConvention
+     * "directx" when the normal map is DirectX), so a recipe can write `textureSet: "rock_boulder"` instead of six IDs.
+     */
+    resolveTextureSet(name) {
+      if (typeof name !== 'string' || !textureSets.has(name)) {
+        const names = [...textureSets.keys()];
+        const near = names.filter(candidate => typeof name === 'string' && name && (candidate.includes(name) || name.includes(candidate))).slice(0, 5);
+        const advice = near.length ? `Near names: ${near.map(candidate => `"${candidate}"`).join(', ')}.` : names.length ? `Texture sets: ${names.slice(0, 8).map(candidate => `"${candidate}"`).join(', ')}.` : 'The catalog lists no texture set: put the map files (color or albedo, normal, roughness, ao, height, metallic) of one material in a sub-folder of --assets, at least two maps.';
+        throw new RangeError(`textureSet must be the name of a catalog texture set, such as "rock_boulder"; no set matches ${typeof name === 'string' ? `"${name.slice(0, 80)}"` : String(name)}. ${advice}`);
+      }
+      return textureSetFields(textureSets.get(name));
+    },
+    /**
+     * Checks that the asset ID a material map field names is a catalog image, or throws an error that names the field and the catalog image
+     * IDs that would fit it: the same map of a texture set first, then any catalog image.
+     */
+    async checkTextureMap(field, assetId) {
+      const known = await lookupEntry(assetId);
+      if (known?.metadata.kind === 'image') return;
+      const role = Object.keys(TEXTURE_MAP_FIELD_BY_ROLE).find(candidate => TEXTURE_MAP_FIELD_BY_ROLE[candidate] === field);
+      const fitting = [...textureSets.values()].filter(set => set.maps[role]).map(set => `${set.maps[role].assetId} (${set.maps[role].name})`);
+      const images = [...entries.values()].filter(entry => entry.metadata.kind === 'image').map(entry => `${entry.metadata.assetId} (${entry.metadata.name})`);
+      const choices = (fitting.length ? fitting : images).slice(0, 5);
+      const advice = choices.length ? `The ${field} of a texture set or a catalog image fits: ${choices.join(', ')}.` : `The catalog has no ${role} map: add a PNG, JPEG or WebP image to --assets, or a folder of map files, and use its ID from scene_asset_catalog.`;
+      throw new RangeError(`${field} must be the asset ID of a catalog image; ${String(assetId).slice(0, 12)} is ${known ? `a ${known.metadata.kind}, not an image` : 'not in the catalog'}. ${advice}`);
     },
     /**
      * The length `read` returns, known from the catalog record without loading the file. A GLB whose images sit beside it is

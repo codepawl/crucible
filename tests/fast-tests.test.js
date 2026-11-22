@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { FAST_TESTS_PATH, readFastTests, selectFastTests, usesNativeAddon } from '../scripts/fast-tests.mjs';
+import { FAST_TESTS_PATH, GUARD_TEST_PATTERN, readFastTests, selectFastTests, usesNativeAddon } from '../scripts/fast-tests.mjs';
 import { pickFastResults } from '../scripts/record-fast-tests.mjs';
 import { planChecks } from '../scripts/preflight.mjs';
 
@@ -12,6 +12,15 @@ test('only files recorded under the threshold are picked, and deleted files are 
   const { files, recordedMilliseconds } = selectFastTests(timings, existing, { thresholdMs: 500, budgetMs: 10000 });
   assert.deepEqual(files, ['tests/a.test.js', 'tests/b.test.js', 'tests/c.test.js']);
   assert.equal(recordedMilliseconds, 550);
+});
+
+test('the addon job paths guard runs even when the recorded timings lack it or call it slow', () => {
+  const withGuard = [...existing, 'tests/addon-job-paths.test.js'];
+  assert.deepEqual(selectFastTests({}, withGuard).files, ['tests/addon-job-paths.test.js']);
+  const slow = { ...timings, 'tests/addon-job-paths.test.js': 90000 };
+  assert.ok(selectFastTests(slow, withGuard, { thresholdMs: 500, budgetMs: 10000 }).files.includes('tests/addon-job-paths.test.js'));
+  assert.ok(!selectFastTests(timings, existing).files.includes('tests/addon-job-paths.test.js'));
+  assert.equal(GUARD_TEST_PATTERN.test('tests/addon-job-paths.test.js'), true);
 });
 
 test('a file with no recorded time is not run', () => {

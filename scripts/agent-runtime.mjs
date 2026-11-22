@@ -11,6 +11,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import packageMetadata from '../package.json' with { type: 'json' };
 import { VEGETATION_CAPABILITY_NOTE } from '../src/agent-vegetation-notes.js';
+import { CLUTTER_CAPABILITY_NOTE } from '../src/agent-clutter-notes.js';
 import { CROWD_CAPABILITY_NOTE } from '../src/agent-crowd-notes.js';
 import { SETTLE_CAPABILITY_NOTE } from '../src/settle-notes.js';
 import { USER_PASS_CAPABILITIES } from '../src/user-pass.js';
@@ -33,11 +34,12 @@ import { MAXIMUM_INSTALLED_PACKS, MAXIMUM_PACK_BYTES, MAXIMUM_PACK_FILES, MAXIMU
 import { geometryOnlyGlb } from './agent-query-asset.mjs';
 import { AGENT_ASSET_LIMITS, configureAssetByteLimit, assertCombinedAssetBytes, assertCombinedByteTotal, sceneAssetBytesLimitMessage } from '../src/agent-asset-limits.js';
 import { recipeAssetNeeds } from '../src/agent-scene-assets.js';
-import { namesCatalogFiles, resolveAssetPlacementNames, namesCatalogSequences, resolveCatalogSequenceNames } from '../src/agent-asset-names.js';
+import { namesCatalogFiles, resolveAssetPlacementNames, namesCatalogSequences, resolveCatalogSequenceNames, namesCatalogTextureMaps, resolveTextureSetNames } from '../src/agent-asset-names.js';
 import { sequenceFrameIds, hasStreamedSequence } from '../src/agent-texture-sequence.js';
 import { readVolumeGridFiles, volumeGridFileBytes } from '../src/mcp-volume-grids.js';
 import { catalogLookReferences, BUNDLED_ENVIRONMENT_NAMES, BUNDLED_CUBE_LOOK_NAMES } from '../src/look-catalog.js';
 import { TEXTURE_SEQUENCE_CAPABILITIES, TEXTURE_SEQUENCE_LIMITS } from '../src/texture-sequence-limits.js';
+import { TEXTURE_SET_CAPABILITIES } from '../src/texture-set-names.js';
 import { writeWebBuild } from './web-export.mjs';
 import { gameAssetIds, gameImageIds } from '../src/game-assets.js';
 import { resolveJobRoot } from './agent-job-root.mjs';
@@ -61,6 +63,8 @@ import { ANNOTATE_LIMITS, validateMarks, isBoundedPng } from '../src/agent-annot
 import { REVIEW_LINK_LIMITS, newReviewId, parseReviewFile, validateReviewMarks } from '../src/review-link.js';
 import { writeReviewBuild } from './review-page.mjs';
 import { normalizeReview, reviewDeadlineMessage, REVIEW_LIMITS } from './agent-review.mjs';
+import { normalizeWedge } from './agent-wedge.mjs';
+import { WEDGE_LIMITS } from '../src/agent-wedge.js';
 import { mergeFrameDiagnostics, pathTracerFindingsLimit, pathTracerSkippedPassesWarning } from '../src/frame-checks.js';
 import { BRANCH_LIMITS, validateBranchName } from '../src/agent-branches.js';
 import { createSharedGpuCard } from './agent-gpu-queue.mjs';
@@ -69,6 +73,7 @@ import { sessionProblem, SCENE_STORE_LIMITS } from '../src/agent-errors.js';
 import { GLB_EXPORT_NOTES } from '../src/glb-export-omissions.js';
 import { MOTION_NOT_SET_HINT, recipeMoves } from '../src/motion-hint.js';
 import { previewDeadlineMilliseconds } from './preview-deadline.mjs';
+import { realismReport, reviewTilingFindings } from './review-realism.mjs';
 
 const SCENE_LIMITS = AGENT_SCENE_DEFAULT_LIMITS;
 const MAXIMUM_IMAGE_BYTES = 1024 * 1024;
@@ -409,6 +414,10 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
   async function pinNamedAssets(value) {
     if (namesCatalogFiles(value)) resolveAssetPlacementNames(value, (await rescannedCatalog()).resolveName);
     if (namesCatalogSequences(value)) await resolveCatalogSequenceNames(value, pattern => rescannedCatalog().then(assets => assets.resolveSequence(pattern)));
+    if (namesCatalogTextureMaps(value)) {
+      const assets = await rescannedCatalog();
+      await resolveTextureSetNames(value, { resolveSet: assets.resolveTextureSet, checkMap: assets.checkTextureMap });
+    }
   }
 
   /** The same for the asset recipe of scene_create_asset: `assetName` (a catalog file name) becomes `assetId`. */
@@ -1311,12 +1320,13 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         return tierReport({ backend, nativeTracer: Boolean((await nativeTracerLocator.find()).tracer) });
       };
       return {
-        scene: { ...AGENT_SCENE_CAPABILITIES, game: GAME_CAPABILITIES, postPasses: USER_PASS_CAPABILITIES, meshBlend: MESH_BLEND_CAPABILITIES, materialSnippet: MATERIAL_SNIPPET_CAPABILITIES, vegetation: VEGETATION_CAPABILITY_NOTE, crowd: CROWD_CAPABILITY_NOTE, settle: SETTLE_CAPABILITY_NOTE, textureSequence: TEXTURE_SEQUENCE_CAPABILITIES },
+        scene: { ...AGENT_SCENE_CAPABILITIES, game: GAME_CAPABILITIES, postPasses: USER_PASS_CAPABILITIES, meshBlend: MESH_BLEND_CAPABILITIES, materialSnippet: MATERIAL_SNIPPET_CAPABILITIES, vegetation: VEGETATION_CAPABILITY_NOTE, clutter: CLUTTER_CAPABILITY_NOTE, crowd: CROWD_CAPABILITY_NOTE, settle: SETTLE_CAPABILITY_NOTE, textureSequence: TEXTURE_SEQUENCE_CAPABILITIES, textureSet: TEXTURE_SET_CAPABILITIES },
         sceneLimits: SCENE_LIMITS,
         preview: { backend, memoryBudgetMiB: memory, maximumWidth: 1024, maximumHeight: 1024, maximumImageBytes: MAXIMUM_IMAGE_BYTES, maximumActiveScenes: SCENE_STORE_LIMITS.maxOpenScenes, maximumOpenSceneBytes: SCENE_STORE_LIMITS.maxOpenSceneBytes, maximumQueuedCalls: MAXIMUM_QUEUED_CALLS, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS },
         review: { ...REVIEW_LIMITS, backend, memoryBudgetMiB: memory, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS,
           totalTimeoutMs: EVALUATION_TIMEOUT_MS,
           sourcePreserved: true, defaultMotionTime: null, defaultRendererTime: 0, branches: BRANCH_LIMITS },
+        wedge: { ...WEDGE_LIMITS, usage: 'scene_review with wedge {target, parameter, values} instead of shots. target: environment, effects, shadow or a material ID. parameter: a field name or path such as roughness, lightDirection, keyIntensity, fogDensity or pointLights.0.intensity. values: 2 to 8 JSON values as scene_apply takes them. shots may hold one shot for the shared camera and motionTime.', backend, memoryBudgetMiB: memory },
         phase: closing && phase !== 'closed' ? 'closing' : phase,
         availableIn: packageMetadata.version,
         assets: {
@@ -1384,7 +1394,12 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
       }, { recoversFailedRuntime: true });
     },
     inspect(input) {
-      return enqueue(() => invoke('inspect', input));
+      if (!input.profile) return enqueue(() => invoke('inspect', input));
+      // A cost profile draws real frames, so it takes a GPU slot like a look does.
+      return gpuUnit('light', () => enqueue(async () => {
+        await requirePreviewRenderer();
+        return invoke('inspect', input);
+      }));
     },
     inspectMeshes(input) {
       return enqueue(() => invoke('inspectMeshes', input));
@@ -1548,9 +1563,23 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         return invoke('checkpoint', { ...input, checkpointId: randomUUID() });
       });
     },
-    review(input) {
+    // scene_review with wedge: one parameter at several values; each value is a scratch copy of the scene drawn through the same review path.
+    async wedge(input) {
+      const settings = normalizeWedge(input);
+      const loadRecipes = async () => {
+        const { recipes } = await invoke('wedgeRecipes', { sessionId: settings.sessionId, expectedRevision: settings.expectedRevision,
+          target: settings.wedge.target, field: settings.wedge.parameter, values: settings.wedge.values });
+        return new Map(recipes.map((recipe, index) => [settings.wedge.variantNames[index], { recipe: withSnapshotSkyColors({ recipe }).recipe, stale: false }]));
+      };
+      const output = await this.review(input, { settings, loadRecipes });
+      const { shots, ...rest } = output.metadata;
+      const wedgeShots = shots.map(({ branch: _branch, branchStale: _stale, ...shot }, index) => ({ ...shot, value: settings.wedge.values[index] }));
+      return { ...output, metadata: { ...rest, wedge: { target: settings.wedge.target, parameter: settings.wedge.parameter }, shots: wedgeShots } };
+    },
+    review(input, wedgeRun) {
+      if (input?.wedge !== undefined && !wedgeRun) return this.wedge(input);
       let settings;
-      try { settings = normalizeReview(input); }
+      try { settings = wedgeRun ? wedgeRun.settings : normalizeReview(input); }
       catch (error) { return Promise.reject(error); }
       return gpuUnit('light', () => enqueue(async () => {
         await requirePreviewRenderer();
@@ -1561,6 +1590,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         for (const name of settings.branchNames) {
           branchRecipes.set(name, withSnapshotSkyColors(await invoke('branchRecipe', { sessionId: settings.sessionId, name })));
         }
+        if (wedgeRun) for (const [name, variant] of await wedgeRun.loadRecipes()) branchRecipes.set(name, variant);
         const assetBytes = snapshot.recipe.format === 'crucible.asset' ? await (await catalog()).read(snapshot.recipe.assetId) : undefined;
         let privateSessionId;
         const started = performance.now();
@@ -1650,6 +1680,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
             backend, width: settings.gridWidth, height: settings.gridHeight, shots,
             peakNodeBytes, peakBrowserHeap, maximumPendingFrames: 1,
               ...(recipeMoves(snapshot.recipe) && settings.shots.some(shot => shot.motionTime === null) ? { hints: [MOTION_NOT_SET_HINT] } : {}) } };
+          if (settings.checks === 'realism') output.metadata.realism = realismReport(snapshot.recipe, reviewTilingFindings(result.data, settings));
         } catch (error) {
           if (deadlineExpired) throw new Error(reviewDeadlineText());
           throw error;

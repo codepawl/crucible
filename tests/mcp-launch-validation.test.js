@@ -51,7 +51,7 @@ test('scene_restore rejects more than one of checkpointId, revision and branch',
 
 test('a terrain resolution that is not a number names the real range', () => {
   const recipe = singleGeometryRecipe({ id: 'ground', type: 'terrain', size: 10, resolution: 'abc' });
-  assert.throws(() => createAgentScene(recipe, {}), /terrain\.resolution: got "abc"; expected a number from 2 to 256/);
+  assert.throws(() => createAgentScene(recipe, {}), /terrain\.resolution: got "abc"; expected a number from 2 to 499/);
 });
 
 test('the geometry preflight error names the geometry and the numbers, and checkpoints only when held', () => {

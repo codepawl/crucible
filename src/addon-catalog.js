@@ -20,6 +20,7 @@ export const ADDON_CATALOG = [
   { name: 'modeling', area: 'modeling', summary: 'Lathe, sweep and other agent modeling geometry.', doc: true },
   { name: 'mesh', area: 'modeling', summary: 'Polygon mesh core: half-edge edit mesh, normals and lint.', doc: true },
   { name: 'mesh-query', area: 'modeling', summary: 'Ray, closest-point and distance queries on meshes.', doc: true },
+  { name: 'kinetic-text', area: 'motion', summary: 'Split 3D text into letters or words and stagger one animation across them.', doc: true },
   { name: 'mesh-blend', area: 'modeling', summary: 'Soften the seam where one mesh cuts into another.', doc: true },
   { name: 'sculpt', area: 'modeling', summary: 'Serializable brush strokes that sculpt a mesh.', doc: true },
   { name: 'surface', area: 'modeling', summary: 'Patches that conform to the surface of another part.', doc: true },

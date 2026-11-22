@@ -1,0 +1,1 @@
+- entry:studio: three keymap presets, three brand logos and the Alt mouse navigation are new Studio code that only the Studio page loads

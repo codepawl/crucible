@@ -1,5 +1,6 @@
 import { depthLayerOf, flushOrderOf, setFlushOrder } from './depth-layer.js';
-import { resolveFlush } from './flush-resolve.js';
+import { resolveFlush, resolveFlushSteps } from './flush-resolve.js';
+import { createFlushSearchRunner } from './flush-search-runner.js';
 import { boundsDiagonal as diagonal, determinantSign, nearTolerance, worldBounds } from './flush-search.js';
 
 // Two jobs. resolveFlushParts ranks near-coplanar triangles so they stop z-fighting (flush-search.js, flush-resolve.js); the
@@ -518,6 +519,15 @@ export function installCoplanarDiagnostics(renderer, onOverlaps = null) {
  */
 export function resolveFlushParts(parts, options) {
   return resolveFlush(parts, options);
+}
+
+/**
+ * resolveFlushParts in slices of a few milliseconds across turns of the event loop (issue #2905), for an edit that must not
+ * hold the page. Returns `{ drain(), cancel() }` (see createFlushSearchRunner); `runnerOptions.onDone` gets what resolveFlushParts
+ * returns, byte for byte, and no part has a rank before that.
+ */
+export function startFlushParts(parts, runnerOptions, options) {
+  return createFlushSearchRunner({ ...runnerOptions, steps: resolveFlushSteps(parts, options) });
 }
 
 /** Drops the ranks resolveFlushParts gave these parts, for a scene that switches the resolution off. */

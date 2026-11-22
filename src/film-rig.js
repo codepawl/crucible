@@ -1,6 +1,7 @@
 import { mat4, quat } from 'gl-matrix';
 import { createAnimationClip, compileAnimationSampler } from './animation.js';
 import { createSceneGraph } from './scene-graph.js';
+import { blinkClosure } from './blink-curve.js';
 
 // Times are relative to the set's first shot, matching sampleFilm(). Repeated
 // values hold a thought; movements happen between those holds, never on a loop.
@@ -134,8 +135,8 @@ export function createFilmActorRig(parts, sceneName = 'portrait') {
       }
       let closure = 0;
       for (const blinkTime of performance.blinks) {
-        const phase = Math.abs(actorTime - blinkTime) / 0.13;
-        if (phase < 1) closure = Math.cos(phase * Math.PI / 2) ** 2;
+        const blinkAmount = blinkClosure(actorTime - blinkTime);
+        if (blinkAmount > 0) closure = blinkAmount;
       }
       actor.face.morph.weights.set([closure, value(4), value(5), value(6)]);
     }

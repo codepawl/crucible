@@ -386,6 +386,17 @@ runTest('successful review elapsed time includes source renderer recovery', asyn
   } finally { await runtime.close(); }
 });
 
+runTest('review with checks "realism" returns the pass or fail list, and none without it (#2879)', async () => {
+  const { runtime, sessionId } = await reviewRuntimeHarness();
+  try {
+    const plain = await runtime.review({ sessionId, expectedRevision: 0, shots: [{}] });
+    assert.equal(plain.metadata.realism, undefined);
+    const checked = await runtime.review({ sessionId, expectedRevision: 0, shots: [{}], checks: 'realism' });
+    assert.equal(checked.metadata.realism.passed, true);
+    assert.deepEqual(checked.metadata.realism.checks.map(entry => entry.check), ['albedo-out-of-range', 'metallic-on-dielectric', 'visible-tiling']);
+  } finally { await runtime.close(); }
+});
+
 runTest('total review deadline closes private page and restores the usable source', async () => {
   const { runtime, sessionId, events } = await reviewRuntimeHarness({ blockShot: true, deadlineMs: 40 });
   try {

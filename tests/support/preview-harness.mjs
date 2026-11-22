@@ -24,6 +24,7 @@ import { framingProblems, placementProblems, textureProblems, exposureProblems, 
 import { agentAssetDecodeOptions, withCatalogLimitAdvice } from '../../src/agent-asset-limits.js';
 import { sceneQueryFor, partMaterialsFor, summarizeWalkMap, walkOptionsFor, createQueryOnlyCache } from '../../scripts/agent-walkmap.js';
 import { describeMarks, validateMarks } from '../../src/agent-annotate.js';
+import { profileFrameCount, profileFrames, heaviestNodes } from '../../src/render-profile.js';
 
 // Runs the preview page's adapter code in a VM with a fault-injected renderer, the way the MCP preview runs it in a browser.
 // decodeCatalogImage is a src module the page bundles; it runs here in the VM too, so it sees the stubbed createImageBitmap.
@@ -55,7 +56,12 @@ export function previewHarness({ createImageBitmap = async () => { throw new Err
       getError: () => renderError,
       getExtension: () => null,
       getParameter: () => 'Test renderer',
+      TRIANGLES: 4, RGBA: 6408, UNSIGNED_BYTE: 5121,
+      readPixels: () => {},
+      drawElementsInstanced: () => {},
     };
+    textureBytes = 4096;
+    splatBytes = 1024;
     resize() {}
     updateParts() {}
     replaceParts() {
@@ -63,6 +69,8 @@ export function previewHarness({ createImageBitmap = async () => { throw new Err
       replacementCount++;
     }
     render(camera) {
+      // One instanced draw of two triangles stands in for the frame's draws.
+      this.context.drawElementsInstanced(4, 6, 5125, 0, 1);
       renders.push({ camera: JSON.parse(JSON.stringify(camera)),
         parts: currentScene.parts.map(part => ({ matrix: Array.from(part.matrix),
           joints: Array.from(part.skin?.jointMatrices ?? []) })) });
@@ -92,7 +100,7 @@ export function previewHarness({ createImageBitmap = async () => { throw new Err
     // The harness loads Manifold from node_modules directly, so the preview's served-file loader is ignored.
     setManifoldModuleLoader: () => {},
     needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader: () => {},
-    describeMarks, validateMarks, sceneQueryFor, partMaterialsFor, summarizeWalkMap, walkOptionsFor, createQueryOnlyCache, parseGltf, hasPatternTextures, rasterOptionsFor, Uint8Array, atob, sessionProblem, planSceneEviction, SCENE_STORE_LIMITS, AGENT_SCENE_DEFAULT_LIMITS, MEMORY_CEILING_MIB, imageLimitProblem, MOTION_NOT_SET_HINT, recipeMoves, sampleMotionAtZeroForGround, TEXTURE_SEQUENCE_LIMITS, Blob, createImageBitmap, describeApplication, framingProblems, placementProblems, textureProblems, exposureProblems, lumaShares, assetCopyKey, recipeAssetNeeds, agentAssetDecodeOptions, withCatalogLimitAdvice,
+    describeMarks, validateMarks, profileFrameCount, profileFrames, heaviestNodes, sceneQueryFor, partMaterialsFor, summarizeWalkMap, walkOptionsFor, createQueryOnlyCache, parseGltf, hasPatternTextures, rasterOptionsFor, Uint8Array, atob, sessionProblem, planSceneEviction, SCENE_STORE_LIMITS, AGENT_SCENE_DEFAULT_LIMITS, MEMORY_CEILING_MIB, imageLimitProblem, MOTION_NOT_SET_HINT, recipeMoves, sampleMotionAtZeroForGround, TEXTURE_SEQUENCE_LIMITS, Blob, createImageBitmap, describeApplication, framingProblems, placementProblems, textureProblems, exposureProblems, lumaShares, assetCopyKey, recipeAssetNeeds, agentAssetDecodeOptions, withCatalogLimitAdvice,
     applyProjection, applyCameraFields, mat4, fitAgentShadow, resolveAgentShadow, agentEnvironmentMap, BRANCH_LIMITS,
     // Line art needs a real renderer with render passes, so the fault-injected one gets a no-op install.
     agentSceneModule: name => (name === 'lineArt' ? { installLineArt: renderer => renderer } : name === 'userPass' ? { ...agentSceneModule(name), installUserPasses: renderer => renderer } : agentSceneModule(name)), agentSceneModuleLoaded, createBranchStore, printableLabel,

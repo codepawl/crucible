@@ -5,6 +5,7 @@
  * Reads of an inspected scene include them only when there is something to say, to keep default results small.
  */
 import { agentSceneModule } from './agent-scene-modules.js';
+import { realismDiagnostics } from './realism-checks.js';
 
 const PLAIN_SURFACE_TAGS = new Set(['surface', 'gltf']);
 const LAYER_FIELDS = ['clearcoat', 'sheenColor', 'specular', 'specularColor', 'anisotropy', 'iridescence'];
@@ -34,6 +35,11 @@ function materialProblems(material) {
         `${field} is ignored on a material with tag ${tag}.`,
         `Remove ${field}, or set the material tag to surface with scene_apply set-material.`));
     }
+  }
+  if (material.heightMap !== undefined) {
+    problems.push(diagnostic('ignored-material-field', 'warning', material.id,
+      'heightMap is ignored: no renderer displaces or parallax-maps a surface from it yet, so it has no effect on the picture.',
+      'Remove heightMap, or rely on normalMap for the surface relief.'));
   }
   if (transmitting) {
     for (const field of FIELDS_IGNORED_BY_TRANSMISSION.filter(layer => hasValue(material, layer))) {
@@ -89,6 +95,7 @@ export function recipeDiagnostics(recipe) {
       'Add a node that uses it with scene_apply add-node, or remove it with remove-geometry.'));
   }
   problems.push(...recipe.geometries.filter(geometry => geometry.type === 'terrain').flatMap(geometry => agentSceneModule('terrain').terrainHoleDiagnostics(geometry)));
+  problems.push(...realismDiagnostics(recipe));
   problems.push(...portalProblems(recipe.environment?.areaLights ?? []));
   return problems;
 }

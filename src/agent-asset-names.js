@@ -3,6 +3,7 @@
 // arrives; this module only rewrites the parsed recipe, so the scene core never sees a name.
 import { invalidField } from './field-error.js';
 import { visitPlacements } from './agent-scene-assets.js';
+import { TEXTURE_MAP_FIELDS } from './texture-set-fields.js';
 
 /** Whether a recipe or edit list has a placement that names its catalog file instead of its id. */
 export function namesCatalogFiles(value) {
@@ -67,5 +68,51 @@ export async function resolveCatalogSequenceNames(value, resolveSequence) {
     }
     sequence.frames = await resolveSequence(sequence.catalog);
     delete sequence.catalog;
+  }
+}
+
+// Texture sets by catalog name: `textureSet: "rock_boulder"` on a material stands for the catalog image IDs of the maps in that
+// folder. The host swaps it for `colorMap`, `normalMap` and the rest, and checks that every map ID it is given is a catalog image.
+
+function visitTextureMapMaterials(value, visit, depth = 0) {
+  if (!value || typeof value !== 'object' || depth > 8) return;
+  if (Array.isArray(value)) {
+    for (const item of value) visitTextureMapMaterials(item, visit, depth + 1);
+    return;
+  }
+  if (Object.hasOwn(value, 'textureSet') || TEXTURE_MAP_FIELDS.some(field => typeof value[field] === 'string')) visit(value);
+  for (const child of Object.values(value)) visitTextureMapMaterials(child, visit, depth + 1);
+}
+
+/** Whether a recipe or edit list has a material with a `textureSet` name or a catalog map ID the host has to look up. */
+export function namesCatalogTextureMaps(value) {
+  let found = false;
+  visitTextureMapMaterials(value, () => {
+    found = true;
+  });
+  return found;
+}
+
+/**
+ * Replaces each `textureSet` with the map fields of that set, in place (a field the material sets itself wins, and the set's
+ * normalConvention applies only with the set's own normal map), then has `checkMap(field, id)` confirm every map ID is a catalog image.
+ * `resolveSet` maps a set name to its fields or throws.
+ */
+export async function resolveTextureSetNames(value, { resolveSet, checkMap }) {
+  const materials = [];
+  visitTextureMapMaterials(value, material => materials.push(material));
+  for (const material of materials) {
+    if (!Object.hasOwn(material, 'textureSet')) continue;
+    const ownNormalMap = material.normalMap;
+    for (const [field, id] of Object.entries(resolveSet(material.textureSet))) {
+      const isOwnConvention = field === 'normalConvention' && (ownNormalMap !== undefined || material.normalConvention !== undefined);
+      if (material[field] === undefined && !isOwnConvention) material[field] = id;
+    }
+    delete material.textureSet;
+  }
+  for (const material of materials) {
+    for (const field of TEXTURE_MAP_FIELDS) {
+      if (typeof material[field] === 'string' && /^[a-f0-9]{64}$/i.test(material[field])) await checkMap(field, material[field].toLowerCase());
+    }
   }
 }

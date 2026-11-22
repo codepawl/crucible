@@ -289,35 +289,58 @@ export function keyLightFromHdri(map, bounds) {
   return { environment: { lightDirection, keyColor, keyIntensity }, shadowBounds: { target, eye, extent, near: extent * 0.5, far: extent * 3.5 } };
 }
 
-// A pixel near the sun counts as part of it when it is this many times brighter than the sky ring around it.
-const SUN_OVER_RING_RATIO = 2;
-// The ring that stands for the sky behind the sun reaches this far past the search radius.
-const SUN_RING_WIDTH = Math.PI / 36;
+// A pixel within the search radius belongs to the sun disc when it reaches this fraction of the peak. The glare around the
+// disc is far below it, so it stays in the map as sky light and the background keeps its shape (#2875).
+const SUN_DISC_FRACTION = 0.1;
+// The colour that fills the disc is read from the pixels this far past its edge, or two pixels when the map is coarser.
+const SUN_FILL_WIDTH = Math.PI / 180;
 
-function ringColor(map, centre) {
+function angleFromCentre(map, column, row, centre) {
+  const direction = mapDirection(column, row, map.width, map.height);
+  return Math.acos(Math.min(1, direction[0] * centre[0] + direction[1] * centre[1] + direction[2] * centre[2]));
+}
+
+// The mean colour of the pixels between two angles from the centre, weighted by their solid angle.
+function colorBetween(map, centre, innerAngle, outerAngle) {
   const { width, height, channels, data } = map;
-  const inner = Math.cos(SUN_SEARCH_RADIUS);
-  const outer = Math.cos(SUN_SEARCH_RADIUS + SUN_RING_WIDTH);
   const sum = [0, 0, 0];
   let weight = 0;
   for (let row = 0; row < height; row++) {
     const rowWeight = Math.sin(((row + 0.5) / height) * Math.PI);
     for (let column = 0; column < width; column++) {
-      const direction = mapDirection(column, row, width, height);
-      const cosine = direction[0] * centre[0] + direction[1] * centre[1] + direction[2] * centre[2];
-      if (cosine >= inner || cosine <= outer) continue;
+      const angle = angleFromCentre(map, column, row, centre);
+      if (angle <= innerAngle || angle > outerAngle) continue;
       const offset = (row * width + column) * channels;
       for (let axis = 0; axis < 3; axis++) sum[axis] += data[offset + axis] * rowWeight;
       weight += rowWeight;
     }
   }
-  return weight > 0 ? sum.map(component => component / weight) : [0, 0, 0];
+  return weight > 0 ? sum.map(component => component / weight) : null;
+}
+
+// The pixels of the sun disc: those near the centre that reach a tenth of the brightest one, and the angle the farthest one is at.
+function sunDiscPixels(map, centre) {
+  const { width, height, channels, data } = map;
+  let peak = 0;
+  const candidates = [];
+  for (let row = 0; row < height; row++) {
+    for (let column = 0; column < width; column++) {
+      if (angleFromCentre(map, column, row, centre) > SUN_SEARCH_RADIUS) continue;
+      const value = luminanceAt(data, (row * width + column) * channels);
+      candidates.push({ column, row, value });
+      peak = Math.max(peak, value);
+    }
+  }
+  const pixels = candidates.filter(candidate => candidate.value >= peak * SUN_DISC_FRACTION);
+  const radius = Math.max(...pixels.map(pixel => angleFromCentre(map, pixel.column, pixel.row, centre)));
+  return { pixels, radius };
 }
 
 /**
  * Takes the sun out of an HDR environment map so it can light the scene as a shadowed key light instead of reaching
- * every point through the unshadowed sky term (#2761). Pixels within 10 degrees of the sun that are more than twice as
- * bright as the sky ring around it are set to that ring's colour. The energy taken out comes back as `environment`
+ * every point through the unshadowed sky term (#2761). The pixels of the sun disc (those within 10 degrees of the sun
+ * that reach a tenth of its peak) are set to the colour of the sky just past the disc's edge, so the glare around the sun
+ * stays in the map and the background shows no patch (#2875). The energy taken out comes back as `environment`
  * (`{ lightDirection, keyColor, keyIntensity }`, the same convention as sunFromEnvironmentMap), and as the map's
  * `sunDisc`, so the background still shows the sun. Returns `{ map, environment }`, or `null` when the sky has no
  * distinct sun. The map passed in is not changed.
@@ -327,28 +350,26 @@ export function splitHdriSun(map) {
   if (!sun) return null;
   const { width, height, channels } = map;
   const centre = worldFromMapDirection(sun.lightDirection, -map.rotation);
-  const ring = ringColor(map, centre);
+  const disc = sunDiscPixels(map, centre);
+  const ring = colorBetween(map, centre, disc.radius, disc.radius + Math.max(SUN_FILL_WIDTH, (4 * Math.PI) / width));
+  if (!ring) return null;
   const ringLuminance = luminanceAt(ring, 0);
   const data = Float32Array.from(map.data);
-  const minimumCosine = Math.cos(SUN_SEARCH_RADIUS);
   const pixelSolidAngle = ((2 * Math.PI) / width) * (Math.PI / height);
   const removed = [0, 0, 0];
   let irradiance = 0;
-  for (let row = 0; row < height; row++) {
+  for (const { column, row } of disc.pixels) {
     const rowSolidAngle = Math.sin(((row + 0.5) / height) * Math.PI) * pixelSolidAngle;
-    for (let column = 0; column < width; column++) {
-      const direction = mapDirection(column, row, width, height);
-      const cosine = direction[0] * centre[0] + direction[1] * centre[1] + direction[2] * centre[2];
-      if (cosine < minimumCosine) continue;
-      const offset = (row * width + column) * channels;
-      const value = luminanceAt(data, offset);
-      if (!(value > SUN_OVER_RING_RATIO * ringLuminance)) continue;
-      for (let axis = 0; axis < 3; axis++) {
-        removed[axis] += Math.max(data[offset + axis] - ring[axis], 0) * rowSolidAngle;
-        data[offset + axis] = ring[axis];
-      }
-      irradiance += (value - ringLuminance) * rowSolidAngle * cosine;
+    const direction = mapDirection(column, row, width, height);
+    const cosine = direction[0] * centre[0] + direction[1] * centre[1] + direction[2] * centre[2];
+    const offset = (row * width + column) * channels;
+    const value = luminanceAt(data, offset);
+    if (!(value > ringLuminance)) continue;
+    for (let axis = 0; axis < 3; axis++) {
+      removed[axis] += Math.max(data[offset + axis] - ring[axis], 0) * rowSolidAngle;
+      data[offset + axis] = ring[axis];
     }
+    irradiance += (value - ringLuminance) * rowSolidAngle * cosine;
   }
   const brightest = Math.max(...removed);
   if (!(brightest > 0)) return null;

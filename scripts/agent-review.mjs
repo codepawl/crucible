@@ -85,7 +85,8 @@ function groupShotsByBranch(shots) {
 
 /** Validate before leasing the source renderer. Camera relationships use the sampled pose. */
 export function normalizeReview(input) {
-  fields(input, ['sessionId', 'expectedRevision', 'width', 'height', 'shots', 'labels'], 'review');
+  fields(input, ['sessionId', 'expectedRevision', 'width', 'height', 'shots', 'labels', 'checks'], 'review');
+  if (input.checks !== undefined && input.checks !== 'realism') throw new TypeError('Review checks must be "realism" (the only check set), or omitted.');
   if (input.labels !== undefined && typeof input.labels !== 'boolean') throw new TypeError('Review labels must be boolean.');
   if (typeof input.sessionId !== 'string' || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) {
     throw new TypeError('Review requires a sessionId and a safe nonnegative expectedRevision.');
@@ -128,6 +129,6 @@ export function normalizeReview(input) {
   const groups = groupShotsByBranch(shots);
   return { sessionId: input.sessionId, expectedRevision: input.expectedRevision, width, height, shots, groups,
     branchNames: [...new Set(shots.flatMap(shot => shot.branch === undefined ? [] : [shot.branch]))],
-    labels: input.labels === true,
+    labels: input.labels === true, checks: input.checks,
     gridWidth: width * columns, gridHeight: (height + REVIEW_LIMITS.labelHeight) * Math.ceil(shots.length / columns), columns };
 }

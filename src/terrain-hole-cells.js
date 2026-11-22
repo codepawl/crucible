@@ -40,7 +40,8 @@ export function distanceToNearestCellCentre(hole, size, resolution) {
 /** Holes of a terrain record that remove no cell, each with the cell size and the smallest radius (to 3 decimals) that would remove one. */
 export function holesRemovingNoCell(value) {
   const size = value.size ?? TERRAIN_DEFAULT_SIZE;
-  const resolution = value.resolution ?? TERRAIN_DEFAULT_RESOLUTION;
+  // Chunks of resolution cells each lie side by side, so the ground has chunks * resolution cells across.
+  const resolution = (value.resolution ?? TERRAIN_DEFAULT_RESOLUTION) * (value.chunks ?? 1);
   const cellSize = size / resolution;
   const missing = [];
   (value.holes ?? []).forEach((hole, index) => {

@@ -1,6 +1,8 @@
 // How one person likes Studio set up. It is kept in the browser, never in the scene recipe: two people who open the
 // same scene keep their own snap steps and their own panels.
 
+import { KEYMAP_PRESET_IDS } from './studio-keymap.js';
+
 export const STUDIO_PREFERENCES_KEY = 'crucible-studio-preferences';
 
 export const STUDIO_GIZMO_PIXELS = Object.freeze({ small: 58, medium: 74, large: 92 });
@@ -12,6 +14,7 @@ export const STUDIO_PREFERENCE_CHOICES = Object.freeze({
   startWorkspace: Object.freeze(['build', 'look', 'animate']),
   theme: Object.freeze(['system', 'light', 'dark']),
   performance: Object.freeze(['automatic', 'light', 'balanced', 'sharp']),
+  keymap: KEYMAP_PRESET_IDS,
 });
 
 export const STUDIO_PANEL_WIDTH = Object.freeze({ least: 240, most: 520, initial: 284 });
@@ -75,6 +78,7 @@ export const STUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   startWorkspace: 'build',
   theme: 'system',
   performance: 'automatic',
+  keymap: 'crucible',
   setupDone: false,
   gridVisible: true,
   readoutVisible: true,

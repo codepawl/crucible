@@ -10,6 +10,8 @@ import { isMainModule, listTestFiles, repositoryRoot, runTestFiles } from './tes
 export const DEFAULT_THRESHOLD_MS = 1000;
 export const DEFAULT_BUDGET_MS = 120000;
 export const FAST_TESTS_PATH = 'config/fast-tests.json';
+// Guard tests always run, even when the recorded timings omit them or call them slow: a new src file missing from cook-addon.yml paths fails CI otherwise (#2938).
+export const GUARD_TEST_PATTERN = /^tests\/addon-job-paths[^/]*\.test\.js$/;
 
 // Picks the files recorded under `thresholdMs`, fastest first, until their recorded times add up to `budgetMs`.
 // Files missing from `existingFiles` (renamed or deleted since the timings were recorded) are dropped.
@@ -25,7 +27,8 @@ export function selectFastTests(timings, existingFiles, { thresholdMs = DEFAULT_
     files.push(file);
     recordedMilliseconds += milliseconds;
   }
-  return { files: files.sort(), recordedMilliseconds };
+  const guardFiles = existingFiles.filter(file => GUARD_TEST_PATTERN.test(file));
+  return { files: [...new Set([...files, ...guardFiles])].sort(), recordedMilliseconds };
 }
 
 // The native Cook tests are recorded at 0 ms on CI, where they skip for lack of a GPU or the built addon, but they run for real here.

@@ -1,0 +1,1 @@
+- Studio can follow the keys of Maya or Cinema 4D (Settings, Keys, or a Keys step in the setup): the tool keys only choose the tool, Alt with a mouse button orbits, pans or zooms, and every key label updates at once (#2847)

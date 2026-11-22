@@ -330,3 +330,37 @@ test('a look at a motion time gives the post pass the same clock as a frame at t
   preview.look({ sessionId, motionTime: null });
   assert.equal(renders.at(-1).camera.passTime, undefined);
 });
+
+test('scene_inspect without profile keeps its answer, and profile adds a cost profile and nothing else', () => {
+  const { preview } = previewHarness();
+  const sessionId = 'profile';
+  preview.create({ recipe: recipe(), sessionId, backend: 'gpu', memoryBudgetMiB: 192 });
+  // The page runs in a VM realm, so compare as JSON.
+  const asJson = value => JSON.parse(JSON.stringify(value));
+  const plain = asJson(preview.inspect({ sessionId }));
+  assert.equal('profile' in plain, false);
+  assert.deepEqual(asJson(preview.inspect({ sessionId, profile: false })), plain);
+  const { profile, ...rest } = asJson(preview.inspect({ sessionId, profile: true }));
+  assert.deepEqual(rest, plain);
+  assert.deepEqual(Object.keys(profile).sort(), ['drawCalls', 'frames', 'heaviestNodes', 'height', 'millisecondsMaximum', 'millisecondsMinimum', 'millisecondsPerFrame', 'splatBytes', 'textureBytes', 'triangles', 'width']);
+  assert.equal(profile.frames, 30);
+  assert.equal(profile.drawCalls, 1);
+  assert.equal(profile.triangles, 2);
+  assert.equal(profile.textureBytes, 4096);
+  assert.equal(profile.splatBytes, 1024);
+  assert.deepEqual(profile.heaviestNodes, [{ id: 'cube', triangles: 12, parts: 1 }]);
+  assert.ok(profile.millisecondsPerFrame >= 0);
+});
+
+test('scene_inspect profileFrames sets the number of measured frames within bounds', () => {
+  const harness = previewHarness();
+  const sessionId = 'profile-frames';
+  harness.preview.create({ recipe: recipe(), sessionId, backend: 'gpu', memoryBudgetMiB: 192 });
+  const rendersBefore = harness.renders.length;
+  assert.equal(harness.preview.inspect({ sessionId, profile: true, profileFrames: 5 }).profile.frames, 5);
+  assert.equal(harness.renders.length - rendersBefore, 6, 'one unmeasured frame and five measured ones');
+  assert.equal(harness.preview.inspect({ sessionId, profile: true, profileFrames: 120 }).profile.frames, 120);
+  assert.throws(() => harness.preview.inspect({ sessionId, profile: true, profileFrames: 121 }), /from 1 to 120/);
+  assert.throws(() => harness.preview.inspect({ sessionId, profile: true, profileFrames: 0 }), /from 1 to 120/);
+  assert.throws(() => harness.preview.inspect({ sessionId, profileFrames: 5 }), /only applies with profile: true/);
+});

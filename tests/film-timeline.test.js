@@ -249,3 +249,49 @@ test('a frame time on a shot boundary belongs to the later shot even when shot l
   assert.equal(sampleFilmTimeline(longer, {}, 99 / 30).shotName, 'c');
   assert.equal(sampleFilmTimeline(longer, {}, 98 / 30).shotName, 'b');
 });
+
+test('a shot ends at a named marker and a beat grid names the beats', () => {
+  const timeline = normalizeFilmTimeline({
+    beatGrid: { bpm: 120, offset: 0.5, count: 8 },
+    markers: [{ name: 'drop', time: 3 }],
+    shots: [
+      { name: 'intro', endAt: 'beat-2' },
+      { name: 'hit', endAt: 'drop' },
+      { name: 'tail', duration: 1 },
+    ],
+  }, recipeWith());
+  assert.deepEqual(timeline.shots.map(shot => shot.duration), [1.5, 1.5, 1]);
+  const starts = filmTimelineShotStarts(timeline);
+  assert.equal(starts[1].start, 1.5, 'beat-2 is at 0.5 + 2 * 0.5 s');
+  assert.equal(starts[2].start, 3, 'the cue named drop');
+});
+
+test('a shot cut on the beat samples the next shot at that beat time', () => {
+  const timeline = normalizeFilmTimeline({
+    beatGrid: { bpm: 90, count: 6 },
+    shots: [{ name: 'a', endAt: 'beat-1' }, { name: 'b', endAt: 'beat-3' }, { name: 'c', endAt: 'beat-5' }],
+  }, recipeWith());
+  const beat = 60 / 90;
+  assert.equal(sampleFilmTimeline(timeline, recipeWith(), beat - 0.01).shotName, 'a');
+  assert.equal(sampleFilmTimeline(timeline, recipeWith(), beat).shotName, 'b');
+  assert.equal(sampleFilmTimeline(timeline, recipeWith(), 3 * beat).shotName, 'c');
+});
+
+test('an exported timeline with endAt and its resolved duration normalizes again', () => {
+  const scene = createAgentScene(recipeWith({ timeline: { markers: [{ name: 'cue', time: 2.5 }], shots: [{ name: 'a', endAt: 'cue' }, { name: 'b', duration: 1 }] } }));
+  const exported = scene.exportRecipe();
+  assert.equal(exported.timeline.shots[0].duration, 2.5);
+  assert.equal(exported.timeline.shots[0].endAt, 'cue');
+  assert.deepEqual(normalizeFilmTimeline(exported.timeline, recipeWith()), exported.timeline);
+});
+
+test('marker mistakes say what to pass instead', () => {
+  const shots = [{ name: 'a', endAt: 'nope' }];
+  assert.throws(() => normalizeFilmTimeline({ shots }, recipeWith()), /does not exist.*timeline\.markers or timeline\.beatGrid/);
+  assert.throws(() => normalizeFilmTimeline({ markers: [{ name: 'x', time: 1 }], shots: [{ name: 'a', endAt: 'x', duration: 2 }] }, recipeWith()), /Give one of them/);
+  assert.throws(() => normalizeFilmTimeline({ markers: [{ name: 'x', time: 0.05 }], shots: [{ name: 'a', endAt: 'x' }] }, recipeWith()), /duration up to marker x must be a number from 0.1/);
+  assert.throws(() => normalizeFilmTimeline({ markers: [{ name: 'beat-0', time: 1 }], beatGrid: { bpm: 120, count: 2 }, shots: [{ name: 'a', duration: 1 }] }, recipeWith()), /used twice/);
+  assert.throws(() => normalizeFilmTimeline({ beatGrid: { bpm: 120, count: 1.5 }, shots: [{ name: 'a', duration: 1 }] }, recipeWith()), /whole number/);
+  assert.throws(() => normalizeFilmTimeline({ beatGrid: { bpm: 0, count: 2 }, shots: [{ name: 'a', duration: 1 }] }, recipeWith()), /bpm must be a number/);
+  assert.throws(() => normalizeFilmTimeline({ markers: [{ name: 'x', time: 1 }, { name: 'y', time: 2 }], shots: [{ name: 'a', endAt: 'y' }, { name: 'b', endAt: 'x' }] }, recipeWith()), /duration up to marker x/);
+});

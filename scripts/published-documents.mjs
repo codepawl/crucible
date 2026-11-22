@@ -7,7 +7,7 @@ export const publishedDocuments = [
   'retarget.md',
   'skeleton-pose.md',
   'vehicle.md',
-  'vegetation.md', 'terrain.md', 'grass.md', 'clutter.md', 'light-bake.md', 'path-tracer.md', 'gaussian-splats.md',
+  'vegetation.md', 'terrain.md', 'floor-plan.md', 'grass.md', 'clutter.md', 'light-bake.md', 'path-tracer.md', 'gaussian-splats.md',
   'camera-path.md', 'lighting.md', 'volumetric.md', 'film-physics.md',
   'runtime.md',
   'streaming.md',
@@ -28,7 +28,7 @@ export const publishedDocuments = [
   'agent-character-motion.md',
   'agent-review.md',
   // Guides that other published guides and llms.txt link to (#1249).
-  'game.md', 'addons.md', 'scene-query.md', 'line-art.md', 'mesh-blend.md', 'material-maps.md', 'user-passes.md',
+  'game.md', 'addons.md', 'scene-query.md', 'line-art.md', 'mesh-blend.md', 'kinetic-text.md', 'material-maps.md', 'user-passes.md',
   'webgpu-decision.md', 'render-engines.md', 'packs.md', 'pack.md', 'studio.md',
   // Pictures that a published guide shows.
   'cook-light-portals.jpg', 'cook-camera-environment.jpg',

@@ -1,10 +1,9 @@
 # Ground clutter
 
-`crucible/addons/clutter` scatters pebbles, rocks, twigs and fallen leaves over terrain.
-It is in the current source and not yet published.
+`@codepawlhq/crucible/addons/clutter` scatters pebbles, rocks, twigs and fallen leaves over terrain. It is published with the package (0.22.0 and later). Scenes built from a recipe reach it through a node's `clutter` field, see [Recipes and MCP](#recipes-and-mcp).
 
 ```js
-import { createClutter } from 'crucible/addons/clutter';
+import { createClutter } from '@codepawlhq/crucible/addons/clutter';
 
 const clutter = createClutter({
   preset: 'forest',
@@ -50,7 +49,35 @@ Clutter shows best on paths, clearings, riverbanks and forest floor. Under a den
 | `tileSize`, `levels`, `cullDistance` | `4`, `CLUTTER_LEVELS`, last level | Tiling and level of detail; `tileSize` must be finite. An area needing over 262144 tiles throws. |
 | `eye`, `seed` | area centre, `1` | Initial camera position and random seed. |
 
-`createClutter` returns `{ parts, update(eye), stats(), materials, settings }`.
+`createClutter` returns `{ parts, update(eye), stats(), materials, settings }`; `stats()` gives `tiles`, `visibleTiles`, `levelCounts`, `triangles`, `vertices`, `geometryBytes` and the `items` drawn.
+
+## Recipes and MCP
+
+A group node with a `clutter` field scatters the same stones in a recipe, over a terrain node or a flat area. The field is a list of one to four layers; give the group node the same transform as the ground.
+
+```json
+{ "id": "floor", "clutter": [
+  { "preset": "forest", "terrain": "hills", "seed": 4, "exclude": [{ "node": "cabin", "radius": 3 }] },
+  { "preset": "riverbed", "terrain": "hills", "mask": [{ "center": [0, 10], "radius": 4, "feather": 3 }], "slopeLimit": 25 }
+] }
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `preset` | `meadow` | `meadow`, `forest`, `riverbed` or `scree`. |
+| `terrain`, `area` | one is required | The ID of a node that draws a terrain geometry, or a `{ "min": [x, z], "max": [x, z] }` area in the group frame. With `terrain` alone the area is the whole ground; with `area` alone the ground is flat at height 0. |
+| `density` | `1` | A multiplier of the preset's items per square metre, 0.01 to 4. |
+| `seed` | `1` | The same seed gives the same stones. |
+| `slopeLimit` | `40` | Degrees; steeper ground stays clear. Terrain holes always stay clear. |
+| `mask` | everywhere | Up to 8 circles or boxes where clutter may stand, each with an optional `feather` in metres that fades the coverage outside its edge. |
+| `exclude` | none | Up to 32 circles, boxes or `{ "node", "radius" }` that stay clear. |
+| `cullDistance` | `40` | Metres from the recipe camera `eye` inside which tiles are built, 5 to 100. |
+
+- The recipe calls `createClutter` with the terrain's own `heightAt`, so the addon gives the same stones for the same options. Item counts per metre are the preset's multiplied by `density`.
+- Tiles come from the recipe camera `eye` when the scene is built or edited, never from the frame being drawn, so a seek or a camera track cannot change them. Move the camera with `set-camera` to scatter for another viewpoint.
+- The parts become generated child nodes (`<node>/<layer>/<rocks|pebbles|litter>-<column>-<row>`), left out of `scene_inspect` nodes and `scene_export_recipe`. `scene_inspect` adds `clutter`: per layer the items drawn, the tiles, the tiles at each level, and the triangles.
+- Limits: four layers in the whole recipe, an area of at most 40000 square metres, at most 120000 planned items inside `cullDistance`, and `maxNodes` for the generated parts. Each one throws an error that names the field to lower.
+- Clutter parts are left out of the draw-time ranking of flush faces (#751): irregular stones have none, and ranking them took seconds per edit.
 
 ## Level of detail
 

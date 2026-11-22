@@ -52,10 +52,12 @@ import { AGENT_SCENE_DEFAULT_LIMITS, MEMORY_CEILING_MIB } from '../src/agent-sce
 import { describeApplication } from '../src/agent-apply-report.js';
 import { framingProblems, placementProblems, textureProblems, exposureProblems, lumaShares } from '../src/frame-checks.js';
 import { BRANCH_LIMITS, createBranchStore, printableLabel } from '../src/agent-branches.js';
+import { wedgeOperation } from '../src/agent-wedge.js';
 import { agentAssetDecodeOptions, withCatalogLimitAdvice } from '../src/agent-asset-limits.js';
 import { describeMarks, validateMarks } from '../src/agent-annotate.js';
 import { sceneQueryFor, partMaterialsFor, summarizeWalkMap, walkOptionsFor, createQueryOnlyCache } from './agent-walkmap.js';
 import { MOTION_NOT_SET_HINT, recipeMoves } from '../src/motion-hint.js';
+import { profileFrameCount, profileFrames, heaviestNodes } from '../src/render-profile.js';
 
 // Open scenes by sessionId, least recently used first. One canvas serves them all, so at most one record owns a renderer;
 // a call on another scene hands the canvas over (the scene data stays, the renderer is rebuilt).
@@ -380,6 +382,8 @@ function syncShadowCascades(record) {
 }
 
 function draw(record, time = 0, camera = record.scene.camera, frameOptions = {}) {
+  // A heavy edit ranks its coplanar triangles right after it returns (#2905); a frame never draws them unranked.
+  record.scene.settleFlush?.();
   if (!record.renderer) throw new Error('The scene renderer is leased to a render job.');
   if (record.renderer.context.isContextLost()) {
     throw new Error('The render context was lost. Export the recipe and dispose this session.');
@@ -462,6 +466,23 @@ function syncMeshBlend(record) {
     if (node.blend !== undefined) radii.set(node.id, normalizeBlend(node.blend).radius);
   }
   record.renderer.meshBlend.radii = radii;
+}
+
+const PROFILE_FRAME_SECONDS = 1 / 60;
+
+// What the scene costs to draw as it stands: frame time over real frames at the preview size, the draw calls and triangles
+// the GPU receives in one frame, the texture memory the renderer holds and the nodes with the most triangles.
+function profileScene(record, frames) {
+  const { renderer } = record;
+  const measured = profileFrames({ context: renderer.context, frames, drawFrame: index => draw(record, index * PROFILE_FRAME_SECONDS) });
+  return {
+    ...measured,
+    textureBytes: renderer.textureBytes ?? 0,
+    splatBytes: renderer.splatBytes ?? 0,
+    width: canvas.width,
+    height: canvas.height,
+    heaviestNodes: heaviestNodes(record.scene.parts),
+  };
 }
 
 function renderStatus(record) {
@@ -1246,8 +1267,11 @@ window.__agentPreview = {
       throw error;
     }
   },
-  inspect({ sessionId, ...options }) {
-    return { sessionId, ...requireSession(sessionId).scene.inspect(options), kernels: kernelReport() };
+  inspect({ sessionId, profile, profileFrames: requestedFrames, ...options }) {
+    const frames = profileFrameCount({ profile, profileFrames: requestedFrames });
+    const record = requireSession(sessionId);
+    const inspection = { sessionId, ...record.scene.inspect(options), kernels: kernelReport() };
+    return profile ? { ...inspection, profile: profileScene(record, frames) } : inspection;
   },
   inspectMeshes({ sessionId, ...options }) {
     const scene = requireSession(sessionId).scene;
@@ -1432,6 +1456,28 @@ window.__agentPreview = {
       const { shared } = record.branches.fork(name, { recipe: scratch.exportRecipe(), baseRecipe, operations, baseRevision: expectedRevision });
       return { sessionId, branch: name, sourceRevision: record.scene.revision, shared,
         branches: record.branches.names(), snapshots: record.branches.snapshotCount() };
+    });
+  },
+  /** One scratch recipe per value of a field (scene_review wedge). Each copy is built from the scene's own recipe and dropped after export; the scene, its revision and its branches stay as they are. */
+  wedgeRecipes({ sessionId, expectedRevision, target, field, values }) {
+    const record = requireSession(sessionId);
+    if (record.asset) throw new TypeError('scene_review wedge supports procedural recipe scenes, not an imported asset scene.');
+    const operations = [];
+    return afterMeshBooleans(operations, () => {
+      if (record.scene.revision !== expectedRevision) throw new Error(staleRevisionMessage('wedge', expectedRevision, record.scene.revision));
+      const baseRecipe = record.scene.exportRecipe();
+      const recipes = values.map((value, index) => {
+        const operation = wedgeOperation({ target, field, value }, baseRecipe);
+        const scratch = createAgentScene(baseRecipe, {}, { assets: record.placedAssets, sequenceFrames: record.sequenceFrames });
+        try {
+          scratch.apply([operation], { expectedRevision: scratch.revision });
+        } catch (error) {
+          error.message = `values[${index}] (${JSON.stringify(value).slice(0, 80)}) was refused: ${error.message}`;
+          throw error;
+        }
+        return scratch.exportRecipe();
+      });
+      return { sessionId, sourceRevision: record.scene.revision, recipes };
     });
   },
   branchRecipe({ sessionId, name }) {

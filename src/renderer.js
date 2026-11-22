@@ -277,10 +277,10 @@ function validateAlphaMaterial(material) {
   if (material.doubleSided !== undefined && typeof material.doubleSided !== 'boolean') throw new TypeError('doubleSided must be a boolean');
 }
 
-/** Opacity of one instance: blend and add parts carry it per instance, so it never splits a batch. */
-function instanceOpacity(material) {
+/** Opacity of one instance: blend and add parts carry it per instance, so it never splits a batch. A part's `opacityScale.value` (0 to 1) multiplies it. */
+export function instanceOpacity(material, part) {
   const alphaMode = material.alphaMode ?? 'opaque';
-  return isTranslucentMode(alphaMode) ? (material.opacity ?? 1) + (material.opacityBias ?? 0) : 1;
+  return isTranslucentMode(alphaMode) ? ((material.opacity ?? 1) + (material.opacityBias ?? 0)) * (part?.opacityScale?.value ?? 1) : 1;
 }
 
 /** Alpha settings that every instance of one draw call must share. Fields that a mode ignores, and the per-instance opacity, are normalized away. */
@@ -390,7 +390,8 @@ export function isMirroredMatrix(matrix) {
 function packInstance(data, index, part, normalMatrix) {
   const offset = index * INSTANCE_STRIDE;
   const material = part.material;
-  if (isHidden(part)) {
+  // A fully faded part draws nothing: a blended surface keeps its specular glints at zero alpha, so it is hidden like a visible: false part.
+  if (isHidden(part) || part.opacityScale?.value === 0) {
     data.fill(0, offset, offset + 25);
   } else {
     data.set(part.matrix, offset);
@@ -404,7 +405,7 @@ function packInstance(data, index, part, normalMatrix) {
   copyVector3(data, offset + 32, part.assembly?.offset ?? ZERO_VECTOR);
   copyVector3(data, offset + 35, part.assembly?.detailOffset ?? ZERO_VECTOR);
   copyVector3(data, offset + 38, material.emissiveColor ?? material.color);
-  data[offset + OPACITY_OFFSET] = instanceOpacity(material);
+  data[offset + OPACITY_OFFSET] = instanceOpacity(material, part);
 }
 
 // The objectId mode of RENDER_PASS_MODES in render-passes.js.

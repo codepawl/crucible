@@ -110,3 +110,44 @@ test('sunShadowBounds fits the sun shadow view to the scene, with the eye toward
   assert.equal(light.extent, bounds.extent);
   assert.deepEqual(sunShadowBounds([], sun), {}, 'no parts keep the studio view');
 });
+
+test('splitHdriSun leaves the glare around the sun in the map, so the background has no patch (#2875)', () => {
+  const toward = SUN_DIRECTION.map(component => component / Math.hypot(...SUN_DIRECTION));
+  const glare = (column, row) => {
+    const direction = directionOf(column, row);
+    const angle = Math.acos(Math.min(1, direction[0] * toward[0] + direction[1] * toward[1] + direction[2] * toward[2]));
+    return 20 * Math.exp(-angle / ((4 * Math.PI) / 180));
+  };
+  const data = new Float32Array(WIDTH * HEIGHT * 3);
+  for (let row = 0; row < HEIGHT; row++) {
+    for (let column = 0; column < WIDTH; column++) {
+      const direction = directionOf(column, row);
+      const cosine = direction[0] * toward[0] + direction[1] * toward[1] + direction[2] * toward[2];
+      const isDisc = cosine > Math.cos((1 * Math.PI) / 180);
+      const color = isDisc ? [4000, 3800, 3400] : SKY.map(component => component + glare(column, row));
+      data.set(color, (row * WIDTH + column) * 3);
+    }
+  }
+  const map = createEnvironmentMap({ width: WIDTH, height: HEIGHT, data, showBackground: true });
+  const split = splitHdriSun(map);
+  assert.ok(split);
+  let largestChange = 0;
+  let farthestChange = 0;
+  for (let row = 0; row < HEIGHT; row++) {
+    for (let column = 0; column < WIDTH; column++) {
+      const direction = directionOf(column, row);
+      const angle = Math.acos(Math.min(1, direction[0] * toward[0] + direction[1] * toward[1] + direction[2] * toward[2]));
+      const offset = (row * WIDTH + column) * 3;
+      const change = Math.abs(split.map.data[offset] - map.data[offset]);
+      if (angle > (2 * Math.PI) / 180) largestChange = Math.max(largestChange, change);
+      if (change > 0) farthestChange = Math.max(farthestChange, angle);
+    }
+  }
+  assert.equal(largestChange, 0, 'nothing beyond the disc changes: the glare stays');
+  assert.ok(farthestChange < (2 * Math.PI) / 180, 'only the disc is filled');
+  // The disc is filled with the glare at its edge, not with the dark sky far away.
+  const centreColumn = Math.round(((Math.atan2(toward[0], -toward[2]) / (2 * Math.PI)) + 0.5) * WIDTH - 0.5);
+  const centreRow = Math.round((Math.acos(toward[1]) / Math.PI) * HEIGHT - 0.5);
+  const filled = split.map.data[(centreRow * WIDTH + centreColumn) * 3];
+  assert.ok(filled > SKY[0] + 5 && filled < 30, `filled with ${filled}`);
+});

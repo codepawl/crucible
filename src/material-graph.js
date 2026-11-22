@@ -1,4 +1,4 @@
-import { MATERIAL_GRAPH_LIMITS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS } from './agent-scene-capabilities.js';
+import { MATERIAL_GRAPH_LIMITS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS, MESH_MAP_NAMES } from './agent-scene-capabilities.js';
 import { EMISSION_FRESNEL_IOR_RANGE } from './material-layers.js';
 import { clampUnit, smoothStep, wrapCell, hashCell, cellularNoise, linearToSrgbByte, createImage, normalMapFromHeightFunction } from './material-texture-kit.js';
 
@@ -66,6 +66,11 @@ function integerInRange(value, minimum, maximum, label) {
   return value;
 }
 
+function numberInRange(value, minimum, maximum, label) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum || value > maximum) throw graphError(`${label} must be a number from ${minimum} to ${maximum}, got ${describeValue(value)}.`);
+  return value;
+}
+
 function oneOf(value, names, label) {
   if (typeof value !== 'string' || !names.includes(value)) throw graphError(`${label} must be one of ${names.join(', ')}.`);
   return value;
@@ -126,11 +131,44 @@ function compileCoordinates(node) {
   return vectorValue(u => u, (u, v) => v, () => 0);
 }
 
+const WARP_STRENGTH_LIMIT = 4;
+const WARP_COST = 2;
+// The fields every texture node that reads a position takes: where it samples ("at") and what pushes that spot around ("warp").
+const POSITION_FIELDS = ['at', 'warp'];
+
+// A warp node moves the lookup of the node that holds it: a number offsets u and v by (number - 0.5) * strength, a vector
+// offsets u by its first part and v by its second. The warp node is read at the unwarped pixel, so a periodic warp keeps the
+// texture tiling.
+function compileWarp(warp, state, depth) {
+  if (!isPlainObject(warp)) throw graphError('warp takes { node, strength }, such as {"warp":{"node":{"noise":{"scale":3}},"strength":1}}.');
+  onlyKeys(warp, ['node', 'strength'], 'warp');
+  if (warp.node === undefined) throw graphError('warp needs "node", the number or vector that offsets the lookup.');
+  const strength = warp.strength ?? 1;
+  if (typeof strength !== 'number' || !Number.isFinite(strength) || strength < 0 || strength > WARP_STRENGTH_LIMIT) {
+    throw graphError(`warp strength must be a number from 0 to ${WARP_STRENGTH_LIMIT} (tiles), got ${describeValue(strength)}.`);
+  }
+  const offsetNode = compileNode(warp.node, state, depth + 1, 'warp "node"');
+  state.cost += WARP_COST;
+  const [offsetU, offsetV] = offsetNode.kind === 'vector' ? offsetNode.parts : [offsetNode.evaluate, offsetNode.evaluate];
+  return {
+    shiftU: (u, v) => (finiteOrZero(offsetU(u, v)) - 0.5) * strength,
+    shiftV: (u, v) => (finiteOrZero(offsetV(u, v)) - 0.5) * strength,
+  };
+}
+
 function compilePosition(settings, state, depth) {
-  if (settings.at === undefined) return [u => u, (u, v) => v];
-  const position = compileNode(settings.at, state, depth + 1, '"at"');
-  if (position.kind !== 'vector') throw graphError('"at" needs a vector such as {"uv":"both"}.');
-  return position.parts;
+  let positionU = u => u;
+  let positionV = (u, v) => v;
+  if (settings.at !== undefined) {
+    const position = compileNode(settings.at, state, depth + 1, '"at"');
+    if (position.kind !== 'vector') throw graphError('"at" needs a vector such as {"uv":"both"}.');
+    [positionU, positionV] = position.parts;
+  }
+  if (settings.warp === undefined) return [positionU, positionV];
+  const { shiftU, shiftV } = compileWarp(settings.warp, state, depth);
+  const unwarpedU = positionU;
+  const unwarpedV = positionV;
+  return [(u, v) => unwarpedU(u, v) + shiftU(u, v), (u, v) => unwarpedV(u, v) + shiftV(u, v)];
 }
 
 function textureSettings(node, name, allowed) {
@@ -146,8 +184,11 @@ function textureSettings(node, name, allowed) {
 const HASH_START = (0xdeadbeef + (2 << 2) + 13) >>> 0;
 const rotateLeft = (value, bits) => (value << bits) | (value >>> (32 - bits));
 const PERLIN_OUTPUT_SCALE = 0.6616;
-const NOISE_ROUGHNESS = 0.5;
+const NOISE_GAIN = 0.5;
 const NOISE_LACUNARITY = 2;
+const NOISE_KINDS = ['fbm', 'ridged', 'billow'];
+const LACUNARITY_RANGE = [1, 4];
+const GAIN_RANGE = [0, 1];
 
 function hashLatticeCorner(cellX, cellY) {
   let a = (HASH_START + cellX) >>> 0;
@@ -199,21 +240,41 @@ function perlinNoise(x, y, period) {
   return PERLIN_OUTPUT_SCALE * mixNumbers(bottom, top, blendY);
 }
 
+// What one octave of Perlin noise (about -1 to 1) contributes to the sum: fbm keeps the signed value, billow its absolute
+// value (rounded hills) and ridged the square of one minus it (sharp crests where the noise crosses zero), both 0 to 1.
+const OCTAVE_SIGNALS = {
+  fbm: value => value,
+  billow: value => Math.abs(value),
+  ridged: value => (1 - Math.min(Math.abs(value), 1)) ** 2,
+};
+
+// A tiling noise needs a whole number of cells across the tile in every octave. A lacunarity of 2 gives that by itself;
+// any other frequency is moved to the nearest whole number of cells.
+function tiledOctaveFrequency(frequency, tileCells) {
+  if (tileCells === 0 || Number.isInteger(tileCells * frequency)) return frequency;
+  return Math.max(1, Math.round(tileCells * frequency)) / tileCells;
+}
+
 /**
  * Blender's Noise Texture Fac at (x, y), already scaled by the node's Scale. `tileCells` is the first octave's number of
- * cells across the unit square when the noise must repeat, or 0 for Blender's endless lattice.
+ * cells across the unit square when the noise must repeat, or 0 for Blender's endless lattice. `kind` (fbm is Blender's),
+ * `lacunarity` (the frequency step between octaves) and `gain` (the amplitude step, Blender's Roughness) default to
+ * Blender's own values, so the default call is Blender's output.
  */
-export function blenderNoise(x, y, octaves, tileCells = 0) {
+export function blenderNoise(x, y, octaves, tileCells = 0, { kind = 'fbm', lacunarity = NOISE_LACUNARITY, gain = NOISE_GAIN } = {}) {
+  const signal = OCTAVE_SIGNALS[kind];
   let total = 0;
   let amplitude = 1;
   let amplitudeSum = 0;
   let frequency = 1;
   for (let octave = 0; octave < octaves; octave++) {
-    total += perlinNoise(x * frequency, y * frequency, tileCells * frequency) * amplitude;
+    const octaveFrequency = tiledOctaveFrequency(frequency, tileCells);
+    total += signal(perlinNoise(x * octaveFrequency, y * octaveFrequency, tileCells * octaveFrequency)) * amplitude;
     amplitudeSum += amplitude;
-    amplitude *= NOISE_ROUGHNESS;
-    frequency *= NOISE_LACUNARITY;
+    amplitude *= gain;
+    frequency *= lacunarity;
   }
+  if (kind !== 'fbm') return clampUnit(total / amplitudeSum);
   return 0.5 * total / amplitudeSum + 0.5;
 }
 
@@ -223,23 +284,27 @@ const SEED_SHIFT_Y = 104729;
 const SEED_SHIFT_RANGE = 1024;
 
 function compileNoise(node, state, depth) {
-  const settings = textureSettings(node, 'noise', ['scale', 'seed', 'octaves', 'tile', 'at']);
+  const settings = textureSettings(node, 'noise', ['scale', 'seed', 'octaves', 'kind', 'lacunarity', 'gain', 'tile', ...POSITION_FIELDS]);
   const scale = integerInRange(settings.scale ?? 4, 1, NOISE_SCALE_LIMIT, 'noise scale');
   const seed = integerInRange(settings.seed ?? 0, 0, MAX_SEED, 'noise seed');
   const octaves = integerInRange(settings.octaves ?? 4, 1, NOISE_OCTAVE_LIMIT, 'noise octaves');
+  const kind = oneOf(settings.kind ?? 'fbm', NOISE_KINDS, 'noise kind');
+  const lacunarity = numberInRange(settings.lacunarity ?? NOISE_LACUNARITY, ...LACUNARITY_RANGE, 'noise lacunarity');
+  const gain = numberInRange(settings.gain ?? NOISE_GAIN, ...GAIN_RANGE, 'noise gain');
   if (settings.tile !== undefined && typeof settings.tile !== 'boolean') throw graphError('noise tile must be true or false.');
   const tileCells = settings.tile === false ? 0 : scale;
   const shiftX = (seed * SEED_SHIFT_X) % SEED_SHIFT_RANGE;
   const shiftY = (seed * SEED_SHIFT_Y) % SEED_SHIFT_RANGE;
   state.cost += octaves * NOISE_COST_PER_OCTAVE;
   const [positionU, positionV] = compilePosition(settings, state, depth);
-  return scalarValue((u, v) => blenderNoise(positionU(u, v) * scale + shiftX, positionV(u, v) * scale + shiftY, octaves, tileCells));
+  const options = { kind, lacunarity, gain };
+  return scalarValue((u, v) => blenderNoise(positionU(u, v) * scale + shiftX, positionV(u, v) * scale + shiftY, octaves, tileCells, options));
 }
 
 const VORONOI_OUTPUTS = ['distance', 'edge', 'cell'];
 
 function compileVoronoi(node, state, depth) {
-  const settings = textureSettings(node, 'voronoi', ['scale', 'seed', 'output', 'at']);
+  const settings = textureSettings(node, 'voronoi', ['scale', 'seed', 'output', ...POSITION_FIELDS]);
   const scale = integerInRange(settings.scale ?? 4, 1, NOISE_SCALE_LIMIT, 'voronoi scale');
   const seed = integerInRange(settings.seed ?? 0, 0, MAX_SEED, 'voronoi seed');
   const output = oneOf(settings.output ?? 'distance', VORONOI_OUTPUTS, 'voronoi output');
@@ -256,7 +321,7 @@ const WAVE_DIRECTIONS = ['u', 'v', 'diagonal'];
 const WAVE_SHAPES = ['sine', 'saw', 'triangle'];
 
 function compileWave(node, state, depth) {
-  const settings = textureSettings(node, 'wave', ['frequency', 'direction', 'shape', 'at']);
+  const settings = textureSettings(node, 'wave', ['frequency', 'direction', 'shape', ...POSITION_FIELDS]);
   const frequency = integerInRange(settings.frequency ?? 4, 1, NOISE_SCALE_LIMIT, 'wave frequency');
   const direction = oneOf(settings.direction ?? 'u', WAVE_DIRECTIONS, 'wave direction');
   const shape = oneOf(settings.shape ?? 'sine', WAVE_SHAPES, 'wave shape');
@@ -270,7 +335,7 @@ function compileWave(node, state, depth) {
 }
 
 function compileChecker(node, state, depth) {
-  const settings = textureSettings(node, 'checker', ['count', 'at']);
+  const settings = textureSettings(node, 'checker', ['count', ...POSITION_FIELDS]);
   const count = integerInRange(settings.count ?? 8, 2, NOISE_SCALE_LIMIT, 'checker count');
   // An odd count would flip the pattern across the tiling seam.
   if (count % 2 !== 0) throw graphError('checker count must be even so it tiles.');
@@ -281,7 +346,7 @@ function compileChecker(node, state, depth) {
 const GRADIENT_TYPES = ['u', 'v', 'radial'];
 
 function compileGradient(node, state, depth) {
-  const settings = textureSettings(node, 'gradient', ['type', 'at']);
+  const settings = textureSettings(node, 'gradient', ['type', ...POSITION_FIELDS]);
   const type = oneOf(settings.type ?? 'u', GRADIENT_TYPES, 'gradient type');
   const [positionU, positionV] = compilePosition(settings, state, depth);
   return scalarValue((u, v) => {
@@ -496,7 +561,7 @@ const BRICK_COST = 4;
 
 // Blender's Brick Texture, laid in a running bond. Whole columns and an even number of rows keep it tileable.
 function compileBrick(node, state, depth) {
-  const settings = textureSettings(node, 'brick', ['columns', 'rows', 'mortar', 'offset', 'seed', 'output', 'at']);
+  const settings = textureSettings(node, 'brick', ['columns', 'rows', 'mortar', 'offset', 'seed', 'output', ...POSITION_FIELDS]);
   const columns = integerInRange(settings.columns ?? 8, 1, NOISE_SCALE_LIMIT, 'brick columns');
   const rows = integerInRange(settings.rows ?? 8, 2, NOISE_SCALE_LIMIT, 'brick rows');
   if (rows % 2 !== 0) throw graphError('brick rows must be even so the bond tiles.');
@@ -526,7 +591,7 @@ const WHITE_NOISE_OUTPUTS = ['value', 'color'];
 
 // A random value per cell of a scale by scale grid; the cells wrap, so it tiles. "color" is three independent values.
 function compileWhiteNoise(node, state, depth) {
-  const settings = textureSettings(node, 'whiteNoise', ['scale', 'seed', 'output', 'at']);
+  const settings = textureSettings(node, 'whiteNoise', ['scale', 'seed', 'output', ...POSITION_FIELDS]);
   const scale = integerInRange(settings.scale ?? 16, 1, NOISE_SCALE_LIMIT, 'whiteNoise scale');
   const seed = integerInRange(settings.seed ?? 0, 0, MAX_SEED, 'whiteNoise seed');
   const output = oneOf(settings.output ?? 'value', WHITE_NOISE_OUTPUTS, 'whiteNoise output');
@@ -582,7 +647,7 @@ export function graphImageAssets(graph) {
 // An image from the catalog, decoded by the host. Validating a graph needs no pixels, so without a pool only the
 // asset ID is checked; baking without the image throws.
 function compileImage(node, state, depth) {
-  const settings = textureSettings(node, 'image', ['asset', 'output', 'at']);
+  const settings = textureSettings(node, 'image', ['asset', 'output', ...POSITION_FIELDS]);
   const asset = typeof settings.asset === 'string' ? settings.asset.toLowerCase() : settings.asset;
   if (typeof asset !== 'string' || !IMAGE_ASSET_PATTERN.test(asset)) throw graphError('image asset must be the 64 hexadecimal characters of a catalog image asset ID; scene_asset_catalog lists them. Remote URLs are not accepted.');
   const output = oneOf(settings.output ?? 'color', IMAGE_OUTPUTS, 'image output');
@@ -664,8 +729,41 @@ export function graphVertexGroupNames(graph) {
   return [...names];
 }
 
+// A mesh map (curvature, ao, thickness) is baked per texel from the mesh by mesh-map-bake.js and handed in with the
+// vertex group maps under the key "meshMap:<name>", so the node reads it at the texel's own u and v.
+const MESH_MAP_COST = 2;
+export const MESH_MAP_KEY_PREFIX = 'meshMap:';
+
+function readMeshMapName(node) {
+  const { name } = textureSettings(node, 'meshMap', ['name']);
+  if (!MESH_MAP_NAMES.includes(name)) throw graphError(`meshMap name must be one of ${MESH_MAP_NAMES.join(', ')}, got ${describeKey(name)}, such as {"meshMap":{"name":"curvature"}}.`);
+  return name;
+}
+
+function compileMeshMap(node, state) {
+  const name = readMeshMapName(node);
+  state.cost += MESH_MAP_COST;
+  if (!state.groups) return scalarValue(() => 0);
+  const map = state.groups.get(MESH_MAP_KEY_PREFIX + name);
+  if (!map) throw graphError(`meshMap ${describeKey(name)} was not baked for this mesh. Bake the material through a part whose mesh has UVs.`);
+  return scalarValue((u, v) => sampleImageChannel(map, u, v, 0, byte => byte / 255));
+}
+
+/** The mesh map names a graph reads with `meshMap` nodes, in the order they first appear. */
+export function graphMeshMapNames(graph) {
+  const names = new Set();
+  const visit = (value, depth) => {
+    if (!value || typeof value !== 'object' || depth > MATERIAL_GRAPH_LIMITS.maxDepth * 3) return;
+    if (!Array.isArray(value) && isPlainObject(value.meshMap) && MESH_MAP_NAMES.includes(value.meshMap.name)) names.add(value.meshMap.name);
+    for (const child of Array.isArray(value) ? value : Object.values(value)) visit(child, depth + 1);
+  };
+  visit(graph, 0);
+  return [...names];
+}
+
 const TEXTURE_COMPILERS = new Map([
   ['vertexGroup', compileVertexGroup],
+  ['meshMap', compileMeshMap],
   ['image', compileImage], ['noise', compileNoise], ['whiteNoise', compileWhiteNoise], ['brick', compileBrick], ['voronoi', compileVoronoi], ['wave', compileWave], ['checker', compileChecker], ['gradient', compileGradient],
 ]);
 

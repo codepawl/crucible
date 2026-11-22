@@ -17,7 +17,8 @@ const PHYSICAL_SKY_TRACK_PROPERTIES = new Set(['sunElevation', 'sunRotation', 't
 
 const PROPERTIES = {
   // visible is 1 or 0 and defaults to STEP interpolation; a hidden node and its children draw and cast nothing.
-  node: { translation: 3, rotation: 4, scale: 3, visible: 1 },
+  // opacity is 0 to 1 and multiplies the part's material opacity (and its children's); it needs a blend or add material, or an opaque one, which draws blended while the track exists.
+  node: { translation: 3, rotation: 4, scale: 3, visible: 1, opacity: 1 },
   material: { color: 3, emissiveColor: 3, emission: 1, metallic: 1, roughness: 1 },
   camera: { eye: 3, target: 3, fov: 1, roll: 1 },
   // An imported asset's morph target weight, addressed by the target's name.
@@ -78,6 +79,9 @@ function validateValue(kind, property, value, valuePath = `${kind}.${property}`)
   }
   if (property === 'visible' && components.some(component => component !== 0 && component !== 1)) {
     throw invalidField(valuePath, value, '1 (shown) or 0 (hidden)');
+  }
+  if (kind === 'node' && property === 'opacity' && components.some(component => component < 0 || component > 1)) {
+    throw invalidField(valuePath, value, 'a node opacity from 0 (clear) to 1 (opaque), such as 0.5');
   }
   if (property === 'scale' && components.some(component => Math.fround(component) <= 0)) {
     throw invalidField(valuePath, value, 'positive numbers, such as [1, 1, 1]');
@@ -520,7 +524,7 @@ export function normalizeAgentMotion(input, recipe) {
   if (input === null || input === undefined) {
     return null;
   }
-  knownKeys(input, ['duration', 'loop', 'tracks', 'ik', 'constraints', 'drivers', 'properties', 'layers', 'footLock', 'drive', 'springs'], 'motion');
+  knownKeys(input, ['duration', 'loop', 'tracks', 'ik', 'constraints', 'drivers', 'properties', 'layers', 'footLock', 'drive', 'springs', 'face'], 'motion');
   const drive = input.drive === undefined ? null : normalizedDrive(input.drive, recipe);
   // A drive knows how long its path takes, so the motion may leave the duration out.
   const duration = bounded(input.duration === undefined && drive ? Math.ceil(drive.built.duration * 1000) / 1000 : input.duration, 0.1, 30, 'motion.duration');
@@ -530,7 +534,7 @@ export function normalizeAgentMotion(input, recipe) {
   }
   const inputTracks = input.tracks ?? [];
   denseArray(inputTracks, 128, 'Motion tracks');
-  if (!inputTracks.length && !input.layers?.length && !input.ik?.length && !input.springs && !input.constraints?.length && !input.drivers?.length && !drive) {
+  if (!inputTracks.length && !input.layers?.length && !input.ik?.length && !input.springs && !input.constraints?.length && !input.drivers?.length && !input.face && !drive) {
     const placedClipHint = (recipe.nodes ?? []).some(node => node.asset?.clip)
       ? '. A placed asset.clip needs no motion: leave motion out, and a render job plays the clip with settings.motion { "start": 0 } or settings.animation'
       : '';
@@ -543,9 +547,11 @@ export function normalizeAgentMotion(input, recipe) {
   // An imported asset lists its morph targets; a recipe mesh offers the names of its shape keys.
   const oceanGeometries = new Set((recipe.geometries ?? []).filter(geometry => geometry.type === 'mesh' && (geometry.stack ?? []).some(node => node?.op === 'ocean')).map(geometry => geometry.id));
   const morphTargets = new Set(recipe.morphTargets ?? (recipe.geometries ?? []).flatMap(geometry => geometry.grow ? [geometry.grow.name] : (geometry.shapeKeys ?? []).map(key => key.name)));
+  // motion.face is shorthand for morph tracks on those shape keys; the stored motion holds the tracks, not the shorthand.
+  const expandedFace = input.face === undefined ? [] : agentSceneModule('face').faceTracks(input.face, { morphTargets: [...morphTargets], duration });
   const identities = new Set();
   let keyframeCount = 0;
-  const tracks = inputTracks.map((track, index) => {
+  const tracks = [...inputTracks, ...expandedFace].map((track, index) => {
     if (typeof track?.target === 'string' && !Object.hasOwn(track, 'kind')) {
       const hint = TRACK_PATH_HINTS[track.target] ? `; for ${track.target} use ${TRACK_PATH_HINTS[track.target]}, which moves the sun under any sky, an HDRI included` : `; kinds: ${Object.keys(PROPERTIES).join(', ')}`;
       throw invalidField(`motion.tracks[${index}].target`, track.target, `a field left out: a track names a "kind" and a "property", not a path, and its keys are "keyframes"${hint}`, TypeError);

@@ -11,6 +11,7 @@ import { resolveLocalVolumesWith } from './local-volume-resolve.js';
 import { LIQUID_OPTICS, resolveLiquidOptics } from './liquid-optics.js';
 import { createLightingSetupMap, createCatalogEnvironmentMap, lightingSetupFields, setupMapShowsBackground } from './lighting-setups.js';
 import { agentSceneModule } from './agent-scene-modules.js';
+import { splitHdriSun } from './hdri.js';
 import { lightShapeSupport, postStepSupport } from './shader-registry.js';
 import { VIEW_TRANSFORM_NAMES, LOOK_NAMES } from './view-transform-names.js';
 import { BUNDLED_ENVIRONMENT_NAMES, BUNDLED_CUBE_LOOK_NAMES, isEnvironmentReference, isCubeLookReference } from './look-catalog.js';
@@ -30,7 +31,7 @@ function resolveEmissionRampOnDemand(input, shape, label) {
 const MAX_LOOK_ARRAY_ENTRIES = Math.max(MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS);
 
 const ENVIRONMENT_FIELDS = [
-  'world', 'ground', 'setup', 'hdri', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
+  'world', 'ground', 'setup', 'hdri', 'keyFromHdri', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity',
   'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'localVolumes', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'wind', 'sky',
 ];
 const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom', 'depthOfField', 'motionBlur'];
@@ -379,6 +380,19 @@ function environmentFrom(input = {}) {
     }
     environment.hdri = input.hdri;
   }
+  // The key light takes the HDRI's sun when the scene is built (agentEnvironmentKey), since the HDRI data loads after the recipe is checked.
+  if (input.keyFromHdri !== undefined) {
+    if (typeof input.keyFromHdri !== 'boolean') {
+      throw invalidField('environment.keyFromHdri', input.keyFromHdri, 'true or false', TypeError);
+    }
+    if (input.keyFromHdri && !environment.hdri) {
+      throw invalidField('environment.keyFromHdri', input.keyFromHdri, 'false, or true together with environment.hdri: set "hdri" to a catalog HDRI that has a sun');
+    }
+    if (input.keyFromHdri && input.sky) {
+      throw invalidField('environment.keyFromHdri', input.keyFromHdri, 'false while environment.sky is set: the physical sky has its own sun, so remove "sky" or remove "keyFromHdri"');
+    }
+    environment.keyFromHdri = input.keyFromHdri;
+  }
   if (input.viewTransform !== undefined) {
     if (!VIEW_TRANSFORM_NAMES.includes(input.viewTransform)) {
       throw invalidField('environment.viewTransform', input.viewTransform, `one of ${VIEW_TRANSFORM_NAMES.join(', ')}`);
@@ -420,10 +434,42 @@ export function environmentPatchWithSetup(patch) {
   return { ...lightingSetupFields(patch.setup), ...patch };
 }
 
+const hdriSunSplits = new WeakMap();
+
+// The HDRI of an environment that sets keyFromHdri, with its sun split out as splitHdriSun does for a scene file (#2875).
+// Cached by map, so the pixel scan runs once for each map that createCatalogEnvironmentMap hands back.
+function hdriSunSplit(environment) {
+  const source = createCatalogEnvironmentMap(environment.hdri, { intensity: environment.environmentIntensity, rotation: environment.environmentRotation, showBackground: environment.world });
+  if (!hdriSunSplits.has(source)) {
+    hdriSunSplits.set(source, splitHdriSun(source));
+  }
+  const split = hdriSunSplits.get(source);
+  if (!split) {
+    throw new Error(`environment.keyFromHdri found no distinct sun in the HDRI ${environment.hdri.slice(0, 16)}: its brightest spot is not 20 times the sky average, as on an overcast sky. Pick an HDRI with a visible sun, or remove keyFromHdri and set lightDirection, keyColor and keyIntensity yourself.`);
+  }
+  return split;
+}
+
+function keysFromHdri(environment) {
+  return Boolean(environment.keyFromHdri && environment.hdri && !environment.sky);
+}
+
+/**
+ * The environment with its key light moved to the sun of its HDRI when `keyFromHdri` is set (`lightDirection`, `keyColor`
+ * and `keyIntensity` from the sun, as a scene file takes them); any other environment is returned as it is. The HDRI must
+ * be registered already, as for agentEnvironmentMap.
+ */
+export function agentEnvironmentKey(environment) {
+  return keysFromHdri(environment) ? { ...environment, ...hdriSunSplit(environment).environment } : environment;
+}
+
 /** The procedural environment map that lights a normalized environment; the same object returns while inputs hold. */
 export function agentEnvironmentMap(environment) {
   if (environment.sky) {
     return agentSceneModule('physicalSky').createPhysicalSkyMap(environment);
+  }
+  if (keysFromHdri(environment)) {
+    return hdriSunSplit(environment).map;
   }
   if (environment.hdri) {
     return createCatalogEnvironmentMap(environment.hdri, { intensity: environment.environmentIntensity, rotation: environment.environmentRotation, showBackground: environment.world });

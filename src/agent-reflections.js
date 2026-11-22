@@ -37,7 +37,7 @@ export function stageObjectReflections(cache, recipe, sourceParts, drawnParts, g
   const worldMatrices = new Float32Array(sourceParts.length * 16);
   sourceParts.forEach((part, index) => worldMatrices.set(graph.getNode(part.name).worldMatrix, index * 16));
   const key = JSON.stringify([environment.pointLights, environment.spotLights, environment.areaLights, environment.keyColor, environment.keyIntensity, environment.lightDirection,
-    environment.skyTop, environment.skyBottom, environment.setup, environment.hdri, environment.environmentIntensity, environment.environmentRotation, environment.sky, recipe.materials]);
+    environment.skyTop, environment.skyBottom, environment.setup, environment.hdri, environment.keyFromHdri, environment.environmentIntensity, environment.environmentRotation, environment.sky, recipe.materials]);
   if (cache?.key === key && cache.sourceParts === sourceParts && cache.drawnParts === drawnParts && sameFloats(cache.worldMatrices, worldMatrices)) {
     return cache;
   }

@@ -49,7 +49,7 @@ The normal frame loop can render retained parts without calling inspection or ex
 
 ### On-demand code
 
-Mesh editing, `lathe`, `extrude`, `tube` and `curve` geometry, `text` geometry with its font, `terrain` geometry, material `pattern`, `motion` and node `relations` load on demand, so a recipe of
+Mesh editing, `lathe`, `extrude`, `tube` and `curve` geometry, `text` geometry with its font, `terrain` and `floorPlan` geometry, material `pattern`, `motion` and node `relations` load on demand, so a recipe of
 primitives pays about half the bytes. `createAgentScene` and `apply` stay synchronous. When a recipe uses one of them,
 load its code first; a missing module throws an error that names this call.
 
@@ -64,6 +64,8 @@ const scene = createAgentScene(recipe);
 Call `loadAgentSceneModules(operations)` before `apply` when the operations add such features.
 
 The default stages that need a lazy module (flush-face ranking, the floor sky trace) run for a scene when the host called `loadAllAgentSceneModules()` or the scene's own recipe or operations name them. A module that another scene loaded earlier in the process does not turn them on, so one recipe builds the same parts in any order.
+
+An edit of a scene that holds 100,000 or more triangles to rank (a large scan) does not wait for the near-coplanar search of those default stages: `apply` returns with the new parts unranked, `scene.flushPending` is `true`, and the search runs after it, then publishes the ranked parts as a topology change (`topologyRevision` goes up, so a renderer regroups). The search runs in slices of about 8 ms across turns of the event loop, so no single task of the page is long; no part has a rank until the last slice. It is the same search a synchronous edit runs, so the ranks are identical. `scene.settleFlush()` runs it at once and returns whether it had to; `inspect` and the MCP preview frame call it first, so a look or a render never shows a scan unranked. A new scene and any scene under the limit rank inside the call. A scene whose parts move (particles, a moving sea) defers the search of its still parts the same way: the moving parts are never ranked, and the rest parts and the posed parts of the edit wait for the one search.
 
 ## Recipe contract
 
@@ -94,9 +96,10 @@ The generators also enforce their existing numeric and modeling constraints.
 | `tube` | `path`, `radius`, `segments`, `radialSegments`, `closed` | Required XYZ path, `0.1`, `64`, `12`, `false` |
 | `curve` | `points` or `shape` or `splines`, `closed`, `kind`, `weights`, `trim`, `grow`, `radius`, `taper`, `profile`, `resolution`, `radialSegments` | One of points, shape or splines, `false`, `bezier`, 1, none, none, `0.05`, none, round, `12`, `8` |
 | `text` | `text`, `size`, `depth`, `font`, `align`, `curveSegments` | Required string, `1`, `0.2`, `default`, `left`, `4` |
-| `terrain` | `size`, `resolution`, `seed`, `amplitude`, `holes` | `40` m, `64` cells, `1`, `1` m, none |
+| `terrain` | `size`, `resolution`, `seed`, `amplitude`, `holes`, `featureSize`, `octaves`, `warp`, `ridged`, `mountainAmplitude`, `mountainMask`, `chunks`, `levels` | `40` m, `64` cells, `1`, `1` m, none, `size / 4` m, `6`, `0` m, off, `46` m, none, `1`, `1` |
+| `floorPlan` | `walls`, `openings`, `height`, `thickness`, `part` | Required walls, none, `2.7` m, `0.2` m, `all` (see [floor-plan.md](https://crucible.codepawl.com/floor-plan.md)) |
 
-`seed` is a whole number from 0 to 2147483647 (anything else is refused, not rounded or wrapped). `terrain` is one seeded ground mesh from `-size / 2` to `size / 2` on X and Z with hills about y = 0 and up to 16 round `holes` (`{ center: [x, z], radius }`) that leave no surface; it loads on demand. Details are in `scene_capabilities` under `terrain`.
+`seed` is a whole number from 0 to 2147483647 (anything else is refused, not rounded or wrapped). `terrain` is one seeded ground mesh from `-size / 2` to `size / 2` on X and Z with hills about y = 0 and up to 16 round `holes` (`{ center: [x, z], radius }`) that leave no surface; it loads on demand. Shape, chunks and levels: [terrain](https://crucible.codepawl.com/terrain.md#recipe-terrain). Details are in `scene_capabilities` under `terrain`.
 
 Boxes that meet in a room: the rounded edge of a default box leaves a groove where two boxes touch, and sun, sky and lamps shine through it. When at least four pairs of plain boxes (translation and scale only, no parent) touch and the joined boxes have a thin slab on each of the six sides, the engine draws those boxes with sharp edges, whatever their `bevel`. Props that only stand on a floor, rooms without a ceiling, rotated or parented boxes, and scenes with more than 1500 rounded boxes keep their rounded edges. The recipe is not changed, so `bevel` still reads as written.
 
@@ -127,7 +130,7 @@ Base color, metallic, and roughness range from zero to one.
 Emission and independent emissive color must be nonnegative finite Float32 numbers.
 Their component products must also remain finite at Float32 precision.
 Unlit emissive radiance is capped at 65500 per component to fit the half-float HDR target.
-Image textures and the other procedural material tags are outside this version.
+Image textures come from catalog images (a colour map sequence, and scanned texture sets under "Scanned texture sets" below); the other procedural material tags are outside this version.
 
 ### Material patterns
 
@@ -195,6 +198,10 @@ it. Scales and counts are whole numbers (1 to 64, even for `checker`), so every 
 (2D, detail `octaves - 1`, roughness 0.5, lacunarity 2, normalized; `seed` moves the lattice by whole cells) with the lattice
 wrapped so it repeats. `"tile": false` matches Blender's Noise Texture exactly, does not repeat.
 
+`noise` also takes `kind`, `lacunarity` and `gain` (#2856). `kind` is `fbm` (the default, Blender's sum of octaves), `ridged` (each octave is one minus the absolute noise, squared, so sharp crests run where the noise crosses zero: rock, mountains, veins) or `billow` (the absolute noise: rounded hills, puffy clouds); the sums are divided by the amplitude sum, so every kind stays in 0 to 1. `lacunarity` (1 to 4, default 2) is how much the frequency grows each octave and `gain` (0 to 1, default 0.5, Blender's Roughness) how much the amplitude is kept. Leave them out and the output is the same as before. A tiling noise snaps each octave to a whole number of cells, so a lacunarity such as 2.5 still tiles.
+
+Every texture node that takes `at` (all but `vertexGroup`) also takes `warp`: `{ "node": n, "strength": 1 }`, strength 0 to 4 tiles. It moves the lookup by `(n - 0.5) * strength`: a number moves `u` and `v` together (a diagonal push), a vector such as `{ "vec": [noiseA, noiseB, 0] }` moves `u` by its first part and `v` by its second, which flows the pattern in every direction. `warp` is applied after `at`, the warp node is read at the unwarped pixel so a periodic node keeps the texture tiling, and it costs the warp node plus 2. A marble is a `wave` warped by a `noise`: `{ "wave": { "frequency": 6, "direction": "diagonal", "warp": { "node": { "noise": { "scale": 3, "octaves": 5 } }, "strength": 1.5 } } }`.
+
 Placement and pattern nodes:
 
 - `brick` (`columns` 8, `rows` 8 and even, `mortar` 0.05 of a brick, `offset` 0.5 for every other row, `seed`, `output`: `mortar` is 1 in the joint, `edge` is 0 at a joint and 1 at the brick centre, `cell` is one random value per brick) lays a running bond and costs 4. Whole columns and even rows keep it tiling.
@@ -207,6 +214,8 @@ Placement and pattern nodes:
 These make a material work on a mesh without UVs: box mapping (the default) projects the baked graph along the object axes, so a brick wall or a noise pattern needs no unwrap. `vertex_color` on a mesh already multiplies the baked colour. Not in graphs yet: ambient occlusion, bevel and curvature masks, and fresnel anywhere but as an emission factor (they need per-pixel data that a bake from `u` and `v` alone does not have).
 
 `vertexGroup` (`{ "vertexGroup": { "name": "edge" } }`) is a number from 0 to 1: the weight of that vertex group of the mesh. The host draws each group the graph names into a map in UV space (every triangle filled at its UVs with the blend of its three vertex weights, spread a few texels past island edges) and bakes the graph with it, so the weight mixes with noise, ramps and `layer` like any other node: `"color": { "layer": { "base": [0.5, 0.5, 0.5], "top": [0.9, 0.6, 0.2], "mask": { "vertexGroup": { "name": "edge" } } } }`. The pattern needs `"mapping": "uv"` (box mapping has no `u` and `v` to match), and the mesh needs UVs and the group, or building the part fails and lists the groups it has. The result is an ordinary baked texture, so the rasterizer and the CPU and GPU path tracers read it the same way. A material used on two meshes bakes one set of textures for each mesh; one used on a single mesh bakes once. `material.wear` is separate: it needs no UVs and blends per pixel in the rasterizer only.
+
+`meshMap` (`{ "meshMap": { "name": "curvature" } }`) is a number from 0 to 1 baked per texel from the mesh itself, so it is as fine as the texture and not as coarse as the vertices. `curvature` is 0.5 on a flat surface, up to 1 on a convex edge and down to 0 in a concave one: it measures in 3D how the face normal turns toward the other texels within `radius` metres (4 percent of the bounding box diagonal), so a bevel with a handful of vertices makes one band, also when a UV seam cuts it. `ao` is the share of 16 cosine-weighted rays above the surface that hit the mesh within a quarter of the bounding box diagonal (1 in a cavity, 0 in the open). `thickness` is the mean distance of 16 rays below the surface to the mesh behind it, as a share of the bounding box diagonal (0 thin, 1 thick). Like `vertexGroup` it needs `"mapping": "uv"` and a mesh with UVs, and it bakes once per mesh into an ordinary texture. Measured on a 20,000-triangle mesh at 512 by 512: curvature about 0.6 s (about 6 s at 2048 by 2048), `ao` about 3 s, `thickness` about 4 s on the CPU. The bake is bounded: the map is at most 2048 by 2048 and covered texels times rays may not pass 16,000,000, or building the part fails and says what to pass. The same module, `src/mesh-map-bake.js`, has `bakeMeshMap(geometry, name, options)` for rays, radius, gain, distance and seed, and `bakeHighToLowNormalMap(lowGeometry, highGeometry, { cage })`, which writes the tangent space normals of a second, high mesh onto the low mesh. A recipe cannot name a high mesh yet, so the normal bake is a library call.
 
 Limits, checked while the recipe is read: at most 64 nodes in all outputs, depth 12 (the field expression limits), at most 8 ramp
 stops, `resolution` of 256, 512 or 1024, and a work budget of 30 million units, where a plain node costs 1, a `noise` octave 3
@@ -238,6 +247,21 @@ and the geometry UVs.
 - A sequence of up to 64 frames loads whole with the scene. A longer one streams: the scene starts with its first frame, and the host reads and decodes the frame of each requested time from the catalog, keeping that frame and the one before it (two decoded frames per sequence, 32 MiB at 2048 pixels). A video job walks the frames in order and decodes each once, so the limit is per frame and for the frames kept at once, not for the list; the same frame gives the same pixels whole or streamed. The catalog takes up to 4096 image files besides its 64 other files. Streaming serves `scene_look` with `motionTime` and raster still and video jobs. `scene_review` (every shot in one call) and path traced or native jobs (`settings.renderer`, which a streamed sequence refuses with an error that says so) need a sequence of at most 64 frames; a frame that was not decoded is an error, never a silent stale frame.
 - A folder of more than 256 consecutively numbered images (`frame_0001.png` to `frame_2700.png`, one prefix, one digit width, no gap) is not listed per frame. `scene_asset_catalog` lists it once under `sequences`: `{ kind: "sequence", name: "frame_####.png", first, last, frames, width, height }`. Write `map: { sequence: { catalog: "frame_####.png", fps } }` instead of `frames`; pass exactly one of the two. The server swaps in the frame IDs when the call arrives, so the scene, its checkpoints and its render jobs stay pinned to the hashes. The catalog reads only the first frame at startup and hashes the rest on the first recipe that names the sequence (or the first frame ID it does not know yet, such as one from an earlier run). An unknown pattern is refused with the nearest ones; a frame over the limits above is refused with its name. Shorter folders keep one entry per frame.
 - `set-material` and `add-material` take `map`; the frames must be catalog images, which the host decodes before the edit.
+
+### Scanned texture sets
+
+A `surface` material takes the maps of a scanned set (Poly Haven, ambientCG) from catalog images. Put the files of one material in a sub-folder of `--assets`, with at least two standard map names, and `scene_asset_catalog` lists the folder once under `textureSets` (`kind: "textureSet"`, its `name` and the maps it found with asset ID, size and file name) instead of one image per file:
+
+```json
+{ "id": "rock", "textureSet": "rock_boulder_dry" }
+```
+
+- Names it knows (case does not matter, `_`, `-` and camel case separate words): colour is `color`, `albedo`, `diffuse` or `diff`; normal is `normal`, `nor`, `nrm` with `gl` or `dx` (`NormalGL`, `nor_dx`), and OpenGL wins when a folder holds both; `roughness` or `rough`; `metallic`, `metalness` or `metal`; `ao` or `occlusion`; `height`, `displacement` or `disp`. A folder with two files for one map is skipped and listed under `skipped`. PNG, JPEG and WebP only, at most 2048 pixels a side (a 1k set fits; a larger image is skipped with its reason), so a `.exr` displacement map is not found.
+- `textureSet` fills `colorMap`, `normalMap`, `roughnessMap`, `metallicMap`, `occlusionMap` and `heightMap`. Each of those fields also takes one catalog image asset ID on its own and wins over the set. The server swaps `textureSet` for the IDs before the scene is built, so a saved recipe holds only the pinned IDs; a library caller passes the IDs. An ID that is not a catalog image, or a set name that does not exist, fails with the field, the IDs that would fit and the sets the catalog has.
+- `normalConvention` is `opengl` (default) or `directx`. A DirectX normal map has its green channel flipped when it is loaded; a set whose only normal map is a DirectX file sets it for you.
+- The roughness and metallic images are repacked into one glTF metallicRoughness texture: roughness in green, metallic in blue, the other channel 255, so `roughness` and `metallic` (default 1 when their map is set) still scale it. Their sizes must match.
+- `colorMap` is the base colour, `color` tints it (white by default). It cannot be combined with `map` or `pattern`, nor can any other map field with `pattern`. The material needs UVs.
+- `occlusionMap` is drawn by the rasterizer; the path tracers ignore it and say so. `heightMap` is kept and exported in the recipe, but no renderer displaces or parallax-maps from it yet: `scene_inspect` reports it as ignored, and a path traced render lists it under `ignored`.
 
 Nodes contain `id`, optional `label`, `parent`, `translation`, `rotation`, and `scale`.
 Mesh nodes also require both `geometry` and `material` resource IDs.
@@ -322,6 +346,10 @@ A node with an `asset` field places a GLB from the `--assets` catalog inside the
 - Bounds: 512 placements, 32 different assets (and 64 MiB of asset files in all), 16 placements playing a clip, and `maxNodes` for the generated parts. Placed geometry does not count against `maxVertices`; each asset keeps the decoder limits of the catalog.
 - `scene_inspect` adds `assets`: per placement the asset id, part count, world bounds, clips (index, name, duration), material names and the playing clip.
 - `scene_apply` places a catalog asset with `add-node` even when the scene had none: the first `add-node` with an `asset` loads it, a second node with the same asset id shares its geometry. An id the catalog does not list fails with an error that names it and points at `scene_asset_catalog`, and the placement and asset bounds below still hold. A session made by `scene_create_asset` holds one imported asset and cannot place others. Render jobs draw placed assets and play their clips on scene time (`settings.motion.start`).
+
+### Clutter
+
+A node with a `clutter` field is a group that scatters pebbles, rocks, twigs and fallen leaves from the addon in [Ground clutter](https://crucible.codepawl.com/clutter.md): a list of one to four layers `{ "preset", "terrain" or "area", "density", "seed", "slopeLimit", "mask", "exclude", "cullDistance" }`. Its parts become generated child nodes like placed assets, and `scene_inspect` adds `clutter`. Fields, limits and an example are in [Recipes and MCP](https://crucible.codepawl.com/clutter.md#recipes-and-mcp).
 
 ### Vegetation
 
@@ -575,7 +603,23 @@ Global counts include nodes, render parts, unique geometries, materials, and uni
 
 Those fields describe active resources, including unused resources.
 `residentGeometryBytes` and `residentGeometryVertices` include unique active and checkpoint allocations.
-Inspection does not report GPU timing or renderer allocation.
+The scene's own `inspect` does not report GPU timing or renderer allocation; the MCP tool adds them on request, below.
+
+### Cost profile
+
+`scene_inspect` with `profile: true` adds `profile`, what the scene costs to draw as it stands:
+
+```json
+{ "profile": { "frames": 30, "millisecondsPerFrame": 4.1, "millisecondsMinimum": 3.8, "millisecondsMaximum": 6.2,
+  "drawCalls": 41, "triangles": 182340, "textureBytes": 12582912, "splatBytes": 0, "width": 768, "height": 512,
+  "heaviestNodes": [{ "id": "hull", "triangles": 90112, "parts": 1 }] } }
+```
+
+- It draws `profileFrames` frames (1 to 120, default 30, the same size as the preview) after one unmeasured frame. `millisecondsPerFrame` is the median; each frame includes the wait for the GPU. Other work on the machine moves it, so read it as a range.
+- `drawCalls` and `triangles` are per frame and count every pass the frame draws, shadows and post effects included, the way `bench/runtime` counts them.
+- `textureBytes` is the texture memory the renderer holds (material maps, skin and morph data, the sky map and splat layers); `splatBytes` is the splat share of it.
+- `heaviestNodes` are the five nodes with the most triangles; parts that share a node add up.
+- It needs the GPU preview, takes a GPU slot like `scene_look`, and without `profile` the answer is exactly what it was.
 
 With `includeBounds: true`, each mesh record includes `{ min, max }` from every transformed geometry vertex.
 Group bounds are `null`.

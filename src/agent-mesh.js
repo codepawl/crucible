@@ -6,6 +6,7 @@ import { applyMeshEdits, evaluateMeshStack } from './mesh-recipe.js';
 import { extractRender } from './mesh-render.js';
 import { normalizeShapeKeys, shapeKeyTargets } from './mesh-shape-keys.js';
 import { realizedGeometry } from './mesh-instances.js';
+import { createHeightSourceResolver } from './mesh-displace-source.js';
 import { MESH_SMOOTH_ANGLE_DEFAULT } from './agent-scene-capabilities.js';
 
 export { MESH_SMOOTH_ANGLE_DEFAULT };
@@ -108,7 +109,7 @@ export function defaultSmoothAngle(edits = [], stack = []) {
  * does. `cacheKey` identifies the base; the edit result and every stack prefix are cached under it.
  */
 export function generateMeshGeometry(baseGeometry, edits, {
-  maxVertices, stack = [], smoothAngle = defaultSmoothAngle(edits, stack), resolveCutter, cacheKey, shapeKeys = [],
+  maxVertices, stack = [], smoothAngle = defaultSmoothAngle(edits, stack), resolveCutter, heightSources, cacheKey, shapeKeys = [],
 }) {
   const realized = cacheKey && realizedGeometry(cacheKey);
   if (realized) {
@@ -117,18 +118,19 @@ export function generateMeshGeometry(baseGeometry, edits, {
     }
     return realized;
   }
+  const resolveHeight = heightSources ? createHeightSourceResolver(heightSources) : undefined;
   const editsKey = cacheKey === undefined ? undefined : `${cacheKey}|edits|${JSON.stringify(edits)}`;
   let edited = editsKey === undefined ? undefined : evaluationCache.get(editsKey);
   if (!edited) {
     const base = meshFromGeometry(baseGeometry());
     const outcome = applyMeshEdits(base, edits, {
       maxVertices, maxFaces: maxVertices,
-      resolveCutter: resolveCutter && (cutter => meshFromGeometry(resolveCutter(cutter))),
+      resolveCutter: resolveCutter && (cutter => meshFromGeometry(resolveCutter(cutter))), resolveHeight,
     });
     edited = { mesh: outcome.mesh, result: outcome.results };
     if (editsKey !== undefined) evaluationCache.set(editsKey, edited);
   }
-  const evaluated = evaluateMeshStack(edited.mesh, stack, { maxVertices, maxFaces: maxVertices, cache: evaluationCache, cacheKey: editsKey });
+  const evaluated = evaluateMeshStack(edited.mesh, stack, { maxVertices, maxFaces: maxVertices, cache: evaluationCache, cacheKey: editsKey, resolveHeight });
   const { geometry, renderVertexSource } = extractRender(evaluated.mesh, { sharpAngle: smoothAngle * Math.PI / 180 });
   if (geometry.positions.length / 3 > maxVertices) {
     throw invalidField('edits', geometry.positions.length / 3, `an edited mesh of at most ${maxVertices} render vertices (maxVertices); use fewer subdivisions or segments`);

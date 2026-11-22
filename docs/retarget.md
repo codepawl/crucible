@@ -76,6 +76,31 @@ Assumptions and limits:
   "Foot lock" in [agent-motion.md](agent-motion.md). In code, `createFootLock` in `src/foot-lock.js` does the same over an
   asset's nodes.
 
+### BVH motion capture
+
+A `.bvh` file (the open mocap text format of CMU and many exports) is read by `parseBvh(text, { scale })` in `src/bvh.js`:
+`HIERARCHY` with `OFFSET`, `CHANNELS` in any order and `End Site`, then `MOTION` with `Frames` and `Frame Time`. It returns the joints
+(parents first), the frame values, `frameRate` and the `scale` it used. `bvhToGlb(text, { name, scale })` in `src/bvh-gltf.js` writes a
+skeleton-only GLB from it: the OFFSETs are the rest pose (no rotation), each rotating joint gets a rotation track and each joint with a
+position channel a translation track, at the times of `Frame Time`. That GLB loads with `parseGltf`, so `clipFromGltfAnimation` and
+`retargetClip` take it like any other source.
+
+- Rotation channels compose in the order listed, the first outermost: `Zrotation Xrotation Yrotation` is Rz * Rx * Ry, in degrees. A
+  position channel gives its axis outright; an axis without one keeps the OFFSET.
+- `scale` is metres per file unit. Left out, or `"auto"`, the rest height of the skeleton picks it: up to 4 is metres, below 40 the CMU
+  unit (0.45 inch), otherwise centimetres. The hips travel is scaled by the rest hip heights on retargeting, so the unit does not change
+  what a target does; it sets the size of the standalone clip.
+- `restPose` is `'auto'` (default), `'offsets'` or `'firstFrame'`. The retarget compares each bone with the rest pose, and a mocap file's
+  zero pose is only the skeleton's own (CMU's splays the legs by about 20 degrees and leans the spine), which a T-pose character would
+  copy. Many files open with a T-pose reference frame, so `'auto'` makes frame 0 the rest pose, and does not play it, when its bones lie
+  clearly closer to the world axes than the OFFSETs do. `'offsets'` keeps the zero pose and every frame; `'firstFrame'` forces frame 0.
+  The result reports `restPose` and the played `frameCount`.
+- Bounded: 256 joints (End Sites count), 100,000 frames, 8,000,000 channel values and 32 MiB of text. Errors name the line and what was
+  expected.
+- The catalog (`--assets` and packs) accepts `.bvh`: `scene_asset_catalog` lists it as a GLB with `meshes: 0`, one clip named after the
+  file, and its ID is the hash of the converted GLB. Use that ID as `motion.layers[].from.asset` ([agent-motion.md](agent-motion.md)).
+- The skeleton must map to the humanoid bones (a CMU file does) and face the same way as the target, +Y up.
+
 `createSkinClipPlayer(skin, clip, { rig, meshWorldMatrix })` applies a clip to a skin: `apply(seconds)` samples the clip, composes joint
 world matrices and calls `updateSkinPose`. The renderer still needs `updateParts` afterwards.
 

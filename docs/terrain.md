@@ -88,7 +88,30 @@ Memory: three `TEXTURE_2D_ARRAY`s on units 11, 12 and 14 (sRGB colour, normal, r
 
 `createTerrain({ holes: [{ center: [x, z], radius }] })` (up to 64 circles, radius in metres) leaves no surface where a cell centre falls inside a circle, so a cave mouth or a shaft opens through the ground. `terrain.isHole(x, z)` tells whether a point is inside one. `heightAt` and `normalAt` ignore holes and still return the surface that would be there, so check `isHole` before standing something on it. A coarser level of detail cuts a coarser hole (its cells are bigger), so give a hole a radius of a few finest cells at least. A hole that covers a whole chunk gives that chunk empty geometry. Without `holes` the meshes are byte-identical to before (a test keeps a digest).
 
-In a recipe, the same ground is the `terrain` geometry (`size`, `resolution`, `seed`, `amplitude`, `holes`): see [agent-scene](agent-scene.md). There, holes that remove every cell are refused with an error on `geometries[i].holes` (lower a radius or move a center), and a hole that removes no cell, because it does not reach a cell centre, returns a `terrain-hole-removes-no-cell` warning with the cell size (`size / resolution`) and the smallest radius that removes one. `scene_export_glb` names the node whose mesh has no triangles.
+In a recipe, the same ground is the `terrain` geometry: see [Recipe terrain](#recipe-terrain) and [agent-scene](agent-scene.md). There, holes that remove every cell are refused with an error on `geometries[i].holes` (lower a radius or move a center), and a hole that removes no cell, because it does not reach a cell centre, returns a `terrain-hole-removes-no-cell` warning with the cell size (`size / resolution`) and the smallest radius that removes one. `scene_export_glb` names the node whose mesh has no triangles.
+
+## Paths
+
+`paths` carves roads, trails and riverbeds into the ground and gives each one a mask. It works in `createTerrain({ paths })` and in the recipe `terrain` geometry. At most 16 paths of 2 to 256 points `[x, z]` in metres each.
+
+| Field | Meaning | Range (default) |
+| --- | --- | --- |
+| `points` | the centre line: a curve through them, or straight segments with `smooth: false` | 2 to 256 points |
+| `width` | metres across the carved bed | 0.1 to 200 (3) |
+| `depth` | metres the bed sits below the ground at the centre line | 0 to 20 (0.2) |
+| `falloff` | metres on each side where the bed blends back into the hills | 0 to 200 (`width`) |
+| `ruts` | depth in metres of two wheel grooves at 0.225 of the width from the centre, so the strip between them is about as wide as one groove | 0 to 2 (0) |
+| `crown` | metres the middle of the bed rises above its sides | 0 to 2 (0) |
+| `shoulder` | metres of a lip raised beside the road, in the middle of the falloff | 0 to 2 (0) |
+| `smooth` | `true` runs a Catmull-Rom curve through the points, sampled every `width / 4` metres; `false` keeps straight segments | true or false (true) |
+| `name` | name of the mask | 1 to 64 characters (`path0`, `path1`, ...), no two alike |
+
+- The bed is level across its width at the height the ground has under the nearest point of the centre line, minus `depth`, so a road across a slope is cut into the hillside. Paths apply in order after the noise. The same seed and points give the same heights.
+- The carve changes the height grid, so the mesh, `heightAt`, `normalAt` and vegetation all see the road.
+- `terrain.pathMasks` is `null` without paths. Otherwise `names` lists the masks, `at(name, x, z)` gives 0 to 1 (1 across the width, fading to 0 over half the falloff; no name gives the strongest of all paths), and `image(name, resolution = 256)` gives `{ width, height, data, bounds }` RGBA pixels with the mask in red. Use it as a splat `maskMap` with `maskBounds: [-size / 2, -size / 2, size / 2, size / 2]` and the rule `{ mask: 'r', invertMask: true }` on grass and `{ mask: 'r' }` on dirt.
+- A recipe does not draw splat materials yet, so the mask feeds the splat rules of an addon scene. Clutter or vegetation `exclude` can read `pathMasks.at(name, x, z)` the same way; the recipe `exclude` field takes only circles and nodes today.
+- Cost: segments sit in a grid, so a sample reads only those near it. A smoothed path of 256 points is at most 8192 segments in all.
+- Looks: a cut bench reads best with `depth` 0.7 to 1, `falloff` 1 to 1.5 (a steep bank; a wide falloff gives a soft slope), `shoulder` 0.3 and a road layer with `triplanar: true` and `splat.triplanarStart` near 12 so banks do not stretch the texture. A rut is as wide as about a quarter of the half-width, so give the ground cells of 0.1 m or less (a 40 m ground at resolution 400) to see two clear grooves; at 0.5 m cells they blur.
 
 ## Terrain near water
 
@@ -143,6 +166,28 @@ const { points, length, searchNodes } = navmesh.findPath([-15, -15], [15, 15], {
 - **Measured** (40 m rolling ground at 64 cells, one 3 m hole, agent radius 0.3, corner to corner, Node on the Windows PC): 17,956 cells built in 13 ms, a path of 43.04 m (straight line 42.43 m) in 35 ms with 4,245 search nodes and 30 points.
 
 In an agent scene, `scene_inspect` takes `path: { ground, from: [x, z], to: [x, z], avoid, radius, maxSlope, cellSize, seconds, speed, lift, spacing }` and returns keyframes for a node translation track (`LINEAR`). `ground` is a node ID, `avoid` lists node IDs whose box footprints block. It reads the authored pose and changes nothing. Details are in `scene_capabilities` under `navigation`.
+
+## Recipe terrain
+
+The `terrain` geometry of a recipe calls `createTerrain` with these fields. A field you leave out keeps today's value, so an older recipe draws the same heights.
+
+| Field | Meaning | Range (default) |
+| --- | --- | --- |
+| `size`, `seed`, `amplitude` | ground width in metres, noise seed, hill height | 1 to 2000 (40), whole 0 to 2147483647 (1), 0 to 200 (1) |
+| `featureSize` | width of one hill in metres | 0.01 to 10000 (`size / 4`) |
+| `octaves` | noise layers; fewer is smoother | whole 1 to 8 (6) |
+| `warp` | metres a slow noise pushes the ground sideways, which bends valleys; a warp near `featureSize` stretches the noise into steep, jagged slopes (a 110 m warp on 150 m features did) | 0 to 1000 (0) |
+| `ridged` | `true` grows ridged mountains in the patches the library picks | true or false (false) |
+| `mountainMask` | one share of ridged mountains over the whole ground; not together with `ridged` | 0 to 1 (0) |
+| `mountainAmplitude` | height of the ridged mountains in metres | 0 to 500 (46) |
+| `chunks`, `levels` | chunks per side, levels of detail | whole 1 to 64 (1), whole 1 to 6 (1) |
+| `resolution` | cells per chunk (the whole ground when `chunks` is 1) | whole 2 to 499 (64) |
+
+- A scene allows 250000 vertices by default and every chunk is its own mesh, so `chunks * chunks * (resolution + 1) ** 2` must stay under it. 499 cells is the largest single ground (250000 vertices, about 15 MB of geometry, under the 32 MB cap). The error names the vertex count and the cap.
+- `resolution` must divide by `2 ** (levels - 1)`, and `chunks * resolution` is at most 4096 cells per side, as in `createTerrain`.
+- A record with `chunks` or `levels` above 1 is built at its finest level, and the scene swaps in the level each chunk needs for the camera at every pose: each frame of a render job and each time of a camera track. The mesh is the same object while no chunk changes level. `heightAt`, vegetation and navigation read the finest grid, so heights do not depend on `chunks` or `levels`. A moved or scaled ground sees the camera in its own space.
+- `holes` cut cells of the whole ground (`chunks * resolution` across).
+- `paths` carve roads: see [Paths](#paths).
 
 ## Measured
 

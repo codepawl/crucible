@@ -1,0 +1,103 @@
+HIERARCHY
+ROOT Hips
+{
+  OFFSET 0 100 0
+  CHANNELS 6 Xposition Yposition Zposition Zrotation Xrotation Yrotation
+  JOINT Spine
+  {
+    OFFSET 0 20 0
+    CHANNELS 3 Zrotation Xrotation Yrotation
+    JOINT Head
+    {
+      OFFSET 0 50 0
+      CHANNELS 3 Zrotation Xrotation Yrotation
+      End Site
+      {
+        OFFSET 0 20 0
+      }
+    }
+    JOINT LeftArm
+    {
+      OFFSET 20 30 0
+      CHANNELS 3 Zrotation Xrotation Yrotation
+      JOINT LeftForeArm
+      {
+        OFFSET 30 0 0
+        CHANNELS 3 Zrotation Xrotation Yrotation
+        JOINT LeftHand
+        {
+          OFFSET 25 0 0
+          CHANNELS 3 Zrotation Xrotation Yrotation
+          End Site
+          {
+            OFFSET 10 0 0
+          }
+        }
+      }
+    }
+    JOINT RightArm
+    {
+      OFFSET -20 30 0
+      CHANNELS 3 Zrotation Xrotation Yrotation
+      JOINT RightForeArm
+      {
+        OFFSET -30 0 0
+        CHANNELS 3 Zrotation Xrotation Yrotation
+        JOINT RightHand
+        {
+          OFFSET -25 0 0
+          CHANNELS 3 Zrotation Xrotation Yrotation
+          End Site
+          {
+            OFFSET -10 0 0
+          }
+        }
+      }
+    }
+  }
+  JOINT LeftUpLeg
+  {
+    OFFSET 10 0 0
+    CHANNELS 3 Zrotation Xrotation Yrotation
+    JOINT LeftLeg
+    {
+      OFFSET 0 -50 0
+      CHANNELS 3 Zrotation Xrotation Yrotation
+      JOINT LeftFoot
+      {
+        OFFSET 0 -45 0
+        CHANNELS 3 Zrotation Xrotation Yrotation
+        End Site
+        {
+          OFFSET 0 -5 12
+        }
+      }
+    }
+  }
+  JOINT RightUpLeg
+  {
+    OFFSET -10 0 0
+    CHANNELS 3 Zrotation Xrotation Yrotation
+    JOINT RightLeg
+    {
+      OFFSET 0 -50 0
+      CHANNELS 3 Zrotation Xrotation Yrotation
+      JOINT RightFoot
+      {
+        OFFSET 0 -45 0
+        CHANNELS 3 Zrotation Xrotation Yrotation
+        End Site
+        {
+          OFFSET 0 -5 12
+        }
+      }
+    }
+  }
+}
+MOTION
+Frames: 4
+Frame Time: 0.0333333
+0 98 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 99 10 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 30 0 0 0 0 0 0 0 0 -30 0 0 0 0 0 0 0
+0 100 20 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 101 30 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -30 0 0 0 0 0 0 0 0 30 0 0 0 0 0 0 0

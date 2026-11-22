@@ -67,7 +67,7 @@ const motion = {
 };
 ```
 
-Node properties are `translation`, `rotation`, and `scale`.
+Node properties are `translation`, `rotation`, `scale`, `visible` and `opacity`. An `opacity` track runs from 0 (clear) to 1 (opaque) and multiplies the material opacity of the node and of the nodes under it; it eases like any track, and a value outside 0 to 1 is refused with that range. A node with an opacity track draws blended even at 1 (an opaque material gets a private blended view, so the nodes that share the material keep it; an `add` or `blend` material is used as it is). At 0 the part draws nothing. The raster renderer honors it; the path tracer does not yet.
 Material properties are `color`, `emissiveColor`, `emission`, `metallic`, and `roughness`.
 A material track names a recipe material, or the `id` of an `asset.materials[]` override on a placed asset (docs/agent-scene.md), which is how an imported part heats and cools.
 Camera properties are `eye`, `target`, `fov`, and `roll`.
@@ -184,6 +184,8 @@ arms and legs) or the call fails and lists what is missing. `scale` (0.1 to 10) 
 `retargetClip` options of the same names. `from` replaces `clip` and `bones`, and morph tracks of the source are not carried.
 The runtime reads the other asset by its catalog ID (at most 4 at once); a session made without a catalog cannot use it.
 The source can be a skeleton-only file (`meshes: 0` in `scene_asset_catalog`, such as the 100STYLE clips): only its clips and joints are read. `scene_create_asset` on such a file fails, since it has nothing to draw.
+A `.bvh` motion capture file in the catalog is such a source: it is listed as a skeleton-only GLB with one clip, so `from` takes its ID
+with `clip: 0` ([BVH motion capture](https://crucible.codepawl.com/retarget.md#bvh-motion-capture)).
 `scene_inspect` `kind: "hierarchy"` returns `retargets`: per `from` layer, `source` and `target` with `mapped` (bones
 matched), `unmapped` (joints no bone claimed, up to 24, with `unmappedCount`) and `missing`.
 
@@ -251,7 +253,28 @@ A track `{ "kind": "morph", "id": "eyeBlinkLeft", "property": "weight", "keyfram
 morph target of that name, with the interpolations and `easing` of any other track. It replaces what a layer or the file
 gives that target; targets without a track keep theirs. Names come from the file (`extras.targetNames`, the glTF convention
 that Blender and face rigs with ARKit names such as `eyeBlinkLeft` and `jawOpen` export); `scene_inspect` returns them as
-`morphTargetNames`, and an unknown name fails with the first ones. Tracks can address morph targets only on an imported asset.
+`morphTargetNames`, and an unknown name fails with the first ones. Tracks address the morph targets of an imported asset and the `shapeKeys` of a recipe mesh.
+
+### Facial animation
+
+`motion.face` writes the morph tracks of a talking head for you: blinks, named expressions and lip sync from a timed phoneme list. It works on any character whose shape keys (or imported morph targets) include the keys it needs, and the stored motion holds the resulting tracks, so seeking, render jobs and GLB export use the path above. The same `face` and `seed` give the same keyframes.
+
+```json
+{ "duration": 4, "face": {
+  "blink": { "interval": 3.5, "jitter": 0.3, "seed": 7 },
+  "expressions": [{ "time": 0, "name": "smile", "weight": 0.4, "blend": 0.3 }],
+  "visemes": { "blend": 0.05, "coarticulation": 0.5, "phonemes": [
+    { "time": 0.3, "phoneme": "HH" }, { "time": 0.44, "phoneme": "AH" }, { "time": 0.58, "phoneme": "L" }, { "time": 0.72, "phoneme": "OW" }, { "time": 0.9, "phoneme": "sil" }
+  ] }
+} }
+```
+
+- `blink` takes `interval` (0.5 to 30 s, default 3.5), `jitter` (0 to 1, the fraction an interval may vary, default 0.3), `seed` (a whole number, default 1), `start` (first blink, default half an interval) and `keys` to name the lid keys. Without `keys` it looks for `eyeBlinkLeft` and `eyeBlinkRight`, then `blinkLeft` and `blinkRight`, `eyesClosed` and `blink`. The closure is the curve the film path uses for its blinks.
+- `expressions` is up to 64 `{ time, name, weight, blend }` entries. An expression fades in over `blend` seconds (default 0.2) and fades out as the next one arrives; the last holds to the end. Built-in names are `neutral`, `smile`, `frown`, `sad`, `angry` and `surprised` (ARKit keys); `definitions` adds or replaces names with `{ "smirk": { "mouthSmileRight": 0.7 } }`.
+- `visemes.phonemes` is up to 4096 `{ time, phoneme }` entries in time order. A phoneme lasts until the next one (0.12 s for the last). Phonemes are ARPAbet (`AA`, `HH`, `SH`, ...) or the Oculus visemes (`sil`, `PP`, `FF`, `TH`, `DD`, `kk`, `CH`, `SS`, `nn`, `RR`, `aa`, `E`, `I`, `O`, `U`); `sil` closes the mouth. Each shape ramps in and out over `blend` seconds (default 0.06) and a phoneme shorter than twice that peaks lower instead of overshooting. `coarticulation` (0 to 1, default 0.5) starts each shape early and ends it late by that fraction of `blend`, so neighbours overlap and the mouth glides instead of snapping; overlapping shapes on one key take the larger weight.
+- `rig` is `auto` (default), `oculus` or `arkit`. An Oculus head (keys such as `viseme_PP`, as in Ready Player Me) gets one key per viseme; an ARKit head (`jawOpen`, `mouthFunnel`, ...) gets a mix of ARKit keys per viseme. `visemes.map` overrides a viseme with `{ "aa": { "MouthOpen": 1 } }` for any other rig.
+
+Key names match without case, separators or the `viseme_` prefix, and a `_L` or `_R` ending reads as Left or Right, so `eyeBlink_L` (the three.js face cap) and `eyeBlinkLeft` are one key. When a key is missing the error names it and lists the keys the character has. `face` plus an authored track on the same key is refused: merge them into one track. The tracks count toward the 2048 keyframes of a motion and 256 per track.
 
 ### Ocean time tracks
 
