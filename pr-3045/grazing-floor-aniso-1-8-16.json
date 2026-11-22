@@ -1,0 +1,81 @@
+{
+ "description": "Top to bottom: maxAnisotropy 1, 8 (the old default), 16 (the new default). Crop of a 1280x720 render, left 340 top 330 width 600 height 300. Floor is root/grain-floor.glb: a 6 m plane with the walnut table-top image of public/desk-flat-lay.glb tiled 8x (built by make-floor-glb.mjs).",
+ "backend": "gpu (D3D11 ANGLE, headless Chrome)",
+ "size": [
+  1280,
+  720
+ ],
+ "seed": "none (no random inputs)",
+ "camera": {
+  "eye": [
+   0,
+   0.25,
+   2.5
+  ],
+  "target": [
+   0,
+   0,
+   -2.5
+  ],
+  "fov": 40
+ },
+ "sunDirection": [
+  -0.12,
+  0.62,
+  -0.78
+ ],
+ "levels": [
+  1,
+  8,
+  16
+ ],
+ "scene": {
+  "glb": "grain-floor.glb",
+  "hdri": "/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr",
+  "hdriOptions": {
+   "intensity": 0.45,
+   "rotation": 0,
+   "showBackground": true
+  },
+  "exposure": 0.85,
+  "renderer": {
+   "ground": false,
+   "hdr": true,
+   "samples": 2,
+   "environment": {
+    "lightDirection": [
+     -0.12,
+     0.62,
+     -0.78
+    ],
+    "keyColor": [
+     2.3,
+     2,
+     1.65
+    ],
+    "keyIntensity": 1,
+    "fillIntensity": 0.6,
+    "ambientIntensity": 0.8,
+    "sunAngularRadius": 0.02,
+    "shadowCascades": 3
+   },
+   "maxAnisotropy": 1
+  },
+  "frame": {
+   "fov": 40,
+   "near": 0.05,
+   "far": 30,
+   "effects": {}
+  },
+  "eye": [
+   0,
+   0.25,
+   2.5
+  ],
+  "target": [
+   0,
+   0,
+   -2.5
+  ]
+ }
+}
