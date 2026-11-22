@@ -2,16 +2,16 @@
   "scene": "public/showcase/chipfab/scene.json with the camera in sceneRecipe",
   "camera": {
     "eye": [
-      25.0185,
-      2.3,
-      -0.0741
+      20,
+      2.2,
+      0.5
     ],
     "target": [
-      53.1111,
-      2.2519,
-      -0.0333
+      30,
+      2.6,
+      6
     ],
-    "fov": 56.7
+    "fov": 46
   },
   "sceneRecipe": {
     "id": "chipfab",
@@ -238,7 +238,7 @@
       }
     },
     "frame": {
-      "fov": 56.7,
+      "fov": 46,
       "near": 0.3,
       "far": 400,
       "effects": {
@@ -273,14 +273,14 @@
       }
     ],
     "eye": [
-      25.0185,
-      2.3,
-      -0.0741
+      20,
+      2.2,
+      0.5
     ],
     "target": [
-      53.1111,
-      2.2519,
-      -0.0333
+      30,
+      2.6,
+      6
     ]
   },
   "size": [
@@ -508,5 +508,5 @@
     "backgroundBlur": 0
   },
   "exposure": 0.8,
-  "bytes": 32434
+  "bytes": 39682
 }
