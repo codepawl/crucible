@@ -1,0 +1,309 @@
+{
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "sea",
+        "type": "mesh",
+        "base": {
+          "type": "box",
+          "bevel": 0.002
+        },
+        "edits": [
+          {
+            "op": "delete",
+            "select": {
+              "not": {
+                "normal": [
+                  0,
+                  1,
+                  0
+                ],
+                "maxAngle": 10
+              }
+            }
+          },
+          {
+            "op": "subdivide_edges",
+            "edges": {
+              "all": true
+            },
+            "cuts": 16
+          },
+          {
+            "op": "subdivide",
+            "levels": 3
+          },
+          {
+            "op": "set_position",
+            "position": {
+              "mul": [
+                {
+                  "attr": "position"
+                },
+                [
+                  600,
+                  1,
+                  600
+                ]
+              ]
+            }
+          },
+          {
+            "op": "ocean",
+            "axis": "y",
+            "windSpeed": 10,
+            "direction": 100,
+            "choppiness": 1,
+            "size": 50,
+            "seed": 7,
+            "time": 2,
+            "resolution": 10
+          }
+        ]
+      },
+      {
+        "id": "tower-left",
+        "type": "cloud",
+        "seed": 11,
+        "width": 40,
+        "height": 66,
+        "flatBase": 0.8,
+        "upBias": 0.5,
+        "unionSoftness": 0.2,
+        "resolution": 112,
+        "levels": [
+          {
+            "count": 7,
+            "sizeRatio": 1
+          },
+          {
+            "count": 60,
+            "sizeRatio": 0.35
+          },
+          {
+            "count": 680,
+            "sizeRatio": 0.12
+          }
+        ]
+      },
+      {
+        "id": "tower-middle",
+        "type": "cloud",
+        "seed": 23,
+        "width": 46,
+        "height": 84,
+        "flatBase": 0.8,
+        "upBias": 0.5,
+        "unionSoftness": 0.2,
+        "resolution": 112,
+        "levels": [
+          {
+            "count": 7,
+            "sizeRatio": 1
+          },
+          {
+            "count": 60,
+            "sizeRatio": 0.35
+          },
+          {
+            "count": 680,
+            "sizeRatio": 0.12
+          }
+        ]
+      },
+      {
+        "id": "tower-right",
+        "type": "cloud",
+        "seed": 5,
+        "width": 36,
+        "height": 58,
+        "flatBase": 0.8,
+        "upBias": 0.5,
+        "unionSoftness": 0.2,
+        "resolution": 112,
+        "levels": [
+          {
+            "count": 7,
+            "sizeRatio": 1
+          },
+          {
+            "count": 60,
+            "sizeRatio": 0.35
+          },
+          {
+            "count": 680,
+            "sizeRatio": 0.12
+          }
+        ]
+      }
+    ],
+    "materials": [
+      {
+        "id": "water",
+        "tag": "water",
+        "color": [
+          0.0033,
+          0.042,
+          0.069
+        ],
+        "metallic": 0,
+        "roughness": 0.14
+      },
+      {
+        "id": "cumulus",
+        "color": [
+          1,
+          1,
+          1
+        ],
+        "metallic": 0,
+        "roughness": 1,
+        "toon": 3,
+        "toonColors": [
+          [
+            0.05,
+            0.21,
+            0.25
+          ],
+          [
+            0.4,
+            0.58,
+            0.53
+          ],
+          [
+            1,
+            0.87,
+            0.9
+          ]
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "id": "sea",
+        "geometry": "sea",
+        "material": "water"
+      },
+      {
+        "id": "tower-left",
+        "geometry": "tower-left",
+        "material": "cumulus",
+        "translation": [
+          -46,
+          6,
+          -34
+        ]
+      },
+      {
+        "id": "tower-middle",
+        "geometry": "tower-middle",
+        "material": "cumulus",
+        "translation": [
+          8,
+          6,
+          -90
+        ]
+      },
+      {
+        "id": "tower-right",
+        "geometry": "tower-right",
+        "material": "cumulus",
+        "translation": [
+          56,
+          6,
+          -50
+        ]
+      }
+    ],
+    "camera": {
+      "eye": [
+        0,
+        14,
+        70
+      ],
+      "target": [
+        0,
+        38,
+        -40
+      ],
+      "fov": 50
+    },
+    "effects": {
+      "exposure": 0.9
+    },
+    "environment": {
+      "sky": {
+        "type": "physical",
+        "sunElevation": 38,
+        "sunRotation": 235,
+        "turbidity": 2,
+        "aerialPerspective": 0.3
+      },
+      "world": true,
+      "ground": false,
+      "ambientIntensity": 0.3,
+      "keyIntensity": 1.8
+    }
+  },
+  "settings": {
+    "width": 1280,
+    "height": 720,
+    "quality": "realtime-high",
+    "backend": "gpu"
+  },
+  "camera": {
+    "eye": [
+      0,
+      14,
+      70
+    ],
+    "target": [
+      0,
+      38,
+      -40
+    ],
+    "fov": 50
+  },
+  "sky": {
+    "type": "physical",
+    "sunElevation": 38,
+    "sunRotation": 235,
+    "turbidity": 2,
+    "aerialPerspective": 0.3
+  },
+  "metrics": {
+    "backend": "gpu",
+    "memoryBudgetMiB": 192,
+    "maximumMemoryMiB": 4096,
+    "requestedWidth": 1280,
+    "requestedHeight": 720,
+    "renderSeconds": 0.07622829999999885,
+    "captureSeconds": 0.03980400000000009,
+    "peakNodeBytes": 137711616,
+    "peakBrowserHeap": 121113580,
+    "maximumPendingFrames": 1,
+    "requiredMemoryMiB": 142,
+    "graphics": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "width": 1280,
+    "height": 720,
+    "estimatedBytes": 147877276,
+    "elapsedSeconds": 10.6151781,
+    "report": {
+      "measured": {
+        "seconds": 10.62,
+        "peakMemoryMiB": 247,
+        "frames": 1,
+        "secondsPerFrame": 10.615
+      },
+      "fallbacks": [],
+      "estimate": {
+        "seconds": 1.2,
+        "peakMemoryMiB": 287,
+        "basis": "scene size"
+      },
+      "secondsRatio": 8.85
+    }
+  }
+}

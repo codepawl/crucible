@@ -1,0 +1,12 @@
+{
+  "source": "cumulus-towers.png",
+  "cropBox": [
+    560,
+    250,
+    880,
+    430
+  ],
+  "scale": 4,
+  "resample": "nearest",
+  "note": "crop of the middle tower, no re-render"
+}
