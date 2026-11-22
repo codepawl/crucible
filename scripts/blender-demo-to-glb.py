@@ -42,6 +42,9 @@ import sys
 import bpy
 import numpy
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import blender_demo_channels as demo_channels
+
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 output_directory = sys.argv[sys.argv.index("--") + 1]
 
@@ -397,13 +400,179 @@ if baked_objects:
     bake_base_colors(one_object_per_mesh(baked_objects.values()))
     for material in to_bake:
         wire_baked_color(material)
+BAKED_UV = "baked_uv"
+BAKE_TEXELS_PER_METRE = 160
+BAKE_MIN_SIZE = 512
+BAKE_MAX_SIZE = 2048
+BAKE_PASSES = (("Base Color", "DIFFUSE"), ("Roughness", "ROUGHNESS"), ("Normal", "NORMAL"))
+
+
+def material_graph(material):
+    """The material's node tree as the plain graph that blender_demo_channels reads."""
+    graph = {}
+    for node in material.node_tree.nodes:
+        inputs = {}
+        for socket in node.inputs:
+            for link in socket.links:
+                inputs.setdefault(socket.name, []).append((link.from_node.name, link.from_socket.name))
+        graph[node.name] = {"type": node.type, "projection": getattr(node, "projection", "FLAT"), "inputs": inputs}
+    return graph
+
+
+def warped_channels_by_material():
+    """Material name to the Principled channels whose image coordinates the exporter drops."""
+    found = {}
+    for material in bpy.data.materials:
+        if material.users == 0 or not material.use_nodes or material.node_tree is None:
+            continue
+        principled = first_node(material, "BSDF_PRINCIPLED")
+        if principled is None:
+            continue
+        sockets = demo_channels.channels_to_bake(demo_channels.classify_material(material_graph(material), principled.name))
+        if sockets:
+            found[material.name] = sockets
+    return found
+
+
+def slot_surface_area(candidate, slot_index):
+    scale = candidate.matrix_world.to_scale()
+    return sum(polygon.area for polygon in candidate.data.polygons if polygon.material_index == slot_index) * abs(scale.x * scale.y)
+
+
+def unwrap_slot_faces(candidate, slot_index):
+    """Smart UV Project of this slot's faces onto the active baked_uv layer, so each texel is used once."""
+    import bmesh
+    bpy.context.view_layer.objects.active = candidate
+    bpy.ops.object.mode_set(mode="EDIT")
+    edit_mesh = bmesh.from_edit_mesh(candidate.data)
+    for face in edit_mesh.faces:
+        face.select_set(face.material_index == slot_index)
+    edit_mesh.select_flush(True)
+    bmesh.update_edit_mesh(candidate.data)
+    bpy.ops.uv.smart_project(angle_limit=1.1519, island_margin=0.004, correct_aspect=True, scale_to_bounds=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
+def add_image_node(material, image):
+    node = material.node_tree.nodes.new("ShaderNodeTexImage")
+    node.image = image
+    return node
+
+
+def new_bake_image(name, size, is_colour):
+    image = bpy.data.images.new(name, size, size, alpha=False)
+    image.colorspace_settings.name = "sRGB" if is_colour else "Non-Color"
+    return image
+
+
+def wire_baked_channel(material, socket_name, image):
+    tree = material.node_tree
+    principled = first_node(material, "BSDF_PRINCIPLED")
+    for link in list(principled.inputs[socket_name].links):
+        tree.links.remove(link)
+    image_node = add_image_node(material, image)
+    uv_node = tree.nodes.new("ShaderNodeUVMap")
+    uv_node.uv_map = BAKED_UV
+    tree.links.new(uv_node.outputs["UV"], image_node.inputs["Vector"])
+    if socket_name == "Normal":
+        normal_node = tree.nodes.new("ShaderNodeNormalMap")
+        normal_node.space = "TANGENT"
+        normal_node.uv_map = BAKED_UV
+        tree.links.new(image_node.outputs["Color"], normal_node.inputs["Color"])
+        tree.links.new(normal_node.outputs["Normal"], principled.inputs["Normal"])
+    else:
+        tree.links.new(image_node.outputs["Color"], principled.inputs[socket_name])
+
+
+def bake_object_warped_slots(candidate, warped, report):
+    """Gives each warped material of one object a copy that reads baked images on a unique UV layer."""
+    if candidate.data.users > 1:
+        candidate.data = candidate.data.copy()
+    mesh = candidate.data
+    mesh.uv_layers.active = mesh.uv_layers.get(BAKED_UV) or mesh.uv_layers.new(name=BAKED_UV)
+    targets = {}
+    for slot_index, slot in enumerate(candidate.material_slots):
+        original = slot.material
+        if original is None or original.name not in warped:
+            continue
+        sockets = warped[original.name]
+        size = demo_channels.baked_texture_size(slot_surface_area(candidate, slot_index), BAKE_TEXELS_PER_METRE, BAKE_MIN_SIZE, BAKE_MAX_SIZE)
+        copy = original.copy()
+        copy.name = original.name + " baked " + candidate.name
+        slot.material = copy
+        unwrap_slot_faces(candidate, slot_index)
+        images = {socket: new_bake_image(copy.name + " " + socket, size, socket == "Base Color") for socket in sockets}
+        targets[slot_index] = {"material": copy, "original": original.name, "sockets": sockets, "size": size, "images": images,
+                               "nodes": {socket: add_image_node(copy, images[socket]) for socket in sockets}}
+    # Cycles refuses to bake when a material of the object has no active image node, so every slot gets a scratch one.
+    scratch = bpy.data.images.new("bake scratch", 4, 4)
+    scratch_nodes = {index: add_image_node(slot.material, scratch) for index, slot in enumerate(candidate.material_slots) if slot.material is not None}
+    scene = bpy.context.scene
+    scene.render.bake.target = "IMAGE_TEXTURES"
+    scene.render.bake.margin = 16
+    scene.render.bake.margin_type = "EXTEND"
+    scene.render.bake.normal_space = "TANGENT"
+    for other in bpy.context.view_layer.objects:
+        other.select_set(False)
+    candidate.select_set(True)
+    bpy.context.view_layer.objects.active = candidate
+    for socket_name, bake_type in BAKE_PASSES:
+        if not any(socket_name in target["sockets"] for target in targets.values()):
+            continue
+        for slot_index, scratch_node in scratch_nodes.items():
+            target_node = targets.get(slot_index, {}).get("nodes", {}).get(socket_name)
+            candidate.material_slots[slot_index].material.node_tree.nodes.active = target_node or scratch_node
+        bpy.ops.object.bake(type=bake_type)
+    for slot_index, scratch_node in scratch_nodes.items():
+        candidate.material_slots[slot_index].material.node_tree.nodes.remove(scratch_node)
+    bpy.data.images.remove(scratch)
+    mesh.uv_layers.active = mesh.uv_layers[0]  # the materials that keep their own UVs read the first layer
+    for target in targets.values():
+        for socket_name in target["sockets"]:
+            target["images"][socket_name].pack()
+            target["material"].node_tree.nodes.remove(target["nodes"][socket_name])
+            wire_baked_channel(target["material"], socket_name, target["images"][socket_name])
+        entry = report.setdefault(target["original"], {"channels": target["sockets"], "objects": 0, "sizes": set()})
+        entry["objects"] += 1
+        entry["sizes"].add(target["size"])
+
+
+def bake_warped_images():
+    """Bakes the channels the exporter drops because of their texture coordinates (a blend of two UV mappings by
+    Object-space noise, Object or Generated coordinates, Box projection) to images on a unique UV layer (#2766)."""
+    warped = warped_channels_by_material()
+    report = {}
+    if not warped:
+        return report
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    scene.cycles.device = "CPU"
+    scene.cycles.samples = 1
+    scene.render.bake.use_pass_direct = False
+    scene.render.bake.use_pass_indirect = False
+    scene.render.bake.use_pass_color = True
+    users = [
+        candidate for candidate in bpy.context.view_layer.objects
+        if candidate.type == "MESH" and candidate.visible_get() and not candidate.hide_render
+        and any(slot.material is not None and slot.material.name in warped for slot in candidate.material_slots)
+    ]
+    for candidate in users:
+        bake_object_warped_slots(candidate, warped, report)
+    return report
+
+
+original_material_names = {material.name for material in bpy.data.materials if material.users > 0}
+image_baked = bake_warped_images()
 baked = {material.name for material in to_bake}
-for material in bpy.data.materials:
-    if material.users == 0:
+for material_name in sorted(original_material_names):
+    if material_name in image_baked:
+        entry = image_baked[material_name]
+        sizes = "/".join(str(size) for size in sorted(entry["sizes"]))
+        print("MATERIAL baked", material_name, "(images:", ", ".join(entry["channels"]), "at", sizes, "px on", entry["objects"], "objects)")
         continue
-    state = "baked" if material.name in baked else "graded" if material.name in graded else "approximated" if material.name in approximated else "kept"
-    print("MATERIAL", state, material.name)
-print("APPROXIMATED", len(approximated), "GRADED", len(graded), "BAKED", len(baked), "materials on", len(baked_objects), "objects, of", len(bpy.data.materials))
+    state = "baked" if material_name in baked else "graded" if material_name in graded else "approximated" if material_name in approximated else "kept"
+    print("MATERIAL", state, material_name)
+print("APPROXIMATED", len(approximated), "GRADED", len(graded), "BAKED", len(baked) + len(image_baked), "materials on", len(baked_objects), "objects, of", len(original_material_names))
 
 # The published Classroom render lit the sun at strength 40, which the owner picked from previews at 15, 40 and 100 (#1083).
 # The .blend ships it at 15 (energy 1 times an Emission strength of 15 in the light's node tree), and the glTF exporter
