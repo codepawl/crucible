@@ -1,0 +1,223 @@
+{
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "sea",
+        "type": "mesh",
+        "base": {
+          "type": "plane",
+          "segments": 64
+        },
+        "edits": [
+          {
+            "op": "transform_selection",
+            "select": {
+              "all": true
+            },
+            "scale": [
+              140,
+              140,
+              1
+            ],
+            "rotation": {
+              "axis": [
+                1,
+                0,
+                0
+              ],
+              "angle": -1.5707963267948966
+            }
+          },
+          {
+            "op": "subdivide",
+            "levels": 1
+          }
+        ],
+        "stack": [
+          {
+            "op": "ocean",
+            "windSpeed": 8,
+            "choppiness": 1.2,
+            "size": 40,
+            "seed": 11,
+            "resolution": 6,
+            "spray": true
+          }
+        ]
+      },
+      {
+        "id": "drop",
+        "type": "box",
+        "bevel": 0
+      }
+    ],
+    "materials": [
+      {
+        "id": "water",
+        "color": [
+          0.02,
+          0.14,
+          0.24
+        ],
+        "tag": "water"
+      },
+      {
+        "id": "foam",
+        "color": [
+          0.95,
+          0.97,
+          1
+        ],
+        "roughness": 0.6
+      }
+    ],
+    "nodes": [
+      {
+        "id": "sea",
+        "geometry": "sea",
+        "material": "water"
+      },
+      {
+        "id": "droplet1",
+        "geometry": "drop",
+        "material": "foam"
+      },
+      {
+        "id": "droplet2",
+        "geometry": "drop",
+        "material": "foam"
+      }
+    ],
+    "particles": {
+      "gravity": [
+        0,
+        -9.81,
+        0
+      ],
+      "systems": [
+        {
+          "node": "droplet1",
+          "seed": 9,
+          "count": 2000,
+          "rate": 450,
+          "lifetime": [
+            0.6,
+            1.4
+          ],
+          "size": [
+            0.5,
+            1
+          ],
+          "scale": "shrink",
+          "speed": [
+            0.3,
+            1.5
+          ],
+          "spread": 50,
+          "drag": 0.4,
+          "emitter": {
+            "shape": "mesh",
+            "mesh": "sea",
+            "from": "vertices",
+            "group": "spray",
+            "groupThreshold": 0.25,
+            "velocityFrom": "spray",
+            "velocityScale": 1.2
+          }
+        },
+        {
+          "node": "droplet2",
+          "seed": 18,
+          "count": 2000,
+          "rate": 450,
+          "lifetime": [
+            0.6,
+            1.4
+          ],
+          "size": [
+            0.5,
+            1
+          ],
+          "scale": "shrink",
+          "speed": [
+            0.3,
+            1.5
+          ],
+          "spread": 50,
+          "drag": 0.4,
+          "emitter": {
+            "shape": "mesh",
+            "mesh": "sea",
+            "from": "vertices",
+            "group": "spray",
+            "groupThreshold": 0.25,
+            "velocityFrom": "spray",
+            "velocityScale": 1.2
+          }
+        }
+      ]
+    },
+    "camera": {
+      "eye": [
+        7.5,
+        2.4,
+        -1
+      ],
+      "target": [
+        7.5,
+        0.6,
+        3.5
+      ],
+      "fov": 45
+    },
+    "motion": {
+      "duration": 4.5,
+      "tracks": [
+        {
+          "kind": "geometry",
+          "id": "sea",
+          "property": "oceanTime",
+          "interpolation": "LINEAR",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 4.5,
+              "value": 4.5
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "camera": {
+    "eye": [
+      7.5,
+      2.4,
+      -1
+    ],
+    "target": [
+      7.5,
+      0.6,
+      3.5
+    ],
+    "fov": 45
+  },
+  "size": [
+    640,
+    360
+  ],
+  "fps": 24,
+  "backend": "gpu (MCP --backend gpu, COOK_DISABLE=1)",
+  "seed": {
+    "ocean": 11,
+    "particles": "systems seeded 9 and 18"
+  },
+  "seaVertices": 16641,
+  "sceneCreateSeconds": 18.335,
+  "branchCommit": "a8cf578e"
+}

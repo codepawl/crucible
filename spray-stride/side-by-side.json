@@ -1,0 +1,42 @@
+{
+  "note": "clip frames from t=1 s on; gray 0-255; region = x320-640, y200-360 of the 640x360 frame (the foam and droplet patch); the two clips use different sea meshes (16,641 vs 66,049 vertices) because the stride is chosen from the vertex count",
+  "region": {
+    "x0": 320,
+    "x1": 640,
+    "y0": 200,
+    "y1": 360
+  },
+  "stride_1_24": {
+    "spray_region": {
+      "frames": 84,
+      "meanAbsDiff": 7.077,
+      "maxAbsDiff": 101,
+      "meanSecondDiff": 11.008,
+      "maxSecondDiff": 180
+    },
+    "whole_frame": {
+      "frames": 84,
+      "meanAbsDiff": 4.705,
+      "maxAbsDiff": 109,
+      "meanSecondDiff": 6.439,
+      "maxSecondDiff": 180
+    }
+  },
+  "stride_1_8": {
+    "spray_region": {
+      "frames": 84,
+      "meanAbsDiff": 7.178,
+      "maxAbsDiff": 104,
+      "meanSecondDiff": 11.133,
+      "maxSecondDiff": 176
+    },
+    "whole_frame": {
+      "frames": 84,
+      "meanAbsDiff": 4.79,
+      "maxAbsDiff": 109,
+      "meanSecondDiff": 6.565,
+      "maxSecondDiff": 176
+    }
+  },
+  "recipe": "see stride1of24.json and stride3of24.json (recipe.mjs builds both)"
+}
