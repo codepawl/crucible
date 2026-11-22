@@ -1,0 +1,154 @@
+{
+  "variant": "toon-crisp",
+  "size": [
+    480,
+    360
+  ],
+  "backend": "cpu (SwiftShader), MCP image job",
+  "camera": {
+    "eye": [
+      6.5,
+      4.5,
+      8
+    ],
+    "target": [
+      0,
+      0.6,
+      0
+    ],
+    "fov": 40
+  },
+  "lightDirection": [
+    -3,
+    5,
+    2.5
+  ],
+  "seed": "none",
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "box",
+        "type": "box"
+      },
+      {
+        "id": "ball",
+        "type": "sphere"
+      }
+    ],
+    "materials": [
+      {
+        "id": "floor",
+        "color": [
+          0.55,
+          0.6,
+          0.5
+        ],
+        "roughness": 0.9,
+        "toon": 4,
+        "toonEdge": 1
+      },
+      {
+        "id": "red",
+        "color": [
+          0.8,
+          0.2,
+          0.15
+        ],
+        "roughness": 0.6,
+        "toon": 4,
+        "toonEdge": 1
+      },
+      {
+        "id": "blue",
+        "color": [
+          0.2,
+          0.35,
+          0.8
+        ],
+        "roughness": 0.5,
+        "toon": 4,
+        "toonEdge": 1
+      }
+    ],
+    "nodes": [
+      {
+        "id": "ground",
+        "geometry": "box",
+        "material": "floor",
+        "translation": [
+          0,
+          -0.1,
+          0
+        ],
+        "scale": [
+          9,
+          0.2,
+          9
+        ]
+      },
+      {
+        "id": "cube",
+        "geometry": "box",
+        "material": "red",
+        "translation": [
+          -0.9,
+          0.6,
+          0
+        ],
+        "scale": [
+          1.2,
+          1.2,
+          1.2
+        ]
+      },
+      {
+        "id": "ball",
+        "geometry": "ball",
+        "material": "blue",
+        "translation": [
+          1,
+          0.7,
+          0.4
+        ],
+        "scale": [
+          1.4,
+          1.4,
+          1.4
+        ]
+      }
+    ],
+    "camera": {
+      "eye": [
+        6.5,
+        4.5,
+        8
+      ],
+      "target": [
+        0,
+        0.6,
+        0
+      ],
+      "fov": 40
+    },
+    "environment": {
+      "lightDirection": [
+        -3,
+        5,
+        2.5
+      ],
+      "keyIntensity": 3.5
+    },
+    "shadow": {
+      "target": [
+        0,
+        0.5,
+        0
+      ],
+      "extent": 30,
+      "distance": 60,
+      "far": 150
+    }
+  }
+}
