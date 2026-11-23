@@ -18,6 +18,30 @@ What is not culled, because its bounding sphere would not hold or because it dra
 
 Pass `culling: false` to the `CrucibleRenderer` options to turn it off, for example to compare a picture.
 
+## Many copies from one part
+
+A part can draw many copies of itself from one typed array, instead of one part object per copy:
+
+```js
+const matrices = new Float32Array(1000 * 16); // 4x4 column-major, one per copy, in the part's own space
+const colors = new Float32Array(1000 * 3);    // optional: red, green, blue per copy
+const crowd = { name: 'crowd', geometry, matrix: mat4.create(), material, instances: { matrices, colors, version: 0 } };
+const renderer = new CrucibleRenderer(canvas, [crowd]);
+
+// each frame: edit the arrays in place, then tell the renderer
+matrices[index * 16 + 12] = x;
+crowd.instances.version++;
+renderer.updateParts([crowd]);
+```
+
+The renderer draws each copy at `crowd.matrix * copy matrix`, batches the copies with the parts that share the geometry and material, and culls and picks levels of detail for each copy as for a separate part. `instances.opacities` (one number per copy, for `blend` and `add` materials) multiplies the material opacity, and `colors` replace the material colour of a copy. Neither splits a batch.
+
+- Marking the list dirty: raise `instances.version` after an in-place edit, or call `renderer.updateInstances(part)`. `updateParts` repacks and uploads the copies only when the version, the part's matrix, its `visible` flag or its fade changed (or its material, which then takes the full material checks); an unchanged list uploads nothing. A colour or opacity edit needs the new version too.
+- Limits: `matrices.length` is a multiple of 16 and at most 65,536 copies (the limit of glTF instanced nodes); `colors` has 3 numbers and `opacities` 1 per copy; every value is finite. Anything else throws an error that says what to pass.
+- A copy with a zero scale (a matrix that cannot be inverted) is hidden, so zero it to remove a copy without changing the count.
+- Changing the number of copies, or giving the part another `instances` object, needs `replaceParts`. A skinned or morphed part cannot take an instance list yet.
+- A part without `instances` is packed and drawn exactly as before.
+
 ## Levels of detail
 
 Give a part `lods`, the array that `generateGeometryLods(geometry, { ratios })` returns (`generateAssetLods` gives one asset per level, so use the geometries of its parts). Level 0 must be the part's own `geometry`. Parts with the same geometry and the same `lods` array share one batch, and each instance picks its own level.

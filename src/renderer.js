@@ -21,6 +21,7 @@ import { resolveVolumeFog, validateFogField } from './volumetric.js';
 import { requireEnvironmentSupport, DEFAULT_SUN_ANGULAR_RADIUS } from './environment-shading.js';
 import { materialLayerState, materialLayerValue } from './material-layers.js';
 import { MaterialSnapshot } from './material-snapshot.js';
+import { applyInstanceStyle, expandInstancedParts, validatePartInstances } from './part-instances.js';
 import { wearUniformValues } from './material-wear.js';
 import { fittedFogDensity } from './fog-fit.js';
 import { canUseCompactColor, respecifyColorTargets } from './compact-color.js';
@@ -410,6 +411,7 @@ function packInstance(data, index, part, normalMatrix) {
   copyVector3(data, offset + 35, part.assembly?.detailOffset ?? ZERO_VECTOR);
   copyVector3(data, offset + 38, material.emissiveColor ?? material.color);
   data[offset + OPACITY_OFFSET] = instanceOpacity(material, part);
+  if (part.instanceStyle) applyInstanceStyle(data, offset, part.instanceStyle, material, OPACITY_OFFSET);
 }
 
 // The objectId mode of RENDER_PASS_MODES in render-passes.js.
@@ -757,6 +759,11 @@ export class CrucibleRenderer {
     this.background = background ? resolveBackground(background) : null;
     this.canvas = canvas;
     this.sceneParts = parts;
+    // A part with an instance list draws from stand-in parts (src/part-instances.js); the caller keeps the one part.
+    if (new Set(parts).size !== parts.length) throw new Error('Scene parts must have distinct object identities for animation.');
+    const expansion = expandInstancedParts(parts, null);
+    parts = expansion.parts;
+    this.instanceGroups = expansion.groups ?? new Map();
     // `skyOpenness` from closed-room.js is passed in, which keeps the ray code out of scenes without volume fog.
     this.skyOpenness = skyOpenness;
     // `fogSkyVisibility` from fog-sky-visibility.js is passed in for the same reason; without it the post shader has no grid.
@@ -1564,9 +1571,13 @@ export class CrucibleRenderer {
     if (!Array.isArray(parts) || new Set(parts).size !== parts.length) {
       throw new TypeError('Scene parts must be an array with distinct object identities.');
     }
-    const renderParts = this.groundPart ? [...parts, this.groundPart] : parts;
     // Local volumes bind to parts by name, so they must see the new list after a topology change.
-    this.sceneParts = parts;
+    if (!regroupOnly) this.sceneParts = parts;
+    const requestedCount = parts.length;
+    const expansion = expandInstancedParts(parts, this.instanceGroups);
+    parts = expansion.parts;
+    this.instanceGroups = expansion.groups ?? new Map();
+    const renderParts = this.groundPart ? [...parts, this.groundPart] : parts;
     this.fitParts = renderParts;
     this.fitBounds = undefined;
     this.densityParts = parts;
@@ -1693,7 +1704,7 @@ export class CrucibleRenderer {
     // With retainedUnchanged the caller promises that parts of kept batches did not move, so only the new batches are re-synced.
     this.updateParts(retainedUnchanged ? renderParts.filter(part => !retained.has(this.partLocations.get(part)?.batch)) : renderParts);
     if (resampled) this.resize();
-    return parts.length;
+    return requestedCount;
   }
 
   createSkinTexture(cache, identity, matrices, groupSize) {
@@ -1741,8 +1752,61 @@ export class CrucibleRenderer {
    * morph transforms) for poses already checked where they were made, such as `applyAnimation(time, clip, { checks: false })`.
    * Identity, material and transform rules still apply.
    */
+  /**
+   * Uploads the copies of a part with an instance list (`part.instances`, src/part-instances.js) now, whether or not it
+   * looks changed. `updateParts` does this by itself when the list's `version` or the part's matrix changed.
+   */
+  updateInstances(part) {
+    const group = this.instanceGroups.get(part);
+    if (!group) throw new Error(`Unknown instanced part: ${part?.name}. Pass a part with an instances list that this renderer was built with.`);
+    group.forceRefresh = true;
+    return this.updateParts([part]);
+  }
+
+  /** Repacks the stand-ins of instanced parts: only the ones whose list, matrix or fade changed, in one upload per batch. */
+  updateInstanceGroups(owners, shadows, checks) {
+    const slowProxies = [];
+    const changedBatches = new Set();
+    let regroup = false;
+    for (const owner of owners) {
+      const group = this.instanceGroups.get(owner);
+      if (owner.instances !== group.instances) throw new Error(`The instances object of ${owner.name} was replaced. Edit the same object in place and raise its version, or call replaceParts.`);
+      if (validatePartInstances(owner) !== group.count) throw new Error(`The number of copies of ${owner.name} changed from ${group.count}. Call replaceParts to change it.`);
+      const materialChanged = group.materialChanged();
+      if (!materialChanged && !group.forceRefresh && !group.isStale()) continue;
+      group.forceRefresh = false;
+      group.refreshMatrices();
+      if (materialChanged) {
+        for (const proxy of group.proxies) slowProxies.push(proxy);
+        continue;
+      }
+      for (const proxy of group.proxies) {
+        const location = this.partLocations.get(proxy);
+        const hidden = isHidden(proxy);
+        if (!hidden && isMirroredMatrix(proxy.matrix) !== Boolean(location.batch.mirrored)) regroup = true;
+        mat3.normalFromMat4(location.normalMatrix, proxy.matrix);
+        packInstance(location.batch.instanceData, location.index, proxy, location.normalMatrix);
+        changedBatches.add(location.batch);
+      }
+    }
+    for (const batch of changedBatches) {
+      this.context.bindBuffer(this.context.ARRAY_BUFFER, batch.instanceBuffer);
+      this.context.bufferSubData(this.context.ARRAY_BUFFER, 0, batch.instanceData);
+    }
+    if (changedBatches.size && shadows) this.shadowsDirty = true;
+    if (slowProxies.length) this.updateParts(slowProxies, { shadows, checks });
+    if (regroup) this.replaceParts(this.sceneParts, { regroupOnly: true });
+  }
+
   updateParts(parts, { shadows = true, checks = true } = {}) {
     if (typeof checks !== "boolean") throw new TypeError("updateParts checks must be a boolean.");
+    if (this.instanceGroups?.size && parts.some(part => this.instanceGroups.has(part))) {
+      const owners = parts.filter(part => this.instanceGroups.has(part));
+      const plain = parts.filter(part => !this.instanceGroups.has(part));
+      if (plain.length) this.updateParts(plain, { shadows, checks });
+      this.updateInstanceGroups(owners, shadows, checks);
+      return parts.length;
+    }
     this.updatePartIdentities ??= new Set();
     this.updatePartIdentities.clear();
     this.updateSkins.clear();
@@ -1811,7 +1875,7 @@ export class CrucibleRenderer {
     // A part that crossed a mirror (a flip animation, a toggled billboard) belongs to the other winding batch: regroup every part once.
     // replaceParts packs all parts again, so the rest of this update is done.
     if (mirrorChanged) {
-      this.replaceParts([...this.partLocations.keys()].filter(part => part !== this.groundPart), { regroupOnly: true });
+      this.replaceParts(this.instanceGroups?.size ? this.sceneParts : [...this.partLocations.keys()].filter(part => part !== this.groundPart), { regroupOnly: true });
       return parts.length;
     }
     // A palette upload also changes consumers absent from the submitted part list.
