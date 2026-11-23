@@ -1,0 +1,26 @@
+{
+  "scene": "default",
+  "camera": {
+    "eye": [
+      1,
+      16,
+      -1.1
+    ],
+    "target": [
+      1,
+      0,
+      -1
+    ],
+    "fov": "renderer default"
+  },
+  "size": [
+    640,
+    400
+  ],
+  "backend": "WebGL2 headless Chrome",
+  "seed": 7,
+  "glassBox": "blend cyan [0,1,1] opacity 0.5, 3 m cube at y 2, castShadow",
+  "lightDirection": "renderer default [-3,6,4]",
+  "pixelSha256": "7a71eaef0f33df8777b16a6492b9303ce0e353c72cf7143a7eaab0ecf914365b",
+  "glError": 0
+}

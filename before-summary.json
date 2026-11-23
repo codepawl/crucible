@@ -1,0 +1,22 @@
+{
+  "label": "before",
+  "shaderSha256": {
+    "default": "ce3fb20d27f553baf4a60eb626b78060a7ba7278481e23635754898a98bf762d",
+    "splat": "22dbee6fbe7e722358128900e00b25f46a46faa4e3b309832c42c06a40091580",
+    "tinted": "c1bf5ea4e0f1b3ce4439079f081aaeefbb49c31dc6137678c4cfafb79af91eea"
+  },
+  "scenes": {
+    "default": {
+      "pixelSha256": "7a71eaef0f33df8777b16a6492b9303ce0e353c72cf7143a7eaab0ecf914365b",
+      "glError": 0
+    },
+    "splat": {
+      "pixelSha256": "275bab02660604d2093183c5269b1963876f7503f502567cf0d86682e31d62f9",
+      "glError": 0
+    },
+    "glass": {
+      "pixelSha256": "24cf760ccbacbd9f22005938cce8242353b9d1feb744344096e0efbb4f643bea",
+      "glError": 0
+    }
+  }
+}

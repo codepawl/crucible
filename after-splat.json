@@ -1,0 +1,26 @@
+{
+  "scene": "splat",
+  "camera": {
+    "eye": [
+      1,
+      16,
+      -1.1
+    ],
+    "target": [
+      1,
+      0,
+      -1
+    ],
+    "fov": "renderer default"
+  },
+  "size": [
+    640,
+    400
+  ],
+  "backend": "WebGL2 headless Chrome",
+  "seed": 7,
+  "glassBox": "blend cyan [0,1,1] opacity 0.5, 3 m cube at y 2, castShadow",
+  "lightDirection": "renderer default [-3,6,4]",
+  "pixelSha256": "275bab02660604d2093183c5269b1963876f7503f502567cf0d86682e31d62f9",
+  "glError": 0
+}
