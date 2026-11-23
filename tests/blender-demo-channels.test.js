@@ -4,24 +4,25 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../', import.meta.url));
-const UNITTEST_ARGUMENTS = ['-m', 'unittest', 'discover', '-s', 'tests/python', '-p', 'test_blender_demo_channels.py'];
+const UNITTEST_ARGUMENTS = ['-m', 'unittest', 'discover', '-s', 'tests/python', '-p', 'test_blender_demo_*.py'];
 
 function pythonRunner() {
   // uv first: on Windows a bare python is the Store alias, which passes a probe and then fails the run.
   const uvProbe = spawnSync('uv', ['--version'], { encoding: 'utf8' });
-  if (uvProbe.status === 0) return { command: 'uv', arguments: ['run', '--no-project', 'python', ...UNITTEST_ARGUMENTS] };
+  if (uvProbe.status === 0) return { command: 'uv', arguments: ['run', '--no-project', '--with', 'numpy', 'python', ...UNITTEST_ARGUMENTS] };
   for (const interpreter of ['python3', 'python']) {
-    const probe = spawnSync(interpreter, ['-c', 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)'], { encoding: 'utf8' });
+    const probe = spawnSync(interpreter, ['-c', 'import sys, numpy; sys.exit(0 if sys.version_info >= (3, 9) else 1)'], { encoding: 'utf8' });
     if (probe.status === 0) return { command: interpreter, arguments: UNITTEST_ARGUMENTS };
   }
   return null;
 }
 
 // The classification of which Blender material channels the glTF exporter drops (scripts/blender_demo_channels.py) needs no Blender.
-test('the Blender demo export channel classification tests pass', (testContext) => {
+// and so does the numpy copy placement that realizes particle instances (scripts/blender_demo_copies.py).
+test('the Blender demo export channel classification and copy placement tests pass', (testContext) => {
   const runner = pythonRunner();
   if (!runner) {
-    testContext.skip('no python3 or python, and no uv, on PATH');
+    testContext.skip('no uv, and no python with numpy, on PATH');
     return;
   }
   const result = spawnSync(runner.command, runner.arguments, { cwd: REPOSITORY_ROOT, encoding: 'utf8' });

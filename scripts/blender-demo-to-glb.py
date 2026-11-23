@@ -46,6 +46,7 @@ from mathutils import Matrix
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import blender_demo_channels as demo_channels
+import blender_demo_copies as demo_copies
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 output_directory = os.path.abspath(sys.argv[sys.argv.index("--") + 1])
@@ -439,9 +440,8 @@ def merge_copies(holder, matrices):
     positions = numpy.empty(vertex_count * 3, dtype=numpy.float32)
     source.vertices.foreach_get("co", positions)
     positions = positions.reshape(vertex_count, 3)
-    mirrored_count = int((numpy.linalg.det(matrices[:, :3, :3]) < 0).sum())
-    print("MERGING", copy_count, "copies of", source.name, "mirrored", mirrored_count, flush=True)
-    placed = numpy.einsum("vj,nij->nvi", positions, matrices[:, :3, :3]) + matrices[:, None, :3, 3]
+    print("MERGING", copy_count, "copies of", source.name, "mirrored", demo_copies.mirrored_copy_count(matrices), flush=True)
+    placed = demo_copies.place_copies(positions, matrices)
 
     loop_vertices = numpy.empty(loop_count, dtype=numpy.int32)
     source.loops.foreach_get("vertex_index", loop_vertices)
@@ -451,18 +451,17 @@ def merge_copies(holder, matrices):
     source.loops.foreach_get("edge_index", loop_edges)
     edge_vertices = numpy.empty(edge_count * 2, dtype=numpy.int32)
     source.edges.foreach_get("vertices", edge_vertices)
-    copy_offsets = numpy.arange(copy_count, dtype=numpy.int32)[:, None]
 
-    merged = bpy.data.meshes.new(source.name + "_merged")
+    merged =bpy.data.meshes.new(source.name + "_merged")
     merged.vertices.add(copy_count * vertex_count)
     merged.edges.add(copy_count * edge_count)
     merged.loops.add(copy_count * loop_count)
     merged.polygons.add(copy_count * face_count)
     merged.vertices.foreach_set("co", placed.reshape(-1))
-    merged.edges.foreach_set("vertices", (edge_vertices[None, :] + copy_offsets * vertex_count).reshape(-1))
-    merged.loops.foreach_set("vertex_index", (loop_vertices[None, :] + copy_offsets * vertex_count).reshape(-1))
-    merged.loops.foreach_set("edge_index", (loop_edges[None, :] + copy_offsets * edge_count).reshape(-1))
-    merged.polygons.foreach_set("loop_start", (loop_starts[None, :] + copy_offsets * loop_count).reshape(-1))
+    merged.edges.foreach_set("vertices", demo_copies.repeat_with_offset(edge_vertices, copy_count, vertex_count))
+    merged.loops.foreach_set("vertex_index", demo_copies.repeat_with_offset(loop_vertices, copy_count, vertex_count))
+    merged.loops.foreach_set("edge_index", demo_copies.repeat_with_offset(loop_edges, copy_count, edge_count))
+    merged.polygons.foreach_set("loop_start", demo_copies.repeat_with_offset(loop_starts, copy_count, loop_count))
     copy_attributes(source, merged, copy_count)
     for material in source.materials:
         merged.materials.append(material)
