@@ -1,0 +1,230 @@
+{
+ "size": [
+  960,
+  540
+ ],
+ "samples": 4,
+ "camera": {
+  "eye": [
+   0,
+   1.6,
+   7.5
+  ],
+  "target": [
+   0,
+   0.2,
+   -0.5
+  ],
+  "fov": 45
+ },
+ "environment": {
+  "setup": "daylight",
+  "world": true,
+  "environmentIntensity": 1,
+  "keyIntensity": 1.5,
+  "sky": {
+   "type": "physical",
+   "sunElevation": 38,
+   "sunRotation": 210
+  },
+  "wetness": 0.5,
+  "puddles": {
+   "coverage": 0.5,
+   "from": "height"
+  }
+ },
+ "recipe": {
+  "format": "crucible.scene",
+  "schemaVersion": 1,
+  "geometries": [
+   {
+    "id": "slab",
+    "type": "box",
+    "bevel": 0
+   },
+   {
+    "id": "ball",
+    "type": "sphere"
+   },
+   {
+    "id": "post",
+    "type": "cylinder"
+   }
+  ],
+  "materials": [
+   {
+    "id": "asphalt",
+    "color": [
+     0.12,
+     0.12,
+     0.13
+    ],
+    "roughness": 0.95,
+    "pattern": {
+     "type": "concrete",
+     "size": 3,
+     "bump": 0.2,
+     "seed": 4
+    }
+   },
+   {
+    "id": "paint",
+    "color": [
+     0.92,
+     0.92,
+     0.88
+    ],
+    "roughness": 0.7
+   },
+   {
+    "id": "steel",
+    "color": [
+     0.8,
+     0.8,
+     0.82
+    ],
+    "metallic": 1,
+    "roughness": 0.25
+   }
+  ],
+  "nodes": [
+   {
+    "id": "ground",
+    "geometry": "slab",
+    "material": "asphalt",
+    "translation": [
+     0,
+     -0.05,
+     0
+    ],
+    "scale": [
+     20,
+     0.1,
+     20
+    ]
+   },
+   {
+    "id": "ramp",
+    "geometry": "slab",
+    "material": "asphalt",
+    "translation": [
+     2.6,
+     0.45,
+     -1
+    ],
+    "rotation": [
+     0.1736,
+     0,
+     0,
+     0.9848
+    ],
+    "scale": [
+     3,
+     0.2,
+     4
+    ]
+   },
+   {
+    "id": "line",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     -0.6,
+     0,
+     0
+    ],
+    "scale": [
+     0.2,
+     0.01,
+     8
+    ]
+   },
+   {
+    "id": "ball",
+    "geometry": "ball",
+    "material": "steel",
+    "translation": [
+     -1.8,
+     0.45,
+     0.5
+    ],
+    "scale": [
+     0.9,
+     0.9,
+     0.9
+    ]
+   },
+   {
+    "id": "post",
+    "geometry": "post",
+    "material": "steel",
+    "translation": [
+     -3.2,
+     0.5,
+     -0.5
+    ],
+    "scale": [
+     0.25,
+     1,
+     0.25
+    ]
+   }
+  ],
+  "camera": {
+   "eye": [
+    0,
+    1.6,
+    7.5
+   ],
+   "target": [
+    0,
+    0.2,
+    -0.5
+   ],
+   "fov": 45
+  },
+  "environment": {
+   "setup": "daylight",
+   "world": true,
+   "environmentIntensity": 1,
+   "keyIntensity": 1.5,
+   "sky": {
+    "type": "physical",
+    "sunElevation": 38,
+    "sunRotation": 210
+   },
+   "wetness": 0.5,
+   "puddles": {
+    "coverage": 0.5,
+    "from": "height"
+   }
+  }
+ },
+ "keepOut": {
+  "count": 2,
+  "boxes": [
+   -0.7,
+   -4,
+   -0.5,
+   4,
+   -3.45,
+   -0.75,
+   -2.95,
+   -0.25
+  ]
+ },
+ "pixelHash": "c750e7023dea7d17e1208ce6c5ed9fbf45b5fe4fa704d414ff85d740625c4f9a",
+ "features": [
+  "baseMap",
+  "boxMapScale",
+  "environmentMap",
+  "fragmentShadowPosition",
+  "metallicRoughnessMap",
+  "normalMap",
+  "probe",
+  "waterReflection",
+  "wetness"
+ ],
+ "backend": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+ "glError": 0
+}

@@ -1,0 +1,490 @@
+{
+ "size": [
+  960,
+  540
+ ],
+ "samples": 4,
+ "camera": {
+  "eye": [
+   0.4,
+   0.42,
+   12
+  ],
+  "target": [
+   0,
+   0.15,
+   0
+  ],
+  "fov": 40
+ },
+ "environment": {
+  "setup": "daylight",
+  "world": true,
+  "environmentIntensity": 1,
+  "keyIntensity": 1.5,
+  "sky": {
+   "type": "physical",
+   "sunElevation": 38,
+   "sunRotation": 210
+  }
+ },
+ "recipe": {
+  "format": "crucible.scene",
+  "schemaVersion": 1,
+  "geometries": [
+   {
+    "id": "slab",
+    "type": "box",
+    "bevel": 0
+   }
+  ],
+  "materials": [
+   {
+    "id": "asphalt",
+    "color": [
+     0.12,
+     0.12,
+     0.13
+    ],
+    "roughness": 0.95,
+    "pattern": {
+     "type": "concrete",
+     "size": 3,
+     "bump": 0.2,
+     "seed": 4
+    }
+   },
+   {
+    "id": "paint",
+    "color": [
+     0.92,
+     0.92,
+     0.88
+    ],
+    "roughness": 0.7
+   },
+   {
+    "id": "yellow",
+    "color": [
+     0.9,
+     0.7,
+     0.1
+    ],
+    "roughness": 0.7
+   },
+   {
+    "id": "paving",
+    "color": [
+     0.6,
+     0.55,
+     0.5
+    ],
+    "roughness": 0.9,
+    "pattern": {
+     "type": "tiles",
+     "size": 1.5,
+     "count": 8,
+     "seed": 6
+    }
+   },
+   {
+    "id": "kerb",
+    "color": [
+     0.7,
+     0.68,
+     0.64
+    ],
+    "roughness": 0.85
+   }
+  ],
+  "nodes": [
+   {
+    "id": "road",
+    "geometry": "slab",
+    "material": "asphalt",
+    "translation": [
+     0,
+     -0.05,
+     0
+    ],
+    "scale": [
+     4.4,
+     0.1,
+     40
+    ]
+   },
+   {
+    "id": "pavement-left",
+    "geometry": "slab",
+    "material": "paving",
+    "translation": [
+     -4.2,
+     -0.05,
+     0
+    ],
+    "scale": [
+     4,
+     0.1,
+     40
+    ]
+   },
+   {
+    "id": "pavement-right",
+    "geometry": "slab",
+    "material": "paving",
+    "translation": [
+     4.2,
+     -0.05,
+     0
+    ],
+    "scale": [
+     4,
+     0.1,
+     40
+    ]
+   },
+   {
+    "id": "kerb-left",
+    "geometry": "slab",
+    "material": "kerb",
+    "translation": [
+     -2.3,
+     -0.05,
+     0
+    ],
+    "scale": [
+     0.2,
+     0.1,
+     40
+    ]
+   },
+   {
+    "id": "kerb-right",
+    "geometry": "slab",
+    "material": "kerb",
+    "translation": [
+     2.3,
+     -0.05,
+     0
+    ],
+    "scale": [
+     0.2,
+     0.1,
+     40
+    ]
+   },
+   {
+    "id": "edge-line-left",
+    "geometry": "slab",
+    "material": "yellow",
+    "translation": [
+     -2.05,
+     0,
+     0
+    ],
+    "scale": [
+     0.08,
+     0.1,
+     40
+    ]
+   },
+   {
+    "id": "edge-line-right",
+    "geometry": "slab",
+    "material": "yellow",
+    "translation": [
+     2.05,
+     0,
+     0
+    ],
+    "scale": [
+     0.08,
+     0.1,
+     40
+    ]
+   },
+   {
+    "id": "stripe-0",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     0,
+     0,
+     -12
+    ],
+    "scale": [
+     0.18,
+     0.1,
+     1.6
+    ]
+   },
+   {
+    "id": "stripe-1",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     0,
+     0,
+     -9
+    ],
+    "scale": [
+     0.18,
+     0.1,
+     1.6
+    ]
+   },
+   {
+    "id": "stripe-2",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     0,
+     0,
+     -6
+    ],
+    "scale": [
+     0.18,
+     0.1,
+     1.6
+    ]
+   },
+   {
+    "id": "stripe-3",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     0,
+     0,
+     -3
+    ],
+    "scale": [
+     0.18,
+     0.1,
+     1.6
+    ]
+   },
+   {
+    "id": "stripe-4",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "scale": [
+     0.18,
+     0.1,
+     1.6
+    ]
+   },
+   {
+    "id": "stripe-5",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     0,
+     0,
+     3
+    ],
+    "scale": [
+     0.18,
+     0.1,
+     1.6
+    ]
+   },
+   {
+    "id": "stripe-6",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     0,
+     0,
+     6
+    ],
+    "scale": [
+     0.18,
+     0.1,
+     1.6
+    ]
+   },
+   {
+    "id": "stripe-7",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     0,
+     0,
+     9
+    ],
+    "scale": [
+     0.18,
+     0.1,
+     1.6
+    ]
+   },
+   {
+    "id": "stripe-8",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     0,
+     0,
+     12
+    ],
+    "scale": [
+     0.18,
+     0.1,
+     1.6
+    ]
+   },
+   {
+    "id": "zebra-0",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     -1.8,
+     0,
+     2.5
+    ],
+    "scale": [
+     0.32,
+     0.1,
+     2.2
+    ]
+   },
+   {
+    "id": "zebra-1",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     -1.2000000000000002,
+     0,
+     2.5
+    ],
+    "scale": [
+     0.32,
+     0.1,
+     2.2
+    ]
+   },
+   {
+    "id": "zebra-2",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     -0.6000000000000001,
+     0,
+     2.5
+    ],
+    "scale": [
+     0.32,
+     0.1,
+     2.2
+    ]
+   },
+   {
+    "id": "zebra-3",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     -2.220446049250313e-16,
+     0,
+     2.5
+    ],
+    "scale": [
+     0.32,
+     0.1,
+     2.2
+    ]
+   },
+   {
+    "id": "zebra-4",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     0.5999999999999999,
+     0,
+     2.5
+    ],
+    "scale": [
+     0.32,
+     0.1,
+     2.2
+    ]
+   },
+   {
+    "id": "zebra-5",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     1.2,
+     0,
+     2.5
+    ],
+    "scale": [
+     0.32,
+     0.1,
+     2.2
+    ]
+   },
+   {
+    "id": "zebra-6",
+    "geometry": "slab",
+    "material": "paint",
+    "translation": [
+     1.7999999999999996,
+     0,
+     2.5
+    ],
+    "scale": [
+     0.32,
+     0.1,
+     2.2
+    ]
+   }
+  ],
+  "camera": {
+   "eye": [
+    0.4,
+    0.42,
+    12
+   ],
+   "target": [
+    0,
+    0.15,
+    0
+   ],
+   "fov": 40
+  },
+  "environment": {
+   "setup": "daylight",
+   "world": true,
+   "environmentIntensity": 1,
+   "keyIntensity": 1.5,
+   "sky": {
+    "type": "physical",
+    "sunElevation": 38,
+    "sunRotation": 210
+   }
+  },
+  "effects": {
+   "exposure": 1,
+   "saturation": 1,
+   "contrast": 1.05
+  }
+ },
+ "keepOut": null,
+ "pixelHash": "f6a94d59ce065c22012e7948b65122cbd5cc53e4a387f97c0d0d545f9e9c5bce",
+ "features": [
+  "baseMap",
+  "boxMapScale",
+  "environmentMap",
+  "fragmentShadowPosition",
+  "instanced",
+  "metallicRoughnessMap",
+  "normalMap"
+ ],
+ "backend": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+ "glError": 0
+}

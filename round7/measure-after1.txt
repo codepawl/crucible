@@ -1,0 +1,16 @@
+photo size (853, 1280, 3)
+CC0 photo      L 53.5  chroma 20.8  hue -146  mean lum 0.2173  lum std 0.0393
+road 0         L 37.2  chroma 6.7  hue -100  mean lum 0.0968  lum std 0.0068
+road 0.5       L 42.4  chroma 19.0  hue -99  mean lum 0.1360  lum std 0.0627
+road 1         L 41.3  chroma 20.3  hue -98  mean lum 0.1318  lum std 0.0722
+photo road/sky lum ratio 0.339 sky lum 0.64
+crucible 0 road/sky lum ratio 0.143
+crucible 0.5 road/sky lum ratio 0.2
+crucible 1 road/sky lum ratio 0.194
+puddle box road 0.5 L 57.3 chroma 21.3 lum 0.2641 lum std 0.0958 (36.3% of mean)
+puddle box road 1 L 60.3 chroma 23.1 lum 0.2920 lum std 0.0777 (26.6% of mean)
+slope ramp top 0: mean 0.2125 p95 0.7401 max 0.8045 | 0.5: mean 0.1651 p95 0.7401 max 0.8045 | 1: mean 0.1501 p95 0.7401 max 0.8045
+slope ground left 0: mean 0.1145 p95 0.1287 max 0.1390 | 0.5: mean 0.0837 p95 0.1280 max 0.8308 | 1: mean 0.0707 p95 0.1147 max 0.8463
+slope ground right (puddle) 0: mean 0.1169 p95 0.1358 max 0.1504 | 0.5: mean 0.0989 p95 0.2030 max 0.3079 | 1: mean 0.0957 p95 0.2088 max 0.3070
+edge box A x480-600 y230-350 wet 1: rows 80 median width 16.0px mean 12.6px | wet 0.5: rows 80 median width 15.5px mean 13.4px
+edge box B x810-960 y230-360 wet 1: rows 107 median width 7.0px mean 10.2px | wet 0.5: rows 110 median width 7.0px mean 9.1px
