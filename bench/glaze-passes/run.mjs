@@ -47,6 +47,11 @@ try {
       await writeFile(`${outputFile}.${basename(directory)}.rgba`, Buffer.from(capturedFrame, 'base64'));
       delete results[basename(directory)].capturedFrame;
     }
+    if (results[basename(directory)].capturedFrames) {
+      for (const [label, encoded] of Object.entries(results[basename(directory)].capturedFrames)) await writeFile(`${outputFile}.${basename(directory)}.${label}.rgba`, Buffer.from(encoded, 'base64'));
+      delete results[basename(directory)].capturedFrames;
+      delete summary.capturedFrames;
+    }
     console.log(basename(directory), JSON.stringify(summary));
     await page.close();
   }

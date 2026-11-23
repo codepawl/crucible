@@ -6,6 +6,7 @@ import { addLodsToDenseParts, withSceneFileRendererDefaults } from '../../src/de
 import { createCascadedShadows } from '../../src/cascaded-shadows.js';
 import { installVariantEmulation } from './variant-programs.js';
 import { installColourProgramRecorder, describeColourPrograms } from './program-report.js';
+import { measureOverdraw, measureOpaqueOrder } from './opaque-order.js';
 import { blockMedians, median, rotatedOrder, summarizeAfterWarmup, summarizeRounds } from './frame-statistics.mjs';
 
 const WARMUP_FRAMES = 20;
@@ -169,7 +170,7 @@ function applyCut(cut, source) {
   return source.replace(cut.from, cut.to);
 }
 
-window.measureScene = async function measureScene({ description, glbUrl, hdriUrl, frames = 200, capture = false, alternate = false, segmented = true, width = 1280, height = 720, rendererOverrides = {}, denseLods = false, denseLodsMinimumTriangles = undefined, experiment = null, sequence = null, profile = null, cumulativeCuts = null, programReport = false, variantEmulation = false, variantRun = null }) {
+window.measureScene = async function measureScene({ description, glbUrl, hdriUrl, frames = 200, capture = false, alternate = false, segmented = true, width = 1280, height = 720, rendererOverrides = {}, denseLods = false, denseLodsMinimumTriangles = undefined, experiment = null, sequence = null, profile = null, cumulativeCuts = null, programReport = false, variantEmulation = false, variantRun = null, overdraw = null, opaqueOrder = null }) {
   const canvas = document.querySelector('#viewport');
   const experiments = new Set(String(experiment ?? '').split(','));
   if (experiments.has('no-invariant')) {
@@ -241,6 +242,11 @@ window.measureScene = async function measureScene({ description, glbUrl, hdriUrl
   if (cumulativeCuts) {
     const cumulativeFrame = { exposure: description.exposure ?? 1, ...(description.frame ?? {}), eye: description.eye, target: description.target };
     return { ...await measureCumulativeCuts({ createRenderer, canvas, frame: cumulativeFrame, ...cumulativeCuts }), lodBuildMs };
+  }
+  if (overdraw || opaqueOrder) {
+    const orderFrame = { exposure: description.exposure ?? 1, ...(description.frame ?? {}), eye: description.eye, target: description.target };
+    if (overdraw) return { ...await measureOverdraw({ createRenderer, canvas, frame: orderFrame, ...overdraw }), lodBuildMs };
+    return { ...await measureOpaqueOrder({ createRenderer, canvas, frame: orderFrame, timeFrames, createSegmentTimer, totalOf, median, rotatedOrder, ...opaqueOrder }), lodBuildMs };
   }
   const renderer = createRenderer();
   const context = renderer.context;
