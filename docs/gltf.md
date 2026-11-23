@@ -285,7 +285,7 @@ node scripts/encode-glb-ktx2.mjs scan.glb scan-ktx2.glb [--max-texture 2048] [--
 - Every image gets a full mip chain and both edges are rounded to a multiple of 4.
 - PNG, JPEG and WebP images are read (a WebP texture is found through `EXT_texture_webp`, which is dropped once nothing uses it). Images that are already KTX2 stay. Meshopt geometry is copied byte for byte.
 - `toktx` comes from `--toktx`, then `CRUCIBLE_TOKTX`, then `~/.local/bin/ktx-software`, then `PATH`. Without it the script stops and says where to get it.
-- The file needs a KTX2 decoder to load (see above). The MCP server still turns KTX2 images into PNG on the way to the preview page ([mcp.md](mcp.md)); keeping them compressed there is not done yet.
+- The file needs a KTX2 decoder to load (see above). The MCP server keeps KTX2 textures GPU-compressed on the preview and realtime render path using the Basis transcoder bundled by `three`, and falls back to RGBA8 or PNG automatically when the WebGL context lacks compression, a shared texture transform needs resampling, or a path tracer, light bake or web export runs ([mcp.md](mcp.md)); unchanged KTX2 textures also stay compressed on `exportGlb`.
 
 ### Instancing limits
 

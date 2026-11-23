@@ -9,6 +9,7 @@ import { fitAgentShadow, resolveAgentShadow, agentEnvironmentMap } from '../../s
 import { agentSceneModule, agentSceneModuleLoaded } from '../../src/agent-scene-modules.js';
 import { createAgentAssetScene } from '../../src/agent-asset.js';
 import { parseGltf } from '../../src/gltf.js';
+import { createPreviewKtx2Decoder } from '../../scripts/agent-preview-ktx2.js';
 import { hasPatternTextures } from '../../scripts/agent-preview-textures.js';
 import { rasterOptionsFor } from '../../scripts/agent-render-quality.mjs';
 import { assetCopyKey, recipeAssetNeeds } from '../../src/agent-scene-assets.js';
@@ -104,7 +105,7 @@ export function previewHarness({ createImageBitmap = async () => { throw new Err
     // The harness loads Manifold from node_modules directly, so the preview's served-file loader is ignored.
     setManifoldModuleLoader: () => {},
     needsPhysics, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader: () => {},
-    describeMarks, validateMarks, profileFrameCount, profileFrames, heaviestNodes, sceneQueryFor, partMaterialsFor, summarizeWalkMap, walkOptionsFor, createQueryOnlyCache, parseGltf, hasPatternTextures, rasterOptionsFor, Uint8Array, atob, sessionProblem, planSceneEviction, SCENE_STORE_LIMITS, AGENT_SCENE_DEFAULT_LIMITS, MEMORY_CEILING_MIB, imageLimitProblem, MOTION_NOT_SET_HINT, recipeMoves, sampleMotionAtZeroForGround, TEXTURE_SEQUENCE_LIMITS, Blob, createImageBitmap, describeApplication, framingProblems, placementProblems, textureProblems, exposureProblems, lumaShares, assetCopyKey, recipeAssetNeeds, agentAssetDecodeOptions, withCatalogLimitAdvice,
+    describeMarks, validateMarks, profileFrameCount, profileFrames, heaviestNodes, sceneQueryFor, partMaterialsFor, summarizeWalkMap, walkOptionsFor, createQueryOnlyCache, parseGltf, createPreviewKtx2Decoder, hasPatternTextures, rasterOptionsFor, Uint8Array, atob, sessionProblem, planSceneEviction, SCENE_STORE_LIMITS, AGENT_SCENE_DEFAULT_LIMITS, MEMORY_CEILING_MIB, imageLimitProblem, MOTION_NOT_SET_HINT, recipeMoves, sampleMotionAtZeroForGround, TEXTURE_SEQUENCE_LIMITS, Blob, createImageBitmap, describeApplication, framingProblems, placementProblems, textureProblems, exposureProblems, lumaShares, assetCopyKey, recipeAssetNeeds, agentAssetDecodeOptions, withCatalogLimitAdvice,
     applyProjection, applyCameraFields, mat4, fitAgentShadow, resolveAgentShadow, agentEnvironmentMap, BRANCH_LIMITS,
     // Line art needs a real renderer with render passes, so the fault-injected one gets a no-op install.
     agentSceneModule: name => (name === 'lineArt' ? { installLineArt: renderer => renderer } : name === 'userPass' ? { ...agentSceneModule(name), installUserPasses: renderer => renderer } : agentSceneModule(name)), agentSceneModuleLoaded, createBranchStore, printableLabel,

@@ -87,8 +87,8 @@ function isKtx2(bytes) {
   return bytes.length >= 28 && KTX2_IDENTIFIER.every((value, index) => bytes[index] === value);
 }
 
-/** Transcodes the base level of one KTX2 file to RGBA8 pixels. `budget.pixels` counts what the file has decoded so far. */
-function transcodeToPng(transcoder, ktx2Bytes, label, budget) {
+/** Opens and validates one KTX2 image against pixel limits, ready for transcoding. Caller must close and delete `file`. */
+function openValidatedKtx2(transcoder, ktx2Bytes, label, budget) {
   const file = new transcoder.KTX2File(new Uint8Array(ktx2Bytes.buffer, ktx2Bytes.byteOffset, ktx2Bytes.byteLength));
   try {
     if (!file.isValid()) throw new Error(`${label}: the KTX2 file is not valid. Re-export it.`);
@@ -101,6 +101,24 @@ function transcodeToPng(transcoder, ktx2Bytes, label, budget) {
     budget.pixels += width * height;
     if (budget.pixels > MAXIMUM_TOTAL_PIXELS) throw new Error(`${label}: the KTX2 textures of this GLB reach more than ${MAXIMUM_TOTAL_PIXELS} pixels together. Resize them.`);
     if (!file.startTranscoding()) throw new Error(`${label}: the KTX2 transcoder could not start. The file may be damaged; re-export it.`);
+    return { file, width, height };
+  } catch (error) {
+    file.close();
+    file.delete();
+    throw error;
+  }
+}
+
+function validateKtx2Image(transcoder, ktx2Bytes, label, budget) {
+  const { file } = openValidatedKtx2(transcoder, ktx2Bytes, label, budget);
+  file.close();
+  file.delete();
+}
+
+/** Transcodes the base level of one KTX2 file to RGBA8 pixels. `budget.pixels` counts what the file has decoded so far. */
+function transcodeToPng(transcoder, ktx2Bytes, label, budget) {
+  const { file, width, height } = openValidatedKtx2(transcoder, ktx2Bytes, label, budget);
+  try {
     const pixels = new Uint8Array(file.getImageTranscodedSizeInBytes(0, 0, 0, TRANSCODE_TO_RGBA32));
     if (!file.transcodeImage(pixels, 0, 0, 0, TRANSCODE_TO_RGBA32, 0, -1, -1)) {
       throw new Error(`${label}: the KTX2 transcoder could not decode the image. The file may be damaged; re-export it.`);
@@ -168,4 +186,26 @@ export async function transcodeKtx2Glb(bytes, { filename = 'GLB', loadTranscoder
   }
   document.buffers[0].byteLength = size;
   return { bytes: writeGlb(document, Buffer.concat(chunks)), images: replaced.size };
+}
+
+/** Validates every KTX2 image in a GLB against the Basis transcoder and pixel budgets without rewriting the GLB. */
+export async function validateKtx2Glb(bytes, { filename = 'GLB', loadTranscoder = loadDefaultKtx2Transcoder } = {}) {
+  const { document, binary } = readGlb(bytes, 'A KTX2 GLB');
+  const transcoder = await loadTranscoder();
+  const budget = { pixels: 0 };
+  const validated = new Set();
+  for (const [textureIndex, texture] of (document.textures ?? []).entries()) {
+    const extension = texture.extensions?.[KTX2_EXTENSION];
+    if (!extension) continue;
+    const label = `${filename} texture ${textureIndex}`;
+    const imageIndex = extension.source;
+    const image = document.images?.[imageIndex];
+    if (!image) throw new Error(`${label}: ${KTX2_EXTENSION} points at image ${imageIndex}, which does not exist.`);
+    if (validated.has(imageIndex)) continue;
+    const ktx2Bytes = imageBytesOf(image, document, binary, label);
+    if (!isKtx2(ktx2Bytes)) throw new Error(`${label}: image ${imageIndex} is not a KTX2 file.`);
+    validateKtx2Image(transcoder, ktx2Bytes, label, budget);
+    validated.add(imageIndex);
+  }
+  return { images: validated.size };
 }

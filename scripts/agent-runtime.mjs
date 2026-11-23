@@ -48,6 +48,7 @@ import { catalogLookReferences, BUNDLED_ENVIRONMENT_NAMES, BUNDLED_CUBE_LOOK_NAM
 import { TEXTURE_SEQUENCE_CAPABILITIES, TEXTURE_SEQUENCE_LIMITS } from '../src/texture-sequence-limits.js';
 import { TEXTURE_SET_CAPABILITIES } from '../src/texture-set-names.js';
 import { writeWebBuild } from './web-export.mjs';
+import { KTX2_WORKER_CSP, KTX2_WORKER_SOURCE } from './agent-preview-ktx2-worker.mjs';
 import { gameAssetIds, gameImageIds } from '../src/game-assets.js';
 import { resolveJobRoot } from './agent-job-root.mjs';
 import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME, HIGH_PRECISION_FRAME_FACTOR, MAXIMUM_JOB_FRAME_BYTES, MAXIMUM_JOB_OUTPUT_BYTES, RENDER_HISTORY_FILE, normalizeJobSettings, frameByteLimitFor, oversizeFrameBudgetError, requireTracerBackendAvailable } from './agent-render-jobs.mjs';
@@ -137,6 +138,8 @@ const VENDOR_FILES = Object.freeze({
   '/vendor/manifold.js': { resolve: require => require.resolve('manifold-3d/manifold.js'), type: 'application/javascript; charset=utf-8' },
   '/vendor/manifold.wasm': { resolve: require => require.resolve('manifold-3d/manifold.wasm'), type: 'application/wasm' },
   '/vendor/rapier.js': { resolve: require => join(dirname(require.resolve('@dimforge/rapier3d-compat')), 'rapier.mjs'), type: 'application/javascript; charset=utf-8' },
+  '/vendor/basis_transcoder.js': { resolve: require => require.resolve('three/examples/jsm/libs/basis/basis_transcoder.js'), type: 'application/javascript; charset=utf-8' },
+  '/vendor/basis_transcoder.wasm': { resolve: require => require.resolve('three/examples/jsm/libs/basis/basis_transcoder.wasm'), type: 'application/wasm' },
 });
 
 /** Checks the launch paths that need no job folder; the CLI runs it before serving so a bad value exits with its message. */
@@ -539,10 +542,10 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
   }
 
   /** Bytes of the catalog assets a recipe or edit list places, base64 by asset id, for the page that decodes them. */
-  async function placedAssetData(value) {
+  async function placedAssetData(value, { transcodeKtx2 = false } = {}) {
     await assertPlacedAssetsFitBeforeReading(value);
     const needs = recipeAssetNeeds(value);
-    const entries = await Promise.all(needs.map(async ({ id }) => [id, (await (await catalog()).read(id)).toString('base64')]));
+    const entries = await Promise.all(needs.map(async ({ id }) => [id, (await (await catalog()).read(id, { transcodeKtx2 })).toString('base64')]));
     return { ...(needs.length ? { assetData: Object.fromEntries(entries) } : {}), ...(await sequenceFrameData(value)), ...(await lookFileData(value)), ...volumeGridData(value) };
   }
 
@@ -760,6 +763,12 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
           return;
         }
         response.setHeader('Cache-Control', 'no-store');
+        if (request.method === 'GET' && request.url === '/vendor/ktx2-worker.js') {
+          response.setHeader('Content-Security-Policy', KTX2_WORKER_CSP);
+          response.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+          response.end(KTX2_WORKER_SOURCE);
+          return;
+        }
         response.setHeader('Content-Security-Policy', `default-src 'none'; script-src 'self' 'wasm-unsafe-eval'${importMapHash}; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'self' blob:`);
         if (request.method === 'GET' && request.url.startsWith('/addons/')) {
           serveAddonFile(request.url, response);
@@ -1002,8 +1011,9 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         metrics.elapsedSeconds = metrics.renderSeconds;
         return { artifacts: icons.artifacts, metrics: { ...metrics, ...icons.metrics } };
       }
+      const needsRgba = Boolean(settings.renderer || snapshot.recipe?.bake);
       const input = { sessionId: jobId, recipe: snapshot.recipe, memoryBudgetMiB: memory, backend, ...(settings.transparent ? { transparent: true } : {}), ...(settings.quality ? { tier: settings.quality } : {}),
-        ...(snapshot.assetBytes ? { data: snapshot.assetBytes.toString('base64'), ...(await motionSources([snapshot.recipe.motion])) } : await placedAssetData(snapshot.recipe)) };
+        ...(snapshot.assetBytes ? { data: snapshot.assetBytes.toString('base64'), ...(await motionSources([snapshot.recipe.motion])) } : await placedAssetData(snapshot.recipe, { transcodeKtx2: needsRgba })) };
       const created = await jobPage.evaluate(({ method, input }) => window.__agentPreview[method](input),
         { method: snapshot.assetBytes ? 'createAsset' : 'create', input });
       // The plan made at creation sees the requested size; later plans see the viewport already cut to the budget.
@@ -1403,7 +1413,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         await pinNamedAssets(recipe);
         await boot();
         const sessionId = randomUUID();
-        const createInput ={ recipe, sessionId, memoryBudgetMiB: memory, backend, ...(await placedAssetData(recipe)) };
+        const createInput ={ recipe, sessionId, memoryBudgetMiB: memory, backend, ...(await placedAssetData(recipe, { transcodeKtx2: Boolean(recipe?.bake) })) };
         const createTimeoutMs = previewCallTimeoutMs({ bakes: Boolean(recipe?.bake), addsGridVolume: recipeHasGridVolume(recipe), plainTimeoutMs: EVALUATION_TIMEOUT_MS, bakeTimeoutMs: BAKE_EVALUATION_TIMEOUT_MS, assetBytes: assetDataBytes(createInput.assetData) });
         const result = await evaluate('create', createInput, page, createTimeoutMs).catch(async error => {
           if (error?.message?.startsWith('The preview operation')) error.message += slowAssetsNote(await placedAssetSizes(recipe));
@@ -1485,7 +1495,8 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         if (input.branch !== undefined) {
           const { branch, ...rest } = input;
           await assertSceneAssetsFitAfterEdit(input.sessionId, input.operations);
-          return invoke('branchApply', { ...rest, name: validateBranchName(branch), ...(await placedAssetData(input.operations)) });
+          const branchRebakes = bakedSessionIds.has(input.sessionId) || bakeAfterOperations(input.operations) === true;
+          return invoke('branchApply', { ...rest, name: validateBranchName(branch), ...(await placedAssetData(input.operations, { transcodeKtx2: branchRebakes })) });
         }
         const bakeAfter = bakeAfterOperations(input.operations);
         const hadBake = bakedSessionIds.has(input.sessionId);
@@ -1494,7 +1505,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         const gameAssets = await gameAssetNeeds(input);
         const placedValue = gameAssets?.recipe ?? input.operations;
         await assertSceneAssetsFitAfterEdit(input.sessionId, placedValue);
-        const applyInput = { ...input, ...(await motionSources(motions, placedValue)), ...(await placedAssetData(placedValue)), ...(gameAssets ? { assetNeeds: gameAssets.recipe } : {}) };
+        const applyInput = { ...input, ...(await motionSources(motions, placedValue)), ...(await placedAssetData(placedValue, { transcodeKtx2: rebakes })), ...(gameAssets ? { assetNeeds: gameAssets.recipe } : {}) };
         const applyTimeout = previewCallTimeoutMs({ bakes: rebakes, addsGridVolume: operationsAddGridVolume(input.operations), plainTimeoutMs: EVALUATION_TIMEOUT_MS, bakeTimeoutMs: BAKE_EVALUATION_TIMEOUT_MS });
         const applied = await invoke('apply', applyInput, applyTimeout);
         if (bakeAfter ?? hadBake) bakedSessionIds.add(input.sessionId);
@@ -1714,11 +1725,12 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
           let peakNodeBytes = 0;
           for (const group of settings.groups) {
             const branchRecipe = group.branch === undefined ? undefined : branchRecipes.get(group.branch);
+            const targetRecipe = branchRecipe ? branchRecipe.recipe : snapshot.recipe;
             privateSessionId = randomUUID();
             await reviewEvaluate(branchRecipe || !assetBytes ? 'create' : 'createAsset', { sessionId: privateSessionId,
-              recipe: branchRecipe ? branchRecipe.recipe : snapshot.recipe, memoryBudgetMiB: memory, backend,
+              recipe: targetRecipe, memoryBudgetMiB: memory, backend,
               ...(!branchRecipe && assetBytes ? { data: assetBytes.toString('base64'), ...(await motionSources([snapshot.recipe.motion])) } : {}),
-              ...(!assetBytes ? await placedAssetData(branchRecipe ? branchRecipe.recipe : snapshot.recipe) : {}) });
+              ...(!assetBytes ? await placedAssetData(targetRecipe, { transcodeKtx2: Boolean(targetRecipe?.bake) }) : {}) });
             privateCreated = true;
             for (const index of group.shotIndexes) {
               const rendered = await reviewEvaluate('reviewShot', { sessionId: privateSessionId, shot: settings.shots[index], index,
@@ -1836,7 +1848,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         let summary;
         try {
           const assets = new Map();
-          for (const id of gameAssetIds(recipe)) assets.set(id, await (await catalog()).read(id));
+          for (const id of gameAssetIds(recipe)) assets.set(id, await (await catalog()).read(id, { transcodeKtx2: true }));
           // The catalog images the materials read (graph image nodes, map sequences) travel with the page, which decodes them before the scene is created.
           const images = new Map();
           for (const id of gameImageIds(recipe)) images.set(id, await (await catalog()).read(id));
@@ -1861,7 +1873,6 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
           await audioLibrary.resolve(settings.audio.file);
         }
         const snapshot = withSnapshotSkyColors(await invoke('snapshot', { sessionId, expectedRevision }));
-        const assetBytes = snapshot.recipe.format === 'crucible.asset' ? await (await catalog()).read(snapshot.recipe.assetId) : undefined;
         phase = 'rendering';
         try {
           // The estimate is made before the job exists, because the job suspends the scene and starts at once.
@@ -1894,6 +1905,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
           if (jobSettings?.mattes) requireMatteTargets({ mattes: jobSettings.mattes, ...(await invoke('matteTargets', { sessionId })) });
           const estimate = estimateOf(jobSettings);
           estimateForNextJob = estimate;
+          const assetBytes = snapshot.recipe.format === 'crucible.asset' ? await (await catalog()).read(snapshot.recipe.assetId, { transcodeKtx2: Boolean(jobSettings?.renderer || snapshot.recipe?.bake) }) : undefined;
           try {
             const submitted = await controller.submit({ sessionId, sourceRevision: snapshot.sourceRevision,
               snapshot: { recipe: snapshot.recipe, clips: snapshot.clips, ...(assetBytes ? { assetBytes } : {}) }, settings: jobSettings });

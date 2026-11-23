@@ -27,6 +27,7 @@ import { agentGroundPlacement, createAgentGround, placeAgentGround, FLOOR_COLOR 
 import { groundBounceEnvironment } from '../src/ground-bounce.js';
 import { createAgentAssetScene } from '../src/agent-asset.js';
 import { parseGltf } from '../src/gltf.js';
+import { createPreviewKtx2Decoder } from './agent-preview-ktx2.js';
 import { assetCopyKey, recipeAssetNeeds } from '../src/agent-scene-assets.js';
 import { clipDisplayName, resolveClipIndex } from '../src/clip-name.js';
 import { exportGlb } from '../src/export.js';
@@ -719,13 +720,26 @@ setPhysicsModuleLoader(() => import(/* @vite-ignore */ new URL('/vendor/rapier.j
 // synchronous. The boolean engine is WebAssembly and loads asynchronously, once, only for calls that need it.
 
 let queryOnly;
+let gpuKtx2Decoder = null;
+let rgbaKtx2Decoder = null;
 const ASSET_DECODE_LIMITS = agentAssetDecodeOptions();
 const ASSET_DECODE_LIMITS_WITH_MESH_CHECKS = agentAssetDecodeOptions({ checkMesh: true });
 
+function previewKtx2Decoder(preferRgba = false) {
+  if (preferRgba) return (rgbaKtx2Decoder ??= createPreviewKtx2Decoder({ preferRgba: true }));
+  return (gpuKtx2Decoder ??= createPreviewKtx2Decoder());
+}
+
 // An agent cannot pass loadGltf options, so a limit error names the catalog limits instead of "Fix: pass { ... }".
 async function parseCatalogAsset(buffer, { checkMesh = false } = {}) {
+  const options = checkMesh ? ASSET_DECODE_LIMITS_WITH_MESH_CHECKS : ASSET_DECODE_LIMITS;
   try {
-    return await parseGltf(buffer, checkMesh ? ASSET_DECODE_LIMITS_WITH_MESH_CHECKS : ASSET_DECODE_LIMITS);
+    try {
+      return await parseGltf(buffer, { ...options, decoders: { ktx2: previewKtx2Decoder() } });
+    } catch (error) {
+      if (!/cannot be resampled to a shared KHR_texture_transform/.test(String(error?.message))) throw error;
+      return await parseGltf(buffer, { ...options, decoders: { ktx2: previewKtx2Decoder(true) } });
+    }
   } catch (error) {
     throw withCatalogLimitAdvice(error);
   }

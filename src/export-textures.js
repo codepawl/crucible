@@ -57,7 +57,7 @@ export function createTextureWriter(writer, maxTextureSize = DEFAULT_MAX_TEXTURE
     const flipRows = descriptor.flipY === true;
     const known = imageIndices.get(descriptor.image);
     if (known?.has(flipRows)) return known.get(flipRows);
-    const sourceEncoding = flipRows ? undefined : sourceEncodingOf(descriptor.image);
+    const sourceEncoding = flipRows ? undefined : sourceEncodingOf(descriptor.image) ?? sourceEncodingOf(descriptor.image?.compressed?.levels?.[0]);
     const size = imageSize(descriptor.image, channel);
     const { width, height } = size;
     if (width > maxTextureSize || height > maxTextureSize) {
@@ -72,11 +72,13 @@ export function createTextureWriter(writer, maxTextureSize = DEFAULT_MAX_TEXTURE
     return index;
   }
 
-  // glTF core reads PNG and JPEG; a WebP image goes through EXT_texture_webp, which readers must support to show it.
+  // glTF core reads PNG and JPEG; WebP and KTX2 go through their extensions, which readers must support to show them.
   function textureDefinition(sampler, source) {
-    if (document.images[source].mimeType !== 'image/webp') return { sampler, source };
-    writer.addExtension('EXT_texture_webp', { required: true });
-    return { sampler, extensions: { EXT_texture_webp: { source } } };
+    const mimeType = document.images[source].mimeType;
+    const extension = mimeType === 'image/webp' ? 'EXT_texture_webp' : mimeType === 'image/ktx2' ? 'KHR_texture_basisu' : null;
+    if (!extension) return { sampler, source };
+    writer.addExtension(extension, { required: true });
+    return { sampler, extensions: { [extension]: { source } } };
   }
 
   function samplerIndex(descriptor, channel) {

@@ -11,7 +11,7 @@ import { MAXIMUM_CATALOG_ENVIRONMENT_BYTES, MAXIMUM_CATALOG_LOOK_BYTES } from '.
 import { imageLimitProblem, readImageDimensions } from '../src/image-header.js';
 import { TEXTURE_SEQUENCE_LIMITS } from '../src/texture-sequence-limits.js';
 import { decompressDracoGlb, usesDraco } from './agent-draco.mjs';
-import { transcodeKtx2Glb, usesKtx2 } from './agent-ktx2.mjs';
+import { transcodeKtx2Glb, usesKtx2, validateKtx2Glb } from './agent-ktx2.mjs';
 import { findSequenceRuns } from './agent-asset-sequences.mjs';
 import { scanTextureSets, textureSetFields } from './agent-texture-sets.mjs';
 import { MAXIMUM_TEXTURE_SET_FOLDERS } from '../src/texture-set-names.js';
@@ -229,7 +229,16 @@ async function decompressedDraco(bytes, filename) {
   return result.bytes;
 }
 
-// The preview page has no KTX2 loader, so KHR_texture_basisu images are transcoded to PNG here (#1709), with the same skip rules.
+// Validates KHR_texture_basisu images while keeping KTX2 bytes intact for the preview page GPU transcoder (#2982).
+async function validatedKtx2(bytes, filename) {
+  try {
+    await validateKtx2Glb(bytes, { filename });
+  } catch (error) {
+    throw new SkippableCatalogFileError(`${filename}: ${error.message}`);
+  }
+}
+
+// PNG fallback for paths without a KTX2 decoder (path tracers, light baking and standalone web exports, #1709).
 async function transcodedKtx2(bytes, filename) {
   let result;
   try {
@@ -258,7 +267,7 @@ function bvhFileAsGlb(bytes, filename) {
   }
 }
 
-export async function readCatalogFile(directory, filename, { enforceImageLimits = true } = {}) {
+export async function readCatalogFile(directory, filename, { enforceImageLimits = true, keepKtx2 = true } = {}) {
   const path = join(directory, filename);
   const original = await lstat(path);
   if (!original.isFile() || original.isSymbolicLink()) {
@@ -311,8 +320,12 @@ export async function readCatalogFile(directory, filename, { enforceImageLimits 
         document = glbDocument(bytes).document;
       }
       if (usesKtx2(document)) {
-        bytes = await transcodedKtx2(bytes, filename);
-        document = glbDocument(bytes).document;
+        if (keepKtx2) {
+          await validatedKtx2(bytes, filename);
+        } else {
+          bytes = await transcodedKtx2(bytes, filename);
+          document = glbDocument(bytes).document;
+        }
       }
     }
     const assetId = createHash('sha256').update(bytes).digest('hex');
@@ -437,7 +450,7 @@ function catalogFileCountMessage(names) {
   return `Asset catalog has ${names.length} files other than images (${counts}), over its maxAssets ${MAXIMUM_ASSETS}. Counted: ${listed}${more}. Move the GLB, BVH, HDR and CUBE files the project does not use out of the --assets directory (a scene places at most ${ASSET_PLACEMENT_LIMITS.maxAssets} different assets, so unused files only count here). Other files such as .md or .json are never counted.`;
 }
 
-export async function createAgentAssetCatalog(root, packFiles = []) {
+export async function createAgentAssetCatalog(root, packFiles = [], { keepKtx2 = true } = {}) {
   const entries = new Map();
   const skipped = [];
   const sequences = new Map();
@@ -465,7 +478,7 @@ export async function createAgentAssetCatalog(root, packFiles = []) {
     for (const file of files.filter(candidate => !collapsedNames.has(candidate.name))) {
       let result;
       try {
-        result = await readCatalogFile(directory, file.name);
+        result = await readCatalogFile(directory, file.name, { keepKtx2 });
       } catch (error) {
         if (!(error instanceof SkippableCatalogFileError)) throw error;
         skipped.push({ name: file.name, reason: error.message });
@@ -590,14 +603,19 @@ export async function createAgentAssetCatalog(root, packFiles = []) {
       if (!entry) throw new Error(`Unknown asset ID ${String(assetId).slice(0, 12)}. Call scene_asset_catalog and pass an assetId it lists.`);
       return { name: entry.metadata.name, bytes: entry.metadata.bytes };
     },
-    async read(assetId) {
+    async read(assetId, { transcodeKtx2 = false } = {}) {
       const entry = await lookupEntry(assetId);
       if (!entry) throw new Error(`Unknown asset ID ${String(assetId).slice(0, 12)}. Call scene_asset_catalog and pass an assetId it lists.`);
-      const result = await readCatalogFile(entry.directory, entry.filename);
+      const result = await readCatalogFile(entry.directory, entry.filename, { keepKtx2 });
       if (result.assetId !== assetId) throw new Error('Asset bytes changed since catalog creation. Restart the runtime to refresh the catalog.');
       const clipCount = result.document?.animations?.length ?? 0;
       if (clipCount > AGENT_ASSET_LIMITS.maxClips) throw new RangeError(`Asset has ${clipCount} animation clips, over the catalog maxClips ${AGENT_ASSET_LIMITS.maxClips}. Remove clips from the file.`);
-      return result.bytes;
+      if (!transcodeKtx2 || !usesKtx2(result.document)) return result.bytes;
+      const transcoded = await transcodeKtx2Glb(result.bytes, { filename: entry.filename });
+      if (transcoded.bytes.length > AGENT_ASSET_LIMITS.maxBytes) {
+        throw new RangeError(`${entry.filename}: transcoded from KTX2 the asset reaches ${transcoded.bytes.length} bytes. ${assetBytesLimitMessage(transcoded.bytes.length)}`);
+      }
+      return transcoded.bytes;
     },
   });
 }

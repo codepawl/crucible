@@ -1,0 +1,1 @@
+- Keep KTX2 (`KHR_texture_basisu`) textures GPU-compressed across the MCP catalog and preview/render path (with automatic RGBA8/PNG fallback for unsupported contexts, path tracing, light baking and standalone web exports), strip texture extensions cleanly for `scene_walkmap` geometry queries and preserve KTX2 images when exporting unchanged GLBs (#2982)

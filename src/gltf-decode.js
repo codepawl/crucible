@@ -217,18 +217,15 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
   function loadImage(sourceIndex, isKtx2) {
     return cachePending(images, `${sourceIndex}:${isKtx2}`, async () => {
       const bytes = imageBytes(sourceIndex);
-      if (isKtx2) {
-        const texture = await loadKtx2Image(bytes);
-        releasers.push(() => texture.dispose?.());
-        return { image: texture.image, isCompressedTexture: texture.isCompressedTexture === true, format: texture.format, mipmaps: texture.mipmaps };
-      }
-      const mimeType = mimeTypeOf(document.images[sourceIndex], bytes);
-      const scaleTarget = imageTargets.get(sourceIndex);
-      const image = await decodeImage(bytes, mimeType, scaleTarget);
+      const mimeType = isKtx2 ? 'image/ktx2' : mimeTypeOf(document.images[sourceIndex], bytes);
+      const scaleTarget = isKtx2 ? null : imageTargets.get(sourceIndex);
+      const result = isKtx2
+        ? await loadKtx2Image(bytes)
+        : { image: await decodeImage(bytes, mimeType, scaleTarget) };
       // A scaled image no longer matches its file, so only an unscaled one lets export reuse the source bytes.
-      if (!scaleTarget) rememberSourceEncoding(image, bytes.slice(), mimeType);
-      releasers.push(() => image.close?.());
-      return { image, isCompressedTexture: false, format: undefined, mipmaps: undefined };
+      if (!scaleTarget) rememberSourceEncoding(result.mipmaps?.[0] ?? result.image, bytes.slice(), mimeType);
+      releasers.push(() => (isKtx2 ? result.dispose?.() : result.image.close?.()));
+      return { image: result.image, isCompressedTexture: result.isCompressedTexture === true, format: result.format, mipmaps: result.mipmaps };
     });
   }
 

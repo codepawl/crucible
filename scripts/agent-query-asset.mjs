@@ -15,6 +15,8 @@ function withoutTextureReferences(value) {
   }
 }
 
+const STRIPPED_TEXTURE_EXTENSIONS = new Set(['KHR_texture_basisu', 'EXT_texture_webp']);
+
 /** The same GLB with no images, textures or texture references; the binary chunk is untouched. */
 export function geometryOnlyGlb(bytes) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -30,6 +32,12 @@ export function geometryOnlyGlb(bytes) {
   delete document.textures;
   delete document.samplers;
   withoutTextureReferences(document.materials);
+  for (const listName of ['extensionsUsed', 'extensionsRequired']) {
+    if (!Array.isArray(document[listName])) continue;
+    const kept = document[listName].filter(name => !STRIPPED_TEXTURE_EXTENSIONS.has(name));
+    if (kept.length) document[listName] = kept;
+    else delete document[listName];
+  }
   const padded = Buffer.from(JSON.stringify(document));
   const jsonBytes = Buffer.concat([padded, Buffer.alloc((4 - (padded.length % 4)) % 4, 0x20)]);
   const rest = bytes.subarray(20 + jsonLength);
