@@ -4,6 +4,8 @@ import { createSharedTextures, loadGltf } from '../../src/gltf.js';
 import { loadHdri } from '../../src/hdri.js';
 import { addLodsToDenseParts, withSceneFileRendererDefaults } from '../../src/dense-lods.js';
 import { createCascadedShadows } from '../../src/cascaded-shadows.js';
+import { installVariantEmulation } from './variant-programs.js';
+import { installColourProgramRecorder, describeColourPrograms } from './program-report.js';
 import { blockMedians, median, rotatedOrder, summarizeAfterWarmup, summarizeRounds } from './frame-statistics.mjs';
 
 const WARMUP_FRAMES = 20;
@@ -117,10 +119,22 @@ const SHADER_CUTS = [
   // Standalone variants: they replace text another cut removes, so cumulative runs leave them out.
   { name: 'ibl-fixed-mip', standalone: true, from: 'environmentRadiance(reflected, roughness * environmentLevelMax)', to: 'environmentRadiance(reflected, 3.0)' },
   // Occupancy probes (#2144): the picture must not change.
+  // Variant probe (#2144): the three map branches the courtyard program still has become constants (the 343 parts without maps would sample placeholders, so the picture is only near).
+  { name: 'static-maps-on', standalone: true, transform: makeMapBranchesConstant },
   { name: 'occupancy-constant-uniforms', standalone: true, transform: constifyUniforms },
   { name: 'occupancy-extra-uniforms', standalone: true, transform: addUsedUniforms },
   { name: 'occupancy-mediump', standalone: true, transform: useMediumPrecision },
 ];
+
+function makeMapBranchesConstant(source) {
+  let changed = source;
+  for (const macro of ['USES_NORMAL_MAP', 'USES_BASE_MAP', 'USES_METALLIC_ROUGHNESS_MAP']) {
+    const pattern = new RegExp('^#define ' + macro + ' \\(.*\\)$', 'm');
+    if (!pattern.test(changed)) throw new Error('Variant probe: #define ' + macro + ' is no longer a uniform branch; update makeMapBranchesConstant.');
+    changed = changed.replace(pattern, '#define ' + macro + ' true');
+  }
+  return changed;
+}
 
 // Uniforms the Lone Monk courtyard frame never changes become constants, so the program has fewer to hold.
 const CONSTANT_UNIFORMS = [['float', 'hdrEnabled', '1.0'], ['float', 'inspection', '0.0'], ['float', 'compositeMode', '0.0'], ['float', 'renderPassMode', '0.0']];
@@ -155,7 +169,7 @@ function applyCut(cut, source) {
   return source.replace(cut.from, cut.to);
 }
 
-window.measureScene = async function measureScene({ description, glbUrl, hdriUrl, frames = 200, capture = false, alternate = false, segmented = true, width = 1280, height = 720, rendererOverrides = {}, denseLods = false, denseLodsMinimumTriangles = undefined, experiment = null, sequence = null, profile = null, cumulativeCuts = null }) {
+window.measureScene = async function measureScene({ description, glbUrl, hdriUrl, frames = 200, capture = false, alternate = false, segmented = true, width = 1280, height = 720, rendererOverrides = {}, denseLods = false, denseLodsMinimumTriangles = undefined, experiment = null, sequence = null, profile = null, cumulativeCuts = null, programReport = false, variantEmulation = false, variantRun = null }) {
   const canvas = document.querySelector('#viewport');
   const experiments = new Set(String(experiment ?? '').split(','));
   if (experiments.has('no-invariant')) {
@@ -189,6 +203,7 @@ window.measureScene = async function measureScene({ description, glbUrl, hdriUrl
       return originalSource.call(this, shader, cutSource);
     };
   }
+  const variantEmulator = variantEmulation ? installVariantEmulation() : null;
   if (experiment === 'trivial-fragment') replaceColourShaders(false);
   if (experiment === 'trivial-both') replaceColourShaders(true);
   canvas.style.width = `${width}px`;
@@ -208,6 +223,21 @@ window.measureScene = async function measureScene({ description, glbUrl, hdriUrl
     shadowCascades: rendererOptions.shadowCascades ? createCascadedShadows(rendererOptions.shadowCascades) : undefined,
     environment: { ...(rendererOptions.environment ?? {}), map },
   });
+  if (programReport) {
+    const recorder = installColourProgramRecorder();
+    const reportRenderer = createRenderer();
+    reportRenderer.render({ exposure: description.exposure ?? 1, ...(description.frame ?? {}), eye: description.eye, target: description.target });
+    const programs = describeColourPrograms(recorder, renderedParts);
+    recorder.uninstall();
+    const rendererFeatures = [...reportRenderer.shaderFeatures].sort();
+    reportRenderer.dispose();
+    return { programs, rendererFeatures, partCount: renderedParts.length };
+  }
+  if (variantRun) {
+    variantEmulator?.uninstall();
+    const runFrame = { exposure: description.exposure ?? 1, ...(description.frame ?? {}), eye: description.eye, target: description.target };
+    return { ...await measureVariantRun({ createRenderer, canvas, frame: runFrame, ...variantRun }), lodBuildMs };
+  }
   if (cumulativeCuts) {
     const cumulativeFrame = { exposure: description.exposure ?? 1, ...(description.frame ?? {}), eye: description.eye, target: description.target };
     return { ...await measureCumulativeCuts({ createRenderer, canvas, frame: cumulativeFrame, ...cumulativeCuts }), lodBuildMs };
@@ -328,6 +358,7 @@ window.measureScene = async function measureScene({ description, glbUrl, hdriUrl
     }])) : undefined,
     pairedOnOverOffMedian: alternate ? Number(median(alternating.on.slice(0, alternating.off.length).map((value, index) => value / alternating.off[index])).toFixed(3)) : undefined,
     capturedFrame,
+    variantStatistics: variantEmulator?.describe(),
     sequenceTriangles,
     centerPixel: Array.from(ONE_PIXEL),
     glError: context.getError(),
@@ -596,4 +627,37 @@ async function measureCumulativeCuts({ createRenderer, canvas, frame, frames = 1
     prototype.linkProgram = originalLink;
   }
   return { cumulative: steps, mode, cutOrder: cuts, round, frames };
+}
+
+// Whole-frame GPU time of the uber colour program against the emulated per material variants (variant-programs.js), on one page.
+// Steps run uber, variants, uber, variants (reversed when `round` is odd) so a drifting card does not favour one; each step is a fresh renderer.
+async function measureVariantRun({ createRenderer, canvas, frame, frames = 100, round = 0 }) {
+  const order = round % 2 === 0 ? ['uber', 'variants', 'switch-only', 'uber', 'variants', 'switch-only'] : ['switch-only', 'variants', 'uber', 'switch-only', 'variants', 'uber'];
+  const steps = [];
+  for (const label of order) {
+    const emulator = label === 'uber' ? null : installVariantEmulation({ keepUniformGates: label === 'switch-only' });
+    const recorder = installColourProgramRecorder();
+    const renderer = createRenderer();
+    const context = renderer.context;
+    const timer = createSegmentTimer(context);
+    renderer.gpuTimer = null;
+    renderer.render(frame);
+    const result = await timeFrames({ renderer, context, canvas, timer, frame, frames, segmented: false });
+    const gpuFrames = result.gpu.slice(WARMUP_FRAMES).map(totalOf);
+    const uberProgram = describeColourPrograms(recorder, [])[0];
+    recorder.uninstall();
+    const glError = context.getError();
+    steps.push({
+      label,
+      gpuMedianMs: Number(median(gpuFrames).toFixed(3)),
+      gpuMinMs: Number(Math.min(...gpuFrames).toFixed(3)),
+      wallMedianMs: Number(median(result.wall.slice(WARMUP_FRAMES)).toFixed(3)),
+      uberProgram: { sourceLines: uberProgram.sourceLines, translatedLines: uberProgram.translatedLines, activeUniforms: uberProgram.activeUniforms },
+      variantStatistics: emulator?.describe(),
+      glError,
+    });
+    emulator?.uninstall();
+    renderer.dispose();
+  }
+  return { variantRun: steps, round, frames };
 }
