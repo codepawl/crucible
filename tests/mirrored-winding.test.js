@@ -75,3 +75,31 @@ test('updateParts regroups once when a part crosses a mirror instead of throwing
   assert.deepEqual(regroups[0].parts, [part]);
   assert.deepEqual(regroups[0].options, { regroupOnly: true });
 });
+
+test('a part alone in its batch moves to the other winding batch once when it crosses a mirror', () => {
+  const part = quadPart('strip', 1);
+  const other = { ...quadPart('other', 1), geometry: { ...quad } };
+  const renderer = Object.create(CrucibleRenderer.prototype);
+  const deleted = [];
+  renderer.context = { getError: () => 0, deleteVertexArray: batch => deleted.push(batch), deleteBuffer() {}, bindVertexArray() {}, ARRAY_BUFFER: 1, bindBuffer() {}, bufferSubData() {} };
+  renderer.backend = new WebGL2GlazeBackend(renderer.context);
+  renderer.canvas = { width: 16, height: 16 };
+  Object.assign(renderer, { groundPart: null, batching: true, incrementalGrouping: null, geometryBuffers: new Map(), buffers: [], batches: [], textureBytes: 0, geometryBytes: 0, memoryBudgetMiB: 4096, multisampleSamples: 1, hdr: false, benchmark: true, depth: false, denseSamples: null, updateBatches: new Set(), updateSkins: new Set() });
+  renderer.releaseLevelDraws = () => {};
+  renderer.partLocations = new Map();
+  const uploads = [];
+  renderer.uploadBatch = group => {
+    const batch = { mirrored: isMirroredMatrix(group[0].matrix), parts: group, castShadow: true, receivesShadow: true, compositeMode: 0, alphaMode: 'opaque', alphaCutoff: 0, opacity: 1, doubleSided: false, retro: undefined, waterGlint: undefined, floor: false, mapState: [null, null, null, null, null, 1, 1, 1, 0, 0.05, 0.085, 0.02], layerState: materialLayerState(group[0].material), instanceData: new Float32Array(group.length * 42), instanceBuffer: {}, vertexArray: {} };
+    group.forEach((member, index) => renderer.partLocations.set(member, { batch, index, geometry: member.geometry, skin: null, morph: null, map: null, layerState: batch.layerState, mapState: batch.mapState, normalMatrix: mat3.create() }));
+    uploads.push(batch);
+    return batch;
+  };
+  renderer.replaceParts([part, other]);
+  const before = uploads.length;
+  part.matrix[0] = -1;
+  assert.equal(renderer.updateParts([part, other]), 2);
+  assert.equal(renderer.partLocations.get(part).batch.mirrored, true);
+  assert.equal(renderer.partLocations.get(other).batch.mirrored, false);
+  assert.equal(uploads.length - before, 1, 'the flipped part gets one new batch');
+  assert.equal(renderer.updateParts([part, other]), 2);
+});

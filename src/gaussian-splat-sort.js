@@ -23,14 +23,17 @@ function viewDepthRange(modelView, { minimum, maximum }) {
 }
 
 /**
- * Creates a sorter for splats at `positions` (xyz triples, `count` of them) inside `bounds`. `sort(modelView)` takes the
+ * Creates a sorter for splats at `positions` (xyz triples, `count` of them) inside `bounds`, with room for `capacity` splats (default `count`). `sort(modelView)` takes the
  * column-major model-view matrix and returns `{ order, visibleCount, changed }`: `order[0 .. visibleCount)` holds splat
  * indices from the farthest to the nearest in front of the camera. `order` is reused between calls, and `changed` is
  * false when the view depth axis has not moved since the previous call, so the caller can skip its upload.
  */
-export function createSplatSorter(positions, count, bounds) {
-  const keys = new Int32Array(count);
-  const order = new Uint32Array(count);
+export function createSplatSorter(initialPositions, initialCount, initialBounds, capacity = initialCount) {
+  let positions = initialPositions;
+  let count = initialCount;
+  let bounds = initialBounds;
+  const keys = new Int32Array(capacity);
+  const order = new Uint32Array(capacity);
   const bucketStarts = new Uint32Array(DEPTH_STEPS + 1);
   const lastAxis = new Float64Array(4).fill(NaN);
   let visibleCount = 0;
@@ -67,5 +70,13 @@ export function createSplatSorter(positions, count, bounds) {
     return { order, visibleCount, changed: true };
   }
 
-  return { sort, get visibleCount() { return visibleCount; } };
+  // Points the sorter at new centres, a new count (up to the capacity) and the bounds that hold them; the next sort runs in full.
+  function update(next) {
+    positions = next.positions;
+    count = next.count;
+    bounds = next.bounds;
+    lastAxis.fill(NaN);
+  }
+
+  return { sort, update, get visibleCount() { return visibleCount; } };
 }

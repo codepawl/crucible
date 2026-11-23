@@ -356,6 +356,7 @@ const SPLAT_RAMPS = {
   pot: [3, 2, 1], flask: [2, 1, 0], panel: [1, 0, 0], plinth: [5, 4, 3], cage: [6, 5, 4], cold: [4, 3, 2], char: [3, 2, 1],
 };
 const SPLAT_CAPACITY = 60000;
+const SPLAT_BOUNDS = { minimum: [-4, -9, -3], maximum: [6, 3, 3] };
 
 // Pixel-art resolve for the stack and splat looks. It runs at the art-pixel size, so every effect here lands on whole
 // pixels: nearest palette colour with ordered dither, an ink outline, a dithered glow around the hot metal, a heat
@@ -931,18 +932,25 @@ export async function createFoundry(canvas) {
     });
   }
 
-  function attachSplats(scene) {
+  // The splats attach once; every later frame rewrites them in place with the update path (#2756).
+  let splatHandle = null;
+  function updateSplats(scene) {
     writeSplats(scene);
     const count = splatStore.count;
-    const splats = splatEngine.createGaussianSplats({
+    const frameData = {
       count,
       positions: splatStore.positions.subarray(0, count * 3),
       colors: splatStore.colors.subarray(0, count * 4),
       scales: splatStore.scales.subarray(0, count * 3),
       rotations: splatStore.rotations.subarray(0, count * 4),
-      bounds: { minimum: [-4, -9, -3], maximum: [6, 3, 3] },
-    }, { maximumCount: SPLAT_CAPACITY });
-    return splatEngine.attachGaussianSplats(renderer, splats);
+      bounds: SPLAT_BOUNDS,
+    };
+    if (splatHandle) {
+      splatHandle.update(frameData);
+      return;
+    }
+    const splats = splatEngine.createGaussianSplats(frameData, { maximumCount: SPLAT_CAPACITY, capacity: SPLAT_CAPACITY });
+    splatHandle = splatEngine.attachGaussianSplats(renderer, splats);
   }
 
   function draw() {
@@ -952,7 +960,7 @@ export async function createFoundry(canvas) {
     renderer.userPasses.set(passesFor(scene, view));
     const glow = look.glowLight;
     const meltPoint = transformPoint(scene.potMatrix, [0.1, 1.2, 0]);
-    const detachSplats = look.splats ? attachSplats(scene) : null;
+    if (look.splats) updateSplats(scene);
     renderer.render({
       eye: view.eye, target: view.target, fov: view.fov, effects: look.effects,
       environment: {
@@ -963,7 +971,6 @@ export async function createFoundry(canvas) {
         ],
       },
     });
-    if (detachSplats) detachSplats();
     lastView = { scene, view };
   }
 

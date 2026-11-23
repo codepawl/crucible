@@ -44,6 +44,9 @@ Each picture is a Crucible scene. Open one to see what the engine does, then rea
 
 ```cards
 Showcase | /showcase.html | Large scenes: an airport, a data center and a port. | /previews/showcase-airport.webp
+Chip fab | #effects-and-lighting | A cleanroom bay with ambient occlusion, bloom and a vignette. | /previews/showcase-chipfab.webp
+Warehouse | #hdr-environment-lighting | Racks and a forklift lit by a warehouse sky. | /previews/showcase-warehouse.webp
+Dark store | #local-lights-and-volume-fog | Shelves lit by point lights in thin fog. | /previews/showcase-darkstore.webp
 Path tracer | #cook-path-tracer | Cook traces a scene for a still with real bounce light. | /previews/cook-monk.webp
 ```
 

@@ -25,7 +25,6 @@ export const PACK_UNSUPPORTED_MODULES = Object.freeze({
   lineArt: 'line art or toon shading',
   userPass: 'postPasses',
   materialSnippet: 'material snippets',
-  patterns: 'procedural material patterns',
 });
 
 /** Imports the shader modules a pack names. Throws for a name this runtime does not know, which means the pack is newer. */

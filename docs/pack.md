@@ -62,11 +62,13 @@ A sky image is at most 1024 pixels wide (2 MiB packed; a 128 by 64 bundled sky i
 
 A part's texture images (colour, normal, roughness and metal, occlusion and height maps, from a recipe `colorMap` or a placed catalog asset) travel as plain `{ width, height, data }` pixels, with the texture's colour space, wrap and filter, and the part's UVs. The page turns them back into `ImageData`. A pack carries at most 1,048,576 texels of texture images in all (a 1024 by 1024 image, 4 MiB of raw RGBA bytes); an image used by several parts is stored and counted once. Past that, pack names the part that holds the most and what to do: use a smaller map, or take the texture off the parts that need it least. Pixels are stored raw, so a web server's gzip is the only compression, and a photo texture does not shrink much.
 
+A material `pattern` (bricks, planks, concrete, fabric and the other types, or a `graph`) is baked to its colour, normal and roughness and metal images when pack builds the scene, and those images travel like any other texture; the pattern itself is not packed and the page runs no pattern code. A pattern keeps its recipe `resolution` up to 512; if the textures then pass the texel budget, every pattern is baked at 256 before pack refuses. A `graph` pattern with a catalog `image` node needs the catalog, so the command line refuses it and names the material, and Studio's export carries it.
+
 The command line packs a bundled sky (`sky-clouds`, `studio-softbox`) and refuses a sky or image that lives in the asset catalog, naming the field: only Studio and the MCP runtime have the catalog. Studio's web pack export carries both.
 
 ## What a pack refuses
 
-Pack names the recipe field and what to change. For now it refuses `motion`, `timeline`, `physics`, `cloth`, `particles`, `game`, `postPasses`, `armatures`, the physical `environment.sky`, cascaded shadows, area lights, line art, material snippets and procedural material patterns. Scenes light with `environment.setup` or an `environment.hdri` image. The automatic floor is not drawn: put a floor in the recipe.
+Pack names the recipe field and what to change. For now it refuses `motion`, `timeline`, `physics`, `cloth`, `particles`, `game`, `postPasses`, `armatures`, the physical `environment.sky`, cascaded shadows, area lights, line art, and material snippets. Scenes light with `environment.setup` or an `environment.hdri` image. The automatic floor is not drawn: put a floor in the recipe.
 
 ## What it costs
 

@@ -2,7 +2,7 @@ import './support/load-agent-scene-modules.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { box } from '../src/geometry.js';
-import { bakeAgentParts, normalizeAgentBake } from '../src/agent-bake.js';
+import { bakeAgentParts, normalizeAgentBake, clearBakeReuse } from '../src/agent-bake.js';
 import { traceIrradianceGrid, withMeanRadiance } from '../src/irradiance-grid.js';
 import { buildWithKernels, kernelKey } from '../src/kernel-offload.js';
 import { answerKernelRequest } from '../src/kernel-registry.js';
@@ -31,7 +31,9 @@ const environment = {
 };
 const settings = normalizeAgentBake({ preset: 'draft', irradianceGrid: 10, bounces: 2, probes: false });
 
+// Each bake traces from nothing: a reused bake would never reach the worker, and these tests compare traces.
 function bakeRoom() {
+  clearBakeReuse();
   const parts = smallRoom();
   return bakeAgentParts(parts, new Map(parts.map(part => [part.name, part.matrix])), environment, settings);
 }

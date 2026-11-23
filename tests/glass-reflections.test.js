@@ -27,6 +27,19 @@ test('a blended fragment fades the diffuse share only: the reflection is the sam
   close(opaque[0], displayed[0]);
 });
 
+test('a texel the texture leaves transparent shows no reflection, while a uniformly translucent material keeps it (#3110)', () => {
+  const displayedDiffuse = [0.2, 0.3, 0.25];
+  const specular = [0.4, 0.4, 0.45];
+  const displayed = displayedDiffuse.map((value, index) => value + specular[index]);
+  const background = [0.1, 0.5, 0.1];
+  const cutOutTexel = compositeBlended(background, blendedFragment(displayed, displayedDiffuse, 0, 0));
+  cutOutTexel.forEach((value, index) => close(value, background[index]));
+  const halfCovered = blendedFragment(displayed, displayedDiffuse, 0.5, 0.5);
+  halfCovered.slice(0, 3).forEach((value, index) => close(value, 0.5 * displayedDiffuse[index] + 0.5 * specular[index]));
+  const glass = blendedFragment(displayed, displayedDiffuse, 0.3, 1);
+  glass.slice(0, 3).forEach((value, index) => close(value, 0.3 * displayedDiffuse[index] + specular[index]));
+});
+
 test('opacity 1 and a part without specular composite exactly as the old SRC_ALPHA blend did', () => {
   const colour = [0.3, 0.6, 0.2];
   const background = [0.5, 0.4, 0.3];
@@ -42,12 +55,17 @@ test('a blended part draws with premultiplied factors', () => {
 
 test('the lit program writes blend parts premultiplied and keeps the specular of every light and the environment apart', () => {
   const source = createFragmentShader(['alphaMode']);
+  assert.match(source, /vec4 blendedOutput\(vec3 displayed, vec3 displayedDiffuse, float alpha, float coverage\)/);
+  assert.match(source, /displayedDiffuse \* alpha \+ \(displayed - displayedDiffuse\) \* coverage/);
   assert.match(source, /vec4 blendedOutput\(/);
-  assert.match(source, /outputColor = blendedOutput\(displayedColor, displayedDiffuse, alpha\)/);
+  assert.match(source, /outputColor = blendedOutput\(displayedColor, displayedDiffuse, alpha, clamp\(textureAlpha, 0\.0, 1\.0\)\)/);
   assert.match(source, /blendSpecular \+= specular \* radiance \* normalLight/);
   assert.match(source, /blendSpecular \+= environmentLighting\(/);
   assert.match(source, /#define USES_ALPHA_MODE \(alphaMode > 0\.5\)/);
   assert.match(createFragmentShader([]), /#define USES_ALPHA_MODE false/);
+  // Shaders without a blend part keep the plain three-argument form, so their source is the one they had before #3110.
+  assert.match(createFragmentShader([]), /vec4 blendedOutput\(vec3 displayed, vec3 displayedDiffuse, float alpha\) \{/);
+  assert.doesNotMatch(createFragmentShader([]), /float coverage\)/);
 });
 
 test('probeEnabledState is 0 without a probe, 1 with one and 2 when the probe knows its floor', () => {

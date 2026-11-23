@@ -20,7 +20,7 @@ Passes run in order on the finished frame: after depth of field, motion blur, li
 | `fragment` | GLSL ES 3.00 text that defines `vec4 userPass(vec2 uv)`. Helper functions and `const` values may come before it. 4096 bytes of code at most; comments and extra spaces are not counted (the text as sent may be up to 65536 bytes). |
 | `uniforms` | Named values. A number is a `float`; `[x, y]`, `[x, y, z]` and `[x, y, z, w]` are `vec2`, `vec3` and `vec4`; an int is `{ "type": "int", "value": 4 }`. |
 | `scale` | 0.05 to 1 (default 1). The pass renders at this fraction of the width and height, and whatever reads it enlarges it with nearest filtering. A `scale` of 0.25 on the last pass is a pixel-art downscale. |
-| `objects` | Optional list of 1 to 16 part names (node ids, as the object ID pass lists them). `objectSlotAt(uv)` tells which of them is under a pixel. The preview and render jobs draw the object ID pass first when a pass lists parts. |
+| `objects` | Optional list of 1 to 16 names. A name is a part (as the object ID pass lists it) or the node id of a placed asset, which stands for every part of that asset; the names may resolve to at most 64 parts. `objectSlotAt(uv)` tells which of them is under a pixel. The preview and render jobs draw the object ID pass first when a pass lists parts. |
 | `needs` | Optional list of `normal`, `objectId`, `albedo`, `emission`. Each adds one exact input to the pass. |
 | `luts` | Optional palette textures, up to 4: `{ "palette": { "colors": ["#101820", "#f2aa4c"] } }`. |
 
@@ -39,7 +39,7 @@ You do not declare uniforms or the version line; the engine writes them. A snipp
 | `worldFootprintAt(uv, direction)` | function | How far `dot(worldPointAt(uv), direction)` changes over one pixel. |
 | `bandLimitedLine(coordinate, pitch, width, footprint)` | function | Coverage 0 to 1 of lines that repeat every `pitch`, averaged over `footprint`. |
 | `normalAt(uv)`, `objectIdAt(uv)`, `albedoAt(uv)`, `emissionAt(uv)` | functions | Exact G-buffer reads, only when the pass lists them in `needs` ([below](#exact-normals-object-ids-albedo-and-emission)). |
-| `objectSlotAt(uv)` | function | The position in the pass's `objects` list of the part under `uv`, or -1 for the background, any other part, and a pass with no `objects`. A name that matches several parts gives all of them its one position. Edges are hard: an object ID cannot be antialiased. A name that is not a part in the frame fails the render and lists part names to use. |
+| `objectSlotAt(uv)` | function | The position in the pass's `objects` list of the part under `uv`, or -1 for the background, any other part, and a pass with no `objects`. A name that matches several parts, or a placed asset id that covers all its parts, gives all of them its one position. Edges are hard: an object ID cannot be antialiased. A name that is not a part in the frame fails the render and lists part names to use. |
 | `gl_FragCoord` | `vec4` | The pixel position inside this pass. |
 
 ## Exact normals, object IDs, albedo and emission
@@ -189,6 +189,8 @@ A material can carry its own fragment code: a GLSL function that changes the sur
 | `fragment` | GLSL ES 3.00 text that defines `void materialHook(inout vec3 color, inout float alpha, vec2 uv, vec3 worldPosition)`, or `waterHook` below. Add a fifth parameter, `float time`, to read the frame time. Helper functions and `const` values may come before it. 4096 bytes of code at most; comments and extra spaces are not counted (the text as sent may be up to 65536 bytes). |
 | `uniforms` | Named values, as for a post pass: a number is a `float`, `[x, y]` to `[x, y, z, w]` are vectors, `{ "type": "int", "value": 4 }` is an int. At most 16. |
 | `mask` | Optional, `"map"`: the snippet may sample `snippetMask` (a `sampler2D`), which is the material's own map or pattern. Load the image as the material `map`; there are no remote URLs. |
+
+Materials may share the same `fragment` text and still differ in `uniforms`: they share one compiled function, and each draw sets the uniform values of its own material.
 
 Inputs: `color` is the base colour after the map and the vertex tint, `alpha` is the map alpha before the material opacity, `uv` is the texture coordinate and `worldPosition` the position in the world. A fifth `float` parameter (any name, for example `float time`) receives the frame time in seconds, the same time `waterHook` and `userPass` get, in stills and in video frames; it animates flames, beacons, grass sway or a flowing highlight on any material. The shadow pass gets the same time, so a discard that moves with it moves the shadow, but the shadow map is redrawn only when the scene changes. `discard` removes the fragment in every alpha mode. A lowered `alpha` cuts only when the material has `alphaMode: "mask"`.
 

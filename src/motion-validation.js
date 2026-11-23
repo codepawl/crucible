@@ -28,6 +28,15 @@ export function bounded(value, minimum, maximum, label) {
   return value;
 }
 
+/** A keyframe time from 0 to the duration. Times a rounding error past either end (from adding steps such as 0.1) snap to it. */
+export function keyframeTime(value, duration, label) {
+  finite(value, label);
+  const slack = 1e-9 * Math.max(1, duration);
+  if (value < 0 && value >= -slack) return 0;
+  if (value > duration && value <= duration + slack) return duration;
+  return bounded(value, 0, duration, label);
+}
+
 export function denseArray(value, maximum, label) {
   if (!Array.isArray(value) || value.length > maximum || Object.keys(value).length !== value.length ||
       Reflect.ownKeys(value).length !== value.length + 1 || Object.keys(value).some((key, index) => key !== String(index))) {

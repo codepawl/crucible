@@ -31,6 +31,7 @@ import { assetCopyKey, recipeAssetNeeds } from '../src/agent-scene-assets.js';
 import { clipDisplayName, resolveClipIndex } from '../src/clip-name.js';
 import { exportGlb } from '../src/export.js';
 import { omittedFromGlb } from '../src/glb-export-omissions.js';
+import { bakeMovingPartTracks, hasBakedNodeTracks, motionClip } from '../src/glb-export-motion.js';
 import { matrixFrame } from '../src/export-skeleton.js';
 import '../src/texture-update.js';
 import { staleRevisionMessage } from '../src/agent-errors.js';
@@ -129,7 +130,7 @@ function releaseRecord(record) {
 }
 
 function residentBytesOf(record) {
-  return record.scene.inspect().residentGeometryBytes ?? 0;
+  return record.scene.inspect().residentGeometryBytes;
 }
 
 // Close the least recently used scenes until the new scene fits both caps, and name them and the cap to the caller.
@@ -320,6 +321,19 @@ function probeSnippets(scene) {
   if (agentSceneModuleLoaded('materialSnippet')) agentSceneModule('materialSnippet').probeMaterialSnippets(scene.parts);
 }
 
+// A frame of a textured scene that changes only a rigid untextured mesh (the sea of an oceanTime track) keeps its renderer:
+// replaceParts retains every batch whose parts did not change, textures included, and refuses the rest before it touches a
+// batch, so the caller rebuilds. A material snippet or a texture sequence needs a program or texture state only a new renderer has.
+function replacedBesideTextures(record) {
+  if (record.asset || record.scene.parts.some(part => part.material.snippet) || (record.scene.sequenceTextures?.().length ?? 0) > 0) return false;
+  try {
+    record.renderer.replaceParts(record.scene.parts);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function rebuildRenderer(record) {
   probeSnippets(record.scene);
   record.renderer.dispose();
@@ -394,9 +408,10 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
   if (record.rendererTopology !== record.scene.topologyRevision) {
     const textured = sceneIsTextured(record.scene);
     // replaceParts refuses skinned and morphed parts, so an edited imported part takes a new renderer as well.
-    if (textured || record.rendererTextured || record.asset) {
+    const replacedInPlace = textured && record.rendererTextured && replacedBesideTextures(record);
+    if (!replacedInPlace && (textured || record.rendererTextured || record.asset)) {
       rebuildRenderer(record);
-    } else {
+    } else if (!replacedInPlace) {
       record.renderer.replaceParts(record.scene.parts);
     }
     record.rendererTextured = textured;
@@ -507,8 +522,7 @@ function status(record) {
 // An agent that needs the node list calls scene_inspect. The scene's own warnings (closed room without a bake, stale bake,
 // coplanar overlap, ignored material fields) still ride along, only when there are any.
 function sceneDiagnostics(record) {
-  const { diagnostics } = record.scene.inspect();
-  return diagnostics?.length ? { diagnostics } : {};
+  return record.scene.editDiagnostics();
 }
 
 // An edit that released old undo steps to fit the vertex budget says so, so the agent does not rely on them.
@@ -576,6 +590,15 @@ function cascadesFor(scene) {
   return count > 0 ? agentSceneModule('cascades').createCascadedShadows({ count }) : null;
 }
 
+// The coplanar warnings of a scene stand for its recipe, not for the pose of one frame: while a motion time is sampled, a renderer
+// built for another frame (or a layout swapped by replaceParts) reuses them until an edit changes the revision.
+const coplanarHeldByScene = new WeakMap();
+
+function coplanarCarryFor(scene) {
+  if (!coplanarHeldByScene.has(scene)) coplanarHeldByScene.set(scene, {});
+  return { held: coplanarHeldByScene.get(scene), key: () => (scene.motionTime == null ? undefined : scene.revision) };
+}
+
 function initializeRenderer(scene, { memoryBudgetMiB, backend, transparent = false, tier = 'realtime' }) {
   probeSnippets(scene);
   const placement = automaticGroundPlacement(scene);
@@ -596,7 +619,7 @@ function initializeRenderer(scene, { memoryBudgetMiB, backend, transparent = fal
     transparent,
     // Every preview and job frame is read back or exported, so none may draw with the fallback post program of a build in flight (#1767).
     exactFrames: true,
-  }))));
+  }))), null, coplanarCarryFor(scene));
   // Outlines, toon light and polylines draw only for a frame that carries environment.lines; user passes run last, on the finished frame.
   // Mesh blend installs before line art, so its stage runs first and the lines draw over the blended colour; it blends only the
   // parts whose nodes carry `blend` (syncMeshBlend), so a recipe without it draws as before.
@@ -651,7 +674,7 @@ function createPreview(scene, { sessionId, memoryBudgetMiB, backend, transparent
     if (backend === 'gpu' && /swiftshader|llvmpipe|software/i.test(result.render.graphics)) {
       throw new Error('Hardware GPU rendering was requested, but the browser selected a software renderer.');
     }
-    const { evicted, reason } = evictForNewScene(result.inspection.residentGeometryBytes ?? 0);
+    const { evicted, reason } = evictForNewScene(result.inspection.residentGeometryBytes);
     records.set(sessionId, record);
     return evicted.length ? { ...result, evictedSessions: evicted, evictionReason: reason } : result;
   } catch (error) {
@@ -797,10 +820,29 @@ function seekForExport(record, motionTime) {
 }
 
 // The scene's parts already carry the current pose, including IK and node overrides, so skinned parts export it as is.
-function posedExport(record) {
-  const rig = record.scene.rigExport?.() ?? { nodes: [], clips: [] };
-  const options = rig.nodes.length ? rig : {};
-  return { parts: record.scene.parts.map(withoutRoundoffShear), options: { ...options, nodePaths: nodePathsOf(record.scene.exportRecipe().nodes) } };
+// Without a motionTime the recipe's node tracks are baked into one clip with the bone clip, and the camera and the point
+// and spot lights are written beside the parts. `written` tells omittedFromGlb what the file now carries.
+function posedExport(record, { bakeMotion }) {
+  const { scene } = record;
+  const recipe = scene.exportRecipe();
+  const rig = scene.rigExport?.() ?? { nodes: [], clips: [] };
+  const options = rig.nodes.length ? { ...rig } : {};
+  const written = { boneIds: rig.clips.length ? rig.nodes.map(node => node.id) : [] };
+  if (bakeMotion && hasBakedNodeTracks(recipe)) {
+    const clip = motionClip(recipe.motion, bakeMovingPartTracks(scene, recipe.motion), rig.clips[0]);
+    if (clip) options.clips = [clip];
+    written.nodeTracks = true;
+  }
+  if (recipe.camera) {
+    options.camera = scene.camera;
+    written.camera = true;
+  }
+  const { pointLights = [], spotLights = [] } = recipe.environment ?? {};
+  if (pointLights.length || spotLights.length) {
+    options.lights = { pointLights, spotLights };
+    written.lights = true;
+  }
+  return { parts: scene.parts.map(withoutRoundoffShear), options: { ...options, nodePaths: nodePathsOf(recipe.nodes) }, written };
 }
 
 /** "parent > child" for each node that has a parent, so an export error says where the node sits. */
@@ -847,7 +889,7 @@ function clipExport(record, clipReference) {
   const clip = { ...sourceClip, name, tracks: [...sourceClip.tracks, ...weightTracksFromGltfAnimation(animation)] };
   // Edited parts export their edited geometry on the source part's own matrix, skin and morph.
   const parts = asset.parts.map((part, index) => scene.parts[index].geometry === part.geometry ? part : { ...part, geometry: scene.parts[index].geometry });
-  return { parts, options: { nodes: asset.nodes, clips: [clip] } };
+  return { parts, options: { nodes: asset.nodes, clips: [clip] }, written: { boneIds: asset.nodes.map(node => node.id) } };
 }
 
 function bytesToBase64(bytes) {
@@ -1509,14 +1551,14 @@ window.__agentPreview = {
   exportGlb({ sessionId, clip, motionTime, maxTextureSize, maximumBytes }) {
     const record = requireSession(sessionId);
     if (motionTime !== undefined) seekForExport(record, motionTime);
-    const { parts, options } = clip === undefined ? posedExport(record) : clipExport(record, clip);
+    const { parts, options, written } = clip === undefined ? posedExport(record, { bakeMotion: motionTime === undefined }) : clipExport(record, clip);
     const binary = exportGlb(parts, { ...options, ...(maxTextureSize === undefined ? {} : { maxTextureSize }) });
     if (binary.byteLength > maximumBytes) {
       throw new RangeError(`The GLB is ${binary.byteLength} bytes, above the ${maximumBytes} byte limit. Lower maxTextureSize or simplify the scene.`);
     }
     return { sessionId, revision: record.scene.revision, bytes: binary.byteLength,
       parts: parts.length, clips: options.clips?.length ?? 0,
-      omitted: omittedFromGlb(record.scene.exportRecipe(), options.clips?.length ? (options.nodes ?? []).map(node => node.id) : []), data: bytesToBase64(new Uint8Array(binary)) };
+      omitted: omittedFromGlb(record.scene.exportRecipe(), written), data: bytesToBase64(new Uint8Array(binary)) };
   },
   dispose({ sessionId }) {
     releaseRecord(lookupSession(sessionId));

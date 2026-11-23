@@ -12,6 +12,7 @@ import { normalizeDrive } from './agent-drive-schema.js';
 // The `assets` module also serves map sequences, so a recipe with one loads no extra module entry in the scene.
 export * from './agent-texture-sequence.js';
 export * from './agent-texture-set.js';
+export * from './primitive-uvs.js';
 
 export const ASSET_PLACEMENT_LIMITS = Object.freeze({ maxPlacements: 512, maxAssets: 32, maxAnimatedPlacements: 16, maxOverrides: 32 });
 
@@ -274,6 +275,17 @@ export function materialOutput(source, fields, droppedMaps = []) {
   return Object.freeze(output);
 }
 
+const LISTED_PLACED_ASSETS = 12;
+
+/** "Counted: 1a2b3c4d5e6f (nodes tree, tree-2), ..." so an agent knows which placements to remove or merge. */
+function describePlacedAssets(placed) {
+  const nodesByAsset = new Map();
+  for (const node of placed) nodesByAsset.set(node.asset.id, [...(nodesByAsset.get(node.asset.id) ?? []), node.id]);
+  const entries = [...nodesByAsset].map(([assetId, nodeIds]) => `${assetId.slice(0, 12)} (nodes ${nodeIds.slice(0, 3).join(', ')}${nodeIds.length > 3 ? ', ...' : ''})`);
+  const more = entries.length > LISTED_PLACED_ASSETS ? `, and ${entries.length - LISTED_PLACED_ASSETS} more` : '';
+  return `Counted: ${entries.slice(0, LISTED_PLACED_ASSETS).join(', ')}${more}.`;
+}
+
 /**
  * Generate the geometries, materials and child nodes of every placement into a normalized recipe, in place.
  * `assets` maps assetCopyKey(id, copy) to a decoded parseGltf asset; `createAssetDrive` is the loaded drive module's builder. Returns what the scene keeps outside the recipe JSON.
@@ -291,7 +303,7 @@ export function expandAssetPlacements(recipe, assets, limits, outputCache = new 
   const animated = placed.filter(isAnimated);
   if (placed.length > ASSET_PLACEMENT_LIMITS.maxPlacements || distinct.size > ASSET_PLACEMENT_LIMITS.maxAssets ||
       animated.length > ASSET_PLACEMENT_LIMITS.maxAnimatedPlacements) {
-    throw new RangeError(`A scene places at most ${ASSET_PLACEMENT_LIMITS.maxPlacements} assets, ${ASSET_PLACEMENT_LIMITS.maxAssets} different ones, ${ASSET_PLACEMENT_LIMITS.maxAnimatedPlacements} of them playing a clip; this recipe places ${placed.length}, ${distinct.size} and ${animated.length}. Reuse an asset id for repeats or merge props into one GLB.`);
+    throw new RangeError(`A scene places at most ${ASSET_PLACEMENT_LIMITS.maxPlacements} assets, ${ASSET_PLACEMENT_LIMITS.maxAssets} different ones, ${ASSET_PLACEMENT_LIMITS.maxAnimatedPlacements} of them playing a clip; this recipe places ${placed.length}, ${distinct.size} and ${animated.length}. Reuse an asset id for repeats or merge props into one GLB. ${describePlacedAssets(placed)}`);
   }
   const copyCounter = new Map();
   const geometryIds = new Set();
@@ -362,11 +374,12 @@ export function expandAssetPlacements(recipe, assets, limits, outputCache = new 
         id: partNodeId, parent: node.id, label: String(part.name ?? partNodeId).slice(0, 256),
         translation: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1],
         geometry: geometryId, material: materialKey, assetPart: { placement: node.id, index, matrix: Array.from(part.matrix) },
+        castShadow: node.castShadow, receiveShadow: node.receiveShadow,
       });
       runtime.partExtras.set(partNodeId, {
         group: node.id,
         ...(part.skin ? { skin: part.skin } : {}), ...(part.morph ? { morph: part.morph } : {}),
-        ...(part.castShadow !== undefined ? { castShadow: part.castShadow } : {}),
+        ...(part.castShadow !== undefined && node.castShadow === undefined ? { castShadow: part.castShadow } : {}),
       });
     });
     const record = { node: node.id, assetId, copy, asset, partNodeIds, clip: clip ?? null, pose: posed ? { nodeOverrides: [], morphWeights: undefined } : null, drive: drive ? createDrive(node.id, `nodes[${recipe.nodes.indexOf(node)}].asset.drive`, createAssetDrive, asset, drive) : null, drivePose: null };

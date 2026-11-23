@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createHash } from 'node:crypto';
 import { box, cylinder, sphere, torus } from '../src/geometry.js';
 
 test('closed primitives have exact Float32 seams and oppositely oriented paired edges', () => {
@@ -51,7 +50,6 @@ test('primitive validation rejects unsafe allocations and invalid shapes before 
   assert.ok(box(1e-16).normals.every(Number.isFinite));
   assert.throws(() => box(0.08, 1000000), /subdivisions/);
 });
-import { createModel } from '../src/model.js';
 
 test('sphere UVs preserve separate seam coordinates and cover every vertex', () => {
   const segments = 12;
@@ -62,8 +60,8 @@ test('sphere UVs preserve separate seam coordinates and cover every vertex', () 
   for (let row = 0; row <= rings; row++) {
     const first = row * (segments + 1);
     const last = first + segments;
-    assert.equal(mesh.uvs[first * 2], 0);
-    assert.equal(mesh.uvs[last * 2], 1);
+    assert.equal(mesh.uvs[first * 2], 1);
+    assert.equal(mesh.uvs[last * 2], 0);
     for (let axis = 0; axis < 3; axis++) assert.ok(Math.abs(mesh.positions[first * 3 + axis] - mesh.positions[last * 3 + axis]) < 1e-6);
   }
 });
@@ -152,87 +150,4 @@ test('cylinder rim fillets join flat caps and walls without gaps or normal disco
   assert.ok(Array.from(mesh.positions).every((value, index) => Math.abs(value) <= (index % 3 === 1 ? 0.500001 : 1.000001)));
   const rimNormals = Array.from(mesh.normals).filter((value, index) => index % 3 === 1 && value > 0.01 && value < 0.99);
   assert.ok(new Set(rimNormals.map(value => value.toFixed(3))).size >= 5);
-});
-
-test('model respects the renderer contract, instancing and authored bounds', () => {
-  const parts = createModel();
-  assert.ok(parts.length >= 252);
-  const geometries = new Set(parts.map(part => part.geometry));
-  assert.ok(geometries.size < 12, 'repeated details reuse geometry identities');
-  for (const mesh of geometries) {
-    validateGeometry(mesh);
-  }
-  const minimum = [Infinity, Infinity, Infinity];
-  const maximum = [-Infinity, -Infinity, -Infinity];
-  const expandedMinimum = [Infinity, Infinity, Infinity];
-  const expandedMaximum = [-Infinity, -Infinity, -Infinity];
-  const sections = new Map();
-  let triangleCount = 0;
-  for (const part of parts) {
-    assert.ok(part.name);
-    assert.ok(part.matrix instanceof Float32Array);
-    assert.equal(part.matrix.length, 16);
-    assert.ok(Array.from(part.matrix).every(Number.isFinite));
-    assert.equal(part.matrix[15], 1);
-    assert.ok(part.material.color.every(value => value >= 0 && value <= 1));
-    assert.ok(part.material.metallic >= 0 && part.material.metallic <= 1);
-    assert.ok(part.material.roughness > 0 && part.material.roughness <= 1);
-    assert.ok(part.material.emission >= 0);
-    assert.ok(['exterior', 'interior'].includes(part.assembly.layer));
-    assert.ok(part.assembly.section.length > 3);
-    assert.equal(part.assembly.offset.length, 3);
-    assert.ok(part.assembly.offset.every(Number.isFinite));
-    if (part.assembly.layer === 'interior') {
-      assert.ok(part.assembly.offset.every(value => Math.abs(value) <= 0.4));
-    }
-    const section = sections.get(part.assembly.section);
-    if (section) {
-      assert.equal(part.assembly.layer, section.layer);
-      assert.deepEqual(part.assembly.offset, section.offset, 'components share their section translation before detail expansion');
-    } else {
-      sections.set(part.assembly.section, part.assembly);
-    }
-    triangleCount += part.geometry.indices.length / 3;
-    const matrix = part.matrix;
-    const positions = part.geometry.positions;
-    for (let offset = 0; offset < positions.length; offset += 3) {
-      for (let axis = 0; axis < 3; axis++) {
-        const world = matrix[axis] * positions[offset] + matrix[axis + 4] * positions[offset + 1] + matrix[axis + 8] * positions[offset + 2] + matrix[axis + 12];
-        minimum[axis] = Math.min(minimum[axis], world);
-        maximum[axis] = Math.max(maximum[axis], world);
-        expandedMinimum[axis] = Math.min(expandedMinimum[axis], world + part.assembly.offset[axis]);
-        expandedMaximum[axis] = Math.max(expandedMaximum[axis], world + part.assembly.offset[axis]);
-      }
-    }
-  }
-  assert.ok(minimum[1] >= 0.045);
-  assert.ok(maximum[1] <= 3);
-  assert.ok(Math.max(Math.abs(minimum[0]), Math.abs(maximum[0])) <= 1.3);
-  assert.ok(Math.max(Math.abs(minimum[2]), Math.abs(maximum[2])) <= 1);
-  assert.ok(expandedMinimum[1] >= 0.045);
-  assert.ok(expandedMaximum[1] <= 4.5);
-  assert.ok(Math.max(Math.abs(expandedMinimum[0]), Math.abs(expandedMaximum[0])) <= 3.4);
-  assert.ok(Math.max(Math.abs(expandedMinimum[2]), Math.abs(expandedMaximum[2])) <= 2.8);
-  assert.ok(parts.filter(part => part.assembly.layer === 'interior').length > 100);
-  assert.ok(parts.filter(part => part.assembly.layer === 'exterior').length > 100);
-  assert.ok(sections.size >= 15);
-  assert.ok(triangleCount < 1000000, 'assembled scene stays below one million triangles');
-  const meshBytes = Array.from(geometries).reduce((sum, mesh) => sum + mesh.positions.byteLength + mesh.normals.byteLength + mesh.indices.byteLength, 0);
-  assert.ok(meshBytes < 1500000, 'geometry remains suitable for a compact export');
-  console.log(JSON.stringify({ parts: parts.length, geometries: geometries.size, triangleCount, meshBytes, sections: sections.size, bounds: { minimum, maximum }, expandedBounds: { minimum: expandedMinimum, maximum: expandedMaximum } }));
-});
-
-test('assembled tracked-robot sample model geometry and instance snapshot stays stable after exact seam closure', () => {
-  const parts = createModel();
-  const hash = createHash('sha256');
-  for (const part of parts) {
-    hash.update(JSON.stringify({ name: part.name, matrix: Array.from(part.matrix), material: part.material }));
-  }
-  for (const mesh of new Set(parts.map(part => part.geometry))) {
-    for (const field of [mesh.positions, mesh.normals, mesh.indices]) {
-      hash.update(new Uint8Array(field.buffer, field.byteOffset, field.byteLength));
-    }
-  }
-  assert.equal(parts.length, 574);
-  assert.equal(hash.digest('hex'), 'e9479c0c3061a32645e5510346e964be9ac8505135c7342a83295f7373d894b0');
 });

@@ -83,7 +83,7 @@ Without `memoryBudgetMiB` the renderer sizes its budget to the first scene, and 
 
 `planRenderSize` accepts width, height, pixelRatio, samples, memoryBudgetMiB, geometryBytes, textureBytes, hdr, bloom, shadowResolution and maximumSize. It returns actual dimensions, estimatedBytes and reduced status. `estimateFrameBytes(width, height, samples, shadowResolution, { hdr, bloom })` estimates target storage. `estimateTextureBytes(width, height)` takes whole sizes from 1 to 65536. Neither function measures total VRAM.
 
-`crucible/addons/model`: createModel. `crucible/addons/nature`: createNatureWorld. `crucible/addons/motion`: createMotionScene.
+`crucible/addons/model`: loadSampleModel, assembleSampleModel. `crucible/addons/nature`: createNatureWorld. `crucible/addons/motion`: createMotionScene.
 
 `crucible/addons/canvas2d`: 2D recipes. `crucible/addons/gltf`: optional asset decoding. These are separate imports to keep the core smaller.
 

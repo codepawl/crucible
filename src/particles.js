@@ -104,6 +104,23 @@ function rotationFromUp(normal, matrix) {
   matrix[8] = cosine + k * z * z;
 }
 
+// An emitter that follows a node (#2829): the emitter offset and the point inside the shape are in the node's local frame,
+// so the node's matrix at the birth time carries them (scale included) into world space. The launch direction turns with the
+// node's rotation, so a bow emitter shoots along the bow. After birth the particle is free in world space.
+function placeOnFollowedNode(matrix, offset, point, launch, launchSpeed, origin, velocity, index) {
+  const columnLengths = [0, 1, 2].map(column => Math.hypot(matrix[column * 4], matrix[column * 4 + 1], matrix[column * 4 + 2]) || 1);
+  for (let row = 0; row < 3; row++) {
+    let position = matrix[12 + row];
+    let launchComponent = 0;
+    for (let column = 0; column < 3; column++) {
+      position += matrix[column * 4 + row] * (offset[column] + point[column]);
+      launchComponent += matrix[column * 4 + row] / columnLengths[column] * launch[column] * launchSpeed;
+    }
+    origin[index * 3 + row] = position;
+    velocity[index * 3 + row] = launchComponent;
+  }
+}
+
 /**
  * Launch values of every particle. Each particle draws from its own generator in a fixed order, so changing `count`
  * never changes the particles that were already there.
@@ -133,9 +150,13 @@ export function createParticleLaunches(settings) {
     const emission = emitter.shape === 'mesh' ? emitter.source.sample(random, birthTime) : { point: pointInEmitter(emitter, [random(), random(), random()]), normal: null };
     const launch = directionInCone(axis, spreadRadians, random(), random());
     const launchSpeed = between(speed, random());
-    for (let component = 0; component < 3; component++) {
-      origin[index * 3 + component] = emitter.position[component] + emission.point[component];
-      velocity[index * 3 + component] = launch[component] * launchSpeed + (emission.normal ? emission.normal[component] * normalSpeed : 0) + (emission.velocity ? emission.velocity[component] : 0);
+    if (emitter.pose) {
+      placeOnFollowedNode(emitter.pose(birthTime), emitter.position, emission.point, launch, launchSpeed, origin, velocity, index);
+    } else {
+      for (let component = 0; component < 3; component++) {
+        origin[index * 3 + component] = emitter.position[component] + emission.point[component];
+        velocity[index * 3 + component] = launch[component] * launchSpeed + (emission.normal ? emission.normal[component] * normalSpeed : 0) + (emission.velocity ? emission.velocity[component] : 0);
+      }
     }
     life[index] = between(lifetime, random());
     particleSize[index] = between(size, random());

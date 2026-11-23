@@ -1111,3 +1111,18 @@ test('a status.json rename that fails for another reason still fails the write',
   const finished = await terminal(controller, submitted.jobId);
   assert.equal(finished.state, 'failed');
 });
+
+test('a job whose callback throws something without message text still says why it failed', async context => {
+  const root = await temporary(context);
+  const thrown = [new Error(''), undefined, '', { code: 'EPIPE' }, new TypeError('')];
+  let index = 0;
+  const controller = await createAgentRenderJobs({ root, limits, async run() { throw thrown[index++]; } });
+  for (let attempt = 0; attempt < thrown.length; attempt += 1) {
+    const { jobId } = await controller.submit(request());
+    const failed = await terminal(controller, jobId);
+    assert.equal(failed.state, 'failed');
+    assert.match(failed.reason, /^Render job failed: .+scene_render_submit/s, `thrown value ${attempt}`);
+    await controller.release(jobId);
+  }
+  await controller.close();
+});

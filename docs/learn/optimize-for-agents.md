@@ -91,7 +91,7 @@ The scene lives in the server process. The agent does not resend it on each call
 - **Do not resend the recipe.** After `scene_create`, send only operations. A recipe can be up to 1 MiB of JSON.
 - **Save the recipe.** `scene_export_recipe` returns the canonical recipe, 2,664 bytes in the measured case. Ask the agent to save it to a file after each good step. A server restart loses the active scene, and the recipe is how the agent rebuilds it.
 - **Keep the tool list stable.** A harness that caches the start of the prompt can reuse the cache only while the tool list stays the same. Do not switch the server on and off during a session. This is an inference that was not measured.
-- **Dispose what you finished with.** The server keeps up to 4 scenes and closes the least recently used one past that. `scene_dispose` frees a scene's memory early.
+- **Dispose what you finished with.** The server keeps up to 4 scenes, or fewer when their geometry and placed assets pass 96 MiB together, and closes the least recently used one past either cap. `scene_dispose` frees a scene's memory early.
 
 ## Speed
 

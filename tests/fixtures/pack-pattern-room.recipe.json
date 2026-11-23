@@ -1,0 +1,20 @@
+{
+  "format": "crucible.scene",
+  "schemaVersion": 1,
+  "geometries": [{ "id": "box", "type": "box", "bevel": 0 }],
+  "materials": [
+    { "id": "floor", "pattern": { "type": "planks", "resolution": 256 }, "roughness": 0.7 },
+    { "id": "brick", "pattern": { "type": "bricks", "resolution": 256 } },
+    { "id": "concrete", "pattern": { "type": "concrete", "resolution": 256 } },
+    { "id": "sofa", "pattern": { "type": "fabric", "resolution": 256, "size": 0.5 } }
+  ],
+  "nodes": [
+    { "id": "floor", "geometry": "box", "material": "floor", "translation": [0, -0.1, 0], "scale": [6, 0.2, 6] },
+    { "id": "back", "geometry": "box", "material": "brick", "translation": [0, 1.5, -3.1], "scale": [6.4, 3.2, 0.2] },
+    { "id": "left", "geometry": "box", "material": "concrete", "translation": [-3.1, 1.5, 0], "scale": [0.2, 3.2, 6] },
+    { "id": "right", "geometry": "box", "material": "concrete", "translation": [3.1, 1.5, 0], "scale": [0.2, 3.2, 6] },
+    { "id": "sofa", "geometry": "box", "material": "sofa", "translation": [0, 0.4, -1.8], "scale": [2.4, 0.8, 0.9] }
+  ],
+  "camera": { "eye": [0, 1.6, 4.6], "target": [0, 1.2, -1], "fov": 60 },
+  "environment": { "setup": "studio" }
+}

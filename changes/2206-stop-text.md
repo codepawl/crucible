@@ -1,0 +1,1 @@
+- `scene_capabilities` and the particle `stop` error now both say `stop` is an absolute scene time above `start`, not a duration after it (#2206)

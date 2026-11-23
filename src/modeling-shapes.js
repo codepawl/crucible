@@ -32,7 +32,7 @@ export function buildLathe(profile, segments, startAngle, sweep) {
     const cosine = Math.cos(angle);
     for (let index = 0; index < profile.length; index++) {
       positions.push(profile[index][0] * sine, profile[index][1], profile[index][0] * cosine);
-      uvs.push(segment / segments, index / (profile.length - 1));
+      uvs.push(segment / segments, 1 - index / (profile.length - 1));
       normals.push(normalsAlongProfile[index][0] * sine, normalsAlongProfile[index][1], normalsAlongProfile[index][0] * cosine);
     }
   }
@@ -67,7 +67,7 @@ export function buildTube(points, closed, radius, segments, radialSegments) {
     }
   }
   for (let ring = 0; ring <= segments; ring++) {
-    for (let side = 0; side <= radialSegments; side++) uvs.push(ring / segments, side / radialSegments);
+    for (let side = 0; side <= radialSegments; side++) uvs.push(ring / segments, 1 - side / radialSegments);
   }
   const indices = [];
   for (let ring = 1; ring <= segments; ring++) {

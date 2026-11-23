@@ -161,7 +161,26 @@ Read these fields for diagnostics:
 | `triangles` | Triangles of the part list. |
 | `batches.length` | Instance batches. Shared geometry keeps it small. |
 | `cpuMilliseconds` | CPU submission time of the last `render`. It is not GPU frame time. |
+| `stats` | What the last `render()` cost: `drawCalls` and `trianglesDrawn`, `geometryBytes` and `textureBytes`, `gpuTimeMs`. See [Frame stats](#renderer-reference/frame-stats). |
 | `diagnostics` | Warnings about the last frame, such as `coplanar-overlap` when [that check is installed](#contact-detection). |
+
+## Frame stats
+
+`renderer.stats` is a small object that `render()` refreshes after every frame, so you can read the cost of a scene without wrapping WebGL calls yourself.
+
+```js
+renderer.render(frame);
+const { drawCalls, trianglesDrawn, geometryBytes, textureBytes, gpuTimeMs } = renderer.stats;
+```
+
+| Field | Meaning |
+| --- | --- |
+| `drawCalls` | Every draw call of the frame: shadow maps, the scene, translucent parts and the final resolve draw. |
+| `trianglesDrawn` | Triangles sent to the GPU in those draws, after instances outside the view are culled. A part drawn into a shadow map counts again. |
+| `geometryBytes`, `textureBytes` | Planned bytes, the same figures that the memory budget uses. They are not read back from the GPU. |
+| `gpuTimeMs` | GPU time of a recent frame, or `null`. It stays `null` unless you pass `createGpuTimer` ([culling guide](../culling-lod.md)) and the browser has `EXT_disjoint_timer_query_webgl2`. The result arrives a few frames late and reading it never waits for the GPU. |
+
+The water mirror's own draw is part of the frame and does not replace the stats. Before the first `render()` the counts are 0.
 
 ## Common mistakes
 

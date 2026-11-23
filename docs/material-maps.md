@@ -38,10 +38,11 @@ Occlusion uses `mix(1, R, occlusionStrength)`. It does not attenuate direct ligh
 Roughness retains the renderer's minimum of `0.075` and derivative-based specular filtering.
 
 `normalScale` contains two finite floats for X and Y. Negative values can invert either tangent axis.
-The renderer derives an orthogonal tangent basis from position and UV screen derivatives, including mirrored UV handedness.
-Degenerate UVs retain the geometric normal because they have no tangent basis.
+A geometry with `tangents`, a `Float32Array` of four values per vertex (x, y, z, handedness 1 or -1), shades its normal map with them. They follow glTF: the bitangent is `cross(normal, tangent) * handedness` and points up the image, against the glTF v axis, which runs down it. The tangent is transformed with the model and joint matrices, made perpendicular to the final normal, and its handedness flips on a mirrored node. A part with `tangents` and a `normalMap` is drawn by a program with the `tangents` feature, which reads the tangent from the fourth float of the normal attribute (no extra vertex attribute). A geometry whose `tangents` length does not match its vertices is refused with what to pass.
 
-Explicit vertex tangents are not consumed. Derivative tangents can differ from authored tangent bases on curved meshes.
+The glTF loader fills `geometry.tangents` for every primitive with a normal map: it reads `TANGENT` when the file has it, and otherwise generates tangents from the UVs the map samples (a unit tangent per triangle, weighted by the corner angle, summed per vertex and made perpendicular to the normal, the MikkTSpace method on a mesh already split at UV seams; it matches meshoptimizer's `Compatible` tangents in the test). A `TANGENT` that is not four finite values per vertex, or that a rotated or mirrored `KHR_texture_transform` no longer fits, is replaced by generated tangents with a note in `warnings`. A Draco `TANGENT` is regenerated. A primitive without the UVs the map samples carries no tangents.
+
+Without `tangents` (recipe meshes, box-mapped materials, a primitive without UVs) the renderer derives an orthogonal tangent basis from position and UV screen derivatives, including mirrored UV handedness. Degenerate UVs retain the geometric normal because they have no tangent basis. Derivative tangents differ from authored tangent bases on curved meshes, which is why a map baked in MikkTSpace wants `tangents`. The path tracers still use their own frame.
 
 ## Descriptors and batching
 
@@ -51,6 +52,8 @@ A descriptor contains `image`, `uvChannel`, `colorSpace`, `flipY`, `wrapS`, `wra
 Sampler fields use WebGL enum values. Wrapping supports repeat, clamp-to-edge, and mirrored repeat.
 Magnification supports nearest and linear. Minification also supports all four mipmap filters.
 A texture whose magnification or minification is nearest stays hard-edged: anisotropic filtering, which would blur it, is applied only to textures that filter linearly in both directions.
+
+That filtering is 16x by default, or the GPU limit when that is lower, so a floor or table seen at a few degrees keeps its grain (#2836). `new CrucibleRenderer(canvas, parts, { maxAnisotropy: 4 })`, or `"renderer": { "maxAnisotropy": 4 }` in a scene file, lowers it for a slower GPU; `1` turns it off. The level is read when a texture is uploaded, so set it at construction.
 
 Descriptor identity determines GPU texture reuse. Repeated parts can share descriptors without duplicating GPU textures or texture-budget charges.
 Different descriptors allocate separately even when they reference the same decoded image.
@@ -113,7 +116,7 @@ Final alpha is the base map alpha (when `material.map` is set) times `opacity`. 
 
 - `mask` discards below `alphaCutoff` in the color pass and in the shadow pass, so shadows follow the cutout shape. With MSAA the edge uses alpha-to-coverage, sharpened by `fwidth`, so leaf edges stay smooth.
 - `blend` draws after all opaque and masked batches. Texels with alpha 1 (opacity 1) are drawn first as a cutout that writes depth, so an opaque baked mesh hides what lies behind it in any order; the translucent texels then blend with depth writes off. Batches sort back to front by their mean distance to the eye, and instances inside one batch sort by translation distance each frame. Intersecting translucent surfaces and large meshes can still show ordering artifacts. Blend parts skip shadows unless `castShadow: true` is set, and then they cast a fully opaque shadow.
-- A `blend` part fades its diffuse body and what shows through it with opacity, but not its specular: lamp highlights and the reflected sky and probe keep the strength they have at opacity 1, as glTF says for a blended dielectric. The shader writes the colour premultiplied (the diffuse share times opacity plus the full specular) and blends with `ONE, ONE_MINUS_SRC_ALPHA`; opaque, `mask` and `add` parts are unchanged. Clear coat and sheen are not split out and fade with opacity.
+- A `blend` part fades its diffuse body and what shows through it with opacity, but not its specular: lamp highlights and the reflected sky and probe keep the strength they have at opacity 1, as glTF says for a blended dielectric, except where the colour map's own alpha is below 1: that share of the specular is scaled by the texture alpha, so a texel the picture leaves transparent shows no reflection. The shader writes the colour premultiplied (the diffuse share times opacity plus the full specular) and blends with `ONE, ONE_MINUS_SRC_ALPHA`; opaque, `mask` and `add` parts are unchanged. Clear coat and sheen are not split out and fade with opacity.
 - `add` draws after all opaque, masked and blend batches with blending `SRC_ALPHA, ONE`: the colour times opacity is added to the frame, so overlaps brighten and opacity 0 adds nothing. It tests depth, writes none, needs no sorting and skips shadows unless `castShadow: true` is set. Fog fades additive light to black instead of mixing it toward the fog colour, so distant sparks dim rather than glow as fog. Additive parts do not occlude bounce, sky-visibility or closed-room checks, like blend parts.
 - `alphaMode`, `alphaCutoff`, `doubleSided` and, for `mask`, `opacity` are batch state like `castShadow`. Parts that differ never share a draw call, and `updateParts` rejects changes after upload. Rebuild the renderer to change them. The opacity of `blend` and `add` parts is stored per instance (the last float of each instance), so parts that differ only in opacity share one batch and `updateParts` changes it without a rebuild; a fading trail or particle needs one part, not one per opacity step.
 - Invalid values (unknown mode, cutoff or opacity outside zero to one, a non-boolean `doubleSided`) throw.
@@ -244,5 +247,5 @@ Unlit materials accept base and emissive maps only.
 Texture alpha is ignored for opaque materials, as required by glTF's opaque mode.
 
 This feature does not complete the full material system.
-Texture slots inside the layer extensions, node graphs, and authored tangent support remain missing.
+Texture slots inside the layer extensions and node graphs remain missing.
 GLB export of these material maps is outside this feature.

@@ -27,7 +27,7 @@ If you would rather write three.js-shaped code, the optional addon `packages/thr
 | `new THREE.CylinderGeometry(r, r, height, segments)` | `cylinder(segments)` has radius 1 and height 1. |
 | `new THREE.TorusGeometry(radius, tube)` | `torus(tubeRadius)` has a ring radius of 1. `tubeRadius` is `tube / radius`. |
 | `new THREE.PlaneGeometry(w, h)` | `box(0)` scaled flat. |
-| `new THREE.ConeGeometry()` | `createModel()` from `crucible/addons/model`. |
+| `new THREE.ConeGeometry()` | Revolve a profile with `lathe` from `crucible/addons/modeling`. |
 | `new THREE.BufferGeometry()` | An object with `positions`, `normals` and `indices`. See [Parts and geometry](#parts-and-geometry). |
 
 ## Materials

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mat4, mat3 } from 'gl-matrix';
-import { CrucibleRenderer, groupParts, shaderFeatureRepresentatives, textureDescriptorInfo } from '../src/renderer.js';
+import { CrucibleRenderer, DEFAULT_TEXTURE_ANISOTROPY, groupParts, shaderFeatureRepresentatives, textureDescriptorInfo } from '../src/renderer.js';
 import { WebGL2GlazeBackend } from '../src/glaze-backend-webgl2.js';
 import { resolveLiquidOptics } from '../src/liquid-optics.js';
 import { createSkinPose } from '../src/skinning.js';
@@ -369,6 +369,7 @@ test('GPU uploads use descriptor color spaces, filter anisotropically, cache sha
   const deleted = [];
   const anisotropyLevels = [];
   const anisotropyExtension = { TEXTURE_MAX_ANISOTROPY_EXT: 34046, MAX_TEXTURE_MAX_ANISOTROPY_EXT: 34047 };
+  renderer.maxAnisotropy = DEFAULT_TEXTURE_ANISOTROPY;
   renderer.textures = new Map();
   renderer.buffers = [];
   renderer.batches = [];
@@ -394,7 +395,7 @@ test('GPU uploads use descriptor color spaces, filter anisotropically, cache sha
   const second = renderer.createTexture(data);
   assert.equal(renderer.createTexture(data), second);
   assert.deepEqual(uploaded, [35907, 32856]);
-  assert.deepEqual(anisotropyLevels, [8, 8], 'Mipmapped maps take 8x anisotropic filtering, capped below the hardware limit');
+  assert.deepEqual(anisotropyLevels, [16, 16], 'Mipmapped maps take 16x anisotropic filtering, the hardware limit here');
   renderer.dispose();
   assert.deepEqual(deleted, [first, second]);
   assert.equal(renderer.textures.size, 0);

@@ -170,6 +170,9 @@ function createGeometrySession(host, nodeGeometries) {
     geometries: [
       { id: 'plain-box', type: 'box' },
       { id: 'bevelled-box', type: 'box', bevel: 0.04 },
+      { id: 'drum', type: 'cylinder' },
+      { id: 'spike', type: 'cone' },
+      { id: 'faceted-ball', type: 'icoSphere' },
       { id: 'ball', type: 'sphere' },
       { id: 'sheet', type: 'plane' },
     ],
@@ -359,33 +362,44 @@ test('a picture goes on a geometry that carries UVs and the built scene has noth
   assert.deepEqual(partsTheRendererWouldPause(session.controller), []);
 });
 
-test('a picture is refused on a box, a bevelled box and a material shared with one, naming the object and changing nothing', async testContext => {
+test('a picture goes on a box, a bevelled box, a cylinder and a cone, which get their UVs with the map', async testContext => {
   installImageDecoder(testContext);
-  for (const [geometry, nodeId] of [['plain-box', 'crate'], ['bevelled-box', 'trim']]) {
-    const host = createHost();
-    const session = createGeometrySession(host, { [nodeId]: geometry });
+  for (const [geometry, nodeId] of [['plain-box', 'crate'], ['bevelled-box', 'trim'], ['drum', 'barrel'], ['spike', 'cap']]) {
+    const session = createGeometrySession(createHost(), { [nodeId]: geometry });
     session.controller.selectNode(nodeId);
-    await assertRefused(session, 'brick.png', tinyPng(), new RegExp(`brick\\.png cannot go on this material: ${nodeId} has no UV coordinates.*Select one of those, or give that object its own material first\\.`));
-    assert.deepEqual(host.storeCalls, [], `${geometry}: nothing reached the host`);
-    assert.deepEqual(partsTheRendererWouldPause(session.controller), []);
+    await session.importBytes('brick.png', tinyPng());
+    const [part] = session.controller.scene.parts;
+    assert.ok(part.material.map, `${geometry}: the picture is on`);
+    assert.equal(part.geometry.uvs.length, part.geometry.positions.length / 3 * 2, `${geometry}: the built part carries UVs`);
+    assert.deepEqual(partsTheRendererWouldPause(session.controller), [], geometry);
   }
+});
 
+test('a picture is refused on an icosphere and a material shared with one, naming the object and changing nothing', async testContext => {
+  installImageDecoder(testContext);
   const host = createHost();
-  const session = createGeometrySession(host, { ball: 'ball', crate: 'plain-box', trim: 'bevelled-box' });
+  const single = createGeometrySession(host, { gem: 'faceted-ball' });
+  single.controller.selectNode('gem');
+  await assertRefused(single, 'brick.png', tinyPng(), /brick.png cannot go on this material: gem has no UV coordinates.*Only sphere, box, cylinder, cone, torus, plane, grid and unwrapped mesh objects take an image.*give that object its own material first./);
+  assert.deepEqual(host.storeCalls, [], 'nothing reached the host');
+  assert.deepEqual(partsTheRendererWouldPause(single.controller), []);
+
+  const sharedHost = createHost();
+  const session = createGeometrySession(sharedHost, { ball: 'ball', gem: 'faceted-ball', crate: 'plain-box' });
   session.controller.selectNode('ball');
-  await assertRefused(session, 'brick.png', tinyPng(), /brick\.png cannot go on this material: crate, trim have no UV coordinates/);
-  assert.deepEqual(host.storeCalls, []);
+  await assertRefused(session, 'brick.png', tinyPng(), /brick.png cannot go on this material: gem has no UV coordinates/);
+  assert.deepEqual(sharedHost.storeCalls, []);
   assert.equal(session.catalog.pool.size, 0);
 });
 
-test('a box built with a colour map really has no UVs, which is the gap the guard closes', async testContext => {
+test('a box built with a colour map has UVs and an icosphere does not, which is the gap the guard still closes', async testContext => {
   installImageDecoder(testContext);
-  const session = createGeometrySession(createHost(), { crate: 'plain-box' });
+  const session = createGeometrySession(createHost(), { crate: 'plain-box', gem: 'faceted-ball' });
   const withMap = { ...session.controller.exportRecipe().materials[0], colorMap: 'f'.repeat(64) };
   session.catalog.pool.set(withMap.colorMap, { width: 2, height: 2, data: new Uint8Array(16).fill(255) });
   const recipe = { ...session.controller.exportRecipe(), materials: [withMap] };
-  const paused = createAgentScene(recipe, {}, { assets: session.catalog.pool, sequenceFrames: session.catalog.pool });
-  assert.deepEqual(paused.parts.filter(part => part.material.map && !part.geometry.uvs).map(part => part.name), ['crate'], 'a box built with a map has no UVs, which is what the guard looks for');
+  const built = createAgentScene(recipe, {}, { assets: session.catalog.pool, sequenceFrames: session.catalog.pool });
+  assert.deepEqual(built.parts.filter(part => part.material.map && !part.geometry.uvs).map(part => part.name), ['gem']);
 });
 
 test('the status line keeps an import message up in proportion to its length, between 3.4 and 12 seconds', async testContext => {
@@ -444,7 +458,7 @@ test('an imported HDR sky travels into the web pack as its sky image, and the pa
   assert.equal(withSky.environmentMap.kind, 'environment-map', 'the pack carries the decoded sky image (#3004)');
   assert.ok(withSky.environmentMap.width > 0 && withSky.environmentMap.width <= PACK_MAX_SKY_WIDTH, 'the sky fits the width one pack carries');
   assert.equal(withSky.environmentMap.data.length, withSky.environmentMap.width * withSky.environmentMap.height * withSky.environmentMap.channels);
-  assert.deepEqual(payload.stripped, ['procedural material patterns'], 'the sky is not in the list of what the pack left out');
+  assert.deepEqual(payload.stripped, [], 'the sky is not in the list of what the pack left out');
 });
 
 test('without a store hook an import is refused with one sentence and the pool is untouched', async () => {
@@ -488,7 +502,7 @@ test('the Import row shows only with a store, and a dropped GLB or scene.json ta
   const payload = await studio.buildWebPackPayload();
   const withoutImport = await mountStudio({}).studio.buildWebPackPayload();
   assert.ok(payload.packBytes.byteLength > withoutImport.packBytes.byteLength, 'the pack carries the decoded triangle of the imported model');
-  assert.deepEqual(payload.stripped, ['procedural material patterns'], 'the import adds nothing the pack leaves out');
+  assert.deepEqual(payload.stripped, [], 'the import adds nothing the pack leaves out');
 
   dom.runTimers();
   dispatch(viewport, 'drop', { dataTransfer: { files: [{ name: 'again.scene.json', text: async () => JSON.stringify(baseRecipe()) }] } });

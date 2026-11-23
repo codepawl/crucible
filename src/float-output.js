@@ -31,6 +31,7 @@ export function createFloatOutput(context, width, height) {
     width,
     height,
     framebuffer,
+    texture,
     dispose() {
       context.deleteFramebuffer(framebuffer);
       context.deleteTexture(texture);
@@ -53,19 +54,37 @@ export function readFloatPixels(context, framebuffer, frameWidth, frameHeight, r
   return pixels;
 }
 
-/** The target a floatOutput frame draws into, kept on the session record and rebuilt when the renderer or the size changes. */
-export function outputFor(record, canvas) {
-  const cached = record.floatOutput;
+/** A target kept on the session record under `key` and rebuilt when the renderer or the size changes. */
+function cachedOutput(record, key, canvas) {
+  const cached = record[key];
   if (cached && cached.renderer === record.renderer && cached.output.width === canvas.width && cached.output.height === canvas.height) return cached.output;
   cached?.output.dispose();
   const output = createFloatOutput(record.renderer.context, canvas.width, canvas.height);
-  record.floatOutput = { renderer: record.renderer, output };
+  record[key] = { renderer: record.renderer, output };
   return output;
+}
+
+/** The target a floatOutput frame draws into. */
+export function outputFor(record, canvas) {
+  return cachedOutput(record, 'floatOutput', canvas);
+}
+
+/**
+ * The float image of the last frame or pass as one framebuffer of the canvas size. On a pixel grid the frame sits in the
+ * padded-grid corner of its target, so it is cropped, shifted and enlarged into a second target like the PNG present.
+ */
+function readableOutput(record, canvas, source) {
+  const grid = record.renderer.pixelGrid;
+  const sourceTarget = source === 'pass' ? { texture: record.renderer.passSupport.texture, framebuffer: record.renderer.passSupport.framebuffer } : outputFor(record, canvas);
+  if (!grid?.active) return sourceTarget.framebuffer;
+  const enlarged = cachedOutput(record, 'gridFloatOutput', canvas);
+  grid.blitToFloat({ texture: sourceTarget.texture, framebuffer: enlarged.framebuffer, width: canvas.width, height: canvas.height, source });
+  return enlarged.framebuffer;
 }
 
 /** The last frame, or its pass, as base64 RGBA float32 (rows bottom to top) cropped to `region`. */
 export function readFrame(record, canvas, source, region) {
-  const framebuffer = source === 'pass' ? record.renderer.passSupport.framebuffer : outputFor(record, canvas).framebuffer;
+  const framebuffer = readableOutput(record, canvas, source);
   const pixels = readFloatPixels(record.renderer.context, framebuffer, canvas.width, canvas.height, region);
   const bytes = new Uint8Array(pixels.buffer);
   let text = '';

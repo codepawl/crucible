@@ -4,6 +4,8 @@
 // its ends with `feather`. A step with no mask applies to the whole frame, as before.
 
 export const MAXIMUM_MASK_OBJECTS = 16;
+/** Part IDs one mask can hold after names resolve: a placed asset name stands for all of its parts. */
+export const MAXIMUM_MASK_PARTS = 64;
 const MAXIMUM_NAME_LENGTH = 128;
 
 function checkedNumber(value, fallback, minimum, maximum, name) {
@@ -61,7 +63,7 @@ export const MASK_UNIFORM_NAMES = ['objectIds', 'maskObjectCount', 'maskObjectId
 export const maskShader = `
 uniform sampler2D objectIds;
 uniform int maskObjectCount;
-uniform int maskObjectIds[${MAXIMUM_MASK_OBJECTS}];
+uniform int maskObjectIds[${MAXIMUM_MASK_PARTS}];
 uniform float maskUseDepth;
 uniform vec3 maskDepth;
 uniform float maskInvert;
@@ -73,7 +75,7 @@ float maskAt(vec2 coordinate) {
     vec3 idBytes = floor(texelFetch(objectIds, ivec2(coordinate * resolution), 0).rgb * 255.0 + 0.5);
     int identifier = int(idBytes.r + idBytes.g * 256.0 + idBytes.b * 65536.0);
     float hit = 0.0;
-    for (int index = 0; index < ${MAXIMUM_MASK_OBJECTS}; index++) {
+    for (int index = 0; index < ${MAXIMUM_MASK_PARTS}; index++) {
       if (index >= maskObjectCount) break;
       if (maskObjectIds[index] == identifier) hit = 1.0;
     }
@@ -89,14 +91,16 @@ float maskAt(vec2 coordinate) {
 }
 `;
 
-/** Resolves each name to its part IDs. `slots[i]` is the index in `names` of the name that produced `identifiers[i]`, so a name that matches several parts keeps one slot. */
+/** Resolves each name to its part IDs. A name is a part name or a placed asset's node id, which stands for every part of that asset. `slots[i]` is the index in `names` of the name that produced `identifiers[i]`, so a name that matches several parts keeps one slot. */
 export function objectIdentifierSlots(renderer, names) {
   if (!renderer.passSupport) throw new Error('A mask by objects needs installRenderPasses(renderer) and the object ID pass drawn first.');
   const known = renderer.passSupport.objectNames();
+  const placementParts = renderer.passSupport.objectNodes?.() ?? {};
   const identifiers = [];
   const slots = [];
   names.forEach((name, slot) => {
-    const matches = known.flatMap((candidate, index) => (candidate === name ? [index + 1] : []));
+    const partMatches = known.flatMap((candidate, index) => (candidate === name ? [index + 1] : []));
+    const matches = partMatches.length > 0 ? partMatches : [...(placementParts[name] ?? [])];
     if (matches.length === 0) {
       throw new Error(`Mask object "${name}" is not a part in the frame. Fix: use a part name such as ${known.slice(0, 8).map(part => `"${part}"`).join(', ') || '(the scene has no opaque parts)'}.`);
     }
@@ -105,7 +109,7 @@ export function objectIdentifierSlots(renderer, names) {
       slots.push(slot);
     }
   });
-  if (identifiers.length > MAXIMUM_MASK_OBJECTS) throw new RangeError(`The mask names ${identifiers.length} parts; the limit is ${MAXIMUM_MASK_OBJECTS}. Fix: name fewer parts.`);
+  if (identifiers.length > MAXIMUM_MASK_PARTS) throw new RangeError(`The mask names ${identifiers.length} parts; the limit is ${MAXIMUM_MASK_PARTS}. Fix: name fewer parts or placements.`);
   return { identifiers, slots };
 }
 
@@ -118,7 +122,7 @@ export function bindMask(context, uniforms, renderer, frame, mask) {
   const identifiers = mask?.objects ? objectIdentifiers(renderer, mask.objects) : [];
   context.uniform1i(uniforms.maskObjectCount, identifiers.length);
   if (identifiers.length > 0) {
-    const padded = new Int32Array(MAXIMUM_MASK_OBJECTS);
+    const padded = new Int32Array(MAXIMUM_MASK_PARTS);
     padded.set(identifiers);
     context.uniform1iv(uniforms.maskObjectIds, padded);
     context.activeTexture(context.TEXTURE2);

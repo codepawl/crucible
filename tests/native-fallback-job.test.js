@@ -44,7 +44,7 @@ async function renderDemoRoom(requestedBackend, workDirectory) {
       if (['completed', 'cancelled', 'failed'].includes(record.state)) break;
       await delay(200);
     }
-    assert.equal(record.state, 'completed', record.error);
+    assert.equal(record.state, 'completed', record.reason);
     const result = (await call('scene_render_result', { jobId })).structuredContent;
     const imagePath = join(workDirectory, `${requestedBackend}.png`);
     await copyFile(result.artifacts[0].path, imagePath);
@@ -57,7 +57,7 @@ async function renderDemoRoom(requestedBackend, workDirectory) {
 test('a native job without the native tracer runs the cpu backend with the same image and report fields',
   { skip: (!hasBuild && 'run npm run build:lib first') || (!hasBrowser && 'no Chrome'), timeout: 600000 }, async context => {
     const workDirectory = await mkdtemp(join(tmpdir(), 'crucible-native-fallback-'));
-    context.after(() => rm(workDirectory, { recursive: true, force: true }));
+    context.after(() => rm(workDirectory, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
     // The two renders share nothing (own server, own job folder, own image file), so they run side by side.
     const [cpu, native] = await Promise.all([renderDemoRoom('cpu', workDirectory), renderDemoRoom('native', workDirectory)]);
     assert.equal(native.report.backend, 'cpu');

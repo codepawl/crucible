@@ -47,7 +47,7 @@ try {
     const seconds = ((Date.now() - started) / 1000).toFixed(1);
     if (record.state !== 'completed') {
       failures += 1;
-      console.log(`RESULT ${width}x${height}: ${record.state} after ${seconds}s: ${JSON.stringify(record.error ?? record).slice(0, 500)}`);
+      console.log(`RESULT ${width}x${height}: ${record.state} after ${seconds}s: ${JSON.stringify(record.reason ?? record).slice(0, 500)}`);
       continue;
     }
     const { metrics } = await call('scene_render_result', { jobId: submitted.jobId, response_format: 'detailed' });

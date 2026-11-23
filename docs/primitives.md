@@ -30,10 +30,6 @@ Full turns sample their final position at the same angle as the first position. 
 
 Exact Float32 position welding finds paired, oppositely oriented edges on the tested sphere, torus, cylinder and rounded-box fixtures. The legacy rounded-coordinate topology check remains covered separately.
 
-The seam fix changes 884 position or normal components in a 574-part sample model fixture by at most `2.56e-16`. Triangle indices and instance matrices remain unchanged. Native GPU images at 960 × 540 and 540 × 960 have identical pixels before and after the change.
-
-`scripts/smoke-primitive-seams.mjs` rebuilds its baseline from Git commit `61a0102` and requires that commit in local history. Its images and measurements go to `artifacts/`.
-
 ## Geometry limits
 
 High sampling density cannot recover details smaller than local Float32 precision. Keep geometry near its origin and apply world placement through matrices.

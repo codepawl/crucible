@@ -57,6 +57,37 @@ In the shadow map, foliage has its own thinner layers (`shadowLods` on the folia
 
 Cards are single-sided now that the renderer honors `doubleSided`; the old duplicated back faces cost 22 to 41 percent of level 0 (broadleaf 7.4k to 5.8k, birch 10.7k to 7.9k, conifer 26.1k to 18.5k, palm 6.4k to 3.8k, bush 4.7k to 3.1k).
 
+## Presets and growth parameters
+
+`createTree({ preset, tree }, seed)` grows a named tree: `oak`, `ash`, `aspen`, `birch`, `pine`, `palm` or `bush`.
+Each preset is a small JSON object in `src/vegetation-presets.js`: a base species, a height range and growth overrides, so oak and ash grow from `broadleaf`, aspen from `birch` and pine from `conifer`.
+The tree keeps the base as its `species` and names the preset in `preset`, so seasons, scanned textures and packs keyed by species still apply.
+
+`tree` overrides any growth parameter of a preset or of a plain species (`createTree({ species: 'birch', tree: { crownShape: 'column' } })`):
+
+| Parameter | Range | What it changes |
+| --- | --- | --- |
+| `levels` | 1 to 4 | branch generations past the trunk |
+| `branches` | 1 to 60 | child branches per parent; on a whorled conifer, all branches on the trunk |
+| `branchAngle` | 5 to 120 | degrees between a branch and its parent |
+| `branchStart` | 0 to 0.95 | where along the parent branches begin |
+| `lengthFalloff` | 0.05 to 1.5 | branch length against its parent |
+| `radiusFalloff` | 0.05 to 1 | branch radius against the parent where it sprouts |
+| `gnarliness` | 0 to 0.6 | how much a branch wanders |
+| `twist` | -1 to 1 | turns over a branch: it and its children spiral |
+| `tropism` | -0.5 to 0.5 | pull toward `growthDirection` each step; negative droops, which is gravity |
+| `growthDirection` | [x, y, z] | where branches grow toward, such as the sun side (up by default) |
+| `crownShape` | round, cone, column, umbrella | how branch length changes up the trunk |
+| `leafCount` | 0.5 to 20 | leaf sites per metre of twig |
+| `leafSize` | 0.25 to 3 | leaf and card size against the species |
+| `leafStart` | 0 to 0.95 | where along a twig leaves begin |
+
+The parameters from `branches` to `radiusFalloff` take one number for every level or a list that starts at the first branches off the trunk; `gnarliness`, `twist` and `tropism` lists start at the trunk.
+A list sets levels from the first one, and the levels it leaves out keep the preset's value.
+A value out of range throws a `RangeError` that names the parameter and the range. A tree that could grow more than 4000 branches or 20000 leaf sites is refused before it fills memory.
+The same seed and parameters give byte-identical geometry, and a species with no overrides grows exactly as before.
+`scatterVegetation({ growth: { preset, tree } })` grows every tree of the mix that way. The parameter set follows the idea of [ez-tree](https://github.com/dgreenheck/ez-tree)'s options; no code or numbers come from it.
+
 ## Scanned bark
 
 `createTree({ species, barkTextures, barkTileSize })` and `scatterVegetation({ barkTextures })` take scanned bark as texture descriptors (see [Material maps](/material-maps.md)):

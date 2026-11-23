@@ -45,6 +45,8 @@ export const VOLUME_FOG_FIELDS = Object.freeze([...VOLUME_VECTOR_FIELDS, ...VOLU
 const BLOOM_FIELDS = ['strength', 'threshold', 'radius'];
 const DEPTH_OF_FIELD_FIELDS = ['blur', 'focusDistance'];
 const MOTION_BLUR_FIELDS = ['shutter', 'objects'];
+/** The nested effect groups set-effects merges field by field, with the fields each accepts. */
+export const EFFECT_GROUP_FIELDS = Object.freeze({ bloom: BLOOM_FIELDS, depthOfField: DEPTH_OF_FIELD_FIELDS, motionBlur: MOTION_BLUR_FIELDS });
 const MAXIMUM_SHADOW_CASCADES = 4;
 const MAXIMUM_AFFECTED_NODES = 1024;
 

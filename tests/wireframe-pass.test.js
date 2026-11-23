@@ -1,8 +1,10 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { mat4 } from 'gl-matrix';
 import { installRenderPasses } from '../src/render-passes.js';
-import { withWireframe, MAXIMUM_WIREFRAME_REPORTED_PARTS } from '../src/wireframe-pass.js';
+import { ADDON_CATALOG } from '../src/addon-catalog.js';
+import { withWireframe, MAXIMUM_WIREFRAME_REPORTED_PARTS, WIREFRAME_COLORS } from '../src/wireframe-pass.js';
 import { RENDER_PASS_NAMES } from '../src/agent-scene-capabilities.js';
 
 // A context that records every call; constants read back as their own names and shader and program checks succeed.
@@ -120,4 +122,55 @@ test('a frame that never reaches the canvas copy is an error, and the overlay is
   assert.equal(renderer.passSupport.overlay, null);
   assert.throws(() => withWireframe(renderer, () => { throw new Error('boom'); }), /boom/);
   assert.equal(renderer.passSupport.overlay, null);
+});
+
+function styleUniforms(options) {
+  const calls = [];
+  const renderer = rendererWith([{ name: 'open-box', geometry: openBoxGeometry(), matrix: identity() }], calls);
+  const report = withWireframe(renderer, () => renderer.passSupport.copyToCanvas(), options);
+  const uniformOf = name => calls.find(call => call[0] === name)[2];
+  return { report, colors: Array.from(uniformOf('uniform3fv')), halfWidths: Array.from(uniformOf('uniform1fv')) };
+}
+
+test('the default style keeps the repair colours and double-width faults exactly', () => {
+  const { colors, halfWidths } = styleUniforms(undefined);
+  assert.deepEqual(colors, WIREFRAME_COLORS.flat());
+  assert.deepEqual(halfWidths, [0.7, 1.6, 1.6, 1.6, 1.6]);
+  assert.deepEqual(styleUniforms({}), styleUniforms({ faults: true }));
+});
+
+test('faults: false draws every edge kind in one colour and width and still counts the faults', () => {
+  const { report, colors, halfWidths } = styleUniforms({ faults: false });
+  const regularColor = WIREFRAME_COLORS[0];
+  assert.deepEqual(colors, Array.from({ length: 5 }, () => regularColor).flat());
+  assert.deepEqual(halfWidths, [0.7, 0.7, 0.7, 0.7, 0.7]);
+  assert.equal(report.edges.boundary, 4);
+  const custom = styleUniforms({ faults: false, color: [0.5, 0.25, 1], halfWidth: 2 });
+  assert.deepEqual(custom.colors, Array.from({ length: 5 }, () => [0.5, 0.25, 1]).flat());
+  assert.deepEqual(custom.halfWidths, [2, 2, 2, 2, 2]);
+});
+
+test('color and halfWidth restyle regular edges and leave the faults alone while faults is on', () => {
+  const { colors, halfWidths } = styleUniforms({ color: [1, 1, 1], halfWidth: 3 });
+  assert.deepEqual(colors, [1, 1, 1, ...WIREFRAME_COLORS.slice(1).flat()]);
+  assert.deepEqual(halfWidths, [3, 1.6, 1.6, 1.6, 1.6]);
+});
+
+test('bad style options are rejected with what to pass instead', () => {
+  const renderer = rendererWith([], []);
+  const draw = options => withWireframe(renderer, () => renderer.passSupport.copyToCanvas(), options);
+  assert.throws(() => draw(null), /options must be an object/);
+  assert.throws(() => draw({ faults: 'no' }), /faults must be true or false.*faults: false/);
+  assert.throws(() => draw({ color: [1, 0] }), /color must be three numbers from 0 to 1/);
+  assert.throws(() => draw({ color: [2, 0, 0] }), /color must be three numbers/);
+  assert.throws(() => draw({ halfWidth: 0 }), /halfWidth must be a number above 0/);
+  assert.throws(() => draw({ halfWidth: 1000 }), /halfWidth must be a number above 0 and at most 32/);
+});
+
+test('the wireframe addon is a stable package subpath built from its own entry', () => {
+  const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(packageJson.exports['./addons/wireframe-pass'], './build/wireframe-pass.js');
+  const viteConfig = readFileSync(new URL('../config/vite.lib.config.js', import.meta.url), 'utf8');
+  assert.match(viteConfig, /'wireframe-pass': 'src\/wireframe-pass\.js'/);
+  assert.ok(ADDON_CATALOG.some(addon => addon.name === 'wireframe-pass'));
 });

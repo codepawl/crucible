@@ -85,7 +85,10 @@ The four shipped files total about 100 KB. For a bigger HDRI, put a 2k or smalle
 
 Each operation also contains its `type` discriminator.
 Omitted fields retain their current canonical values.
-Nested `volumeFog` and `bloom` objects merge their supplied fields.
+Nested `volumeFog`, `bloom`, `depthOfField` and `motionBlur` objects merge their supplied fields: `{ depthOfField: { blur: 0.8 } }` keeps `focusDistance`.
+`null` clears an optional field back to not set (`ground`, `hdri`, `sunBounce`, `shadowCascades`, `sky` and the other fields a fresh environment leaves out, `motionBlur.objects`, optional post steps), and clearing a field that is not set changes nothing.
+`null` on `depthOfField`, `motionBlur` or `bloom` returns the whole group to its defaults.
+A field every scene has (`keyIntensity`, `exposure`, `depthOfField.blur`, ...) cannot be cleared: `null` on it fails with the default to pass instead. `fogDensity: null` is a value, no override.
 Vector arrays replace their previous vector.
 The complete `pointLights` list replaces the previous list, including `[]` to remove all point lights.
 Final merged look fields pass normalization before any command publishes.
@@ -151,6 +154,10 @@ Directional key radiance equals `keyColor * keyIntensity`.
 Zero intensity disables that lighting contribution.
 Direction magnitude remains in the canonical recipe.
 The shadow projector uses its normalized direction, so changing only magnitude does not change shadow placement.
+
+### Coplanar findings in edit answers
+
+A `coplanar-overlap` finding rides along with an edit answer (`scene_apply`, `mesh_edit` and the other edit tools) only when it is new or when one of its parts moved or changed shape since the last answer carried it. When a batch leaves reported findings untouched, the answer adds one `coplanar-overlap-unchanged` entry with a count, for example "2 coplanar overlaps reported earlier are unchanged". `scene_inspect` always lists every finding. A finding that goes away and later comes back is reported again.
 High radiance can clip at the renderer's half-float HDR target limit of `65504` before bloom and tone mapping.
 
 ## Light units and three.js conversion

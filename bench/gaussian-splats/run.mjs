@@ -1,6 +1,6 @@
 // Runs the Gaussian splat benchmark in Chrome and prints one JSON line per case; pictures go to artifacts/gaussian-splats/.
 //   node bench/gaussian-splats/fetch-sample.mjs          (once, for the millipede sample)
-//   node bench/gaussian-splats/run.mjs [gpu|cpu] [engine67|three|all] [case name filter]
+//   node bench/gaussian-splats/run.mjs [gpu|cpu] [engine67|three|animated|all] [case name filter]
 // gpu uses the machine's graphics card, cpu uses SwiftShader (software). Frame times are the median of 60 frames with a camera
 // that moves every frame ("orbit": a sort each frame) and 60 with a still camera (no sort). A one-pixel readPixels ends each timed frame.
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -27,6 +27,10 @@ const ENGINE67_CASES = [
   { name: 'synthetic-100k', source: 'synthetic', count: 100000 },
   { name: 'synthetic-1m', source: 'synthetic', count: 1000000 },
 ];
+const ANIMATED_CASES = [
+  { name: 'animated-20k-rebuild', mode: 'rebuild' },
+  { name: 'animated-20k-update', mode: 'update' },
+];
 const THREE_CASES = [
   { name: 'three-millipede', source: 'millipede' },
   { name: 'three-synthetic-100k', source: 'synthetic', count: 100000 },
@@ -40,7 +44,7 @@ await server.listen();
 const serverUrl = `http://127.0.0.1:${server.httpServer.address().port}`;
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: BACKEND_ARGUMENTS[backend] });
 
-async function runCases(pagePath, cases) {
+async function runCases(pagePath, cases, runner = 'runCase') {
   for (const { name, ...options } of cases.filter(entry => entry.name.includes(onlyCase))) {
     const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
     page.on('pageerror', error => console.log('PAGE ERROR', error.message));
@@ -49,7 +53,7 @@ async function runCases(pagePath, cases) {
       await page.goto(`${serverUrl}/bench/gaussian-splats/${pagePath}`, { timeout: 180000 });
       await page.waitForFunction(() => window.harnessReady, null, { timeout: 180000 });
       const frames = backend === 'cpu' ? SWIFTSHADER_FRAMES : 60;
-      const { image, ...measurements } = await page.evaluate(parameters => window.runCase(parameters), { frames, ...options });
+      const { image, ...measurements } = await page.evaluate(([name, parameters]) => window[name](parameters), [runner, { frames, ...options }]);
       if (image) await writeFile(`${outputDirectory}/${backend}-${name}.png`, Buffer.from(image, 'base64'));
       console.log(JSON.stringify({ name, backend, ...measurements }));
     } catch (error) {
@@ -62,6 +66,7 @@ async function runCases(pagePath, cases) {
 
 try {
   if (engines === 'engine67' || engines === 'all') await runCases('harness.html', ENGINE67_CASES);
+  if (engines === 'animated') await runCases('harness.html', ANIMATED_CASES, 'runAnimatedCase');
   if (engines === 'three' || engines === 'all') await runCases('three.html', THREE_CASES);
 } finally {
   await browser.close();

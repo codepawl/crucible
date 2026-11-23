@@ -126,7 +126,7 @@ async function renderRecipeClip(preview, size, options, outputMp4) {
     for (;;) {
       const record = await call('scene_render_status', { jobId: submitted.jobId });
       if (record.state === 'completed') break;
-      if (['cancelled', 'failed', 'interrupted'].includes(record.state)) throw new Error(`Render job of ${preview.name} ${record.state}: ${record.error ?? record.reason ?? ''}`);
+      if (['cancelled', 'failed', 'interrupted'].includes(record.state)) throw new Error(`Render job of ${preview.name} ${record.state}: ${record.reason ?? ''}`);
       await delay(500);
     }
     const result = await call('scene_render_result', { jobId: submitted.jobId });

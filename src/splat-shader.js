@@ -202,7 +202,13 @@ void applySplat(inout vec3 color, inout vec3 normal, inout float roughness, inou
     if (splatLayer[index].w < 0.5) weights[index] = 1.0 - covered;
   }
 
-  float triplanarAmount = smoothstep(splatBlend.z, splatBlend.w, slope);
+  // A side plane maps a face tilted by the slope with its texture stretched 1 / sin(slope) times, the top plane 1 / cos(slope)
+  // times. The slope range only says where side planes may start; the share they take never exceeds what the normal gives
+  // them, so a 20 to 40 degree bank keeps the top plane and does not smear (#2937).
+  float horizontalFourth = pow(max(1.0 - geometric.y * geometric.y, 0.0), 2.0);
+  float verticalFourth = pow(geometric.y, 4.0);
+  float stretchLimit = horizontalFourth / max(horizontalFourth + verticalFourth, 0.0001);
+  float triplanarAmount = min(smoothstep(splatBlend.z, splatBlend.w, slope), stretchLimit);
   vec2 sideShare = pow(abs(geometric.xz), vec2(4.0));
   sideShare /= max(sideShare.x + sideShare.y, 0.0001);
 

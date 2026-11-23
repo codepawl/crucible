@@ -18,6 +18,7 @@
 // files the task's kind and topics point to. That measures what the skill's knowledge is worth, not whether an agent would load
 // the skill on its own. Bench a change under skills/ in `references`, base and head in the same mode.
 //
+// --mcp-tools <names> passes crucible-mcp --tools, so the agent sees only those tools.
 // --system-prompt-file <path> replaces Claude Code's default system prompt with that file and turns off the built-in tools,
 // so a custom system prompt can be measured against the default one.
 //
@@ -63,6 +64,7 @@ const { values: options } = parseArgs({
     'run-name': { type: 'string' },
     backend: { type: 'string', default: 'gpu' },
     'prompt-note': { type: 'string' },
+    'mcp-tools': { type: 'string' },
     'system-prompt-file': { type: 'string' },
   },
 });
@@ -78,7 +80,7 @@ function mcpConfig(assetDirectory, task) {
   return { mcpServers: { [MCP_SERVER_NAME]: {
     command: process.execPath,
     ...(environment ? { env: environment } : {}),
-    args: [join(repository, 'scripts', 'mcp-server.mjs'), '--backend', options.backend, '--memory', '192', '--branches', options.branches, '--relations', options.relations, '--findings', options.findings, ...(assetDirectory ? ['--assets', assetDirectory] : [])],
+    args: [join(repository, 'scripts', 'mcp-server.mjs'), '--backend', options.backend, '--memory', '192', '--branches', options.branches, '--relations', options.relations, '--findings', options.findings, ...(assetDirectory ? ['--assets', assetDirectory] : []), ...(options['mcp-tools'] ? ['--tools', options['mcp-tools']] : [])],
   } } };
 }
 

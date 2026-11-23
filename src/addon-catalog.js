@@ -15,7 +15,7 @@ export const ADDON_AREAS = [
 export const PACKAGE_NAME = '@codepawlhq/crucible';
 
 export const ADDON_CATALOG = [
-  { name: 'model', area: 'modeling', summary: 'Build a model from parts with createModel.' },
+  { name: 'model', area: 'modeling', summary: 'Load the sample microscope as explodable parts.' },
   { name: 'studio', area: 'modeling', summary: 'A visual editor that works on the same scene recipe as agents.', doc: true },
   { name: 'modeling', area: 'modeling', summary: 'Lathe, sweep and other agent modeling geometry.', doc: true },
   { name: 'mesh', area: 'modeling', summary: 'Polygon mesh core: half-edge edit mesh, normals and lint.', doc: true },
@@ -68,6 +68,7 @@ export const ADDON_CATALOG = [
   { name: 'path-tracer-progressive', area: 'render', summary: 'A progressive view of the GPU path tracer.' },
   { name: 'path-tracer-realtime', area: 'render', summary: 'A real-time hybrid view of the GPU path tracer.' },
   { name: 'render-passes', area: 'render', summary: 'Depth, normals, object IDs and other render passes.' },
+  { name: 'wireframe-pass', area: 'render', summary: 'Polygon edges drawn over the shaded surface, with or without repair colours.' },
   { name: 'coplanar-overlap', area: 'render', summary: 'Stop z-fighting between near-flush triangles.' },
   { name: 'reversed-depth', area: 'render', summary: 'Reversed-Z depth for far-away precision.' },
   { name: 'crucible-scene', area: 'render', summary: 'The <crucible-scene> web component for packed scenes.' },

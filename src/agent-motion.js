@@ -10,7 +10,7 @@ import { IK_SOLVER_TYPE_NAMES } from './motion-ik-solver-types.js';
 import { normalizeClipLayers } from './agent-clip-layers.js';
 import { normalizeKeyframeEasing } from './easing.js';
 import { normalizeFootLock } from './foot-lock.js';
-import { bounded, denseArray, finite, knownKeys, valueFrom, MAX_KEYS_PER_TRACK } from './motion-validation.js';
+import { bounded, denseArray, finite, keyframeTime, knownKeys, valueFrom, MAX_KEYS_PER_TRACK } from './motion-validation.js';
 import { agentSceneModule } from './agent-scene-modules.js';
 
 const PHYSICAL_SKY_TRACK_PROPERTIES = new Set(['sunElevation', 'sunRotation', 'turbidity', 'groundAlbedo', 'aerialPerspective', 'ozone']);
@@ -143,7 +143,7 @@ function normalizedKeyframe(keyframe, track, duration, interpolation) {
   knownKeys(keyframe, ['time', 'value', 'inTangent', 'outTangent', 'easing'], 'motion keyframe');
   const size = PROPERTIES[track.kind][track.property];
   const result = {
-    time: bounded(keyframe.time, 0, duration, 'time'),
+    time: keyframeTime(keyframe.time, duration, 'time'),
     value: valueFrom(keyframe.value, size, 'value'),
   };
   validateValue(track.kind, track.property, result.value, 'value');
@@ -216,7 +216,7 @@ function ikKeyframes(input, size, duration, label) {
   }
   const keyframes = input.keyframes.map(keyframe => {
     knownKeys(keyframe, ['time', 'value'], `${label}.keyframe`);
-    return { time: bounded(keyframe.time, 0, duration, 'Keyframe time'), value: valueFrom(keyframe.value, size, `${label}.value`) };
+    return { time: keyframeTime(keyframe.time, duration, 'Keyframe time'), value: valueFrom(keyframe.value, size, `${label}.value`) };
   });
   return { interpolation, keyframes };
 }

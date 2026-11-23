@@ -197,10 +197,68 @@ async function checkCulling(canvas) {
   return result;
 }
 
+function hashPixels(data) {
+  let hash = 2166136261;
+  for (let index = 0; index < data.length; index++) hash = Math.imul(hash ^ data[index], 16777619) >>> 0;
+  return hash.toString(16);
+}
+
+/**
+ * One parsed glTF asset per instance, each posed at a staggered clip time (the issue #3001 case), timed as pose, updateParts and draw.
+ * `hiddenEvery: n` hides every nth instance with `part.visible = false`; `frameHash` is an FNV hash of the last frame's pixels.
+ */
+async function measureSkinnedInstances(canvas, { modelUrl, clipName = 'Run', count, frames, spacing = 3, hiddenEvery = 0, checks = true }) {
+  const bytes = await (await fetch(modelUrl)).arrayBuffer();
+  const assets = [];
+  const parts = [];
+  for (let index = 0; index < count; index++) {
+    const asset = await parseGltf(bytes.slice(0), { maxVertices: 500000 });
+    assets.push(asset);
+    parts.push(...asset.parts);
+  }
+  const clipIndex = assets[0].animations.findIndex(animation => animation.name === clipName);
+  const duration = assets[0].animations[clipIndex].duration;
+  const columns = Math.ceil(Math.sqrt(count));
+  const placements = assets.map((_, index) => mat4.fromTranslation(mat4.create(), [(index % columns - columns / 2) * spacing, 0, (Math.floor(index / columns) - columns / 2) * spacing]));
+  const hidden = index => hiddenEvery > 0 && index % hiddenEvery === 0;
+  const renderer = new CrucibleRenderer(canvas, parts, { ground: true, hdr: false, samples: 1, pixelRatio: 1, memoryBudgetMiB: 8192 });
+  renderer.resize();
+  const frame = { ...cameraFor(columns, spacing, 4, true), time: 0, exposure: 1, effects: {} };
+  const timings = { pose: [], update: [], draw: [] };
+  let frameHash = null;
+  for (let step = 0; step < frames + 2; step++) {
+    const poseStarted = performance.now();
+    assets.forEach((asset, index) => {
+      for (const part of asset.parts) part.visible = !hidden(index);
+      if (hidden(index)) return;
+      asset.applyAnimation((step / 60 + (index / count) * duration) % duration, clipIndex, { checks });
+      for (const part of asset.parts) mat4.multiply(part.matrix, placements[index], part.matrix);
+    });
+    const updateStarted = performance.now();
+    renderer.updateParts(parts, { checks });
+    const drawStarted = performance.now();
+    renderer.render(frame);
+    finish(renderer);
+    const drawEnded = performance.now();
+    if (step >= 2) {
+      timings.pose.push(updateStarted - poseStarted);
+      timings.update.push(drawStarted - updateStarted);
+      timings.draw.push(drawEnded - drawStarted);
+    }
+    if (step === frames + 1) frameHash = hashPixels(readImage(canvas));
+  }
+  const median = values => [...values].sort((first, second) => first - second)[Math.floor(values.length / 2)];
+  const result = { count, hiddenEvery, poseMs: median(timings.pose), updatePartsMs: median(timings.update), drawMs: median(timings.draw), frameHash };
+  renderer.dispose();
+  assets.forEach(asset => asset.dispose());
+  return result;
+}
+
 window.runCrowd = async (request) => {
   const canvas = document.querySelector('canvas');
   if (request.task === 'measure') return measureCrowd(canvas, request);
   if (request.task === 'instances') return measureInstances(canvas, request);
+  if (request.task === 'skinned') return measureSkinnedInstances(canvas, request);
   if (request.task === 'pictures') return checkPictures(canvas, request.dump);
   if (request.task === 'culling') return checkCulling(canvas);
   throw new Error(`Unknown task ${request.task}`);

@@ -1,6 +1,7 @@
 import { mat4 } from 'gl-matrix';
 import { leafTextureDescriptor } from './vegetation-textures.js';
-import { SPECIES, createTree, scatterVegetation, levelForDistance } from './vegetation.js';
+import { SPECIES, TREE_PRESETS, createTree, scatterVegetation, levelForDistance } from './vegetation.js';
+import { checkTreeGrowth } from './vegetation-presets.js';
 import { createImage } from './material-texture-kit.js';
 import { createTextureMaps } from './agent-texture-set.js';
 import { createRecipeTerrain } from './agent-terrain.js';
@@ -15,7 +16,7 @@ export const VEGETATION_LIMITS = Object.freeze({
   maxInstances: 1000, maxVariants: 4, maxExclusions: 32, maxCandidates: 4000, maxCachedSets: 4,
 });
 const SCATTER_SPECIES = [...Object.keys(SPECIES), 'grass', 'flowers'];
-const VEGETATION_FIELDS = ['species', 'mix', 'seed', 'height', 'leaves', 'season', 'cullDistance', 'distanceScale', 'scatter', 'scans'];
+const VEGETATION_FIELDS = ['species', 'preset', 'tree', 'mix', 'seed', 'height', 'leaves', 'season', 'cullDistance', 'distanceScale', 'scatter', 'scans'];
 // Scanned bark and leaf cards per species, as catalog image IDs. The MCP server fills them from the vegetation-scans pack.
 const SCAN_PART_FIELDS = Object.freeze({ bark: ['colorMap', 'normalMap', 'roughnessMap'], leaves: ['colorMap', 'normalMap', 'crownMap'] });
 const CATALOG_IMAGE_ID = /^[a-f0-9]{64}$/;
@@ -122,6 +123,18 @@ function mergedRuntime(placed, vegetation) {
   };
 }
 
+// Growth overrides of one tree species or preset, checked against the ranges of vegetation-presets.js.
+function normalizeTreeGrowth(tree, vegetation) {
+  if (vegetation.mix) throw invalidField('vegetation.tree', tree, 'nothing with mix; tree tunes one species or preset, so give species or preset instead of mix', TypeError);
+  const named = TREE_PRESETS[vegetation.preset];
+  const species = named ? named.species : vegetation.species;
+  if (!SPECIES[species]) throw invalidField('vegetation.tree', tree, `nothing for ${species}; tree tunes the tree species ${Object.keys(SPECIES).join(', ')}`, TypeError);
+  const levels = named?.tree.levels ?? SPECIES[species].levels.length - 1;
+  return checkTreeGrowth(tree, levels, (path, value, expected) => {
+    throw invalidField(`vegetation.${path}`, value, expected);
+  });
+}
+
 /** Validate the `vegetation` field of a node (`node` is the whole node, which must be a group). Returns the canonical form kept in the recipe. */
 export function normalizeVegetation(value, node) {
   const conflict = node && ['geometry', 'skin', 'asset'].find(field => node[field] !== undefined);
@@ -130,10 +143,14 @@ export function normalizeVegetation(value, node) {
   }
   knownKeys(value, VEGETATION_FIELDS, 'vegetation');
   const result = {};
-  if ((value.species === undefined) === (value.mix === undefined)) {
-    throw invalidField('vegetation.species', value.species, 'exactly one of species (one tree, such as "broadleaf") or mix (a scatter, such as { "broadleaf": 3, "bush": 1 })', TypeError);
+  const kinds = ['species', 'preset', 'mix'].filter(field => value[field] !== undefined);
+  if (kinds.length !== 1) {
+    throw invalidField(`vegetation.${kinds[0] ?? 'species'}`, value[kinds[0] ?? 'species'], 'exactly one of species (one tree, such as "broadleaf"), preset (a named tree, such as "oak") or mix (a scatter, such as { "broadleaf": 3, "bush": 1 })', TypeError);
   }
-  if (value.species !== undefined) {
+  if (value.preset !== undefined) {
+    if (!TREE_PRESETS[value.preset]) throw invalidField('vegetation.preset', value.preset, `one of ${Object.keys(TREE_PRESETS).join(', ')}`);
+    result.preset = value.preset;
+  } else if (value.species !== undefined) {
     if (!SCATTER_SPECIES.includes(value.species) || (!value.scatter && !SPECIES[value.species])) {
       throw invalidField('vegetation.species', value.species, `one of ${(value.scatter ? SCATTER_SPECIES : Object.keys(SPECIES)).join(', ')}`);
     }
@@ -148,6 +165,7 @@ export function normalizeVegetation(value, node) {
     }
     if (!Object.values(result.mix).some(weight => weight > 0)) throw invalidField('vegetation.mix', value.mix, 'at least one positive weight, such as { "broadleaf": 1 }');
   }
+  if (value.tree !== undefined) result.tree = normalizeTreeGrowth(value.tree, result);
   result.seed = numberWithin(value.seed ?? 1, -2147483648, 2147483647, 'vegetation.seed');
   if (value.height !== undefined) result.height = numberWithin(value.height, 0.2, 80, 'vegetation.height');
   result.leaves = value.leaves ?? 'cards';
@@ -331,14 +349,25 @@ export function scatterOptionsFor(recipe, vegetation) {
     area, density: scatter.density, terrainHeight: terrain.heightAt, slopeLimit: scatter.slopeLimit,
     exclusion: exclusionTest(recipe, scatter, terrain), seed: vegetation.seed, mix: vegetation.mix ?? { [vegetation.species]: 1 },
     variants: scatter.variants, leaves: vegetation.leaves, ...(scatter.scale ? { scale: scatter.scale } : {}),
+    ...(vegetation.preset ? { mix: { [TREE_PRESETS[vegetation.preset].species]: 1 } } : {}), ...growthOptions(vegetation),
   };
+}
+
+// The preset and growth overrides createTree and scatterVegetation take, or nothing for a plain species.
+function growthOptions(vegetation) {
+  const growth = {
+    ...(vegetation.preset ? { preset: vegetation.preset } : {}),
+    ...(vegetation.tree ? { tree: vegetation.tree } : {}),
+  };
+  return Object.keys(growth).length ? { growth } : {};
 }
 
 function grow(recipe, vegetation, pool, nodeId) {
   const { barkTextures, leafTextures, leafFrames } = scanTextures(vegetation.scans, pool, nodeId);
   if (!vegetation.scatter) {
-    const tree = createTree({ species: vegetation.species, leaves: vegetation.leaves, barkTextures, leafTextures, ...(vegetation.height ? { height: vegetation.height } : {}) }, vegetation.seed);
-    return { variants: [tree], instances: [{ variant: tree, matrix: mat4.create(), species: vegetation.species }], leafFrames };
+    const growth = growthOptions(vegetation).growth ?? {};
+    const tree = createTree({ species: vegetation.species, ...growth, leaves: vegetation.leaves, barkTextures, leafTextures, ...(vegetation.height ? { height: vegetation.height } : {}) }, vegetation.seed);
+    return { variants: [tree], instances: [{ variant: tree, matrix: mat4.create(), species: tree.species }], leafFrames };
   }
   const scattered = scatterVegetation({ ...scatterOptionsFor(recipe, vegetation), barkTextures, leafTextures });
   if (scattered.instances.length > VEGETATION_LIMITS.maxInstances) {

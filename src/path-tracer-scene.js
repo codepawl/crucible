@@ -230,6 +230,9 @@ function resolveMaterial(material) {
     normalTexture: resolveTexture(material.normalMap),
     normalScale: material.normalScale ?? [1, 1],
     surfaceTexture: resolveTexture(material.metallicRoughnessMap),
+    // Read by the CPU tracer only; it darkens indirect light (glTF occlusion), never a light's own direct light.
+    occlusionTexture: resolveTexture(material.occlusionMap),
+    occlusionStrength: material.occlusionStrength ?? 1,
     lightMask: material.lightMask ?? ALL_LIGHTS,
     alphaCutoff: material.alphaMode === 'mask' ? material.alphaCutoff ?? 0.5 : graphOpacityCutoff(material),
   };
@@ -277,6 +280,7 @@ function tracedMapDescriptors(material) {
     material.map,
     material.normalMap,
     material.metallicRoughnessMap,
+    material.occlusionMap,
     material.transmissionMap,
     (material.emission ?? 0) > 0 ? material.emissiveMap : null,
     material.layerMaps?.clearcoatTexture,

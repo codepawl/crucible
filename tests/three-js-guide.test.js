@@ -16,7 +16,6 @@ const calls = new Set([
   ...Object.keys(core),
   ...Object.keys(gltf),
   ...Object.getOwnPropertyNames(core.CrucibleRenderer.prototype),
-  'createModel',
   // Browser calls the table uses.
   'toBlob', 'now', 'requestAnimationFrame', 'push',
 ]);

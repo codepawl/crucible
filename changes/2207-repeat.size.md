@@ -1,0 +1,3 @@
+- scene:agent-scene: edit answers stop repeating the same coplanar overlaps every batch, which an agent run otherwise paid for in every response (451 bytes gzip for the repeat tracker).
+- scene:agent-scene+lazy: same tracker, shared by the scene bundle.
+- goal:agent-scene: the answer-size saving per edit is agent-facing and outweighs 451 bytes in the core scene bundle.

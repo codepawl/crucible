@@ -4,6 +4,7 @@ import { validateSkinGeometry } from './skinning.js';
 import { boxProjectedGeometry, columnLengths } from './export-box-uv.js';
 import { createTextureWriter } from './export-textures.js';
 import { createGlbWriter } from './export-writer.js';
+import { writeCamera, writeLights } from './export-scene-extras.js';
 import { buildHierarchy, decomposeMatrix, hierarchyNodeFields, hostOfPart, normalizedWeights, relativeMatrix, writeAnimations, writeSkin } from './export-skeleton.js';
 
 const EMISSIVE_STRENGTH = 'KHR_materials_emissive_strength';
@@ -131,7 +132,7 @@ function validateTransformColumns(matrix, part, nodePaths) {
 }
 
 const TEXTURE_CHANNELS = ['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
-const OPTION_NAMES = ['clips', 'nodes', 'maxTextureSize', 'nodePaths'];
+const OPTION_NAMES = ['clips', 'nodes', 'maxTextureSize', 'nodePaths', 'camera', 'lights'];
 
 function validateOptions(options) {
   if (!options || typeof options !== 'object') throw new TypeError('GLB export options must be an object.');
@@ -287,7 +288,8 @@ function usesSecondUvSet(material) {
  * Returns a self-contained GLB ArrayBuffer for the parts.
  * Options: `clips` (createAnimationClip form, track targets are node names), `nodes` (the `nodes` of a parsed asset,
  * which hold joints and groups, so skinned parts and clips keep their hierarchy), `maxTextureSize` (default 2048),
- * `nodePaths` (part name to a label such as "parent > child", which an error names).
+ * `nodePaths` (part name to a label such as "parent > child", which an error names), `camera` (`{ eye, target, up, fov, near, far }`,
+ * written as a glTF camera) and `lights` (`{ pointLights, spotLights }` as the scene environment holds them, written with KHR_lights_punctual).
  */
 export function exportGlb(parts, options = {}) {
   if (!Array.isArray(parts) || parts.length === 0) throw new TypeError('GLB export requires a nonempty parts array.');
@@ -379,6 +381,8 @@ export function exportGlb(parts, options = {}) {
     if (host) (document.nodes[host.index].children ??= []).push(nodeIndex);
     else sceneRoots.push(nodeIndex);
   });
+  if (options.camera) sceneRoots.push(writeCamera(writer, options.camera));
+  if (options.lights) sceneRoots.push(...writeLights(writer, options.lights));
   document.scenes[0].nodes = sceneRoots;
   if (options.clips?.length) {
     for (const [index, node] of document.nodes.entries()) {

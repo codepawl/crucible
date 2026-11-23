@@ -23,7 +23,7 @@ const UNSUPPORTED = {
   CapsuleGeometry: 'Model it with lathe() from crucible/addons/modeling, or combine CylinderGeometry and SphereGeometry.',
   CircleGeometry: 'Use CylinderGeometry with a small height (Crucible: cylinder()).',
   IcosahedronGeometry: 'Use SphereGeometry (Crucible: sphere()).',
-  BufferGeometry: 'A part takes a geometry object { positions, normals, indices } (Crucible: geometry in a part). Build one with box(), sphere(), cylinder(), torus() or createModel().',
+  BufferGeometry: 'A part takes a geometry object { positions, normals, indices } (Crucible: geometry in a part). Build one with box(), sphere(), cylinder() or torus().',
   InstancedMesh: 'Give parts the same geometry object: the renderer batches them (Crucible: CrucibleRenderer with batching: true).',
   SkinnedMesh: 'Load a rigged GLB with GLTFLoader, then drive it with createSkinPose() and updateSkinPose().',
   AnimationMixer: 'Use createAnimationMixer(parts) from Crucible.',

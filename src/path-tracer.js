@@ -46,7 +46,7 @@ const ADAPTIVE_MINIMUM_SAMPLES = 16;
 const ADAPTIVE_BATCH_SAMPLES = 8;
 // Mean luminance added to the standard error's reference, so very dark pixels are not held to a relative error.
 const CONVERGENCE_LUMINANCE_FLOOR = 0.05;
-const IGNORED_MAP_FIELDS = ['occlusionMap', 'heightMap'];
+const IGNORED_MAP_FIELDS = ['heightMap'];
 // Shading layers of the rasterizer that the tracer's surface model has no term for.
 const IGNORED_LAYERS = [
   ['anisotropy', material => material.anisotropy > 0, true],
@@ -211,6 +211,8 @@ function createHit() {
     point: new Float64Array(3), normal: new Float64Array(3), color: new Float64Array(3),
     texel: new Float64Array(4), mapTexel: new Float64Array(4), emission: new Float64Array(3),
     metallic: 0, roughness: 0, clearcoat: 0, transmission: 0,
+    // Share of indirect light the surface lets in, from its occlusion map: 1 without one.
+    occlusion: 1,
   };
 }
 
@@ -430,6 +432,11 @@ function fillHit(scene, triangleId, originX, originY, originZ, directionX, direc
     sampleMap(material.surfaceTexture, hit.mapTexel);
     hit.roughness *= hit.mapTexel[1];
     hit.metallic *= hit.mapTexel[2];
+  }
+  hit.occlusion = 1;
+  if (material.occlusionTexture) {
+    sampleMap(material.occlusionTexture, hit.mapTexel);
+    hit.occlusion = 1 + material.occlusionStrength * (hit.mapTexel[0] - 1);
   }
   // A metal does not transmit: only the dielectric share of the surface lets light through (glTF KHR_materials_transmission, #2827).
   hit.transmission *= 1 - hit.metallic;
@@ -778,7 +785,16 @@ function createPathTracer(scene, options) {
     // A path that bends through glass and reaches the sky is already counted in full (addEscape after a mirror or glass bounce), so
     // the sky's shadow ray stops at glass: letting it through as well would count that light twice.
     lightIsEnvironment = true;
+    // The sky is indirect light, so the occlusion map darkens it; the sun and the lights above are direct and are not.
+    const { occlusion } = hit;
+    const [pathRed, pathGreen, pathBlue] = throughput;
+    throughput[0] = pathRed * occlusion;
+    throughput[1] = pathGreen * occlusion;
+    throughput[2] = pathBlue * occlusion;
     addDirect(depth, normal, scene.farDistance, environmentWeight);
+    throughput[0] = pathRed;
+    throughput[1] = pathGreen;
+    throughput[2] = pathBlue;
     lightIsEnvironment = false;
   }
 
@@ -1090,6 +1106,8 @@ function createPathTracer(scene, options) {
         const isMirror = sampleSurface(surface, lobeUnit, random.next(), random.next(), direction);
         const cosine = direction[0] * normal[0] + direction[1] * normal[1] + direction[2] * normal[2];
         if (cosine <= 0) break;
+        // Everything the next ray gathers (sky and bounced light) is indirect, so the occlusion map scales it.
+        for (let channel = 0; channel < 3; channel++) throughput[channel] *= hit.occlusion;
         if (isMirror) {
           mirrorWeight(surface, mirror);
           for (let channel = 0; channel < 3; channel++) throughput[channel] *= mirror[channel];
@@ -1162,6 +1180,7 @@ export function describeIgnoredFeatures(parts, environment, backend = 'cpu', { k
     for (const note of describeUntracedWater(part)) notes.add(note);
     if (material.tag === 'water' && backend === 'gpu') notes.add('The depth tint under a thin water sheet is not drawn: the CPU, WebGPU and native cycles tracers add an absorbing medium under it, the WebGL tracer draws the water clear.');
     for (const field of IGNORED_MAP_FIELDS) if (material[field]) notes.add(`${field} is ignored.`);
+    if (material.occlusionMap && (kernelMaterials || backend !== 'cpu')) notes.add(kernelMaterials ? 'occlusionMap is ignored by the native cycles kernel: its material record has no occlusion slot (codepawl/cook#71). Use backend "cpu" to trace it.' : `occlusionMap is ignored by the ${backend} tracer: only the CPU tracer reads it. Use backend "cpu" to trace it.`);
     if (material.tag && material.tag !== 'surface' && material.tag !== 'water') notes.add(`${material.tag} materials are traced as plain surfaces.`);
     if (material.alphaMode === 'blend' && hasGraphOpacity(material)) notes.add('A graph opacity output is traced as a cutout at 0.5.');
     else if (material.alphaMode === 'blend' && !kernelMaterials) notes.add('Blended transparency is traced as opaque.');

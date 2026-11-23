@@ -18,6 +18,7 @@ import {
 import { coverageMean, createCrownSkyField, matchMeanVisibility, scaleVisibility, vertexCoverage } from './tree-sky.js';
 import { TREE_LEVEL_GAINS } from './tree-level-gains.js';
 import { LEVEL_SETTINGS, SPECIES, TREE_LEVEL_DISTANCES } from './vegetation-species.js';
+import { MAX_TREE_BRANCHES, TREE_PRESETS, applyTreeGrowth, checkTreeGrowth, maximumBranchCount, mergeTreeGrowth } from './vegetation-presets.js';
 import { barkTextureDescriptor, leafTextureDescriptor } from './vegetation-textures.js';
 import { checkClumpOptions, checkGrassRadius, checkScatterOptions, checkSeed, checkTreeHeight } from './vegetation-options.js';
 import { pixelErrorScale, selectBlendedLevels } from './vegetation-impostors.js';
@@ -25,7 +26,8 @@ import { pixelErrorScale, selectBlendedLevels } from './vegetation-impostors.js'
 export { prepareImpostors, getImpostor, bakeImpostorAtlas, blendLevels, pixelErrorScale } from './vegetation-impostors.js';
 const DEFAULT_FADE_BAND = 0.06;
 
-export { SPECIES };
+export { SPECIES, TREE_PRESETS };
+export { TREE_PARAMETERS, treeGrowthCapabilities } from './vegetation-presets.js';
 
 const BARK_TILE_SIZE = 0.6;
 const SCANNED_BARK_TILE_SIZE = 0.8;
@@ -62,7 +64,18 @@ function sampleBranch(branch, fraction) {
 function lengthProfile(profile, progress) {
   if (profile === 'crown') return 0.62 + 0.38 * Math.sin(Math.PI * clamp(progress * 0.85 + 0.1, 0, 1));
   if (profile === 'cone') return 1 - 0.9 * progress;
+  if (profile === 'umbrella') return 0.3 + 0.7 * progress;
+  if (profile === 'column') return 0.8 + 0.2 * Math.sin(Math.PI * progress);
   return 1;
+}
+
+// `vector` turned by `angle` radians around the unit `axis` (Rodrigues' formula).
+function rotateAroundAxis(vector, axis, angle) {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const along = axis[0] * vector[0] + axis[1] * vector[1] + axis[2] * vector[2];
+  const across = crossProduct(axis, vector);
+  return [0, 1, 2].map(index => vector[index] * cosine + across[index] * sine + axis[index] * along * (1 - cosine));
 }
 
 function createChildSlots(spec, random) {
@@ -92,14 +105,17 @@ function sproutDirection(sample, slot, angle) {
 }
 
 // The rings of one branch: `parameters.segments` steps that wander by `gnarl`, bend by `tropism` and taper to `tipRadius`.
+// A grown preset may add `twist` (radians over the branch, turning it around where it started) and `growthDirection`.
 function walkBranch(origin, direction, length, radius, parameters, random) {
   const points = [origin];
   const radii = [radius];
   const stepLength = length / parameters.segments;
+  const pull = parameters.growthDirection ? scaleVector(parameters.growthDirection, parameters.tropism) : [0, parameters.tropism, 0];
   let current = direction;
   for (let step = 1; step <= parameters.segments; step++) {
     const wander = scaleVector(randomUnitOffset(random), parameters.gnarl * 2);
-    current = normalized(addVectors(addVectors(current, wander), [0, parameters.tropism, 0]));
+    current = normalized(addVectors(addVectors(current, wander), pull));
+    if (parameters.twist) current = normalized(rotateAroundAxis(current, direction, parameters.twist / parameters.segments));
     points.push(addScaled(points[step - 1], current, stepLength));
     radii.push(radius * lerp(1, parameters.tipRadius, step / parameters.segments));
   }
@@ -175,6 +191,9 @@ function growSkeleton(preset, height, random) {
     const spec = preset.leaf;
     const paired = preset.levels[branch.level].pairedLeaves;
     const count = Math.max(2, Math.round(branch.length * spec.sitesPerMeter));
+    if (preset.leafSiteLimit && leafSites.length + count * (paired ? 2 : 1) > preset.leafSiteLimit) {
+      throw new RangeError(`A grown tree may carry at most ${preset.leafSiteLimit} leaf sites; lower tree.leafCount, tree.branches, tree.levels or the height.`);
+    }
     for (let index = 0; index < count; index++) {
       const sample = sampleBranch(branch, lerp(spec.start, 1, index / (count - 1)));
       const sideAxis = normalized(crossProduct(sample.direction, WORLD_UP));
@@ -187,8 +206,9 @@ function growSkeleton(preset, height, random) {
     }
   }
 
-  function spawnChildren(branch, spec) {
+  function spawnChildren(branch, spec, twist) {
     for (const slot of createChildSlots(spec, random)) {
+      if (twist) slot.azimuth += twist * slot.fraction;
       const sample = sampleBranch(branch, slot.fraction);
       const direction = sproutDirection(sample, slot, randomInRange(random, spec.angle));
       const progress = (slot.fraction - spec.start) / Math.max(spec.end - spec.start, 1e-6);
@@ -206,7 +226,7 @@ function growSkeleton(preset, height, random) {
     const parameters = preset.levels[level];
     const branch = { level, ...walkBranch(origin, direction, length, radius, parameters, random) };
     branches.push(branch);
-    if (parameters.children) spawnChildren(branch, parameters.children);
+    if (parameters.children) spawnChildren(branch, parameters.children, parameters.twist);
     if (level === lastLevel) addLeafSites(branch);
   }
 
@@ -593,16 +613,44 @@ function describeLevel(parts) {
   return { parts, triangles: parts.reduce((total, part) => total + part.geometry.indices.length / 3, 0) };
 }
 
+function growthError(path, value, expected) {
+  throw new RangeError(`${path} must be ${expected}; got ${JSON.stringify(value)}.`);
+}
+
 /**
- * Grows one tree. `speciesOrOptions` is a preset name ('broadleaf', 'birch', 'conifer', 'palm',
- * 'bush') or `{ species, height, leaves, barkTextures, barkTileSize, leafTextures }`. Returns three levels of detail; each level lists the
+ * The species a tree grows as and the preset its skeleton follows. A named preset (`TREE_PRESETS`) or `tree` growth
+ * overrides give a new preset built on the species; with neither the species preset is used as it is.
+ */
+export function resolveTreePreset({ species, preset, tree } = {}) {
+  const named = preset === undefined ? null : TREE_PRESETS[preset];
+  if (preset !== undefined && !named) throw new RangeError(`Unknown tree preset: ${preset}; use one of ${Object.keys(TREE_PRESETS).join(', ')}.`);
+  if (named && species !== undefined && species !== named.species) {
+    throw new RangeError(`Tree preset ${preset} grows as ${named.species}; drop species ${species} or pick a preset of that species.`);
+  }
+  const baseSpecies = named ? named.species : species;
+  const base = SPECIES[baseSpecies];
+  if (!base) throw new RangeError(`Unknown tree species: ${baseSpecies}`);
+  const presetLevels = named?.tree.levels ?? base.levels.length - 1;
+  const overrides = mergeTreeGrowth(named?.tree ?? {}, tree === undefined ? {} : checkTreeGrowth(tree, presetLevels, growthError));
+  if (Object.keys(overrides).length === 0 && !named?.height) return { species: baseSpecies, preset: base };
+  const grown = applyTreeGrowth(base, overrides, named?.height);
+  const branches = maximumBranchCount(grown.levels);
+  if (branches > MAX_TREE_BRANCHES) {
+    throw new RangeError(`This tree could grow ${branches} branches, above the limit of ${MAX_TREE_BRANCHES}; lower tree.branches or tree.levels.`);
+  }
+  return { species: baseSpecies, preset: grown };
+}
+
+/**
+ * Grows one tree. `speciesOrOptions` is a species name ('broadleaf', 'birch', 'conifer', 'palm',
+ * 'bush') or `{ species, preset, tree, height, leaves, barkTextures, barkTileSize, leafTextures }`, where `preset` names
+ * one of `TREE_PRESETS` (oak, ash, aspen, birch, pine, palm, bush) and `tree` holds growth overrides (`TREE_PARAMETERS`). Returns three levels of detail; each level lists the
  * parts (`bark`, `foliage`) with their geometry and material, in local meters with the trunk at the origin. A broadleaf also
  * has `bareParts(levelIndex)`, the parts to draw at that level once it has shed its leaves: the bark with fine twigs.
  */
 export function createTree(speciesOrOptions = 'broadleaf', seed = 1) {
   const options = typeof speciesOrOptions === 'string' ? { species: speciesOrOptions } : { ...speciesOrOptions };
-  const preset = SPECIES[options.species];
-  if (!preset) throw new RangeError(`Unknown tree species: ${options.species}`);
+  const { species, preset } = resolveTreePreset(options);
   const leaves = options.leaves ?? 'cards';
   if (!LEAF_MODES.includes(leaves)) throw new RangeError(`Leaves must be one of ${LEAF_MODES.join(', ')}.`);
   if (!Number.isFinite(seed)) throw new TypeError('Tree seed must be a finite number.');
@@ -610,9 +658,9 @@ export function createTree(speciesOrOptions = 'broadleaf', seed = 1) {
   const height = options.height ?? randomInRange(random, preset.height);
   checkTreeHeight(height);
   const skeleton = growSkeleton(preset, height, random);
-  const scannedBark = resolveBarkTextures(options.barkTextures, options.species);
+  const scannedBark = resolveBarkTextures(options.barkTextures, species);
   const bark = { scanned: Boolean(scannedBark), tileSize: options.barkTileSize ?? (scannedBark ? SCANNED_BARK_TILE_SIZE : BARK_TILE_SIZE) };
-  const scannedLeaves = leaves === 'cards' ? resolveLeafTextures(options.leafTextures, options.species) : null;
+  const scannedLeaves = leaves === 'cards' ? resolveLeafTextures(options.leafTextures, species) : null;
   const materials = createMaterials(preset, leaves, scannedBark, scannedLeaves);
   const shadowTrunk = buildShadowTrunk(skeleton, preset, bark);
   const thinnedShadowTrunk = buildThinnedShadowTrunk(skeleton, preset, bark, shadowTrunk);
@@ -631,10 +679,10 @@ export function createTree(speciesOrOptions = 'broadleaf', seed = 1) {
       },
     ]);
   });
-  bakeCrownSkyVisibility(levels, options.species);
+  bakeCrownSkyVisibility(levels, species);
   const bareParts = preset.bareTwigs ? createBareParts(skeleton, preset, seed, bark, materials, [shadowTrunk, thinnedShadowTrunk]) : null;
   return {
-    kind: 'tree', species: options.species, seed, height, leaves, levels, materials,
+    kind: 'tree', species, ...(options.preset === undefined ? {} : { preset: options.preset }), seed, height, leaves, levels, materials,
     ...(bareParts ? { bareParts } : {}),
     distances: TREE_LEVEL_DISTANCES,
     bounds: boundsOf(levels[0].parts.map(part => part.geometry)),
@@ -749,10 +797,10 @@ export function createFlowerPatch({ flowers = 5, height = 0.4, color = [1, 0.85,
 
 const FLOWER_COLORS = [[0.95, 0.8, 0.25], [0.8, 0.35, 0.55], [0.9, 0.9, 0.85], [0.45, 0.4, 0.85]];
 
-function createVariant(species, variantSeed, variantIndex, leaves, barkTextures, leafTextures) {
+function createVariant(species, variantSeed, variantIndex, leaves, barkTextures, leafTextures, growth) {
   if (species === 'grass') return createGrassClump({ seed: variantSeed, height: 0.38 + 0.12 * (variantIndex % 3) });
   if (species === 'flowers') return createFlowerPatch({ seed: variantSeed, color: FLOWER_COLORS[variantIndex % FLOWER_COLORS.length] });
-  return createTree({ species, leaves, barkTextures, leafTextures }, variantSeed);
+  return createTree({ species, leaves, barkTextures, leafTextures, ...growth }, variantSeed);
 }
 
 function poissonDiskPoints(area, radius, random, accept) {
@@ -844,12 +892,13 @@ function instanceParts(instance, levelIndex, label) {
  * Scatters vegetation with Poisson-disk spacing. `area` is `{ minX, maxX, minZ, maxZ }`, `density` is
  * instances per square meter, `slopeLimit` is degrees, `exclusion(x, z)` returns true to keep a spot clear
  * `barkTextures` and `leafTextures` (one set or one per species) swap procedural bark and leaf cards for scanned textures, and `mix` weighs species ('broadleaf', 'birch', 'conifer', 'palm', 'bush', 'grass', 'flowers').
+ * `growth` (`{ preset, tree }`, as createTree takes them) grows every tree of the mix from that preset; give a one-species mix for it.
  * A few variants per species are shared by every instance, so the renderer batches them as instances.
  * Returns `{ instances, parts, variants, counts }`; `parts` shows every instance at full detail.
  */
 export function scatterVegetation({
   area, density = 0.012, terrainHeight = () => 0, slopeLimit = 32, exclusion = () => false, seed = 1,
-  mix = DEFAULT_MIX, variants = 3, leaves = 'cards', scale = [0.8, 1.25], spacing, barkTextures, leafTextures,
+  mix = DEFAULT_MIX, variants = 3, leaves = 'cards', scale = [0.8, 1.25], spacing, barkTextures, leafTextures, growth,
 } = {}) {
   if (!area || ![area.minX, area.maxX, area.minZ, area.maxZ].every(Number.isFinite) || area.maxX <= area.minX || area.maxZ <= area.minZ) {
     throw new TypeError('Scatter area needs finite minX < maxX and minZ < maxZ.');
@@ -865,7 +914,7 @@ export function scatterVegetation({
   const instances = points.map(([x, z], index) => {
     const species = chooseSpecies(speciesNames, mix, x, z, seed, random);
     if (!variantsBySpecies[species]) {
-      variantsBySpecies[species] = Array.from({ length: variants }, (_, variantIndex) => createVariant(species, seed * 131 + variantIndex * 977 + species.length, variantIndex, leaves, barkTextures, leafTextures));
+      variantsBySpecies[species] = Array.from({ length: variants }, (_, variantIndex) => createVariant(species, seed * 131 + variantIndex * 977 + species.length, variantIndex, leaves, barkTextures, leafTextures, growth));
     }
     const variant = variantsBySpecies[species][Math.floor(random() * variants)];
     const size = randomInRange(random, scale);

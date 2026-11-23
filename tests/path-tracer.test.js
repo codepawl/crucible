@@ -180,11 +180,11 @@ test('the display transform matches the rasterizer post pass at known values', (
 
 test('what the tracer does not draw is named in the report', () => {
   const notes = describeIgnoredFeatures(
-    [{ material: { occlusionMap: {}, tag: 'liquid' } }, { material: { alphaMode: 'blend', anisotropy: 0.5, iridescence: 1 } }],
+    [{ material: { heightMap: {}, tag: 'liquid' } }, { material: { alphaMode: 'blend', anisotropy: 0.5, iridescence: 1 } }],
     { volumeFog: { density: 1 } },
   );
   assert.ok(notes.some(note => note.includes('volumeFog')));
-  assert.ok(notes.some(note => note.includes('occlusionMap')));
+  assert.ok(notes.some(note => note.includes('heightMap')));
   assert.ok(notes.some(note => note.includes('anisotropy')));
   assert.ok(notes.some(note => note.includes('iridescence')));
   assert.ok(notes.some(note => note.includes('liquid')));

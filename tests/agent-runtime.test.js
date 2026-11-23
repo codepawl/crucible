@@ -258,25 +258,27 @@ function boundedResult(promise) {
   ]).finally(() => clearTimeout(timer));
 }
 
-runTest('scene_look steps a busy PNG down by 0.75 until it fits the 1 MiB budget and says which size came back (#1197)', async () => {
+runTest('scene_look shrinks a busy PNG toward the 1 MiB budget, not by a fixed 0.75, and says which size came back (#1197, #3056)', async () => {
   const busy = await reviewRuntimeHarness({ lookBytesPerPixel: 2 });
   const stepped = await busy.runtime.look({ sessionId: busy.sessionId, width: 1024, height: 640 });
-  assert.deepEqual(busy.viewports.slice(-2).map(size => `${size.width}x${size.height}`), ['1024x640', '768x480']);
-  assert.equal(stepped.metadata.returnedWidth, 768);
-  assert.equal(stepped.metadata.returnedHeight, 480);
+  assert.deepEqual(busy.viewports.slice(-2).map(size => `${size.width}x${size.height}`), ['1024x640', '868x543']);
+  assert.equal(stepped.metadata.returnedWidth, 868);
+  assert.equal(stepped.metadata.returnedHeight, 543);
+  assert.deepEqual(JSON.parse(JSON.stringify(stepped.metadata.size)), { requested: { width: 1024, height: 640 }, returned: { width: 868, height: 543 }, capped: true, maximumBytes: 1024 * 1024 });
   await busy.runtime.close();
   assert.equal(stepped.metadata.requestedWidth, 1024);
-  assert.match(stepped.metadata.note, /1024x640.*768x480/);
+  assert.match(stepped.metadata.note, /1024x640.*868x543/);
   const calm = await reviewRuntimeHarness({ lookBytesPerPixel: 0.5 });
   const unchanged = await calm.runtime.look({ sessionId: calm.sessionId, width: 1024, height: 640 });
   assert.equal(calm.viewports.length, 1);
   assert.equal(unchanged.metadata.note, undefined);
+  assert.deepEqual(JSON.parse(JSON.stringify(unchanged.metadata.size)), { requested: { width: 1024, height: 640 }, returned: { width: 1024, height: 640 }, capped: false, maximumBytes: 1024 * 1024 });
   await calm.runtime.close();
 });
 
 runTest('scene_look fails only when the fourth step down still does not fit, naming that size (#1197)', async () => {
-  const hopeless = await reviewRuntimeHarness({ lookBytesPerPixel: 50 });
-  await assert.rejects(hopeless.runtime.look({ sessionId: hopeless.sessionId, width: 1024, height: 640 }), /even at 324x202/);
+  const hopeless = await reviewRuntimeHarness({ lookBytesPerPixel: 300 });
+  await assert.rejects(hopeless.runtime.look({ sessionId: hopeless.sessionId, width: 1024, height: 640 }), /even at 70x64/);
   assert.equal(hopeless.viewports.length, 5);
   await hopeless.runtime.close();
 });

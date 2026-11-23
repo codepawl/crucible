@@ -92,6 +92,7 @@ export default defineConfig({
         'camera-effects': 'src/camera-effects.js',
         'water-reflection': 'src/water-reflection.js',
         'render-passes': 'src/render-passes.js',
+        'wireframe-pass': 'src/wireframe-pass.js',
         'user-pass': 'src/user-pass.js',
         'line-art': 'src/line-art.js',
         'mesh-blend': 'src/mesh-blend.js',

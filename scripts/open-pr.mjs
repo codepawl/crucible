@@ -113,6 +113,7 @@ export function defaultServices(cwd = process.cwd()) {
   return {
     git: args => run('git', args, cwd),
     gh: args => run('gh', args, cwd),
+    currentLogin: () => run('gh', ['api', 'user', '-q', '.login'], cwd),
     pushEvidence: options => pushEvidence({ ...options, cwd }),
     writeTempBody: text => {
       const folder = mkdtempSync(join(tmpdir(), 'open-pr-'));
@@ -166,7 +167,7 @@ export function openPullRequest(options, services = defaultServices()) {
   const files = changedFiles(services, options.base);
   if (files.length === 0) throw new Error(`No changed files against origin/${options.base}. Commit your change on this branch first.`);
   const report = checkPullRequest({
-    pr: { body: checkedBody, title: options.title, author: '', labels: options.labels, milestone: options.milestone || null },
+    pr: { body: checkedBody, title: options.title, author: services.currentLogin(), labels: options.labels, milestone: options.milestone || null },
     files,
   });
   if (report.contributorFixes.length > 0) {

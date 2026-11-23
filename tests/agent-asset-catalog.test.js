@@ -99,7 +99,7 @@ test('catalog rejects linked assets and requires an explicitly absolute director
 
 test('the catalog limits are the documented values and never exceed the loadGltf defaults', () => {
   assert.deepEqual({ ...AGENT_ASSET_LIMITS }, {
-    maxBytes: 64 * 1024 * 1024, maxAssets: 64, maxCombinedBytes: 64 * 1024 * 1024, maxVertices: 1_000_000, maxParts: 4096,
+    maxBytes: 64 * 1024 * 1024, maxAssets: 256, maxCombinedBytes: 64 * 1024 * 1024, maxVertices: 1_000_000, maxParts: 4096,
     maxTexturePixels: 4_194_304, maxJoints: 1024, maxClips: 256,
   });
   const defaults = GLTF_CAPABILITIES.limits;
@@ -358,4 +358,36 @@ test('an unnamed clip has the same name in the catalog as in the decoded asset (
   assert.deepEqual(listed, ['animation_0', 'Walk', 'animation_2']);
   const decoded = createClips({ animations }, () => undefined, () => undefined).map(clip => clip.name);
   assert.deepEqual(decoded, listed);
+});
+
+async function writeCatalogStubs(directory, { glbs, hdrs, notes }) {
+  for (let index = 0; index < glbs; index += 1) {
+    const variant = exportGlb([{ name: 'Cube', geometry: box(0), matrix: mat4.create(), material: { color: [(index + 1) / 97, 0.5, 0.7], roughness: 0.5, metallic: 0 } }]);
+    await writeFile(join(directory, `variant-${String(index).padStart(3, '0')}.glb`), Buffer.from(variant));
+  }
+  for (let index = 0; index < hdrs; index += 1) await writeFile(join(directory, `sky-${String(index).padStart(3, '0')}.hdr`), Buffer.from(`#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 1 +X 1\n${String(index)}\u0000\u0000\u0000\u0000`, 'latin1'));
+  for (let index = 0; index < notes; index += 1) await writeFile(join(directory, index === 0 ? 'SOURCES.md' : `notes-${index}.txt`), 'credits');
+}
+
+test('a catalog folder with more than 64 asset files indexes them all, and .md and .txt files are not counted (#2989)', async context => {
+  const { directory } = await fixture(context);
+  await writeCatalogStubs(directory, { glbs: 30, hdrs: 45, notes: 5 });
+  const catalog = await createAgentAssetCatalog(directory);
+  const listing = catalog.list();
+  assert.equal(listing.assets.length, 76, 'cube plus 30 GLB variants plus 45 HDRs');
+  assert.equal(listing.maximumAssets, AGENT_ASSET_LIMITS.maxAssets);
+  assert.ok(!listing.assets.some(asset => /\.(md|txt)$/.test(asset.name)));
+});
+
+test('the catalog index stays bounded: past its cap the error counts files by extension and names them (#2989)', async context => {
+  const { directory } = await fixture(context);
+  await writeCatalogStubs(directory, { glbs: 0, hdrs: AGENT_ASSET_LIMITS.maxAssets, notes: 3 });
+  await assert.rejects(createAgentAssetCatalog(directory), error => {
+    assert.ok(error instanceof RangeError);
+    assert.ok(error.message.includes(`has ${AGENT_ASSET_LIMITS.maxAssets + 1} files other than images (1 .glb, ${AGENT_ASSET_LIMITS.maxAssets} .hdr)`), error.message);
+    assert.match(error.message, /Counted: cube\.glb, sky-000\.hdr/);
+    assert.match(error.message, /and \d+ more/);
+    assert.match(error.message, /Move the GLB, BVH, HDR and CUBE files the project does not use out of the --assets directory/);
+    return true;
+  });
 });

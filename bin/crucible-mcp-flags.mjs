@@ -16,6 +16,7 @@ export const MCP_OPTION_FLAGS = Object.freeze([
   { name: '--branches', value: 'on|off', note: 'default on' },
   { name: '--relations', value: 'on|off', note: 'default on' },
   { name: '--findings', value: 'on|off', note: 'default on; off hides the findings in scene_look for benchmark controls' },
+  { name: '--tools', value: '<comma-separated tool names>', note: 'default every tool; list only these, scene_capabilities required, to send fewer schemas each turn' },
 ]);
 
 export const MCP_OPTION_NAMES = Object.freeze(MCP_OPTION_FLAGS.map(flag => flag.name));

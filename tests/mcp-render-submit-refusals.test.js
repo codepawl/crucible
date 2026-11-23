@@ -77,5 +77,5 @@ test('mattes naming real parts and materials still queue and render', { timeout:
     if (['completed', 'failed', 'cancelled'].includes(record.state)) break;
     await delay(200);
   }
-  assert.equal(record.state, 'completed', record.error);
+  assert.equal(record.state, 'completed', record.reason);
 });

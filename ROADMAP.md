@@ -84,6 +84,8 @@ Ideas that nobody is working on live here instead of as open issues, so the issu
 
 ### Look
 
+- A packed web page draws a lit surface a little darker than the MCP render of the same scene (seen in #3003)
+- An image map on a dented or fragment box: those boxes still have no UVs (seen in #3003)
 - Path tracer: trace box, sphere and mesh local volumes natively, and mesh volumes on WebGPU (#2004)
 - Material graph: vertexGroup node (design first) (#1957)
 - Cook: cheaper filter for texture mip levels above 0 (#1810)

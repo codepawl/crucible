@@ -103,7 +103,8 @@ out vec4 outputColor;
 void main() {
   vec2 sourceTexel = vec2(pad) + textureCoordinate * gridSize + remainder;
   ivec2 size = textureSize(sourceTexture, 0);
-  outputColor = texelFetch(sourceTexture, clamp(ivec2(floor(sourceTexel)), ivec2(0), size - 1), 0);
+  ivec2 paddedSize = min(size, ivec2(gridSize + 2.0 * pad));
+  outputColor = texelFetch(sourceTexture, clamp(ivec2(floor(sourceTexel)), ivec2(0), paddedSize - 1), 0);
 }`;
 
 /** Maps the size and position the rest of the renderer reads from canvas onto the internal grid, and passes everything else to the real canvas. */
@@ -131,7 +132,7 @@ function createRenderSurface(realCanvas, state) {
 export function installPixelGrid(renderer) {
   if (renderer.pixelGrid) return renderer;
   const realCanvas = renderer.canvas;
-  const state = { grid: null, size: { width: 1, height: 1 }, remainder: [0, 0], texel: [0, 0], saved: null, blit: null, texture: null, textureSize: null };
+  const state = { grid: null, size: { width: 1, height: 1 }, remainder: [0, 0], passRemainder: [0, 0], texel: [0, 0], saved: null, blit: null, texture: null, textureSize: null };
   let surface = null;
 
   function releaseBlitTexture() {
@@ -153,19 +154,15 @@ export function installPixelGrid(renderer) {
     return state.texture;
   }
 
-  // The frame is on the canvas's lower-left corner at the grid size; copy it out and draw it back across the whole canvas.
-  function presentGrid(remainder = state.remainder) {
+  // Draws the padded grid in the lower-left corner of `sourceTexture` across `outputWidth` by `outputHeight` pixels of
+  // `destinationFramebuffer` (null is the canvas), cropped to the visible grid and moved by `remainder`.
+  function drawBlit(sourceTexture, destinationFramebuffer, outputWidth, outputHeight, remainder) {
     const context = renderer.context;
-    const { width, height } = state.size;
-    const outputWidth = realCanvas.width;
-    const outputHeight = realCanvas.height;
-    context.bindFramebuffer(context.FRAMEBUFFER, null);
-    context.bindTexture(context.TEXTURE_2D, blitTexture(width, height));
-    context.copyTexSubImage2D(context.TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
     if (!state.blit) {
       const program = compileProgram(context, fullscreenVertex, blitFragment);
       state.blit = { program, uniforms: Object.fromEntries(['sourceTexture', 'gridSize', 'pad', 'remainder'].map(name => [name, context.getUniformLocation(program, name)])) };
     }
+    context.bindFramebuffer(context.FRAMEBUFFER, destinationFramebuffer);
     context.disable(context.DEPTH_TEST);
     context.disable(context.CULL_FACE);
     context.disable(context.BLEND);
@@ -173,12 +170,22 @@ export function installPixelGrid(renderer) {
     context.viewport(0, 0, outputWidth, outputHeight);
     context.useProgram(state.blit.program);
     context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, state.texture);
+    context.bindTexture(context.TEXTURE_2D, sourceTexture);
     context.uniform1i(state.blit.uniforms.sourceTexture, 0);
     context.uniform2f(state.blit.uniforms.gridSize, state.grid.width, state.grid.height);
     context.uniform1f(state.blit.uniforms.pad, state.grid.pad);
     context.uniform2f(state.blit.uniforms.remainder, remainder[0], remainder[1]);
     context.drawArrays(context.TRIANGLES, 0, 3);
+  }
+
+  // The frame is on the canvas's lower-left corner at the grid size; copy it out and draw it back across the whole canvas.
+  function presentGrid(remainder = state.remainder) {
+    const context = renderer.context;
+    const { width, height } = state.size;
+    context.bindFramebuffer(context.FRAMEBUFFER, null);
+    context.bindTexture(context.TEXTURE_2D, blitTexture(width, height));
+    context.copyTexSubImage2D(context.TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
+    drawBlit(state.texture, null, realCanvas.width, realCanvas.height, remainder);
   }
 
   const resize = renderer.resize;
@@ -205,7 +212,10 @@ export function installPixelGrid(renderer) {
     const result = render.call(this, snapped.frame, ...rest);
     // A render pass (depth, normal, object ID) is copied to the canvas at the grid size too; it gets the same crop and shift as the
     // lit frame, so an exported pass lines up with it pixel for pixel.
-    if (frame.pass !== undefined && !frame.reflectionTarget && !frame.emissionMaskPass && !this.benchmark) presentGrid(snapped.remainder);
+    if (frame.pass !== undefined && !frame.reflectionTarget && !frame.emissionMaskPass && !this.benchmark) {
+      state.passRemainder = snapped.remainder;
+      presentGrid(snapped.remainder);
+    }
     return result;
   };
 
@@ -249,6 +259,15 @@ export function installPixelGrid(renderer) {
       const grid = normalizePixelGrid(input);
       if (JSON.stringify(grid) === JSON.stringify(state.grid)) return;
       applyGrid(grid);
+    },
+    /**
+     * Float readback of the last lit frame or pass: draws the padded grid in the corner of `texture` (a half-float texture of
+     * any size at least the padded grid) into `framebuffer` of `width` by `height`, with the crop, shift and nearest
+     * enlargement of the PNG present, so an EXR matches the PNG pixel for pixel.
+     */
+    blitToFloat({ texture, framebuffer, width, height, source }) {
+      if (!state.grid) throw new Error('blitToFloat needs a pixel grid. Fix: call it only while renderer.pixelGrid.active is true.');
+      drawBlit(texture, framebuffer, width, height, source === 'pass' ? state.passRemainder : state.remainder);
     },
     get active() {
       return state.grid !== null;

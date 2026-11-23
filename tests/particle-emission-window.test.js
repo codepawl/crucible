@@ -79,8 +79,8 @@ test('invalid windows are refused with what to pass', () => {
   const bad = (system, pattern) => assert.throws(() => createAgentScene(recipeWith(system)), pattern);
   bad({ start: -1 }, /\.start: got -1; expected a number from 0 to 3600/);
   bad({ stop: '2' }, /\.stop: /);
-  bad({ stop: 0 }, /\.stop: got 0; expected a time in seconds after the start \(0\)/);
-  bad({ start: 2, stop: 2 }, /\.stop: got 2; expected a time in seconds after the start \(2\), such as 4/);
-  bad({ start: 3, stop: 1 }, /\.stop: got 1; expected a time in seconds after the start \(3\)/);
-  bad({ delay: 2, stop: 1 }, /\.stop: got 1; expected a time in seconds after the start \(2\)/);
+  bad({ stop: 0 }, /\.stop: got 0; expected an absolute scene time in seconds, above start \(0\)/);
+  bad({ start: 2, stop: 2 }, /\.stop: got 2; expected an absolute scene time in seconds, above start \(2\), such as 4/);
+  bad({ start: 3, stop: 1 }, /\.stop: got 1; expected an absolute scene time in seconds, above start \(3\)/);
+  bad({ delay: 2, stop: 1 }, /\.stop: got 1; expected an absolute scene time in seconds, above start \(2\)/);
 });

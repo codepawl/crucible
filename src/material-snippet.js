@@ -166,10 +166,11 @@ function setUniformValue(context, location, { type, value }) {
   else context.uniform4fv(location, value);
 }
 
-// Sets the on/off flag of every snippet this renderer compiled, and the uniforms of the one the batch uses.
+// Sets the on/off flag of every snippet this renderer compiled, and the uniform values of the batch material. Materials with identical code share one feature, so the values come from the material, never from the registry.
 function bindSnippets(renderer, program, locations, batch) {
   const context = renderer.context;
-  const active = batch.parts[0].material.snippet?.feature;
+  const activeSnippet = batch.parts[0].material.snippet;
+  const active = activeSnippet?.feature;
   for (const feature of renderer.shaderFeatures) {
     const entry = registered.get(feature);
     if (!entry) continue;
@@ -179,7 +180,7 @@ function bindSnippets(renderer, program, locations, batch) {
     };
     context.uniform1f(locationOf(entry.flag), feature === active ? 1 : 0);
     if (feature !== active) continue;
-    for (const [name, uniform] of Object.entries(entry.snippet.uniforms)) {
+    for (const [name, uniform] of Object.entries(activeSnippet.uniforms)) {
       setUniformValue(context, locationOf(`u67_${feature}_${name}`), uniform);
     }
   }

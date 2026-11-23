@@ -1,5 +1,6 @@
 import { invalidField } from './field-error.js';
-import { planLightmaps, estimateBake, traceLightmaps, MAX_BAKE_TEXELS } from './light-bake.js';
+import { planLightmaps, estimateBake, traceLightmaps, clearUnwrapReuse, MAX_BAKE_TEXELS } from './light-bake.js';
+import { contentFingerprint, ownedCopy, retainedBytes } from './content-fingerprint.js';
 import { runKernel } from './kernel-offload.js';
 import { motionEnvironment } from './agent-motion.js';
 import { normalizeProbeList, traceProbes } from './probe-trace.js';
@@ -132,6 +133,25 @@ export function bakeAtSampledPose(lightBake, recipe, pose) {
   }
   lightBake.currentKey = key;
   return { parts: entry.parts, report: { ...entry.report, reused } };
+}
+
+/**
+ * A material handle kept from the last stage takes the edited material only when the stage commits, which is after the bake.
+ * The bake reads the parts through those handles, so it runs with the edited materials in place and the old ones go back
+ * after it, whatever it does: an edit that is refused later leaves the scene as it was.
+ */
+export function withStagedMaterials(stagedMaterialSnapshots, work) {
+  const previous = stagedMaterialSnapshots.map(({ holder }) => holder.snapshot);
+  stagedMaterialSnapshots.forEach(({ holder, snapshot }) => {
+    holder.snapshot = snapshot;
+  });
+  try {
+    return work();
+  } finally {
+    stagedMaterialSnapshots.forEach(({ holder }, index) => {
+      holder.snapshot = previous[index];
+    });
+  }
 }
 
 /**
@@ -356,23 +376,93 @@ function traceAgentBake(parts, worldMatrices, environment, settings, generatedGe
     material: { ...part.material },
     generatesGeometry: generatedGeometryGenerators.get(part.name) ?? false,
   }));
-  if (settings.irradianceGrid) {
-    return bakeIrradianceGridParts(parts, snapshots, lighting, settings);
+  const outputs = reusedOrTraced(snapshots, lighting, settings, () => (settings.irradianceGrid
+    ? traceGridOutputs(snapshots, lighting, settings)
+    : traceLightmapOutputs(snapshots, lighting, settings)));
+  return settings.irradianceGrid ? placeGridBake(parts, outputs, settings) : placeLightmapBake(parts, outputs, settings);
+}
+
+// What a bake traced, kept by the content it was traced from: a rebuilt scene (a Studio load, an agent edit that changes
+// nothing the bake reads) finds its light here instead of tracing it again. The key reads the geometry, matrices and
+// materials of every part, the lights, the sky and the settings, so a hit is the light a fresh trace would have found.
+const BAKE_REUSE_ENTRIES = 4;
+const BAKE_REUSE_BYTES = 128 * 1024 * 1024;
+const bakeReuse = new Map();
+let tracedBakes = 0;
+
+function reusedOrTraced(snapshots, lighting, settings, trace) {
+  const key = contentFingerprint([snapshots, lighting, { ...settings, rebake: undefined }]);
+  if (key === null) {
+    // Something the key cannot read (a function, a Set, a class instance): trace, and keep nothing a later bake might wrongly find.
+    tracedBakes++;
+    return trace();
   }
-  const { changed, report, used, reduced, reduction } = runKernel('lightBake', [snapshots, lighting, settings], bakeChangedParts);
+  const reused = bakeReuse.get(key);
+  if (reused) {
+    bakeReuse.delete(key);
+    bakeReuse.set(key, reused);
+    return ownedCopy(reused.outputs);
+  }
+  const outputs = trace();
+  tracedBakes++;
+  const kept = ownedCopy(outputs);
+  if (kept) {
+    rememberBake(key, kept);
+  }
+  return outputs;
+}
+
+function rememberBake(key, outputs) {
+  const bytes = retainedBytes(outputs);
+  if (bytes > BAKE_REUSE_BYTES) {
+    return;
+  }
+  bakeReuse.set(key, { outputs, bytes });
+  let total = [...bakeReuse.values()].reduce((sum, entry) => sum + entry.bytes, 0);
+  for (const [oldestKey, entry] of bakeReuse) {
+    if (bakeReuse.size <= BAKE_REUSE_ENTRIES && total <= BAKE_REUSE_BYTES) {
+      break;
+    }
+    bakeReuse.delete(oldestKey);
+    total -= entry.bytes;
+  }
+}
+
+/** How many bakes were traced (not reused) since the module loaded; tests read it to see that a load did no tracing. */
+export function bakesTraced() {
+  return tracedBakes;
+}
+
+/** What the bake reuse cache holds now: entries and the bytes of their lightmaps, unwraps and probe data. */
+export function bakeReuseStats() {
+  return { entries: bakeReuse.size, bytes: [...bakeReuse.values()].reduce((sum, entry) => sum + entry.bytes, 0), maximumEntries: BAKE_REUSE_ENTRIES, maximumBytes: BAKE_REUSE_BYTES };
+}
+
+/** Forgets every reused bake and unwrap, so the next bake traces from nothing. */
+export function clearBakeReuse() {
+  bakeReuse.clear();
+  clearUnwrapReuse();
+}
+
+function traceLightmapOutputs(snapshots, lighting, settings) {
+  const kernelResult = runKernel('lightBake', [snapshots, lighting, settings], bakeChangedParts);
   // Probes see the unbaked parts, as the bake does, and are traced as a kernel of their own so a worker can take them too.
   const probeTrace = !settings.probes ? null
     : runKernel('probeTrace', [snapshots, lighting, settings.probes, { environment: lighting, maxSeconds: bakeSecondsLimit() }], traceProbes);
-  const bakedSnapshots = snapshots.slice();
-  for (const [index, part] of changed) {
-    bakedSnapshots[index] = part;
-  }
+  // Only the baked geometry and material are kept, so a reused bake does not keep the scene it was traced for alive.
+  const changed = kernelResult.changed.map(([index, part]) => [index, { geometry: part.geometry, material: part.material }]);
+  return { ...kernelResult, changed, probeTrace };
+}
+
+function placeLightmapBake(parts, outputs, settings) {
+  const { changed, report, used, reduced, reduction, probeTrace } = outputs;
+  const bakedByIndex = new Map(changed);
   const bakedParts = parts.map((part, index) => {
-    if (bakedSnapshots[index] === snapshots[index]) {
+    const baked = bakedByIndex.get(index);
+    if (!baked) {
       return part;
     }
-    const { geometry, material } = bakedSnapshots[index];
-    return Object.freeze({ ...part, geometry, material: liveBakedMaterial(part.material, material) });
+    return Object.freeze({ ...part, geometry: baked.geometry, material: liveBakedMaterial(part.material, baked.material) });
   });
   // Probes are placed here, on the page, because they build maps and materials; their trace ran above.
   const placed = probeTrace ? placeProbes(bakedParts, probeTrace) : null;
@@ -394,7 +484,7 @@ export function traceGridKernel(snapshots, lighting, options) {
 
 // bake.irradianceGrid: no lightmaps. Every part reads one baked grid of bounced light (the sun's lit patches included), and the
 // probes still run. Inside a worker session the trace runs on the worker (90 s); otherwise on the page's thread (20 s).
-function bakeIrradianceGridParts(parts, snapshots, lighting, settings) {
+function traceGridOutputs(snapshots, lighting, settings) {
   const gridOptions = {
     resolution: settings.irradianceGrid,
     samples: Math.max(GRID_MINIMUM_SAMPLES, Math.round(settings.samples / GRID_SAMPLES_SHARE)),
@@ -403,6 +493,10 @@ function bakeIrradianceGridParts(parts, snapshots, lighting, settings) {
   const grid = withMeanRadiance(runKernel('gridTrace', [snapshots, lighting, gridOptions], traceGridKernel));
   const probeTrace = !settings.probes ? null
     : runKernel('probeTrace', [snapshots, lighting, settings.probes, { environment: lighting, maxSeconds: bakeSecondsLimit() }], traceProbes);
+  return { grid, probeTrace };
+}
+
+function placeGridBake(parts, { grid, probeTrace }, settings) {
   const gridParts = placeIrradianceGrid(parts, grid);
   const placed = probeTrace ? placeProbes(gridParts, probeTrace) : null;
   const { data, ...gridReport } = grid;

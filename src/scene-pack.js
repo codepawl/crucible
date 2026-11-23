@@ -3,12 +3,14 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { createAgentScene, loadAllAgentSceneModules } from './agent-scene.js';
+import { graphImageAssets } from './material-graph.js';
 import { fitAgentShadow, resolveAgentShadow } from './agent-look.js';
 import { agentSceneModulesNeeded } from './agent-scene-modules.js';
 import { parseRadianceHdr } from './hdri.js';
 import { BUNDLED_ENVIRONMENT_NAMES, catalogEnvironmentSource, registerCatalogEnvironment } from './look-catalog.js';
 import { encodePack } from './scene-pack-format.js';
-import { PACK_MAX_IMAGE_TEXELS, checkImageBudget } from './scene-pack-limits.js';
+import { PACK_MAX_IMAGE_TEXELS, checkImageBudget, countImageTexels } from './scene-pack-limits.js';
+import { PACK_PATTERN_RESOLUTIONS, packedMaterial, recipeWithPatternResolution } from './scene-pack-patterns.js';
 import { packedSkyOf } from './scene-pack-sky.js';
 import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shaders.js';
 
@@ -102,7 +104,22 @@ function requireCatalogImages(recipe, catalogImages) {
     if (field) {
       refuse(`recipe.materials["${material.id}"].${field}: crucible pack cannot read the asset catalog that holds this image. Export the web pack from Studio, which has the catalog, or remove the ${field}.`);
     }
+    if (material.pattern?.graph && graphImageAssets(material.pattern.graph).length > 0) {
+      refuse(`recipe.materials["${material.id}"].pattern.graph: an image node reads the asset catalog, which crucible pack cannot read here. Export the web pack from Studio, which has the catalog, or remove the image node.`);
+    }
   }
+}
+
+// A pattern bakes at its recipe resolution up to 512; when the textures then pass the pack budget the patterns are baked at
+// 256 before the budget check refuses the recipe.
+function buildSceneWithinImageBudget(recipe, catalogImages, maxImageTexels) {
+  const options = catalogImages ? { sequenceFrames: catalogImages } : undefined;
+  let scene = null;
+  for (const resolution of PACK_PATTERN_RESOLUTIONS) {
+    scene = createAgentScene(recipeWithPatternResolution(recipe, resolution), {}, options);
+    if (countImageTexels(scene.parts).texels <= maxImageTexels) break;
+  }
+  return scene;
 }
 
 /**
@@ -115,7 +132,7 @@ export async function compileRecipeToPack(recipe, { maxLightmapTexels = PACK_MAX
   requireCatalogImages(recipe, catalogImages);
   registerBundledSky(recipe);
   await loadAllAgentSceneModules();
-  const scene = createAgentScene(recipe, {}, catalogImages ? { sequenceFrames: catalogImages } : undefined);
+  const scene = buildSceneWithinImageBudget(recipe, catalogImages, maxImageTexels);
   const environment = scene.environment;
   if (recipe.bake) checkLightmapBudget(recipe, scene.parts, maxLightmapTexels);
   checkImageBudget(scene.parts, maxImageTexels);
@@ -126,7 +143,7 @@ export async function compileRecipeToPack(recipe, { maxLightmapTexels = PACK_MAX
     environmentMap: packedSkyOf(environment),
     effects: scene.effects,
     shadowBounds: resolveAgentShadow(fitAgentShadow(scene.shadow, scene.parts), environment.lightDirection),
-    parts: scene.parts.map(part => ({ name: part.name, geometry: part.geometry, material: part.material, matrix: part.matrix })),
+    parts: scene.parts.map(part => ({ name: part.name, geometry: part.geometry, material: packedMaterial(part.material), matrix: part.matrix })),
   });
 }
 

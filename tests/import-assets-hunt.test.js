@@ -12,14 +12,6 @@ test('render target ledger refuses negative sizes whose product is positive (#16
   assert.equal(ledger.report().totalBytes, 0);
 });
 
-test('assembly layouts ignore names that match inherited object keys (#1643)', async () => {
-  const { addDetailOffsets } = await import('../src/assembly.js');
-  const part = (name, section) => ({ name, matrix: new Float32Array(16), assembly: { section } });
-  assert.throws(() => addDetailOffsets([part('Screw', 'constructor')]), /No detail layout/);
-  const [lane] = addDetailOffsets([part('toString', 'Left track assembly')]);
-  assert.ok(lane.assembly.detailOffset.every(Number.isFinite), `offset ${lane.assembly.detailOffset}`);
-});
-
 test('a clutter mask that returns NaN places nothing (#1644)', async () => {
   const { createClutter } = await import('../src/clutter.js');
   const area = { minX: 0, maxX: 8, minZ: 0, maxZ: 8 };

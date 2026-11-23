@@ -28,6 +28,13 @@ export const COST_MODEL = Object.freeze({
   // A placed asset is rebuilt from its glTF parts (skeleton, materials, textures) however few triangles it has.
   setupSecondsPerAssetPart: 1.2e-3,
   drawSecondsPerAssetPart: 3.5e-5,
+  // Fitted on one 132 node scene with three placed GLB files (9.8 MiB, thirteen placements) against the same scene without them
+  // (#2286): with the files, renderer start took about 5 s longer and each frame after the first about 1 s longer. The per-frame
+  // numbers describe slow frames that #3038 tracks; refit them when it lands.
+  setupSecondsPerAssetMiB: 0.7,
+  drawSecondsPerAssetMiB: 0.09,
+  // A motion sample re-poses every node: about 0.4 s a frame for 120 to 130 nodes, paid on each frame after the first.
+  motionSampleSecondsPerNode: 3e-3,
   drawFrameSeconds: 0.004,
   drawSecondsPerPixel: 5e-8,
   drawSecondsPerTriangle: 1e-8,
@@ -85,7 +92,7 @@ function textureCount(recipe) {
  * The numbers about the scene that the estimate uses, from the scene's inspection result (listing every node) and its recipe.
  * Triangles count each placed node, so ten spheres cost ten spheres even when they share one geometry.
  */
-export function sceneSizeFrom(inspection, recipe) {
+export function sceneSizeFrom(inspection, recipe, { assetFileBytes = 0 } = {}) {
   const look = inspection?.look ?? {};
   const listed = inspection?.nodes ?? [];
   const listedTriangles = listed.reduce((total, node) => total + (node.triangles ?? 0), 0);
@@ -101,6 +108,9 @@ export function sceneSizeFrom(inspection, recipe) {
   return {
     parts: inspection?.counts?.parts ?? 0,
     assetParts: placements.reduce((total, placement) => total + (placement.parts ?? 0), 0),
+    // Size of the placed GLB files, each counted once: their textures decode and upload however few triangles they have.
+    assetMiB: round(assetFileBytes / MIB, 1),
+    nodes: inspection?.counts?.nodes ?? listed.length,
     triangles: listedScaled + generatedTriangles,
     // The triangles the node list itself reports, never scaled or guessed: a floor of the real count.
     listedTriangles,
@@ -145,7 +155,8 @@ function pathTracerFrameSeconds({ size, settings, backend }) {
 
 function rasterFrameSeconds({ size, settings }) {
   const drawSeconds = COST_MODEL.drawFrameSeconds + settings.width * settings.height * COST_MODEL.drawSecondsPerPixel
-    + size.triangles * COST_MODEL.drawSecondsPerTriangle + size.assetParts * COST_MODEL.drawSecondsPerAssetPart + size.lights * COST_MODEL.drawSecondsPerLight;
+    + size.triangles * COST_MODEL.drawSecondsPerTriangle + size.assetParts * COST_MODEL.drawSecondsPerAssetPart + size.lights * COST_MODEL.drawSecondsPerLight
+    + (size.assetMiB ?? 0) * COST_MODEL.drawSecondsPerAssetMiB;
   const outputSeconds = settings.kind === 'video' ? COST_MODEL.videoEncodeSeconds : COST_MODEL.imageCaptureSeconds;
   return drawSeconds * (1 + ((settings.passes?.length ?? 0) + (settings.mattes?.length ?? 0)) * COST_MODEL.passFactor) + outputSeconds;
 }
@@ -196,9 +207,11 @@ function basisOf(correction, kind) {
  * renderer). The raw size-only numbers are `modelSeconds` and `modelPeakMemoryMiB`; the headline numbers apply the history.
  */
 export function estimateRenderJob({ size, settings, backend, memoryBudgetMiB, history = [], gpuTracerWarm = true }) {
-  const frameSeconds = settings.renderer ? pathTracerFrameSeconds({ size, settings, backend }) : rasterFrameSeconds({ size, settings });
+  const motionSampleSeconds = settings.motion ? (size.nodes ?? 0) * COST_MODEL.motionSampleSecondsPerNode : 0;
+  const frameSeconds = (settings.renderer ? pathTracerFrameSeconds({ size, settings, backend }) : rasterFrameSeconds({ size, settings })) + motionSampleSeconds;
   const coldStartSeconds = settings.renderer?.backend === 'gpu' && !gpuTracerWarm ? COST_MODEL.gpuTracerColdStartSeconds : 0;
-  const modelSeconds = COST_MODEL.startupSeconds + coldStartSeconds + size.triangles * COST_MODEL.setupSecondsPerTriangle + size.assetParts * COST_MODEL.setupSecondsPerAssetPart + frameSeconds * settings.frameCount;
+  const setupSeconds = size.triangles * COST_MODEL.setupSecondsPerTriangle + size.assetParts * COST_MODEL.setupSecondsPerAssetPart + (size.assetMiB ?? 0) * COST_MODEL.setupSecondsPerAssetMiB;
+  const modelSeconds = COST_MODEL.startupSeconds + coldStartSeconds + setupSeconds + frameSeconds * settings.frameCount;
   const modelPeakMemoryMiB = peakMemoryMiB({ size, settings });
   const correction = correctionFromHistory(history, jobKind(settings, backend));
   const estimate = {
@@ -285,16 +298,30 @@ function noiseFrom(traced) {
   return { relative: rounded, verdict: `noisy: ${advice}.` };
 }
 
-/** The history with this job added, trimmed to the newest HISTORY_LIMIT entries. */
-export function historyWithJob(history, { settings, backend, estimate, report }) {
-  // The estimate was for the requested size, so a job that ran smaller says nothing about it.
-  if (!estimate || !report.measured.seconds || report.frameReduced) return history;
+/**
+ * The size-only model numbers for the frame size a job really ran at. The estimate was made for the requested size, and a
+ * memory budget can shrink the frame afterwards, so the measured time is compared with the model at the size that ran.
+ */
+function modelAtRanSize({ estimate, settings, backend, ranSize }) {
+  if (!ranSize || !estimate.scene) return { seconds: estimate.modelSeconds, peakMemoryMiB: estimate.modelPeakMemoryMiB };
+  const ranSettings = { ...settings, width: ranSize.width, height: ranSize.height };
+  const model = estimateRenderJob({ size: estimate.scene, settings: ranSettings, backend });
+  return { seconds: model.modelSeconds, peakMemoryMiB: model.modelPeakMemoryMiB };
+}
+
+/**
+ * The history with this job added, trimmed to the newest HISTORY_LIMIT entries. `ranSize` is the frame size the job drew at;
+ * a reduced job still teaches the estimate, because it is compared with the model at that size.
+ */
+export function historyWithJob(history, { settings, backend, estimate, report, ranSize }) {
+  if (!estimate || !report.measured.seconds) return history;
+  const model = modelAtRanSize({ estimate, settings, backend, ranSize: report.frameReduced ? ranSize : undefined });
   const entry = {
     kind: jobKind(settings, backend),
-    estimatedSeconds: estimate.modelSeconds,
+    estimatedSeconds: model.seconds,
     // A compile is paid once per scene variant and process; the estimate is for the render, so the history learns without it.
     measuredSeconds: Math.max(0.01, round(report.measured.seconds - (report.kernelCompile?.seconds ?? 0), 2)),
-    estimatedPeakMemoryMiB: estimate.modelPeakMemoryMiB,
+    estimatedPeakMemoryMiB: model.peakMemoryMiB,
     measuredPeakMemoryMiB: report.measured.peakMemoryMiB,
   };
   return [...history, entry].slice(-HISTORY_LIMIT);

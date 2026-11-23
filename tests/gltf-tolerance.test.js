@@ -97,7 +97,8 @@ test('a primitive without NORMAL falls back to a touching face normal or up when
   const asset = await parseGltf(JSON.stringify(document));
   assert.equal(asset.parts.length, 1);
   assert.deepEqual(Array.from(asset.parts[0].geometry.normals), [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0]);
-  assert.deepEqual(asset.warnings, []);
+  // The 3 3 3 triangle has a repeated index, so it is dropped and counted; vertex 3 is then unused and takes up.
+  assert.deepEqual(asset.warnings, ['Repaired primitive 0 of mesh "Tile": dropped 1 degenerate triangle(s) of 4 (1 with a repeated index, 0 with zero area).']);
 });
 
 function partDiagonal(asset) {

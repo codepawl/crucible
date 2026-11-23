@@ -39,7 +39,7 @@ const passRecipe = {
 test('a path traced job reports part findings and says why exposure findings and passes are unavailable',
   { skip: (!hasBuild && 'run npm run build:lib first') || (!hasBrowser && 'no Chrome'), timeout: 300000 }, async context => {
     const workDirectory = await mkdtemp(join(tmpdir(), 'crucible-traced-findings-'));
-    context.after(() => rm(workDirectory, { recursive: true, force: true }));
+    context.after(() => rm(workDirectory, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [serverEntry, '--backend', 'cpu', '--memory', '384', '--jobs', join(workDirectory, 'jobs')],
@@ -63,7 +63,7 @@ test('a path traced job reports part findings and says why exposure findings and
           if (['completed', 'cancelled', 'failed'].includes(record.state)) break;
           await delay(200);
         }
-        assert.equal(record.state, 'completed', record.error);
+        assert.equal(record.state, 'completed', record.reason);
         const result = (await call('scene_render_result', { jobId })).structuredContent;
         return (result.metrics ?? record.metrics).diagnostics ?? [];
       };

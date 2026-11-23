@@ -2,7 +2,7 @@ import { compileProgram, fullscreenVertex } from './gl-program.js';
 import {
   SNIPPET_LIMITS, requireKnownFields, validateShaderSnippet, validateSnippetUniforms, snippetUniformDeclarations, mapShaderInfoLog,
 } from './shader-snippet-validator.js';
-import { MAXIMUM_MASK_OBJECTS, resolveObjectNames, objectIdentifierSlots, unbindMask } from './post-mask.js';
+import { MAXIMUM_MASK_PARTS, resolveObjectNames, objectIdentifierSlots, unbindMask } from './post-mask.js';
 import { normalizeNeeds, needInputNames, normalizeLuts, passInputDeclarations, missingNeedMessage, createPassInputs } from './user-pass-inputs.js';
 
 // User post-process passes: fragment snippets that run on the finished frame, after the stock effects, the grade and the
@@ -122,8 +122,8 @@ uniform float time;
 uniform vec3 cameraEye;
 uniform sampler2D sceneObjectIds;
 uniform int u67_objectCount;
-uniform int u67_objectIds[${MAXIMUM_MASK_OBJECTS}];
-uniform int u67_objectSlots[${MAXIMUM_MASK_OBJECTS}];
+uniform int u67_objectIds[${MAXIMUM_MASK_PARTS}];
+uniform int u67_objectSlots[${MAXIMUM_MASK_PARTS}];
 out vec4 u67_output;
 float depthAt(vec2 uv) { return texture(sceneDepth, uv).r; }
 vec3 worldPointAt(vec2 uv) {
@@ -135,7 +135,7 @@ int objectSlotAt(vec2 uv) {
   if (u67_objectCount == 0) return -1;
   vec3 idBytes = floor(texelFetch(sceneObjectIds, ivec2(uv * vec2(textureSize(sceneObjectIds, 0))), 0).rgb * 255.0 + 0.5);
   int identifier = int(idBytes.r + idBytes.g * 256.0 + idBytes.b * 65536.0);
-  for (int slot = 0; slot < ${MAXIMUM_MASK_OBJECTS}; slot++) {
+  for (int slot = 0; slot < ${MAXIMUM_MASK_PARTS}; slot++) {
     if (slot >= u67_objectCount) break;
     if (u67_objectIds[slot] == identifier) return u67_objectSlots[slot];
   }
@@ -464,10 +464,10 @@ export function installUserPasses(renderer) {
     const { identifiers, slots } = pass.objects ? objectIdentifierSlots(renderer, pass.objects) : { identifiers: [], slots: [] };
     context.uniform1i(locations.u67_objectCount, identifiers.length);
     if (identifiers.length > 0) {
-      const padded = new Int32Array(MAXIMUM_MASK_OBJECTS);
+      const padded = new Int32Array(MAXIMUM_MASK_PARTS);
       padded.set(identifiers);
       context.uniform1iv(locations.u67_objectIds, padded);
-      const paddedSlots = new Int32Array(MAXIMUM_MASK_OBJECTS);
+      const paddedSlots = new Int32Array(MAXIMUM_MASK_PARTS);
       paddedSlots.set(slots);
       context.uniform1iv(locations.u67_objectSlots, paddedSlots);
     }

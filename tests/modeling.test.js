@@ -112,8 +112,8 @@ test('torus maps cover both surface seams and partial arc caps', () => {
   for (const arc of [Math.PI * 2, Math.PI]) {
     const mesh = torus(0.08, 16, 8, arc);
     validate(mesh);
-    assert.equal(mesh.uvs[0], 0);
-    assert.equal(mesh.uvs[16 * 2], 1);
+    assert.equal(mesh.uvs[0], 1);
+    assert.equal(mesh.uvs[16 * 2], 0);
     assert.ok(mesh.uvs.every(value => value >= 0 && value <= 1));
     if (arc === Math.PI) assert.deepEqual(Array.from(mesh.uvs.subarray(17 * 9 * 2, 17 * 9 * 2 + 2)), [0.5, 0.5]);
   }

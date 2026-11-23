@@ -31,7 +31,7 @@ test('a renderer that draws a volume fog without the addon throws and names the 
     const { CrucibleRenderer } = await import('./src/renderer.js');
     const rendererWithoutCanvas = { environment: {}, fogFieldOverride: null };
     const frame = { eye: [0, 1, 5], environment: { volumeFog: { density: 0.1 } } };
-    try { CrucibleRenderer.prototype.render.call(rendererWithoutCanvas, frame); console.log('no error'); } catch (error) { console.log(error.message); }
+    try { CrucibleRenderer.prototype.renderFrame.call(rendererWithoutCanvas, frame); console.log('no error'); } catch (error) { console.log(error.message); }
   `);
   assert.match(output[0], /volumeFog feature needs its shader code: add import '@codepawlhq\/crucible\/addons\/fog-shader'/);
 });

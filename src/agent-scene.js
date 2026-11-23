@@ -3,9 +3,11 @@ import { roomJoinedBoxNodeIds } from './room-box-joins.js';
 import { box, checkTorusShape, circle, cone, cylinder, grid, icoSphere, sphere, torus } from './geometry.js';
 import { createSceneGraph } from './scene-graph.js';
 import { invalidField, withFieldPrefix } from './field-error.js';
+import { createRepeatTracker, partFingerprint, unchangedFindingsLine } from './diagnostic-repeats.js';
 import { applyProjection, validateCameraShift, CAMERA_LENS_FIELDS } from './camera.js';
 import { checkLocalVolumePartNames } from './local-volume-resolve.js';
-import { normalizeAgentLook, environmentPatchWithSetup, environmentLinksLights, agentEnvironmentMap, agentEnvironmentKey, SKY_OVERRIDABLE_FIELDS, VOLUME_FOG_FIELDS } from './agent-look.js';
+import { normalizeAgentLook, environmentPatchWithSetup, environmentLinksLights, agentEnvironmentMap, agentEnvironmentKey, SKY_OVERRIDABLE_FIELDS, VOLUME_FOG_FIELDS, EFFECT_GROUP_FIELDS } from './agent-look.js';
+import { cameraFieldsToClear, splitClearedLookFields, mergeGroupPatch } from './agent-clear-fields.js';
 import { postStepSupport } from './shader-registry.js';
 import { agentSceneModule, agentSceneModuleActive, agentSceneModuleLoaded, defaultStageModulesNamed } from './agent-scene-modules.js';
 import { CURVE_TEXT_LIMITS, AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
@@ -62,6 +64,8 @@ const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [
 // Per-node render flags: `visible` hides a node and its children; the rest become renderer part flags of a mesh node.
 const RENDER_FLAG_FIELDS = ['visible', 'castShadow', 'receiveShadow', 'holdout', 'shadowCatcher', 'shadowOnly'];
 const PART_FLAG_FIELDS = RENDER_FLAG_FIELDS.slice(1);
+// On an asset placement these two flags reach each part it expands to.
+const ASSET_PLACEMENT_FLAG_FIELDS = ['castShadow', 'receiveShadow'];
 const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'vegetation', 'clutter', 'decal', 'depthLayer', 'blend', 'rayVisibility', ...RENDER_FLAG_FIELDS];
 const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'doubleSided', 'pattern', 'map', 'subsurface', 'snippet', 'waterPreset', 'absorption', 'turbidity', 'foamEdge', 'foamWidth', 'foamVeins', 'contactFoam', 'caustics', 'ripples', 'waterRamp', 'aov', 'wear', 'retro', 'emissionMask', 'toonColors', ...MATERIAL_LAYER_FIELDS];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'layerMaps', 'transmissionMap', 'aovMap', 'emissionFresnel', 'boxMapScale', 'boxMapAxis'];
@@ -431,7 +435,8 @@ function nodeFrom(value) {
   }
   for (const flag of RENDER_FLAG_FIELDS) {
     if (value[flag] !== undefined && typeof value[flag] !== 'boolean') throw invalidField(flag, value[flag], 'true or false', TypeError);
-    if (flag !== 'visible' && value[flag] !== undefined && value.geometry === undefined) throw invalidField(flag, value[flag], 'a flag on a mesh node with geometry and material; remove it from group nodes', TypeError);
+    const placesAsset = value.asset !== undefined && ASSET_PLACEMENT_FLAG_FIELDS.includes(flag);
+    if (flag !== 'visible' && value[flag] !== undefined && value.geometry === undefined && !placesAsset) throw invalidField(flag, value[flag], 'a flag on a mesh node with geometry and material; remove it from group nodes', TypeError);
   }
   if (value.rayVisibility !== undefined) {
     if (value.geometry === undefined) throw invalidField('rayVisibility', value.rayVisibility, 'a field on a mesh node; remove it from group nodes', TypeError);
@@ -462,16 +467,33 @@ function nodeFrom(value) {
   return result;
 }
 
+// The section as normalised with nothing set: its keys always have a value, so null cannot clear them.
+function splitClearedLookPatch(lookField, patch) {
+  if (!Object.values(patch).includes(null)) return { kept: patch, cleared: [] };
+  const defaults = normalizeAgentLook({})[lookField];
+  const groupFields = lookField === 'effects' ? Object.keys(EFFECT_GROUP_FIELDS) : [];
+  return splitClearedLookFields(lookField, patch, { requiredDefaults: defaults, valueFields: lookField === 'environment' ? ['fogDensity'] : [], groupFields });
+}
+
+// bloom, depthOfField and motionBlur merge field by field; a field set to null leaves a group of defaults when it has none.
+function mergeEffectGroups(currentEffects, patch, merged) {
+  const defaults = normalizeAgentLook({}).effects;
+  for (const [group, fields] of Object.entries(EFFECT_GROUP_FIELDS)) {
+    if (!Object.hasOwn(patch, group)) continue;
+    knownKeys(patch[group], [...Object.keys(currentEffects[group]), ...fields], group);
+    merged[group] = mergeGroupPatch(group, currentEffects[group], patch[group], defaults[group]);
+  }
+}
+
 /** Sets the given camera fields on a camera; a focal length replaces fov and a fov replaces focal length and sensor, never both. */
 export function applyCameraFields(camera, fields) {
   rejectFovWithFocalLength(fields);
   rejectFocusDistanceWithoutFStop(fields);
+  // null clears an optional lens field back to not set (fStop takes focusDistance with it); a required field refuses null.
+  for (const field of cameraFieldsToClear(fields, CAMERA_DEFAULTS)) delete camera[field];
   for (const field of CAMERA_FIELDS) {
-    if (Object.hasOwn(fields, field)) camera[field] = fields[field];
+    if (Object.hasOwn(fields, field) && fields[field] !== null) camera[field] = fields[field];
   }
-  // null clears: fStop takes focusDistance with it, focusDistance clears only itself.
-  if (fields.fStop === null) delete camera.fStop;
-  if (fields.fStop === null || fields.focusDistance === null) delete camera.focusDistance;
   if (Object.hasOwn(fields, 'focalLength')) delete camera.fov;
   // Back to a perspective view: the old orthographic size no longer applies.
   if (fields.projection === 'perspective' && !Object.hasOwn(fields, 'orthoScale')) delete camera.orthoScale;
@@ -1232,16 +1254,27 @@ function cameraOverridesFrom(baseCamera, overrides) {
   return structuredClone(overrides);
 }
 
+const viewBytes = values => values.reduce((total, value) => total + (ArrayBuffer.isView(value) ? value.byteLength : 0), 0);
+
+/** Bytes a geometry holds: its typed arrays and the arrays of its morph targets, which are not typed fields themselves. */
+export function geometryBufferBytes(geometry) {
+  return viewBytes(Object.values(geometry)) + viewBytes((geometry.morphTargets ?? []).flatMap(target => [target.positions, target.normals]));
+}
+
+// geometryBytes is the generated geometry the scene's maxGeometryBytes budget limits. assetBytes is the decoded asset geometry the
+// asset decoder bounds instead; residentBytes is both, the memory the scene really holds.
 function geometryStats(records) {
   let vertices = 0;
   let geometryBytes = 0;
+  let residentBytes = 0;
   let estimatedGeometryBytes = 0;
   for (const record of records) {
     vertices += record.vertices;
     geometryBytes += record.geometryBytes;
+    residentBytes += record.geometryBytes + (record.assetBytes ?? 0);
     estimatedGeometryBytes += record.estimatedVertices * 56;
   }
-  return { vertices, geometryBytes, estimatedGeometryBytes };
+  return { vertices, geometryBytes, estimatedGeometryBytes, residentBytes };
 }
 
 function batchSignature(material) {
@@ -1393,6 +1426,23 @@ function localTransformOf(node, sampled, simulated) {
     rotation: bodyPatch?.rotation ?? patch?.rotation ?? node.rotation,
     scale: patch?.scale ?? node.scale,
   };
+}
+
+/**
+ * The world matrix of a node at a scene time: its animated or physics-baked local transform composed with its parents' (#2829).
+ * It reads the samplers only, so the same time gives the same matrix whatever was sampled before.
+ */
+function worldMatrixAt(stagedState, nodeId, time) {
+  const nodesById = new Map(stagedState.recipe.nodes.map(node => [node.id, node]));
+  const sampled = stagedState.motionSampler?.sample(time) ?? null;
+  const simulated = simulatedPose(stagedState, time);
+  const world = mat4.create();
+  const local = mat4.create();
+  for (let cursor = nodesById.get(nodeId), depth = 0; cursor && depth < 256; cursor = nodesById.get(cursor.parent), depth++) {
+    const { translation, rotation, scale } = localTransformOf(cursor, sampled, simulated);
+    mat4.multiply(world, mat4.fromRotationTranslationScale(local, rotation, translation, scale), world);
+  }
+  return world;
 }
 
 /** What a bake-motion operation samples: the committed scene's local node transforms at any time, without touching the pose. */
@@ -1871,13 +1921,16 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       for (const record of ownedRecords) {
         availableRecords.set(record.signature, record);
       }
+      // A recipe with no image map never loads the assets module, and needs no UVs (#3003).
+      const uvWriters = agentSceneModuleLoaded('assets') && agentSceneModule('assets').primitiveUvWriters(recipe);
       const plans = recipe.geometries.map(definition => {
-        const signature = geometrySignature(definition, definitionsById, buildHeightSources);
+        const addUvs = uvWriters && uvWriters.get(definition.id);
+        const signature = geometrySignature(definition, definitionsById, buildHeightSources) + (addUvs ? '|uvs' : '');
         const preferredRecord = preferred?.geometryRecords.get(definition.id);
         const activeRecord = state?.geometryRecords.get(definition.id);
         const existing = [preferredRecord, activeRecord, availableRecords.get(signature)]
           .find(record => record?.signature === signature);
-        return { definition, signature, existing, estimatedVertices: definition.type === 'asset' ? 0 : geometryEstimate(definition, { definitions: definitionsById, chain: [] }) };
+        return { definition, signature, addUvs, existing, estimatedVertices: definition.type === 'asset' ? 0 : geometryEstimate(definition, { definitions: definitionsById, chain: [] }) };
       });
       const residentStats = geometryStats(ownedRecords);
       const pendingVertices = plans.filter(plan => !plan.existing).reduce((total, plan) => total + plan.estimatedVertices, 0);
@@ -1918,10 +1971,11 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       if (!record && plan.definition.type === 'asset') {
         // A decoded asset geometry is shared by every placement. Its size is bounded by the asset decoder, not by this scene's budget.
         const geometry = assetRuntime.geometryParts.get(plan.definition.id);
-        record = Object.freeze({ signature: plan.signature, geometry, bounds: boundsFor(geometry, mat4.create()), vertices: 0, geometryBytes: 0, estimatedVertices: 0 });
+        record = Object.freeze({ signature: plan.signature, geometry, bounds: boundsFor(geometry, mat4.create()), vertices: 0, geometryBytes: 0, assetBytes: geometryBufferBytes(geometry), estimatedVertices: 0 });
       } else if (!record) {
-        const geometry = Object.freeze(generateGeometry(plan.definition, Math.min(limits.maxVertices, 1_000_000), { definitions: definitionsById, chain: [], heightSources: buildHeightSources }));
-        const geometryBytes = Object.values(geometry).reduce((total, array) => total + array.byteLength, 0);
+        const built = generateGeometry(plan.definition, Math.min(limits.maxVertices, 1_000_000), { definitions: definitionsById, chain: [], heightSources: buildHeightSources });
+        const geometry = Object.freeze(plan.addUvs ? plan.addUvs(built) : built);
+        const geometryBytes = geometryBufferBytes(geometry);
         const vertices = geometry.positions.length / 3;
         if (plan.definition.type === 'mesh' || plan.definition.type === 'fragment') {
           // Edits can grow a mesh past its estimate. Undo history never blocks an edit, so release the oldest revisions before refusing.
@@ -1936,7 +1990,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
             }
             throw new RangeError(`Mesh ${plan.definition.id} has ${vertices} render vertices after its edits, which exceeds maxVertices across the scene. Reduce detail or edits.`);
           }
-        } else if (vertices > plan.estimatedVertices || geometryBytes > plan.estimatedVertices * (56 + TERRAIN_SKY_VISIBILITY_BYTES)) {
+        } else if (vertices > plan.estimatedVertices || viewBytes(Object.values(geometry)) > plan.estimatedVertices * (56 + TERRAIN_SKY_VISIBILITY_BYTES)) {
           throw new RangeError('Generated geometry exceeds its conservative preflight bound.');
         }
         record = Object.freeze({
@@ -1959,6 +2013,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const graph = (reusesGraph ? graphWithMovedNodes(recipe, movedNodeIds, localBounds) : compile(recipe, geometries, localBounds, limits));
     const skinBindings = bindSkins({ recipe, graph, geometryRecords, cache: skinCache });
     const materialHandles = new Map();
+    const stagedMaterialSnapshots = [];
     for (const material of recipe.materials) {
       const snapshot = immutableMaterial(material);
       const preferredHandle = preferred?.materialHandles.get(material.id);
@@ -1968,6 +2023,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       const assetOutput = assetRuntime.materialOutputs.get(material.id);
       const handle = assetOutput ? assetMaterialHandle(snapshot, assetOutput, preferredHandle, activeHandle) : existing ?? materialHandle(snapshot, material.map && agentSceneModule('assets').createTextureSequence(material.id, material.map, options.sequenceFrames), options.sequenceFrames);
       materialHandles.set(material.id, handle);
+      stagedMaterialSnapshots.push({ holder: handle.holder, snapshot });
     }
     const activeParts = new Map(state?.sourceRestParts.map(part => [part.name, part]) ?? []);
     const preferredParts = new Map(preferred?.sourceRestParts.map(part => [part.name, part]) ?? []);
@@ -2009,7 +2065,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const sameParts = state && state.sourceRestParts.length === nextParts.length &&
       state.sourceRestParts.every((part, index) => part === nextParts[index]);
     const sourceRestParts = sameParts ? state.sourceRestParts : Object.freeze(nextParts);
-    const lightBakeResult = stageLightBake(recipe, sourceRestParts, graph);
+    const lightBakeResult = stageLightBake(recipe, sourceRestParts, graph, stagedMaterialSnapshots);
     const { reflected, restParts } = stageRestParts(recipe, sourceRestParts, lightBakeResult, graph);
     // Unchanged rest parts start from the parts the last pose drew (#2730): a pose that samples the same sea, cloth or
     // particles keeps those parts, and only a pose that differs swaps them, which publishPose counts as a topology change.
@@ -2076,7 +2132,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   function stageRestParts(recipe, sourceRestParts, lightBakeResult, graph) {
     const baked = lightBakeResult?.parts ?? sourceRestParts;
     const reflected = stageObjectReflections(recipe, sourceRestParts, baked, graph);
-    return { reflected, restParts: stageCoplanarOffsets(recipe, stageLightLinks(recipe, stageFloorSky(recipe, reflected ? reflected.parts : baked)), { rest: true }) };
+    return { reflected, restParts: stageCoplanarOffsets(recipe, stageLightLinks(recipe, stageFloorSky(recipe, reflected ? reflected.parts : baked, graph)), { rest: true }) };
   }
 
   // bake.rebake: a frame sampled at a pose the bake was not traced at is lit by a bake of that pose, cached by its key.
@@ -2090,9 +2146,10 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
 
   // A light bake costs seconds of ray tracing: it runs when the parts, the lights, the materials or the bake fields
   // change, and every other edit, seek or camera move reuses the last result.
-  function stageLightBake(recipe, sourceRestParts, graph) {
+  // `options.skipLightBake` builds the scene without its bake, for a scene made only to read its recipe.
+  function stageLightBake(recipe, sourceRestParts, graph, stagedMaterialSnapshots) {
     skippedBake = null;
-    if (!recipe.bake) {
+    if (!recipe.bake || options.skipLightBake) {
       return null;
     }
     const worldMatrices = new Map(sourceRestParts.map(part => [part.name, new Float32Array(graph.getNode(part.name).worldMatrix)]));
@@ -2103,7 +2160,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       return { ...lightBake, reused: true };
     }
     // The first build of a scene still fails loudly. A later edit stays applied: the old bake no longer fits the edited parts, so it is dropped.
-    const { baked, refusal } = agentSceneModule('bake').bakeUnlessRefused(Boolean(state), sourceRestParts, worldMatrices, recipe.environment, recipe.bake, generatedGeometryGenerators);
+    const { baked, refusal } = agentSceneModule('bake').withStagedMaterials(stagedMaterialSnapshots, () => agentSceneModule('bake').bakeUnlessRefused(Boolean(state), sourceRestParts, worldMatrices, recipe.environment, recipe.bake, generatedGeometryGenerators));
     if (refusal) {
       lightBake = null;
       skippedBake = refusal;
@@ -2126,8 +2183,8 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   }
 
   // A closed room a sun lights gets the sky each floor texel sees; the lazy module decides, keeps its result and honours environment.floorSkyTrace.
-  function stageFloorSky(recipe, parts) {
-    return agentSceneModuleActive('floorSky', requestedModules) ? agentSceneModule('floorSky').stageFloorSky(recipe.environment, parts) : parts;
+  function stageFloorSky(recipe, parts, graph) {
+    return agentSceneModuleActive('floorSky', requestedModules) ? agentSceneModule('floorSky').stageFloorSky(recipe.environment, parts, name => graph.getNode(name).worldMatrix) : parts;
   }
 
   // A scene that asks for no bake and looks like a closed room gets one diagnostic naming the bake. The ray test costs a
@@ -2314,6 +2371,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
 
   // scene_inspect names what the ranking could not settle. A scene that opted out gets the pairs of parts that fight instead:
   // that check is bounded, runs on inspect only and is kept until the scene changes.
+  const repeatTracker = createRepeatTracker();
   let coplanarReportCache = null;
   function coplanarProblems() {
     if (!agentSceneModuleActive('coplanar', requestedModules)) {
@@ -2367,7 +2425,10 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const emitterMeshes = new Set(recipe.particles.systems.map(system => system.emitter?.mesh));
     const involvedNodes = recipe.nodes.filter(node => emitterMeshes.has(node.id) || recipe.particles.systems.some(system => system.node === node.id));
     const oceanTracks = (recipe.motion?.tracks ?? []).filter(track => track.kind === 'geometry' && track.property === 'oceanTime');
-    const key = JSON.stringify([recipe.particles, involvedNodes, involvedNodes.map(node => geometryRecords.get(node.geometry).signature), oceanTracks]);
+    // An emitter that follows a node reads its animated transform, so the motion, the physics and the node tree are part of the key.
+    const followsNode = recipe.particles.systems.some(system => system.emitter?.follow);
+    const followedPose = followsNode ? [recipe.motion, recipe.physics, recipe.armatures, recipe.nodes.map(node => [node.id, node.parent, node.translation, node.rotation, node.scale])] : null;
+    const key = JSON.stringify([recipe.particles, involvedNodes, involvedNodes.map(node => geometryRecords.get(node.geometry).signature), oceanTracks, followedPose]);
     if (particleBake?.key !== key) {
       const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
       // An emitter on a sea with an oceanTime track samples the sea at the ocean time of each particle's birth (#2152).
@@ -2375,7 +2436,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         oceanTimeAt: (geometryId, time) => stagedState.motionSampler?.sample(time)?.geometries?.get(geometryId)?.oceanTime ?? null,
         geometryAt: (geometryId, oceanTime) => oceanTimeGeometry(recipe, stagedState.maxGeometryVertices, geometryId, oceanTime),
       };
-      particleBake = { key, sampler: agentSceneModule('particles').bakeAgentParticles(recipe.particles, recipe, geometries, sea) };
+      particleBake = { key, sampler: agentSceneModule('particles').bakeAgentParticles(recipe.particles, recipe, geometries, sea, { matrixAt: (nodeId, time) => worldMatrixAt(stagedState, nodeId, time) }) };
     }
     return particleBake.sampler;
   }
@@ -2508,6 +2569,15 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     flushLeftovers() {
       return state.recipe.environment.resolveCoplanar === false ? [] : coplanarProblems();
     },
+    /**
+     * The scene's findings for an edit answer (#2207): a coplanar overlap already reported with both parts unchanged is left out
+     * and counted in one line. scene_inspect and scene_look still list every finding. Spread the result into the answer.
+     */
+    editDiagnostics() {
+      const { shown, unchanged } = repeatTracker.filter(this.inspect().diagnostics ?? [], name => partFingerprint(state.parts.find(part => part.name === name)));
+      const diagnostics = unchanged ? [...shown, { kind: 'coplanar-overlap-unchanged', severity: 'info', count: unchanged, message: unchangedFindingsLine(unchanged) }] : shown;
+      return diagnostics.length ? { diagnostics } : {};
+    },
     get postPasses() {
       return structuredClone(state.recipe.postPasses ?? []);
     },
@@ -2573,16 +2643,17 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           knownKeys(operation, ['type', lookField], 'operation');
           const patch = operation[lookField];
           // Spot and area lights, cascades and sun links are absent from a recipe until it sets them.
-          const optionalFields = lookField === 'environment' ? ['ground', 'spotLights', 'areaLights', 'shadowCascades', 'localVolumes', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'hdri', 'keyFromHdri', 'sky'] : lookField === 'effects' ? postStepSupport.fields : [];
+          const optionalFields = lookField === 'environment' ? ['ground', 'spotLights', 'areaLights', 'shadowCascades', 'localVolumes', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'hdri', 'keyFromHdri', 'sky'] : lookField === 'effects' ? postStepSupport.fields : lookField === 'shadow' ? ['hard'] : [];
           knownKeys(patch, [...Object.keys(candidate[lookField]), ...optionalFields], lookField);
           requireChange(Object.keys(patch).length > 0, operation, [...Object.keys(candidate[lookField]), ...optionalFields]);
-          const nestedField = lookField === 'environment' ? 'volumeFog' : 'bloom';
-          const merged = { ...candidate[lookField], ...(lookField === 'environment' ? environmentPatchWithSetup(patch) : patch) };
-          if (nestedField && Object.hasOwn(patch, nestedField)) {
-            const nestedKeys = nestedField === 'volumeFog' ? [...Object.keys(candidate[lookField][nestedField]), ...VOLUME_FOG_FIELDS] : Object.keys(candidate[lookField][nestedField]);
-            knownKeys(patch[nestedField], nestedKeys, nestedField);
-            merged[nestedField] = { ...candidate[lookField][nestedField], ...patch[nestedField] };
+          const { kept: keptPatch, cleared: clearedFields } = splitClearedLookPatch(lookField, patch);
+          const merged = { ...candidate[lookField], ...(lookField === 'environment' ? environmentPatchWithSetup(keptPatch) : keptPatch) };
+          for (const field of clearedFields) delete merged[field];
+          if (lookField === 'environment' && Object.hasOwn(patch, 'volumeFog')) {
+            knownKeys(patch.volumeFog, [...Object.keys(candidate.environment.volumeFog), ...VOLUME_FOG_FIELDS], 'volumeFog');
+            merged.volumeFog = { ...candidate.environment.volumeFog, ...patch.volumeFog };
           }
+          if (lookField === 'effects') mergeEffectGroups(candidate.effects, keptPatch, merged);
           // A preset starts the sky again from its own sun, so fields kept from the earlier sky never hide it.
           if (patch.sky) {
             const kept = candidate[lookField].sky;
@@ -2779,9 +2850,9 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           geometries: state.geometries.size, materials: state.recipe.materials.length,
           vertices: state.stats.vertices,
         },
-        geometryBytes: state.stats.geometryBytes,
+        geometryBytes: state.stats.residentBytes,
         estimatedGeometryBytes: state.stats.estimatedGeometryBytes,
-        residentGeometryBytes: resident.geometryBytes,
+        residentGeometryBytes: resident.residentBytes,
         residentGeometryVertices: resident.vertices,
         look: {
           world: state.recipe.environment.world,

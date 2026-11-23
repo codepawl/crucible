@@ -10,7 +10,7 @@ const RANK_STEP = 1e-4;
 const RANK_RELATIVE_STEP = 2 ** -19;
 // Every per-vertex array that rides along with the positions, and its numbers per vertex. A copied vertex needs all of them,
 // or an array is left shorter than the positions and whatever reads it next (box projection, validation) gets NaN (#1504).
-const PER_VERTEX_WIDTHS = { normals: 3, uvs: 2, lightUvs: 2, colors: 3, skyVisibility: 1, surfaceMasks: 1 };
+const PER_VERTEX_WIDTHS = { normals: 3, uvs: 2, lightUvs: 2, colors: 3, skyVisibility: 1, surfaceMasks: 1, tangents: 4 };
 
 /** The rank of every triangle of the geometry a part is traced with (see `traceGeometryOf`), or null when none is above zero. */
 function ranksOfTracedGeometry(order) {

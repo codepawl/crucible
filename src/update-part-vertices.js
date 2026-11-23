@@ -3,6 +3,7 @@
 // which would build a new geometry object and upload every buffer again. The renderer is a parameter, so this module
 // imports nothing from the renderer and a scene that never deforms a mesh does not carry it.
 import { markLiveGeometry } from './live-geometry.js';
+import { packNormalsWithTangents } from './tangent-encoding.js';
 
 function checkVertices(name, values, expectedLength, label) {
   if (!(values instanceof Float32Array) || values.length !== expectedLength) {
@@ -54,7 +55,8 @@ export function updatePartVertices(renderer, part, positions, normals) {
     if (!values) continue;
     if (values !== geometry[field]) geometry[field].set(values);
     context.bindBuffer(context.ARRAY_BUFFER, buffers.get(field));
-    context.bufferSubData(context.ARRAY_BUFFER, 0, geometry[field]);
+    // A geometry with tangents holds its normals packed with them, so a normal update writes the packed form.
+    context.bufferSubData(context.ARRAY_BUFFER, 0, field === 'normals' && geometry.tangents ? packNormalsWithTangents(geometry.normals, geometry.tangents) : geometry[field]);
   }
   // The values changed in place under the same array, so no cache may keep a measurement of this geometry.
   markLiveGeometry(geometry);

@@ -341,7 +341,7 @@ async function renderClip(workDirectory, label, deltaSwitch) {
       if (['completed', 'cancelled', 'failed'].includes(record.state)) break;
       await delay(200);
     }
-    assert.equal(record.state, 'completed', `the ${label} job ${record.state}: ${record.error ?? JSON.stringify(record)}`);
+    assert.equal(record.state, 'completed', `the ${label} job ${record.state}: ${record.reason ?? JSON.stringify(record)}`);
     const result = (await call('scene_render_result', { jobId, response_format: 'detailed' })).structuredContent;
     const videoPath = join(workDirectory, `${label}.mp4`);
     await copyFile(result.artifacts[0].path, videoPath);

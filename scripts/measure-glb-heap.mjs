@@ -48,7 +48,7 @@ try {
   }
   const result = (await call('scene_render_result', { jobId: submitted.jobId, response_format: 'detailed' })).structuredContent;
   const heapMiB = result.metrics.peakBrowserHeap / 1048576;
-  console.log(JSON.stringify({ triangles, state: record.state, peakBrowserHeapMiB: Number(heapMiB.toFixed(1)), heapBytesPerTriangle: Math.round(result.metrics.peakBrowserHeap / triangles), peakNodeMiB: Math.round(result.metrics.peakNodeBytes / 1048576), error: record.error }));
+  console.log(JSON.stringify({ triangles, state: record.state, peakBrowserHeapMiB: Number(heapMiB.toFixed(1)), heapBytesPerTriangle: Math.round(result.metrics.peakBrowserHeap / triangles), peakNodeMiB: Math.round(result.metrics.peakNodeBytes / 1048576), reason: record.reason }));
   if (outputPng && result.artifacts?.[0]?.path) await copyFile(result.artifacts[0].path, outputPng);
 } finally {
   await client.close();

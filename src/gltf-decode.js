@@ -10,6 +10,7 @@ import { createSkinPose, validateSkinGeometry } from './skinning.js';
 const GEOMETRY_ATTRIBUTE_NAMES = {
   POSITION: 'position',
   NORMAL: 'normal',
+  TANGENT: 'tangent',
   COLOR_0: 'color',
   TEXCOORD_0: 'uv',
   TEXCOORD_1: 'uv1',
@@ -297,7 +298,8 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
     const attributeTypes = {};
     for (const [semantic, id] of Object.entries(extension.attributes)) {
       const name = GEOMETRY_ATTRIBUTE_NAMES[semantic];
-      if (!name) continue;
+      // A Draco TANGENT is left to the tangent generator: the decoder has no stable name for it.
+      if (!name || semantic === 'TANGENT') continue;
       attributeIds[name] = id;
       const accessor = document.accessors[primitive.attributes[semantic]];
       if (accessor) attributeTypes[name] = COMPONENT_TYPES[accessor.componentType].name;
@@ -313,7 +315,7 @@ export async function decodeGltf({ document, glbBinary, resourceBytes, decoders,
     const attributes = {};
     for (const [semantic, accessorIndex] of Object.entries(primitive.attributes)) {
       const name = GEOMETRY_ATTRIBUTE_NAMES[semantic];
-      if (!name) continue;
+      if (!name || (dracoGeometry && semantic === 'TANGENT')) continue;
       if (dracoGeometry && dracoExtension.attributes[semantic] !== undefined) {
         const decoded = dracoGeometry.getAttribute(name);
         if (!decoded) throw new Error(`Draco geometry is missing ${semantic}.`);

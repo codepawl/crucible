@@ -184,3 +184,31 @@ test('moving the hull of a wake draws the wake of the new place, as a scene buil
   assert.notDeepEqual(Array.from(scene.parts[0].geometry.positions), before, 'the wake moved with the hull');
   assert.deepEqual(Array.from(scene.parts[0].geometry.positions), Array.from(fresh.parts[0].geometry.positions));
 });
+
+test('the foam of a static wake point holds still while the sea moves under it', () => {
+  const gridSize = 24;
+  const positions = [];
+  for (let row = 0; row <= gridSize; row++) {
+    for (let column = 0; column <= gridSize; column++) positions.push(column * 0.5, 0, row * 0.5);
+  }
+  const triangle = new Uint32Array([0, 1, gridSize + 1]);
+  const mesh = createMeshData({ positions: new Float32Array(positions), faceOffsets: new Uint32Array([0, 3]), cornerVertices: triangle });
+  const wake = normalizeWake({ points: [[6, 6, 1, 3]], height: 0.4 });
+  const options = { axis: 'y', windSpeed: 10, direction: 0, choppiness: 2, size: 70, seed: 23, resolution: 6, foamMemory: 0, coverage: -1, wake };
+  const seaOnly = time => oceanMesh(mesh, { ...options, wake: undefined, time });
+  const withWake = time => oceanMesh(mesh, { ...options, time });
+  const foamOf = data => Array.from(data.attributes.point['group:foam'].data);
+  const nearPoint = [];
+  for (let vertex = 0; vertex < positions.length / 3; vertex++) {
+    if (Math.hypot(positions[vertex * 3] - 6, positions[vertex * 3 + 2] - 6) < 3) nearPoint.push(vertex);
+  }
+  assert.ok(nearPoint.length > 20);
+  for (const vertex of nearPoint) {
+    const expected = wakeAt(wake, positions[vertex * 3], positions[vertex * 3 + 2]);
+    for (const time of [0, 0.7, 1.9, 5.3]) {
+      assert.ok(Math.abs(foamOf(withWake(time))[vertex] - Math.max(foamOf(seaOnly(time))[vertex], expected.foam)) < 1e-5, `vertex ${vertex} at ${time}s keeps the foam of its rest position`);
+      const rise = withWake(time).positions[vertex * 3 + 1] - seaOnly(time).positions[vertex * 3 + 1];
+      assert.ok(Math.abs(rise - expected.offset) < 1e-5, `vertex ${vertex} at ${time}s has the wake offset of its rest position, got ${rise} not ${expected.offset}`);
+    }
+  }
+});

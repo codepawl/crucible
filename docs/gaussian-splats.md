@@ -19,6 +19,23 @@ detach();               // or renderer.dispose()
 
 `detach()` frees the GPU copy and reads the packed data back, so the same `splats` can then attach to another renderer, for example one made at a new size, without packing them again. Splats attach to one renderer at a time. After `renderer.dispose()` or a lost context, call `createGaussianSplats` again.
 
+## Animated splats
+
+A pour stream, sparks or steam change every frame. Do not create and attach a new set each time: attach one and call `detach.update(change)` on it. It rewrites the changed values and re-uploads only the texture rows they sit in; no texture, buffer or splat set is created.
+
+```js
+const splats = createGaussianSplats(first, { capacity: 20_000 }); // room for up to 20,000 splats
+const detach = attachGaussianSplats(renderer, splats);
+
+function frame() {
+  stepParticles(positions, colors, scales); // your typed arrays, `count` splats each
+  detach.update({ count, positions, colors, scales });
+  renderer.render(camera);
+}
+```
+
+`update` takes `positions` (3 numbers per splat), `colors` (4 bytes, the last is the opacity), `scales` (3) and `rotations` (4, needs `scales`; `scales` alone means no rotation), each optional, so a colour-only change uploads colours only. The arrays hold `length` splats that replace splats `start` to `start + length` (`start` default 0, `length` default up to the new `count`). `count` sets the number of splats drawn: it may shrink at any time and grow up to `capacity`, the room fixed at create time (default: exactly the number created, at most the 4,000,000 limit). Growing needs `positions`, `colors` and `scales` for the new splats. `bounds` (`{ minimum, maximum }`) says where the centres are; leave it out and it is measured from the centres. A bad count, range, array or non-finite number throws an error that names the field and what to pass, and the set is not changed. `update` is not available for splats with spherical harmonic bands, and throws after `detach()`. The first update copies the data texture back once. The returned function is still the detach function, so existing code is unchanged.
+
 ## What it reads
 
 Two formats. The first is the standard 3DGS PLY that the original training code and most tools write: binary little endian with `x y z f_dc_0..2 opacity scale_0..2 rot_0..3` per vertex. The spherical harmonic bands in `f_rest_*` are read too (degree 1, 2 or 3, worked out from how many there are), so a splat changes colour with the view the way it was trained to: a shine on a car door or the sky in a window moves as the camera moves. `sphericalHarmonicDegree` caps how many bands are kept, from `0` (one colour from every direction, the smallest GPU copy) to `3`, the default. The bands travel to the GPU as half floats, 32, 64 or 96 bytes per splat (the bands plus the part of the constant colour brighter than white, so a highlight a band darkens keeps its trained colour) on top of the 48 bytes of position, shape and colour. Other properties (normals) are skipped. A splat with a non-finite band value is dropped like one with a non-finite position, and `upAxis: 'z'` turns the bands with the positions. `.ksplat` and `.splat` files are not read; `bench/gaussian-splats/fetch-sample.mjs` shows a short `.splat` to PLY conversion.

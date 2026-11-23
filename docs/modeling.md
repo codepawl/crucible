@@ -17,6 +17,7 @@ const cable = tube([[0, 0, 0], [1, 1, 0], [2, 0, 1]], { radius: 0.04 });
 ```
 
 Each result has Float32 positions, normalized normals and UV channel zero, plus Uint32 triangle indices.
+UVs put v = 0 at the top of the image and read the right way round from outside, for `lathe` (profile listed bottom to top), `tube` and the built-in sphere and torus shapes.
 Pass it as a part's `geometry` to `CrucibleRenderer`. Inputs are copied. Repeated instances can share the returned mesh.
 These generators run when constructing a scene, rather than every frame.
 

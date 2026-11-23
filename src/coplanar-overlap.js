@@ -496,16 +496,28 @@ export function coplanarOverlapDiagnostics({ overlaps, truncated }) {
 /**
  * Adds the coplanar-overlap warning to `renderer.diagnostics`. The check is bounded (see findCoplanarOverlaps) and runs once
  * per layout, when the renderer's batches change, not per frame, so parts that move later are not rechecked.
+ * `carry` is `{ held, key }`: `held` is an object the caller keeps across renderers, and `key()` names the scene state the check
+ * stands for (undefined when nothing may be reused). A layout checked while `key()` still equals the key it was held under takes
+ * the held warnings, so frames of a moving scene, which swap batches every frame, are not searched again.
  */
-export function installCoplanarDiagnostics(renderer, onOverlaps = null) {
+export function installCoplanarDiagnostics(renderer, onOverlaps = null, carry = null) {
   let checkedBatches = null;
   let problems = null;
   renderer.coplanarDiagnostics = batches => {
     if (batches !== checkedBatches) {
       checkedBatches = batches;
+      const carriedKey = carry?.key();
+      if (carriedKey !== undefined && carry.held.key === carriedKey) {
+        problems = carry.held.problems;
+        return problems;
+      }
       const found = findCoplanarOverlaps(batches.flatMap(batch => batch.parts));
       problems = coplanarOverlapDiagnostics(found);
       onOverlaps?.(found.overlaps);
+      if (carriedKey !== undefined) {
+        carry.held.key = carriedKey;
+        carry.held.problems = problems;
+      }
     }
     return problems;
   };

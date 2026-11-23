@@ -1,0 +1,1 @@
+- `crucible pack` bakes procedural material patterns (bricks, planks, concrete, fabric, graphs) into the bundle's textures instead of refusing the recipe (#2178)

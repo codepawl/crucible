@@ -32,8 +32,16 @@ function mebibytes(bytes) {
  * `incomingBytes` is the new scene's resident geometry. Scenes close oldest first until both caps hold, so a scene is only closed
  * for a cap that is really exceeded: the scene count, or the resident geometry the open scenes hold together with the new one.
  * The reason names that cap and the numbers, because "up to 4 scenes" is easy to read as a promise a few large scenes cannot keep.
+ * A byte figure that is not a finite number is an accounting bug: it throws and names the scene, because a NaN compares as
+ * neither over nor under a cap and would silently switch the cap off or close every older scene.
  */
 export function planSceneEviction(openScenes, incomingBytes, limits = SCENE_STORE_LIMITS) {
+  const figures = [{ subject: 'the new scene', bytes: incomingBytes }, ...openScenes.map(scene => ({ subject: `scene ${scene.sessionId}`, bytes: scene.bytes }))];
+  for (const { subject, bytes } of figures) {
+    if (!Number.isFinite(bytes) || bytes < 0) {
+      throw new TypeError(`Internal error: the resident geometry bytes of ${subject} is ${bytes}, not a finite count, so the open-scene cap cannot be applied. Report this with the recipe that built the scene.`);
+    }
+  }
   let remainingCount = openScenes.length;
   let remainingBytes = incomingBytes + openScenes.reduce((total, scene) => total + scene.bytes, 0);
   const startingBytes = remainingBytes;

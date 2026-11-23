@@ -187,7 +187,7 @@ test('unsupported three.js names throw an error that names the Crucible replacem
 });
 
 test('every Crucible call named by an error exists', () => {
-  const known = new Set([...Object.keys(core), ...Object.getOwnPropertyNames(core.CrucibleRenderer.prototype), 'loadGltf', 'createModel', 'lathe', 'box', 'sphere', 'cylinder', 'torus', 'canvas.toBlob', 'Texture']);
+  const known = new Set([...Object.keys(core), ...Object.getOwnPropertyNames(core.CrucibleRenderer.prototype), 'loadGltf', 'lathe', 'box', 'sphere', 'cylinder', 'torus', 'canvas.toBlob', 'Texture']);
   assert.ok(unsupportedNames.length >= 20);
   for (const name of unsupportedNames) {
     let message = '';

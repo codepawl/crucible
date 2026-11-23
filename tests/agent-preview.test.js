@@ -364,3 +364,12 @@ test('scene_inspect profileFrames sets the number of measured frames within boun
   assert.throws(() => harness.preview.inspect({ sessionId, profile: true, profileFrames: 0 }), /from 1 to 120/);
   assert.throws(() => harness.preview.inspect({ sessionId, profileFrames: 5 }), /only applies with profile: true/);
 });
+
+test('an asset scene answers an edit with the findings inspect reports', async () => {
+  const harness = previewHarness();
+  await harness.preview.createAsset({ sessionId: 'asset', recipe: { format: 'crucible.asset', schemaVersion: 1, assetId: 'ab'.repeat(32) },
+    data: Buffer.from(skinnedStripAsset()).toString('base64'), backend: 'cpu', memoryBudgetMiB: 64 });
+  const scene = harness.scene();
+  const { diagnostics } = scene.inspect();
+  assert.deepEqual(scene.editDiagnostics(), diagnostics?.length ? { diagnostics } : {});
+});

@@ -15,6 +15,9 @@ export const MAXIMUM_WIREFRAME_REPORTED_PARTS = 20;
 export const WIREFRAME_COLORS = Object.freeze([[0.06, 0.07, 0.09], [1, 0.55, 0], [1, 0.05, 0.05], [0, 0.85, 1], [1, 0, 0.9]]);
 // Half the line width in pixels, so a fault is drawn about twice as wide as a regular edge.
 const HALF_WIDTHS = Object.freeze([0.7, 1.6, 1.6, 1.6, 1.6]);
+/** The defaults of the style options of withWireframe. */
+export const WIREFRAME_STYLE_DEFAULTS = Object.freeze({ faults: true, color: WIREFRAME_COLORS[0], halfWidth: HALF_WIDTHS[0] });
+const MAXIMUM_HALF_WIDTH = 32;
 // Pulls edges toward the camera in normalized depth so they win against the surface they lie on.
 const DEPTH_BIAS = 2e-4;
 
@@ -123,6 +126,26 @@ function releaseEntries(context, frameEntries) {
   }
 }
 
+// Validates the style options at the public boundary and returns the colour and half width of each edge kind. With
+// faults: true the regular edges take the colour and width given and the faults keep theirs; with faults: false every kind does.
+function resolveStyle(options) {
+  if (options === null || typeof options !== 'object' || Array.isArray(options)) {
+    throw new TypeError('withWireframe options must be an object such as { faults: false, color: [0.1, 0.1, 0.1], halfWidth: 1 }.');
+  }
+  const { faults, color, halfWidth } = { ...WIREFRAME_STYLE_DEFAULTS, ...options };
+  if (typeof faults !== 'boolean') throw new TypeError(`withWireframe faults must be true or false, got ${String(faults)}. Pass faults: false to draw every edge the same.`);
+  const isChannel = channel => typeof channel === 'number' && channel >= 0 && channel <= 1;
+  if (!Array.isArray(color) || color.length !== 3 || !color.every(isChannel)) {
+    throw new TypeError('withWireframe color must be three numbers from 0 to 1, for example [0.06, 0.07, 0.09].');
+  }
+  if (typeof halfWidth !== 'number' || !(halfWidth > 0 && halfWidth <= MAXIMUM_HALF_WIDTH)) {
+    throw new RangeError(`withWireframe halfWidth must be a number above 0 and at most ${MAXIMUM_HALF_WIDTH} (half the line width in pixels), got ${String(halfWidth)}.`);
+  }
+  const colors = WIREFRAME_COLORS.map((faultColor, kind) => (kind === 0 || !faults ? color : faultColor));
+  const halfWidths = HALF_WIDTHS.map((faultWidth, kind) => (kind === 0 || !faults ? halfWidth : faultWidth));
+  return { colors: colors.flat(), halfWidths };
+}
+
 function faultCounts(counts) {
   const { regular, ...faults } = counts;
   return faults;
@@ -130,7 +153,7 @@ function faultCounts(counts) {
 
 // Draws the edges into the pass target while the pass is still in its depth state: reversed-Z (cleared to 0, GREATER, a
 // reversed projection) where EXT_clip_control exists, standard depth otherwise.
-function drawWireframe(renderer) {
+function drawWireframe(renderer, style) {
   const context = renderer.context;
   const program = programFor(renderer);
   const reversed = renderer.reversedDepth === true;
@@ -139,9 +162,9 @@ function drawWireframe(renderer) {
   context.viewport(0, 0, renderer.canvas.width, renderer.canvas.height);
   context.useProgram(program.handle);
   context.uniform2f(program.viewportSize, renderer.canvas.width, renderer.canvas.height);
-  context.uniform1fv(program.halfWidths, HALF_WIDTHS);
+  context.uniform1fv(program.halfWidths, style.halfWidths);
   context.uniform1f(program.depthBias, reversed ? -DEPTH_BIAS : DEPTH_BIAS);
-  context.uniform3fv(program.colors, WIREFRAME_COLORS.flat());
+  context.uniform3fv(program.colors, style.colors);
   context.enable(context.DEPTH_TEST);
   context.depthFunc(reversed ? context.GEQUAL : context.LEQUAL);
   context.depthMask(false);
@@ -199,10 +222,15 @@ function drawWireframe(renderer) {
  * the pass shows over its surface before the frame reaches the canvas. Returns what the agent needs to read the picture: edge
  * counts by kind over the drawn parts, the parts that have faults (up to MAXIMUM_WIREFRAME_REPORTED_PARTS, worst first) and
  * whether anything was left out to stay within the limits.
+ *
+ * `options` styles the edges: `faults` (default true) draws boundary, non-manifold, flipped and degenerate edges in their repair
+ * colours at double width, and false draws every edge as a regular one; `color` (three numbers from 0 to 1) and `halfWidth`
+ * (pixels, half the line width) style the regular edges, and all edges when faults is false. The report counts every kind either way.
  */
-export function withWireframe(renderer, renderFrame) {
+export function withWireframe(renderer, renderFrame, options = {}) {
+  const style = resolveStyle(options);
   let report = null;
-  renderer.passSupport.overlay = () => { report = drawWireframe(renderer); };
+  renderer.passSupport.overlay = () => { report = drawWireframe(renderer, style); };
   try {
     renderFrame();
   } finally {

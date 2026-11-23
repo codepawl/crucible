@@ -1,0 +1,1 @@
+- Fix the render job store refusing new jobs while space remains: a submit now holds space for the job's own estimated output instead of a fixed 128 MiB, a full store names the largest finished jobs to read with `scene_render_result` and release with `scene_render_release`, and a job that outgrows its estimate stops cleanly instead of overfilling the store (#2286).

@@ -156,15 +156,21 @@ export function importMessageDuration(message, minimumMilliseconds) {
 
 const MAXIMUM_NAMED_OBJECTS = 3;
 
-// The renderer pauses the picture when a material map lands on geometry without UV coordinates (a box, a bevelled box, a cylinder or a cone),
-// and the edit is in place, so every object that wears this material counts. The built geometry answers it, not a list of types.
+// The renderer pauses the picture when a material map lands on geometry without UV coordinates, and the edit is in place,
+// so every object that wears this material counts. A box, cylinder or cone gets its UVs once the map is on, so the recipe
+// decides for those; the built geometry decides for everything else (docs/agent-scene.md, "Which geometries have UVs").
+const GEOMETRY_TYPES_THAT_GAIN_UVS = ['box', 'cylinder', 'cone'];
+
 function unmappedUsersProblem(controller, recipe, material, fileName) {
   const labelsByNodeId = new Map(recipe.nodes.map(node => [node.id, node.label ?? node.id]));
+  const geometryIdsByNodeId = new Map(recipe.nodes.map(node => [node.id, node.geometry]));
+  const typesByGeometryId = new Map(recipe.geometries.map(definition => [definition.id, definition.type]));
   const unmappedLabels = [];
   for (const part of controller.scene?.parts ?? []) {
     if (part.material?.id !== material.id) continue;
     const geometry = part.geometry ?? {};
     if (geometry.uvs || geometry.lightUvs || part.material.boxMapScale) continue;
+    if (GEOMETRY_TYPES_THAT_GAIN_UVS.includes(typesByGeometryId.get(geometryIdsByNodeId.get(part.name)))) continue;
     const label = labelsByNodeId.get(part.name) ?? part.name;
     if (!unmappedLabels.includes(label)) unmappedLabels.push(label);
   }
@@ -172,7 +178,7 @@ function unmappedUsersProblem(controller, recipe, material, fileName) {
   const shown = unmappedLabels.slice(0, MAXIMUM_NAMED_OBJECTS).join(', ');
   const hidden = unmappedLabels.length - MAXIMUM_NAMED_OBJECTS;
   const names = hidden > 0 ? `${shown} and ${hidden} more` : shown;
-  return `${fileName} cannot go on this material: ${names} ${unmappedLabels.length === 1 ? 'has' : 'have'} no UV coordinates, so the picture would stop the viewport. Only sphere, torus, plane, grid and unwrapped mesh objects take an image. Select one of those, or give ${unmappedLabels.length === 1 ? 'that object its' : 'those objects their'} own material first.`;
+  return `${fileName} cannot go on this material: ${names} ${unmappedLabels.length === 1 ? 'has' : 'have'} no UV coordinates, so the picture would stop the viewport. Only sphere, box, cylinder, cone, torus, plane, grid and unwrapped mesh objects take an image. Select one of those, or give ${unmappedLabels.length === 1 ? 'that object its' : 'those objects their'} own material first.`;
 }
 
 function placeModel({ controller, fileName, id }) {

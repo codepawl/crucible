@@ -80,7 +80,7 @@ async function submitJob(sessionId, kind, settings) {
   const submitted = await call('scene_render_submit', { sessionId, expectedRevision: (await call('scene_inspect', { sessionId })).revision,
     settings: { kind, width: FRAME_WIDTH, height: FRAME_HEIGHT, fps: 6, ...settings } });
   const record = await finished(submitted.jobId);
-  assert.equal(record.state, 'completed', JSON.stringify(record.error ?? record));
+  assert.equal(record.state, 'completed', JSON.stringify(record.reason ?? record));
   return call('scene_render_result', { jobId: submitted.jobId });
 }
 

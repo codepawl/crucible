@@ -109,3 +109,34 @@ test('geometry changes and bad numbers still throw after the fast path has been 
   parts[0].material.roughness = 1e39;
   assert.throws(() => renderer.updateParts(parts), /Invalid material/);
 });
+
+test('a zero-scale matrix is refused with the way to hide a part', () => {
+  const parts = [createPart('first')];
+  const { renderer } = createRenderer(parts);
+  parts[0].matrix.fill(0);
+  assert.throws(() => renderer.updateParts(parts), /Singular transform: first. .*part\.visible = false/);
+});
+
+test('a hidden part may carry a zero or non-finite matrix, packs zeros and draws again once shown', () => {
+  const parts = [createPart('first'), createPart('second')];
+  const { renderer, batch } = createRenderer(parts);
+  parts[0].visible = false;
+  parts[0].matrix.fill(0);
+  parts[1].visible = false;
+  parts[1].matrix[0] = Number.NaN;
+  assert.equal(renderer.updateParts(parts), 2);
+  assert.ok(batch.instanceData.subarray(0, 25).every(value => value === 0));
+  assert.ok(batch.instanceData.subarray(42, 42 + 25).every(value => value === 0));
+  parts[0].visible = true;
+  parts[0].matrix = mat4.fromTranslation(mat4.create(), [3, 0, 0]);
+  renderer.updateParts([parts[0]]);
+  assert.equal(batch.instanceData[12], 3);
+});
+
+test('a hidden part still has its material checked', () => {
+  const parts = [createPart('first')];
+  const { renderer } = createRenderer(parts);
+  parts[0].visible = false;
+  parts[0].material.color = [Number.NaN, 0, 0];
+  assert.throws(() => renderer.updateParts(parts), /Invalid instance vector: first/);
+});

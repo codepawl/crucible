@@ -1,5 +1,6 @@
 import './support/load-agent-scene-modules.mjs';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { createAgentScene } from '../src/agent-scene.js';
 import { applyDefaultFloorSky } from '../src/floor-sky-visibility.js';
@@ -52,4 +53,25 @@ test('a room with no sun and open ground are left as they were', () => {
   const open = room({ keyColor: [3, 3, 3] });
   open.nodes = open.nodes.filter(node => node.id === 'floor' || node.id === 'roof-a');
   assert.equal(floorHasSkyVisibility(createAgentScene(open)), false);
+});
+
+// The demo room without its one boolean geometry. Moving the pendant bulb changes whether the sky trace cuts the ground, and
+// a retained part keeps its old matrix until the commit, so an edit in place used to stage the trace against the old place (#3064).
+test('a node moved in place gives the ground the geometry a build of the edited recipe gives', () => {
+  const recipe = JSON.parse(readFileSync(new URL('./fixtures/demo-room.recipe.json', import.meta.url), 'utf8'));
+  delete recipe.bake;
+  recipe.nodes = recipe.nodes.filter(node => node.id !== 'organiser');
+  recipe.geometries = recipe.geometries.filter(geometry => geometry.id !== 'organiser');
+  const edited = createAgentScene(recipe);
+  const movedBulb = { type: 'set-node', id: 'pendant-bulb', translation: [0.3, 1.7, 0.2] };
+  const groundOf = scene => scene.parts.find(part => part.name === 'ground').geometry;
+  const plainGroundVertices = groundOf(edited).positions.length;
+  const movedRecipe = structuredClone(edited.exportRecipe());
+  movedRecipe.nodes.find(node => node.id === movedBulb.id).translation = movedBulb.translation;
+  edited.apply([movedBulb], { expectedRevision: edited.revision });
+  const freshGround = groundOf(createAgentScene(movedRecipe));
+  assert.ok(freshGround.positions.length > plainGroundVertices, 'the moved bulb makes the sky trace cut the ground');
+  for (const field of Object.keys(freshGround)) {
+    assert.deepEqual(groundOf(edited)[field], freshGround[field], field);
+  }
 });

@@ -29,7 +29,7 @@ const LINKS = [
   { name: 'demo.mp4', url: 'https://raw.example/demo.mp4' },
 ];
 
-function makeServices({ body = GOOD_BODY, changed = 'scripts/open-pr.mjs\ntests/open-pr.test.js', storedBody, remoteHead = '' } = {}) {
+function makeServices({ body = GOOD_BODY, changed = 'scripts/open-pr.mjs\ntests/open-pr.test.js', storedBody, remoteHead = '', login = 'anxuanng' } = {}) {
   const calls = [];
   let sentBody = null;
   const services = {
@@ -48,6 +48,7 @@ function makeServices({ body = GOOD_BODY, changed = 'scripts/open-pr.mjs\ntests/
       if (args[1] === 'view') return JSON.stringify({ body: storedBody ?? sentBody ?? body });
       return '';
     },
+    currentLogin: () => login,
     pushEvidence(options) {
       calls.push(['pushEvidence', options.prNumber, options.dryRun === true]);
       return { branch: `evidence-pr-${options.prNumber}`, links: LINKS, dryRun: options.dryRun === true };
@@ -107,8 +108,23 @@ describe('evidence markdown', () => {
 });
 
 describe('openPullRequest', () => {
+  const lookBody = GOOD_BODY.replace('Nothing to see or measure: a contributor script.', 'The look is unchanged.');
+  const lookFiles = 'src/post-mask.js\nchanges/1.md\ntests/open-pr.test.js';
+
+  test('lets the owner say the look is unchanged on a look file', () => {
+    const services = makeServices({ body: lookBody, changed: lookFiles, login: 'anxuanng' });
+    assert.equal(openPullRequest(baseOptions, services).url, 'https://github.com/codepawl/crucible/pull/42');
+  });
+
+  test('still asks for pictures when the login is empty or not the owner', () => {
+    for (const login of ['', 'someone-else']) {
+      const services = makeServices({ body: lookBody, changed: lookFiles, login });
+      assert.throws(() => openPullRequest(baseOptions, services), /look-without-image/);
+    }
+  });
+
   test('stops with every finding listed and creates nothing when the checks fail', () => {
-    const services = makeServices({ body: 'Just some words.\nC:\\Users\\someone\\file' });
+    const services = makeServices({ body: `Just some words.\n${['C:', 'Users', 'someone', 'file'].join('\\')}` });
     assert.throws(() => openPullRequest(baseOptions, services), (error) => {
       assert.match(error.message, /local-path/);
       assert.match(error.message, /missing-issue-link/);

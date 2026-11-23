@@ -1,5 +1,5 @@
 import { mat4, mat3 } from 'gl-matrix';
-import { createAgentScene, REVISION_HISTORY_LIMIT } from './agent-scene.js';
+import { createAgentScene, geometryBufferBytes, REVISION_HISTORY_LIMIT } from './agent-scene.js';
 import { environmentPatchWithSetup } from './agent-look.js';
 import { assetDiagnostics } from './agent-diagnostics.js';
 import { fitPerspectiveDistance } from './camera.js';
@@ -1051,6 +1051,11 @@ export function createAgentAssetScene(asset, inputRecipe, { sources } = {}) {
       }
       return publish(candidate);
     },
+    /** The findings an edit answer carries; an asset scene has no coplanar repeat tracker, so it reports what inspect does. */
+    editDiagnostics() {
+      const { diagnostics } = this.inspect();
+      return diagnostics?.length ? { diagnostics } : {};
+    },
     inspect(inputOptions = {}) {
       const options = copiedJson(inputOptions);
       knownKeys(options, ['ids', 'limit', 'includeBounds', 'kind', 'offset'], 'inspection');
@@ -1121,14 +1126,7 @@ export function createAgentAssetScene(asset, inputRecipe, { sources } = {}) {
       const activeGeometries = new Set(records.map(record => geometryOf(record)));
       for (const geometry of activeGeometries) {
         vertices += geometry.positions.length / 3;
-        for (const value of Object.values(geometry)) {
-          if (ArrayBuffer.isView(value)) {
-            geometryBytes += value.byteLength;
-          }
-        }
-        for (const target of geometry.morphTargets ?? []) {
-          geometryBytes += (target.positions?.byteLength ?? 0) + (target.normals?.byteLength ?? 0);
-        }
+        geometryBytes += geometryBufferBytes(geometry);
       }
       return {
         revision, topologyRevision, assetId: canonicalAssetId, ...diagnosticsReport(),

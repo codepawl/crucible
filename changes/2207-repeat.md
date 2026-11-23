@@ -1,0 +1,1 @@
+- Edit answers (`scene_apply`, `mesh_edit` and the other edit tools) report a coplanar overlap only when it is new or one of its parts changed, and add one count line for the unchanged ones; `scene_inspect` still lists all of them (#2207).

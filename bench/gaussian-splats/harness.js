@@ -99,5 +99,64 @@ async function runCase({ source = 'synthetic', count = 100000, withPart = true, 
   return result;
 }
 
+// Animated splats (#2756): every frame the positions and colours change, as for a pour stream or sparks. 'rebuild' creates and attaches
+// a new set and detaches the old one (what pages did before); 'update' calls update on one attached set.
+function writeAnimatedFrame(data, time) {
+  for (let index = 0; index < data.count; index++) {
+    const phase = index * 0.37 + time * 3;
+    data.positions[index * 3] = Math.sin(phase) * 1.5;
+    data.positions[index * 3 + 1] = 1 + ((index * 0.013 + time) % 2);
+    data.positions[index * 3 + 2] = Math.cos(phase * 0.7) * 1.5;
+    data.colors[index * 4] = 128 + Math.sin(phase) * 127;
+  }
+}
+
+async function runAnimatedCase({ mode = 'update', count = 20000, frames = 120, width = 960, height = 540, hdr = false }) {
+  const canvas = document.querySelector('canvas');
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  const scene = createAgentScene(RECIPE);
+  const environment = { ...scene.environment, world: true };
+  const renderer = new CrucibleRenderer(canvas, scene.parts, { ground: false, hdr, depth: true, samples: 4, pixelRatio: 1, world: true, environment });
+  renderer.resize();
+  const context = renderer.context;
+  const data = syntheticRoom(count);
+  data.bounds = { minimum: [-1.6, 0.9, -1.6], maximum: [1.6, 3.1, 1.6] };
+  writeAnimatedFrame(data, 0);
+  let splats = createGaussianSplats(data, { capacity: count });
+  let detach = attachGaussianSplats(renderer, splats);
+  const times = [];
+  for (let index = 0; index < frames + 10; index++) {
+    const start = performance.now();
+    writeAnimatedFrame(data, index / 60);
+    if (mode === 'rebuild') {
+      const next = createGaussianSplats(data);
+      const nextDetach = attachGaussianSplats(renderer, next);
+      detach();
+      detach = nextDetach;
+      splats = next;
+    } else {
+      detach.update({ positions: data.positions, colors: data.colors });
+    }
+    renderer.render({ ...cameraAt(0, 'synthetic'), environment, time: 0, exposure: 1 });
+    context.bindFramebuffer(context.FRAMEBUFFER, null);
+    context.readPixels(0, 0, 1, 1, context.RGBA, context.UNSIGNED_BYTE, synchronizationPixel);
+    if (index >= 10) times.push(performance.now() - start);
+  }
+  const debug = context.getExtension('WEBGL_debug_renderer_info');
+  const result = {
+    mode, count, frames, width, height,
+    frameMedianMilliseconds: Number(median(times).toFixed(2)),
+    frameMinimumMilliseconds: Number(Math.min(...times).toFixed(2)),
+    visibleSplats: splats.statistics.visibleCount,
+    glError: context.getError(),
+    graphics: context.getParameter(debug ? debug.UNMASKED_RENDERER_WEBGL : context.RENDERER),
+    image: canvas.toDataURL('image/png').split(',')[1],
+  };
+  renderer.dispose();
+  return result;
+}
+
+window.runAnimatedCase = runAnimatedCase;
 window.runCase = runCase;
 window.harnessReady = true;

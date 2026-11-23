@@ -94,6 +94,7 @@ A PNG the export writes itself is stored without compression so the export stays
 
 Geometry with textures needs `uvs`.
 Without them the export fails and names `uv_unwrap` (a mesh stack node) or `geometry.uvs`.
+A recipe `box`, `cylinder` or `cone` gets UVs when a material with an image map is on it, so it exports with `TEXCOORD_0`; see [Which geometries have UVs](agent-scene.md#which-geometries-have-uvs).
 An image larger than `maxTextureSize` (default 2048, up to 16384) fails with that option's name, before its pixels are read.
 
 ### Pattern materials
@@ -141,10 +142,12 @@ Every keyframe needs the same nonzero count of finite weights, and the target is
 
 `scene_export_glb` exports the active MCP scene, recipe or imported asset, with `--jobs` configured.
 The file goes to `<jobs>/exports/<uuid>.glb`; the call takes no path and the result has the path, `bytes`, `sha256`, `parts`, `clips` and `omitted`.
-`omitted` lists each authored thing the file does not carry, such as `"motion tracks (3: camera 1, material 1, node 1)"`, `"camera"` and `"lights (2)"`; node tracks of bones that the baked clip carries are not listed. `scene_capabilities` topic `export` says what the GLB writes and drops.
+`omitted` lists each authored thing the file does not carry, such as `"motion tracks (2: camera 1, material 1)"` and `"area lights (1)"`; whatever the file does carry is not listed. `scene_capabilities` topic `export` says what the GLB writes and drops.
 The newest eight files stay, counting the ones an earlier server run left in the folder, the GLB is at most 32 MiB, and `maxTextureSize` goes up to 4096.
 Without `clip` it writes the current pose: pattern and imported textures, skins, morph weights and IK as posed.
-`motionTime` seeks authored motion first and leaves the preview there, like `scene_look`.
+It also writes the recipe camera as a glTF perspective camera at its current pose, and the point and spot lights with `KHR_lights_punctual`, the reverse of what the importer reads (`scene_asset_catalog` and the loader give the same positions, colors, intensities, cone angles and penumbra back).
+Node `translation`, `rotation` and `scale` tracks, with the bone tracks of a rig, become one clip named `motion`, sampled at 30 frames a second like the bone clip. Every part the motion moves gets its world translation, rotation and scale as keys (a part under a moved group moves with it, and an eased or smooth track becomes linear keys), so the clip re-imports with the same duration and, within `1e-5`, the same values the scene shows at each key time. A clip has at most 901 keys (the 30 s a motion can last) and at most 128 moving parts; past that the call fails and says to shorten `motion.duration` or pass `motionTime`.
+`motionTime` seeks authored motion first, leaves the preview there, like `scene_look`, and exports that one pose without the node clip, which the result then lists in `omitted`.
 With `clip` (imported assets, an index or the clip name from `scene_asset_catalog` or `scene_inspect`; an unknown name lists the valid ones) it writes that source clip, translation, rotation, scale and weights, on the source skeleton, so the scene must carry no animation, node overrides or motion.
 `node scripts/smoke-glb-export.mjs cpu` runs a patterned recipe, the robot with IK and its Walking clip through the real server and leaves the files in `artifacts/`.
 
@@ -179,10 +182,10 @@ These two functions are library calls; the `scene_export_glb` tool still writes 
 
 ## Limits
 
-Recipe motion tracks are not converted to clips, and an imported clip cannot be combined with IK or node overrides in the MCP tool.
+Node `visible` and `opacity`, material, morph, camera, light, sky and effects tracks are not written, nor are area lights, the sun, sky and fog, and an imported clip cannot be combined with IK or node overrides in the MCP tool.
 A glTF mesh with several primitives comes back as one Blender object per part, so Blender counts more objects than the original, with the same bones, actions and materials.
-Material tracks, IK and the camera are not exported; bake IK into rotation tracks first.
-It stores opaque metallic roughness materials without renderer tags, procedural weathering, custom shaders, lighting, cameras, or postprocessing.
+The library `exportGlb` takes `options.camera` and `options.lights` the same way; `options.clips` is the only motion it writes. Material tracks and IK are not exported by `exportGlb`; bake IK into rotation tracks first.
+It stores opaque metallic roughness materials without renderer tags, procedural weathering, custom shaders, the sun and sky, area lights, or postprocessing.
 It does not promise identical rendered pixels across tools.
 Materials tagged `unlit` still export through this documented metallic roughness snapshot contract.
 The writer refuses accessor data that would make an invalid file: NaN or Infinity where bounds are computed (positions, normals, colours, morph targets) and a length that is not a multiple of the component count. An empty accessor is written without `min` and `max`.

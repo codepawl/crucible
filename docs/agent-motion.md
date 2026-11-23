@@ -433,7 +433,7 @@ position, so vertices split at a hard edge get identical weights and seams never
 and `jointAxisProblems` (`zero-length`, `straight-chain`, `knee-bends-backward`, `elbow-bends-forward`).
 
 `scene_export_glb` writes the bones at rest, the skins and a clip named `motion` baked at 30 frames a second from tracks and
-IK (bone nodes only). In code, `scene.rigExport()` returns the `nodes` and `clips` options for `exportGlb`. Skinned parts render and export their
+IK (bone nodes, and the node translation, rotation and scale tracks of other parts, as their world transform). In code, `scene.rigExport()` returns the `nodes` and `clips` options for `exportGlb`. Skinned parts render and export their
 bone-driven shape; the node transform of a skinned mesh does not move it, move the armature instead. The `rigged-walker`
 task in `bench/agent-modeling` builds and walks a character this way.
 

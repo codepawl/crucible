@@ -1,4 +1,5 @@
-import { blendOutputGlsl } from './blend-output.js';
+import { blendOutputGlsl, withBlendCoverage } from './blend-output.js';
+import { TANGENT_CODE_MINIMUM } from './tangent-encoding.js';
 import { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './light-limits.js';
 import { registeredFeatureCode, requireFeatureCode, registerShaderFeatureCode, registerSplatSupport, requireSplatSupport, layerTextureSupport, viewTransformShader, SPLAT_UNITS } from './shader-registry.js';
 
@@ -65,14 +66,72 @@ layout(location=7) in vec4 instanceNormalMiddle;
 ${PACKED_COLOR_DECLARATION}
 #define instanceNormal mat3(instanceNormalHead.xyz, vec3(instanceNormalHead.w, instanceNormalMiddle.xy), vec3(instanceNormalMiddle.zw, instanceNormalTail.x))`;
 
+/**
+ * The geometry feature for vertex tangents (a normal map on a geometry with `tangents`). It is not in SHADER_FEATURES: a shader
+ * built without it keeps the exact text it had before, and the renderer adds it for the parts that carry tangents.
+ */
+export const TANGENT_FEATURE = 'tangents';
+const TANGENT_ABSENT = { normalDeclaration: 'layout(location=1) in vec3 normal;\n', varying: '', mainStart: '', transform: '' };
+
+// The tangent code rides in the fourth float of the normal attribute (src/tangent-encoding.js has the encoder and the same angle
+// basis). A direction transforms with the model and joint matrices, not with the normal matrix, and its handedness flips with a mirrored model.
+const TANGENT_VERTEX_CODE = {
+  normalDeclaration: 'layout(location=1) in vec4 normalAndTangentCode;\n',
+  varying: 'out vec4 worldTangent;\n',
+  mainStart: '  vec3 normal = normalAndTangentCode.xyz;\n',
+  transform: `  worldTangent = vec4(0.0);
+  if (abs(normalAndTangentCode.w) > ${TANGENT_CODE_MINIMUM}) {
+    vec3 unitNormal = normalize(normal);
+    vec3 helper = abs(unitNormal.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    vec3 referenceFirst = normalize(cross(helper, unitNormal));
+    vec3 referenceSecond = cross(unitNormal, referenceFirst);
+    float tangentAngle = abs(normalAndTangentCode.w) - ${2 + Math.PI};
+    vec3 localTangent = cos(tangentAngle) * referenceFirst + sin(tangentAngle) * referenceSecond;
+    mat3 directionMatrix = mat3(instanceMatrix) * ((USES_SKIN || USES_CROWD) ? mat3(deformation) : mat3(1.0));
+    float mirror = determinant(directionMatrix) < 0.0 ? -1.0 : 1.0;
+    worldTangent = vec4(directionMatrix * localTangent, (normalAndTangentCode.w < 0.0 ? -1.0 : 1.0) * mirror);
+  }
+`,
+};
+
+// Fragment side: the interpolated tangent frame replaces the screen-derivative one where the vertices carry tangents. A vertex without
+// one leaves worldTangent at zero, so a draw that mixes geometries with and without tangents still shades each correctly.
+function tangentFragmentCode(normalUv) {
+  return {
+  declarations: 'in vec4 worldTangent;\n',
+  tangentFrame: `// A glTF frame: bitangent = cross(normal, tangent) * handedness. The back face of a double-sided surface flips tangent and bitangent with the normal.
+vec3 suppliedMappedNormal(vec3 normal) {
+  vec3 tangent = worldTangent.xyz - normal * dot(normal, worldTangent.xyz);
+  float tangentLength = length(tangent);
+  if (tangentLength < 1e-6) return vec3(0.0);
+  float side = dot(normal, worldNormal) < 0.0 ? -1.0 : 1.0;
+  vec3 bitangent = normalize(cross(normal, worldTangent.xyz)) * worldTangent.w;
+  tangent = tangent / tangentLength * side;
+  vec2 normalCoordinates = mapUV(hasNormalMap);
+  vec3 sampled = texture(normalMap, normalCoordinates${normalUv}).xyz * 2.0 - 1.0;
+  float filteredLength = clamp(length(sampled), 0.05, 1.0);
+  normalMapVariance = (1.0 - filteredLength) / filteredLength;
+  sampled.xy *= normalScale;
+  vec3 mapped = mat3(tangent, bitangent, normal) * sampled;
+  return dot(mapped, mapped) > 1e-12 ? normalize(mapped) : normal;
+}
+`,
+  suppliedTangent: `  if (worldTangent.w != 0.0) {
+    vec3 supplied = suppliedMappedNormal(normal);
+    if (dot(supplied, supplied) > 0.0) return supplied;
+  }
+`,
+  };
+}
+
 function vertexShaderSource(definitions, features) {
   const retro = new Set(features).has('retro') ? requireFeatureCode('retro') : {};
+  const tangent = new Set(features).has(TANGENT_FEATURE) ? TANGENT_VERTEX_CODE : TANGENT_ABSENT;
   return `#version 300 es
 ${definitions}
 precision highp float;
 layout(location=0) in vec3 position;
-layout(location=1) in vec3 normal;
-layout(location=2) in mat4 instanceMatrix;
+${tangent.normalDeclaration}layout(location=2) in mat4 instanceMatrix;
 ${PACKED_NORMAL_AND_COLOR_DECLARATIONS}
 layout(location=10) in vec4 instanceSurface;
 layout(location=11) in vec3 assemblyOffset;
@@ -90,7 +149,7 @@ uniform float explosionProgress;
 uniform vec3 explosionCenter;
 uniform float assemblyAmount;
 out vec3 worldPosition, worldNormal;
-#ifdef INSTANCED
+${tangent.varying}#ifdef INSTANCED
 flat out vec3 baseColor;
 flat out vec4 surface;
 flat out vec4 instanceEmission;
@@ -113,7 +172,7 @@ ${skinningShader(features)}
 ${morphingShader(features)}
 ${windShader(features)}
 void main() {
-  // A crowd batch reads its joints and weights from the colour attribute, which then carries no tint.
+${tangent.mainStart}  // A crowd batch reads its joints and weights from the colour attribute, which then carries no tint.
   vec2 uv = uvSets.xy;
   mat4 deformation = USES_CROWD ? crowdTransform() : (USES_SKIN ? skinTransform() : mat4(1.0));
   vec4 world = instanceMatrix * deformation * vec4(USES_MORPH ? morphedPosition(position) : position, 1.0);
@@ -129,7 +188,7 @@ void main() {
   vec3 localNormal = USES_MORPH ? morphedNormal(normal) : normal;
   vec3 deformedNormal = (USES_SKIN || USES_CROWD) ? transpose(inverse(mat3(deformation))) * localNormal : localNormal;
   worldNormal = normalize(instanceNormal * deformedNormal);
-  // Metres along the object's own axes: a pattern follows its node and ignores scale.
+${tangent.transform}  // Metres along the object's own axes: a pattern follows its node and ignores scale.
   if (${new Set(features).has('boxMapScale') || new Set(features).has('emissionMask')}) {
   boxPosition = (USES_MORPH ? morphedPosition(position) : position) * vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
   boxNormal = deformedNormal;
@@ -276,7 +335,8 @@ export function createDepthFragmentShader(features = []) {
   if (!new Set(features).has('tintedShadows')) return code;
   return code
     .replace('precision highp float;', () => `precision highp float;\n${TINT_FRAGMENT_DECLARATIONS}`)
-    .replace('void main() {\n', () => TINT_FRAGMENT_BRANCH);
+    // A clip plane test (clip-planes.js) comes first, so a clipped caster tints nothing either.
+    .replace(/void main\(\) \{\n((?:  discardClipped\(\w+\);\n)?)/, (_start, clipTest) => TINT_FRAGMENT_BRANCH.replace('void main() {\n', (start) => start + clipTest));
 }
 
 export const benchmarkVertexShader = `#version 300 es
@@ -609,9 +669,9 @@ vec3 boxMappedNormal(vec3 normal) {
 // Toksvig variance: a normal map mip averages texels that disagree, so the filtered normal is shorter than 1.
 // The shortfall is the detail the pixel can no longer resolve, and it widens the highlight instead of sparkling.
 float normalMapVariance = 0.0;
-
+${featureCode("tangentFrame")}
 vec3 mappedNormal(vec3 normal) {
-  vec3 positionX = dFdx(worldPosition);
+${featureCode("suppliedTangent")}  vec3 positionX = dFdx(worldPosition);
   vec3 positionY = dFdy(worldPosition);
   vec2 normalCoordinates = mapUV(hasNormalMap);
   vec2 uvX = dFdx(normalCoordinates);
@@ -747,7 +807,7 @@ vec3 renderPassValue(vec3 color, vec3 normal, vec3 emission) {
 }
 
 void main() {
-#ifdef SHADOW_IN_FRAGMENT
+${featureCode("mainStart")}#ifdef SHADOW_IN_FRAGMENT
   shadowPosition = lightProjection * vec4(worldPosition, 1.0);
 #endif
   vec3 normal = normalize(worldNormal);
@@ -1045,6 +1105,7 @@ export function liquidPassDrawer() {
 
 function hasSeparateCode(feature) {
   if (feature in MODULE_FEATURES) return true;
+  if (feature === TANGENT_FEATURE) return false;
   if (feature in SHADER_FEATURE_CONDITIONS || feature === LIGHT_SHADING_FEATURE || feature === FRAGMENT_SHADOW_POSITION_FEATURE) return false;
   return !ENVIRONMENT_FEATURES.includes(feature) && !VERTEX_ONLY_FEATURES.includes(feature);
 }
@@ -1056,6 +1117,7 @@ function featureCodeSplicer(features) {
     if (!enabled.has(feature)) codes.push(stub);
   }
   if (WORLD_MATERIAL_FEATURES.some(feature => enabled.has(feature))) codes.push(requireFeatureCode('worldMaterials'));
+  if (enabled.has(TANGENT_FEATURE)) codes.push(tangentFragmentCode(enabled.has('normalMapTransform') ? requireFeatureCode('normalMapTransform').normalUv ?? '' : ''));
   codes.push(enabled.has('environmentMap') ? registeredFeatureCode.get('environmentMap') ?? ENVIRONMENT_STUB : ENVIRONMENT_STUB);
   return slot => codes.map(code => code[slot] ?? '').join('');
 }
@@ -1098,7 +1160,8 @@ export function createFragmentShader(features = SHADER_FEATURES) {
   lines.push(`#define ENVIRONMENT_ENABLED ${environmentCondition(enabled)}`);
   // Not in SHADER_FEATURES: the preset is chosen by the renderer, so a shader built from every feature keeps the full look.
   lines.push(`#define LIGHT_SHADING ${enabled.has(LIGHT_SHADING_FEATURE) ? 'true' : 'false'}`);
-  return buildFragmentShader(lines.join('\n'), featureCodeSplicer([...enabled]));
+  const source = buildFragmentShader(lines.join('\n'), featureCodeSplicer([...enabled]));
+  return enabled.has('alphaMode') ? withBlendCoverage(source) : source;
 }
 
 export const fragmentShader = createFragmentShader();

@@ -15,7 +15,7 @@
   ],
   "positions": "4a029d66e2324bbc",
   "normals": "585e151fd04c4ebc",
-  "uvs": "f39ed52c122eb06f",
+  "uvs": "a0c2c6356d7d49fc",
   "indices": "6667553a7e7a43c8"
  },
  "lathe-half-sweep": {
@@ -34,7 +34,7 @@
   ],
   "positions": "fdbd2dbd3327a83e",
   "normals": "5a9273bdd7c8fa47",
-  "uvs": "ab378c725e30ffda",
+  "uvs": "a93a115165e6a183",
   "indices": "81449012a001cb45"
  },
  "lathe-quarter-offset": {
@@ -53,7 +53,7 @@
   ],
   "positions": "4f2f186dff762693",
   "normals": "bf0c014bf0eaa79c",
-  "uvs": "eca54d5498e351ad",
+  "uvs": "283eb703fc83acdf",
   "indices": "b4b12f5fd28d306a"
  },
  "lathe-pipe": {
@@ -72,7 +72,7 @@
   ],
   "positions": "d12ba8dce57d8046",
   "normals": "faca756a9a830516",
-  "uvs": "b4c63937f9addce7",
+  "uvs": "db7cbe20019e8133",
   "indices": "897e3ea251c175b0"
  },
  "lathe-vase": {
@@ -91,7 +91,7 @@
   ],
   "positions": "555de2b8412961a6",
   "normals": "caa3fcd0d6fffea1",
-  "uvs": "ba0c38080e73ec71",
+  "uvs": "049d98454ba6faf2",
   "indices": "b73fc82a9ebf7c73"
  },
  "lathe-large-angle": {
@@ -110,7 +110,7 @@
   ],
   "positions": "3f16a97ea5d9be5a",
   "normals": "0ceeeda27372e240",
-  "uvs": "ab378c725e30ffda",
+  "uvs": "a93a115165e6a183",
   "indices": "81449012a001cb45"
  },
  "lathe-cone-tip": {
@@ -129,7 +129,7 @@
   ],
   "positions": "d55b8a386442f60b",
   "normals": "b76423c1a1864d17",
-  "uvs": "7b8f695143e5b9a6",
+  "uvs": "7b6d98b75a5013dc",
   "indices": "a4b4f8db7133a583"
  },
  "lathe-tilted-profile": {
@@ -148,7 +148,7 @@
   ],
   "positions": "831776d2da0b9657",
   "normals": "feb66575e6a69c05",
-  "uvs": "86ef86dc2c47c8e7",
+  "uvs": "9b1dacf3f49207dd",
   "indices": "9a927e78ce1646ab"
  },
  "extrude-square": {
@@ -392,7 +392,7 @@
   ],
   "positions": "1e21eb78f8cd2aa2",
   "normals": "b83eb84ea029546c",
-  "uvs": "1eca9572bdc2f273",
+  "uvs": "d154fae48f12ea55",
   "indices": "8450f32c6d45ad35"
  },
  "tube-closed": {
@@ -411,7 +411,7 @@
   ],
   "positions": "e1f01e9ad7e89980",
   "normals": "4a0c7043a49646fa",
-  "uvs": "a4f13ef46796bc2a",
+  "uvs": "a5d68632dcee632a",
   "indices": "1a55be1da0a62345"
  },
  "tube-cable": {
@@ -430,7 +430,7 @@
   ],
   "positions": "fa4f4562b4a43a42",
   "normals": "7934dbddf85e99b3",
-  "uvs": "f7da278e7f87f3af",
+  "uvs": "b15c3106f8183366",
   "indices": "cf39ce4fab7d0386"
  },
  "tube-bend": {
@@ -449,7 +449,7 @@
   ],
   "positions": "80fbaea3f92246a2",
   "normals": "d043429bcf2f1485",
-  "uvs": "64c426c180f9e615",
+  "uvs": "d9fb8f31f90456e2",
   "indices": "51a22de4c5aa6497"
  },
  "tube-helix": {
@@ -468,7 +468,7 @@
   ],
   "positions": "c2f92fd722aa97e2",
   "normals": "f06b959e051d4bff",
-  "uvs": "46b684e00b1aae89",
+  "uvs": "a558831eec25d6f9",
   "indices": "7da571c696f81a0d"
  },
  "tube-uneven-spacing": {
@@ -487,7 +487,7 @@
   ],
   "positions": "fe9c7e1c066313f2",
   "normals": "bdce0b6e190077df",
-  "uvs": "42e94cc5633db7ca",
+  "uvs": "f9e4fb82aaaaaa4e",
   "indices": "ec303c0abfbef03c"
  },
  "tube-closed-loop-plane": {
@@ -506,7 +506,7 @@
   ],
   "positions": "6872a7cc8e9bd14c",
   "normals": "17b020d043ebd7a0",
-  "uvs": "fb71c4d76c33107e",
+  "uvs": "0239c14f2d78dfd4",
   "indices": "333ac23b4896135b"
  }
 }

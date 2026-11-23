@@ -28,7 +28,7 @@ function settingsFor(overrides) {
 
 test('scene size counts every placed node, textures and lights', () => {
   const size = sceneSizeFrom(inspection({ nodeCount: 10, trianglesEach: 1200 }), recipe);
-  assert.deepEqual(size, { parts: 10, assetParts: 0, triangles: 12000, listedTriangles: 12000, materials: 3, textures: 2, lights: 4 });
+  assert.deepEqual(size, { parts: 10, assetParts: 0, assetMiB: 0, nodes: 10, triangles: 12000, listedTriangles: 12000, materials: 3, textures: 2, lights: 4 });
 });
 
 test('a truncated node list is scaled up to the part count', () => {
@@ -162,6 +162,20 @@ test('placed assets and generated geometry count even though they have no node o
     > 3 * estimateRenderJob({ size: sceneSizeFrom(cubeOnly, recipe), settings, backend: 'gpu' }).seconds);
 });
 
+test('placed asset files and motion sampling add time that triangle counts alone miss (#2286)', () => {
+  const withoutAssets = sceneSizeFrom(inspection({ nodeCount: 120, trianglesEach: 1000 }), recipe);
+  const withAssets = sceneSizeFrom(inspection({ nodeCount: 120, trianglesEach: 1000 }), recipe, { assetFileBytes: 10 * 1024 ** 2 });
+  assert.equal(withoutAssets.assetMiB, 0);
+  assert.equal(withAssets.assetMiB, 10);
+  assert.equal(withAssets.nodes, 120);
+  const still = { ...settingsFor({}), frameCount: 8 };
+  const moving = { ...still, motion: { start: 0 } };
+  const seconds = (size, settings) => estimateRenderJob({ size, settings, backend: 'gpu' }).seconds;
+  assert.ok(seconds(withAssets, still) - seconds(withoutAssets, still) > 8 * 0.5, 'ten MiB of placed files costs setup and a part of every frame');
+  assert.ok(seconds(withoutAssets, moving) - seconds(withoutAssets, still) > 1, 'a moving camera samples every node on every frame');
+  assert.equal(estimateRenderJob({ size: withAssets, settings: still, backend: 'gpu' }).scene.assetMiB, 10);
+});
+
 test('the concise result keeps seconds, the estimate ratio and fallbacks, and drops the rest of the report', () => {
   const settings = settingsFor({ renderer: { type: 'pathTracer', backend: 'native', samples: 64 } });
   const metrics = { elapsedSeconds: 3, peakNodeBytes: 2 ** 28, peakBrowserHeap: 2 ** 26, pathTracer: { averageSamples: 64, backendNote: 'The gpu backend ran instead.' } };
@@ -174,14 +188,37 @@ test('the concise result keeps seconds, the estimate ratio and fallbacks, and dr
   assert.deepEqual(quiet.metrics.report, { seconds: 1 });
 });
 
-test('a job that ran at a smaller size than requested is not added to the history', () => {
+test('a job that ran at a smaller size than requested is compared with the model at the size that ran (#2286)', () => {
   const settings = settingsFor({ width: 1920, height: 1080 });
-  const estimate = { modelSeconds: 1, modelPeakMemoryMiB: 200, seconds: 1, peakMemoryMiB: 200, basis: 'scene size' };
+  const size = sceneSizeFrom(inspection({ nodeCount: 5, trianglesEach: 500 }), recipe);
+  const estimate = estimateRenderJob({ size, settings, backend: 'gpu' });
   const reduced = renderReport({ estimate, settings, metrics: { elapsedSeconds: 1, requestedWidth: 1920, requestedHeight: 1080, width: 960, height: 540 } });
   assert.equal(reduced.frameReduced, true);
-  assert.deepEqual(historyWithJob([], { settings, backend: 'gpu', estimate, report: reduced }), []);
+  const [entry] = historyWithJob([], { settings, backend: 'gpu', estimate, report: reduced, ranSize: { width: 960, height: 540 } });
+  const atRanSize = estimateRenderJob({ size, settings: { ...settings, width: 960, height: 540 }, backend: 'gpu' });
+  assert.equal(entry.estimatedSeconds, atRanSize.modelSeconds);
+  assert.ok(entry.estimatedSeconds < estimate.modelSeconds);
+  assert.equal(entry.estimatedPeakMemoryMiB, atRanSize.modelPeakMemoryMiB);
   const normal = renderReport({ estimate, settings, metrics: { elapsedSeconds: 1, requestedWidth: 1920, requestedHeight: 1080, width: 1920, height: 1080 } });
-  assert.equal(historyWithJob([], { settings, backend: 'gpu', estimate, report: normal }).length, 1);
+  assert.equal(historyWithJob([], { settings, backend: 'gpu', estimate, report: normal })[0].estimatedSeconds, estimate.modelSeconds);
+});
+
+test('jobs that always run reduced still move the next estimate toward the measured time (#2286)', () => {
+  const settings = settingsFor({ width: 1080, height: 1080 });
+  const size = sceneSizeFrom(inspection({ nodeCount: 5, trianglesEach: 500 }), recipe);
+  const ranSize = { width: 985, height: 985 };
+  const measuredSeconds = 12;
+  const first = estimateRenderJob({ size, settings, backend: 'gpu' });
+  assert.ok(measuredSeconds / first.seconds > 3);
+  let history = [];
+  for (let run = 0; run < 2; run++) {
+    const report = renderReport({ estimate: first, settings, metrics: { elapsedSeconds: measuredSeconds, requestedWidth: 1080, requestedHeight: 1080, ...ranSize } });
+    history = historyWithJob(history, { settings, backend: 'gpu', estimate: first, report, ranSize });
+  }
+  assert.equal(history.length, 2);
+  const next = estimateRenderJob({ size, settings, backend: 'gpu', history });
+  assert.ok(next.seconds > first.seconds * 2);
+  assert.ok(Math.abs(Math.log(measuredSeconds / next.seconds)) < Math.abs(Math.log(measuredSeconds / first.seconds)));
 });
 
 test('the basis names the jobs folder, a clamped time factor and missing memory history', () => {

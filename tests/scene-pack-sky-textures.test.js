@@ -19,7 +19,7 @@ const BIG_SKY_ID = 'e'.repeat(64);
 // These bytes were measured on origin/main before the sky and image work: a recipe with neither must still pack to them.
 const PLAIN_PACK = Object.freeze({
   bytes: 148120,
-  sha256: '3c4ca6ee9bb2bd7f2fcc0022ed868779ea963c8e2d928abf37138472e304934b',
+  sha256: 'ada4797627d9812c6589d2e8fc4869baf2dfad3d6e6feb7a7172ea70d7eaffa1',
 });
 
 function plainRecipe() {

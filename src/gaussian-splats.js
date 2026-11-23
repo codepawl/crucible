@@ -4,6 +4,7 @@ import { createSplatSorter } from './gaussian-splat-sort.js';
 import { runInChunks } from './gaussian-splat-chunks.js';
 import { GAUSSIAN_SPLAT_HARD_COUNT_LIMIT, GAUSSIAN_SPLAT_LIMITS, parseGaussianSplatPly, parseGaussianSplatPlyAsync } from './gaussian-splat-ply.js';
 import { parseGaussianSplatSpz, parseGaussianSplatSpzAsync } from './gaussian-splat-spz.js';
+import { checkCovarianceFinite, covarianceOf, DATA_TEXTURE_WIDTH, resolveSplatUpdate, TEXELS_PER_SPLAT, WORDS_PER_TEXEL, writeSplatUpdate } from './gaussian-splat-update.js';
 import { buildPaletteFragmentSource, resolveSplatPalette } from './splat-palette.js';
 import { buildOutlineVertexSource, OUTLINE_FRAGMENT_SOURCE, resolveSplatOutline } from './splat-outline.js';
 import { HARMONIC_SHADER_SOURCE, harmonicCoefficientsPerChannel, harmonicTexelsPerSplat, SPHERICAL_HARMONIC_MAXIMUM_DEGREE, toHalfFloatBits } from './gaussian-splat-harmonics.js';
@@ -22,9 +23,6 @@ export { GAUSSIAN_SPLAT_HARD_COUNT_LIMIT, GAUSSIAN_SPLAT_LIMITS, parseGaussianSp
 // word, read by the vertex shader for the direction from the eye.
 // The only per-frame upload is the sort order, one 32-bit index per visible splat.
 
-const DATA_TEXTURE_WIDTH = 2048;
-const TEXELS_PER_SPLAT = 3;
-const WORDS_PER_TEXEL = 4;
 const MAXIMUM_SPLAT_COUNT = GAUSSIAN_SPLAT_HARD_COUNT_LIMIT;
 const DATA_TEXTURE_UNIT = 10;
 const HARMONIC_TEXTURE_UNIT = 11;
@@ -145,29 +143,8 @@ void main() {
 const UNIFORM_NAMES = ['splatData', 'modelView', 'projection', 'focal', 'viewport', 'hdrEnabled', 'exposure', 'alphaCut', 'harmonicData', 'harmonicDegree', 'harmonicTexels', 'eyeModel'];
 export const GAUSSIAN_SPLAT_SHADER_SOURCES = Object.freeze({ vertex: VERTEX_SOURCE, fragment: FRAGMENT_SOURCE, opaqueFragment: OPAQUE_FRAGMENT_SOURCE });
 
-// A quaternion of any length stands for the rotation of its unit version; all zero stands for no rotation.
-function unitQuaternion(rotations, index) {
-  const [w, x, y, z] = rotations.subarray(index * 4, index * 4 + 4);
-  const length = Math.hypot(w, x, y, z);
-  if (!(length > 0) || !Number.isFinite(length)) return length === 0 ? [1, 0, 0, 0] : [w, x, y, z];
-  return [w / length, x / length, y / length, z / length];
-}
-
-function covarianceOf(scales, rotations, index) {
-  const [w, x, y, z] = unitQuaternion(rotations, index);
-  const rotation = [
-    1 - 2 * (y * y + z * z), 2 * (x * y + w * z), 2 * (x * z - w * y),
-    2 * (x * y - w * z), 1 - 2 * (x * x + z * z), 2 * (y * z + w * x),
-    2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y),
-  ];
-  // rotation is stored by columns; scaling the columns by the axis lengths gives M = R S.
-  const scaled = rotation.map((value, entry) => value * scales[index * 3 + Math.floor(entry / 3)]);
-  const product = (row, column) => scaled[row] * scaled[column] + scaled[3 + row] * scaled[3 + column] + scaled[6 + row] * scaled[6 + column];
-  return [product(0, 0), product(0, 1), product(0, 2), product(1, 1), product(1, 2), product(2, 2)];
-}
-
-function createSplatPacker(data) {
-  const texelCount = data.count * TEXELS_PER_SPLAT;
+function createSplatPacker(data, capacity) {
+  const texelCount = capacity * TEXELS_PER_SPLAT;
   const rows = Math.ceil(texelCount / DATA_TEXTURE_WIDTH);
   const words = new Uint32Array(rows * DATA_TEXTURE_WIDTH * WORDS_PER_TEXEL);
   const floats = new Float32Array(words.buffer);
@@ -178,9 +155,7 @@ function createSplatPacker(data) {
       floats.set(data.positions.subarray(index * 3, index * 3 + 3), base);
       words[base + 3] = colorWords[index];
       const covariance = covarianceOf(data.scales, data.rotations, index);
-      if (!covariance.every(value => Number.isFinite(Math.fround(value)))) {
-        throw new RangeError(`Gaussian splat ${index} has a covariance that overflows 32-bit floats (its scales or rotation are non-finite or too large). Re-export the file or drop that splat.`);
-      }
+      checkCovarianceFinite(covariance, index);
       floats.set(covariance, base + 4);
     }
   }
@@ -285,6 +260,15 @@ function resolveMatrix(matrix, caller) {
   return matrix;
 }
 
+// How many splats the set can hold: `options.capacity` when given (room to grow with `update`), else exactly `count`.
+function resolveCapacity(capacity, count, limit, caller) {
+  if (capacity === undefined) return count;
+  if (!Number.isInteger(capacity) || capacity < count || capacity > limit) {
+    throw new RangeError(`${caller} capacity must be a whole number from the splat count (${count}) to ${limit}, got ${String(capacity)}. Pass the most splats you will ever update the set to, or leave it out for exactly ${count}`);
+  }
+  return capacity;
+}
+
 function checkSplatInput(data, maximumCount, caller) {
   if (!(typeof maximumCount === 'number' && maximumCount > 0)) {
     throw new RangeError(`maximumCount must be a positive number (it is capped at ${MAXIMUM_SPLAT_COUNT}), got ${String(maximumCount)}`);
@@ -296,6 +280,7 @@ function checkSplatInput(data, maximumCount, caller) {
   for (const description of SPLAT_ARRAYS) checkSplatArray(data, description, caller);
   checkSplatHarmonics(data, caller);
   checkSplatBounds(data.bounds, caller);
+  return limit;
 }
 
 function resolveAlphaCut(alphaCut, caller) {
@@ -311,10 +296,11 @@ function resolveSplatLook(options, caller) {
   return { alphaCut, palette: resolveSplatPalette(options.palette, options.dither, alphaCut, caller), outline: resolveSplatOutline(options.outline, alphaCut, caller) };
 }
 
-function buildSplats(data, matrix, packed, { alphaCut, palette, outline }) {
-  const sorter = createSplatSorter(data.positions, data.count, data.bounds);
-  const statistics = { count: data.count, visibleCount: 0, sortMilliseconds: 0, gpuBytes: 0, cpuBytes: data.positions.byteLength + data.count * 8 };
-  return { count: data.count, matrix: mat4.clone(matrix), bounds: data.bounds, statistics, packed, sorter, alphaCut, palette, outline };
+function buildSplats(data, matrix, packed, capacity, { alphaCut, palette, outline }) {
+  const sorter = createSplatSorter(data.positions, data.count, data.bounds, capacity);
+  const statistics = { count: data.count, visibleCount: 0, sortMilliseconds: 0, gpuBytes: 0, cpuBytes: data.positions.byteLength + capacity * 8 };
+  // `centres` is the caller's array until the first update that moves a splat, then a copy of its own.
+  return { count: data.count, capacity, matrix: mat4.clone(matrix), bounds: data.bounds, statistics, packed, sorter, alphaCut, palette, outline, centres: data.positions, ownsCentres: false, harmonicBands: Boolean(packed.harmonics) };
 }
 
 /**
@@ -335,12 +321,13 @@ function buildSplats(data, matrix, packed, { alphaCut, palette, outline }) {
 export function createGaussianSplats(data, options) {
   const resolvedOptions = resolveSplatOptions(options, 'createGaussianSplats');
   const { maximumCount = GAUSSIAN_SPLAT_LIMITS.maximumCount } = resolvedOptions;
-  checkSplatInput(data, maximumCount, 'createGaussianSplats');
+  const limit = checkSplatInput(data, maximumCount, 'createGaussianSplats');
+  const capacity = resolveCapacity(resolvedOptions.capacity, data.count, limit, 'createGaussianSplats');
   const matrix = resolveMatrix(resolvedOptions.matrix, 'createGaussianSplats');
   const look = resolveSplatLook(resolvedOptions, 'createGaussianSplats');
-  const { packRange, packed } = createSplatPacker(data);
+  const { packRange, packed } = createSplatPacker(data, capacity);
   packRange(0, data.count);
-  return buildSplats(data, matrix, packed, look);
+  return buildSplats(data, matrix, packed, capacity, look);
 }
 
 /**
@@ -351,12 +338,13 @@ export function createGaussianSplats(data, options) {
 export async function createGaussianSplatsAsync(data, rawOptions) {
   const options = resolveSplatOptions(rawOptions, 'createGaussianSplatsAsync');
   const { maximumCount = GAUSSIAN_SPLAT_LIMITS.maximumCount } = options;
-  checkSplatInput(data, maximumCount, 'createGaussianSplatsAsync');
+  const limit = checkSplatInput(data, maximumCount, 'createGaussianSplatsAsync');
+  const capacity = resolveCapacity(options.capacity, data.count, limit, 'createGaussianSplatsAsync');
   const matrix = resolveMatrix(options.matrix, 'createGaussianSplatsAsync');
   const look = resolveSplatLook(options, 'createGaussianSplatsAsync');
-  const { packRange, packed } = createSplatPacker(data);
+  const { packRange, packed } = createSplatPacker(data, capacity);
   await runInChunks(data.count, options, 'createGaussianSplatsAsync', packRange);
-  return buildSplats(data, matrix, packed, look);
+  return buildSplats(data, matrix, packed, capacity, look);
 }
 
 function uploadWordTexture(context, unit, rows, words) {
@@ -389,7 +377,7 @@ function createGpuResources(context, splats) {
   const texture = uploadWordTexture(context, DATA_TEXTURE_UNIT, rows, words);
   const orderBuffer = context.createBuffer();
   context.bindBuffer(context.ARRAY_BUFFER, orderBuffer);
-  context.bufferData(context.ARRAY_BUFFER, splats.count * 4, context.DYNAMIC_DRAW);
+  context.bufferData(context.ARRAY_BUFFER, splats.capacity * 4, context.DYNAMIC_DRAW);
   const vertexArray = context.createVertexArray();
   context.bindVertexArray(vertexArray);
   context.enableVertexAttribArray(0);
@@ -397,7 +385,7 @@ function createGpuResources(context, splats) {
   context.vertexAttribDivisor(0, 1);
   context.bindVertexArray(null);
   const harmonicBytes = harmonics ? splats.packed.harmonics.words.byteLength : 0;
-  splats.statistics.gpuBytes = words.byteLength + splats.count * 4 + harmonicBytes;
+  splats.statistics.gpuBytes = words.byteLength + splats.capacity * 4 + harmonicBytes;
   splats.packed = null;
   return { texture, orderBuffer, vertexArray, rows, harmonics };
 }
@@ -647,11 +635,73 @@ export function attachGaussianSplats(renderer, splats) {
   attachments.set(renderer, attachment);
   const entry = { splats, ...createGpuResources(renderer.context, splats) };
   attachment.entries.add(entry);
-  return function detachGaussianSplats() {
+  function detachGaussianSplats() {
     if (!attachment.entries.delete(entry)) return;
     splats.packed = readPackedBack(renderer.context, entry);
     splats.statistics.gpuBytes = 0;
     releaseEntry(renderer.context, entry);
     if (attachment.entries.size === 0 && attachments.get(renderer) === attachment) releaseAttachment(renderer, attachment);
-  };
+  }
+  detachGaussianSplats.update = change => updateAttachedSplats(renderer, attachment, entry, change);
+  return detachGaussianSplats;
+}
+
+// Keeps a CPU copy of the data texture for the first update, read back once, so a range can be rewritten and its rows re-uploaded.
+function ensureWordMirror(context, entry) {
+  if (context.isContextLost?.()) throw new Error('The WebGL context is lost, so these splats cannot be updated. Create them again after the context is restored');
+  entry.mirror ??= readTextureWords(context, entry.texture, entry.rows);
+  return entry.mirror;
+}
+
+// Centres feed the sorter; they are copied out of the caller's array before the first change so the caller's data stays theirs.
+function ensureOwnCentres(splats) {
+  if (splats.ownsCentres) return;
+  const own = new Float32Array(splats.capacity * 3);
+  own.set(splats.centres.subarray(0, splats.count * 3));
+  splats.centres = own;
+  splats.ownsCentres = true;
+  splats.statistics.cpuBytes += own.byteLength;
+}
+
+function boundsOfCentres(centres, count) {
+  const minimum = [Infinity, Infinity, Infinity];
+  const maximum = [-Infinity, -Infinity, -Infinity];
+  for (let index = 0; index < count; index++) {
+    for (let axis = 0; axis < 3; axis++) {
+      const value = centres[index * 3 + axis];
+      if (value < minimum[axis]) minimum[axis] = value;
+      if (value > maximum[axis]) maximum[axis] = value;
+    }
+  }
+  return { minimum, maximum };
+}
+
+function uploadRows(context, entry, { firstRow, endRow }) {
+  if (endRow <= firstRow) return;
+  const rowWords = DATA_TEXTURE_WIDTH * WORDS_PER_TEXEL;
+  context.activeTexture(context.TEXTURE0 + DATA_TEXTURE_UNIT);
+  context.bindTexture(context.TEXTURE_2D, entry.texture);
+  context.texSubImage2D(context.TEXTURE_2D, 0, 0, firstRow, DATA_TEXTURE_WIDTH, endRow - firstRow, context.RGBA_INTEGER, context.UNSIGNED_INT, entry.mirror.subarray(firstRow * rowWords, endRow * rowWords));
+  context.activeTexture(context.TEXTURE0);
+}
+
+function updateAttachedSplats(renderer, attachment, entry, change) {
+  const { splats } = entry;
+  if (!attachment.entries.has(entry)) throw new Error('These splats are detached, so they cannot be updated. Attach them again, or call update on the function the latest attachGaussianSplats returned');
+  const update = resolveSplatUpdate(change, splats);
+  if (update.bounds) checkSplatBounds(update.bounds, 'update');
+  const context = renderer.context;
+  const mirror = ensureWordMirror(context, entry);
+  const movesCentres = update.positions !== null || update.count !== splats.count;
+  if (update.positions) {
+    ensureOwnCentres(splats);
+    splats.centres.set(update.positions.subarray(0, update.length * 3), update.start * 3);
+  }
+  const rows = writeSplatUpdate(mirror, update);
+  uploadRows(context, entry, rows);
+  splats.count = update.count;
+  splats.statistics.count = update.count;
+  if (update.bounds) splats.bounds = update.bounds;
+  else if (movesCentres) splats.bounds = boundsOfCentres(splats.centres, update.count);
+  splats.sorter.update({ positions: splats.centres, count: update.count, bounds: splats.bounds });
 }

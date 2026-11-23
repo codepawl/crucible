@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 
 import { bvhToGlb } from '../src/bvh-gltf.js';
 import { clipDisplayName } from '../src/clip-name.js';
+import { ASSET_PLACEMENT_LIMITS } from '../src/agent-scene-assets.js';
 import { AGENT_ASSET_LIMITS, assetBytesLimitMessage } from '../src/agent-asset-limits.js';
 import { MAXIMUM_CATALOG_ENVIRONMENT_BYTES, MAXIMUM_CATALOG_LOOK_BYTES } from '../src/look-catalog.js';
 import { imageLimitProblem, readImageDimensions } from '../src/image-header.js';
@@ -421,6 +422,21 @@ export async function fingerprintAssetDirectory(root) {
  * `packFiles` adds the validated GLB, image, .hdr and .cube files of installed packs (scripts/agent-packs.mjs),
  * each `{ directory, filename, assetId, metadata }`. With a null root only pack files are listed.
  */
+const LISTED_FILE_NAMES = 20;
+
+/** Names the files counted against the catalog cap, by extension, so an agent knows which to move out of --assets. */
+function catalogFileCountMessage(names) {
+  const byExtension = new Map();
+  for (const name of names) {
+    const extension = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
+    byExtension.set(extension, (byExtension.get(extension) ?? 0) + 1);
+  }
+  const counts = [...byExtension].map(([extension, count]) => `${count} .${extension}`).join(', ');
+  const listed = names.slice(0, LISTED_FILE_NAMES).join(', ');
+  const more = names.length > LISTED_FILE_NAMES ? `, and ${names.length - LISTED_FILE_NAMES} more` : '';
+  return `Asset catalog has ${names.length} files other than images (${counts}), over its maxAssets ${MAXIMUM_ASSETS}. Counted: ${listed}${more}. Move the GLB, BVH, HDR and CUBE files the project does not use out of the --assets directory (a scene places at most ${ASSET_PLACEMENT_LIMITS.maxAssets} different assets, so unused files only count here). Other files such as .md or .json are never counted.`;
+}
+
 export async function createAgentAssetCatalog(root, packFiles = []) {
   const entries = new Map();
   const skipped = [];
@@ -440,7 +456,7 @@ export async function createAgentAssetCatalog(root, packFiles = []) {
     // Image files are sequence frames, so they have their own cap: a film that changes a texture over time needs thousands.
     const imageFileCount = files.filter(entry => IMAGE_FILE_PATTERN.test(entry.name)).length;
     const otherFileCount = files.length - imageFileCount;
-    if (otherFileCount > MAXIMUM_ASSETS) throw new RangeError(`Asset catalog has ${otherFileCount} files other than images, over its maxAssets ${MAXIMUM_ASSETS}. Remove files from the --assets directory.`);
+    if (otherFileCount > MAXIMUM_ASSETS) throw new RangeError(catalogFileCountMessage(files.filter(entry => !IMAGE_FILE_PATTERN.test(entry.name)).map(entry => entry.name)));
     if (imageFileCount > TEXTURE_SEQUENCE_LIMITS.maxFrames) {
       throw new RangeError(`Asset catalog has ${imageFileCount} image files, over the ${TEXTURE_SEQUENCE_LIMITS.maxFrames} a texture sequence can use. Remove images from the --assets directory.`);
     }

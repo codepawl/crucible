@@ -116,7 +116,7 @@ async function runOnce(options, runIndex) {
     const submittedAt = performance.now();
     const record = await waitForJob(client, submitted.jobId, started, options, runIndex);
     const finished = performance.now();
-    if (record.state !== 'completed') throw new Error(`Job ${record.state}: ${JSON.stringify(record.error ?? record)}`);
+    if (record.state !== 'completed') throw new Error(`Job ${record.state}: ${JSON.stringify(record.reason ?? record)}`);
     const result = await callTool(client, 'scene_render_result', { jobId: submitted.jobId, response_format: 'detailed' });
     const shaped = shapeReport({ options, runIndex, buildSeconds: (built - started) / 1000, submitSeconds: (submittedAt - built) / 1000, jobSeconds: (finished - submittedAt) / 1000, totalSeconds: (finished - started) / 1000, metrics: result?.metrics });
     return { shaped, result };

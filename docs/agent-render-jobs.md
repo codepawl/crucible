@@ -181,6 +181,16 @@ The job metrics carry `metrics.wireframe`: `edges` (the count of each kind over 
 Output is bounded: a mesh contributes at most 200,000 edges and a frame at most 1,000,000. Fault edges are kept before regular ones, a part past the frame limit is left out and counted in `partsOmitted`, and a part with no polygon view (every triangle collapses) is counted in `partsSkipped`.
 The pass is 8-bit like the others, works with `png16` and `exr` and packs into a `multilayer` EXR. It shows rest geometry: skinning and morph targets are not applied to the edges.
 
+#### Use the pass from the library
+
+`import { withWireframe } from '@codepawlhq/crucible/addons/wireframe-pass'` draws the same edges for a renderer you drive yourself: `withWireframe(renderer, renderFrame, options)` runs `renderFrame`, which must draw one `wireframe` pass frame, and returns the report above. The render jobs always use the defaults.
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `faults` | `true` | `false` draws boundary, non-manifold, flipped and degenerate edges as regular edges, for a film or a showcase where a model with split edges should not look broken. The report still counts them |
+| `color` | `[0.06, 0.07, 0.09]` | Three numbers from 0 to 1: the colour of regular edges, and of every edge when `faults` is `false` |
+| `halfWidth` | `0.7` | Half the line width in pixels, above 0 and at most 32, with the same reach as `color` |
+
 The lighting passes hold linear values above 1, so write them as `exr` (a `png` or `png16` file clamps at 1). They add back to the lit image: `diffuse + glossy + emission * exposure` is the radiance before fog, and with an open world the lit image is that radiance mixed toward the fog colour by `mist`, then tone mapped. `tests/lighting-passes.test.js` checks the sum against the beauty frame (mean difference under 1.5 display levels, under 2% of samples off by more than 4). Not covered: unlit parts, the editor floor, parts that a probe or irradiance grid changes after the sky term, and anything the lit image adds after the shader (bloom, grading, depth of field).
 
 `scene_render_result` metrics carry `objectNames`, the part name for ID 1, 2 and so on (the first 1000, with `objectNamesTruncated`), `objectNodes` (`{ "<node id>": [ids] }`: a placed asset with five parts is one node owning five IDs; the first 1000 nodes, with `objectNodesTruncated`), and `depthRangeMetres`.
@@ -461,11 +471,11 @@ Other calls (`scene_inspect`, `scene_apply`) queue behind that handoff, so after
 One server owns one `--jobs` folder. A second server given the same folder fails with "The job store is already owned by a live process", and the error says to start it with its own `--jobs` folder.
 
 The controller rejects odd MP4 dimensions.
-Admission reserves the maximum output budget plus snapshot and metadata space.
+Admission reserves the job's own estimated output (frames, pixels, passes and mattes, with a margin, never more than the output budget) plus snapshot and metadata space.
 The optional `limits` object can reduce controller budgets for bounded tests.
 It cannot increase production limits.
 Partial files count toward the store budget and remain until explicit release.
-Each submit needs room for its snapshot and a full output reservation (128 MiB by default). When the store is too full, the controller first releases completed jobs whose `scene_render_result` was already read, oldest first, and stops as soon as the new job fits; the files of a released job are gone, so copy outputs you keep before you submit the next job. A job whose result was never read is never released this way. If the job still does not fit, the error says how many MiB it needs and how many are free and names `scene_render_release`. A job read before a server restart counts as unread again.
+Each submit needs room for its snapshot and an output reservation sized to that job: a single image holds a few MiB, a 72 frame 1080x1080 stills job about 93 MiB, and nothing holds more than the 128 MiB output budget. When the store is too full, the controller first releases completed jobs whose `scene_render_result` was already read, oldest first, and stops as soon as the new job fits; the files of a released job are gone, so copy outputs you keep before you submit the next job. A job whose result was never read is never released this way. If the job still does not fit, the error says how many MiB it needs and how many are free, and names the three largest finished jobs by id and size to read with `scene_render_result` and free with `scene_render_release`. A job read before a server restart counts as unread again. A job may write more than it reserved, up to the output budget, while the store has room; after each frame past its reservation the job stops with a failed state when one more frame would not fit beside the other jobs, so the store never grows past its total budget.
 
 ## CPU checks
 

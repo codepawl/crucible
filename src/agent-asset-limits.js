@@ -15,7 +15,8 @@ let assetByteLimit = DEFAULT_ASSET_BYTES;
 export const AGENT_ASSET_LIMITS = Object.freeze({
   // Both byte limits follow one number, the 64 MiB default or what --max-asset-bytes set at startup.
   get maxBytes() { return assetByteLimit; },
-  maxAssets: 64,
+  // Catalog index only: how many GLB, BVH, HDR and CUBE files --assets may list. One scene still places at most ASSET_PLACEMENT_LIMITS.maxAssets different ones, so unused variants cost nothing per scene (#2989).
+  maxAssets: 256,
   // The same ceiling for the sum of every asset one call hands to the preview page in one browser message (placed assets,
   // motion sources and sequence frames together). Files that are each under maxBytes can still cross the crash size together.
   get maxCombinedBytes() { return assetByteLimit; },

@@ -42,6 +42,9 @@ export function oceanMesh(mesh, { axis, windSpeed, direction, choppiness, size, 
   for (let vertex = 0; vertex < mesh.vertexCount; vertex++) {
     const restX = positions[vertex * 3 + first];
     const restZ = positions[vertex * 3 + second];
+    // The wake is anchored to the rest grid: sampling it at the swell-displaced position made the foam and its churn change every frame.
+    const wakeX = positions[vertex * 3 + horizontalLow];
+    const wakeZ = positions[vertex * 3 + horizontalHigh];
     setOceanBatchPoint(batch, restX, restZ);
     oceanBatchSurface(batch, surface, foamThreshold);
     positions[vertex * 3 + up] += surface.height;
@@ -55,7 +58,7 @@ export function oceanMesh(mesh, { axis, windSpeed, direction, choppiness, size, 
       sprayVelocity[vertex * 3 + second] = surface.driftZ;
     }
     if (wake?.points.length) {
-      const trail = wakeAt(wake, positions[vertex * 3 + horizontalLow], positions[vertex * 3 + horizontalHigh]);
+      const trail = wakeAt(wake, wakeX, wakeZ);
       positions[vertex * 3 + up] += trail.offset;
       foam[vertex] = Math.max(foam[vertex], trail.foam);
     }

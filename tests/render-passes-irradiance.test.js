@@ -55,7 +55,7 @@ test('a depth pass completes on a scene with an irradiance grid and writes both 
   }, { timeout: 120000 });
   assert.equal(submitted.isError, undefined, submitted.content?.[0]?.text);
   const record = await untilFinished(submitted.structuredContent.jobId);
-  assert.equal(record.state, 'completed', JSON.stringify(record.error ?? record));
+  assert.equal(record.state, 'completed', JSON.stringify(record.reason ?? record));
   assert.deepEqual(record.artifacts, ['render.png', 'render-depth.png']);
   const result = (await client.callTool({ name: 'scene_render_result', arguments: { jobId: record.jobId } })).structuredContent;
   const depthPath = result.artifacts.find(artifact => artifact.filename === 'render-depth.png').path;

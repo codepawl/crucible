@@ -254,8 +254,11 @@ function edgeSampler(positions, indices, weights, sharpAngle) {
 export function createMeshSource(positions, normals, indices, mode, weights = null, sharpAngle = null, vectors = null, threshold = 0) {
   const rawWeights = weights;
   weights = thresholded(weights, threshold);
-  const triangles = trianglesOf(positions, indices, weights);
-  if (!triangles.length) return null;
+  const triangleCount = Math.floor(indices.length / 3);
+  if (!triangleCount) return null;
+  // Only the surface and volume modes draw from triangle records; building one per triangle of a big sea for every sampled ocean time cost seconds (#2823).
+  const needsTriangles = mode === 'volume' || (mode !== 'vertices' && mode !== 'edges');
+  const triangles = needsTriangles ? trianglesOf(positions, indices, weights) : null;
   let sampler = null;
   if (mode === 'vertices') sampler = vertexSampler(positions, normals, weights, vectors);
   else if (mode === 'edges') sampler = edgeSampler(positions, indices, weights, sharpAngle);
@@ -264,7 +267,7 @@ export function createMeshSource(positions, normals, indices, mode, weights = nu
   if (!sampler) return null;
   return Object.freeze({
     mode,
-    triangleCount: triangles.length,
+    triangleCount,
     sample(random) {
       const result = sampler(random);
       if (!result) {

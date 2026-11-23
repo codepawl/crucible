@@ -184,3 +184,16 @@ test('a camera track holds 200 keys, so a 72 frame move needs no thinning', () =
   const normalized = normalizeAgentMotion(motion([{ kind: 'camera', property: 'fov', keyframes }]), recipe);
   assert.equal(normalized.tracks[0].keyframes.length, 200);
 });
+
+test('a keyframe time a rounding error past either end snaps to it; a time clearly outside is still refused', () => {
+  const steps = [];
+  for (let time = 0; time <= 1.5 + 1e-6; time += 0.1) steps.push({ time, value: steps.length / 15 });
+  assert.equal(steps.at(-1).time, 1.5000000000000002, 'the summed steps overshoot the duration');
+  const rounded = { kind: 'material', id: 'bulb', property: 'roughness', keyframes: steps };
+  const normalized = normalizeAgentMotion({ duration: 1.5, tracks: [rounded] }, recipe);
+  assert.equal(normalized.tracks[0].keyframes.at(-1).time, 1.5);
+  const belowZero = track('roughness', 0, 1, { keyframes: [{ time: -1e-12, value: 0 }, { time: 1, value: 1 }] });
+  assert.equal(normalizeAgentMotion(motion([belowZero]), recipe).tracks[0].keyframes[0].time, 0);
+  const past = track('roughness', 0, 1, { keyframes: [{ time: 0, value: 0 }, { time: 1.001, value: 1 }] });
+  assert.throws(() => normalizeAgentMotion(motion([past]), recipe), /keyframes\[1\]\.time: got 1\.001; expected a number from 0 to 1/);
+});

@@ -1,6 +1,6 @@
 import { CRUCIBLE_MARK_LAYERS, CRUCIBLE_MARK_VIEW_BOX } from './studio-brand-mark.js';
 import { applyProjection } from './camera.js';
-import { createAgentScene, loadAgentSceneModules } from './agent-scene.js';
+import { createAgentScene, loadAgentSceneModules, loadMeshBooleans, meshBooleansLoaded, needsMeshBooleans } from './agent-scene.js';
 import { agentEnvironmentMap, fitAgentShadow, resolveAgentShadow } from './agent-look.js';
 import { agentSceneModulesNeeded } from './agent-scene-modules.js';
 import { LIGHTING_SETUP_NAMES } from './agent-scene-capabilities.js';
@@ -1023,9 +1023,10 @@ export function createStudio(container, {
   const defaultAgentName = assertAgentName(initialAgentName);
   injectStudioStyles(documentReference);
 
-  // A recipe with catalog scans or an HDRI needs its files fetched first. Studio opens on the template meanwhile and
-  // swaps the recipe in when `ready` settles, so createStudio itself stays synchronous.
-  const pendingRecipe = suppliedRecipe && !suppliedScene && catalog.needsLoading(suppliedRecipe) ? suppliedRecipe : null;
+  // A recipe with catalog scans, an HDRI or a boolean mesh edit needs its files or code fetched first. Studio opens on
+  // the template meanwhile and swaps the recipe in when `ready` settles, so createStudio itself stays synchronous.
+  const recipeNeedsFetching = recipe => catalog.needsLoading(recipe) || (needsMeshBooleans(recipe) && !meshBooleansLoaded());
+  const pendingRecipe = suppliedRecipe && !suppliedScene && recipeNeedsFetching(suppliedRecipe) ? suppliedRecipe : null;
   const initialRecipe = pendingRecipe ? buildTemplateRecipe(template) : suppliedRecipe ?? (suppliedScene ? null : buildTemplateRecipe(template));
   // The scene reads catalog assets and images from the pool, so an import into the first scene can place them.
   const initialScene = suppliedScene ?? createAgentScene(initialRecipe, {}, { assets: catalog.pool, sequenceFrames: catalog.pool });
@@ -1052,6 +1053,9 @@ export function createStudio(container, {
 
   async function prepareRecipe(recipe) {
     await loadAgentSceneModules(recipe);
+    if (needsMeshBooleans(recipe)) {
+      await loadMeshBooleans();
+    }
     await catalog.prepare(recipe);
   }
 

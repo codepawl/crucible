@@ -1,4 +1,5 @@
 import { compileProgram } from './gl-program.js';
+import { CLIP_PLANES_FEATURE, addClipPlanesToLiquidShader, bindClipPlanes, clipPlaneLocations } from './clip-planes.js';
 import { resolveLiquidOptics } from './liquid-optics.js';
 import { liquidProbeSupport, liquidWaterSupport } from './shader-registry.js';
 
@@ -22,7 +23,9 @@ const LIQUID_UNIFORMS = [
 function ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fragmentSource) {
   if (renderer.liquidProgram) return;
   const context = renderer.context;
-  renderer.liquidProgram = compileProgram(context, vertexSource, renderer.withViewTransform(fragmentSource, 'liquid'));
+  const clipped = renderer.shaderFeatures?.has(CLIP_PLANES_FEATURE) && !renderer.benchmark;
+  renderer.liquidProgram = compileProgram(context, vertexSource, renderer.withViewTransform(clipped ? addClipPlanesToLiquidShader(fragmentSource) : fragmentSource, 'liquid'));
+  renderer.liquidClipLocations = clipped ? clipPlaneLocations(context, renderer.liquidProgram) : null;
   renderer.liquidUniforms = Object.fromEntries(LIQUID_UNIFORMS.map(name => [name, context.getUniformLocation(renderer.liquidProgram, name)]));
   context.useProgram(renderer.liquidProgram);
   context.uniform1i(renderer.liquidUniforms.metallicRoughnessMap, METALLIC_ROUGHNESS_UNIT);
@@ -82,6 +85,7 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
     context.activeTexture(context.TEXTURE0 + METALLIC_ROUGHNESS_UNIT);
     context.bindTexture(context.TEXTURE_2D, batch.textures[METALLIC_ROUGHNESS_MAP_INDEX]);
     context.uniform1f(uniforms.hasMetallicRoughnessMap, metallicRoughnessState ? 1 + (metallicRoughnessState.uvChannel ?? 0) : 0);
+    if (renderer.liquidClipLocations) bindClipPlanes(renderer, batch, renderer.liquidClipLocations);
     liquidWaterSupport.bind?.(renderer, uniforms, batch);
     liquidProbeSupport.bind?.(renderer, uniforms, batch);
     context.bindVertexArray(batch.vertexArray);
@@ -93,6 +97,7 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
     context.blendFuncSeparate(context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
     context.depthMask(false);
     for (const batch of foams) {
+      if (renderer.liquidClipLocations) bindClipPlanes(renderer, batch, renderer.liquidClipLocations);
       context.bindVertexArray(batch.vertexArray);
       context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
     }

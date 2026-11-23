@@ -73,17 +73,23 @@ function surface(columns, rows, sample) {
   return result;
 }
 
+// An image reads the right way round from outside when u grows to the right and v down; the sampled angle runs the other way here, so u is mirrored.
+function mirrorU(mesh) {
+  for (let offset = 0; offset < mesh.uvs.length; offset += 2) mesh.uvs[offset] = 1 - mesh.uvs[offset];
+  return mesh;
+}
+
 export function sphere(segments = 64, rings = 40) {
   integer(segments, 3, 2048, 'segments');
   integer(rings, 2, 2048, 'rings');
   primitiveBudget((segments + 1) * (rings + 1));
-  return surface(segments, rings, (longitude, latitude) => {
+  return mirrorU(surface(segments, rings, (longitude, latitude) => {
     const angle = periodicAngle(longitude);
     const elevation = latitude * Math.PI;
     const radial = latitude === 0 || latitude === 1 ? 0 : Math.sin(elevation);
     const position = [radial * Math.cos(angle), Math.cos(elevation), radial * Math.sin(angle)];
     return { position, normal: position };
-  });
+  }));
 }
 
 // A flat unit sheet in XY facing +Z with a regular grid of vertices: the rest shape for cloth and for flat banners.
@@ -232,7 +238,7 @@ export function torus(tubeRadius = 0.08, segments = 96, sides = 24, arc = FULL_T
   integer(sides, 3, 128, 'sides');
   primitiveBudget((segments + 1) * (sides + 1) + (arc === FULL_TURN ? 0 : 2 * (sides + 2)));
   start %= FULL_TURN;
-  const body = surface(segments, sides, (along, around) => {
+  const body = mirrorU(surface(segments, sides, (along, around) => {
     const angle = start + (arc === FULL_TURN && along === 1 ? 0 : along * arc);
     const tubeAngle = periodicAngle(around);
     const radial = 1 + tubeRadius * Math.cos(tubeAngle);
@@ -240,7 +246,7 @@ export function torus(tubeRadius = 0.08, segments = 96, sides = 24, arc = FULL_T
       position: [radial * Math.cos(angle), radial * Math.sin(angle), tubeRadius * Math.sin(tubeAngle)],
       normal: [Math.cos(angle) * Math.cos(tubeAngle), Math.sin(angle) * Math.cos(tubeAngle), Math.sin(tubeAngle)],
     };
-  });
+  }));
   if (arc === FULL_TURN) return body;
   const positions = [...body.positions];
   const normals = [...body.normals];
@@ -249,6 +255,8 @@ export function torus(tubeRadius = 0.08, segments = 96, sides = 24, arc = FULL_T
   for (const end of [0, 1]) {
     const angle = start + arc * end;
     const direction = end === 0 ? -1 : 1;
+    // The two end caps face opposite ways, so one of them mirrors its disc UVs to keep an image reading the right way round.
+    const capDirection = end === 0 ? -1 : 1;
     const normal = [-Math.sin(angle) * direction, Math.cos(angle) * direction, 0];
     const center = positions.length / 3;
     positions.push(Math.cos(angle), Math.sin(angle), 0);
@@ -259,7 +267,7 @@ export function torus(tubeRadius = 0.08, segments = 96, sides = 24, arc = FULL_T
       const radial = 1 + tubeRadius * Math.cos(tubeAngle);
       positions.push(radial * Math.cos(angle), radial * Math.sin(angle), tubeRadius * Math.sin(tubeAngle));
       normals.push(...normal);
-      uvs.push(0.5 + Math.cos(tubeAngle) * 0.5, 0.5 + Math.sin(tubeAngle) * 0.5);
+      uvs.push(0.5 + Math.cos(tubeAngle) * 0.5 * capDirection, 0.5 + Math.sin(tubeAngle) * 0.5);
     }
     for (let index = 0; index < sides; index++) {
       const first = center + index + 1;

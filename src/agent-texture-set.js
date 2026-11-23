@@ -209,7 +209,8 @@ export function geometryWithUvTransform(geometry, material, worldMatrix, nodeId)
   }
   let transformed = variants.get(key);
   if (!transformed) {
-    transformed = { ...geometry, uvs: bakedUvs(geometry, material, scale, nodeId) };
+    // The baked UVs move the tangent frame of a mapped normal, so authored tangents no longer fit.
+    transformed = { ...geometry, uvs: bakedUvs(geometry, material, scale, nodeId), tangents: undefined };
     variants.set(key, transformed);
   }
   return transformed;

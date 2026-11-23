@@ -306,3 +306,19 @@ test('a user pass reads the camera eye of the frame it draws, so a camera track 
   });
   assert.deepEqual(uploads, [[0, 1, 5], [4, 2, -3]]);
 });
+
+test('a mask or user pass names a placed asset by its node id and gets every part of it as one slot (#3055)', async () => {
+  const { objectIdentifierSlots } = await import('../src/post-mask.js');
+  const parts = ['floor', 'loco/0', 'loco/1', 'tender/0', 'loco/2'];
+  const renderer = {
+    passSupport: {
+      objectNames: () => parts,
+      objectNodes: () => ({ floor: [1], loco: [2, 3, 5], tender: [4] }),
+    },
+  };
+  assert.deepEqual(objectIdentifierSlots(renderer, ['loco', 'tender']), { identifiers: [2, 3, 5, 4], slots: [0, 0, 0, 1] });
+  assert.deepEqual(objectIdentifierSlots(renderer, ['loco/1', 'floor']).identifiers, [3, 1], 'a part name still works');
+  assert.throws(() => objectIdentifierSlots(renderer, ['ghost']), /"ghost" is not a part in the frame/);
+  const wide = { passSupport: { objectNames: () => [], objectNodes: () => ({ train: Array.from({ length: 40 }, (_, index) => index + 1) }) } };
+  assert.equal(objectIdentifierSlots(wide, ['train']).identifiers.length, 40, 'a 40-part asset fits in one mask');
+});
