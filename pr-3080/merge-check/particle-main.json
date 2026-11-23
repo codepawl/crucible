@@ -1,0 +1,115 @@
+{
+ "mode": "particle",
+ "recipe": {
+  "format": "crucible.scene",
+  "schemaVersion": 1,
+  "geometries": [
+   {
+    "id": "card",
+    "type": "plane"
+   }
+  ],
+  "materials": [
+   {
+    "id": "mist",
+    "color": [
+     1,
+     1,
+     1
+    ],
+    "alphaMode": "blend"
+   }
+  ],
+  "nodes": [
+   {
+    "id": "spray",
+    "geometry": "card",
+    "material": "mist"
+   }
+  ],
+  "camera": {
+   "eye": [
+    0,
+    1,
+    5
+   ],
+   "target": [
+    0,
+    1,
+    0
+   ],
+   "up": [
+    0,
+    1,
+    0
+   ]
+  },
+  "particles": {
+   "gravity": [
+    0,
+    0,
+    0
+   ],
+   "systems": [
+    {
+     "node": "spray",
+     "seed": 5,
+     "count": 6,
+     "rate": 3,
+     "lifetime": 4,
+     "speed": 0,
+     "size": 1,
+     "drag": 0,
+     "alpha": [
+      1,
+      0
+     ],
+     "fade": "opacity",
+     "orient": "billboard",
+     "emitter": {
+      "shape": "box",
+      "halfExtents": [
+       1,
+       0.25,
+       1
+      ],
+      "position": [
+       0,
+       1,
+       0
+      ]
+     }
+    }
+   ]
+  }
+ },
+ "frame": {
+  "eye": [
+   0,
+   1,
+   5
+  ],
+  "target": [
+   0,
+   1,
+   0
+  ],
+  "fov": 40,
+  "up": [
+   0,
+   1,
+   0
+  ],
+  "time": 2.5,
+  "wind": 0,
+  "exposure": 1,
+  "effects": {}
+ },
+ "size": [
+  640,
+  360
+ ],
+ "backend": "ANGLE (Apple, ANGLE Metal Renderer: Apple M5, Unspecified Version)",
+ "console": [],
+ "root": "worktree"
+}

@@ -1,0 +1,33 @@
+{
+ "mode": "color0",
+ "recipe": "tests/vertex-alpha-render.test.js fixture: unlit blend strip, colorAlpha [0,1,0,0,1,0] over a blue unlit wall",
+ "frame": {
+  "eye": [
+   0,
+   0,
+   5
+  ],
+  "target": [
+   0,
+   0,
+   0
+  ],
+  "fov": 40,
+  "up": [
+   0,
+   1,
+   0
+  ],
+  "time": 0,
+  "wind": 0,
+  "exposure": 1,
+  "effects": {}
+ },
+ "size": [
+  640,
+  360
+ ],
+ "backend": "ANGLE (Apple, ANGLE Metal Renderer: Apple M5, Unspecified Version)",
+ "console": [],
+ "root": "worktree"
+}
