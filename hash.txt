@@ -1,0 +1,3 @@
+default before/after sha256 identical: 24676ade...
+24676adeb4387ddb4f53cc5c61de5ded0d8adfb54ae49561d997c9b7c8b611dc *raw-default-after.png
+24676adeb4387ddb4f53cc5c61de5ded0d8adfb54ae49561d997c9b7c8b611dc *raw-default-before.png

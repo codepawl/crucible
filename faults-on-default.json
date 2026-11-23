@@ -1,0 +1,1 @@
+{"issue":3026,"backend":"cpu (RENDER_CPU=1, SwiftShader)","size":[640,360],"pass":"wireframe","options":"faults on (default)","camera":{"eye":[0,3.2,6.5],"target":[0,0.5,0],"fov":55},"scene":"three boxes (clean, top deleted, top flipped) from scripts/smoke-wireframe-pass.mjs recipe, ground off","seed":null}
