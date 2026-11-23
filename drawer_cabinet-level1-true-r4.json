@@ -1,0 +1,8 @@
+{
+  "level": 1,
+  "view": "true",
+  "skipped": "The switch distance (0.36 of the 1.13 bounding radius, 0.32 radii from the centre) puts the camera inside the hollow cabinet: the render shows only interior faces and an RMSE of 0, which proves nothing. No framing of the object exists at that distance.",
+  "switchDistance": 0.36039051560532437,
+  "switchInRadii": 0.319862292575517,
+  "radius": 1.1267052227490646
+}
