@@ -1,0 +1,196 @@
+{
+ "size": [
+  960,
+  540
+ ],
+ "backend": "mcp render job",
+ "recipe": {
+  "format": "crucible.scene",
+  "schemaVersion": 1,
+  "geometries": [
+   {
+    "id": "box",
+    "type": "box",
+    "bevel": 0
+   }
+  ],
+  "materials": [
+   {
+    "id": "grass",
+    "color": [
+     0.12,
+     0.3,
+     0.07
+    ],
+    "metallic": 0,
+    "roughness": 0.9
+   },
+   {
+    "id": "bark",
+    "color": [
+     0.25,
+     0.17,
+     0.1
+    ],
+    "metallic": 0,
+    "roughness": 0.9
+   }
+  ],
+  "nodes": [
+   {
+    "id": "ground",
+    "geometry": "box",
+    "material": "grass",
+    "translation": [
+     0,
+     -0.05,
+     -10
+    ],
+    "scale": [
+     40,
+     0.1,
+     40
+    ]
+   },
+   {
+    "id": "trunk0",
+    "geometry": "box",
+    "material": "bark",
+    "translation": [
+     -6,
+     1.2,
+     -6
+    ],
+    "scale": [
+     0.35,
+     2.4,
+     0.35
+    ]
+   },
+   {
+    "id": "trunk1",
+    "geometry": "box",
+    "material": "bark",
+    "translation": [
+     -4,
+     1.2,
+     -9
+    ],
+    "scale": [
+     0.35,
+     2.4,
+     0.35
+    ]
+   },
+   {
+    "id": "trunk2",
+    "geometry": "box",
+    "material": "bark",
+    "translation": [
+     -2,
+     1.2,
+     -12
+    ],
+    "scale": [
+     0.35,
+     2.4,
+     0.35
+    ]
+   },
+   {
+    "id": "trunk3",
+    "geometry": "box",
+    "material": "bark",
+    "translation": [
+     0,
+     1.2,
+     -6
+    ],
+    "scale": [
+     0.35,
+     2.4,
+     0.35
+    ]
+   },
+   {
+    "id": "trunk4",
+    "geometry": "box",
+    "material": "bark",
+    "translation": [
+     2,
+     1.2,
+     -9
+    ],
+    "scale": [
+     0.35,
+     2.4,
+     0.35
+    ]
+   },
+   {
+    "id": "trunk5",
+    "geometry": "box",
+    "material": "bark",
+    "translation": [
+     4,
+     1.2,
+     -12
+    ],
+    "scale": [
+     0.35,
+     2.4,
+     0.35
+    ]
+   },
+   {
+    "id": "trunk6",
+    "geometry": "box",
+    "material": "bark",
+    "translation": [
+     6,
+     1.2,
+     -6
+    ],
+    "scale": [
+     0.35,
+     2.4,
+     0.35
+    ]
+   }
+  ],
+  "camera": {
+   "eye": [
+    0,
+    1.7,
+    4
+   ],
+   "target": [
+    0,
+    2.6,
+    -10
+   ],
+   "fov": 55
+  },
+  "environment": {
+   "world": true,
+   "lightDirection": [
+    0.25,
+    0.09,
+    -1
+   ],
+   "keyIntensity": 6,
+   "fillIntensity": 0.1,
+   "ambientIntensity": 0.15
+  },
+  "effects": {
+   "exposure": 1,
+   "localToneMapping": {
+    "strength": 1,
+    "highlightContrast": 0.35,
+    "shadowContrast": 0.35,
+    "detail": 1,
+    "blurRadius": 0.1
+   }
+  }
+ }
+}
