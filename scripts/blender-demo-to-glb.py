@@ -38,15 +38,18 @@ scene.json: the HDRI replaces the airport sky, whose sun Crucible takes out as t
 import json
 import os
 import sys
+import time
 
 import bpy
 import numpy
+from mathutils import Matrix
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import blender_demo_channels as demo_channels
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-output_directory = sys.argv[sys.argv.index("--") + 1]
+sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+output_directory = os.path.abspath(sys.argv[sys.argv.index("--") + 1])
+print("OUTPUT", output_directory, flush=True)
 
 
 def find_image_node(start_socket):
@@ -351,38 +354,180 @@ def realize_particle_instances():
         for modifier in emitter.modifiers:
             if modifier.type == "PARTICLE_SYSTEM":
                 settings = modifier.particle_system.settings
-                settings.display_percentage = 100
-                settings.child_percent = settings.rendered_child_count
-        existing_names = set(bpy.data.objects.keys())
-        bpy.ops.object.duplicates_make_real(use_base_parent=False, use_hierarchy=False)
-        realized = [candidate for candidate in bpy.data.objects if candidate.name not in existing_names]
+                settings.display_percentage = max(1, round(100 * PARTICLE_SHARE ** 0.5))
+                settings.child_percent = max(1, round(settings.rendered_child_count * PARTICLE_SHARE ** 0.5))
+        print("REALIZING", emitter.name, flush=True)
+        realized = collect_particle_instances(emitter)
         systems = [modifier for modifier in emitter.modifiers if modifier.type == "PARTICLE_SYSTEM"]
         for modifier in systems:
             emitter.modifiers.remove(modifier)
         if not emitter.show_instancer_for_render:
             emitter.hide_render = True
         realized_instances.append(realized)
-        print("PARTICLES", emitter.name, len(realized), "instances")
+        print("PARTICLES", emitter.name, sum(len(matrices) for matrices in realized.values()), "instances")
+
+
+def collect_particle_instances(emitter):
+    """Making every instance a real object (duplicates_make_real) slows down far faster than the count grows: 8,320
+    instances took 3.9 s and 86,000 took 518 s. Only the world matrices are needed, so they are read from the evaluated
+    instances, and each instanced object gets one real holder that shares its mesh for the bake. Returns
+    {holder: matrices}, an array of 4x4 world matrices per holder."""
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    matrices_by_source = {}
+    for instance in depsgraph.object_instances:
+        if not instance.is_instance or instance.parent is None or instance.parent.original != emitter:
+            continue
+        source = instance.object.original
+        if source.type != "MESH":
+            continue
+        matrices_by_source.setdefault(source.name, []).append(numpy.array(instance.matrix_world, dtype=numpy.float32))
+    realized = {}
+    for source_name, matrices in matrices_by_source.items():
+        source = bpy.data.objects[source_name]
+        holder = source.copy()
+        holder.name = source_name + "_instances"
+        holder.parent = None
+        holder.hide_render = False
+        holder.hide_viewport = False
+        holder.matrix_world = Matrix(matrices[0].tolist())
+        for collection in emitter.users_collection:
+            collection.objects.link(holder)
+        realized[holder] = numpy.stack(matrices)
+    return realized
 
 
 def join_realized_instances():
     """The exporter writes each realized instance as its own node, and 87,000 nodes pass the loader's part limit, so
-    after the bake each emitter's instances become one mesh. The joined copies keep their baked vertex colours."""
+    after the bake each emitter's instances become one mesh. The joined copies keep their baked vertex colours.
+    The join operator slows down faster than the count grows (7,680 instances took 152 s, in groups 294 s), so the
+    copies of one shared mesh are written into a single mesh with numpy, and only those few meshes join last."""
     for realized in realized_instances:
-        meshes = [candidate for candidate in realized if candidate.type == "MESH" and candidate.name in bpy.data.objects]
-        if len(meshes) < 2:
+        holders = [holder for holder in realized if holder.name in bpy.data.objects]
+        if not holders:
             continue
-        for candidate in bpy.context.view_layer.objects:
-            candidate.select_set(False)
-        for candidate in meshes:
-            candidate.select_set(True)
-        bpy.context.view_layer.objects.active = meshes[0]
-        bpy.ops.object.join()
-        print("JOINED", len(meshes), "instances into", meshes[0].name)
+        print("JOINING", sum(len(realized[holder]) for holder in holders), "instances", flush=True)
+        join_started = time.monotonic()
+        merged = [merge_copies(holder, realized[holder]) for holder in holders]
+        joined = join_objects(merged)
+        print("JOIN took", round(time.monotonic() - join_started, 1), "s", flush=True)
+        print("JOINED into", joined.name)
 
 
+ATTRIBUTE_FIELDS = {
+    "FLOAT": ("value", 1),
+    "INT": ("value", 1),
+    "INT8": ("value", 1),
+    "BOOLEAN": ("value", 1),
+    "FLOAT2": ("vector", 2),
+    "INT32_2D": ("value", 2),
+    "FLOAT_VECTOR": ("vector", 3),
+    "FLOAT_COLOR": ("color", 4),
+    "BYTE_COLOR": ("color", 4),
+    "QUATERNION": ("value", 4),
+}
+
+
+def merge_copies(holder, matrices):
+    """One object holding every copy of the holder's mesh, each placed by one of the world matrices."""
+    source = holder.data
+    copy_count = len(matrices)
+    vertex_count = len(source.vertices)
+    loop_count = len(source.loops)
+    face_count = len(source.polygons)
+    edge_count = len(source.edges)
+
+    positions = numpy.empty(vertex_count * 3, dtype=numpy.float32)
+    source.vertices.foreach_get("co", positions)
+    positions = positions.reshape(vertex_count, 3)
+    mirrored_count = int((numpy.linalg.det(matrices[:, :3, :3]) < 0).sum())
+    print("MERGING", copy_count, "copies of", source.name, "mirrored", mirrored_count, flush=True)
+    placed = numpy.einsum("vj,nij->nvi", positions, matrices[:, :3, :3]) + matrices[:, None, :3, 3]
+
+    loop_vertices = numpy.empty(loop_count, dtype=numpy.int32)
+    source.loops.foreach_get("vertex_index", loop_vertices)
+    loop_starts = numpy.empty(face_count, dtype=numpy.int32)
+    source.polygons.foreach_get("loop_start", loop_starts)
+    loop_edges = numpy.empty(loop_count, dtype=numpy.int32)
+    source.loops.foreach_get("edge_index", loop_edges)
+    edge_vertices = numpy.empty(edge_count * 2, dtype=numpy.int32)
+    source.edges.foreach_get("vertices", edge_vertices)
+    copy_offsets = numpy.arange(copy_count, dtype=numpy.int32)[:, None]
+
+    merged = bpy.data.meshes.new(source.name + "_merged")
+    merged.vertices.add(copy_count * vertex_count)
+    merged.edges.add(copy_count * edge_count)
+    merged.loops.add(copy_count * loop_count)
+    merged.polygons.add(copy_count * face_count)
+    merged.vertices.foreach_set("co", placed.reshape(-1))
+    merged.edges.foreach_set("vertices", (edge_vertices[None, :] + copy_offsets * vertex_count).reshape(-1))
+    merged.loops.foreach_set("vertex_index", (loop_vertices[None, :] + copy_offsets * vertex_count).reshape(-1))
+    merged.loops.foreach_set("edge_index", (loop_edges[None, :] + copy_offsets * edge_count).reshape(-1))
+    merged.polygons.foreach_set("loop_start", (loop_starts[None, :] + copy_offsets * loop_count).reshape(-1))
+    copy_attributes(source, merged, copy_count)
+    for material in source.materials:
+        merged.materials.append(material)
+    merged.update()
+    merged.validate(clean_customdata=False)
+
+    merged_object = bpy.data.objects.new(holder.name + "_merged", merged)
+    for collection in holder.users_collection:
+        collection.objects.link(merged_object)
+    bpy.data.batch_remove([holder])
+    return merged_object
+
+
+def copy_attributes(source, merged, copy_count):
+    """Every plain attribute (UV maps, baked colours, material slots, sharp edges and faces) repeated once per copy."""
+    domain_sizes = {
+        "POINT": len(source.vertices),
+        "EDGE": len(source.edges),
+        "CORNER": len(source.loops),
+        "FACE": len(source.polygons),
+    }
+    for attribute in source.attributes:
+        if attribute.name.startswith(".") or attribute.name == "position" or attribute.domain not in domain_sizes:
+            continue
+        field = ATTRIBUTE_FIELDS.get(attribute.data_type)
+        if field is None:
+            print("ATTRIBUTE skipped", attribute.name, attribute.data_type)
+            continue
+        field_name, width = field
+        values = numpy.empty(domain_sizes[attribute.domain] * width, dtype=numpy.float32)
+        if attribute.data_type in {"INT", "INT8", "INT32_2D"}:
+            values = values.astype(numpy.int32)
+        elif attribute.data_type == "BOOLEAN":
+            values = numpy.empty(domain_sizes[attribute.domain], dtype=bool)
+        attribute.data.foreach_get(field_name, values)
+        target = merged.attributes.get(attribute.name) or merged.attributes.new(
+            attribute.name, attribute.data_type, attribute.domain
+        )
+        target.data.foreach_set(field_name, numpy.tile(values, copy_count))
+    active_color = source.color_attributes.active_color
+    if active_color is not None and active_color.name in merged.color_attributes:
+        merged.color_attributes.active_color = merged.color_attributes[active_color.name]
+    active_uv = source.uv_layers.active
+    if active_uv is not None and active_uv.name in merged.uv_layers:
+        merged.uv_layers.active = merged.uv_layers[active_uv.name]
+
+
+def join_objects(objects):
+    if len(objects) == 1:
+        return objects[0]
+    for candidate in bpy.context.view_layer.objects:
+        candidate.select_set(False)
+    for candidate in objects:
+        candidate.select_set(True)
+    bpy.context.view_layer.objects.active = objects[0]
+    bpy.ops.object.join()
+    return objects[0]
+
+
+# A quick check can realize a share of the particle instances, such as DEMO_PARTICLE_SHARE=0.025 for about 2,000 of 86,000.
+PARTICLE_SHARE = min(max(float(os.environ.get("DEMO_PARTICLE_SHARE", "1")), 0.0001), 1.0)
 realized_instances = []
+realize_started = time.monotonic()
 realize_particle_instances()
+print("REALIZED in", round(time.monotonic() - realize_started, 1), "s", flush=True)
 
 
 def one_object_per_mesh(objects):
@@ -394,16 +539,27 @@ def one_object_per_mesh(objects):
     return list(kept.values())
 
 
-to_bake = [material for material in bpy.data.materials if base_color_from_nodes(material) and mesh_users(material)]
+# A quick check bakes only the named materials (comma separated), such as DEMO_BAKE_ONLY="church brick".
+# It limits both the vertex-colour pre-bake below and the image bakes further down.
+BAKE_ONLY = {name.strip() for name in os.environ.get("DEMO_BAKE_ONLY", "").split(",") if name.strip()}
+to_bake = [
+    material
+    for material in bpy.data.materials
+    if (not BAKE_ONLY or material.name in BAKE_ONLY) and base_color_from_nodes(material) and mesh_users(material)
+]
 baked_objects = {candidate.name: candidate for material in to_bake for candidate in mesh_users(material)}
 if baked_objects:
-    bake_base_colors(one_object_per_mesh(baked_objects.values()))
+    colour_bake_objects = one_object_per_mesh(baked_objects.values())
+    print("COLOUR BAKE on", len(colour_bake_objects), "objects", flush=True)
+    colour_bake_started = time.monotonic()
+    bake_base_colors(colour_bake_objects)
+    print("COLOUR BAKE took", round(time.monotonic() - colour_bake_started, 1), "s", flush=True)
     for material in to_bake:
         wire_baked_color(material)
 BAKED_UV = "baked_uv"
 BAKE_TEXELS_PER_METRE = 160
 BAKE_MIN_SIZE = 512
-BAKE_MAX_SIZE = 2048
+BAKE_MAX_SIZE = int(os.environ.get("DEMO_BAKE_MAX_SIZE", "2048"))
 BAKE_PASSES = (("Base Color", "DIFFUSE"), ("Roughness", "ROUGHNESS"), ("Normal", "NORMAL"))
 
 
@@ -429,7 +585,7 @@ def warped_channels_by_material():
         if principled is None:
             continue
         sockets = demo_channels.channels_to_bake(demo_channels.classify_material(material_graph(material), principled.name))
-        if sockets:
+        if sockets and (not BAKE_ONLY or material.name in BAKE_ONLY):
             found[material.name] = sockets
     return found
 
@@ -500,7 +656,11 @@ def bake_object_warped_slots(candidate, warped, report):
         copy = original.copy()
         copy.name = original.name + " baked " + candidate.name
         slot.material = copy
+        face_count = sum(1 for polygon in mesh.polygons if polygon.material_index == slot_index)
+        print("UNWRAPPING", candidate.name, "slot", slot_index, face_count, "of", len(mesh.polygons), "faces", flush=True)
+        unwrap_started = time.monotonic()
         unwrap_slot_faces(candidate, slot_index)
+        print("UNWRAPPED in", round(time.monotonic() - unwrap_started, 1), "s", flush=True)
         images = {socket: new_bake_image(copy.name + " " + socket, size, socket == "Base Color") for socket in sockets}
         targets[slot_index] = {"material": copy, "original": original.name, "sockets": sockets, "size": size, "images": images,
                                "nodes": {socket: add_image_node(copy, images[socket]) for socket in sockets}}
@@ -522,7 +682,11 @@ def bake_object_warped_slots(candidate, warped, report):
         for slot_index, scratch_node in scratch_nodes.items():
             target_node = targets.get(slot_index, {}).get("nodes", {}).get(socket_name)
             candidate.material_slots[slot_index].material.node_tree.nodes.active = target_node or scratch_node
+        sizes = sorted({target["size"] for target in targets.values()})
+        print("BAKING", candidate.name, socket_name, "at", sizes, "px", flush=True)
+        started = time.monotonic()
         bpy.ops.object.bake(type=bake_type)
+        print("BAKED", candidate.name, socket_name, "in", round(time.monotonic() - started, 1), "s", flush=True)
     for slot_index, scratch_node in scratch_nodes.items():
         candidate.material_slots[slot_index].material.node_tree.nodes.remove(scratch_node)
     bpy.data.images.remove(scratch)
@@ -556,12 +720,25 @@ def bake_warped_images():
         if candidate.type == "MESH" and candidate.visible_get() and not candidate.hide_render
         and any(slot.material is not None and slot.material.name in warped for slot in candidate.material_slots)
     ]
-    for candidate in users:
-        bake_object_warped_slots(candidate, warped, report)
+    # Colour, roughness and normal passes read only the baked object's own material, so the rest of the scene leaves the
+    # render while it bakes; otherwise every bake builds the whole scene's BVH again.
+    hidden = [other for other in bpy.context.view_layer.objects if not other.hide_render]
+    print("WARPED", sorted(warped), "on", [candidate.name for candidate in users], flush=True)
+    try:
+        for candidate in users:
+            for other in hidden:
+                other.hide_render = other is not candidate
+            bake_object_warped_slots(candidate, warped, report)
+    finally:
+        for other in hidden:
+            other.hide_render = False
     return report
 
 
 original_material_names = {material.name for material in bpy.data.materials if material.users > 0}
+# The realized lawn and bush instances (about 86,000 objects) are joined before the image bakes: each bake and each
+# hide_render switch walks every object in the view layer, which with the instances still apart ran for hours.
+join_realized_instances()
 image_baked = bake_warped_images()
 baked = {material.name for material in to_bake}
 for material_name in sorted(original_material_names):
@@ -658,11 +835,13 @@ def bake_world_sky(directory):
 
 
 bake_world_sky(output_directory)
-join_realized_instances()
 bpy.ops.export_scene.gltf(
     filepath=output_directory + "/scene.glb", export_format="GLB", export_apply=True, export_gpu_instances=True,
     export_image_format="JPEG", export_jpeg_quality=85, export_cameras=False, export_lights=True,
     export_import_convert_lighting_mode="COMPAT", export_vertex_color="MATERIAL",
     use_renderable=True, use_visible=True, export_yup=True, export_texcoords=True, export_normals=True,
 )
-print("EXPORTED")
+exported_path = output_directory + "/scene.glb"
+if not os.path.isfile(exported_path) or os.path.getsize(exported_path) == 0:
+    raise SystemExit("EXPORT FAILED: " + exported_path + " was not written")
+print("EXPORTED", exported_path, os.path.getsize(exported_path), "bytes", flush=True)
