@@ -23,3 +23,17 @@ def repeat_with_offset(indices, copy_count, stride):
     """An index array repeated once per copy, copy n's indices raised by n * stride, flattened."""
     offsets = numpy.arange(copy_count, dtype=numpy.int32)[:, None] * stride
     return (numpy.asarray(indices, dtype=numpy.int32)[None, :] + offsets).reshape(-1)
+
+
+def fit_island_into_region(uv, region, atlas_size, gutter):
+    """UVs (an array of shape (loops, 2)) moved and uniformly scaled so their bounding box sits inside one atlas region.
+
+    region is (x, y, side) in texels with the gutter inside side; the result is in 0 to 1 over the atlas. A single point
+    or a flat line still lands inside the region."""
+    uv = numpy.asarray(uv, dtype=numpy.float64).reshape(-1, 2)
+    lowest = uv.min(axis=0)
+    extent = max(float((uv.max(axis=0) - lowest).max()), 1e-9)
+    x, y, side = region
+    inner = side - 2 * gutter
+    texels = (uv - lowest) * (inner / extent) + numpy.array([x + gutter, y + gutter], dtype=numpy.float64)
+    return (texels / atlas_size).astype(numpy.float32)

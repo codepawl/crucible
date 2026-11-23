@@ -31,6 +31,10 @@ flat colour) is graded instead: the tint is applied to a copy of the image in li
 wired in, so the texture keeps its full resolution (#2761). Baking those to vertex colours left blotches on large plaster walls.
 Modifiers are applied before the bake so a subdivided wall gets its colour on the vertices that are exported.
 
+An image whose coordinates the exporter drops (Object or Generated space, Box projection, a blend of two mappings) is baked by
+Cycles, one material at a time, into one shared atlas image per channel: every object that uses the material gets a disjoint
+island on its own UV layer, so 922 loose bricks write three images, not 2,766, and each object keeps its own mesh (#2766).
+
 A world lit by an analytic sky (a Sky Texture node, as the Lone Monk has instead of lamps) is rendered to sky.hdr with its sun
 at full strength, and world.json records the scene's view transform and exposure. scripts/blender-world-sky.mjs reads both into
 scene.json: the HDRI replaces the airport sky, whose sun Crucible takes out as the shadowed key (#2761).
@@ -639,70 +643,100 @@ def wire_baked_channel(material, socket_name, image):
         tree.links.new(image_node.outputs["Color"], principled.inputs[socket_name])
 
 
-def bake_object_warped_slots(candidate, warped, report):
-    """Gives each warped material of one object a copy that reads baked images on a unique UV layer."""
-    if candidate.data.users > 1:
-        candidate.data = candidate.data.copy()
-    mesh = candidate.data
-    mesh.uv_layers.active = mesh.uv_layers.get(BAKED_UV) or mesh.uv_layers.new(name=BAKED_UV)
-    targets = {}
-    for slot_index, slot in enumerate(candidate.material_slots):
-        original = slot.material
-        if original is None or original.name not in warped:
-            continue
-        sockets = warped[original.name]
-        size = demo_channels.baked_texture_size(slot_surface_area(candidate, slot_index), BAKE_TEXELS_PER_METRE, BAKE_MIN_SIZE, BAKE_MAX_SIZE)
-        copy = original.copy()
-        copy.name = original.name + " baked " + candidate.name
-        slot.material = copy
-        face_count = sum(1 for polygon in mesh.polygons if polygon.material_index == slot_index)
-        print("UNWRAPPING", candidate.name, "slot", slot_index, face_count, "of", len(mesh.polygons), "faces", flush=True)
-        unwrap_started = time.monotonic()
+BAKE_GUTTER = 4
+
+
+def slot_face_loops(mesh, slot_index):
+    """Indices of the face corners that belong to the faces of one material slot."""
+    face_count = len(mesh.polygons)
+    material_indices = numpy.empty(face_count, dtype=numpy.int32)
+    loop_starts = numpy.empty(face_count, dtype=numpy.int32)
+    loop_totals = numpy.empty(face_count, dtype=numpy.int32)
+    mesh.polygons.foreach_get("material_index", material_indices)
+    mesh.polygons.foreach_get("loop_start", loop_starts)
+    mesh.polygons.foreach_get("loop_total", loop_totals)
+    wanted = numpy.nonzero(material_indices == slot_index)[0]
+    return numpy.concatenate([numpy.arange(loop_starts[face], loop_starts[face] + loop_totals[face]) for face in wanted]) if len(wanted) else numpy.empty(0, dtype=numpy.int64)
+
+
+def place_island_in_region(candidate, slot_index, region, atlas_size):
+    """Moves the baked_uv coordinates of one slot's faces into the object's region of the shared atlas."""
+    layer = candidate.data.uv_layers[BAKED_UV]
+    loops = slot_face_loops(candidate.data, slot_index)
+    coordinates = numpy.empty(len(candidate.data.loops) * 2, dtype=numpy.float32)
+    layer.uv.foreach_get("vector", coordinates)
+    coordinates = coordinates.reshape(-1, 2)
+    coordinates[loops] = demo_copies.fit_island_into_region(coordinates[loops], region, atlas_size, BAKE_GUTTER)
+    layer.uv.foreach_set("vector", coordinates.reshape(-1))
+
+
+def bake_material_atlas(material_name, sockets, slots, report):
+    """Bakes one material's channels for every object that uses it into one shared image per channel (#2766).
+
+    slots is a list of (object, slot index). Each object keeps its own mesh, so culling and LOD are untouched; its faces
+    for this material get a disjoint island in the shared atlas, and one Cycles bake call fills the atlas for all of
+    them. A second slot of the same object that holds the same material reads the same images."""
+    original = bpy.data.materials[material_name]
+    areas = [slot_surface_area(candidate, slot_index) for candidate, slot_index in slots]
+    plan = demo_channels.plan_atlas(areas, BAKE_TEXELS_PER_METRE, BAKE_GUTTER, BAKE_MIN_SIZE, BAKE_MAX_SIZE)
+    size = plan["size"]
+    shared = original.copy()
+    shared.name = original.name + " baked"
+    images = {socket: new_bake_image(shared.name + " " + socket, size, socket == "Base Color") for socket in sockets}
+    nodes = {socket: add_image_node(shared, images[socket]) for socket in sockets}
+    print("ATLAS", material_name, size, "px for", len(slots), "slots at", round(plan["texels_per_metre"], 1), "texels per metre", flush=True)
+    candidates = []
+    for (candidate, slot_index), region in zip(slots, plan["regions"]):
+        if candidate.data.users > 1:
+            candidate.data = candidate.data.copy()
+        mesh = candidate.data
+        mesh.uv_layers.active = mesh.uv_layers.get(BAKED_UV) or mesh.uv_layers.new(name=BAKED_UV)
         unwrap_slot_faces(candidate, slot_index)
-        print("UNWRAPPED in", round(time.monotonic() - unwrap_started, 1), "s", flush=True)
-        images = {socket: new_bake_image(copy.name + " " + socket, size, socket == "Base Color") for socket in sockets}
-        targets[slot_index] = {"material": copy, "original": original.name, "sockets": sockets, "size": size, "images": images,
-                               "nodes": {socket: add_image_node(copy, images[socket]) for socket in sockets}}
-    # Cycles refuses to bake when a material of the object has no active image node, so every slot gets a scratch one.
+        place_island_in_region(candidate, slot_index, region, size)
+        candidate.material_slots[slot_index].material = shared
+        if candidate not in candidates:
+            candidates.append(candidate)
+    # Cycles refuses to bake when a material of an object has no active image node, so every other material gets a scratch one.
     scratch = bpy.data.images.new("bake scratch", 4, 4)
-    scratch_nodes = {index: add_image_node(slot.material, scratch) for index, slot in enumerate(candidate.material_slots) if slot.material is not None}
+    scratch_nodes = {}
+    for candidate in candidates:
+        for slot in candidate.material_slots:
+            if slot.material is not None and slot.material is not shared and slot.material not in scratch_nodes:
+                scratch_nodes[slot.material] = add_image_node(slot.material, scratch)
+                slot.material.node_tree.nodes.active = scratch_nodes[slot.material]
     scene = bpy.context.scene
     scene.render.bake.target = "IMAGE_TEXTURES"
     scene.render.bake.margin = 16
     scene.render.bake.margin_type = "EXTEND"
     scene.render.bake.normal_space = "TANGENT"
     for other in bpy.context.view_layer.objects:
-        other.select_set(False)
-    candidate.select_set(True)
-    bpy.context.view_layer.objects.active = candidate
+        other.select_set(other in candidates)
+        other.hide_render = other not in candidates
+    bpy.context.view_layer.objects.active = candidates[0]
     for socket_name, bake_type in BAKE_PASSES:
-        if not any(socket_name in target["sockets"] for target in targets.values()):
+        if socket_name not in sockets:
             continue
-        for slot_index, scratch_node in scratch_nodes.items():
-            target_node = targets.get(slot_index, {}).get("nodes", {}).get(socket_name)
-            candidate.material_slots[slot_index].material.node_tree.nodes.active = target_node or scratch_node
-        sizes = sorted({target["size"] for target in targets.values()})
-        print("BAKING", candidate.name, socket_name, "at", sizes, "px", flush=True)
+        shared.node_tree.nodes.active = nodes[socket_name]
+        print("BAKING", material_name, socket_name, "at", size, "px on", len(candidates), "objects", flush=True)
         started = time.monotonic()
         bpy.ops.object.bake(type=bake_type)
-        print("BAKED", candidate.name, socket_name, "in", round(time.monotonic() - started, 1), "s", flush=True)
-    for slot_index, scratch_node in scratch_nodes.items():
-        candidate.material_slots[slot_index].material.node_tree.nodes.remove(scratch_node)
+        print("BAKED", material_name, socket_name, "in", round(time.monotonic() - started, 1), "s", flush=True)
+    for node in scratch_nodes.values():
+        node.id_data.nodes.remove(node)
     bpy.data.images.remove(scratch)
-    mesh.uv_layers.active = mesh.uv_layers[0]  # the materials that keep their own UVs read the first layer
-    for target in targets.values():
-        for socket_name in target["sockets"]:
-            target["images"][socket_name].pack()
-            target["material"].node_tree.nodes.remove(target["nodes"][socket_name])
-            wire_baked_channel(target["material"], socket_name, target["images"][socket_name])
-        entry = report.setdefault(target["original"], {"channels": target["sockets"], "objects": 0, "sizes": set()})
-        entry["objects"] += 1
-        entry["sizes"].add(target["size"])
+    for candidate in candidates:
+        candidate.data.uv_layers.active = candidate.data.uv_layers[0]  # the materials that keep their own UVs read the first layer
+    for socket_name in sockets:
+        images[socket_name].pack()
+        shared.node_tree.nodes.remove(nodes[socket_name])
+        wire_baked_channel(shared, socket_name, images[socket_name])
+    report[material_name] = {"channels": sockets, "objects": len(candidates), "sizes": {size}}
 
 
 def bake_warped_images():
     """Bakes the channels the exporter drops because of their texture coordinates (a blend of two UV mappings by
-    Object-space noise, Object or Generated coordinates, Box projection) to images on a unique UV layer (#2766)."""
+    Object-space noise, Object or Generated coordinates, Box projection) to one shared image per material and channel,
+    on a unique UV layer per object (#2766)."""
     warped = warped_channels_by_material()
     report = {}
     if not warped:
@@ -714,20 +748,23 @@ def bake_warped_images():
     scene.render.bake.use_pass_direct = False
     scene.render.bake.use_pass_indirect = False
     scene.render.bake.use_pass_color = True
-    users = [
+    visible = [
         candidate for candidate in bpy.context.view_layer.objects
         if candidate.type == "MESH" and candidate.visible_get() and not candidate.hide_render
-        and any(slot.material is not None and slot.material.name in warped for slot in candidate.material_slots)
     ]
-    # Colour, roughness and normal passes read only the baked object's own material, so the rest of the scene leaves the
-    # render while it bakes; otherwise every bake builds the whole scene's BVH again.
+    # Colour, roughness and normal passes read only the baked objects' own materials, so the rest of the scene leaves the
+    # render while a material bakes; otherwise every bake builds the whole scene's BVH again.
     hidden = [other for other in bpy.context.view_layer.objects if not other.hide_render]
-    print("WARPED", sorted(warped), "on", [candidate.name for candidate in users], flush=True)
     try:
-        for candidate in users:
-            for other in hidden:
-                other.hide_render = other is not candidate
-            bake_object_warped_slots(candidate, warped, report)
+        for material_name, sockets in warped.items():
+            slots = [
+                (candidate, slot_index)
+                for candidate in visible
+                for slot_index, slot in enumerate(candidate.material_slots)
+                if slot.material is not None and slot.material.name == material_name
+            ]
+            if slots:
+                bake_material_atlas(material_name, sockets, slots, report)
     finally:
         for other in hidden:
             other.hide_render = False

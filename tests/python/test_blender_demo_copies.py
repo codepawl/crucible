@@ -38,5 +38,22 @@ class RepeatWithOffsetTest(unittest.TestCase):
         self.assertEqual(repeated.dtype, numpy.int32)
 
 
+
+class FitIslandIntoRegionTest(unittest.TestCase):
+    def test_the_island_lands_inside_its_region_without_the_gutter_and_keeps_its_shape(self):
+        island = [[0.2, 0.2], [0.4, 0.2], [0.4, 0.3]]
+        placed = copies.fit_island_into_region(island, (100, 50, 40), 400, 4)
+        pixels = placed * 400
+        self.assertGreaterEqual(pixels[:, 0].min(), 104 - 1e-3)
+        self.assertLessEqual(pixels[:, 0].max(), 136 + 1e-3)
+        self.assertGreaterEqual(pixels[:, 1].min(), 54 - 1e-3)
+        self.assertLessEqual(pixels[:, 1].max(), 86 + 1e-3)
+        self.assertAlmostEqual(float((pixels[1, 0] - pixels[0, 0]) / (pixels[2, 1] - pixels[1, 1])), 2.0, places=4)
+
+    def test_a_single_point_still_lands_in_the_region(self):
+        placed = copies.fit_island_into_region([[0.5, 0.5]], (0, 0, 16), 64, 4) * 64
+        self.assertEqual(placed.tolist(), [[4.0, 4.0]])
+
+
 if __name__ == "__main__":
     unittest.main()

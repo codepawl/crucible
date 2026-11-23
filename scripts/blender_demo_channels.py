@@ -10,6 +10,8 @@ A graph is a dict of node name to {"type", "projection", "inputs"}. "inputs" map
 as the adapter in the Blender script builds from a real node tree.
 """
 
+import math
+
 PLAIN = "plain"
 WARPED = "warped"
 PROCEDURAL = "procedural"
@@ -100,3 +102,56 @@ def baked_texture_size(surface_area, texels_per_metre, minimum_size, maximum_siz
     while size < wanted and size < maximum_size:
         size *= 2
     return min(size, maximum_size)
+
+
+def power_of_two_sizes(minimum_size, maximum_size):
+    size = minimum_size
+    while size < maximum_size:
+        yield size
+        size *= 2
+    yield maximum_size
+
+
+def shelf_pack(sides, atlas_size):
+    """Places squares left to right in rows, tallest first. Returns the (x, y) of each square in the order given, or None."""
+    placements = [None] * len(sides)
+    cursor_x = 0
+    cursor_y = 0
+    row_height = 0
+    for index in sorted(range(len(sides)), key=lambda position: -sides[position]):
+        side = sides[index]
+        if side > atlas_size:
+            return None
+        if cursor_x + side > atlas_size:
+            cursor_x = 0
+            cursor_y += row_height
+            row_height = 0
+        if cursor_y + side > atlas_size:
+            return None
+        placements[index] = (cursor_x, cursor_y)
+        cursor_x += side
+        row_height = max(row_height, side)
+    return placements
+
+
+def plan_atlas(areas, texels_per_metre, gutter, minimum_size, maximum_size, minimum_side=16):
+    """One shared bake image for every object that uses a material (#2766).
+
+    areas is the surface area in square metres each object has in the material. Each object gets a square region sized to
+    about texels_per_metre across its surface, plus a gutter of empty texels on every side, and the regions are packed into
+    the smallest power-of-two square between minimum_size and maximum_size. When they do not fit at maximum_size the texel
+    density drops by a tenth until they do. Returns {"size", "texels_per_metre", "regions"}, regions being one
+    (x, y, side) per area, side including both gutters.
+    """
+    if not areas:
+        raise ValueError("plan_atlas needs at least one surface area; pass the areas of the objects that use the material.")
+    density = float(texels_per_metre)
+    while density > 0.5:
+        sides = [max(minimum_side, math.ceil((area ** 0.5) * density)) + 2 * gutter for area in areas]
+        for size in power_of_two_sizes(minimum_size, maximum_size):
+            placements = shelf_pack(sides, size)
+            if placements is not None:
+                return {"size": size, "texels_per_metre": density,
+                        "regions": [(x, y, side) for (x, y), side in zip(placements, sides)]}
+        density *= 0.9
+    raise ValueError(f"{len(areas)} objects do not fit a {maximum_size} px atlas even at 0.5 texels per metre; raise DEMO_BAKE_MAX_SIZE.")
