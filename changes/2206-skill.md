@@ -1,0 +1,1 @@
+- The particles skill quotes the new `stop` error text, which says stop is an absolute scene time (#2206).

@@ -27,7 +27,7 @@ with `segments: 1` (4 vertices, a card). `scene_inspect` returns `particles.syst
 
 Emission: `count` is how many are born in all. With `rate` (births per second) they are spread over `count / rate` seconds; without it, all are born at time 0 in
 one burst. `start` (alias `delay`) is the time of the first birth. `stop` is an absolute time in seconds, not a length after `start`: it must be above
-`start` and at most 3600, so `{ "start": 1.6, "stop": 0.4 }` fails with "expected a time in seconds after the start (1.6), such as 3.6". Nothing is born at or after `stop`;
+`start` and at most 3600, so `{ "start": 1.6, "stop": 0.4 }` fails with "expected an absolute scene time in seconds, above start (1.6), such as 3.6 (stop is not a duration after start)". Nothing is born at or after `stop`;
 particles already born finish their life.
 
 `emitter.shape` is `point` (default), `box`, `sphere`, `disc` or `mesh`; `emitter.position` is in world metres. `direction` (default up) and `spread` (cone angle in degrees, 0 to 180, default 30) aim the launch.

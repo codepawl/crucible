@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { loadPreviewPage } from './agent-page-load.mjs';
 import { withSnapshotSkyColors } from './snapshot-sky-colors.mjs';
-import { previewCallTimeoutMs, recipeHasGridVolume, operationsAddGridVolume } from './agent-evaluation-timeout.mjs';
+import { previewCallTimeoutMs, recipeHasGridVolume, operationsAddGridVolume, assetDataBytes, slowAssetsNote } from './agent-evaluation-timeout.mjs';
 import { createHash, randomUUID, randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { totalmem } from 'node:os';
@@ -526,6 +526,12 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
     let totalBytes = 0;
     for (const { id } of needs) totalBytes += (await readyCatalog.describeSize(id)).bytes;
     return totalBytes;
+  }
+
+  /** The file name and byte length of each catalog asset a recipe or edit list places, for the error of a call that ran long. */
+  async function placedAssetSizes(value) {
+    const readyCatalog = await catalog();
+    return Promise.all(recipeAssetNeeds(value).map(({ id }) => readyCatalog.describeSize(id)));
   }
 
   /** Bytes of the catalog assets a recipe or edit list places, base64 by asset id, for the page that decodes them. */
@@ -1392,7 +1398,11 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         await boot();
         const sessionId = randomUUID();
         const createInput ={ recipe, sessionId, memoryBudgetMiB: memory, backend, ...(await placedAssetData(recipe)) };
-        const result = await evaluate('create', createInput, page, previewCallTimeoutMs({ bakes: Boolean(recipe?.bake), addsGridVolume: recipeHasGridVolume(recipe), plainTimeoutMs: EVALUATION_TIMEOUT_MS, bakeTimeoutMs: BAKE_EVALUATION_TIMEOUT_MS }));
+        const createTimeoutMs = previewCallTimeoutMs({ bakes: Boolean(recipe?.bake), addsGridVolume: recipeHasGridVolume(recipe), plainTimeoutMs: EVALUATION_TIMEOUT_MS, bakeTimeoutMs: BAKE_EVALUATION_TIMEOUT_MS, assetBytes: assetDataBytes(createInput.assetData) });
+        const result = await evaluate('create', createInput, page, createTimeoutMs).catch(async error => {
+          if (error?.message?.startsWith('The preview operation')) error.message += slowAssetsNote(await placedAssetSizes(recipe));
+          throw error;
+        });
         registerCreatedScene(sessionId, result, Boolean(recipe?.bake));
         return result;
       }, { recoversFailedRuntime: true });
