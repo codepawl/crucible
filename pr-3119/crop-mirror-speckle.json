@@ -1,0 +1,20 @@
+{
+  "model": "NormalTangentMirrorTest",
+  "pixelBox": {
+    "left": 534,
+    "top": 86,
+    "width": 64,
+    "height": 40,
+    "scale": 8
+  },
+  "source": "NormalTangentMirrorTest-main.png and -branch.png, 960x720, ANGLE d3d11 GPU",
+  "speckleMain": {
+    "count": 15,
+    "box": [
+      542,
+      93,
+      589,
+      114
+    ]
+  }
+}
