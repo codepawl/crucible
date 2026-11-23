@@ -86,7 +86,7 @@ function saveState(context) {
     TOGGLED_STATES.forEach((name, index) => (enabled[index] ? context.enable(context[name]) : context.disable(context[name])));
     context.colorMask(...colorMask);
     context.bindVertexArray(vertexArray);
-    context.useProgram(program);
+    context.useProgram(context.isProgram(program) ? program : null);
     context.viewport(...viewport);
     context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
   };

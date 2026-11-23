@@ -212,3 +212,43 @@ test('a map that is not width x height RGBA bytes is refused by the reference wi
 test('the specular fade of a shader with a normal map reads the baked spread', () => {
   assert.match(createFragmentShader(['normalMap']), /normalMapSpread/);
 });
+
+test('bakeNormalMapVariance skips restoring a bound program already flagged for deletion', async (context) => {
+  await withDevServerPage(context, async (page) => {
+    const result = await page.evaluate(async () => {
+      const { bakeNormalMapVariance } = await import('/src/normal-map-variance.js');
+      const canvas = document.createElement('canvas');
+      const gl = canvas.getContext('webgl2');
+      const compile = (type, source) => {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        return shader;
+      };
+      const dummyProgram = gl.createProgram();
+      const vertexShader = compile(gl.VERTEX_SHADER, '#version 300 es\nvoid main(){gl_Position=vec4(0.0,0.0,0.0,1.0);}');
+      const fragmentShader = compile(gl.FRAGMENT_SHADER, '#version 300 es\nprecision mediump float;out vec4 o;void main(){o=vec4(1.0);}');
+      gl.attachShader(dummyProgram, vertexShader);
+      gl.attachShader(dummyProgram, fragmentShader);
+      gl.linkProgram(dummyProgram);
+      gl.deleteShader(vertexShader);
+      gl.deleteShader(fragmentShader);
+      gl.useProgram(dummyProgram);
+      gl.deleteProgram(dummyProgram);
+      gl.getError();
+
+      const normalTexture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, normalTexture);
+      const texels = new Uint8Array(8 * 8 * 4).fill(255);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 8, 8, 0, gl.RGBA, gl.UNSIGNED_BYTE, texels);
+      const baked = bakeNormalMapVariance(gl, normalTexture, 8, 8);
+      const glError = gl.getError();
+      const currentProgram = gl.getParameter(gl.CURRENT_PROGRAM);
+      gl.deleteTexture(normalTexture);
+      return { baked, glError, hasCurrentProgram: currentProgram !== null };
+    });
+    assert.equal(result.baked, true);
+    assert.equal(result.glError, 0);
+    assert.equal(result.hasCurrentProgram, false);
+  });
+});

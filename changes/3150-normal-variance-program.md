@@ -1,0 +1,1 @@
+- Skip restoring deleted WebGL programs in `bakeNormalMapVariance`, preventing `GL_INVALID_OPERATION (1282)` when a new renderer uploads a normal map on a reused canvas (#3150, #3142)
