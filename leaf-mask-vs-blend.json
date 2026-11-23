@@ -1,0 +1,133 @@
+{
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "card",
+        "type": "plane"
+      },
+      {
+        "id": "ground",
+        "type": "plane"
+      },
+      {
+        "id": "stripe",
+        "type": "box",
+        "bevel": 0
+      }
+    ],
+    "materials": [
+      {
+        "id": "ground",
+        "color": [
+          0.55,
+          0.55,
+          0.5
+        ]
+      },
+      {
+        "id": "stripe",
+        "color": [
+          0.9,
+          0.2,
+          0.2
+        ]
+      },
+      {
+        "id": "mask",
+        "colorMap": "668a649c39b0467b4e34111d1d013f72b4382fdd1259b74c0d69ae188693f3d9",
+        "alphaMode": "mask",
+        "alphaCutoff": 0.5,
+        "doubleSided": true
+      },
+      {
+        "id": "blend",
+        "colorMap": "668a649c39b0467b4e34111d1d013f72b4382fdd1259b74c0d69ae188693f3d9",
+        "alphaMode": "blend",
+        "doubleSided": true
+      }
+    ],
+    "nodes": [
+      {
+        "id": "ground",
+        "geometry": "ground",
+        "material": "ground",
+        "rotation": [
+          -0.7071068,
+          0,
+          0,
+          0.7071068
+        ],
+        "scale": [
+          8,
+          4,
+          1
+        ]
+      },
+      {
+        "id": "stripe",
+        "geometry": "stripe",
+        "material": "stripe",
+        "translation": [
+          0,
+          1,
+          -0.2
+        ],
+        "scale": [
+          8,
+          0.25,
+          0.05
+        ]
+      },
+      {
+        "id": "maskCard",
+        "geometry": "card",
+        "material": "mask",
+        "translation": [
+          -1.1,
+          1,
+          0
+        ],
+        "scale": [
+          1.6,
+          1.6,
+          1
+        ]
+      },
+      {
+        "id": "blendCard",
+        "geometry": "card",
+        "material": "blend",
+        "translation": [
+          1.1,
+          1,
+          0
+        ],
+        "scale": [
+          1.6,
+          1.6,
+          1
+        ]
+      }
+    ],
+    "camera": {
+      "eye": [
+        0,
+        1.6,
+        4.2
+      ],
+      "target": [
+        0,
+        1,
+        0
+      ],
+      "fov": 40
+    }
+  },
+  "size": [
+    960,
+    540
+  ],
+  "backend": "cpu"
+}
