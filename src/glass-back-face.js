@@ -3,9 +3,10 @@
 // ray against the back-face depth to find where it leaves, reads the normal there and bends it a second time. Any closed mesh works, not
 // only a ball. A shape with no back face (a glass cap) leaves the target empty, the march misses and the shader keeps the thickness
 // heuristic of glass-ball-lens.js.
-// The target keeps the nearest back face per pixel, so with two closed shapes on the same pixels it can hold the other shape's back face.
-// Each back face therefore carries the identifier of the glass instance that drew it (in the alpha), and a ray only takes an exit from the
-// back face of the instance it entered; otherwise it keeps the ball lens estimate (#3340).
+// The target keeps the nearest back face per pixel, so with one closed shape inside another it holds the inner shape's back face where the outer
+// ray needs its own. Only then (glassShellsNested) a second target keeps the farthest back face per pixel, every back face carries the
+// identifier of the glass instance that drew it (in the alpha), and a ray takes its exit from the first layer that holds its own shape's back
+// face. Single shells and shells that merely overlap keep the nearest back face, as before (#3340).
 // The GLSL below follows the JavaScript reference line by line, so a test of the reference covers the shader.
 import { marchSceneDepth } from './glass-depth-march.js';
 import { refractDirection } from './glass-ball-lens.js';
@@ -21,6 +22,23 @@ export function backIdentifier(firstInstance, instanceIndex) {
   return ((firstInstance + instanceIndex) % BACK_IDENTIFIER_COUNT) + 1;
 }
 
+/** More shells than this are not compared pair by pair; the frame then keeps the single back-face layer. */
+export const SHELL_PAIR_LIMIT = 64;
+
+const boxContains = (outer, inner) => [0, 1, 2].every(axis => outer.minimum[axis] <= inner.minimum[axis] && inner.maximum[axis] <= outer.maximum[axis]);
+
+/**
+ * Whether one closed glass shell lies inside another, so the nearest back face per pixel is the inner shell's where the outer ray needs its own
+ * and a second layer (the farthest back face) is worth drawing. `shells` are world boxes `{ minimum, maximum }`, one per glass instance; a
+ * shell counts as inside another when its box is inside the other's box. Overlapping shells that do not nest stay on the single layer: an exact
+ * exit there makes the picture worse, because the raster draws the larger shell's front over the smaller one (#3340). A frame with one shell,
+ * or more than SHELL_PAIR_LIMIT, needs no second layer.
+ */
+export function glassShellsNested(shells) {
+  if (shells.length < 2 || shells.length > SHELL_PAIR_LIMIT) return false;
+  return shells.some((inner, innerIndex) => shells.some((outer, outerIndex) => innerIndex !== outerIndex && boxContains(outer, inner)));
+}
+
 const scale = (vector, factor) => [vector[0] * factor, vector[1] * factor, vector[2] * factor];
 const add = (first, second) => [first[0] + second[0], first[1] + second[1], first[2] + second[2]];
 const normalize = vector => scale(vector, 1 / Math.hypot(...vector));
@@ -34,18 +52,37 @@ export function drawsBackFaces({ transmission, thickness, mediumContinues }) {
 }
 
 /**
- * Where the view ray leaves a closed glass shape and in which direction, or null when the back surface is not found.
- * `normal` faces the viewer, `viewDirection` points from the surface to the eye. `project(point)` and `backDepth(x, y)` are as in
- * marchSceneDepth, with the depth of the back faces; `backNormal(x, y)` returns the outward normal of the back face at a screen position and
- * `backIdentifierAt(x, y)` the identifier of the instance that drew it, which must equal `shapeIdentifier` (the shape the ray entered).
+ * Finds the back face this ray leaves its shape through. With no `farthest` layer (one shell, or shells that overlap without nesting) it is
+ * the nearest back face, whichever shell drew it. With a `farthest` layer (one shell inside another) it is the first layer whose back face
+ * was drawn by the shape the ray entered. Returns the hit and its layer's normal reader, or null.
  */
-export function backFaceExit({ shapeIdentifier, backIdentifierAt, position, normal, viewDirection, indexOfRefraction, thickness, project, backDepth, backNormal, reversed }) {
+function ownBackFace({ shapeIdentifier, nearest, farthest, position, inside, thickness, project, reversed }) {
+  const layers = farthest ? [nearest, farthest] : [nearest];
+  for (const layer of layers) {
+    const hit = marchSceneDepth({ origin: position, direction: inside, maximumDistance: thickness * BACK_REACH_PER_THICKNESS, project, sceneDepth: layer.backDepth, reversed });
+    if (!hit?.hit) return null;
+    const identifier = layer.backIdentifierAt(hit.x, hit.y);
+    // Nothing was drawn here: no other layer holds this ray's exit either.
+    if (!identifier) return null;
+    if (!farthest || identifier === shapeIdentifier) return { hit, backNormal: layer.backNormal };
+  }
+  return null;
+}
+
+/**
+ * Where the view ray leaves a closed glass shape and in which direction, or null when the back surface is not found.
+ * `normal` faces the viewer, `viewDirection` points from the surface to the eye. `project(point)` is as in marchSceneDepth. `nearest` is the layer
+ * of the nearest back faces and `farthest` the optional layer of the farthest ones (given only when one shell is inside another), each
+ * `{ backDepth(x, y), backNormal(x, y), backIdentifierAt(x, y) }`: the depth of the back faces, their outward normal and the identifier of the
+ * instance that drew them. With a `farthest` layer the exit must come from the back face of `shapeIdentifier` (the shape the ray entered);
+ * without a layer holding it the caller keeps the ball lens estimate.
+ */
+export function backFaceExit({ shapeIdentifier, nearest, farthest, position, normal, viewDirection, indexOfRefraction, thickness, project, reversed }) {
   const incident = scale(viewDirection, -1);
   const inside = refractDirection(incident, normal, 1 / indexOfRefraction) ?? incident;
-  const hit = marchSceneDepth({ origin: position, direction: inside, maximumDistance: thickness * BACK_REACH_PER_THICKNESS, project, sceneDepth: backDepth, reversed });
-  if (!hit?.hit) return null;
-  // The nearest back face here belongs to another shape (nested or overlapping glass): its exit is not this ray's.
-  if (backIdentifierAt(hit.x, hit.y) !== shapeIdentifier) return null;
+  const found = ownBackFace({ shapeIdentifier, nearest, farthest, position, inside, thickness, project, reversed });
+  if (!found) return null;
+  const { hit, backNormal } = found;
   const outward = backNormal(hit.x, hit.y);
   if (!outward || Math.hypot(...outward) < 0.5) return null;
   const exitPosition = add(position, scale(inside, hit.distance));
@@ -62,6 +99,10 @@ export const glassBackFaceGlsl = `
 uniform highp sampler2D glassBackDepth;
 uniform highp sampler2D glassBackNormal;
 uniform float glassBackEnabled;
+// The farthest back face per pixel, drawn only while one closed shell is inside another (glassBackFarEnabled is 1); the outer shell finds its exit here.
+uniform highp sampler2D glassBackFarDepth;
+uniform highp sampler2D glassBackFarNormal;
+uniform float glassBackFarEnabled;
 // 1 while the back faces are drawn: the fragment writes its outward normal (n * 0.5 + 0.5) and its identifier / 255 in the alpha, nothing else.
 uniform float glassBackPass;
 // The glass instance being drawn is number glassBackFirst (its batch's first instance among the frame's closed glass) plus its instance index.
@@ -76,11 +117,21 @@ bool glassBackFaceRay(vec3 position, vec3 normal, vec3 viewDirection, float inde
   vec3 incident = -viewDirection;
   vec3 inside = refract(incident, normal, 1.0 / indexOfRefraction);
   if (dot(inside, inside) < 0.5) inside = incident;
-  vec4 hit = marchDepthTexture(glassBackDepth, position, inside, thickness * BACK_REACH_PER_THICKNESS);
+  float reach = thickness * BACK_REACH_PER_THICKNESS;
+  float own = glassBackIdentifier();
+  vec4 hit = marchDepthTexture(glassBackDepth, position, inside, reach);
   if (hit.z < 0.75) return false;
   vec4 encoded = texelFetch(glassBackNormal, ivec2(hit.xy * resolution), 0);
-  // Alpha is the identifier / 255; a back face drawn by another instance is not this ray's exit.
-  if (encoded.a < 0.5 / 255.0 || abs(encoded.a * 255.0 - glassBackIdentifier()) > 0.5) return false;
+  // Alpha is the identifier / 255, 0 where nothing was drawn.
+  if (encoded.a < 0.5 / 255.0) return false;
+  // Without a second layer the nearest back face is the exit, whichever shell drew it; with one it must be this shell's own.
+  if (glassBackFarEnabled > 0.5 && abs(encoded.a * 255.0 - own) > 0.5) {
+    // The nearest back face is another shell's: this shell's own is in the farthest layer.
+    hit = marchDepthTexture(glassBackFarDepth, position, inside, reach);
+    if (hit.z < 0.75) return false;
+    encoded = texelFetch(glassBackFarNormal, ivec2(hit.xy * resolution), 0);
+    if (encoded.a < 0.5 / 255.0 || abs(encoded.a * 255.0 - own) > 0.5) return false;
+  }
   vec3 outward = encoded.xyz * 2.0 - 1.0;
   exitPosition = position + inside * hit.w;
   direction = refract(inside, -normalize(outward), indexOfRefraction);
