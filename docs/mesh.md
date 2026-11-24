@@ -221,7 +221,7 @@ the earlier work. Results list one entry per node with `cached: true` when reuse
 and misses. `evaluateMeshStack(mesh, stack, { cache, cacheKey })` runs a stack outside recipes.
 
 The `mesh_stack` tool sets the whole stack in one revision. `apply: n` moves the first `n` nodes into the edit log,
-as Blender's Apply modifier, which leaves the result unchanged.
+as Blender's Apply modifier, which leaves the result unchanged. A node may carry `enabled: false`: it stays in the stack and is skipped when the stack runs (Blender's show-in-viewport switch); `apply` refuses a switched-off node. Studio writes this stack from the Modifiers tab ([Studio](studio.md)).
 
 ### Shape keys
 

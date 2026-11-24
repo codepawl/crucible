@@ -2159,8 +2159,8 @@ test('workspaces run Build, Look, Animate and each shows only the panels its ste
 
   assert.equal(ui.root.dataset.workspace, 'build');
   assert.equal(workspaceTab('build').getAttribute('aria-selected'), 'true');
-  assert.deepEqual(shownTabs(), ['node']);
-  assert.ok(tabList.hasAttribute('hidden'), 'one panel needs no tab row');
+  assert.deepEqual(shownTabs(), ['node', 'modifiers']);
+  assert.equal(tabList.hasAttribute('hidden'), false, 'Build holds the Object and Modifiers tabs');
 
   const recipeBefore = JSON.stringify(ui.studio.exportRecipe());
   workspaceTab('look').click();

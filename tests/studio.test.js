@@ -75,7 +75,7 @@ test('createStudioController validates inputs and enforces tool, tab and node bo
 
   const controller = createStudioController({ scene, viewportWidth: 800, viewportHeight: 600 });
   assert.deepEqual(STUDIO_TOOLS, ['select', 'translate', 'rotate', 'scale', 'snap']);
-  assert.deepEqual(STUDIO_TABS, ['node', 'material', 'look', 'camera']);
+  assert.deepEqual(STUDIO_TABS, ['node', 'modifiers', 'material', 'look', 'camera']);
   assert.throws(() => controller.selectNode('missing-node'), /Unknown node/);
   assert.throws(() => controller.setTool('sculpt'), /Unknown Studio tool/);
   assert.throws(() => controller.setActiveTab('physics'), /Unknown Studio tab/);

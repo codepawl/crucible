@@ -744,18 +744,25 @@ export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 
 }
 
 
-/** Validate a modifier stack: nodes restricted to STACK_OPERATIONS, at most 16. */
+/**
+ * Validate a modifier stack: nodes restricted to STACK_OPERATIONS, at most 16. A node may carry `enabled: false`, the
+ * switch Blender shows as the viewport toggle of a modifier: it stays in the stack and is skipped when the stack runs.
+ * `enabled: true` is the default and is not kept.
+ */
 export function normalizeMeshStack(stack) {
   if (!Array.isArray(stack)) throw new TypeError('stack must be an array.');
   if (stack.length > MAX_STACK_NODES) throw new RangeError(`A stack holds at most ${MAX_STACK_NODES} nodes.`);
   for (const [index, node] of stack.entries()) {
     if (!STACK_OPERATIONS.includes(node?.op)) throw new TypeError(`Stack node ${index} op must be one of ${STACK_OPERATIONS.join(', ')}.`);
+    if (node.enabled !== undefined && typeof node.enabled !== 'boolean') throw editField(index, 'enabled', node.enabled, 'true or false');
   }
   // Stack nodes default their names from their own position, separately from the edit log.
-  return normalizeMeshEdits(stack.map((node, index) => {
-    if (!MESH_EDIT_OPERATIONS[node.op].fields.includes('name')) return node;
-    return { ...node, name: node.name ?? `${node.op}-s${index + 1}` };
+  const normalized = normalizeMeshEdits(stack.map((node, index) => {
+    const { enabled, ...operationFields } = node;
+    if (!MESH_EDIT_OPERATIONS[node.op].fields.includes('name')) return operationFields;
+    return { ...operationFields, name: node.name ?? `${node.op}-s${index + 1}` };
   }));
+  return normalized.map((node, index) => (stack[index].enabled === false ? { ...node, enabled: false } : node));
 }
 
 /**
@@ -770,6 +777,10 @@ export function evaluateMeshStack(mesh, stack, { maxVertices = 250_000, maxFaces
   let current = mesh;
   let key = cacheKey;
   normalized.forEach((node, index) => {
+    if (node.enabled === false) {
+      results.push({ op: node.op, enabled: false, after: { vertices: current.vertexCount, faces: current.faceCount } });
+      return;
+    }
     key = key === undefined ? undefined : `${key}|${JSON.stringify(node)}`;
     const hit = key === undefined ? undefined : cache?.get(key);
     let result;

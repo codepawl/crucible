@@ -32,6 +32,7 @@ export const ALLOWLIST = Object.freeze([
   { kind: 'uneven-inset', selector: 'crucible-studio-toolbar', reason: 'The tool rail is a strip as tall as the window; its buttons sit at the top and the strip ends below them.' },
   { kind: 'uneven-inset', selector: 'crucible-studio-tree-row', reason: 'The visibility button at the end of an outliner row is a hit area with its own room, so the row keeps 2px on that side.' },
   { kind: 'uneven-inset', selector: 'crucible-studio-popover > button', reason: 'A menu row is a full-width hit area whose label starts at the leading edge; the free space is the end of the row.' },
+  { kind: 'uneven-inset', selector: 'button.crucible-studio-switch', reason: 'A switch is a track whose knob travels from one end to the other, so its content sits at unequal insets by design.' },
 ]);
 
 // Runs inside the page. Returns one record per visible element under `rootElement`; the rules read them in Node.
@@ -178,6 +179,14 @@ function measure(page, selector) {
 async function measureScreens(page, theme, only) {
   const screens = [];
   if (!only || only === 'studio') screens.push({ name: `studio (${theme})`, records: await measure(page, '.crucible-studio') });
+  if (!only || only === 'studio') {
+    // The Modifiers tab with two blocks, one folded away from the default, so its cards and rows are measured too.
+    await page.evaluate(() => window.__studioPage.setActiveTab('modifiers'));
+    for (const modifier of ['mirror', 'array']) await page.selectOption('.crucible-studio-modifier-add', modifier);
+    await page.waitForTimeout(250);
+    screens.push({ name: `modifiers (${theme})`, records: await measure(page, '.crucible-studio') });
+    await page.evaluate(() => window.__studioPage.setActiveTab('node'));
+  }
   if (!only || only === 'popover') {
     const identifiers = await page.evaluate(() => Array.from(document.querySelectorAll('.crucible-studio [popover]')).map(element => element.id).filter(Boolean));
     for (const identifier of identifiers) {
