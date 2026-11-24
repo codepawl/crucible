@@ -2,7 +2,7 @@ import './support/load-agent-scene-modules.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAgentScene, loadPhysicsEngine } from '../src/agent-scene.js';
-import { MAX_WAKE_POINTS, normalizeWake, wakeAt, wakeTrail } from '../src/ocean-wake.js';
+import { MAX_WAKE_POINTS, normalizeWake, slamStrength, wakeAt, wakeTrail } from '../src/ocean-wake.js';
 import { oceanMesh } from '../src/mesh-ocean-modifier.js';
 import { createMeshData } from '../src/mesh-data.js';
 
@@ -99,6 +99,14 @@ test('wake fields fail with the field name and what to pass', () => {
   assert.throws(() => normalizeWake({ speed: 1 }), /wake\.speed is unsupported; use points or height/);
 });
 
+// The top face of a box, the flat y-up sea the shipped boat clip uses (a bare grid stands upright and has no depth for a wake to cover).
+const FLAT_SEA_EDITS = [
+  { op: 'subdivide_edges', edges: { all: true }, cuts: 16 },
+  { op: 'delete', select: { not: { normal: [0, 1, 0], maxAngle: 10 } } },
+  { op: 'subdivide', levels: 1 },
+  { op: 'set_position', position: { mul: [{ attr: 'position' }, [48, 1, 48]] } },
+];
+
 function boatRecipe(wake, velocity) {
   const boat = { thrust: 6, controls: [{ time: 0, throttle: 1 }] };
   if (wake) boat.wake = wake;
@@ -106,7 +114,7 @@ function boatRecipe(wake, velocity) {
     format: 'crucible.scene', schemaVersion: 1,
     geometries: [
       { id: 'hull', type: 'box' },
-      { id: 'sea', type: 'mesh', base: { type: 'grid', segments: 40 }, edits: [{ op: 'set_position', position: { mul: [{ attr: 'position' }, [24, 1, 24]] } }], stack: [{ op: 'ocean', windSpeed: 3, choppiness: 0, size: 30, seed: 2, resolution: 4 }] },
+      { id: 'sea', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: FLAT_SEA_EDITS, stack: [{ op: 'ocean', windSpeed: 3, choppiness: 0, size: 30, seed: 2, resolution: 4 }] },
     ],
     materials: [{ id: 'paint', color: [0.6, 0.5, 0.4] }, { id: 'water', color: [0.02, 0.12, 0.2], tag: 'water' }],
     nodes: [
@@ -211,6 +219,102 @@ test('the foam of a static wake point holds still while the sea moves under it',
       const rise = withWake(time).positions[vertex * 3 + 1] - seaOnly(time).positions[vertex * 3 + 1];
       assert.ok(Math.abs(rise - expected.offset) < 1e-5, `vertex ${vertex} at ${time}s has the wake offset of its rest position, got ${rise} not ${expected.offset}`);
     }
+  }
+});
+
+test('slam foam scales with closing speed and forward speed and fades with the decay time', () => {
+  const pulseAtOneSecond = moment => (Math.abs(moment - 1) < 0.01 ? 3 : 0);
+  const options = { closingSpeedAt: pulseAtOneSecond, forwardSpeedAt: () => 3.3, decay: 0.5, fullSpeed: 1.5, fullForward: 3, step: 0.01 };
+  assert.equal(slamStrength({ ...options, time: 0.5 }), 0, 'nothing before the slam');
+  assert.equal(slamStrength({ ...options, time: 1 }), 1, 'a hard slam at speed is full foam');
+  assert.ok(Math.abs(slamStrength({ ...options, time: 1.5 }) - Math.exp(-1)) < 0.03, 'it fades by e every decay');
+  assert.equal(slamStrength({ ...options, time: 4 }), 0, 'and is gone after four decays');
+  const steady = { ...options, time: 2, closingSpeedAt: () => 1.25 };
+  assert.equal(slamStrength(steady), 0.5, 'half the full closing speed is half the foam');
+  assert.ok(Math.abs(slamStrength({ ...steady, closingSpeedAt: () => 0.875 }) - 0.25) < 1e-9, 'a quarter of the closing speed is a quarter of the foam');
+  assert.equal(slamStrength({ ...steady, closingSpeedAt: () => 30 }), 1, 'the burst is capped at full');
+  assert.equal(slamStrength({ ...steady, closingSpeedAt: () => 2, forwardSpeedAt: () => 1.8 }), 0.5, 'half the forward speed is half the foam');
+  assert.equal(slamStrength({ ...steady, closingSpeedAt: () => 2, forwardSpeedAt: () => 0 }), 0, 'a hull at rest makes no burst');
+  assert.equal(slamStrength({ ...steady, closingSpeedAt: () => 0 }), 0, 'a hull rising or riding the swell makes none');
+  assert.equal(slamStrength({ ...steady, closingSpeedAt: () => 0.4 }), 0, 'ripple under the dead zone makes none');
+});
+
+function boatOnSwell(windSpeed, bootWake, thrust = 6) {
+  const recipe = boatRecipe(bootWake);
+  recipe.geometries[1].stack[0].windSpeed = windSpeed;
+  recipe.geometries[1].stack[0].choppiness = 1;
+  recipe.physics.bodies[0].float.boat = { thrust, controls: [{ time: 0, throttle: thrust > 0 ? 1 : 0 }], ...(bootWake ? { wake: bootWake } : {}) };
+  return createAgentScene(recipe);
+}
+
+function wakeFoamAround(windSpeed, wake, times, thrust) {
+  const wet = boatOnSwell(windSpeed, wake, thrust);
+  const { slamSpeed, ...withoutSlam } = wake;
+  const dry = boatOnSwell(windSpeed, withoutSlam, thrust);
+  const changes = [];
+  let energy = 0;
+  for (const time of times) {
+    wet.sampleMotion(time);
+    dry.sampleMotion(time);
+    const wetSea = wet.parts[0].geometry.positions;
+    const drySea = dry.parts[0].geometry.positions;
+    for (let vertex = 0; vertex < wetSea.length / 3; vertex++) {
+      const change = Math.abs(wetSea[vertex * 3 + 1] - drySea[vertex * 3 + 1]);
+      energy += change;
+      changes.push({ time, x: wetSea[vertex * 3], z: wetSea[vertex * 3 + 2], change });
+    }
+  }
+  return { energy, changes, wet };
+}
+
+const afterSettling = [1.5, 2, 2.5, 3, 3.5, 4, 4.5];
+
+test('a hull resting on calm water makes no slam foam, and one slamming into a swell at speed makes bursts', () => {
+  const wake = { height: 0.15, slamSpeed: 0.5 };
+  const calm = wakeFoamAround(1, { ...wake, slamSpeed: 1.5 }, [3.5, 4, 4.5], 6).energy;
+  assert.equal(calm, 0, 'calm water makes no burst');
+  const swell = wakeFoamAround(14, wake, afterSettling, 6).energy;
+  assert.ok(swell > 3 * Math.max(calm, 0.01), 'swell ' + swell + ' against calm ' + calm);
+  assert.equal(swell, wakeFoamAround(14, wake, afterSettling, 6).energy, 'the same bake gives the same foam');
+  const anchored = wakeFoamAround(14, wake, afterSettling, 0).energy;
+  assert.ok(anchored < swell / 2, 'a hull only drifting makes far less than one under way: ' + anchored + ' against ' + swell);
+});
+
+test('a harder slamSpeed asks for a harder hit, and the fields are checked', () => {
+  const gentle = wakeFoamAround(14, { height: 0.15, slamSpeed: 0.3 }, afterSettling, 6).energy;
+  const stiff = wakeFoamAround(14, { height: 0.15, slamSpeed: 20 }, afterSettling, 6).energy;
+  assert.ok(gentle > 1.5 * stiff, 'gentle ' + gentle + ' against stiff ' + stiff);
+  assert.throws(() => boatOnSwell(14, { slamSpeed: 0 }), /slamSpeed/);
+  assert.throws(() => boatOnSwell(14, { slamForward: 0 }), /slamForward/);
+  assert.throws(() => boatOnSwell(14, { slamSpeed: 1, slamDecay: 99 }), /slamDecay/);
+});
+
+test('slam foam stays within a bounded distance of the hull', () => {
+  const wake = { height: 0.15, slamSpeed: 0.3, width: 1.2 };
+  const withSlam = wakeFoamAround(14, wake, afterSettling, 6);
+  const hull = boatOnSwell(14, wake, 6);
+  let farthest = 0;
+  let changedVertices = 0;
+  for (const time of afterSettling) {
+    hull.sampleMotion(time);
+    const [hullX, hullZ] = [hull.parts[1].matrix[12], hull.parts[1].matrix[14]];
+    for (const { time: changeTime, x, z, change } of withSlam.changes) {
+      if (changeTime !== time || change < 1e-6) continue;
+      changedVertices++;
+      farthest = Math.max(farthest, Math.hypot(x - hullX, z - hullZ));
+    }
+  }
+  assert.ok(changedVertices > 0, 'the swell run makes some foam');
+  assert.ok(farthest < 12, 'slam foam reached ' + farthest + ' m from the hull');
+});
+
+test('a boat wake without slamSpeed keeps the sea byte for byte as before', () => {
+  const plain = boatOnSwell(14, { height: 0.15 });
+  const explicitlyOff = boatOnSwell(14, { height: 0.15, slamForward: 7 });
+  for (const time of afterSettling) {
+    plain.sampleMotion(time);
+    explicitlyOff.sampleMotion(time);
+    assert.deepEqual(Array.from(plain.parts[0].geometry.positions), Array.from(explicitlyOff.parts[0].geometry.positions));
   }
 });
 

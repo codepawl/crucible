@@ -29,6 +29,11 @@ export function isBloomActive(effects) {
   return effects?.bloom?.strength > 0;
 }
 
+function bloomKeepsHue(value) {
+  if (value === undefined || typeof value === 'boolean') return value === true;
+  throw new TypeError(`Bloom keepHue must be true or false, got ${JSON.stringify(value)}.`);
+}
+
 export function resolveEffects(effects = {}) {
   if (!effects || typeof effects !== 'object' || Array.isArray(effects)) throw new Error('Effects must be an object.');
   const bloom = effects.bloom ?? {};
@@ -56,6 +61,8 @@ export function resolveEffects(effects = {}) {
       strength: numberInRange(bloom.strength, 0, 0, BLOOM_STRENGTH_MAX, 'Bloom strength'),
       threshold: numberInRange(bloom.threshold, 1, 0, 10, 'Bloom threshold'),
       radius: numberInRange(bloom.radius, 1, 0.1, BLOOM_RADIUS_MAX, 'Bloom radius'),
+      // Opt-in: absent unless true, so every scene that does not ask resolves, and draws, as before (#3326).
+      ...(bloomKeepsHue(bloom.keepHue) ? { keepHue: true } : {}),
     },
   };
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -258,4 +258,27 @@ test('the command passes a good PNG, fails a washed-out one against its referenc
   assert.equal(runCommand([]).status, 2);
   assert.match(runCommand([good, '--frames', '0']).stderr, /--frames needs a positive number/);
   assert.match(runCommand([good, '--colour']).stderr, /Unknown option --colour/);
+});
+
+test('--lossless measures the frames in the folder instead of the clip, and rejects a missing or empty folder', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'check-preview-lossless-'));
+  const clipStandIn = writeStill(directory, 'clip-stand-in.png', (column, row) => smoothTexture(column, row) - 60 + row);
+  const framesFolder = join(directory, 'frames');
+  mkdirSync(framesFolder);
+  for (let index = 0; index < 6; index++) {
+    writeStill(framesFolder, `frame-${String(index).padStart(4, '0')}.png`, (column, row) => smoothTexture(column + index * 0.5, row) - 60 + row);
+  }
+  const fromCandidate = JSON.parse(runCommand([clipStandIn, '--json']).stdout);
+  assert.equal(fromCandidate.frames, 1);
+  assert.equal(fromCandidate.framesFrom, 'candidate');
+  assert.equal(fromCandidate.results.find(result => result.name === 'shimmer'), undefined, 'one frame cannot be checked for shimmer');
+  const fromLossless = JSON.parse(runCommand([clipStandIn, '--lossless', framesFolder, '--json']).stdout);
+  assert.equal(fromLossless.frames, 6);
+  assert.equal(fromLossless.framesFrom, 'lossless');
+  assert.ok(fromLossless.results.find(result => result.name === 'shimmer'), 'six lossless frames are checked for shimmer');
+  assert.match(runCommand([clipStandIn, '--lossless', framesFolder]).stdout, /PASS .* \(6 frames read from /);
+  assert.match(runCommand([clipStandIn, '--lossless', clipStandIn]).stderr, /--lossless needs a folder of PNG frames/);
+  const emptyFolder = join(directory, 'empty');
+  mkdirSync(emptyFolder);
+  assert.match(runCommand([clipStandIn, '--lossless', emptyFolder]).stderr, /has no PNG frames/);
 });

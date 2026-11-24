@@ -270,6 +270,7 @@ Ambient occlusion reads the depth texture, so it needs the HDR depth target that
 | `bloom.strength` | `0.12` | `0` to `8` |
 | `bloom.threshold` | `1` | `0` to `10` |
 | `bloom.radius` | `1` | `0.1` to `16` |
+| `bloom.keepHue` | `false` | `true` or `false`. A bright coloured part keeps its colour: the face stays saturated and the halo keeps the hue of the glow, where plain bloom clips the strongest channel and turns a red face pink and a blue glow cyan |
 | `depthOfField.blur` | `0` | `0` to `1`. Lens blur from depth, off by default; the widest circle is 5 percent of the image height |
 | `depthOfField.focusDistance` | `5` | `0.01` to `100000` metres from the camera that stay sharp |
 | `motionBlur.shutter` | `0` | `0` to `0.5` seconds of camera motion to smear |
@@ -310,6 +311,12 @@ Ambient occlusion reads the depth texture, so it needs the HDR depth target that
 | `localToneMapping.detail` | `1` | `0` to `2`. Gain on the fine detail kept apart from the base; `1` keeps it as rendered |
 | `localToneMapping.blurRadius` | `0.08` | `0.01` to `0.25`. Reach of the base blur as a fraction of the image height; taps stop at strong brightness edges, so a bright sky does not bleed into the ground |
 | `localToneMapping.midtoneRange` | `1.5` | `0` to `4`. Stops either side of middle grey that are left exactly as rendered; only brighter or darker regions are compressed, so the frame keeps its contrast. `0` compresses from middle grey outward |
+
+### Bloom that keeps the hue
+
+Plain bloom adds the blurred glow to the frame and tone maps each channel on its own, so on a part that is much brighter than 1 the strongest channel clips first and the colour washes toward white. `bloom: { strength: 0.5, radius: 16, keepHue: true }` tone maps a pixel that bloom reaches along its hue instead: the grey part of the colour (its weakest channel) goes through the curve as before, and the colour on top of it keeps its ratio. Where the frame was already bright before bloom (its strongest channel between 0.8 and 2, fading in smoothly; the emissive part itself) the whole pixel keeps its ratio, so a lit grey base no longer turns a neon face pastel. A pixel far from any glow is drawn exactly as without the switch, and with `keepHue` off or unset every pixel is byte-identical to before.
+
+Start near `strength` 0.25 to 1 with `radius` 16: a stronger bloom saturates even the weakest channel and the halo fades to white either way. It acts on the raster post pass only: the path tracer does not apply bloom, and the native post pass and the volume fog composite ignore `keepHue`. It works with `autoExposure` and `linearOutput`.
 
 `localToneMapping` splits the frame into a blurred base and the detail, compresses the base in log luminance toward middle grey (`0.18`), only where it lies past `midtoneRange`, and adds the detail back; the gain is one number for all three channels, so hue and saturation stay as rendered; naming the group turns it on at the defaults, `strength: 0` turns it off. It needs the HDR frame (it stays off on a benchmark renderer), runs in every render job that draws the raster frame, and does not touch the path tracer output yet. It runs after glare, so glare still sees the scene's real highlights, and before bloom, which then reads the mapped frame.
 
