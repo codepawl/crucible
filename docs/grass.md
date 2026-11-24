@@ -36,7 +36,7 @@ The technique follows the grass of Ghost of Tsushima (GDC 2021) and the open por
 - Vertex colours run from a dark, occluded root to a light tip. Each blade drifts slightly toward yellow or blue-green, and low-frequency noise adds dry patches.
 - Field patches (`patchiness`) break up the even carpet: two octaves of noise at about 8 m and 25 m make some patches short and thin and others tall, dense and darker.
 - A small share of blades are seed stalks (`stalks`): a thin stem with a straw head that rises above the sward. About 6 % of blades fold over at the middle, as trampled grass does.
-- The `grass` tag sways each vertex by how far up the blade it is (`uv.y` is 1 at the root). Gusts travel across the field as a wave along the wind direction, with a faster flutter on top. The shadow pass uses the same function.
+- The `grass` tag sways each vertex by how far up the blade it is (`uv.y` is 1 at the root) and moves the tip a share of the blade length (`uv.x` carries the length in millimetres, 2 per millimetre, on top of the side coordinate), so one wind leans a 0.12 m lawn and a 0.6 m meadow to the same angle. Gusts travel across the field as a wave along the wind direction, with a faster flutter on top. The shadow pass uses the same function.
 - Sunlight shines through the blades: when the camera looks toward the light, blades glow yellow-green, most at their thin tips.
 
 ## Options

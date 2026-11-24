@@ -641,14 +641,18 @@ float underwaterVisibility(float visibility, vec3 normal, float depth) {
 `,
   // Spliced into the colour and shadow vertex shaders by shaders.js.
   worldVertexWind: `
-// Grass bends by how far up the blade a vertex is (uv.y is 1 at the root), so it ignores terrain height.
+// Grass bends by how far up the blade a vertex is (uv.y is 1 at the root), so it ignores terrain height. The tip moves a share of the
+// blade length (uv.x carries the length in millimetres, see src/grass.js), so one wind bends a 0.12 m lawn and a 0.6 m meadow to the same
+// angle. A 0.6 m blade moves as far as it always did.
+const float GRASS_WIND_REFERENCE_LENGTH = 0.6;
 // Gusts roll across the field as a travelling wave along the wind direction, like the rolling bands in a meadow.
 // windHeading turns the wind about the vertical axis, in radians; 0 is the default heading toward +x.
 uniform float windHeading;
 
 vec3 grassWind(vec3 worldPoint, vec2 leafUv, float seconds, float strength) {
   float tip = clamp(1.0 - leafUv.y, 0.0, 1.0);
-  float bendWeight = tip * tip;
+  float bladeLength = floor(leafUv.x * 0.5) * 0.001;
+  float bendWeight = tip * tip * bladeLength / GRASS_WIND_REFERENCE_LENGTH;
   float headingCos = cos(windHeading);
   float headingSin = sin(windHeading);
   vec2 windDirection = vec2(0.94 * headingCos - 0.34 * headingSin, 0.94 * headingSin + 0.34 * headingCos);
