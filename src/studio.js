@@ -4230,7 +4230,7 @@ export function createStudio(container, {
     return modalTransform.typed === '' || !Number.isFinite(amount) ? null : amount;
   }
 
-  // Blender's numeric input: digits, a point and a minus sign build the amount, Backspace takes the last one back.
+  // Numeric input: digits, a point and a minus sign build the amount, Backspace takes the last one back.
   function typeModalAmount(event) {
     const current = modalTransform.typed;
     let next = current;
