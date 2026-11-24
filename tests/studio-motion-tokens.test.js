@@ -203,7 +203,7 @@ test('the motion check reads @starting-style blocks and holds them to the layout
   }
 });
 
-test('menus fade and grow, the tree flyout only fades, and reduced motion keeps the fade alone (#3223)', () => {
+test('menus fade and grow, and reduced motion keeps the fade alone (#3223)', () => {
   const rules = parseRules(STUDIO_CSS);
   const inside = (rule, text) => rule.conditions.some(condition => condition?.includes(text));
   const growing = rules.filter(rule => inside(rule, 'no-preference') && inside(rule, 'allow-discrete'));
@@ -215,9 +215,6 @@ test('menus fade and grow, the tree flyout only fades, and reduced motion keeps 
   assert.match(leaving.body, /display var\(--studio-motion-exit\) var\(--studio-ease-out\) allow-discrete/);
   assert.match(leaving.body, /overlay var\(--studio-motion-exit\)/);
   assert.ok(!/scale|translate/.test(leaving.body), 'the closed style sets no scale or translate, so nothing jumps while it fades');
-  const flyout = rules.find(rule => rule.selector === '.crucible-studio-popover.crucible-studio-tree-picker');
-  assert.match(flyout.body, /--studio-popover-start-scale: none;/);
-  assert.match(flyout.body, /--studio-popover-shift: none;/);
   const reducedPopover = rules.filter(rule => inside(rule, 'motion: reduce') && inside(rule, 'allow-discrete') && rule.selector.startsWith('.crucible-studio-popover'));
   assert.ok(reducedPopover.length >= 3);
   for (const rule of reducedPopover) {

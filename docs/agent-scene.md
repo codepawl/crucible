@@ -47,6 +47,20 @@ The renderer owns GPU allocation and disposal.
 The authoring session does not allocate GPU resources.
 The normal frame loop can render retained parts without calling inspection or exporting the recipe.
 
+### Lights on parts
+
+A point, spot or area light may name a `parent`: a node ID, or the label of a placed asset part (a glTF mesh node name). Its `position` and `direction` are then in that node's space (`position` defaults to the node's origin), and the light follows the node's world transform on every frame, through motion tracks, physics and glTF clips. `scene.environment` returns the lights in world space at the pose last sampled, so the rasterizer, both path tracers and the light bake read the same list. A bake traces the rest pose.
+
+```json
+{ "environment": {
+  "pointLights": [ { "parent": "lantern", "position": [0, 0.3, 0], "intensity": 6 } ],
+  "spotLights": [ { "parent": "lantern", "direction": [0, -1, 0], "angle": 0.6 } ],
+  "areaLights": [ { "parent": "screen", "face": "+z", "intensity": 5 } ]
+} }
+```
+
+An area light with `face` (`+x`, `-x`, `+y`, `-y`, `+z` or `-z`) is a surface light: the rectangle of that face of the parent's bounding box, sized by the part's scale and shining outward, `faceOffset` metres (0.002) in front of it so it does not light its own face from inside. Leave out `position`, `direction`, `up`, `width` and `height`. A parent that matches no node, or the label of several parts, is rejected with the IDs to choose from. Light counts are the same as for lights without a parent.
+
 ### On-demand code
 
 Mesh editing, `lathe`, `extrude`, `tube` and `curve` geometry, `text` geometry with its font, `terrain` and `floorPlan` geometry, material `pattern`, `motion` and node `relations` load on demand, so a recipe of
@@ -118,12 +132,14 @@ The tag can be `surface`, `unlit`, `liquid`, `foam`, `water`, `foliage` or `gras
 `waterRamp` (off by default) paints the sea in flat anime tones: `{ colors: [3 to 5 RGB, deep to bright], drivers: { height, facing, sun } (weights 0 to 1, default height 1), heightRange: [low, high] (world y, default -1 to 1), steps: hard (default) or soft, crestTint: { color, strength } }`. A weighted mix of the drivers picks the tone: `height` is world y across `heightRange`, `facing` rises toward the horizon, `sun` is how squarely a wave face meets the key light. The ramp owns the colour, so the sky reflection and the lit shading are not drawn; foam and the sun glint still add on top. `crestTint` colours the folded crests the `foam` group marks, wider than the foam itself. It needs the water tag; depth and a shallow and deep pair are not drivers yet.
 
 Ramp colours are display colours. A stop given as `#rrggbb` shows on screen as that hex; three numbers show as the sRGB encoding of those linear values (`[0.04, 0.4, 0.5]` shows as `#38aabc`). The shader maps each stop back through the exposure and the view transform (ACES, AgX or Neutral), so the tone curve does not shift it, and the distance haze (`fogDensity`) stays off the ramp. Measured on 640x360 stills under the default view: `#19617c` and `#38aabc` measured exactly as requested; a bright stop `#95edf3` measured `#99eef4` on lit faces. Things that run after the shader still change the picture: bloom, grade, vignette, grain, a look and the volume fog step, and foam, the sun glint and the crest tint add on top by design.
-Any `opacity` below one draws the material blended after opaque geometry, which suits glass, windows and visors. `alphaMode` accepts `opaque`, `mask`, `blend` or `add` (additive light for sparks, trails and glow); the MCP tools accept the same four, and `scene_capabilities` topic `alphaModes` lists them. `mask` cuts a hard edge where the alpha of the material's `map` or `colorMap` times `opacity` is under `alphaCutoff` (0 to 1, default 0.5; only with `mask`, any other mode refuses it): use it for leaf cards, fences and chain link, where `blend` sorts badly and casts soft shadows. Shadows, depth and object-ID passes follow the cut, and the path tracer reads the same cutoff. A procedural `pattern` has no alpha, so a mask with no alpha-carrying map cuts nothing. A node with an `opacity` track cannot use `mask`. Changing `alphaMode` or `alphaCutoff` replaces the affected parts.
+Any `opacity` below one draws the material blended after opaque geometry, which suits glass, windows and visors. Blended instances of every material draw back to front together, by the view depth of the centre of their bounds, equal depth in scene order; past 48 interleaved runs a batch draws whole in its own order, and the batches go farthest first. `alphaMode` accepts `opaque`, `mask`, `blend` or `add` (additive light for sparks, trails and glow); the MCP tools accept the same four, and `scene_capabilities` topic `alphaModes` lists them. `mask` cuts a hard edge where the alpha of the material's `map` or `colorMap` times `opacity` is under `alphaCutoff` (0 to 1, default 0.5; only with `mask`, any other mode refuses it): use it for leaf cards, fences and chain link, where `blend` sorts badly and casts soft shadows. Shadows, depth and object-ID passes follow the cut, and the path tracer reads the same cutoff. A procedural `pattern` has no alpha, so a mask with no alpha-carrying map cuts nothing. A node with an `opacity` track cannot use `mask`. Changing `alphaMode` or `alphaCutoff` replaces the affected parts.
 `ripples` on a water material (`{ strength, speed, windDirection }`, water tag only, off by default) controls the small wind ripples that tilt the surface and break the sun glint into facets. `strength` is their height from 0 (none) to 1 (1, the default look), `speed` scales how fast they travel from 0 (frozen) to 2 (1 default), and `windDirection` (degrees, the same angle as the `ocean` edit's `direction`) runs them downwind, within about 40 degrees of that direction, instead of in every direction. With the field absent the water renders exactly as before. Use it on a sea that is filmed: ripples 0.6 to 3 m long travel 4.5 to 12 rad/s and cross several pixels between two frames at 24 fps, so they read as strobing; `{ "strength": 0.3, "windDirection": 0 }` calms them. Scene file and library only, not an MCP tool field.
 `foamVeins` on a water material (`{ amount, scale }`, water tag only, off by default) adds a net of thin foam veins that trails out behind each crest, thinning and breaking into patches as the foam weight falls, as in anime and ocean references. `amount` is 0 (off) to 1 (0.6 once the object is given), `scale` 0.25 to 4 (1; larger is finer). The veins grow from the `foam` group, so they need a sea with foam ([mesh.md](mesh.md)); the native path tracer does not draw them yet.
 `doubleSided` draws and lights both faces of thin sheets.
 Changing the tag, opacity, blending, sidedness or pattern replaces the affected parts in the renderer; color, metallic, roughness and emission edits keep them.
 Set liquid optics with `environment.liquid`: `thickness`, `ior`, `refraction`, `scattering`, `foamOpacity` and `foamSoftness`.
+
+Roblox-style lighting settings map onto the environment and the post steps ([agent-look](agent-look.md#environment) has every field): `Sky` is `environment.skybox` (six catalog image IDs), `ClockTime` and `GeographicLatitude` are `environment.sky.clockTime` (`hours`, `latitude`), `OutdoorAmbient` is `environment.ambientColor`, `EnvironmentDiffuseScale` is `environment.environmentDiffuseScale`, `ColorCorrection` is `effects.colorCorrection` (`brightness`, `contrast`, `saturation`, `tint`) and `SunRays` is `effects.sunRays` (`intensity`, `spread`). Each is absent by default and leaves the frame unchanged until named.
 Colors use linear RGB.
 
 Base color, metallic, and roughness range from zero to one.
@@ -243,6 +259,25 @@ texture repeats outside 0 to 1 and tiles. `size` and `axis` only apply to `box`.
 fails at render and at `scene_export_glb` with a message that names `uv_unwrap`. GLB export writes the baked graph textures
 and the geometry UVs.
 
+### Face images
+
+`faceImages` on a node whose geometry is a `box` puts an image, a tiled texture or a per-frame image sequence on chosen faces of the part: a Roblox Decal (one image on one face) or Texture (an image tiled by a size in metres). Each entry is a `face` (`+x`, `-x`, `+y`, `-y`, `+z`, `-z`, seen upright from outside) and either `colorMap` (one catalog image asset ID) or `map: { "sequence": { "frames": [...], "fps": 30 } }`, plus any of:
+
+- `tile: [u, v]`: metres one tile covers along the face (0.001 to 100000). The tiling stays the same size when the part is resized, so a 4 m wall at `[0.5, 0.25]` shows 8 by 8 tiles and a wall twice as wide shows 16 across. Leave it out and one image covers the whole face (1 Roblox stud is 0.28 m). `offset: [u, v]` (tiles) and `rotation` (degrees) move the tiles.
+- `color` tints the image, `opacity` fades it, `alphaMode` is `blend` by default and takes the image's own alpha; `mask` with `alphaCutoff` gives a hard cutout.
+
+```json
+{ "id": "wall", "geometry": "block", "material": "brick", "scale": [4, 2, 0.5],
+  "faceImages": [
+    { "face": "+z", "colorMap": "<image id>", "tile": [0.5, 0.25] },
+    { "face": "+x", "map": { "sequence": { "frames": ["<id>", "<id>", "<id>"], "fps": 30 } } }
+  ] }
+```
+
+A sequence shows image `floor(time * fps)` of the list with no blending: set `fps` to the scene's frame rate to change the image on every frame (a character's face), or lower to hold each image longer; `loop: false` holds the last image. The same time drives `scene_look`, scene files and render jobs, so a frame range or a clip shows the same image for the same time. At most 6 entries a node and 5 stacked on one face; frames follow the [texture sequence](#image-sequence-maps) limits, local catalog images only.
+
+Each entry becomes a child quad `<node>.face-<n>` with its own material of the same name, 0.5 mm outside the face with `decal: true`, so it follows the part and `set-node` and `set-material` edit it by those IDs. Set `faceImages` again to replace them all, or `null` to remove them. `worldScale: [u, v]` also works on a plain quad or mesh material with `colorMap` or a map sequence.
+
 ### Which geometries have UVs
 
 An image map (`map.sequence`, `colorMap` and the other texture set maps) reads UV channel 0, and a geometry type either carries it or does not:
@@ -282,7 +317,7 @@ A `surface` material takes the maps of a scanned set (Poly Haven, ambientCG) fro
 - `textureSet` fills `colorMap`, `normalMap`, `roughnessMap`, `metallicMap`, `occlusionMap` and `heightMap`. Each of those fields also takes one catalog image asset ID on its own and wins over the set. The server swaps `textureSet` for the IDs before the scene is built, so a saved recipe holds only the pinned IDs; a library caller passes the IDs. An ID that is not a catalog image, or a set name that does not exist, fails with the field, the IDs that would fit and the sets the catalog has.
 - `normalConvention` is `opengl` (default) or `directx`. A DirectX normal map has its green channel flipped when it is loaded; a set whose only normal map is a DirectX file sets it for you.
 - The roughness and metallic images are repacked into one glTF metallicRoughness texture: roughness in green, metallic in blue, the other channel 255, so `roughness` and `metallic` (default 1 when their map is set) still scale it. Their sizes must match.
-- `uvScale` (one number or `[u, v]`, 0.001 to 10000 tiles), `uvOffset` (`[u, v]`, -10000 to 10000) and `uvRotation` (degrees, -360 to 360) move every map of the material together, the way glTF `KHR_texture_transform` does: scale, then rotate, then offset. `worldScale` (metres per tile, 0.001 to 100000, not together with `uvScale`) sets the tile size instead, so a 2 m scan repeats every 2 m on a 10 m plane and on a 400 m terrain alike (a chunked terrain too). The transform is baked into the mesh UVs, so the rasterizer, both path tracers and the exports read the same texture coordinates; `worldScale` measures the mesh at its rest size, scaled by its node. A material without these fields draws exactly as before, and the fields need a catalog map and a mesh with UVs.
+- `uvScale` (one number or `[u, v]`, 0.001 to 10000 tiles), `uvOffset` (`[u, v]`, -10000 to 10000) and `uvRotation` (degrees, -360 to 360) move every map of the material together, the way glTF `KHR_texture_transform` does: scale, then rotate, then offset. `worldScale` (metres per tile, 0.001 to 100000, one number or `[u, v]` for a tile that is longer than it is wide, not together with `uvScale`) sets the tile size instead, so a 2 m scan repeats every 2 m on a 10 m plane and on a 400 m terrain alike (a chunked terrain too). The transform is baked into the mesh UVs, so the rasterizer, both path tracers and the exports read the same texture coordinates; `worldScale` measures the mesh at its rest size, scaled by its node. A material without these fields draws exactly as before, and the fields need a catalog map and a mesh with UVs.
 - `colorMap` is the base colour, `color` tints it (white by default). It cannot be combined with `map` or `pattern`, nor can any other map field with `pattern`. The material needs UVs, which [some geometries have](#which-geometries-have-uvs).
 - `occlusionMap` is drawn by the rasterizer; the path tracers ignore it and say so. `heightMap` is kept and exported in the recipe, but no renderer displaces or parallax-maps from it yet: `scene_inspect` reports it as ignored, and a path traced render lists it under `ignored`.
 
@@ -408,7 +443,7 @@ An asset placement with a `crowd` field fills its group node with `count` (1 to 
 
 ### Seams between meshes
 
-Three node fields fix what looks wrong where meshes meet; `add-node` and `set-node` take all of them. `blend: { "radius": 0.15 }` (metres, 0.005 to 2) softens the seam where a rock or trunk cuts into the ground and needs a preview with depth; see [mesh-blend.md](mesh-blend.md). `decal: true` and `depthLayer` (0 to 4) stop z-fighting on flush faces; see `depthBias` in `scene_capabilities`.
+Three node fields fix what looks wrong where meshes meet; `add-node` and `set-node` take all of them. `blend: { "radius": 0.15 }` (metres, 0.005 to 2) softens the seam where a rock or trunk cuts into the ground and needs a preview with depth; see [mesh-blend.md](mesh-blend.md). `decal: true` and `depthLayer` (0 to 4) stop z-fighting on flush faces; see `depthBias` in `scene_capabilities`. For an image on a face, see [Face images](#face-images).
 
 ### Visibility and render flags
 
@@ -456,6 +491,20 @@ translations, whatever the order of the nodes. A relation that cannot be satisfi
 whole edit and names the relation. `relations: []` in `set-node` removes them and keeps the part where it is. The
 exported recipe holds both the relations and the solved translations. Motion and physics move nodes after the solve and
 know nothing of relations. The code loads on demand (`relations`, see On-demand code). The MCP schema only says `relations` is a list; the kinds and fields are in `scene_capabilities` under `relations`.
+
+### Text panels and billboards
+
+Signs, labels and name tags are text on a texture. `material.text` draws it on the CPU from the DejaVu Sans outlines that 3D text already bundles, so the same input gives the same bytes on every machine and in every backend (no canvas, no system font). Fields: `content` (1 to 512 characters, up to 32 lines, `\n` breaks a line, a character the font lacks draws as `?`), `width` and `height` (the metres the panel covers), `font` (`sans`, the only family bundled), `fontSize` (metres), `color`, `background` (leave it out for a transparent panel, which blends), `align`, `verticalAlign`, `wrap` (breaks at the width, and inside a word wider than a line), `padding` and `resolution` (pixels per metre, 256 by default). The texture is at most 1024 pixels on a side. The material takes the `surface` or `unlit` tag and no `pattern`, `map` or `colorMap`.
+
+A sign on one face of a part is a `plane` node, a child of the part, sized by its scale and placed a millimetre off the face with `decal: true`. A name tag is the same node with `billboard`: `size` `[width, height]` in metres or `screenHeight` (the share of the frame height, at any distance), and `offset` in world metres from the node. Leave `offset` out and the tag stands above the top of the world bounding box of its parent node and everything below it, with a gap of 20 percent of the tag's own height, so it never covers a head or a hat; an explicit `offset`, even `[0, 0, 0]`, wins. A billboard node casts no shadow unless it sets `castShadow: true`, so a tag leaves no stray line on the ground. A part in front hides the tag, like a Roblox `BillboardGui`; `alwaysOnTop: true` draws it through parts and needs a material with `depthTest: false` and `alphaMode: "blend"`, a pair that is checked. Its sheet faces the camera at every sampled time, follows the node under a moving parent, and ignores the node's rotation and scale. It faces the recipe camera or the camera track, perspective or orthographic. Neither goes into a `crucible pack`, which refuses a recipe that uses them. The fields are in `scene_capabilities` under `textPanel` and `billboard`; the code loads on demand (`textPanel`, `textBillboard`).
+
+```json
+{ "materials": [{ "id": "sign", "tag": "unlit", "text": { "content": "OPEN\nCoffee 24h", "width": 2, "height": 0.8, "color": [1, 0.9, 0.6], "background": [0.1, 0.05, 0.02] } }],
+  "nodes": [
+    { "id": "shop", "geometry": "box", "material": "wall", "scale": [4, 3, 0.3] },
+    { "id": "shop-sign", "parent": "shop", "geometry": "plane", "material": "sign", "translation": [0, 0.2, 0.502], "scale": [0.5, 0.267, 1], "decal": true },
+    { "id": "tag", "parent": "walker", "geometry": "plane", "material": "name", "billboard": { "screenHeight": 0.03 } } ] }
+```
 
 ## Transactions and ownership
 

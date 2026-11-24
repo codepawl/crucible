@@ -176,7 +176,7 @@ test('effects enforce existing ranges, independent exposure and explicit bloom d
   assert.equal(normalizeAgentLook({ effects: { exposure: 0.01 } }).effects.exposure, 0.01);
   const invalid = [
     { exposure: 0 }, { exposure: 16.01 }, { saturation: 2.1 }, { contrast: 0 }, { temperature: 1.1 },
-    { vignette: -1 }, { grain: 0.11 }, { bloom: null }, { bloom: { strength: 2.1 } },
+    { vignette: -1 }, { grain: 0.11 }, { bloom: null }, { bloom: { strength: 8.1 } }, { bloom: { radius: 16.1 } },
     { bloom: { threshold: -1 } }, { bloom: { radius: 0 } }, { bloom: { radius: '1' } },
   ];
   for (const effects of invalid) {

@@ -1,0 +1,1 @@
+- The Studio add menu no longer offers a ready-made Tree entry or its preset flyout; a recipe that holds a tree still opens, selects and edits, and agents still add trees through the recipe.

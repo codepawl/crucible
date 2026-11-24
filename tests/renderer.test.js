@@ -195,17 +195,62 @@ test('opaque and mask parts keep an instance opacity of one', () => {
   }
 });
 
-test('blend instances upload back to front by distance to the eye', () => {
+test('blended instances of two batches draw in one back to front order, and each buffer is restored (#3236)', () => {
   const uploads = [];
+  const drawn = [];
   const renderer = Object.create(CrucibleRenderer.prototype);
-  renderer.context = { ARRAY_BUFFER: 34962, bindBuffer() {}, bufferSubData(target, offset, data) { uploads.push(Array.from(data)); } };
-  renderer.backend = new WebGL2GlazeBackend(renderer.context);
-  const instanceData = new Float32Array(3 * 42);
-  [1, 9, 4].forEach((distance, index) => { instanceData[index * 42 + 14] = -distance; instanceData[index * 42] = index; });
-  const batch = { instanceBuffer: {}, instanceData, instanceCount: 3 };
-  renderer.uploadSortedInstances(batch, [0, 0, 0]);
-  const order = [0, 1, 2].map(rank => uploads[0][rank * 42]);
-  assert.deepEqual(order, [1, 2, 0]);
+  renderer.context = { ARRAY_BUFFER: 34962, bindBuffer() {}, bufferSubData(target, offset, data, start, length) { uploads.push(Array.from(data.subarray(start ?? 0, (start ?? 0) + (length ?? data.length)))); } };
+  renderer.view = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  const batchOf = (marks, depths) => {
+    const instanceData = new Float32Array(marks.length * 42);
+    marks.forEach((mark, index) => { instanceData[index * 42] = mark; instanceData[index * 42 + 14] = depths[index]; });
+    return { instanceBuffer: {}, instanceData, instanceCount: marks.length, sortCenter: [0, 0, 0] };
+  };
+  const near = batchOf([1, 3], [-1, -5]);
+  const far = batchOf([2], [-3]);
+  renderer.drawAlphaBatch = (batch) => drawn.push([batch === near ? 'near' : 'far', batch.instanceCount]);
+  renderer.drawBlendedInOrder([near, far]);
+  assert.deepEqual(drawn, [['near', 1], ['far', 1], ['near', 1]]);
+  assert.deepEqual(uploads.slice(0, 2).map(upload => upload[0]), [3, 1], 'the farthest instance of the two-instance batch draws first');
+  assert.equal(uploads.length, 3, 'a lone instance needs no upload');
+  assert.deepEqual([uploads[2][0], uploads[2][42]], [1, 3], 'the buffer is back in its own order');
+  assert.equal(near.instanceCount, 2, 'a run never leaves a short instance count behind');
+});
+
+test('batches whose depth ranges do not overlap draw whole, farthest first; only overlapping ones interleave (#3236)', () => {
+  const drawn = [];
+  const renderer = Object.create(CrucibleRenderer.prototype);
+  renderer.context = { ARRAY_BUFFER: 34962, bindBuffer() {}, bufferSubData() {} };
+  renderer.view = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  const batchOf = (name, depths) => {
+    const instanceData = new Float32Array(depths.length * 42);
+    depths.forEach((depth, index) => { instanceData[index * 42 + 14] = depth; });
+    return { name, instanceBuffer: {}, instanceData, instanceCount: depths.length, sortCenter: [0, 0, 0] };
+  };
+  const nearest = batchOf('nearest', [-1, -2]);
+  const middleA = batchOf('middleA', [-10, -14]);
+  const middleB = batchOf('middleB', [-12, -16]);
+  const farthest = batchOf('farthest', [-30, -40]);
+  renderer.drawAlphaBatch = (batch) => drawn.push([batch.name, batch.instanceCount]);
+  renderer.drawBlendedInOrder([nearest, middleA, farthest, middleB]);
+  assert.deepEqual(drawn, [['farthest', 2], ['middleB', 1], ['middleA', 1], ['middleB', 1], ['middleA', 1], ['nearest', 2]]);
+});
+
+test('past the run budget blended batches draw whole, farthest mean depth first (#3236)', () => {
+  const drawn = [];
+  const renderer = Object.create(CrucibleRenderer.prototype);
+  renderer.context = { ARRAY_BUFFER: 34962, bindBuffer() {}, bufferSubData() {} };
+  renderer.view = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  const batches = Array.from({ length: 60 }, (unused, index) => {
+    const instanceData = new Float32Array(2 * 42);
+    instanceData[14] = -index;
+    instanceData[42 + 14] = -100 - index;
+    return { index, instanceBuffer: {}, instanceData, instanceCount: 2, sortCenter: [0, 0, 0] };
+  });
+  renderer.drawAlphaBatch = (batch) => drawn.push([batch.index, batch.instanceCount]);
+  renderer.drawBlendedInOrder(batches);
+  assert.deepEqual(drawn.map(([index]) => index), Array.from({ length: 60 }, (unused, rank) => 59 - rank));
+  assert.ok(drawn.every(([, count]) => count === 2));
 });
 
 test('instance animation reuses retained buffers, updates inverse-transpose normals and RGB emission', () => {
@@ -628,12 +673,12 @@ test('blend batches draw their opaque texels with depth writes before the blende
   renderer.backend = new WebGL2GlazeBackend(renderer.context);
   renderer.uniforms = { shadowMap: 'shadowMap' };
   renderer.canvas = { width: 4, height: 4 };
+  renderer.view = new Float32Array(16);
   const parts = [{ material: { tag: 'surface' } }];
-  const baked = { parts, alphaMode: 'blend', alphaCutoff: 0, opacity: 1, instanceCount: 1, instanceData: new Float32Array(42).fill(1) };
-  const glass = { parts, alphaMode: 'blend', alphaCutoff: 0, opacity: 1, instanceCount: 1, instanceData: new Float32Array(42).fill(0.3) };
+  const baked = { parts, sortCenter: [0, 0, 0], alphaMode: 'blend', alphaCutoff: 0, opacity: 1, instanceCount: 1, instanceData: new Float32Array(42).fill(1) };
+  const glass = { parts, sortCenter: [0, 0, 0], alphaMode: 'blend', alphaCutoff: 0, opacity: 1, instanceCount: 1, instanceData: new Float32Array(42).fill(0.3) };
   const glow = { parts, alphaMode: 'add', alphaCutoff: 0, opacity: 1, instanceCount: 1, instanceData: new Float32Array(42).fill(0.8) };
   renderer.batches = [glow, baked, glass];
-  renderer.uploadSortedInstances = () => {};
   renderer.drawAlphaBatch = (batch) => {
     draws.push({ opacity: batch.instanceData[41], blendFunction: blendFunctions.at(-1), depthMask: state.depthMask, blend: state.blend, alphaMode: batch.alphaMode, alphaCutoff: batch.alphaCutoff });
   };

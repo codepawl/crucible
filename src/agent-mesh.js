@@ -141,7 +141,7 @@ export function generateMeshGeometry(baseGeometry, edits, {
     geometry.morphTargetNames = keys.map(key => key.name);
     geometry.morphTargetValues = Float32Array.from(keys, key => key.value);
   }
-  polygonMeshes.set(geometry, { mesh: evaluated.mesh, results: edited.result, stack: evaluated.results });
+  polygonMeshes.set(geometry, { mesh: evaluated.mesh, results: edited.result, stack: evaluated.results, editLog: { mesh: edited.mesh, renderVertexSource, stackLength: stack.length } });
   return geometry;
 }
 
@@ -187,6 +187,16 @@ function faceSizeHistogram(mesh) {
 function roundedBounds(bounds) {
   const round = value => Math.round(value * 1e5) / 1e5;
   return { min: bounds.min.map(round), max: bounds.max.map(round) };
+}
+
+/**
+ * What Studio's edit mode reads of a recipe mesh geometry: the mesh the edit log made (before the modifier stack, so its
+ * vertex numbers are the ones an edit's index fields use), how many stack nodes follow it, and the render vertex each mesh
+ * vertex was written to (valid for the part only when the stack is empty). Null for geometry not built from a recipe mesh.
+ * The mesh is shared with the evaluation cache: read it, never write it.
+ */
+export function meshEditSourceOf(geometry) {
+  return polygonMeshes.get(geometry)?.editLog ?? null;
 }
 
 /** The polygon mesh behind renderer geometry: the recipe's own mesh when it has one, else the welded, quad-joined view. */

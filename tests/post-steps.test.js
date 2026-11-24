@@ -4,12 +4,12 @@ import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mat4 } from 'gl-matrix';
+import { mat4, vec3 } from 'gl-matrix';
 import { resolveEffects } from '../src/effects.js';
 import { normalizeAgentLook } from '../src/agent-look.js';
 import { agentSceneModulesNeeded, loadAgentSceneModules } from '../src/agent-scene-modules.js';
 import { installCameraEffects } from '../src/camera-effects.js';
-import { installPostSteps, resolvePostSteps, glareFragment, lensDistortionFragment, colorBalanceFragment, stylizeFragment, compositeFragment, usesObjectMask } from '../src/post-steps.js';
+import { installPostSteps, resolvePostSteps, glareFragment, lensDistortionFragment, colorBalanceFragment, stylizeFragment, compositeFragment, usesObjectMask, sunScreenPosition } from '../src/post-steps.js';
 import { createAgentScene } from '../src/agent-scene.js';
 import { normalizeUserPasses, buildPassFragment, installUserPasses, describeUserPasses } from '../src/user-pass.js';
 
@@ -30,11 +30,12 @@ function recordingContext(calls) {
 function fakeRenderer(context) {
   return {
     postStages: [], context, canvas: { width: 16, height: 9 }, hdr: false, depthTexture: 'depth',
-    inverseViewProjection: mat4.create(), viewForward: [0, 0, -1],
+    inverseViewProjection: mat4.create(), viewProjection: mat4.create(), viewForward: [0, 0, -1],
+    activeLightDirection: [0, 0, 1], lighting: { keyColor: [3, 2, 1] },
   };
 }
 
-const STAGE_NAMES = ['Distortion', 'Flash', 'Glare', 'Local tone mapping', 'Lens distortion', 'Color balance', 'Stylize', 'Composite'];
+const STAGE_NAMES = ['Distortion', 'Flash', 'Glare', 'Local tone mapping', 'Lens distortion', 'Color balance', 'Color correction', 'Sun rays', 'Stylize', 'Composite'];
 
 test('a look that names no step resolves exactly as before', async () => {
   await loadAgentSceneModules({});
@@ -87,13 +88,15 @@ test('each stage draws only for a frame that sets its step, and frees its target
   const context = recordingContext(calls);
   const renderer = installPostSteps(installCameraEffects(fakeRenderer(context)));
   assert.deepEqual(renderer.postStages.slice(2).map(stage => stage.name), STAGE_NAMES);
-  assert.equal(installPostSteps(renderer).postStages.length, 10);
+  assert.equal(installPostSteps(renderer).postStages.length, 12);
   const unset = { eye: [0, 1, 5], effects: {} };
-  const neutral = { eye: [0, 1, 5], effects: { colorBalance: {}, glare: {}, lensDistortion: {}, stylize: {}, composite: {} } };
+  const neutral = { eye: [0, 1, 5], effects: { colorBalance: {}, colorCorrection: { brightness: 0, contrast: 0, saturation: 0, tint: [1, 1, 1] }, sunRays: { intensity: 0 }, glare: {}, lensDistortion: {}, stylize: {}, composite: {} } };
   const named = [
     ['Glare', { glare: { streaks: 0.6 } }],
     ['Lens distortion', { lensDistortion: { distortion: 0.5, dispersion: 0.5 } }],
     ['Color balance', { colorBalance: { gain: [1.1, 1, 0.9] } }],
+    ['Color correction', { colorCorrection: { saturation: -0.5 } }],
+    ['Sun rays', { sunRays: { intensity: 0.5 } }],
     ['Stylize', { stylize: { posterize: 4 } }],
     ['Composite', { composite: { background: { color: [0.1, 0.2, 0.6] }, key: { luma: { low: 0.1, high: 0.4 } } } }],
   ];
@@ -106,8 +109,8 @@ test('each stage draws only for a frame that sets its step, and frees its target
     stage.releaseTargets(context);
     stage.dispose(context);
   }
-  assert.ok(calls.filter(call => call[0] === 'drawArrays').length === 5);
-  assert.ok(calls.filter(call => call[0] === 'deleteTexture').length === 5);
+  assert.ok(calls.filter(call => call[0] === 'drawArrays').length === 8, 'the sun rays draw a gather and a composite');
+  assert.ok(calls.filter(call => call[0] === 'deleteTexture').length === 8);
 });
 
 test('a stylize step resolves its filters and a mask, and refuses bad input', () => {
@@ -321,4 +324,78 @@ test('a mask or user pass names a placed asset by its node id and gets every par
   assert.throws(() => objectIdentifierSlots(renderer, ['ghost']), /"ghost" is not a part in the frame/);
   const wide = { passSupport: { objectNames: () => [], objectNodes: () => ({ train: Array.from({ length: 40 }, (_, index) => index + 1) }) } };
   assert.equal(objectIdentifierSlots(wide, ['train']).identifiers.length, 40, 'a 40-part asset fits in one mask');
+});
+
+test('colorCorrection resolves with identity defaults and names the fix in each error', () => {
+  assert.deepEqual(resolvePostSteps({ colorCorrection: {} }).colorCorrection, { brightness: 0, contrast: 0, saturation: 0, tint: [1, 1, 1] });
+  assert.deepEqual(resolvePostSteps({ colorCorrection: { tint: [1, 0.9, 0.8], saturation: -0.2 } }).colorCorrection.tint, [1, 0.9, 0.8]);
+  assert.throws(() => resolvePostSteps({ colorCorrection: { brightness: 2 } }), /colorCorrection\.brightness is 2: pass a number from -1 to 1/);
+  assert.throws(() => resolvePostSteps({ colorCorrection: { tint: [1, 1] } }), /colorCorrection\.tint.*three numbers from 0 to 4/);
+  assert.throws(() => resolvePostSteps({ colorCorrection: { hue: 1 } }), /colorCorrection\.hue.*one of the fields brightness, contrast, saturation, tint/);
+});
+
+test('sunRays resolves with defaults and names the fix in each error', () => {
+  assert.deepEqual(resolvePostSteps({ sunRays: {} }).sunRays, { intensity: 0.25, spread: 1 });
+  assert.throws(() => resolvePostSteps({ sunRays: { intensity: 5 } }), /effects\.sunRays\.intensity is 5: pass a number from 0 to 4/);
+  assert.throws(() => resolvePostSteps({ sunRays: { spread: -1 } }), /effects\.sunRays\.spread is -1: pass a number from 0 to 1/);
+  assert.throws(() => resolvePostSteps({ sunRays: { color: 1 } }), /effects\.sunRays\.color.*one of the fields intensity, spread/);
+});
+
+function cameraRenderer(context, towardSun) {
+  const eye = [0, 1.7, 7];
+  const projection = mat4.perspective(mat4.create(), 50 * Math.PI / 180, 16 / 9, 0.1, 500);
+  const view = mat4.lookAt(mat4.create(), eye, [0, 2.2, -10], [0, 1, 0]);
+  const renderer = fakeRenderer(context);
+  renderer.viewProjection = mat4.multiply(mat4.create(), projection, view);
+  renderer.activeLightDirection = towardSun;
+  return { renderer, frame: { eye, effects: { sunRays: { intensity: 0.5, spread: 0.7 } } } };
+}
+
+function screenOf(renderer, point) {
+  const clip = [0, 1, 3].map(row => renderer.viewProjection[row] * point[0] + renderer.viewProjection[row + 4] * point[1] + renderer.viewProjection[row + 8] * point[2] + renderer.viewProjection[row + 12]);
+  return [clip[0] / clip[2] * 0.5 + 0.5, clip[1] / clip[2] * 0.5 + 0.5];
+}
+
+test('the sun rays start at the sun: its direction projected through the camera, in line with every cast shadow', () => {
+  const context = recordingContext([]);
+  const forward = vec3.normalize(vec3.create(), [0, 0.5, -17]);
+  const ahead = cameraRenderer(context, [...forward]);
+  const centre = sunScreenPosition(ahead.renderer, ahead.frame);
+  assert.ok(Math.abs(centre[0] - 0.5) < 1e-3 && Math.abs(centre[1] - 0.5) < 1e-3, `a sun on the view axis is at the screen centre, got ${centre}`);
+  const yawed = vec3.rotateY(vec3.create(), forward, [0, 0, 0], -0.2);
+  const side = cameraRenderer(context, [...yawed]);
+  const expectedX = 0.5 + 0.5 * Math.tan(0.2) / (Math.tan(25 * Math.PI / 180) * 16 / 9);
+  assert.ok(Math.abs(sunScreenPosition(side.renderer, side.frame)[0] - expectedX) < 0.02, 'a sun 0.2 rad to the right lands where the lens puts it');
+  // A pole of height 3 casts a shadow along -sun; on screen the sun, the pole top and the shadow tip lie on one line, in that order.
+  const towardSun = vec3.normalize(vec3.create(), [0.3, 0.45, -1]);
+  const view = cameraRenderer(context, [...towardSun]);
+  const sun = sunScreenPosition(view.renderer, view.frame);
+  const top = [1, 3, -12];
+  const shadowTip = [top[0] - towardSun[0] * 3 / towardSun[1], 0, top[2] - towardSun[2] * 3 / towardSun[1]];
+  const topOnScreen = screenOf(view.renderer, top);
+  const tipOnScreen = screenOf(view.renderer, shadowTip);
+  const along = [topOnScreen[0] - tipOnScreen[0], topOnScreen[1] - tipOnScreen[1]];
+  const toSun = [sun[0] - topOnScreen[0], sun[1] - topOnScreen[1]];
+  const cross = (along[0] * toSun[1] - along[1] * toSun[0]) / (Math.hypot(...along) * Math.hypot(...toSun));
+  assert.ok(Math.abs(cross) < 0.01, `the shadow line points at the sun's screen position (sine of the angle ${cross})`);
+  assert.ok(along[0] * toSun[0] + along[1] * toSun[1] > 0, 'from the shadow tip through the pole top and on to the sun');
+  const behind = cameraRenderer(context, [0, 0.3, 1]);
+  assert.equal(sunScreenPosition(behind.renderer, behind.frame), null, 'a sun behind the camera has no screen position');
+});
+
+test('the sun rays gather half resolution toward the projected sun, and a sun behind the camera draws nothing', () => {
+  const calls = [];
+  const context = recordingContext(calls);
+  const { renderer, frame } = cameraRenderer(context, [0.3, 0.45, -1]);
+  installPostSteps(renderer);
+  const stage = renderer.postStages.find(candidate => candidate.name === 'Sun rays');
+  const position = sunScreenPosition(renderer, frame);
+  assert.ok(stage.apply(renderer, frame, resolveEffects({}), 'source'));
+  const viewports = calls.filter(call => call[0] === 'viewport').map(call => call.slice(1));
+  assert.deepEqual(viewports, [[0, 0, 8, 5], [0, 0, 16, 9]], 'the gather covers a quarter of the pixels, then the upsample covers the frame');
+  assert.ok(calls.some(call => call[0] === 'uniform2f' && call[2] === position[0] && call[3] === position[1]), 'the gather is told the projected sun position');
+  calls.length = 0;
+  const behind = cameraRenderer(context, [0, 0.3, 1]);
+  assert.equal(stage.apply(behind.renderer, behind.frame, resolveEffects({}), 'source'), null);
+  assert.equal(calls.filter(call => call[0] === 'drawArrays').length, 0, 'no pass runs for a sun behind the camera');
 });

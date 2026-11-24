@@ -28,6 +28,8 @@ The tests are in `tests/` and the guides are in `docs/`.
 
 Name the pull request `<imperative sentence> (#<issue>)`, such as `Add mesh bevel to mesh_edit (#412)`. Keep one change in each pull request.
 
+A bug you find on the way can ride along in the same pull request when it sits in a file you already change, the fix is small (about 20 lines) and changes no look, and you add a test that fails without it. Put it in its own commit and name it in the description under **Also fixed**. Any other bug gets its own issue or its own pull request.
+
 ### Your first pull request
 
 Start with an issue labelled [`good first issue`](https://github.com/codepawl/crucible/labels/good%20first%20issue). Each one names the files to change and has a `Done when` list. None of them needs a GPU, Rust or Blender.
@@ -47,6 +49,8 @@ node scripts/open-pr.mjs --title "Add mesh bevel to mesh_edit (#412)" --body-fil
 ```
 
 It runs the metadata checks locally on the description and the files changed against `origin/main` (pictures passed with `--evidence` count as evidence) and stops with every finding and its fix. It refuses an empty description or `-`. Then it pushes the branch if needed, runs one `gh pr create`, pushes the evidence with `push-evidence.mjs`, adds the pictures under `## Evidence` and reads the stored description back to check it. `--base <branch>` changes the base, and `--dry-run` prints the commands and the final description without writing anything on GitHub.
+
+While you still expect review rounds, pass `--draft`. CI runs no job on a draft, so the pushes of each round take no runner time. Run `gh pr ready <number>` when the work is done: that starts the full `Test` run, and a maintainer merges only a ready pull request.
 
 ### Link the issue
 
@@ -78,6 +82,16 @@ node scripts/push-evidence.mjs 1234 artifacts/before.png artifacts/after.png
 
 Files land at `pr-1234/<name>` on `evidence-pr-1234`; files already there stay. Pictures and clips (png, jpg, gif, webp, mp4, webm) up to 20 MB, from inside the repository or the temp folder. Add `--dry-run` to see the links first. Put the same picture or clip in the change note when the change is visible.
 
+For a look or feature change, one command renders the scene on the branch (and on `origin/main` with `--base`), writes labelled side-by-side stills and a clip with a JSON sidecar per file under `artifacts/<issue>/`, measures every frame and prints a PASS or FAIL checklist (also in `checks.json`): subject fully in frame with a margin, no blown highlights or crushed shadows, and no single-frame jump over 5 levels in luma or saturation over every frame of a clip (a smaller step above 3 times the median is printed as a note, not a failure). Paste the checklist into the pull request and push the pictures with the command above:
+
+```sh
+node scripts/evidence.mjs --issue 1234 --recipe scene.json --cameras cameras.json --subject -1,0,-1,1,2,1 --clip 0-29 --base origin/main
+node scripts/evidence.mjs --issue 1234 --builtin bar        # a small built-in recipe to try it
+node scripts/evidence.mjs --issue 1234 --analyze <folder-of-frames>   # check frames you already have
+```
+
+`cameras.json` maps a name to `{ "eye": [x, y, z], "target": [x, y, z] }`; `--subject` is the subject box swept over the clip (min x, y, z then max x, y, z). The recipe is a scene file for `scripts/render-media.mjs`, and its `frame.fov` is the lens. The checks live in `scripts/evidence-checks.mjs`.
+
 ### Keep private data out
 
 Issues and pull requests are public. Leave out local paths (a Windows user folder, or a home folder under `/home` or `/Users`), tokens and personal data. Use a path inside the repository instead.
@@ -94,6 +108,8 @@ Between one test file and the full pass there are four commands made for coding 
 - `npm run test:fast` runs a deterministic 10 percent of the test files, seeded by the branch name (`-- --seed <text> --percent <n>` changes it). It does not replace `npm test`.
 - `npm run test:mutation-check -- tests/<name>.test.js` reverts your changes under `src/`, `bin/`, `packages/` and `scripts/`, runs the tests, prints the ones that fail and restores the tree. It exits 1 when none fail, because then the test does not pin your change. Stage unstaged edits outside those folders first and `git add -N` new files under them.
 - `npm test -- --test-reporter=./scripts/test-compact-reporter.mjs` gives the full pass the same short output.
+
+`npm test`, `npm run test:coverage`, `test:fast`, `test:affected` and the fast tests in preflight run at most 6 test files at once (`scripts/test-concurrency.mjs`), never more than Node would pick on the machine. Set `CRUCIBLE_TEST_CONCURRENCY` to another whole number to change it, or pass your own `--test-concurrency`.
 
 The checks it runs, if you want one alone:
 

@@ -1,7 +1,7 @@
 import '../../src/brand-fonts.css';
-import '../../src/site-tokens.css';
 import { loadAllAgentSceneModules } from '../../src/agent-scene.js';
 import { createStudio } from '../../src/studio.js';
+import { revealStudio, showStudioLoadingFailure } from '../../src/studio-boot.js';
 import { createCatalogHooks } from './catalog-hooks.js';
 
 // ?catalog=<folder> names a same-origin folder that holds a scene's catalog files by the id the recipe uses:
@@ -35,13 +35,6 @@ function catalogHooksFor(folderParameter, storeParameter) {
   return createCatalogHooks(folder, undefined, { catalogStore: storeParameter === '1' });
 }
 
-// The first visit opens the setup. ?setup=off never does.
-function openSetupWhenWanted(studio, setupParameter) {
-  if (setupParameter !== 'off' && !studio.setupDone) {
-    studio.openSetup();
-  }
-}
-
 async function mountStudioPage() {
   const root = document.querySelector('#studio-root');
   if (!root) {
@@ -61,11 +54,11 @@ async function mountStudioPage() {
     }
     await studio.loadExternalTextFile(await response.text(), { fileName: scenePath.split('/').pop(), recordUndo: false, agent: false });
   }
-  await studio.ready;
-  openSetupWhenWanted(studio, parameters.get('setup'));
+  await revealStudio({ studio, setupParameter: parameters.get('setup'), documentReference: document, requestFrame: requestAnimationFrame });
 }
 
 mountStudioPage().catch(error => {
   window.__studioPageError = error.message;
+  showStudioLoadingFailure(document, error);
   console.error(error);
 });

@@ -78,6 +78,12 @@ export const TANGENT_FEATURE = 'tangents';
 // The spread of the normals each mip level averages (baked at upload, src/normal-map-variance.js) and the screen-space change
 // of the normal therefore also lower the direct specular, as detail that averages out. The code exists only in a shader that has a normal map, so a shader without one keeps its exact text.
 export const NORMAL_MAP_SPECULAR_FADE_STRENGTH = 32;
+
+// A depth rank is measured at no less than this distance (metres) from the camera plane. Without the floor, a vertex of a long face
+// next to or behind the camera plane lifts by an unbounded depth (the depth step grows with 1 / distance squared) and drags the depth of
+// the whole face with it: a decal on a 24 m wall lost to the wall for two frames of a dolly past the wall's end. A vertex behind the plane adds no
+// metric lift (its negative distance would weigh the lift the other way), and the clip-space step still applies to every vertex.
+export const FLUSH_MINIMUM_DISTANCE = 0.5;
 const NORMAL_MAP_SPECULAR_CODE = {
   declarations: 'float normalMapSpecularFade = 1.0;\n',
   illuminateSpecular: '  specular *= normalMapSpecularFade;\n',
@@ -250,8 +256,10 @@ ${tangent.transform}  // Metres along the object's own axes: a pattern follows i
   // A depth rank (renderer applyDepthRank): the depth of this point moved toward the eye by flushBias.x metres plus
   // flushBias.y of its distance, at the same place on screen, so ranked faces never crack or slide.
   if (flushBias != vec3(0.0)) {
-    vec4 lifted = gl_Position - (flushBias.x + flushBias.y * gl_Position.w) * clipPerMetre;
-    gl_Position.z = (lifted.z / lifted.w + flushBias.z) * gl_Position.w;
+    float liftDistance = max(gl_Position.w, ${FLUSH_MINIMUM_DISTANCE.toFixed(1)});
+    vec4 lifted = vec4(gl_Position.xyz, liftDistance) - (flushBias.x + flushBias.y * liftDistance) * clipPerMetre;
+    float metricLift = lifted.z / lifted.w - gl_Position.z / liftDistance;
+    gl_Position.z += metricLift * max(gl_Position.w, 0.0) + flushBias.z * gl_Position.w;
   }
 ${retro.tail ?? ''}}`;
 }
@@ -489,6 +497,8 @@ uniform float localShadowTexelAngles[24];
 uniform vec3 keyColor;
 uniform float fillIntensity;
 uniform float ambientIntensity;
+// environment.ambientColor: a diffuse fill that fades where the key light reaches the surface, so it tints shadow and leaves lit ground alone.
+uniform vec3 ambientColor;
 uniform float specularAntiAliasing;
 const float MAXIMUM_SPECULAR_WIDENING = 0.25;
 uniform vec3 fogColor;
@@ -1011,6 +1021,8 @@ ${featureCode("areaRadiance")}      radiance += illuminate(normal, viewDirection
   vec3 reflected = reflect(-viewDirection, specularNormal);
 ${featureCode("probeReflection")}${featureCode("irradianceGridOcclusion")}  if (ENVIRONMENT_ENABLED) {
     radiance += environmentLighting(normal, specularNormal, baseReflectance, viewDirection, reflected, color, metallic, roughness, occlusion, ambientIntensity, skyReflection);
+    float keyReach = visibility * smoothstep(0.0, 0.12, dot(normal, normalize(lightDirection))) * step(0.003, dot(keyColor, vec3(1.0)));
+    radiance += ambientColor * color * (1.0 - metallic) * occlusion * ambientIntensity * (1.0 - keyReach);
     if (USES_ALPHA_MODE) blendSpecular += environmentLighting(normal, specularNormal, baseReflectance, viewDirection, reflected, vec3(0.0), metallic, roughness, occlusion, ambientIntensity, skyReflection);
   } else {
     // Outdoors the surroundings are sky and haze; reflecting the studio softboxes there lit grazing leaves white and cyan.

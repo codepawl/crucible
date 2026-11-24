@@ -13,6 +13,17 @@ function numberInRange(value, fallback, minimum, maximum, name) {
   return result;
 }
 
+export const BLOOM_STRENGTH_MAX = 8;
+export const BLOOM_RADIUS_MAX = 16;
+// One blur pair spreads a glow cleanly up to this tap spacing (in half-resolution texels); a wider radius repeats the pair.
+const BLOOM_STEP_LIMIT = 6;
+
+/** How many horizontal and vertical blur pairs a bloom radius needs, and the tap spacing of each. A radius up to 6 is one pair at its own spacing, so every radius the old cap allowed (4) draws as before; a wider one adds pairs, because blur widths add in quadrature (#3283). */
+export function bloomBlurPlan(radius) {
+  const pairs = Math.max(1, Math.ceil((radius / BLOOM_STEP_LIMIT) ** 2 - 1e-9));
+  return { pairs, step: radius / Math.sqrt(pairs) };
+}
+
 /** True when effects ask for a bloom pass. Strength 0 means bloom off: no extraction, blur or composite pass runs for it (#2025). The renderer asks only this. */
 export function isBloomActive(effects) {
   return effects?.bloom?.strength > 0;
@@ -42,9 +53,9 @@ export function resolveEffects(effects = {}) {
     ambientOcclusion: numberInRange(effects.ambientOcclusion, 0, 0, 1, 'Ambient occlusion'),
     ambientOcclusionRadius: numberInRange(effects.ambientOcclusionRadius, 0.5, 0.01, 100, 'Ambient occlusion radius'),
     bloom: {
-      strength: numberInRange(bloom.strength, 0, 0, 2, 'Bloom strength'),
+      strength: numberInRange(bloom.strength, 0, 0, BLOOM_STRENGTH_MAX, 'Bloom strength'),
       threshold: numberInRange(bloom.threshold, 1, 0, 10, 'Bloom threshold'),
-      radius: numberInRange(bloom.radius, 1, 0.1, 4, 'Bloom radius'),
+      radius: numberInRange(bloom.radius, 1, 0.1, BLOOM_RADIUS_MAX, 'Bloom radius'),
     },
   };
 }

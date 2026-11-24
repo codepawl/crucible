@@ -67,8 +67,8 @@ const RENDER_FLAG_FIELDS = ['visible', 'castShadow', 'receiveShadow', 'holdout',
 const PART_FLAG_FIELDS = RENDER_FLAG_FIELDS.slice(1);
 // On an asset placement these two flags reach each part it expands to.
 const ASSET_PLACEMENT_FLAG_FIELDS = ['castShadow', 'receiveShadow'];
-const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'vegetation', 'clutter', 'grass', 'decal', 'depthLayer', 'blend', 'rayVisibility', ...RENDER_FLAG_FIELDS];
-const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'alphaCutoff', 'doubleSided', 'depthTest', 'pattern', 'map', 'subsurface', 'snippet', 'waterPreset', 'absorption', 'turbidity', 'foamEdge', 'foamWidth', 'foamColor', 'foamVeins', 'contactFoam', 'caustics', 'ripples', 'waterRamp', 'aov', 'wear', 'retro', 'emissionMask', 'toonColors', ...MATERIAL_LAYER_FIELDS];
+const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'vegetation', 'clutter', 'grass', 'decal', 'faceImages', 'depthLayer', 'billboard', 'blend', 'rayVisibility', ...RENDER_FLAG_FIELDS];
+const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'alphaCutoff', 'doubleSided', 'depthTest', 'pattern', 'map', 'text', 'subsurface', 'snippet', 'waterPreset', 'absorption', 'turbidity', 'foamEdge', 'foamWidth', 'foamColor', 'foamVeins', 'contactFoam', 'caustics', 'ripples', 'waterRamp', 'aov', 'wear', 'retro', 'emissionMask', 'toonColors', ...MATERIAL_LAYER_FIELDS];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'layerMaps', 'transmissionMap', 'aovMap', 'emissionFresnel', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = [...Object.keys(CAMERA_DEFAULTS), ...CAMERA_LENS_FIELDS];
 // Fields of an optional shader module join the list here, so the long list above stays a line each material feature does not rewrite.
@@ -327,7 +327,7 @@ function applyAlphaCutoff(value, result) {
 function materialFrom(value) {
   knownKeys(value, ['id', 'tag', ...MATERIAL_FIELDS, ...TEXTURE_SET_RECIPE_FIELDS], 'material');
   // A pattern or a catalog colour map brings its own colours, so the color field tints it and leaves it unchanged by default.
-  const defaultColor = value.pattern === undefined && value.colorMap === undefined ? [0.5, 0.5, 0.5] : [1, 1, 1];
+  const defaultColor = value.pattern === undefined && value.colorMap === undefined && value.text === undefined ? [0.5, 0.5, 0.5] : [1, 1, 1];
   const graph = value.pattern?.type === 'graph' ? value.pattern.graph : {};
   // A graph that makes roughness, metallic or emission passes it through as written, so the factors default to 1.
   const graphFactor = (output, fallback) => (Object.hasOwn(graph ?? {}, output) ? 1 : fallback);
@@ -338,6 +338,11 @@ function materialFrom(value) {
     throw invalidField('tag', result.tag, `one of ${AGENT_SCENE_CAPABILITIES.materialTags.join(', ')}`);
   }
   if (value.map !== undefined) agentSceneModule('assets').applyMapSequence(value, result);
+  if (value.text !== undefined) {
+    if (result.tag !== 'surface' && result.tag !== 'unlit') throw invalidField('text', value.text?.content, 'a material with the surface or unlit tag; remove text or set tag to unlit for a sign that glows');
+    if (value.pattern !== undefined || value.map !== undefined || value.colorMap !== undefined) throw invalidField('text', value.text?.content, 'nothing besides it: a material draws a text panel, a pattern, a map sequence or a catalog colour map, not two of them', TypeError);
+    result.text = agentSceneModule('textPanel').normalizeTextPanel(value.text);
+  }
   if (TEXTURE_SET_RECIPE_FIELDS.some(field => value[field] !== undefined)) agentSceneModule('assets').applyTextureMaps(value, result);
   if (value.pattern !== undefined) {
     if (result.tag !== 'surface') throw invalidField('pattern', value.pattern?.type, 'a material with the surface tag; remove pattern or set tag to surface');
@@ -348,7 +353,8 @@ function materialFrom(value) {
   if (result.opacity < 0 || result.opacity > 1) {
     throw invalidField('opacity', result.opacity, 'a number from 0 to 1, such as 0.5');
   }
-  const requestedAlphaMode = defaultValue(value.alphaMode, 'opaque');
+  // A panel without a background is transparent, so it blends unless the recipe says otherwise.
+  const requestedAlphaMode = defaultValue(value.alphaMode, result.text && !result.text.background ? 'blend' : 'opaque');
   if (!RECIPE_ALPHA_MODES.includes(requestedAlphaMode)) {
     throw invalidField('alphaMode', requestedAlphaMode, `one of ${RECIPE_ALPHA_MODES.join(', ')}`);
   }
@@ -454,6 +460,12 @@ function nodeFrom(value) {
   if (value.grass !== undefined) result.grass = agentSceneModule('grass').normalizeGrass(value.grass, value);
   if (value.decal !== undefined && typeof value.decal !== 'boolean') {
     throw invalidField('decal', value.decal, 'true or false', TypeError);
+  }
+  if (value.billboard !== undefined) {
+    if (value.geometry === undefined) throw invalidField('billboard', value.billboard, 'a field on a mesh node whose geometry is a plane; remove it from group nodes', TypeError);
+    result.billboard = agentSceneModule('textBillboard').normalizeBillboard(value.billboard);
+    // A tag is a flat sheet that faces the camera: its shadow is a stray line on the ground, so it casts none unless castShadow is true.
+    if (value.castShadow === undefined && value.shadowOnly !== true) result.castShadow = false;
   }
   if (value.depthLayer !== undefined) {
     integer(value.depthLayer, 0, MAXIMUM_DEPTH_LAYER, 'depthLayer');
@@ -804,6 +816,10 @@ function fragmentEstimate(value, scope) {
     throw invalidField(`geometries.${value.id}.source`, value.source, reason);
   }
   return geometryEstimate(source, { definitions: scope.definitions, chain: [] }) + 16 * cells;
+}
+
+function hasFaceImages(nodes) {
+  return Array.isArray(nodes) && nodes.some(node => node?.faceImages !== undefined);
 }
 
 function hasInstancedNodes(nodes) {
@@ -1177,6 +1193,7 @@ function normalizeRecipe(input, limits, { alreadyCopied = false } = {}) {
   // Placed assets generate their own geometries, materials and part nodes each time; an exported or checkpointed recipe may still carry them.
   recipe.geometries ??= [];
   recipe.materials ??= [];
+  if (hasFaceImages(recipe.nodes)) recipe.nodes = agentSceneModule('assets').expandFaceImages(recipe, limits);
   if (Array.isArray(recipe.geometries)) recipe.geometries = recipe.geometries.filter(geometry => geometry?.type !== 'asset');
   if (Array.isArray(recipe.materials)) recipe.materials = recipe.materials.filter(material => !material?.assetSource);
   if (Array.isArray(recipe.nodes)) recipe.nodes = recipe.nodes.filter(node => !node?.assetPart);
@@ -1260,6 +1277,7 @@ function normalizeRecipe(input, limits, { alreadyCopied = false } = {}) {
     if (recipe.pixelGrid === null) delete recipe.pixelGrid;
     else recipe.pixelGrid = agentSceneModule('pixelGrid').normalizePixelGrid(recipe.pixelGrid);
   }
+  if (recipe.nodes.some(node => node.billboard)) agentSceneModule('textBillboard').checkBillboardMaterials(recipe);
   if (Object.hasOwn(recipe, 'game')) {
     if (recipe.game === null) delete recipe.game;
     else recipe.game = agentSceneModule('game').normalizeGameSetup(recipe.game, recipe.nodes);
@@ -1306,7 +1324,7 @@ function batchSignature(material) {
   // Textures are fixed per renderer, so a changed pattern rebuilds it like a changed tag does.
   // Transmission moves a material to the pass that sees the opaque scene, which is fixed per renderer.
   // Snippet uniform values bind per draw, so only changing the compiled feature or mask needs a new handle (#3163).
-  return `${material.tag}|${material.alphaMode}|${material.alphaCutoff}|${material.opacity}|${material.transmission > 0}|${material.doubleSided}|${material.depthTest !== false}|${JSON.stringify(material.pattern ?? material.map ?? null)}|${material.snippet?.feature}|${material.snippet?.mask}${textureMapSignature(material)}`;
+  return `${material.tag}|${material.alphaMode}|${material.alphaCutoff}|${material.opacity}|${material.transmission > 0}|${material.doubleSided}|${material.depthTest !== false}|${JSON.stringify(material.pattern ?? material.map ?? material.text ?? null)}|${material.snippet?.feature}|${material.snippet?.mask}${textureMapSignature(material)}`;
 }
 
 // A material's uvScale, uvOffset, uvRotation and worldScale are baked into the UVs of the geometry it draws, like glTF KHR_texture_transform.
@@ -1354,6 +1372,13 @@ function materialHandle(snapshot, sequence, images) {
 // Catalog maps (colorMap, normalMap and the rest) become texture descriptors on first read, like a baked pattern, from the decoded images of the pool.
 // Null for a material without them, so its handle is built exactly as before.
 function catalogTexturesOf(holder) {
+  if (holder.snapshot.text) {
+    let panelTextures;
+    return () => {
+      panelTextures ??= agentSceneModule('textPanel').createTextPanelTextures(holder.snapshot.text);
+      return panelTextures;
+    };
+  }
   if (!TEXTURE_MAP_FIELDS.some(field => holder.snapshot[field] !== undefined)) return null;
   let textures;
   return () => {
@@ -1441,6 +1466,11 @@ function cameraPoseFrom(pose) {
 // Physics holds its last pose after its duration, so a seek past the end is the resting state.
 function simulatedPose(stagedState, time) {
   return time === null ? null : stagedState.physicsSampler?.sample(Math.min(time, stagedState.physicsSampler.duration));
+}
+
+// A light with a parent loads the light-parenting module with the recipe, so a scene without one never reads it.
+function hasParentedLights(environment) {
+  return ['pointLights', 'spotLights', 'areaLights'].some(field => environment[field]?.some(light => light.parent !== undefined));
 }
 
 /** The local transform of a node at a sampled motion and simulated pose: a body, then a track, then the rest value. */
@@ -1634,12 +1664,13 @@ function seasKeptInPlace(stagedState, geometries) {
 
 // Cloth and particles replace the geometry of their own nodes at a sampled time; no node belongs to both.
 function sampledGeometries(stagedState, time, sampled, camera) {
-  if (time === null) {
+  // A billboard faces the camera even in a scene with no clock, so it samples at 0 there.
+  if (time === null && !stagedState.billboardSampler) {
     return null;
   }
-  const geometries = oceanTimeGeometries(stagedState, sampled, time);
-  for (const sampler of [stagedState.clothSampler, stagedState.particleSampler]) {
-    sampler?.sample(time, camera)?.forEach((geometry, nodeId) => geometries.set(nodeId, geometry));
+  const geometries = time === null ? new Map() : oceanTimeGeometries(stagedState, sampled, time);
+  for (const sampler of time === null ? [stagedState.billboardSampler] : [stagedState.clothSampler, stagedState.particleSampler, stagedState.billboardSampler]) {
+    sampler?.sample(time ?? 0, camera)?.forEach((geometry, nodeId) => geometries.set(nodeId, geometry));
   }
   return geometries.size ? geometries : null;
 }
@@ -2157,6 +2188,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const sameParts = state && state.sourceRestParts.length === nextParts.length &&
       state.sourceRestParts.every((part, index) => part === nextParts[index]);
     const sourceRestParts = sameParts ? state.sourceRestParts : Object.freeze(nextParts);
+    if (hasParentedLights(recipe.environment)) agentSceneModule('lightParenting').requireKnownLightParents(recipe.environment, recipe.nodes);
     const lightBakeResult = stageLightBake(recipe, sourceRestParts, graph, stagedMaterialSnapshots);
     const { reflected, restParts } = stageRestParts(recipe, sourceRestParts, lightBakeResult, graph);
     // Unchanged rest parts start from the parts the last pose drew (#2730): a pose that samples the same sea, cloth or
@@ -2191,8 +2223,9 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     stagedState.physicsSampler = stagePhysics(recipe, geometryRecords);
     stagedState.clothSampler = stageCloth(recipe, geometryRecords, stagedState.motionSampler);
     stagedState.particleSampler = stageParticles(recipe, geometryRecords, stagedState);
+    stagedState.billboardSampler = stageBillboards(recipe, geometryRecords, stagedState);
     stagedState.terrainLodNodes = recipe.geometries.some(geometry => geometry.type === 'terrain') ? agentSceneModule('terrain').terrainLodNodesOf(recipe) : [];
-    const animated = Boolean(stagedState.motionSampler || stagedState.physicsSampler || stagedState.clothSampler || stagedState.particleSampler || assetRuntime.animators.length);
+    const animated = Boolean(stagedState.motionSampler || stagedState.physicsSampler || stagedState.clothSampler || stagedState.particleSampler || stagedState.billboardSampler || assetRuntime.animators.length);
     stagedState.poseGraph = animated ? compile(recipe, geometries, localBounds, limits) : null;
     stagedState.initialPose = animated ? poseAtPlayhead(stagedState) : stagePose(stagedState, null);
     return stagedState;
@@ -2257,16 +2290,18 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     }
     const worldMatrices = new Map(sourceRestParts.map(part => [part.name, new Float32Array(graph.getNode(part.name).worldMatrix)]));
     const generatedGeometryGenerators = agentSceneModule('bake').bakeGenerators(recipe);
-    const key = agentSceneModule('bake').lightBakeKey(recipe, generatedGeometryGenerators, recipe.environment, worldMatrices);
+    const bakeEnvironment = hasParentedLights(recipe.environment) ? agentSceneModule('lightParenting').bakeEnvironmentOf(recipe.environment, recipe, sourceRestParts, worldMatrices, graph) : recipe.environment;
+    const bakeRecipe = bakeEnvironment === recipe.environment ? recipe : { ...recipe, environment: bakeEnvironment };
+    const key = agentSceneModule('bake').lightBakeKey(recipe, generatedGeometryGenerators, bakeEnvironment, worldMatrices);
     if (lightBake?.key === key && lightBake.sourceRestParts === sourceRestParts) {
       lightBake.currentKey = key;
       return { ...lightBake, reused: true };
     }
     if (bakeDeferral && state && !recipe.bake.rebake) {
-      return agentSceneModule('bakeDeferred').stageSettling(settling, bakeDeferral, { key, recipe, sourceRestParts, worldMatrices, generatedGeometryGenerators, stagedMaterialSnapshots, lightBake, state });
+      return agentSceneModule('bakeDeferred').stageSettling(settling, bakeDeferral, { key, recipe: bakeRecipe, sourceRestParts, worldMatrices, generatedGeometryGenerators, stagedMaterialSnapshots, lightBake, state });
     }
     // The first build of a scene still fails loudly. A later edit stays applied: the old bake no longer fits the edited parts, so it is dropped.
-    const { baked, refusal } = agentSceneModule('bake').withStagedMaterials(stagedMaterialSnapshots, () => agentSceneModule('bake').bakeUnlessRefused(Boolean(state), sourceRestParts, worldMatrices, recipe.environment, recipe.bake, generatedGeometryGenerators));
+    const { baked, refusal } = agentSceneModule('bake').withStagedMaterials(stagedMaterialSnapshots, () => agentSceneModule('bake').bakeUnlessRefused(Boolean(state), sourceRestParts, worldMatrices, bakeEnvironment, recipe.bake, generatedGeometryGenerators));
     if (refusal) {
       lightBake = null;
       skippedBake = refusal;
@@ -2534,7 +2569,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const involvedNodes = recipe.nodes.filter(node => emitterMeshes.has(node.id) || recipe.particles.systems.some(system => system.node === node.id));
     const oceanTracks = (recipe.motion?.tracks ?? []).filter(track => track.kind === 'geometry' && track.property === 'oceanTime');
     // An emitter that follows a node reads its animated transform, so the motion, the physics and the node tree are part of the key.
-    const followsNode = recipe.particles.systems.some(system => system.emitter?.follow);
+    const followsNode = recipe.particles.systems.some(system => system.emitter?.follow || system.type === 'beam' || system.type === 'trail');
     const followedPose = followsNode ? [recipe.motion, recipe.physics, recipe.armatures, recipe.nodes.map(node => [node.id, node.parent, node.translation, node.rotation, node.scale])] : null;
     const key = JSON.stringify([recipe.particles, involvedNodes, involvedNodes.map(node => geometryRecords.get(node.geometry).signature), oceanTracks, followedPose]);
     if (particleBake?.key !== key) {
@@ -2547,6 +2582,13 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       particleBake = { key, sampler: agentSceneModule('particles').bakeAgentParticles(recipe.particles, recipe, geometries, sea, { matrixAt: (nodeId, time) => worldMatrixAt(stagedState, nodeId, time) }) };
     }
     return particleBake.sampler;
+  }
+
+  // A billboard node turns to the camera at each sampled time, so its sheet is rebuilt per pose (#3237).
+  function stageBillboards(recipe, geometryRecords, stagedState) {
+    if (!recipe.nodes.some(node => node.billboard)) return null;
+    const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
+    return agentSceneModule('textBillboard').bakeTextBillboards(recipe, geometries, { matrixAt: (nodeId, time) => worldMatrixAt(stagedState, nodeId, time) });
   }
 
   // An edit keeps the time the scene was sampled at (#2730): posing it at 0 again rebuilt and ranked every animated part,
@@ -2677,7 +2719,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       if (time !== null && (!Number.isFinite(time) || time < 0 || time > 3600)) {
         throw invalidField('time', time, 'null or a number of seconds from 0 to 3600, such as 0.5');
       }
-      if (time !== null && !state.motionSampler && !state.physicsSampler && !state.clothSampler && !state.particleSampler && !state.assetRuntime.animators.length && !state.sequences.length && !state.recipe.environment.localVolumes?.some(volume => volume.frames)) {
+      if (time !== null && !state.motionSampler && !state.physicsSampler && !state.clothSampler && !state.particleSampler && !state.billboardSampler && !state.assetRuntime.animators.length && !state.sequences.length && !state.recipe.environment.localVolumes?.some(volume => volume.frames)) {
         throw invalidField('time', time, 'null, because this recipe has no motion, physics, cloth, particles, placed asset clip or grid volume frames to sample; add motion first');
       }
       const pose = stagePose(state, time);
@@ -2703,7 +2745,8 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       const environment = structuredClone(agentEnvironmentKey(state.recipe.environment));
       // The time a grid sequence plays at (#1045): the rasterizer and the path tracer both pick the frame from it.
       if (environment.localVolumes?.some(volume => volume.frames)) environment.volumeTime = state.motionTime;
-      return state.movedLook ?agentSceneModule('motion').motionEnvironment(environment, state.movedLook) : environment;
+      const moved = state.movedLook ? agentSceneModule('motion').motionEnvironment(environment, state.movedLook) : environment;
+      return hasParentedLights(moved) ? agentSceneModule('lightParenting').environmentAtPose(state, moved) : moved;
     },
     /** World bounds ({ name, min, max }) of the visible mesh parts in the current pose; parts with no known bounds are left out. */
     worldBounds() {
@@ -2798,7 +2841,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           knownKeys(operation, ['type', lookField], 'operation');
           const patch = operation[lookField];
           // Spot and area lights, cascades and sun links are absent from a recipe until it sets them.
-          const optionalFields = lookField === 'environment' ? ['ground', 'spotLights', 'areaLights', 'shadowCascades', 'localVolumes', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'hdri', 'keyFromHdri', 'sky', 'wetness', 'puddles'] : lookField === 'effects' ? postStepSupport.fields : lookField === 'shadow' ? ['hard'] : [];
+          const optionalFields = lookField === 'environment' ? ['ground', 'spotLights', 'areaLights', 'shadowCascades', 'localVolumes', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'hdri', 'keyFromHdri', 'sky', 'wetness', 'puddles', 'ambientColor', 'environmentDiffuseScale', 'skybox'] : lookField === 'effects' ? postStepSupport.fields : lookField === 'shadow' ? ['hard'] : [];
           knownKeys(patch, [...Object.keys(candidate[lookField]), ...optionalFields], lookField);
           requireChange(Object.keys(patch).length > 0, operation, [...Object.keys(candidate[lookField]), ...optionalFields]);
           const { kept: keptPatch, cleared: clearedFields } = splitClearedLookPatch(lookField, patch);
@@ -2989,6 +3032,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         physics: state.physicsSampler ? state.physicsSampler.report() : null,
         ...(state.clothSampler ? { cloth: state.clothSampler.report() } : {}),
         ...(state.particleSampler ? { particles: state.particleSampler.report() } : {}),
+        ...(state.billboardSampler ? { billboards: state.billboardSampler.report() } : {}),
         ...(state.assetRuntime.vegetation ? { vegetation: state.assetRuntime.vegetation } : {}),
         ...(state.assetRuntime.clutter ? { clutter: state.assetRuntime.clutter } : {}),
         ...(state.assetRuntime.grass ? { grass: state.assetRuntime.grass } : {}),

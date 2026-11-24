@@ -277,7 +277,10 @@ test('the bias moves depth to where the point would be that much closer to the e
   assert.ok(biasedDepth < position[2] / position[3], 'standard depth shrinks toward the eye');
   const source = vertexShader;
   assert.match(source, /uniform vec3 flushBias;\s+uniform vec4 clipPerMetre;/);
-  assert.match(source, /gl_Position = viewProjection \* world;\s+\/\/[^\n]*\n[^\n]*\n\s+if \(flushBias != vec3\(0\.0\)\) \{\s+vec4 lifted = gl_Position - \(flushBias\.x \+ flushBias\.y \* gl_Position\.w\) \* clipPerMetre;\s+gl_Position\.z = \(lifted\.z \/ lifted\.w \+ flushBias\.z\) \* gl_Position\.w;/);
+  // Away from the camera plane the lift is the exact one above; tests/flush-near-camera.test.js covers the floor near it.
+  assert.ok(source.includes('if (flushBias != vec3(0.0)) {'), 'the bias block is in the vertex shader');
+  assert.ok(source.includes('float liftDistance = max(gl_Position.w, 0.5);'));
+  assert.ok(source.includes('vec4 lifted = vec4(gl_Position.xyz, liftDistance) - (flushBias.x + flushBias.y * liftDistance) * clipPerMetre;'));
 });
 
 test('glass a centimetre in front of nested facades is ranked above them with no rank-overflow', () => {

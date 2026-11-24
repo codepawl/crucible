@@ -234,7 +234,7 @@ test('a popover with no opening style of its own gets the default: from the top 
   assert.deepEqual(popoverOpeningStyle({}), popoverOpeningStyle({ beside: false, opensLeftward: false, opensUpward: false }));
 });
 
-test('the object menu writes its own opening style, down or up, and the tree flyout only fades (#3223)', testContext => {
+test('the object menu writes its own opening style, down or up, (#3223)', testContext => {
   const { root } = mountStudio(testContext);
   const objectPopover = root.querySelector('#crucible-studio-pop-object');
   const heroRow = root.querySelectorAll('.crucible-studio-tree-row').find(row => row.textContent.includes('hero'));
@@ -246,8 +246,6 @@ test('the object menu writes its own opening style, down or up, and the tree fly
   dispatch(viewport, 'contextmenu', { clientX: 300, clientY: 700 });
   assert.equal(objectPopover.style.getPropertyValue('--studio-popover-origin'), '0 100%', 'in the lower half it hangs from the pointer and grows upward');
   assert.equal(objectPopover.style.getPropertyValue('--studio-popover-shift'), '0 4px');
-  assert.ok(STUDIO_CSS.includes('--studio-popover-start-scale: none;'), 'the flyout starts at full size');
-  assert.ok(STUDIO_CSS.includes('--studio-popover-shift: none;'), 'and in place');
 });
 
 test('every popover is a descendant of the Studio root, and the menubar menus of the menubar, where the CSS selectors look (#3223)', testContext => {

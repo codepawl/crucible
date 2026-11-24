@@ -34,7 +34,7 @@ export function applyTextureMaps(value, result) {
     throw invalidField('textureSet', value.textureSet, 'a recipe with the maps already filled in: the MCP server swaps textureSet for the catalog image IDs of its maps, so a library caller passes colorMap, normalMap, roughnessMap, metallicMap, occlusionMap and heightMap itself');
   }
   const used = TEXTURE_MAP_FIELDS.filter(field => value[field] !== undefined);
-  applyUvTransform(value, result, used.length > 0);
+  applyUvTransform(value, result, used.length > 0 || value.map !== undefined);
   if (used.length === 0 && value.normalConvention === undefined) return;
   if (result.tag !== 'surface') throw invalidField(used[0] ?? 'normalConvention', value[used[0]], 'a material with the surface tag; remove the map fields or use the surface tag');
   if (value.pattern !== undefined) throw invalidField(used[0] ?? 'normalConvention', value[used[0]], 'nothing, because a material takes a pattern or catalog maps, not both', TypeError);
@@ -157,7 +157,12 @@ export function applyUvTransform(value, result, hasMaps) {
   }
   if (value.uvOffset !== undefined) result.uvOffset = checkedPair('uvOffset', value.uvOffset, limits.offset, '[0.25, 0]', 0.25);
   if (value.uvRotation !== undefined) result.uvRotation = checkedNumber('uvRotation', value.uvRotation, limits.rotation, 45);
-  if (value.worldScale !== undefined) result.worldScale = checkedNumber('worldScale', value.worldScale, limits.worldScale, 2);
+  if (value.worldScale !== undefined) {
+    // One number is a square tile; [u, v] sizes the two sides apart, such as a 4 m by 0.5 m plank.
+    result.worldScale = Array.isArray(value.worldScale)
+      ? checkedPair('worldScale', value.worldScale, limits.worldScale, '[4, 0.5]', 2)
+      : checkedNumber('worldScale', value.worldScale, limits.worldScale, 2);
+  }
 }
 
 /** Whether a recipe material changes the UVs at all: a transform of scale 1, offset 0 and rotation 0 leaves the geometry as it is. */
@@ -190,6 +195,40 @@ function metresPerUvUnit(geometry, scale) {
   return uvArea > 0 ? Math.sqrt(worldArea / uvArea) : 0;
 }
 
+function linearPart(matrix) {
+  return matrix ? [0, 1, 2, 4, 5, 6, 8, 9, 10].map(index => Math.round(matrix[index] * 1e6) / 1e6) : [1, 0, 0, 0, 1, 0, 0, 0, 1];
+}
+
+/**
+ * Metres one UV unit spans along u and along v on the drawn mesh, measured through the whole world matrix (rotation and
+ * parent scale included): the world length of each triangle's u and v directions, weighted by the UV area it covers.
+ */
+export function metresPerUvAxis(geometry, worldMatrix) {
+  const { positions, indices, uvs } = geometry;
+  const columns = linearPart(worldMatrix);
+  const toWorld = vertex => [0, 1, 2].map(row => columns[row] * positions[vertex * 3] + columns[3 + row] * positions[vertex * 3 + 1] + columns[6 + row] * positions[vertex * 3 + 2]);
+  let uvArea = 0;
+  let sumU = 0;
+  let sumV = 0;
+  for (let triangle = 0; triangle < indices.length; triangle += 3) {
+    const [first, second, third] = [0, 1, 2].map(corner => indices[triangle + corner]);
+    const origin = toWorld(first);
+    const edgeA = toWorld(second).map((value, axis) => value - origin[axis]);
+    const edgeB = toWorld(third).map((value, axis) => value - origin[axis]);
+    const [uA, vA] = [uvs[second * 2] - uvs[first * 2], uvs[second * 2 + 1] - uvs[first * 2 + 1]];
+    const [uB, vB] = [uvs[third * 2] - uvs[first * 2], uvs[third * 2 + 1] - uvs[first * 2 + 1]];
+    const determinant = uA * vB - uB * vA;
+    if (determinant === 0) continue;
+    const alongU = [0, 1, 2].map(axis => (edgeA[axis] * vB - edgeB[axis] * vA) / determinant);
+    const alongV = [0, 1, 2].map(axis => (edgeB[axis] * uA - edgeA[axis] * uB) / determinant);
+    const weight = Math.abs(determinant);
+    uvArea += weight;
+    sumU += weight * Math.hypot(...alongU);
+    sumV += weight * Math.hypot(...alongV);
+  }
+  return uvArea > 0 ? [sumU / uvArea, sumV / uvArea] : [0, 0];
+}
+
 const transformedByGeometry = new WeakMap();
 
 /**
@@ -201,7 +240,8 @@ export function geometryWithUvTransform(geometry, material, worldMatrix, nodeId)
   if (!changesUvs(material)) return geometry;
   if (!geometry.uvs) throw invalidField('uvScale', nodeId, `a mesh with UVs; node ${nodeId} has none, so use a geometry that has UVs or remove the UV fields from its material`);
   const scale = columnScale(worldMatrix);
-  const key = [material.uvScale, material.uvOffset, material.uvRotation, material.worldScale, material.worldScale === undefined ? '' : scale].join('|');
+  const sizeKey = Array.isArray(material.worldScale) ? linearPart(worldMatrix) : scale;
+  const key = [material.uvScale, material.uvOffset, material.uvRotation, material.worldScale, material.worldScale === undefined ? '' : sizeKey].join('|');
   let variants = transformedByGeometry.get(geometry);
   if (!variants) {
     variants = new Map();
@@ -210,15 +250,20 @@ export function geometryWithUvTransform(geometry, material, worldMatrix, nodeId)
   let transformed = variants.get(key);
   if (!transformed) {
     // The baked UVs move the tangent frame of a mapped normal, so authored tangents no longer fit.
-    transformed = { ...geometry, uvs: bakedUvs(geometry, material, scale, nodeId), tangents: undefined };
+    transformed = { ...geometry, uvs: bakedUvs(geometry, material, scale, nodeId, worldMatrix), tangents: undefined };
     variants.set(key, transformed);
   }
   return transformed;
 }
 
-function bakedUvs(geometry, material, scale, nodeId) {
+function bakedUvs(geometry, material, scale, nodeId, worldMatrix) {
   let [scaleU, scaleV] = material.uvScale ?? [1, 1];
-  if (material.worldScale !== undefined) {
+  if (Array.isArray(material.worldScale)) {
+    const metres = metresPerUvAxis(geometry, worldMatrix);
+    if (!(metres[0] > 0 && metres[1] > 0)) throw invalidField('worldScale', material.worldScale, `a mesh whose UVs cover an area along both sides; node ${nodeId} has degenerate UVs, so remove worldScale or fix the UVs`);
+    scaleU = metres[0] / material.worldScale[0];
+    scaleV = metres[1] / material.worldScale[1];
+  } else if (material.worldScale !== undefined) {
     const metres = metresPerUvUnit(geometry, scale);
     if (!(metres > 0)) throw invalidField('worldScale', material.worldScale, `a mesh whose UVs cover an area; node ${nodeId} has degenerate UVs, so remove worldScale or fix the UVs`);
     scaleU = metres / material.worldScale;

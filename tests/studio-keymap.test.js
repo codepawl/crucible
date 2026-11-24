@@ -23,7 +23,7 @@ test('every action id is unique and every action names a label, a group and a bi
   assert.equal(new Set(ids).size, ids.length);
   for (const item of DEFAULT_KEYMAP_ACTIONS) {
     assert.ok(item.label && item.group, item.id);
-    assert.ok(['normal', 'modal'].includes(item.context), item.id);
+    assert.ok(['normal', 'modal', 'mesh'].includes(item.context), item.id);
     assert.ok(item.bindings.length > 0, item.id);
   }
 });

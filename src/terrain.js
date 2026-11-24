@@ -7,6 +7,8 @@ import { createSkyVisibilitySampler } from './terrain-sky.js';
 import { requireSeed } from './seeded-random.js';
 import { createTerrainPaths } from './terrain-paths.js';
 
+export { createVoxelTerrain, VOXEL_TERRAIN_LIMITS, VOXEL_TERRAIN_LOOKS } from './voxel-terrain.js';
+
 const DEFAULT_NOISE = Object.freeze({
   amplitude: 14,
   mountainAmplitude: 46,

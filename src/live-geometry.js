@@ -10,6 +10,12 @@ export function markLiveGeometry(geometry, { reindexed = false } = {}) {
   return geometry;
 }
 
+/** Takes the mark back off a geometry whose values are final again (a cancelled preview wrote the original values back). */
+export function unmarkLiveGeometry(geometry) {
+  liveGeometries.delete(geometry);
+  reindexedGeometries.delete(geometry);
+}
+
 export function isLiveGeometry(geometry) {
   return liveGeometries.has(geometry);
 }

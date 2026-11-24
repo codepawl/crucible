@@ -1,0 +1,1 @@
+- The Studio page now paints the theme background and a loading state (the Crucible mark over a quiet progress bar, or the error when the boot fails) from its first frame instead of a blank white window, and the first-run setup opens only after the app behind it has drawn (#3263).

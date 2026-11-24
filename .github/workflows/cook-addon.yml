@@ -9,6 +9,7 @@ name: Cook addon
 # Every other pull request skips it, and main runs it nightly (#1796).
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'package.json'
       - 'package-lock.json'
@@ -74,6 +75,7 @@ on:
       - 'src/agent-drive-schema.js'
       - 'src/agent-drive.js'
       - 'src/agent-explosion.js'
+      - 'src/agent-face-images.js'
       - 'src/agent-floor-plan.js'
       - 'src/agent-fracture.js'
       - 'src/agent-grass.js'
@@ -197,6 +199,7 @@ on:
       - 'src/lamp-mesh.js'
       - 'src/leaf-transmission.js'
       - 'src/light-linking.js'
+      - 'src/light-parenting.js'
       - 'src/light-modules.js'
       - 'src/light-profile.js'
       - 'src/light-shapes.js'
@@ -316,7 +319,9 @@ on:
       - 'src/ocean-wake.js'
       - 'src/ocean-waves.js'
       - 'src/particle-collision.js'
+      - 'src/particle-curves.js'
       - 'src/particle-emitter-mesh.js'
+      - 'src/particle-ribbons.js'
       - 'src/particle-sparks.js'
       - 'src/particles.js'
       - 'src/path-trace-terms.js'
@@ -388,19 +393,23 @@ on:
       - 'src/skeleton-pose.js'
       - 'src/sky-voxel-proxy.js'
       - 'src/skinning.js'
+      - 'src/skybox.js'
       - 'src/soft-body.js'
       - 'src/spot-angle-advice.js'
       - 'src/spring-bones.js'
       - 'src/subsurface-limits.js'
       - 'src/subsurface-shader.js'
       - 'src/sun-bounce.js'
+      - 'src/sun-clock.js'
       - 'src/surface-nets.js'
       - 'src/tangent-encoding.js'
       - 'src/terrain-hole-cells.js'
       - 'src/terrain-paths.js'
       - 'src/terrain-sky.js'
       - 'src/terrain.js'
+      - 'src/text-billboard.js'
       - 'src/text-geometry.js'
+      - 'src/text-panel.js'
       - 'src/texture-sequence-limits.js'
       - 'src/texture-set-fields.js'
       - 'src/texture-set-names.js'
@@ -428,6 +437,7 @@ on:
       - 'src/view-transform-shader.js'
       - 'src/view-transform.js'
       - 'src/view-transform-inverse.js'
+      - 'src/voxel-terrain.js'
       - 'src/volume-emission-mask.js'
       - 'src/volume-grid-sequence.js'
       - 'src/volume-grid.js'
@@ -520,6 +530,7 @@ concurrency:
 
 jobs:
   addon:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:

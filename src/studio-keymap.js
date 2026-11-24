@@ -4,7 +4,8 @@
 // A binding is `{ key | code, ctrl?, shift?, alt? }`. `ctrl` means Ctrl or Command. A modifier left out must be up,
 // except `shift`: left out it is not looked at, because plain keys such as H or ? also work with Shift held.
 
-export const KEYMAP_CONTEXTS = Object.freeze(['normal', 'modal']);
+// `mesh` is edit mode: it is looked up before `normal`, which then only answers the keys studio.js lets through.
+export const KEYMAP_CONTEXTS = Object.freeze(['normal', 'modal', 'mesh']);
 
 const BINDING_FIELDS = Object.freeze(['key', 'code', 'ctrl', 'shift', 'alt']);
 
@@ -43,11 +44,18 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('view.properties', 'Show or hide Properties', 'View', 'normal', binding('n')),
   action('animate.keyframe', 'Insert a keyframe', 'Animate', 'normal', binding('i'), binding('k')),
   action('animate.play', 'Play', 'Animate', 'normal', binding(' ')),
+  action('mesh.enter', 'Edit the mesh', 'Edit', 'normal', binding('Tab')),
   action('file.open', 'Open', 'File', 'normal', binding('o', { ctrl: true })),
   action('file.save', 'Save', 'File', 'normal', binding('s', { ctrl: true, shift: false })),
   action('file.saveAs', 'Save as', 'File', 'normal', binding('s', { ctrl: true, shift: true })),
   action('settings.open', 'Settings', 'File', 'normal', binding(',', { ctrl: true })),
   action('help.shortcuts', 'Keyboard shortcuts', 'Help', 'normal', binding('?')),
+  action('mesh.leave', 'Leave edit mode', 'Edit mode', 'mesh', binding('Tab')),
+  action('mesh.escape', 'Clear the selection, then leave', 'Edit mode', 'mesh', binding('Escape')),
+  action('mesh.vertexMode', 'Select vertices', 'Edit mode', 'mesh', binding('1')),
+  action('mesh.edgeMode', 'Select edges', 'Edit mode', 'mesh', binding('2')),
+  action('mesh.faceMode', 'Select faces', 'Edit mode', 'mesh', binding('3')),
+  action('mesh.noop', 'Keys that act on the whole object', 'Edit mode', 'mesh', binding('x'), binding('Delete'), binding('Backspace')),
   action('modal.place', 'Place', 'Holding an object', 'modal', binding('Enter'), binding(' ')),
   action('modal.cancel', 'Put back', 'Holding an object', 'modal', binding('Escape')),
   action('modal.axisX', 'Keep to the X axis', 'Holding an object', 'modal', binding('x')),
@@ -85,6 +93,8 @@ export const SHORTCUT_ROWS = Object.freeze([
   Object.freeze({ keys: '{file.open} / {file.save}', label: 'Open / Save' }),
   Object.freeze({ keys: '{settings.open}', label: 'Settings' }),
   Object.freeze({ keys: 'Drag X / Y / Z', label: 'Scrub a number' }),
+  Object.freeze({ keys: '{mesh.enter}', label: 'Edit the mesh / leave edit mode' }),
+  Object.freeze({ keys: '{mesh.vertexMode} / {mesh.edgeMode} / {mesh.faceMode}', label: 'In edit mode: select vertices / edges / faces' }),
   Object.freeze({ keys: '{help.shortcuts}', label: 'This list' }),
 ]);
 

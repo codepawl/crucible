@@ -1,8 +1,9 @@
 // Opens a pull request that passes the `PR metadata` check on its first run.
 // Usage: node scripts/open-pr.mjs --title <text> --body-file <file> [--labels a,b] [--milestone <name>] [--base main]
-//                                 [--evidence <files...>] [--dry-run]
+//                                 [--evidence <files...>] [--draft] [--dry-run]
 // Steps: run the metadata checks locally on the body and the changed files, make sure the branch is pushed, run one
 // `gh pr create`, push evidence for the new number and insert it under "## Evidence", then read the body back.
+// --draft opens a draft, which CI skips until `gh pr ready` (#3267).
 // --dry-run runs the local checks and prints the commands and the final body; it writes nothing on the network.
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -12,13 +13,13 @@ import { pathToFileURL } from 'node:url';
 import { checkPullRequest } from './pr-metadata-check.mjs';
 import { formatReport, pushEvidence } from './push-evidence.mjs';
 
-const USAGE = 'Usage: node scripts/open-pr.mjs --title <text> --body-file <file> [--labels a,b] [--milestone <name>] [--base main] [--evidence <files...>] [--dry-run]';
+const USAGE = 'Usage: node scripts/open-pr.mjs --title <text> --body-file <file> [--labels a,b] [--milestone <name>] [--base main] [--evidence <files...>] [--draft] [--dry-run]';
 const EVIDENCE_HEADING = '## Evidence';
 const PLACEHOLDER_PR_NUMBER = '<pr>';
 const CLIP_EXTENSIONS = ['.mp4', '.webm'];
 
 export function parseArguments(argv) {
-  const options = { title: '', bodyFile: '', labels: [], milestone: '', base: 'main', evidence: [], dryRun: false };
+  const options = { title: '', bodyFile: '', labels: [], milestone: '', base: 'main', evidence: [], draft: false, dryRun: false };
   const needValue = (flag, index) => {
     const value = argv[index + 1];
     if (value === undefined || value.startsWith('--')) throw new Error(`${flag} needs a value. ${USAGE}`);
@@ -28,6 +29,8 @@ export function parseArguments(argv) {
     const argument = argv[index];
     if (argument === '--dry-run') {
       options.dryRun = true;
+    } else if (argument === '--draft') {
+      options.draft = true;
     } else if (argument === '--title') {
       options.title = needValue(argument, index);
       index += 1;
@@ -126,10 +129,11 @@ export function defaultServices(cwd = process.cwd()) {
   };
 }
 
-export function createCommandArguments({ title, bodyFile, labels, milestone, base }) {
+export function createCommandArguments({ title, bodyFile, labels, milestone, base, draft = false }) {
   const args = ['pr', 'create', '--title', title, '--body-file', bodyFile, '--base', base];
   if (labels.length > 0) args.push('--label', labels.join(','));
   if (milestone) args.push('--milestone', milestone);
+  if (draft) args.push('--draft');
   return args;
 }
 
