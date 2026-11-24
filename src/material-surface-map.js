@@ -132,10 +132,7 @@ export function surfaceMap(geometry, settings, resolution, nodeId, worldMatrix) 
   const positions = placedPositions(geometry.positions, matrix);
   const normalMatrix = matrix ? normalMatrixOf(matrix) : undefined;
   const weldedNormals = placedNormals(weldedMaskNormals(geometry), geometry.positions, normalMatrix);
-  const smoothedNormals = placedNormals(smoothedMaskNormals(geometry, weldedMaskNormals(geometry)), geometry.positions, normalMatrix);
-  // A face steeper than the snow limit keeps the welded normals, so smoothing can never lighten it; every other face reads the smoothed ones.
-  let lastCorners;
-  let normals = weldedNormals;
+  const normals = placedNormals(smoothedMaskNormals(geometry, weldedMaskNormals(geometry)), geometry.positions, normalMatrix);
   const bounds = settings.output === 'height' ? heightBounds(positions, settings.range) : undefined;
   const hasNormals = Boolean(geometry.normals);
   const map = rasterizeUvTriangles(geometry, resolution, positions.length / 3, (corners, weightA, weightB, weightC) => {
@@ -144,10 +141,6 @@ export function surfaceMap(geometry, settings, resolution, nodeId, worldMatrix) 
     let normalZ;
     let upPosition = 0;
     if (hasNormals) {
-      if (corners !== lastCorners) {
-        lastCorners = corners;
-        normals = faceIsSteep(positions, weldedNormals, corners) ? weldedNormals : smoothedNormals;
-      }
       const [first, second, third] = corners.map(corner => corner * 3);
       normalX = weightA * normals[first] + weightB * normals[second] + weightC * normals[third];
       normalY = weightA * normals[first + 1] + weightB * normals[second + 1] + weightC * normals[third + 1];

@@ -42,3 +42,35 @@ test('the slope bake of a finely creased mesh swings less than the vertex values
   }
   assert.ok(high - low < 0.6 * rawSwing, `the mask swings ${high - low} where the vertices differ by ${rawSwing}`);
 });
+
+// A row of quads that rises gently, then steeply: the last faces are steeper than 72 degrees, their neighbours are not. A
+// per-triangle switch between smoothed and welded normals left a jump at the edge between the two kinds of face.
+test('the mask has no jump where a steep face meets a gentle one', () => {
+  const heights = [0, 0, 0.2, 3, 6];
+  const tilts = [10, 10, 30, 80, 80];
+  const positions = [];
+  const normals = [];
+  const uvs = [];
+  heights.forEach((height, column) => {
+    for (const z of [0, 1]) {
+      positions.push(column, height, z);
+      const angle = (tilts[column] * Math.PI) / 180;
+      normals.push(Math.sin(angle), Math.cos(angle), 0);
+      uvs.push(column / (heights.length - 1), z);
+    }
+  });
+  const indices = [];
+  for (let column = 0; column < heights.length - 1; column++) {
+    const corner = column * 2;
+    indices.push(corner, corner + 2, corner + 3, corner, corner + 3, corner + 1);
+  }
+  const geometry = { positions: Float32Array.from(positions), normals: Float32Array.from(normals), uvs: Float32Array.from(uvs), indices: Uint32Array.from(indices) };
+  const resolution = 256;
+  const map = surfaceMap(geometry, { output: 'slope', space: 'object' }, resolution, 'rise');
+  let largestStep = 0;
+  for (let column = 2; column < resolution - 2; column++) {
+    const step = Math.abs(map.data[((resolution / 2) * resolution + column + 1) * 4] - map.data[((resolution / 2) * resolution + column) * 4]);
+    largestStep = Math.max(largestStep, step);
+  }
+  assert.ok(largestStep <= 4, `the mask jumps by ${largestStep} between neighbouring texels`);
+});

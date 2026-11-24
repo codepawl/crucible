@@ -9,6 +9,12 @@ import { verticesByPosition } from './mesh-weld-normals.js';
 // leave more corners, 6 passes and a 25 degree gate lose more snow).
 const PASSES = 3;
 const CREASE_COSINE = Math.cos((35 * Math.PI) / 180);
+// A vertex whose welded normal is steeper than STEEP_FROM (slope 0.8, 72 degrees) keeps it; the keep fades in from FADE_FROM. The choice is made per
+// vertex and blended, never per triangle, so the mask stays continuous across triangle edges (a per-triangle switch between
+// two normal fields left stair steps along every triangle edge that borders a steep face).
+const FADE_FROM = 0.62;
+const STEEP_FROM = 0.8;
+const RIGHT_ANGLE = Math.PI / 2;
 const smoothedByGeometry = new WeakMap();
 
 function groupNeighbours(geometry, groupOfVertex, groupCount) {
@@ -62,6 +68,24 @@ function smoothPass(current, groups, groupOfVertex, neighbours) {
   return next;
 }
 
+function keepSteepVertices(welded, smoothed) {
+  const result = new Float32Array(smoothed);
+  for (let offset = 0; offset < welded.length; offset += 3) {
+    const length = Math.hypot(welded[offset], welded[offset + 1], welded[offset + 2]) || 1;
+    const slope = Math.acos(Math.min(1, Math.max(-1, welded[offset + 1] / length))) / RIGHT_ANGLE;
+    const fraction = Math.min(1, Math.max(0, (slope - FADE_FROM) / (STEEP_FROM - FADE_FROM)));
+    const keep = fraction * fraction * (3 - 2 * fraction);
+    const mixedX = (1 - keep) * smoothed[offset] + keep * welded[offset] / length;
+    const mixedY = (1 - keep) * smoothed[offset + 1] + keep * welded[offset + 1] / length;
+    const mixedZ = (1 - keep) * smoothed[offset + 2] + keep * welded[offset + 2] / length;
+    const mixedLength = Math.hypot(mixedX, mixedY, mixedZ) || 1;
+    result[offset] = mixedX / mixedLength;
+    result[offset + 1] = mixedY / mixedLength;
+    result[offset + 2] = mixedZ / mixedLength;
+  }
+  return result;
+}
+
 export function smoothedMaskNormals(geometry, weldedNormals) {
   if (!weldedNormals || !geometry.indices) return weldedNormals;
   const remembered = smoothedByGeometry.get(geometry);
@@ -73,6 +97,7 @@ export function smoothedMaskNormals(geometry, weldedNormals) {
   const neighbours = groupNeighbours(geometry, groupOfVertex, groups.length);
   let current = unitNormals(weldedNormals);
   for (let pass = 0; pass < PASSES; pass++) current = smoothPass(current, groups, groupOfVertex, neighbours);
-  smoothedByGeometry.set(geometry, current);
-  return current;
+  const result = keepSteepVertices(weldedNormals, current);
+  smoothedByGeometry.set(geometry, result);
+  return result;
 }
