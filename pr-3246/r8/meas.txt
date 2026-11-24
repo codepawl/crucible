@@ -1,0 +1,7 @@
+1 reference dE2000 (max per preset, limit 12) {"smoothPlastic": 2.8, "wood": 0.4, "grass": 1.2, "neon": 9.4, "glass": 5.2, "brick": 0.8}
+1 detail [["red", "smoothPlastic", 0.2], ["red", "wood", 0.4], ["red", "grass", 0.3], ["red", "neon", 3.5], ["red", "glass", 5.2], ["red", "brick", 0.8], ["blue", "smoothPlastic", 2.8], ["blue", "wood", 0.4], ["blue", "grass", 1.2], ["blue", "neon", 9.4], ["blue", "glass", 3.9], ["blue", "brick", 0.4], ["default", "smoothPlastic", 0.3], ["default", "wood", 0.4], ["default", "grass", 0.8], ["default", "neon", 1.9], ["default", "glass", 0.6], ["default", "brick", 0.7]]
+3 clear glass rim luma contrast (limit 25; backdrop 181) {"left": 61.7, "right": 49.7, "top": 60.5, "bottom": 54.0}
+4 coloured glass (sat limit 0.30, hue within 25 of target) {"red": {"hue": 357, "target": 0, "sat": 0.33}, "blue": {"hue": 212, "target": 220, "sat": 0.38}}
+5 grass repeat (autocorrelation, repeat if above 0.5) {"red row": [0.22, [-75, 1]], "blue row": [0.22, [-75, 1]], "default row": [0.21, [-75, 1]], "close": [0.2, [-47, 287]]}
+6 neon ring rise top/bottom/left/right (limit 30) {"red": [5.2, 4.9, 8.4, 41.8], "blue": [6.8, 6.1, 10.2, 52.3], "default": [5.8, 5.6, 7.1, 37.3]}
+7 max profile step (limit 20) {"red/smoothPlastic": 6.3, "red/wood": 6.0, "red/grass": 4.6, "red/neon": 4.8, "red/brick": 16.3, "blue/smoothPlastic": 6.2, "blue/wood": 7.8, "blue/grass": 6.5, "blue/neon": 3.4, "blue/brick": 19.8, "default/smoothPlastic": 3.9, "default/wood": 8.0, "default/grass": 6.7, "default/neon": 1.0, "default/brick": 18.6}
