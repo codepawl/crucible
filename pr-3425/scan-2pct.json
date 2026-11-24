@@ -2,9 +2,9 @@
   "asset": "scan-2pct",
   "source": "Boulder 01 (Poly Haven), CC0 1.0, https://polyhaven.com/a/boulder_01",
   "commit": {
-    "head": "bca553133486f44bcee72fb2cd5548fa06c6b814",
+    "head": "5551c15a0a6d452b2cbd9da61823a1c4a5345856",
     "base": "e0405ecdeb77fe511dd5bec46643764eca40b3b9",
-    "dirty": true
+    "dirty": false
   },
   "recipe": {
     "imageSize": 640,
@@ -62,51 +62,84 @@
     "areaDistortion": 0.01684046805378116
   },
   "gateMeanDegrees": 0.5,
+  "gateP99Degrees": 2,
   "gapToSpec": [
     {
       "step": "generated, linear filter, whole object",
       "statistics": {
         "pixels": 55611,
         "meanDegrees": 5.193524340038683,
-        "p95Degrees": 19.6512508392334
+        "p95Degrees": 19.6512508392334,
+        "p99Degrees": 35.836341857910156,
+        "maxDegrees": 102.5800552368164
       },
-      "isGate": false
+      "gates": false
     },
     {
       "step": "generated, nearest texel, whole object",
       "statistics": {
         "pixels": 55611,
         "meanDegrees": 2.9722019444046373,
-        "p95Degrees": 17.549074172973633
+        "p95Degrees": 17.549074172973633,
+        "p99Degrees": 34.83031463623047,
+        "maxDegrees": 113.3749771118164
       },
-      "isGate": false
+      "gates": false
     },
     {
-      "step": "generated, linear filter, fair pixels",
+      "step": "generated, nearest texel, reflection mask only (border mask off)",
       "statistics": {
-        "pixels": 30114,
-        "meanDegrees": 2.510004416868051,
-        "p95Degrees": 8.906208038330078
+        "pixels": 41790,
+        "meanDegrees": 0.11208464011864555,
+        "p95Degrees": 0.05377716198563576,
+        "p99Degrees": 0.06598535180091858,
+        "maxDegrees": 86.29301452636719
       },
-      "isGate": false
+      "gates": true
     },
     {
-      "step": "generated, nearest texel, fair pixels",
+      "step": "generated, nearest texel, border mask only",
+      "statistics": {
+        "pixels": 39975,
+        "meanDegrees": 2.7293616758237635,
+        "p95Degrees": 16.167831420898438,
+        "p99Degrees": 32.24673080444336,
+        "maxDegrees": 107.99009704589844
+      },
+      "gates": false
+    },
+    {
+      "step": "generated, nearest texel, both masks",
       "statistics": {
         "pixels": 30114,
         "meanDegrees": 0.07548661061312038,
-        "p95Degrees": 0.053623881191015244
+        "p95Degrees": 0.053623881191015244,
+        "p99Degrees": 0.06327969580888748,
+        "maxDegrees": 86.29301452636719
       },
-      "isGate": true
+      "gates": true
     },
     {
-      "step": "derivative, linear filter, fair pixels",
+      "step": "generated, linear filter, both masks",
+      "statistics": {
+        "pixels": 30114,
+        "meanDegrees": 2.510004416868051,
+        "p95Degrees": 8.906208038330078,
+        "p99Degrees": 17.838380813598633,
+        "maxDegrees": 85.75311279296875
+      },
+      "gates": false
+    },
+    {
+      "step": "derivative, linear filter, both masks",
       "statistics": {
         "pixels": 30114,
         "meanDegrees": 34.21709714627155,
-        "p95Degrees": 76.11416625976562
+        "p95Degrees": 76.11416625976562,
+        "p99Degrees": 92.40742492675781,
+        "maxDegrees": 155.54534912109375
       },
-      "isGate": false
+      "gates": false
     }
   ],
   "gatePassed": true,
@@ -127,12 +160,16 @@
       "insideMask": {
         "pixels": 55462,
         "meanDegrees": 31.684005841064184,
-        "p95Degrees": 64.1629638671875
+        "p95Degrees": 64.1629638671875,
+        "p99Degrees": 79.23815155029297,
+        "maxDegrees": 115.82502746582031
       },
       "interior": {
         "pixels": 50530,
         "meanDegrees": 31.58019772923962,
-        "p95Degrees": 63.31074905395508
+        "p95Degrees": 63.31074905395508,
+        "p99Degrees": 78.14401245117188,
+        "maxDegrees": 115.82502746582031
       },
       "shaderFeatures": [
         "studioLighting",
@@ -144,19 +181,25 @@
       "againstOracle": {
         "pixels": 55611,
         "meanDegrees": 29.688761359566172,
-        "p95Degrees": 59.01293182373047
+        "p95Degrees": 59.01293182373047,
+        "p99Degrees": 71.04808044433594,
+        "maxDegrees": 146.69329833984375
       }
     },
     "derivative": {
       "insideMask": {
         "pixels": 55462,
         "meanDegrees": 42.708659675803034,
-        "p95Degrees": 93.26923370361328
+        "p95Degrees": 93.26923370361328,
+        "p99Degrees": 106.47111511230469,
+        "maxDegrees": 173.2841796875
       },
       "interior": {
         "pixels": 50530,
         "meanDegrees": 42.98028385225862,
-        "p95Degrees": 92.95863342285156
+        "p95Degrees": 92.95863342285156,
+        "p99Degrees": 105.66121673583984,
+        "maxDegrees": 150.5553436279297
       },
       "shaderFeatures": [
         "normalMap",
@@ -169,19 +212,25 @@
       "againstOracle": {
         "pixels": 55611,
         "meanDegrees": 41.20406620354616,
-        "p95Degrees": 92.79371643066406
+        "p95Degrees": 92.79371643066406,
+        "p99Degrees": 105.68537139892578,
+        "maxDegrees": 155.5715789794922
       }
     },
     "generated": {
       "insideMask": {
         "pixels": 55462,
         "meanDegrees": 11.643714396410687,
-        "p95Degrees": 47.715518951416016
+        "p95Degrees": 47.715518951416016,
+        "p99Degrees": 78.26531982421875,
+        "maxDegrees": 149.7810516357422
       },
       "interior": {
         "pixels": 50530,
         "meanDegrees": 10.930155362877109,
-        "p95Degrees": 45.01475524902344
+        "p95Degrees": 45.01475524902344,
+        "p99Degrees": 75.75440979003906,
+        "maxDegrees": 149.7810516357422
       },
       "shaderFeatures": [
         "normalMap",
@@ -195,19 +244,25 @@
       "againstOracle": {
         "pixels": 55611,
         "meanDegrees": 5.193524340038683,
-        "p95Degrees": 19.6512508392334
+        "p95Degrees": 19.6512508392334,
+        "p99Degrees": 35.836341857910156,
+        "maxDegrees": 102.5800552368164
       }
     },
     "oracle": {
       "insideMask": {
         "pixels": 55461,
         "meanDegrees": 11.83421766070446,
-        "p95Degrees": 53.06806564331055
+        "p95Degrees": 53.06806564331055,
+        "p99Degrees": 86.7120361328125,
+        "maxDegrees": 162.2030487060547
       },
       "interior": {
         "pixels": 50529,
         "meanDegrees": 11.091651036283716,
-        "p95Degrees": 50.98284912109375
+        "p95Degrees": 50.98284912109375,
+        "p99Degrees": 84.64336395263672,
+        "maxDegrees": 162.2030487060547
       },
       "shaderFeatures": [],
       "tangentsReachedGeometry": true

@@ -2,9 +2,9 @@
   "asset": "sphere-32x16",
   "source": "generated: 32 x 16 UV sphere baked from a 192 x 96 sphere with a ridged surface (6 ridges around, 4 along, height 0.06)",
   "commit": {
-    "head": "bca553133486f44bcee72fb2cd5548fa06c6b814",
+    "head": "5551c15a0a6d452b2cbd9da61823a1c4a5345856",
     "base": "e0405ecdeb77fe511dd5bec46643764eca40b3b9",
-    "dirty": true
+    "dirty": false
   },
   "recipe": {
     "imageSize": 640,
@@ -53,51 +53,88 @@
     "hitTexels": 262094
   },
   "gateMeanDegrees": 0.5,
+  "gateP99Degrees": 2,
+  "handedness": {
+    "positive": 0,
+    "negative": 560
+  },
   "gapToSpec": [
     {
       "step": "generated, linear filter, whole object",
       "statistics": {
         "pixels": 271731,
         "meanDegrees": 0.5252539084315248,
-        "p95Degrees": 0.7033677101135254
+        "p95Degrees": 0.7033677101135254,
+        "p99Degrees": 8.203186988830566,
+        "maxDegrees": 89.7271728515625
       },
-      "isGate": false
+      "gates": false
     },
     {
       "step": "generated, nearest texel, whole object",
       "statistics": {
         "pixels": 271731,
         "meanDegrees": 0.3476135567454729,
-        "p95Degrees": 0.2065555602312088
+        "p95Degrees": 0.2065555602312088,
+        "p99Degrees": 8.199906349182129,
+        "maxDegrees": 88.63198852539062
       },
-      "isGate": false
+      "gates": false
     },
     {
-      "step": "generated, linear filter, fair pixels",
+      "step": "generated, nearest texel, reflection mask only (border mask off)",
       "statistics": {
-        "pixels": 255175,
-        "meanDegrees": 0.21794443385260956,
-        "p95Degrees": 0.4950123429298401
+        "pixels": 257985,
+        "meanDegrees": 0.029678093830695893,
+        "p95Degrees": 0.05118919163942337,
+        "p99Degrees": 0.05955018848180771,
+        "maxDegrees": 1.3894261121749878
       },
-      "isGate": false
+      "gates": true
     },
     {
-      "step": "generated, nearest texel, fair pixels",
+      "step": "generated, nearest texel, border mask only",
+      "statistics": {
+        "pixels": 268423,
+        "meanDegrees": 0.3347120070938242,
+        "p95Degrees": 0.06902293115854263,
+        "p99Degrees": 7.789867401123047,
+        "maxDegrees": 88.63198852539062
+      },
+      "gates": false
+    },
+    {
+      "step": "generated, nearest texel, both masks",
       "statistics": {
         "pixels": 255175,
         "meanDegrees": 0.029673147536683108,
-        "p95Degrees": 0.05116277560591698
+        "p95Degrees": 0.05116277560591698,
+        "p99Degrees": 0.059506502002477646,
+        "maxDegrees": 1.3894261121749878
       },
-      "isGate": true
+      "gates": true
     },
     {
-      "step": "derivative, linear filter, fair pixels",
+      "step": "generated, linear filter, both masks",
+      "statistics": {
+        "pixels": 255175,
+        "meanDegrees": 0.21794443385260956,
+        "p95Degrees": 0.4950123429298401,
+        "p99Degrees": 0.6438689827919006,
+        "maxDegrees": 76.89202117919922
+      },
+      "gates": false
+    },
+    {
+      "step": "derivative, linear filter, both masks",
       "statistics": {
         "pixels": 255175,
         "meanDegrees": 8.994927043344626,
-        "p95Degrees": 23.0705623626709
+        "p95Degrees": 23.0705623626709,
+        "p99Degrees": 25.817214965820312,
+        "maxDegrees": 96.46172332763672
       },
-      "isGate": false
+      "gates": false
     }
   ],
   "gatePassed": true,
@@ -106,12 +143,16 @@
       "insideMask": {
         "pixels": 270195,
         "meanDegrees": 10.007554274087113,
-        "p95Degrees": 17.534469604492188
+        "p95Degrees": 17.534469604492188,
+        "p99Degrees": 19.065963745117188,
+        "maxDegrees": 33.13164138793945
       },
       "interior": {
         "pixels": 260835,
         "meanDegrees": 10.058862915431074,
-        "p95Degrees": 17.516103744506836
+        "p95Degrees": 17.516103744506836,
+        "p99Degrees": 18.882190704345703,
+        "maxDegrees": 22.04170799255371
       },
       "shaderFeatures": [
         "studioLighting",
@@ -123,19 +164,25 @@
       "againstOracle": {
         "pixels": 271731,
         "meanDegrees": 9.687104905838302,
-        "p95Degrees": 17.1297550201416
+        "p95Degrees": 17.1297550201416,
+        "p99Degrees": 18.02442169189453,
+        "maxDegrees": 18.643953323364258
       }
     },
     "derivative": {
       "insideMask": {
         "pixels": 270195,
         "meanDegrees": 9.50565097019532,
-        "p95Degrees": 23.2244873046875
+        "p95Degrees": 23.2244873046875,
+        "p99Degrees": 26.202457427978516,
+        "maxDegrees": 117.87010192871094
       },
       "interior": {
         "pixels": 260835,
         "meanDegrees": 9.463004393060798,
-        "p95Degrees": 23.104629516601562
+        "p95Degrees": 23.104629516601562,
+        "p99Degrees": 26.13620948791504,
+        "maxDegrees": 27.19084358215332
       },
       "shaderFeatures": [
         "normalMap",
@@ -148,19 +195,25 @@
       "againstOracle": {
         "pixels": 271731,
         "meanDegrees": 8.999738564487036,
-        "p95Degrees": 23.002338409423828
+        "p95Degrees": 23.002338409423828,
+        "p99Degrees": 25.821638107299805,
+        "maxDegrees": 96.66638946533203
       }
     },
     "generated": {
       "insideMask": {
         "pixels": 270195,
         "meanDegrees": 2.15988738514498,
-        "p95Degrees": 10.683547019958496
+        "p95Degrees": 10.683547019958496,
+        "p99Degrees": 17.97400665283203,
+        "maxDegrees": 114.04280853271484
       },
       "interior": {
         "pixels": 260835,
         "meanDegrees": 1.957004395750133,
-        "p95Degrees": 9.908864974975586
+        "p95Degrees": 9.908864974975586,
+        "p99Degrees": 17.081195831298828,
+        "maxDegrees": 26.868545532226562
       },
       "shaderFeatures": [
         "normalMap",
@@ -174,19 +227,25 @@
       "againstOracle": {
         "pixels": 271731,
         "meanDegrees": 0.5252539084315248,
-        "p95Degrees": 0.7033677101135254
+        "p95Degrees": 0.7033677101135254,
+        "p99Degrees": 8.203186988830566,
+        "maxDegrees": 89.7271728515625
       }
     },
     "oracle": {
       "insideMask": {
         "pixels": 270195,
         "meanDegrees": 2.296078043877358,
-        "p95Degrees": 11.396538734436035
+        "p95Degrees": 11.396538734436035,
+        "p99Degrees": 21.260009765625,
+        "maxDegrees": 48.77816390991211
       },
       "interior": {
         "pixels": 260835,
         "meanDegrees": 2.054864338055789,
-        "p95Degrees": 10.312980651855469
+        "p95Degrees": 10.312980651855469,
+        "p99Degrees": 18.915090560913086,
+        "maxDegrees": 28.811248779296875
       },
       "shaderFeatures": [],
       "tangentsReachedGeometry": true
