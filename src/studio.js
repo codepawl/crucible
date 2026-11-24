@@ -2585,7 +2585,7 @@ export function createStudio(container, {
   const shortcutsHeading = createElement(documentReference, 'h2', { id: 'crucible-studio-shortcuts-title', textContent: 'Studio keyboard shortcuts' });
   shortcutsHeading.prepend(createIcon(documentReference, 'keyboard'));
   const shortcutsCloseButton = createIconButton(documentReference, 'close', 'Close the shortcuts');
-  const shortcutsGrid = createElement(documentReference, 'div', { className: 'crucible-studio-shortcuts' });
+  const shortcutsGrid = createElement(documentReference, 'div', { className: 'crucible-studio-shortcuts crucible-studio-fade-scroll' });
   // One block per area, each with its icon and a row for every key of the active keymap, in two columns of about equal height.
   const createShortcutGroup = group => createElement(
     documentReference,

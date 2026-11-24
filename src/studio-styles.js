@@ -2209,7 +2209,8 @@ export const STUDIO_CSS = `
   accent-color: var(--studio-text);
 }
 /* Keyboard section: the preset and the filter stay put, the shortcuts scroll. Row gap 8 sits inside a group, group gap 16 between groups. */
-.crucible-studio-settings-pane[data-section="keys"] .crucible-studio-settings-rows { overflow: hidden; }
+/* The Keyboard section keeps its preset and filter fixed and scrolls only its list (a fade-scroll box of its own). */
+.crucible-studio-settings-pane[data-section="keys"] .crucible-studio-settings-rows { overflow: visible; }
 .crucible-studio-keyboard {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -2235,9 +2236,8 @@ export const STUDIO_CSS = `
   flex-direction: column;
   gap: var(--studio-space-16);
   min-block-size: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
+.crucible-studio-keyboard-tools > input::placeholder { color: var(--studio-muted); opacity: 1; }
 .crucible-studio-keyboard-group { display: flex; flex-direction: column; gap: var(--studio-space-8); }
 .crucible-studio-keyboard-group h4 {
   display: flex;
@@ -2279,7 +2279,7 @@ export const STUDIO_CSS = `
   min-inline-size: 96px;
   min-block-size: 28px;
   padding-inline: var(--studio-space-8);
-  border: 1px solid transparent;
+  border: 1px solid var(--studio-muted);
   color: var(--studio-text);
   font: inherit;
   white-space: nowrap;
@@ -2305,7 +2305,14 @@ export const STUDIO_CSS = `
 }
 .crucible-studio dialog button.crucible-studio-keyboard-reset:hover { color: var(--studio-text); }
 .crucible-studio-keyboard-fixed { color: var(--studio-muted); white-space: nowrap; }
-.crucible-studio-keyboard-note { grid-column: 1 / -1; min-block-size: 28px; }
+.crucible-studio-keyboard-note { grid-column: 1 / -1; flex-wrap: wrap; min-block-size: 28px; }
+/* A row with a message to answer (a clash, a refused combination) sits on its own surface, the message on a second line, so it reads as one block. */
+.crucible-studio-keyboard-row[data-noted="true"] {
+  margin-inline: calc(var(--studio-space-8) * -1);
+  padding: var(--studio-space-4) var(--studio-space-8);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--studio-text) 7%, transparent);
+}
 .crucible-studio-keyboard-note .crucible-studio-icon { flex: none; color: var(--studio-accent); }
 .crucible-studio-keyboard-note-actions { margin-inline-start: auto; }
 @media (prefers-reduced-motion: no-preference) {
@@ -2920,14 +2927,18 @@ export const STUDIO_CSS = `
   align-items: start;
   gap: var(--studio-space-24);
   min-block-size: 0;
+  font-size: 12.5px;
+}
+/* The one scroll cue of the dialogs (the shortcut sheet and every Settings section): an 8 px thumb with no arrows over a clear track,
+   and a fade at each edge that hides rows (watchScrollFades sets data-above and data-more). The scrolling box reaches 16 px into the
+   dialog padding: 8 px for the scrollbar and 8 px of air, so the text edges stay 24 px from both sides. */
+.crucible-studio-fade-scroll {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  /* The scrolling box reaches 16 px into the dialog padding: 8 px for the scrollbar and 8 px of air, so the text edges stay 24 px from both sides. */
   margin-inline-end: calc(var(--studio-space-16) * -1);
   padding-inline-end: var(--studio-space-8);
-  font-size: 12.5px;
-  /* Rows hidden above or below fade at that edge; the strip over the scrollbar stays solid. */
+  /* The strip over the scrollbar stays solid. */
   --studio-fade-top: 0px;
   --studio-fade-bottom: 0px;
   mask-image:
@@ -2935,11 +2946,12 @@ export const STUDIO_CSS = `
     linear-gradient(to right, transparent calc(100% - var(--studio-space-16)), #000 calc(100% - var(--studio-space-16)));
   mask-composite: add;
 }
-.crucible-studio-shortcuts[data-above="true"] { --studio-fade-top: calc(var(--studio-space-24) * 2); }
-.crucible-studio-shortcuts[data-more="true"] { --studio-fade-bottom: calc(var(--studio-space-24) * 2); }
-.crucible-studio-shortcuts::-webkit-scrollbar { width: 8px; }
-.crucible-studio-shortcuts::-webkit-scrollbar-track { background: transparent; }
-.crucible-studio-shortcuts::-webkit-scrollbar-thumb {
+.crucible-studio-fade-scroll[data-above="true"] { --studio-fade-top: calc(var(--studio-space-24) * 2); }
+.crucible-studio-fade-scroll[data-more="true"] { --studio-fade-bottom: calc(var(--studio-space-24) * 2); }
+.crucible-studio-fade-scroll::-webkit-scrollbar { width: 8px; }
+.crucible-studio-fade-scroll::-webkit-scrollbar-button { display: none; }
+.crucible-studio-fade-scroll::-webkit-scrollbar-track { background: transparent; }
+.crucible-studio-fade-scroll::-webkit-scrollbar-thumb {
   border-radius: 4px;
   background: color-mix(in srgb, var(--studio-text) 38%, transparent);
 }

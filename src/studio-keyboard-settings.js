@@ -2,7 +2,7 @@
 // The list reads the same groups as the Help sheet (studio-help.js) and writes only the per-preset overrides
 // (studio-key-overrides.js), so tooltips, menus and the sheet follow through the one keymap lookup.
 import { formatBinding } from './studio-keymap.js';
-import { sheetLabelOf, shortcutSheetGroups } from './studio-help.js';
+import { sheetLabelOf, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
 import { leadWithActionIcon } from './studio-icons.js';
 import {
   bindingFromKeyEvent,
@@ -31,7 +31,8 @@ export function createKeyboardSection({ documentReference, createElement, create
   });
   const toolButtons = createElement(documentReference, 'div', { className: 'crucible-studio-keyboard-actions' });
   const tools = createElement(documentReference, 'div', { className: 'crucible-studio-keyboard-tools' }, filterInput, toolButtons);
-  const list = createElement(documentReference, 'div', { className: 'crucible-studio-keyboard-list' });
+  const list = createElement(documentReference, 'div', { className: 'crucible-studio-keyboard-list crucible-studio-fade-scroll' });
+  const syncListFades = watchScrollFades(list);
   const element = createElement(
     documentReference,
     'div',
@@ -173,6 +174,7 @@ export function createKeyboardSection({ documentReference, createElement, create
     const item = createElement(documentReference, 'div', { className: 'crucible-studio-keyboard-row' }, name, controls);
     item.dataset.action = row.actionId;
     item.dataset.changed = String(changed);
+    if (pending || note) item.dataset.noted = 'true';
     if (pending) item.append(clashNote(pending));
     else if (note) item.append(noteLine('warning', note.text));
     return item;
@@ -188,11 +190,16 @@ export function createKeyboardSection({ documentReference, createElement, create
     );
   }
 
+  function resetCountLabel() {
+    const count = Object.keys(getOverrides()).length;
+    return count === 1 ? 'Reset 1 key' : `Reset ${count} keys`;
+  }
+
   function renderTools() {
     toolButtons.replaceChildren();
     if (state.confirmingReset) {
       toolButtons.append(
-        textButton('Reset keys', 'reset', () => {
+        textButton(resetCountLabel(), 'reset', () => {
           state.confirmingReset = false;
           commit({});
         }, 'crucible-studio-keyboard-confirm'),
@@ -203,7 +210,7 @@ export function createKeyboardSection({ documentReference, createElement, create
       );
       return;
     }
-    const resetAll = textButton('Reset all', 'reset', () => {
+    const resetAll = textButton('Reset keys', 'reset', () => {
       state.confirmingReset = true;
       renderTools();
     });
@@ -238,12 +245,14 @@ export function createKeyboardSection({ documentReference, createElement, create
       target?.focus?.({ preventScroll: true });
       target?.closest?.('.crucible-studio-keyboard-row')?.scrollIntoView?.({ block: 'nearest' });
     }
+    syncListFades();
     state.rendering = false;
   }
 
   return {
     element,
     refresh: render,
+    syncFades: syncListFades,
     stopRecording,
   };
 }

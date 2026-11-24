@@ -6,6 +6,7 @@ import { STUDIO_PREFERENCE_CHOICES } from './studio-preferences.js';
 import { createAccountSection, STUDIO_SETTINGS_ACTION_ICONS } from './studio-account.js';
 import { leadWithActionIcon } from './studio-icons.js';
 import { createKeyboardSection } from './studio-keyboard-settings.js';
+import { watchScrollFades } from './studio-help.js';
 
 const capitalised = value => value[0].toUpperCase() + value.slice(1);
 const MOTION_LABELS = Object.freeze({ system: 'Follow system', reduced: 'Reduced' });
@@ -95,6 +96,15 @@ export function createStudioSettings({ documentReference, createElement, createI
     sections.push({ id: 'account', title: 'Account', icon: 'account', body: [account.element] });
   }
 
+  // Every section scrolls its rows with the shared cue (thin thumb, fades); the Keyboard list carries its own, under its fixed head.
+  const fadeSyncs = [];
+  function createScrollingRows(section) {
+    const scrolls = section.id !== 'keys';
+    const rows = createElement(documentReference, 'div', { className: scrolls ? 'crucible-studio-settings-rows crucible-studio-fade-scroll' : 'crucible-studio-settings-rows' }, ...section.body);
+    if (scrolls) fadeSyncs.push(watchScrollFades(rows));
+    return rows;
+  }
+
   const navButtons = new Map();
   const panes = new Map();
   for (const section of sections) {
@@ -113,7 +123,7 @@ export function createStudioSettings({ documentReference, createElement, createI
       'section',
       { className: 'crucible-studio-settings-pane', dataset: { section: section.id }, attributes: { 'aria-labelledby': `crucible-studio-settings-${section.id}-title` } },
       createElement(documentReference, 'h3', { id: `crucible-studio-settings-${section.id}-title` }, createIcon(documentReference, section.icon), createElement(documentReference, 'span', { textContent: section.title })),
-      createElement(documentReference, 'div', { className: 'crucible-studio-settings-rows' }, ...section.body),
+      createScrollingRows(section),
     ));
   }
 
@@ -124,12 +134,18 @@ export function createStudioSettings({ documentReference, createElement, createI
       navButtons.get(id).dataset.current = String(current);
       navButtons.get(id).setAttribute('aria-current', current ? 'true' : 'false');
     }
+    syncFades();
+  }
+  // A closed dialog has no size, so the fades are read again once it is open and whenever another section shows.
+  function syncFades() {
+    for (const sync of fadeSyncs) sync();
+    keyboardSection?.syncFades();
   }
   showSection(sections[0].id);
 
   const settingsHeading = createElement(documentReference, 'h2', { id: 'crucible-studio-settings-title', textContent: 'Settings' });
   settingsHeading.prepend(createIcon(documentReference, 'settings'));
-  const resetButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Reset' });
+  const resetButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Reset settings' });
   leadWithActionIcon(resetButton, createIcon(documentReference, STUDIO_SETTINGS_ACTION_ICONS.reset), STUDIO_SETTINGS_ACTION_ICONS.reset);
   resetButton.addEventListener('click', onReset);
   const setupButton = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-settings-quiet', textContent: 'Run setup again' });
@@ -174,6 +190,7 @@ export function createStudioSettings({ documentReference, createElement, createI
       showSection(sections[0].id);
       dialog.showModal();
       dialog.focus();
+      syncFades();
     },
     dispose() {
       account?.dispose();

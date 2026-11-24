@@ -170,23 +170,23 @@ test('a combination the browser keeps is refused inline and nothing changes (#33
   assert.equal(ui.note('tool.select'), null);
 });
 
-test('a changed row has a reset button that returns it to the preset, and Reset all asks first (#3390)', testContext => {
+test('a changed row has a reset button that returns it to the preset, and Reset keys asks first (#3390)', testContext => {
   const storage = memoryStorage();
   const ui = mountStudio(testContext, { preferenceStorage: storage });
   assert.equal(ui.reset('tool.select'), null, 'a row at the preset has no reset');
-  assert.equal(ui.toolButton('Reset all').disabled, true);
+  assert.equal(ui.toolButton('Reset keys').disabled, true);
   ui.record('tool.select', 'v');
   ui.record('tool.rotate', 'b');
   ui.reset('tool.select').click();
   assert.equal(ui.keys('tool.select').textContent, 'Q');
   assert.equal(ui.row('tool.select').dataset.changed, 'false');
   assert.equal(ui.keys('tool.rotate').textContent, 'B');
-  ui.toolButton('Reset all').click();
+  ui.toolButton('Reset keys').click();
   assert.equal(ui.keys('tool.rotate').textContent, 'B', 'nothing happens before the confirm');
   ui.toolButton('Keep').click();
-  assert.ok(ui.toolButton('Reset all'));
-  ui.toolButton('Reset all').click();
+  assert.ok(ui.toolButton('Reset keys'));
   ui.toolButton('Reset keys').click();
+  ui.toolButton('Reset 1 key').click();
   assert.equal(ui.keys('tool.rotate').textContent, 'R');
   assert.deepEqual(JSON.parse(storage.saved.get('crucible-studio-preferences')).keyOverrides, {});
   ui.press('r');

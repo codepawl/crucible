@@ -100,5 +100,5 @@ Pick the form by how a person reaches the feature:
 | Account | panel | Settings > Account, `src/studio-account.js` | Shows who is signed in and the host's sign-in and sign-out actions in one section; Studio holds no token. |
 | Keyboard shortcuts | panel | Help menu, the ? key; src/studio-help.js | A sheet to read, built from the active keymap. |
 | Documentation | operator | Help menu | One action that opens the guide. |
-| Keyboard settings | panel | Settings > Keyboard, `src/studio-keyboard-settings.js` | Every shortcut of the preset by area, a filter above, a warning on a clash and Reset all with a confirm; nothing leaves the panel until a key is chosen. |
+| Keyboard settings | panel | Settings > Keyboard, `src/studio-keyboard-settings.js` | Every shortcut of the preset by area, a filter above, a warning on a clash and Reset keys with a confirm; nothing leaves the panel until a key is chosen. |
 | Each key binding | setting | Settings > Keyboard, `src/studio-key-overrides.js` | A stored choice per preset and action: click the key, press the new combination; Esc cancels, Backspace clears, Swap or Cancel settles a clash, the row's reset returns the preset key. |

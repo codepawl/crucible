@@ -260,6 +260,34 @@ const EXTRA_ROWS = 3;
 
 // Settings > Keyboard in each state a person meets: the list, a key waiting for a press, a clash with Swap and Cancel and a refused
 // browser combination. Escape while recording must cancel the recording and leave Settings open. Nothing is saved: the clash is cancelled.
+// Runs in the page. A row cut by the top or bottom edge of the shortcut list must have the fade marker of that edge, and a clash's
+// buttons end where the key column ends (the same right edge within a pixel), inside the row they belong to.
+function checkKeyboardScrollCue() {
+  const list = document.querySelector('.crucible-studio-keyboard-list');
+  const box = list.getBoundingClientRect();
+  const problems = [];
+  for (const row of list.querySelectorAll('.crucible-studio-keyboard-row')) {
+    const rect = row.getBoundingClientRect();
+    if (rect.bottom < box.top || rect.top > box.bottom) continue;
+    const label = row.querySelector('.crucible-studio-keyboard-name').textContent.trim();
+    if (rect.top < box.top - 1 && list.dataset.above !== 'true') problems.push(label + ' is cut at the top without a fade');
+    if (rect.bottom > box.bottom + 1 && list.dataset.more !== 'true') problems.push(label + ' is cut at the bottom without a fade');
+  }
+  const note = list.querySelector('.crucible-studio-keyboard-row[data-noted="true"]');
+  if (note) {
+    const keysRight = note.querySelector('.crucible-studio-keyboard-keys').getBoundingClientRect().right;
+    const buttons = [...note.querySelectorAll('.crucible-studio-keyboard-note button')];
+    if (buttons.length > 0 && Math.abs(buttons.at(-1).getBoundingClientRect().right - keysRight) > 1) problems.push('the clash buttons do not end at the key column edge');
+    if (buttons.some(button => button.getBoundingClientRect().bottom > note.getBoundingClientRect().bottom + 1)) problems.push('a clash button leaves its row');
+  }
+  return problems;
+}
+
+async function assertKeyboardScrollCue(page, state) {
+  const problems = await page.evaluate(`(${checkKeyboardScrollCue.toString()})()`);
+  if (problems.length > 0) throw new Error(`keyboard list (${state}): ${problems.join('; ')}`);
+}
+
 async function measureKeyboard(page, theme) {
   const dialogSelector = 'dialog.crucible-studio-settings-dialog';
   const keysButton = actionId => page.locator(`button[data-key-action="${actionId}"]`);
@@ -268,6 +296,11 @@ async function measureKeyboard(page, theme) {
   await page.locator('.crucible-studio-settings-section[data-section="keys"]').click();
   await page.waitForTimeout(200);
   screens.push({ name: `keyboard default (${theme})`, records: await measure(page, dialogSelector) });
+  await assertKeyboardScrollCue(page, 'top');
+  await page.evaluate(() => { document.querySelector('.crucible-studio-keyboard-list').scrollTop = 333; });
+  await page.waitForTimeout(100);
+  await assertKeyboardScrollCue(page, 'middle');
+  await page.evaluate(() => { document.querySelector('.crucible-studio-keyboard-list').scrollTop = 0; });
   await keysButton('tool.select').click();
   await page.waitForTimeout(150);
   screens.push({ name: `keyboard recording (${theme})`, records: await measure(page, dialogSelector) });
@@ -277,6 +310,7 @@ async function measureKeyboard(page, theme) {
   await page.keyboard.press('g');
   await page.waitForTimeout(150);
   screens.push({ name: `keyboard clash (${theme})`, records: await measure(page, dialogSelector) });
+  await assertKeyboardScrollCue(page, 'clash');
   await page.locator('.crucible-studio-keyboard-note button', { hasText: 'Cancel' }).click();
   await keysButton('tool.select').click();
   await page.keyboard.press('Escape');
@@ -320,6 +354,10 @@ function checkSettingsFit(extraRows, footerGap) {
     if (Math.abs(heightOf(dialog) - heightBefore) > 0.5) report('settings-height', section, `The Settings dialog changed height on ${section} (${heightBefore} to ${heightOf(dialog)} px); it keeps one height.`);
     if (footer.top - area.getBoundingClientRect().bottom < footerGap) report('settings-footer-gap', section, `The rows of ${section} end less than ${footerGap} px above the footer.`);
     if (section === 'viewport' && area.scrollHeight <= area.clientHeight) report('settings-scroll', section, `With ${extraRows} more rows the Viewport rows must scroll inside themselves; they did not.`);
+    if (section === 'viewport') {
+      area.dispatchEvent(new Event('scroll'));
+      if (area.dataset.more !== 'true') report('settings-scroll-cue', section, 'The Viewport rows scroll but show no fade at their bottom edge.');
+    }
     const innerRight = dialog.getBoundingClientRect().right - parseFloat(getComputedStyle(dialog).paddingRight) - parseFloat(getComputedStyle(dialog).borderRightWidth);
     for (const control of area.querySelectorAll('select, input, button')) {
       if (control.getBoundingClientRect().right > innerRight + 0.5 && getComputedStyle(pane).visibility !== 'hidden') report('settings-inset', section, 'A control reaches past the dialog inset.');
