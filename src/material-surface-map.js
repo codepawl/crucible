@@ -1,5 +1,6 @@
 import { invalidField } from './field-error.js';
 import { weldedMaskNormals } from './mesh-weld-normals.js';
+import { smoothedMaskNormals } from './mesh-smooth-mask-normals.js';
 import { rasterizeUvTriangles } from './material-vertex-group-map.js';
 import { smoothMaskTexels, STEEP_FACE_SLOPE } from './material-mask-smooth.js';
 
@@ -129,7 +130,12 @@ export function surfaceMap(geometry, settings, resolution, nodeId, worldMatrix) 
   const remembered = maps.get(key);
   if (remembered) return remembered;
   const positions = placedPositions(geometry.positions, matrix);
-  const normals = placedNormals(weldedMaskNormals(geometry), geometry.positions, matrix ? normalMatrixOf(matrix) : undefined);
+  const normalMatrix = matrix ? normalMatrixOf(matrix) : undefined;
+  const weldedNormals = placedNormals(weldedMaskNormals(geometry), geometry.positions, normalMatrix);
+  const smoothedNormals = placedNormals(smoothedMaskNormals(geometry, weldedMaskNormals(geometry)), geometry.positions, normalMatrix);
+  // A face steeper than the snow limit keeps the welded normals, so smoothing can never lighten it; every other face reads the smoothed ones.
+  let lastCorners;
+  let normals = weldedNormals;
   const bounds = settings.output === 'height' ? heightBounds(positions, settings.range) : undefined;
   const hasNormals = Boolean(geometry.normals);
   const map = rasterizeUvTriangles(geometry, resolution, positions.length / 3, (corners, weightA, weightB, weightC) => {
@@ -138,6 +144,10 @@ export function surfaceMap(geometry, settings, resolution, nodeId, worldMatrix) 
     let normalZ;
     let upPosition = 0;
     if (hasNormals) {
+      if (corners !== lastCorners) {
+        lastCorners = corners;
+        normals = faceIsSteep(positions, weldedNormals, corners) ? weldedNormals : smoothedNormals;
+      }
       const [first, second, third] = corners.map(corner => corner * 3);
       normalX = weightA * normals[first] + weightB * normals[second] + weightC * normals[third];
       normalY = weightA * normals[first + 1] + weightB * normals[second + 1] + weightC * normals[third + 1];
@@ -149,7 +159,7 @@ export function surfaceMap(geometry, settings, resolution, nodeId, worldMatrix) 
     const upNormal = length > 0 ? normalY / length : 0;
     if (bounds) upPosition = weightA * positions[corners[0] * 3 + 1] + weightB * positions[corners[1] * 3 + 1] + weightC * positions[corners[2] * 3 + 1];
     return surfaceValue(settings.output, upNormal, upPosition, bounds);
-  }, settings.output === 'height' ? undefined : { flagOfTriangle: corners => (hasNormals && faceIsSteep(positions, normals, corners) ? 1 : 0), afterFill: smoothMaskTexels });
+  }, settings.output === 'height' ? undefined : { flagOfTriangle: corners => (hasNormals && faceIsSteep(positions, weldedNormals, corners) ? 1 : 0), afterFill: smoothMaskTexels });
   maps.set(key, map);
   return map;
 }

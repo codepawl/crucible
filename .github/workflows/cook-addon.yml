@@ -229,6 +229,7 @@ on:
       - 'src/material-patterns.js'
       - 'src/material-snippet.js'
       - 'src/material-mask-smooth.js'
+      - 'src/mesh-smooth-mask-normals.js'
       - 'src/material-surface-map.js'
       - 'src/material-texture-kit.js'
       - 'src/material-vertex-group-map.js'

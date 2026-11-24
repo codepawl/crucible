@@ -68,7 +68,7 @@ function vertexWeights(geometry, vertexCount) {
   return weights;
 }
 
-function verticesByPosition(positions, vertexCount) {
+export function verticesByPosition(positions, vertexCount) {
   const groups = new Map();
   for (let vertex = 0; vertex < vertexCount; vertex++) {
     const key = positionKey(positions, vertex);
