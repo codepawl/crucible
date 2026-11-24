@@ -18,6 +18,8 @@ import {
 } from './studio-templates.js';
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
+// The furthest a typed move may go in metres: the coordinate limit the recipe keeps for positions.
+const MAX_TYPED_TRAVEL = 1e6;
 const PLANE_AXES = Object.freeze(['xy', 'xz', 'yz']);
 const GIZMO_AXES = Object.freeze(['x', 'y', 'z', 'xy', 'xz', 'yz', 'screen', 'uniform', 'surface']);
 // The property panels that show one record of the recipe instead of one scene object, and the motion kind that animates it.
@@ -1764,8 +1766,13 @@ export function createStudioController({
     return { elementDelta: snapped };
   }
 
+  function clampTypedTravel(amount) {
+    return Math.max(-MAX_TYPED_TRAVEL, Math.min(MAX_TYPED_TRAVEL, amount));
+  }
+
   /** The world move a typed amount makes: that far along each axis of a plane, or to the right of the view. */
-  function typedPlaneDelta(axis, amount) {
+  function typedPlaneDelta(axis, typedAmount) {
+    const amount = clampTypedTravel(typedAmount);
     if (PLANE_AXES.includes(axis)) {
       const delta = vec3.create();
       for (const letter of axis) {
@@ -1835,7 +1842,7 @@ export function createStudioController({
         return null;
       }
       const planeDeltaLabel = () => (isTyped
-        ? signedAmountLabel(dragState.axis.toUpperCase(), typedAmount, ' m')
+        ? signedAmountLabel(dragState.axis.toUpperCase(), clampTypedTravel(typedAmount), ' m')
         : `${dragState.axis.toUpperCase()} ${Math.hypot(...rawWorldDelta).toFixed(2)} m`);
       const rawWorldDelta = isTyped
         ? typedPlaneDelta(dragState.axis, typedAmount)
@@ -1876,7 +1883,7 @@ export function createStudioController({
       const pixelTravel = (deltaX * dragState.axisScreen[0] + deltaY * dragState.axisScreen[1]) * dragState.worldPerPixel;
       const exactTravel = axisParameter === null ? pixelTravel : axisParameter - dragState.axisStartParameter;
       const steppedTravel = shiftKey ? Math.round(exactTravel / moveSnapStep) * moveSnapStep : exactTravel;
-      const travel = isTyped ? typedAmount : Math.max(-maxTravel, Math.min(maxTravel, steppedTravel));
+      const travel = isTyped ? clampTypedTravel(typedAmount) : Math.max(-maxTravel, Math.min(maxTravel, steppedTravel));
       const worldDelta = [dragState.axisWorld[0] * travel, dragState.axisWorld[1] * travel, dragState.axisWorld[2] * travel];
       if (dragState.elementDrag) {
         return moveElementSelection(worldDelta, false, `${dragState.axis.toUpperCase()} ${travel >= 0 ? '+' : ''}${travel.toFixed(2)} m`);

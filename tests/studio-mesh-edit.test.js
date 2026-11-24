@@ -191,6 +191,12 @@ test('a typed amount moves the selected face by exactly that far along the locke
   assert.deepEqual(log[0].offset.map(value => Number(value.toFixed(4))), [0.25, 0, 0]);
   assert.throws(() => controller.setGizmoTypedAmount(Number.NaN), /finite number/);
   assert.equal(controller.setGizmoTypedAmount(1), false, 'nothing is held after the release');
+
+  // A typed move stops at the coordinate limit instead of following twelve typed digits to 1e11 metres.
+  controller.beginGizmoDrag('x', origin.x, origin.y);
+  controller.setGizmoTypedAmount(99999999999);
+  const [limitedOffset] = controller.endGizmoDrag() ? logOf(controller).at(-1).offset : [null];
+  assert.equal(limitedOffset, 1e6);
 });
 
 test('dragging a face writes one translate entry; the evaluated mesh moves by the drag in the node space, scale and rotation included', () => {
