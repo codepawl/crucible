@@ -31,6 +31,7 @@ import { TranslucentOrder } from './translucent-order.js';
 import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
 import { countDraws } from './draw-counter.js';
 import { glassFaceTransmittance } from './glass-shadow.js';
+import { fitStudioShadowView } from './studio-shadow-fit.js';
 import { fitWorldShadowView, resolveShadowLight, shadowBiasPerSlope, sunShadowMapSize, writeShadowLightMatrix } from './shadow-light.js';
 import { CLIP_PLANES_FEATURE, MAX_CLIP_PLANES, packClipPlanes, clipPlaneLocations, bindClipPlanes, clipPlanesChanged } from './clip-planes.js';
 import { MAX_MORPH_TARGETS, requireFeatureCode, deformationSupport, requireDeformationSupport, texturedReplaceSupport, textureUpdateSupport } from './shader-registry.js';
@@ -2128,7 +2129,7 @@ export class CrucibleRenderer {
   shadowMapSizeWanted() {
     const casts = this.batches.some(batch => !batch.floor && batch.castShadow && !this.tintsShadow(batch));
     if (!casts || this.shadowCascades?.replacesSingleMap(this)) return 1;
-    const light = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedWorldShadowView());
+    const light = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedShadowView());
     return sunShadowMapSize(light.extent);
   }
 
@@ -2160,7 +2161,7 @@ export class CrucibleRenderer {
       if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Shadow framebuffer is incomplete.');
       this.shadowFramebufferCheckedSize = mapSize;
     }
-    const resolvedLight = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedWorldShadowView());
+    const resolvedLight = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedShadowView());
     const light = resolvedLight.hard ? registeredFeatureCode.get('hardShadows').snapView(resolvedLight, mapSize) : resolvedLight;
     writeShadowLightMatrix(this.lightProjection, light);
     context.viewport(0, 0, mapSize, mapSize);
@@ -2297,6 +2298,23 @@ export class CrucibleRenderer {
     const casters = this.batches.filter(batch => !batch.floor && batch.castShadow).flatMap(batch => batch.parts);
     if (casters.length === 0) return null;
     return fitWorldShadowView(sceneBoundsOfParts(casters));
+  }
+
+  // The sun view the scene needs: the world fit, or for a scene that is not a world and wrote no bounds, the studio fit (issue #3392).
+  fittedShadowView() {
+    return this.fittedWorldShadowView() ?? this.fittedStudioShadowView();
+  }
+
+  // A scene bigger than the default 7 m studio view gets a view fitted to its parts, so its far walls are shadowed. Cached like the miss check below.
+  fittedStudioShadowView() {
+    if (this.world || this.shadowBounds?.target !== undefined || this.shadowBounds?.extent !== undefined) return null;
+    const cacheKey = `${this.activeLightDirection}|${this.partsMoveCount ?? 0}`;
+    if (this.studioShadowFitCache?.batches !== this.batches || this.studioShadowFitCache.cacheKey !== cacheKey) {
+      const receivers = this.batches.filter(batch => !batch.floor).flatMap(batch => batch.parts);
+      const casters = this.batches.filter(batch => !batch.floor && batch.castShadow).flatMap(batch => batch.parts);
+      this.studioShadowFitCache = { batches: this.batches, cacheKey, view: fitStudioShadowView(casters, receivers, this.activeLightDirection) };
+    }
+    return this.studioShadowFitCache.view;
   }
 
   // The studio shadow view (3.5 m round the origin) stays when a scene sets no shadowBounds target or extent. Returns that view when every
