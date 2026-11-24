@@ -1,0 +1,58 @@
+{
+ "recipe": {
+  "format": "crucible.scene",
+  "schemaVersion": 1,
+  "geometries": [],
+  "materials": [],
+  "nodes": [
+   {
+    "id": "eye",
+    "asset": {
+     "id": "07d0e74aafaf17cb777e4dcb54b34ec7769d6f886448ce15597cbb5e6474e84b"
+    },
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "scale": [
+     8,
+     8,
+     8
+    ]
+   }
+  ],
+  "camera": {
+   "eye": [
+    0,
+    0,
+    5.5
+   ],
+   "target": [
+    0,
+    0,
+    0.8
+   ],
+   "fov": 30
+  },
+  "environment": {
+   "world": false,
+   "hdri": "studio-softbox",
+   "environmentIntensity": 0.5
+  }
+ },
+ "settings": {
+  "kind": "image",
+  "width": 960,
+  "height": 540,
+  "renderer": {
+   "type": "pathTracer",
+   "backend": "cpu",
+   "samples": 64,
+   "bounces": 8,
+   "denoise": false,
+   "seed": 1
+  }
+ },
+ "mode": "cpu-trace"
+}
