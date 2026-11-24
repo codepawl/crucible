@@ -1,0 +1,3062 @@
+{
+ "summary": {
+  "outlineMinimum": {
+   "ana-label / wall": {
+    "minMarginPixels": 150,
+    "states": [
+     "inside"
+    ]
+   },
+   "ana-label / sign": {
+    "minMarginPixels": 420,
+    "states": [
+     "outside"
+    ]
+   },
+   "bao-label / wall": {
+    "minMarginPixels": 76,
+    "states": [
+     "inside"
+    ]
+   },
+   "bao-label / sign": {
+    "minMarginPixels": 30,
+    "states": [
+     "outside"
+    ]
+   }
+  },
+  "textGapMinimum": {
+   "ana / sign text": 537,
+   "bao / sign text": 153,
+   "ana-label / sign text": 465,
+   "bao-label / sign text": 76
+  },
+  "frames": 30,
+  "minGapPixelsPerPair": {
+   "ana / bao": {
+    "gapPixels": 47,
+    "frame": 0
+   },
+   "ana-label / bao-label": {
+    "gapPixels": 324,
+    "frame": 3
+   },
+   "ana-label / bao": {
+    "gapPixels": 65,
+    "frame": 0
+   },
+   "bao-label / ana": {
+    "gapPixels": 396,
+    "frame": 3
+   },
+   "ana / wall": {
+    "gapPixels": -345,
+    "frame": 0
+   },
+   "bao / wall": {
+    "gapPixels": -555,
+    "frame": 25
+   },
+   "ana-label / wall": {
+    "gapPixels": -417,
+    "frame": 0
+   },
+   "bao-label / wall": {
+    "gapPixels": -529,
+    "frame": 28
+   }
+  },
+  "minEdgeMarginPixels": 76,
+  "minCharacterHeightPixels": 424,
+  "minCharacterHeightShare": 0.221,
+  "minBandShare": 0.472,
+  "signLineHeightsAtFrontFrame": [
+   42,
+   44,
+   44
+  ],
+  "signLineHeightsAtFirstFrame": [
+   56,
+   53,
+   63
+  ],
+  "signLineHeightsAtLastFrame": [
+   56,
+   56,
+   60
+  ]
+ },
+ "rows": [
+  {
+   "frame": 0,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 276
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 421
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 76
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 30
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 539,
+    "bao / sign text": 153,
+    "ana-label / sign text": 467,
+    "bao-label / sign text": 76
+   },
+   "characterHeightPixels": {
+    "ana": 424,
+    "bao": 900
+   },
+   "bandShare": 0.509,
+   "edgeMarginPixels": 76,
+   "gaps": {
+    "ana / bao": 47,
+    "ana-label / bao-label": 326,
+    "ana-label / bao": 65,
+    "bao-label / ana": 398,
+    "ana / wall": -345,
+    "bao / wall": -387,
+    "ana-label / wall": -417,
+    "bao-label / wall": -413
+   },
+   "signLineHeightsPixels": [
+    56,
+    53,
+    63
+   ],
+   "rects": {
+    "ana": {
+     "left": 406,
+     "right": 645,
+     "top": 1122,
+     "bottom": 1545,
+     "count": 88665
+    },
+    "bao": {
+     "left": 692,
+     "right": 969,
+     "top": 736,
+     "bottom": 1635,
+     "count": 210239
+    },
+    "wall": {
+     "left": 148,
+     "right": 1079,
+     "top": 198,
+     "bottom": 1467,
+     "count": 1043610
+    },
+    "ana-label": {
+     "left": 424,
+     "right": 627,
+     "top": 1050,
+     "bottom": 1109,
+     "count": 11099
+    },
+    "bao-label": {
+     "left": 666,
+     "right": 1003,
+     "top": 659,
+     "bottom": 724,
+     "count": 16674
+    },
+    "sign": {
+     "left": 635,
+     "right": 1056,
+     "top": 321,
+     "bottom": 629,
+     "count": 101559
+    },
+    "text": {
+     "left": 700,
+     "right": 975,
+     "top": 384,
+     "bottom": 583,
+     "count": 7553
+    }
+   }
+  },
+  {
+   "frame": 1,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 296
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 421
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 82
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 31
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 539,
+    "bao / sign text": 154,
+    "ana-label / sign text": 467,
+    "bao-label / sign text": 77
+   },
+   "characterHeightPixels": {
+    "ana": 424,
+    "bao": 895
+   },
+   "bandShare": 0.506,
+   "edgeMarginPixels": 82,
+   "gaps": {
+    "ana / bao": 53,
+    "ana-label / bao-label": 325,
+    "ana-label / bao": 71,
+    "bao-label / ana": 397,
+    "ana / wall": -343,
+    "bao / wall": -391,
+    "ana-label / wall": -415,
+    "bao-label / wall": -417
+   },
+   "signLineHeightsPixels": [
+    56,
+    52,
+    61
+   ],
+   "rects": {
+    "ana": {
+     "left": 396,
+     "right": 635,
+     "top": 1122,
+     "bottom": 1545,
+     "count": 88468
+    },
+    "bao": {
+     "left": 688,
+     "right": 965,
+     "top": 737,
+     "bottom": 1631,
+     "count": 208028
+    },
+    "wall": {
+     "left": 118,
+     "right": 1079,
+     "top": 202,
+     "bottom": 1465,
+     "count": 1077610
+    },
+    "ana-label": {
+     "left": 414,
+     "right": 617,
+     "top": 1050,
+     "bottom": 1110,
+     "count": 11048
+    },
+    "bao-label": {
+     "left": 662,
+     "right": 997,
+     "top": 660,
+     "bottom": 725,
+     "count": 16626
+    },
+    "sign": {
+     "left": 614,
+     "right": 1037,
+     "top": 326,
+     "bottom": 629,
+     "count": 101432
+    },
+    "text": {
+     "left": 680,
+     "right": 956,
+     "top": 386,
+     "bottom": 583,
+     "count": 7438
+    }
+   }
+  },
+  {
+   "frame": 2,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 316
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 421
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 87
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 31
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 538,
+    "bao / sign text": 154,
+    "ana-label / sign text": 466,
+    "bao-label / sign text": 76
+   },
+   "characterHeightPixels": {
+    "ana": 424,
+    "bao": 890
+   },
+   "bandShare": 0.504,
+   "edgeMarginPixels": 87,
+   "gaps": {
+    "ana / bao": 59,
+    "ana-label / bao-label": 325,
+    "ana-label / bao": 79,
+    "bao-label / ana": 397,
+    "ana / wall": -339,
+    "bao / wall": -395,
+    "ana-label / wall": -411,
+    "bao-label / wall": -422
+   },
+   "signLineHeightsPixels": [
+    55,
+    51,
+    60
+   ],
+   "rects": {
+    "ana": {
+     "left": 384,
+     "right": 625,
+     "top": 1122,
+     "bottom": 1545,
+     "count": 88519
+    },
+    "bao": {
+     "left": 684,
+     "right": 959,
+     "top": 738,
+     "bottom": 1627,
+     "count": 205941
+    },
+    "wall": {
+     "left": 86,
+     "right": 1079,
+     "top": 204,
+     "bottom": 1461,
+     "count": 1112037
+    },
+    "ana-label": {
+     "left": 402,
+     "right": 605,
+     "top": 1050,
+     "bottom": 1111,
+     "count": 11102
+    },
+    "bao-label": {
+     "left": 657,
+     "right": 992,
+     "top": 660,
+     "bottom": 725,
+     "count": 16632
+    },
+    "sign": {
+     "left": 594,
+     "right": 1017,
+     "top": 330,
+     "bottom": 629,
+     "count": 101277
+    },
+    "text": {
+     "left": 660,
+     "right": 937,
+     "top": 388,
+     "bottom": 584,
+     "count": 7492
+    }
+   }
+  },
+  {
+   "frame": 3,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 336
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 420
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 92
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 31
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 537,
+    "bao / sign text": 153,
+    "ana-label / sign text": 465,
+    "bao-label / sign text": 76
+   },
+   "characterHeightPixels": {
+    "ana": 424,
+    "bao": 886
+   },
+   "bandShare": 0.502,
+   "edgeMarginPixels": 92,
+   "gaps": {
+    "ana / bao": 67,
+    "ana-label / bao-label": 324,
+    "ana-label / bao": 85,
+    "bao-label / ana": 396,
+    "ana / wall": -337,
+    "bao / wall": -399,
+    "ana-label / wall": -409,
+    "bao-label / wall": -427
+   },
+   "signLineHeightsPixels": [
+    53,
+    50,
+    59
+   ],
+   "rects": {
+    "ana": {
+     "left": 374,
+     "right": 613,
+     "top": 1122,
+     "bottom": 1545,
+     "count": 88683
+    },
+    "bao": {
+     "left": 680,
+     "right": 953,
+     "top": 738,
+     "bottom": 1623,
+     "count": 203911
+    },
+    "wall": {
+     "left": 56,
+     "right": 1079,
+     "top": 208,
+     "bottom": 1459,
+     "count": 1146705
+    },
+    "ana-label": {
+     "left": 392,
+     "right": 595,
+     "top": 1050,
+     "bottom": 1111,
+     "count": 11136
+    },
+    "bao-label": {
+     "left": 652,
+     "right": 987,
+     "top": 661,
+     "bottom": 726,
+     "count": 16620
+    },
+    "sign": {
+     "left": 573,
+     "right": 998,
+     "top": 334,
+     "bottom": 630,
+     "count": 101127
+    },
+    "text": {
+     "left": 640,
+     "right": 918,
+     "top": 391,
+     "bottom": 585,
+     "count": 7481
+    }
+   }
+  },
+  {
+   "frame": 4,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 344
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 421
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 98
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 32
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 537,
+    "bao / sign text": 153,
+    "ana-label / sign text": 466,
+    "bao-label / sign text": 77
+   },
+   "characterHeightPixels": {
+    "ana": 426,
+    "bao": 882
+   },
+   "bandShare": 0.499,
+   "edgeMarginPixels": 98,
+   "gaps": {
+    "ana / bao": 71,
+    "ana-label / bao-label": 325,
+    "ana-label / bao": 89,
+    "bao-label / ana": 396,
+    "ana / wall": -333,
+    "bao / wall": -405,
+    "ana-label / wall": -404,
+    "bao-label / wall": -433
+   },
+   "signLineHeightsPixels": [
+    53,
+    48,
+    56
+   ],
+   "rects": {
+    "ana": {
+     "left": 364,
+     "right": 603,
+     "top": 1122,
+     "bottom": 1547,
+     "count": 89107
+    },
+    "bao": {
+     "left": 674,
+     "right": 946,
+     "top": 738,
+     "bottom": 1619,
+     "count": 201933
+    },
+    "wall": {
+     "left": 26,
+     "right": 1079,
+     "top": 210,
+     "bottom": 1455,
+     "count": 1181737
+    },
+    "ana-label": {
+     "left": 382,
+     "right": 585,
+     "top": 1051,
+     "bottom": 1111,
+     "count": 11024
+    },
+    "bao-label": {
+     "left": 646,
+     "right": 981,
+     "top": 662,
+     "bottom": 726,
+     "count": 16563
+    },
+    "sign": {
+     "left": 552,
+     "right": 978,
+     "top": 338,
+     "bottom": 630,
+     "count": 101067
+    },
+    "text": {
+     "left": 619,
+     "right": 899,
+     "top": 393,
+     "bottom": 585,
+     "count": 7084
+    }
+   }
+  },
+  {
+   "frame": 5,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 340
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 422
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 104
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 32
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 537,
+    "bao / sign text": 154,
+    "ana-label / sign text": 467,
+    "bao-label / sign text": 77
+   },
+   "characterHeightPixels": {
+    "ana": 426,
+    "bao": 877
+   },
+   "bandShare": 0.497,
+   "edgeMarginPixels": 104,
+   "gaps": {
+    "ana / bao": 77,
+    "ana-label / bao-label": 326,
+    "ana-label / bao": 95,
+    "bao-label / ana": 396,
+    "ana / wall": -329,
+    "bao / wall": -409,
+    "ana-label / wall": -399,
+    "bao-label / wall": -439
+   },
+   "signLineHeightsPixels": [
+    50,
+    49,
+    55
+   ],
+   "rects": {
+    "ana": {
+     "left": 352,
+     "right": 593,
+     "top": 1122,
+     "bottom": 1547,
+     "count": 89217
+    },
+    "bao": {
+     "left": 670,
+     "right": 939,
+     "top": 739,
+     "bottom": 1615,
+     "count": 199929
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 214,
+     "bottom": 1451,
+     "count": 1215905
+    },
+    "ana-label": {
+     "left": 372,
+     "right": 575,
+     "top": 1052,
+     "bottom": 1111,
+     "count": 11009
+    },
+    "bao-label": {
+     "left": 640,
+     "right": 975,
+     "top": 662,
+     "bottom": 726,
+     "count": 16554
+    },
+    "sign": {
+     "left": 532,
+     "right": 958,
+     "top": 341,
+     "bottom": 630,
+     "count": 100800
+    },
+    "text": {
+     "left": 599,
+     "right": 879,
+     "top": 396,
+     "bottom": 585,
+     "count": 7359
+    }
+   }
+  },
+  {
+   "frame": 6,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 336
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 422
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 110
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 33
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 539,
+    "bao / sign text": 155,
+    "ana-label / sign text": 467,
+    "bao-label / sign text": 78
+   },
+   "characterHeightPixels": {
+    "ana": 426,
+    "bao": 872
+   },
+   "bandShare": 0.494,
+   "edgeMarginPixels": 110,
+   "gaps": {
+    "ana / bao": 81,
+    "ana-label / bao-label": 325,
+    "ana-label / bao": 101,
+    "bao-label / ana": 397,
+    "ana / wall": -323,
+    "bao / wall": -415,
+    "ana-label / wall": -395,
+    "bao-label / wall": -445
+   },
+   "signLineHeightsPixels": [
+    50,
+    48,
+    53
+   ],
+   "rects": {
+    "ana": {
+     "left": 342,
+     "right": 583,
+     "top": 1124,
+     "bottom": 1549,
+     "count": 89265
+    },
+    "bao": {
+     "left": 664,
+     "right": 933,
+     "top": 740,
+     "bottom": 1611,
+     "count": 198371
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 218,
+     "bottom": 1447,
+     "count": 1224445
+    },
+    "ana-label": {
+     "left": 360,
+     "right": 563,
+     "top": 1052,
+     "bottom": 1111,
+     "count": 11042
+    },
+    "bao-label": {
+     "left": 634,
+     "right": 969,
+     "top": 663,
+     "bottom": 727,
+     "count": 16464
+    },
+    "sign": {
+     "left": 511,
+     "right": 938,
+     "top": 344,
+     "bottom": 630,
+     "count": 100736
+    },
+    "text": {
+     "left": 579,
+     "right": 859,
+     "top": 398,
+     "bottom": 585,
+     "count": 7150
+    }
+   }
+  },
+  {
+   "frame": 7,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 334
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 423
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 117
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 34
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 539,
+    "bao / sign text": 155,
+    "ana-label / sign text": 467,
+    "bao-label / sign text": 78
+   },
+   "characterHeightPixels": {
+    "ana": 426,
+    "bao": 868
+   },
+   "bandShare": 0.492,
+   "edgeMarginPixels": 117,
+   "gaps": {
+    "ana / bao": 85,
+    "ana-label / bao-label": 325,
+    "ana-label / bao": 105,
+    "bao-label / ana": 397,
+    "ana / wall": -321,
+    "bao / wall": -421,
+    "ana-label / wall": -393,
+    "bao-label / wall": -451
+   },
+   "signLineHeightsPixels": [
+    49,
+    48,
+    52
+   ],
+   "rects": {
+    "ana": {
+     "left": 332,
+     "right": 573,
+     "top": 1124,
+     "bottom": 1549,
+     "count": 89500
+    },
+    "bao": {
+     "left": 658,
+     "right": 926,
+     "top": 740,
+     "bottom": 1607,
+     "count": 196480
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 222,
+     "bottom": 1445,
+     "count": 1229093
+    },
+    "ana-label": {
+     "left": 350,
+     "right": 553,
+     "top": 1052,
+     "bottom": 1111,
+     "count": 11036
+    },
+    "bao-label": {
+     "left": 628,
+     "right": 962,
+     "top": 663,
+     "bottom": 727,
+     "count": 16386
+    },
+    "sign": {
+     "left": 490,
+     "right": 918,
+     "top": 348,
+     "bottom": 629,
+     "count": 100657
+    },
+    "text": {
+     "left": 558,
+     "right": 840,
+     "top": 399,
+     "bottom": 585,
+     "count": 7053
+    }
+   }
+  },
+  {
+   "frame": 8,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 328
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 423
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 124
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 35
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 539,
+    "bao / sign text": 155,
+    "ana-label / sign text": 467,
+    "bao-label / sign text": 79
+   },
+   "characterHeightPixels": {
+    "ana": 428,
+    "bao": 866
+   },
+   "bandShare": 0.491,
+   "edgeMarginPixels": 124,
+   "gaps": {
+    "ana / bao": 89,
+    "ana-label / bao-label": 324,
+    "ana-label / bao": 109,
+    "bao-label / ana": 396,
+    "ana / wall": -317,
+    "bao / wall": -427,
+    "ana-label / wall": -389,
+    "bao-label / wall": -457
+   },
+   "signLineHeightsPixels": [
+    48,
+    48,
+    51
+   ],
+   "rects": {
+    "ana": {
+     "left": 322,
+     "right": 563,
+     "top": 1124,
+     "bottom": 1551,
+     "count": 89955
+    },
+    "bao": {
+     "left": 652,
+     "right": 919,
+     "top": 740,
+     "bottom": 1605,
+     "count": 194836
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 226,
+     "bottom": 1441,
+     "count": 1232610
+    },
+    "ana-label": {
+     "left": 340,
+     "right": 543,
+     "top": 1052,
+     "bottom": 1113,
+     "count": 11171
+    },
+    "bao-label": {
+     "left": 622,
+     "right": 955,
+     "top": 664,
+     "bottom": 728,
+     "count": 16508
+    },
+    "sign": {
+     "left": 469,
+     "right": 898,
+     "top": 351,
+     "bottom": 629,
+     "count": 100687
+    },
+    "text": {
+     "left": 538,
+     "right": 820,
+     "top": 401,
+     "bottom": 585,
+     "count": 7309
+    }
+   }
+  },
+  {
+   "frame": 9,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 324
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 423
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 130
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 35
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 539,
+    "bao / sign text": 155,
+    "ana-label / sign text": 467,
+    "bao-label / sign text": 79
+   },
+   "characterHeightPixels": {
+    "ana": 428,
+    "bao": 862
+   },
+   "bandShare": 0.489,
+   "edgeMarginPixels": 130,
+   "gaps": {
+    "ana / bao": 93,
+    "ana-label / bao-label": 324,
+    "ana-label / bao": 113,
+    "bao-label / ana": 396,
+    "ana / wall": -313,
+    "bao / wall": -433,
+    "ana-label / wall": -385,
+    "bao-label / wall": -464
+   },
+   "signLineHeightsPixels": [
+    47,
+    47,
+    49
+   ],
+   "rects": {
+    "ana": {
+     "left": 310,
+     "right": 553,
+     "top": 1124,
+     "bottom": 1551,
+     "count": 90269
+    },
+    "bao": {
+     "left": 646,
+     "right": 911,
+     "top": 740,
+     "bottom": 1601,
+     "count": 193022
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 230,
+     "bottom": 1437,
+     "count": 1235463
+    },
+    "ana-label": {
+     "left": 330,
+     "right": 533,
+     "top": 1052,
+     "bottom": 1113,
+     "count": 11091
+    },
+    "bao-label": {
+     "left": 615,
+     "right": 949,
+     "top": 664,
+     "bottom": 728,
+     "count": 16383
+    },
+    "sign": {
+     "left": 448,
+     "right": 878,
+     "top": 353,
+     "bottom": 629,
+     "count": 100454
+    },
+    "text": {
+     "left": 518,
+     "right": 800,
+     "top": 402,
+     "bottom": 585,
+     "count": 7045
+    }
+   }
+  },
+  {
+   "frame": 10,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 320
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 425
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 138
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 36
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 541,
+    "bao / sign text": 157,
+    "ana-label / sign text": 469,
+    "bao-label / sign text": 80
+   },
+   "characterHeightPixels": {
+    "ana": 428,
+    "bao": 858
+   },
+   "bandShare": 0.487,
+   "edgeMarginPixels": 138,
+   "gaps": {
+    "ana / bao": 97,
+    "ana-label / bao-label": 325,
+    "ana-label / bao": 117,
+    "bao-label / ana": 397,
+    "ana / wall": -307,
+    "bao / wall": -439,
+    "ana-label / wall": -379,
+    "bao-label / wall": -471
+   },
+   "signLineHeightsPixels": [
+    46,
+    46,
+    48
+   ],
+   "rects": {
+    "ana": {
+     "left": 300,
+     "right": 543,
+     "top": 1126,
+     "bottom": 1553,
+     "count": 90773
+    },
+    "bao": {
+     "left": 640,
+     "right": 903,
+     "top": 742,
+     "bottom": 1599,
+     "count": 191430
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 234,
+     "bottom": 1433,
+     "count": 1237788
+    },
+    "ana-label": {
+     "left": 320,
+     "right": 523,
+     "top": 1054,
+     "bottom": 1113,
+     "count": 11048
+    },
+    "bao-label": {
+     "left": 608,
+     "right": 941,
+     "top": 665,
+     "bottom": 729,
+     "count": 16347
+    },
+    "sign": {
+     "left": 428,
+     "right": 857,
+     "top": 356,
+     "bottom": 629,
+     "count": 100465
+    },
+    "text": {
+     "left": 498,
+     "right": 780,
+     "top": 404,
+     "bottom": 585,
+     "count": 7118
+    }
+   }
+  },
+  {
+   "frame": 11,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 309
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 425
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 145
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 36
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 541,
+    "bao / sign text": 157,
+    "ana-label / sign text": 469,
+    "bao-label / sign text": 80
+   },
+   "characterHeightPixels": {
+    "ana": 430,
+    "bao": 854
+   },
+   "bandShare": 0.485,
+   "edgeMarginPixels": 145,
+   "gaps": {
+    "ana / bao": 101,
+    "ana-label / bao-label": 325,
+    "ana-label / bao": 121,
+    "bao-label / ana": 397,
+    "ana / wall": -301,
+    "bao / wall": -445,
+    "ana-label / wall": -373,
+    "bao-label / wall": -478
+   },
+   "signLineHeightsPixels": [
+    44,
+    46,
+    46
+   ],
+   "rects": {
+    "ana": {
+     "left": 290,
+     "right": 533,
+     "top": 1126,
+     "bottom": 1555,
+     "count": 91131
+    },
+    "bao": {
+     "left": 634,
+     "right": 896,
+     "top": 742,
+     "bottom": 1595,
+     "count": 189798
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 238,
+     "bottom": 1427,
+     "count": 1239720
+    },
+    "ana-label": {
+     "left": 309,
+     "right": 513,
+     "top": 1054,
+     "bottom": 1115,
+     "count": 11103
+    },
+    "bao-label": {
+     "left": 601,
+     "right": 934,
+     "top": 665,
+     "bottom": 729,
+     "count": 16315
+    },
+    "sign": {
+     "left": 407,
+     "right": 837,
+     "top": 358,
+     "bottom": 629,
+     "count": 100401
+    },
+    "text": {
+     "left": 478,
+     "right": 761,
+     "top": 406,
+     "bottom": 585,
+     "count": 7002
+    }
+   }
+  },
+  {
+   "frame": 12,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 299
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 426
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 153
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 38
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 541,
+    "bao / sign text": 157,
+    "ana-label / sign text": 469,
+    "bao-label / sign text": 81
+   },
+   "characterHeightPixels": {
+    "ana": 432,
+    "bao": 852
+   },
+   "bandShare": 0.483,
+   "edgeMarginPixels": 153,
+   "gaps": {
+    "ana / bao": 103,
+    "ana-label / bao-label": 325,
+    "ana-label / bao": 123,
+    "bao-label / ana": 397,
+    "ana / wall": -297,
+    "bao / wall": -453,
+    "ana-label / wall": -369,
+    "bao-label / wall": -485
+   },
+   "signLineHeightsPixels": [
+    44,
+    45,
+    46
+   ],
+   "rects": {
+    "ana": {
+     "left": 280,
+     "right": 523,
+     "top": 1126,
+     "bottom": 1557,
+     "count": 91556
+    },
+    "bao": {
+     "left": 626,
+     "right": 888,
+     "top": 742,
+     "bottom": 1593,
+     "count": 188186
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 244,
+     "bottom": 1423,
+     "count": 1241186
+    },
+    "ana-label": {
+     "left": 299,
+     "right": 503,
+     "top": 1054,
+     "bottom": 1115,
+     "count": 11159
+    },
+    "bao-label": {
+     "left": 594,
+     "right": 926,
+     "top": 666,
+     "bottom": 729,
+     "count": 16416
+    },
+    "sign": {
+     "left": 386,
+     "right": 817,
+     "top": 361,
+     "bottom": 628,
+     "count": 100393
+    },
+    "text": {
+     "left": 458,
+     "right": 741,
+     "top": 406,
+     "bottom": 585,
+     "count": 7239
+    }
+   }
+  },
+  {
+   "frame": 13,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 289
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 426
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 160
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 38
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 543,
+    "bao / sign text": 157,
+    "ana-label / sign text": 469,
+    "bao-label / sign text": 81
+   },
+   "characterHeightPixels": {
+    "ana": 430,
+    "bao": 848
+   },
+   "bandShare": 0.481,
+   "edgeMarginPixels": 160,
+   "gaps": {
+    "ana / bao": 107,
+    "ana-label / bao-label": 325,
+    "ana-label / bao": 127,
+    "bao-label / ana": 399,
+    "ana / wall": -291,
+    "bao / wall": -459,
+    "ana-label / wall": -365,
+    "bao-label / wall": -481
+   },
+   "signLineHeightsPixels": [
+    44,
+    44,
+    45
+   ],
+   "rects": {
+    "ana": {
+     "left": 270,
+     "right": 513,
+     "top": 1128,
+     "bottom": 1557,
+     "count": 91926
+    },
+    "bao": {
+     "left": 620,
+     "right": 880,
+     "top": 742,
+     "bottom": 1589,
+     "count": 186933
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 248,
+     "bottom": 1419,
+     "count": 1242256
+    },
+    "ana-label": {
+     "left": 289,
+     "right": 493,
+     "top": 1054,
+     "bottom": 1115,
+     "count": 11116
+    },
+    "bao-label": {
+     "left": 586,
+     "right": 919,
+     "top": 666,
+     "bottom": 729,
+     "count": 16303
+    },
+    "sign": {
+     "left": 365,
+     "right": 796,
+     "top": 363,
+     "bottom": 628,
+     "count": 100537
+    },
+    "text": {
+     "left": 438,
+     "right": 721,
+     "top": 406,
+     "bottom": 585,
+     "count": 7174
+    }
+   }
+  },
+  {
+   "frame": 14,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 279
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 429
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 168
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 40
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 543,
+    "bao / sign text": 157,
+    "ana-label / sign text": 471,
+    "bao-label / sign text": 82
+   },
+   "characterHeightPixels": {
+    "ana": 432,
+    "bao": 846
+   },
+   "bandShare": 0.48,
+   "edgeMarginPixels": 168,
+   "gaps": {
+    "ana / bao": 107,
+    "ana-label / bao-label": 326,
+    "ana-label / bao": 129,
+    "bao-label / ana": 398,
+    "ana / wall": -285,
+    "bao / wall": -467,
+    "ana-label / wall": -357,
+    "bao-label / wall": -476
+   },
+   "signLineHeightsPixels": [
+    43,
+    44,
+    44
+   ],
+   "rects": {
+    "ana": {
+     "left": 260,
+     "right": 505,
+     "top": 1128,
+     "bottom": 1559,
+     "count": 92445
+    },
+    "bao": {
+     "left": 612,
+     "right": 871,
+     "top": 742,
+     "bottom": 1587,
+     "count": 185305
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 254,
+     "bottom": 1413,
+     "count": 1242805
+    },
+    "ana-label": {
+     "left": 279,
+     "right": 483,
+     "top": 1056,
+     "bottom": 1117,
+     "count": 11160
+    },
+    "bao-label": {
+     "left": 578,
+     "right": 911,
+     "top": 667,
+     "bottom": 730,
+     "count": 16378
+    },
+    "sign": {
+     "left": 345,
+     "right": 776,
+     "top": 365,
+     "bottom": 627,
+     "count": 100601
+    },
+    "text": {
+     "left": 418,
+     "right": 701,
+     "top": 407,
+     "bottom": 585,
+     "count": 7207
+    }
+   }
+  },
+  {
+   "frame": 15,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 270
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 430
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 176
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 41
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 543,
+    "bao / sign text": 157,
+    "ana-label / sign text": 471,
+    "bao-label / sign text": 82
+   },
+   "characterHeightPixels": {
+    "ana": 434,
+    "bao": 844
+   },
+   "bandShare": 0.479,
+   "edgeMarginPixels": 176,
+   "gaps": {
+    "ana / bao": 111,
+    "ana-label / bao-label": 326,
+    "ana-label / bao": 133,
+    "bao-label / ana": 398,
+    "ana / wall": -281,
+    "bao / wall": -473,
+    "ana-label / wall": -353,
+    "bao-label / wall": -472
+   },
+   "signLineHeightsPixels": [
+    42,
+    44,
+    44
+   ],
+   "rects": {
+    "ana": {
+     "left": 250,
+     "right": 495,
+     "top": 1128,
+     "bottom": 1561,
+     "count": 93134
+    },
+    "bao": {
+     "left": 606,
+     "right": 863,
+     "top": 742,
+     "bottom": 1585,
+     "count": 184046
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 258,
+     "bottom": 1409,
+     "count": 1244160
+    },
+    "ana-label": {
+     "left": 270,
+     "right": 473,
+     "top": 1056,
+     "bottom": 1117,
+     "count": 11121
+    },
+    "bao-label": {
+     "left": 570,
+     "right": 903,
+     "top": 667,
+     "bottom": 730,
+     "count": 16326
+    },
+    "sign": {
+     "left": 324,
+     "right": 755,
+     "top": 367,
+     "bottom": 626,
+     "count": 100221
+    },
+    "text": {
+     "left": 398,
+     "right": 681,
+     "top": 407,
+     "bottom": 585,
+     "count": 7363
+    }
+   }
+  },
+  {
+   "frame": 16,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 260
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 429
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 185
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 41
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 545,
+    "bao / sign text": 159,
+    "ana-label / sign text": 471,
+    "bao-label / sign text": 83
+   },
+   "characterHeightPixels": {
+    "ana": 436,
+    "bao": 838
+   },
+   "bandShare": 0.476,
+   "edgeMarginPixels": 185,
+   "gaps": {
+    "ana / bao": 111,
+    "ana-label / bao-label": 326,
+    "ana-label / bao": 133,
+    "bao-label / ana": 400,
+    "ana / wall": -283,
+    "bao / wall": -481,
+    "ana-label / wall": -357,
+    "bao-label / wall": -476
+   },
+   "signLineHeightsPixels": [
+    43,
+    44,
+    44
+   ],
+   "rects": {
+    "ana": {
+     "left": 240,
+     "right": 487,
+     "top": 1130,
+     "bottom": 1565,
+     "count": 93645
+    },
+    "bao": {
+     "left": 598,
+     "right": 855,
+     "top": 744,
+     "bottom": 1581,
+     "count": 182948
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 254,
+     "bottom": 1413,
+     "count": 1242904
+    },
+    "ana-label": {
+     "left": 260,
+     "right": 465,
+     "top": 1056,
+     "bottom": 1119,
+     "count": 11128
+    },
+    "bao-label": {
+     "left": 562,
+     "right": 894,
+     "top": 668,
+     "bottom": 730,
+     "count": 16228
+    },
+    "sign": {
+     "left": 303,
+     "right": 734,
+     "top": 365,
+     "bottom": 627,
+     "count": 100607
+    },
+    "text": {
+     "left": 378,
+     "right": 661,
+     "top": 406,
+     "bottom": 585,
+     "count": 7372
+    }
+   }
+  },
+  {
+   "frame": 17,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 250
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 431
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 193
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 41
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 546,
+    "bao / sign text": 160,
+    "ana-label / sign text": 474,
+    "bao-label / sign text": 84
+   },
+   "characterHeightPixels": {
+    "ana": 438,
+    "bao": 836
+   },
+   "bandShare": 0.475,
+   "edgeMarginPixels": 193,
+   "gaps": {
+    "ana / bao": 113,
+    "ana-label / bao-label": 327,
+    "ana-label / bao": 135,
+    "bao-label / ana": 399,
+    "ana / wall": -289,
+    "bao / wall": -489,
+    "ana-label / wall": -361,
+    "bao-label / wall": -483
+   },
+   "signLineHeightsPixels": [
+    43,
+    44,
+    43
+   ],
+   "rects": {
+    "ana": {
+     "left": 230,
+     "right": 477,
+     "top": 1130,
+     "bottom": 1567,
+     "count": 94354
+    },
+    "bao": {
+     "left": 590,
+     "right": 845,
+     "top": 744,
+     "bottom": 1579,
+     "count": 181884
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 248,
+     "bottom": 1419,
+     "count": 1242240
+    },
+    "ana-label": {
+     "left": 250,
+     "right": 455,
+     "top": 1058,
+     "bottom": 1119,
+     "count": 11224
+    },
+    "bao-label": {
+     "left": 554,
+     "right": 886,
+     "top": 668,
+     "bottom": 731,
+     "count": 16171
+    },
+    "sign": {
+     "left": 283,
+     "right": 714,
+     "top": 363,
+     "bottom": 627,
+     "count": 100672
+    },
+    "text": {
+     "left": 358,
+     "right": 641,
+     "top": 406,
+     "bottom": 584,
+     "count": 7168
+    }
+   }
+  },
+  {
+   "frame": 18,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 240
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 430
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 202
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 40
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 547,
+    "bao / sign text": 159,
+    "ana-label / sign text": 473,
+    "bao-label / sign text": 83
+   },
+   "characterHeightPixels": {
+    "ana": 438,
+    "bao": 834
+   },
+   "bandShare": 0.474,
+   "edgeMarginPixels": 202,
+   "gaps": {
+    "ana / bao": 113,
+    "ana-label / bao-label": 327,
+    "ana-label / bao": 137,
+    "bao-label / ana": 401,
+    "ana / wall": -291,
+    "bao / wall": -497,
+    "ana-label / wall": -365,
+    "bao-label / wall": -487
+   },
+   "signLineHeightsPixels": [
+    44,
+    44,
+    44
+   ],
+   "rects": {
+    "ana": {
+     "left": 220,
+     "right": 469,
+     "top": 1132,
+     "bottom": 1569,
+     "count": 94930
+    },
+    "bao": {
+     "left": 582,
+     "right": 837,
+     "top": 744,
+     "bottom": 1577,
+     "count": 180800
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 244,
+     "bottom": 1423,
+     "count": 1241234
+    },
+    "ana-label": {
+     "left": 240,
+     "right": 445,
+     "top": 1058,
+     "bottom": 1121,
+     "count": 11161
+    },
+    "bao-label": {
+     "left": 546,
+     "right": 877,
+     "top": 668,
+     "bottom": 731,
+     "count": 16144
+    },
+    "sign": {
+     "left": 262,
+     "right": 693,
+     "top": 361,
+     "bottom": 628,
+     "count": 100605
+    },
+    "text": {
+     "left": 338,
+     "right": 620,
+     "top": 406,
+     "bottom": 585,
+     "count": 7120
+    }
+   }
+  },
+  {
+   "frame": 19,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 232
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 431
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 210
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 40
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 547,
+    "bao / sign text": 159,
+    "ana-label / sign text": 475,
+    "bao-label / sign text": 84
+   },
+   "characterHeightPixels": {
+    "ana": 440,
+    "bao": 832
+   },
+   "bandShare": 0.472,
+   "edgeMarginPixels": 210,
+   "gaps": {
+    "ana / bao": 115,
+    "ana-label / bao-label": 329,
+    "ana-label / bao": 137,
+    "bao-label / ana": 401,
+    "ana / wall": -295,
+    "bao / wall": -505,
+    "ana-label / wall": -367,
+    "bao-label / wall": -493
+   },
+   "signLineHeightsPixels": [
+    46,
+    46,
+    46
+   ],
+   "rects": {
+    "ana": {
+     "left": 210,
+     "right": 459,
+     "top": 1132,
+     "bottom": 1571,
+     "count": 95656
+    },
+    "bao": {
+     "left": 574,
+     "right": 829,
+     "top": 744,
+     "bottom": 1575,
+     "count": 179611
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 238,
+     "bottom": 1427,
+     "count": 1239726
+    },
+    "ana-label": {
+     "left": 232,
+     "right": 437,
+     "top": 1060,
+     "bottom": 1121,
+     "count": 11253
+    },
+    "bao-label": {
+     "left": 537,
+     "right": 869,
+     "top": 669,
+     "bottom": 731,
+     "count": 16276
+    },
+    "sign": {
+     "left": 242,
+     "right": 672,
+     "top": 359,
+     "bottom": 629,
+     "count": 100715
+    },
+    "text": {
+     "left": 318,
+     "right": 600,
+     "top": 404,
+     "bottom": 585,
+     "count": 7227
+    }
+   }
+  },
+  {
+   "frame": 20,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 222
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 431
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 219
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 40
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 549,
+    "bao / sign text": 159,
+    "ana-label / sign text": 475,
+    "bao-label / sign text": 84
+   },
+   "characterHeightPixels": {
+    "ana": 442,
+    "bao": 830
+   },
+   "bandShare": 0.472,
+   "edgeMarginPixels": 202,
+   "gaps": {
+    "ana / bao": 115,
+    "ana-label / bao-label": 329,
+    "ana-label / bao": 139,
+    "bao-label / ana": 403,
+    "ana / wall": -297,
+    "bao / wall": -513,
+    "ana-label / wall": -371,
+    "bao-label / wall": -497
+   },
+   "signLineHeightsPixels": [
+    45,
+    46,
+    46
+   ],
+   "rects": {
+    "ana": {
+     "left": 202,
+     "right": 451,
+     "top": 1134,
+     "bottom": 1575,
+     "count": 96479
+    },
+    "bao": {
+     "left": 566,
+     "right": 819,
+     "top": 744,
+     "bottom": 1573,
+     "count": 178567
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 234,
+     "bottom": 1431,
+     "count": 1237839
+    },
+    "ana-label": {
+     "left": 222,
+     "right": 427,
+     "top": 1060,
+     "bottom": 1123,
+     "count": 11240
+    },
+    "bao-label": {
+     "left": 529,
+     "right": 860,
+     "top": 669,
+     "bottom": 731,
+     "count": 16138
+    },
+    "sign": {
+     "left": 221,
+     "right": 651,
+     "top": 356,
+     "bottom": 629,
+     "count": 100646
+    },
+    "text": {
+     "left": 298,
+     "right": 580,
+     "top": 404,
+     "bottom": 585,
+     "count": 6986
+    }
+   }
+  },
+  {
+   "frame": 21,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 214
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 433
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 228
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 40
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 549,
+    "bao / sign text": 159,
+    "ana-label / sign text": 477,
+    "bao-label / sign text": 84
+   },
+   "characterHeightPixels": {
+    "ana": 444,
+    "bao": 828
+   },
+   "bandShare": 0.473,
+   "edgeMarginPixels": 192,
+   "gaps": {
+    "ana / bao": 115,
+    "ana-label / bao-label": 330,
+    "ana-label / bao": 139,
+    "bao-label / ana": 402,
+    "ana / wall": -303,
+    "bao / wall": -521,
+    "ana-label / wall": -375,
+    "bao-label / wall": -502
+   },
+   "signLineHeightsPixels": [
+    46,
+    48,
+    48
+   ],
+   "rects": {
+    "ana": {
+     "left": 192,
+     "right": 443,
+     "top": 1134,
+     "bottom": 1577,
+     "count": 97309
+    },
+    "bao": {
+     "left": 558,
+     "right": 810,
+     "top": 744,
+     "bottom": 1571,
+     "count": 177311
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 230,
+     "bottom": 1437,
+     "count": 1235491
+    },
+    "ana-label": {
+     "left": 214,
+     "right": 419,
+     "top": 1062,
+     "bottom": 1123,
+     "count": 11233
+    },
+    "bao-label": {
+     "left": 520,
+     "right": 851,
+     "top": 669,
+     "bottom": 732,
+     "count": 16196
+    },
+    "sign": {
+     "left": 201,
+     "right": 631,
+     "top": 353,
+     "bottom": 629,
+     "count": 100621
+    },
+    "text": {
+     "left": 278,
+     "right": 560,
+     "top": 402,
+     "bottom": 585,
+     "count": 6910
+    }
+   }
+  },
+  {
+   "frame": 22,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 204
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 433
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 237
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 41
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 550,
+    "bao / sign text": 159,
+    "ana-label / sign text": 476,
+    "bao-label / sign text": 84
+   },
+   "characterHeightPixels": {
+    "ana": 444,
+    "bao": 825
+   },
+   "bandShare": 0.474,
+   "edgeMarginPixels": 182,
+   "gaps": {
+    "ana / bao": 115,
+    "ana-label / bao-label": 330,
+    "ana-label / bao": 139,
+    "bao-label / ana": 404,
+    "ana / wall": -305,
+    "bao / wall": -529,
+    "ana-label / wall": -379,
+    "bao-label / wall": -506
+   },
+   "signLineHeightsPixels": [
+    48,
+    49,
+    51
+   ],
+   "rects": {
+    "ana": {
+     "left": 182,
+     "right": 435,
+     "top": 1136,
+     "bottom": 1579,
+     "count": 98131
+    },
+    "bao": {
+     "left": 550,
+     "right": 801,
+     "top": 745,
+     "bottom": 1569,
+     "count": 176544
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 226,
+     "bottom": 1441,
+     "count": 1232664
+    },
+    "ana-label": {
+     "left": 204,
+     "right": 411,
+     "top": 1062,
+     "bottom": 1125,
+     "count": 11337
+    },
+    "bao-label": {
+     "left": 511,
+     "right": 842,
+     "top": 670,
+     "bottom": 732,
+     "count": 16203
+    },
+    "sign": {
+     "left": 181,
+     "right": 610,
+     "top": 351,
+     "bottom": 629,
+     "count": 100739
+    },
+    "text": {
+     "left": 258,
+     "right": 539,
+     "top": 400,
+     "bottom": 586,
+     "count": 7299
+    }
+   }
+  },
+  {
+   "frame": 23,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 196
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 434
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 246
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 40
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 551,
+    "bao / sign text": 161,
+    "ana-label / sign text": 479,
+    "bao-label / sign text": 85
+   },
+   "characterHeightPixels": {
+    "ana": 448,
+    "bao": 822
+   },
+   "bandShare": 0.476,
+   "edgeMarginPixels": 174,
+   "gaps": {
+    "ana / bao": 115,
+    "ana-label / bao-label": 332,
+    "ana-label / bao": 141,
+    "bao-label / ana": 404,
+    "ana / wall": -309,
+    "bao / wall": -537,
+    "ana-label / wall": -381,
+    "bao-label / wall": -510
+   },
+   "signLineHeightsPixels": [
+    49,
+    50,
+    51
+   ],
+   "rects": {
+    "ana": {
+     "left": 174,
+     "right": 427,
+     "top": 1136,
+     "bottom": 1583,
+     "count": 98928
+    },
+    "bao": {
+     "left": 542,
+     "right": 791,
+     "top": 746,
+     "bottom": 1567,
+     "count": 175566
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 222,
+     "bottom": 1445,
+     "count": 1229118
+    },
+    "ana-label": {
+     "left": 196,
+     "right": 401,
+     "top": 1064,
+     "bottom": 1125,
+     "count": 11197
+    },
+    "bao-label": {
+     "left": 502,
+     "right": 833,
+     "top": 670,
+     "bottom": 732,
+     "count": 16066
+    },
+    "sign": {
+     "left": 161,
+     "right": 589,
+     "top": 348,
+     "bottom": 630,
+     "count": 100785
+    },
+    "text": {
+     "left": 238,
+     "right": 519,
+     "top": 399,
+     "bottom": 585,
+     "count": 6984
+    }
+   }
+  },
+  {
+   "frame": 24,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 188
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 434
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 256
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 40
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 553,
+    "bao / sign text": 161,
+    "ana-label / sign text": 479,
+    "bao-label / sign text": 85
+   },
+   "characterHeightPixels": {
+    "ana": 450,
+    "bao": 820
+   },
+   "bandShare": 0.478,
+   "edgeMarginPixels": 166,
+   "gaps": {
+    "ana / bao": 113,
+    "ana-label / bao-label": 332,
+    "ana-label / bao": 139,
+    "bao-label / ana": 406,
+    "ana / wall": -309,
+    "bao / wall": -547,
+    "ana-label / wall": -383,
+    "bao-label / wall": -514
+   },
+   "signLineHeightsPixels": [
+    51,
+    51,
+    52
+   ],
+   "rects": {
+    "ana": {
+     "left": 166,
+     "right": 419,
+     "top": 1138,
+     "bottom": 1587,
+     "count": 99756
+    },
+    "bao": {
+     "left": 532,
+     "right": 782,
+     "top": 746,
+     "bottom": 1565,
+     "count": 174847
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 218,
+     "bottom": 1447,
+     "count": 1224500
+    },
+    "ana-label": {
+     "left": 188,
+     "right": 393,
+     "top": 1064,
+     "bottom": 1127,
+     "count": 11319
+    },
+    "bao-label": {
+     "left": 493,
+     "right": 823,
+     "top": 670,
+     "bottom": 732,
+     "count": 16151
+    },
+    "sign": {
+     "left": 141,
+     "right": 568,
+     "top": 344,
+     "bottom": 630,
+     "count": 100840
+    },
+    "text": {
+     "left": 218,
+     "right": 499,
+     "top": 397,
+     "bottom": 585,
+     "count": 7312
+    }
+   }
+  },
+  {
+   "frame": 25,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 180
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 436
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 265
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 40
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 553,
+    "bao / sign text": 161,
+    "ana-label / sign text": 481,
+    "bao-label / sign text": 85
+   },
+   "characterHeightPixels": {
+    "ana": 452,
+    "bao": 820
+   },
+   "bandShare": 0.479,
+   "edgeMarginPixels": 156,
+   "gaps": {
+    "ana / bao": 111,
+    "ana-label / bao-label": 333,
+    "ana-label / bao": 139,
+    "bao-label / ana": 405,
+    "ana / wall": -313,
+    "bao / wall": -555,
+    "ana-label / wall": -385,
+    "bao-label / wall": -519
+   },
+   "signLineHeightsPixels": [
+    51,
+    51,
+    54
+   ],
+   "rects": {
+    "ana": {
+     "left": 156,
+     "right": 413,
+     "top": 1138,
+     "bottom": 1589,
+     "count": 100674
+    },
+    "bao": {
+     "left": 524,
+     "right": 773,
+     "top": 746,
+     "bottom": 1565,
+     "count": 174417
+    },
+    "wall": {
+     "left": 0,
+     "right": 1079,
+     "top": 214,
+     "bottom": 1451,
+     "count": 1215923
+    },
+    "ana-label": {
+     "left": 180,
+     "right": 385,
+     "top": 1066,
+     "bottom": 1129,
+     "count": 11237
+    },
+    "bao-label": {
+     "left": 484,
+     "right": 814,
+     "top": 670,
+     "bottom": 733,
+     "count": 16144
+    },
+    "sign": {
+     "left": 121,
+     "right": 547,
+     "top": 341,
+     "bottom": 630,
+     "count": 100909
+    },
+    "text": {
+     "left": 199,
+     "right": 479,
+     "top": 396,
+     "bottom": 585,
+     "count": 7209
+    }
+   }
+  },
+  {
+   "frame": 26,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 172
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 437
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 248
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 40
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 555,
+    "bao / sign text": 161,
+    "ana-label / sign text": 482,
+    "bao-label / sign text": 85
+   },
+   "characterHeightPixels": {
+    "ana": 454,
+    "bao": 818
+   },
+   "bandShare": 0.481,
+   "edgeMarginPixels": 148,
+   "gaps": {
+    "ana / bao": 109,
+    "ana-label / bao-label": 334,
+    "ana-label / bao": 135,
+    "bao-label / ana": 407,
+    "ana / wall": -315,
+    "bao / wall": -539,
+    "ana-label / wall": -379,
+    "bao-label / wall": -523
+   },
+   "signLineHeightsPixels": [
+    52,
+    53,
+    56
+   ],
+   "rects": {
+    "ana": {
+     "left": 148,
+     "right": 405,
+     "top": 1140,
+     "bottom": 1593,
+     "count": 101797
+    },
+    "bao": {
+     "left": 514,
+     "right": 763,
+     "top": 746,
+     "bottom": 1563,
+     "count": 173398
+    },
+    "wall": {
+     "left": 0,
+     "right": 1053,
+     "top": 210,
+     "bottom": 1455,
+     "count": 1181735
+    },
+    "ana-label": {
+     "left": 172,
+     "right": 379,
+     "top": 1067,
+     "bottom": 1129,
+     "count": 11320
+    },
+    "bao-label": {
+     "left": 475,
+     "right": 805,
+     "top": 670,
+     "bottom": 733,
+     "count": 16039
+    },
+    "sign": {
+     "left": 101,
+     "right": 527,
+     "top": 337,
+     "bottom": 630,
+     "count": 101202
+    },
+    "text": {
+     "left": 180,
+     "right": 459,
+     "top": 394,
+     "bottom": 585,
+     "count": 7160
+    }
+   }
+  },
+  {
+   "frame": 27,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 164
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 438
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 228
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 41
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 558,
+    "bao / sign text": 162,
+    "ana-label / sign text": 484,
+    "bao-label / sign text": 87
+   },
+   "characterHeightPixels": {
+    "ana": 456,
+    "bao": 818
+   },
+   "bandShare": 0.483,
+   "edgeMarginPixels": 140,
+   "gaps": {
+    "ana / bao": 107,
+    "ana-label / bao-label": 335,
+    "ana-label / bao": 135,
+    "bao-label / ana": 409,
+    "ana / wall": -317,
+    "bao / wall": -517,
+    "ana-label / wall": -371,
+    "bao-label / wall": -525
+   },
+   "signLineHeightsPixels": [
+    52,
+    53,
+    57
+   ],
+   "rects": {
+    "ana": {
+     "left": 140,
+     "right": 399,
+     "top": 1142,
+     "bottom": 1597,
+     "count": 102733
+    },
+    "bao": {
+     "left": 506,
+     "right": 753,
+     "top": 746,
+     "bottom": 1563,
+     "count": 172976
+    },
+    "wall": {
+     "left": 0,
+     "right": 1023,
+     "top": 208,
+     "bottom": 1459,
+     "count": 1146767
+    },
+    "ana-label": {
+     "left": 164,
+     "right": 371,
+     "top": 1068,
+     "bottom": 1131,
+     "count": 11401
+    },
+    "bao-label": {
+     "left": 465,
+     "right": 795,
+     "top": 671,
+     "bottom": 733,
+     "count": 16046
+    },
+    "sign": {
+     "left": 81,
+     "right": 506,
+     "top": 334,
+     "bottom": 630,
+     "count": 101230
+    },
+    "text": {
+     "left": 160,
+     "right": 439,
+     "top": 392,
+     "bottom": 584,
+     "count": 6951
+    }
+   }
+  },
+  {
+   "frame": 28,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 156
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 440
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 208
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 41
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 560,
+    "bao / sign text": 162,
+    "ana-label / sign text": 486,
+    "bao-label / sign text": 87
+   },
+   "characterHeightPixels": {
+    "ana": 458,
+    "bao": 816
+   },
+   "bandShare": 0.485,
+   "edgeMarginPixels": 132,
+   "gaps": {
+    "ana / bao": 105,
+    "ana-label / bao-label": 337,
+    "ana-label / bao": 133,
+    "bao-label / ana": 411,
+    "ana / wall": -317,
+    "bao / wall": -497,
+    "ana-label / wall": -363,
+    "bao-label / wall": -529
+   },
+   "signLineHeightsPixels": [
+    55,
+    55,
+    59
+   ],
+   "rects": {
+    "ana": {
+     "left": 132,
+     "right": 391,
+     "top": 1144,
+     "bottom": 1601,
+     "count": 103792
+    },
+    "bao": {
+     "left": 496,
+     "right": 743,
+     "top": 746,
+     "bottom": 1561,
+     "count": 172305
+    },
+    "wall": {
+     "left": 0,
+     "right": 993,
+     "top": 204,
+     "bottom": 1461,
+     "count": 1112118
+    },
+    "ana-label": {
+     "left": 156,
+     "right": 363,
+     "top": 1070,
+     "bottom": 1133,
+     "count": 11368
+    },
+    "bao-label": {
+     "left": 456,
+     "right": 785,
+     "top": 671,
+     "bottom": 733,
+     "count": 16014
+    },
+    "sign": {
+     "left": 62,
+     "right": 485,
+     "top": 329,
+     "bottom": 630,
+     "count": 101400
+    },
+    "text": {
+     "left": 141,
+     "right": 419,
+     "top": 389,
+     "bottom": 584,
+     "count": 7169
+    }
+   }
+  },
+  {
+   "frame": 29,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 150
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 442
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 186
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 42
+    }
+   },
+   "textGaps": {
+    "ana / sign text": 561,
+    "bao / sign text": 163,
+    "ana-label / sign text": 488,
+    "bao-label / sign text": 88
+   },
+   "characterHeightPixels": {
+    "ana": 462,
+    "bao": 816
+   },
+   "bandShare": 0.487,
+   "edgeMarginPixels": 124,
+   "gaps": {
+    "ana / bao": 102,
+    "ana-label / bao-label": 338,
+    "ana-label / bao": 130,
+    "bao-label / ana": 411,
+    "ana / wall": -321,
+    "bao / wall": -475,
+    "ana-label / wall": -357,
+    "bao-label / wall": -516
+   },
+   "signLineHeightsPixels": [
+    56,
+    56,
+    60
+   ],
+   "rects": {
+    "ana": {
+     "left": 124,
+     "right": 385,
+     "top": 1144,
+     "bottom": 1605,
+     "count": 104909
+    },
+    "bao": {
+     "left": 487,
+     "right": 735,
+     "top": 746,
+     "bottom": 1561,
+     "count": 171915
+    },
+    "wall": {
+     "left": 0,
+     "right": 962,
+     "top": 202,
+     "bottom": 1465,
+     "count": 1077680
+    },
+    "ana-label": {
+     "left": 150,
+     "right": 357,
+     "top": 1071,
+     "bottom": 1135,
+     "count": 11352
+    },
+    "bao-label": {
+     "left": 446,
+     "right": 776,
+     "top": 671,
+     "bottom": 733,
+     "count": 15957
+    },
+    "sign": {
+     "left": 42,
+     "right": 465,
+     "top": 325,
+     "bottom": 629,
+     "count": 101456
+    },
+    "text": {
+     "left": 122,
+     "right": 399,
+     "top": 386,
+     "bottom": 583,
+     "count": 6931
+    }
+   }
+  }
+ ]
+}

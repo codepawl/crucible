@@ -1,0 +1,731 @@
+{
+ "summary": {
+  "minBandShare": 0.472,
+  "minAnaBaoAxisGap": 47,
+  "minAnaBaoEuclideanGap": 47,
+  "minOpenLinePixels": 42,
+  "minTextGap": 76
+ },
+ "perFrame": [
+  {
+   "frame": 1,
+   "bandShare": 0.509,
+   "anaBaoAxisGap": 47,
+   "anaBaoEuclideanGap": 47,
+   "edge": 76,
+   "signLines": [
+    56,
+    53,
+    63
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 276",
+    "ana-label / sign": "outside 421",
+    "bao-label / wall": "inside 76",
+    "bao-label / sign": "outside 30"
+   },
+   "textGaps": {
+    "ana / sign text": 539,
+    "bao / sign text": 153,
+    "ana-label / sign text": 467,
+    "bao-label / sign text": 76
+   }
+  },
+  {
+   "frame": 2,
+   "bandShare": 0.506,
+   "anaBaoAxisGap": 53,
+   "anaBaoEuclideanGap": 53,
+   "edge": 82,
+   "signLines": [
+    56,
+    52,
+    61
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 296",
+    "ana-label / sign": "outside 421",
+    "bao-label / wall": "inside 82",
+    "bao-label / sign": "outside 31"
+   },
+   "textGaps": {
+    "ana / sign text": 539,
+    "bao / sign text": 154,
+    "ana-label / sign text": 467,
+    "bao-label / sign text": 77
+   }
+  },
+  {
+   "frame": 3,
+   "bandShare": 0.504,
+   "anaBaoAxisGap": 59,
+   "anaBaoEuclideanGap": 59,
+   "edge": 87,
+   "signLines": [
+    55,
+    51,
+    60
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 316",
+    "ana-label / sign": "outside 421",
+    "bao-label / wall": "inside 87",
+    "bao-label / sign": "outside 31"
+   },
+   "textGaps": {
+    "ana / sign text": 538,
+    "bao / sign text": 154,
+    "ana-label / sign text": 466,
+    "bao-label / sign text": 76
+   }
+  },
+  {
+   "frame": 4,
+   "bandShare": 0.502,
+   "anaBaoAxisGap": 67,
+   "anaBaoEuclideanGap": 67,
+   "edge": 92,
+   "signLines": [
+    53,
+    50,
+    59
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 336",
+    "ana-label / sign": "outside 420",
+    "bao-label / wall": "inside 92",
+    "bao-label / sign": "outside 31"
+   },
+   "textGaps": {
+    "ana / sign text": 537,
+    "bao / sign text": 153,
+    "ana-label / sign text": 465,
+    "bao-label / sign text": 76
+   }
+  },
+  {
+   "frame": 5,
+   "bandShare": 0.499,
+   "anaBaoAxisGap": 71,
+   "anaBaoEuclideanGap": 71,
+   "edge": 98,
+   "signLines": [
+    53,
+    48,
+    56
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 344",
+    "ana-label / sign": "outside 421",
+    "bao-label / wall": "inside 98",
+    "bao-label / sign": "outside 32"
+   },
+   "textGaps": {
+    "ana / sign text": 537,
+    "bao / sign text": 153,
+    "ana-label / sign text": 466,
+    "bao-label / sign text": 77
+   }
+  },
+  {
+   "frame": 6,
+   "bandShare": 0.497,
+   "anaBaoAxisGap": 77,
+   "anaBaoEuclideanGap": 77,
+   "edge": 104,
+   "signLines": [
+    50,
+    49,
+    55
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 340",
+    "ana-label / sign": "outside 422",
+    "bao-label / wall": "inside 104",
+    "bao-label / sign": "outside 32"
+   },
+   "textGaps": {
+    "ana / sign text": 537,
+    "bao / sign text": 154,
+    "ana-label / sign text": 467,
+    "bao-label / sign text": 77
+   }
+  },
+  {
+   "frame": 7,
+   "bandShare": 0.494,
+   "anaBaoAxisGap": 81,
+   "anaBaoEuclideanGap": 81,
+   "edge": 110,
+   "signLines": [
+    50,
+    48,
+    53
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 336",
+    "ana-label / sign": "outside 422",
+    "bao-label / wall": "inside 110",
+    "bao-label / sign": "outside 33"
+   },
+   "textGaps": {
+    "ana / sign text": 539,
+    "bao / sign text": 155,
+    "ana-label / sign text": 467,
+    "bao-label / sign text": 78
+   }
+  },
+  {
+   "frame": 8,
+   "bandShare": 0.492,
+   "anaBaoAxisGap": 85,
+   "anaBaoEuclideanGap": 85,
+   "edge": 117,
+   "signLines": [
+    49,
+    48,
+    52
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 334",
+    "ana-label / sign": "outside 423",
+    "bao-label / wall": "inside 117",
+    "bao-label / sign": "outside 34"
+   },
+   "textGaps": {
+    "ana / sign text": 539,
+    "bao / sign text": 155,
+    "ana-label / sign text": 467,
+    "bao-label / sign text": 78
+   }
+  },
+  {
+   "frame": 9,
+   "bandShare": 0.491,
+   "anaBaoAxisGap": 89,
+   "anaBaoEuclideanGap": 89,
+   "edge": 124,
+   "signLines": [
+    48,
+    48,
+    51
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 328",
+    "ana-label / sign": "outside 423",
+    "bao-label / wall": "inside 124",
+    "bao-label / sign": "outside 35"
+   },
+   "textGaps": {
+    "ana / sign text": 539,
+    "bao / sign text": 155,
+    "ana-label / sign text": 467,
+    "bao-label / sign text": 79
+   }
+  },
+  {
+   "frame": 10,
+   "bandShare": 0.489,
+   "anaBaoAxisGap": 93,
+   "anaBaoEuclideanGap": 93,
+   "edge": 130,
+   "signLines": [
+    47,
+    47,
+    49
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 324",
+    "ana-label / sign": "outside 423",
+    "bao-label / wall": "inside 130",
+    "bao-label / sign": "outside 35"
+   },
+   "textGaps": {
+    "ana / sign text": 539,
+    "bao / sign text": 155,
+    "ana-label / sign text": 467,
+    "bao-label / sign text": 79
+   }
+  },
+  {
+   "frame": 11,
+   "bandShare": 0.487,
+   "anaBaoAxisGap": 97,
+   "anaBaoEuclideanGap": 97,
+   "edge": 138,
+   "signLines": [
+    46,
+    46,
+    48
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 320",
+    "ana-label / sign": "outside 425",
+    "bao-label / wall": "inside 138",
+    "bao-label / sign": "outside 36"
+   },
+   "textGaps": {
+    "ana / sign text": 541,
+    "bao / sign text": 157,
+    "ana-label / sign text": 469,
+    "bao-label / sign text": 80
+   }
+  },
+  {
+   "frame": 12,
+   "bandShare": 0.485,
+   "anaBaoAxisGap": 101,
+   "anaBaoEuclideanGap": 101,
+   "edge": 145,
+   "signLines": [
+    44,
+    46,
+    46
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 309",
+    "ana-label / sign": "outside 425",
+    "bao-label / wall": "inside 145",
+    "bao-label / sign": "outside 36"
+   },
+   "textGaps": {
+    "ana / sign text": 541,
+    "bao / sign text": 157,
+    "ana-label / sign text": 469,
+    "bao-label / sign text": 80
+   }
+  },
+  {
+   "frame": 13,
+   "bandShare": 0.483,
+   "anaBaoAxisGap": 103,
+   "anaBaoEuclideanGap": 103,
+   "edge": 153,
+   "signLines": [
+    44,
+    45,
+    46
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 299",
+    "ana-label / sign": "outside 426",
+    "bao-label / wall": "inside 153",
+    "bao-label / sign": "outside 38"
+   },
+   "textGaps": {
+    "ana / sign text": 541,
+    "bao / sign text": 157,
+    "ana-label / sign text": 469,
+    "bao-label / sign text": 81
+   }
+  },
+  {
+   "frame": 14,
+   "bandShare": 0.481,
+   "anaBaoAxisGap": 107,
+   "anaBaoEuclideanGap": 107,
+   "edge": 160,
+   "signLines": [
+    44,
+    44,
+    45
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 289",
+    "ana-label / sign": "outside 426",
+    "bao-label / wall": "inside 160",
+    "bao-label / sign": "outside 38"
+   },
+   "textGaps": {
+    "ana / sign text": 543,
+    "bao / sign text": 157,
+    "ana-label / sign text": 469,
+    "bao-label / sign text": 81
+   }
+  },
+  {
+   "frame": 15,
+   "bandShare": 0.48,
+   "anaBaoAxisGap": 107,
+   "anaBaoEuclideanGap": 107,
+   "edge": 168,
+   "signLines": [
+    43,
+    44,
+    44
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 279",
+    "ana-label / sign": "outside 429",
+    "bao-label / wall": "inside 168",
+    "bao-label / sign": "outside 40"
+   },
+   "textGaps": {
+    "ana / sign text": 543,
+    "bao / sign text": 157,
+    "ana-label / sign text": 471,
+    "bao-label / sign text": 82
+   }
+  },
+  {
+   "frame": 16,
+   "bandShare": 0.479,
+   "anaBaoAxisGap": 111,
+   "anaBaoEuclideanGap": 111,
+   "edge": 176,
+   "signLines": [
+    42,
+    44,
+    44
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 270",
+    "ana-label / sign": "outside 430",
+    "bao-label / wall": "inside 176",
+    "bao-label / sign": "outside 41"
+   },
+   "textGaps": {
+    "ana / sign text": 543,
+    "bao / sign text": 157,
+    "ana-label / sign text": 471,
+    "bao-label / sign text": 82
+   }
+  },
+  {
+   "frame": 17,
+   "bandShare": 0.476,
+   "anaBaoAxisGap": 111,
+   "anaBaoEuclideanGap": 111,
+   "edge": 185,
+   "signLines": [
+    43,
+    44,
+    44
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 260",
+    "ana-label / sign": "outside 429",
+    "bao-label / wall": "inside 185",
+    "bao-label / sign": "outside 41"
+   },
+   "textGaps": {
+    "ana / sign text": 545,
+    "bao / sign text": 159,
+    "ana-label / sign text": 471,
+    "bao-label / sign text": 83
+   }
+  },
+  {
+   "frame": 18,
+   "bandShare": 0.475,
+   "anaBaoAxisGap": 113,
+   "anaBaoEuclideanGap": 113,
+   "edge": 193,
+   "signLines": [
+    43,
+    44,
+    43
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 250",
+    "ana-label / sign": "outside 431",
+    "bao-label / wall": "inside 193",
+    "bao-label / sign": "outside 41"
+   },
+   "textGaps": {
+    "ana / sign text": 546,
+    "bao / sign text": 160,
+    "ana-label / sign text": 474,
+    "bao-label / sign text": 84
+   }
+  },
+  {
+   "frame": 19,
+   "bandShare": 0.474,
+   "anaBaoAxisGap": 113,
+   "anaBaoEuclideanGap": 113,
+   "edge": 202,
+   "signLines": [
+    44,
+    44,
+    44
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 240",
+    "ana-label / sign": "outside 430",
+    "bao-label / wall": "inside 202",
+    "bao-label / sign": "outside 40"
+   },
+   "textGaps": {
+    "ana / sign text": 547,
+    "bao / sign text": 159,
+    "ana-label / sign text": 473,
+    "bao-label / sign text": 83
+   }
+  },
+  {
+   "frame": 20,
+   "bandShare": 0.472,
+   "anaBaoAxisGap": 115,
+   "anaBaoEuclideanGap": 115,
+   "edge": 210,
+   "signLines": [
+    46,
+    46,
+    46
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 232",
+    "ana-label / sign": "outside 431",
+    "bao-label / wall": "inside 210",
+    "bao-label / sign": "outside 40"
+   },
+   "textGaps": {
+    "ana / sign text": 547,
+    "bao / sign text": 159,
+    "ana-label / sign text": 475,
+    "bao-label / sign text": 84
+   }
+  },
+  {
+   "frame": 21,
+   "bandShare": 0.472,
+   "anaBaoAxisGap": 115,
+   "anaBaoEuclideanGap": 115,
+   "edge": 202,
+   "signLines": [
+    45,
+    46,
+    46
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 222",
+    "ana-label / sign": "outside 431",
+    "bao-label / wall": "inside 219",
+    "bao-label / sign": "outside 40"
+   },
+   "textGaps": {
+    "ana / sign text": 549,
+    "bao / sign text": 159,
+    "ana-label / sign text": 475,
+    "bao-label / sign text": 84
+   }
+  },
+  {
+   "frame": 22,
+   "bandShare": 0.473,
+   "anaBaoAxisGap": 115,
+   "anaBaoEuclideanGap": 115,
+   "edge": 192,
+   "signLines": [
+    46,
+    48,
+    48
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 214",
+    "ana-label / sign": "outside 433",
+    "bao-label / wall": "inside 228",
+    "bao-label / sign": "outside 40"
+   },
+   "textGaps": {
+    "ana / sign text": 549,
+    "bao / sign text": 159,
+    "ana-label / sign text": 477,
+    "bao-label / sign text": 84
+   }
+  },
+  {
+   "frame": 23,
+   "bandShare": 0.474,
+   "anaBaoAxisGap": 115,
+   "anaBaoEuclideanGap": 115,
+   "edge": 182,
+   "signLines": [
+    48,
+    49,
+    51
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 204",
+    "ana-label / sign": "outside 433",
+    "bao-label / wall": "inside 237",
+    "bao-label / sign": "outside 41"
+   },
+   "textGaps": {
+    "ana / sign text": 550,
+    "bao / sign text": 159,
+    "ana-label / sign text": 476,
+    "bao-label / sign text": 84
+   }
+  },
+  {
+   "frame": 24,
+   "bandShare": 0.476,
+   "anaBaoAxisGap": 115,
+   "anaBaoEuclideanGap": 115,
+   "edge": 174,
+   "signLines": [
+    49,
+    50,
+    51
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 196",
+    "ana-label / sign": "outside 434",
+    "bao-label / wall": "inside 246",
+    "bao-label / sign": "outside 40"
+   },
+   "textGaps": {
+    "ana / sign text": 551,
+    "bao / sign text": 161,
+    "ana-label / sign text": 479,
+    "bao-label / sign text": 85
+   }
+  },
+  {
+   "frame": 25,
+   "bandShare": 0.478,
+   "anaBaoAxisGap": 113,
+   "anaBaoEuclideanGap": 113,
+   "edge": 166,
+   "signLines": [
+    51,
+    51,
+    52
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 188",
+    "ana-label / sign": "outside 434",
+    "bao-label / wall": "inside 256",
+    "bao-label / sign": "outside 40"
+   },
+   "textGaps": {
+    "ana / sign text": 553,
+    "bao / sign text": 161,
+    "ana-label / sign text": 479,
+    "bao-label / sign text": 85
+   }
+  },
+  {
+   "frame": 26,
+   "bandShare": 0.479,
+   "anaBaoAxisGap": 111,
+   "anaBaoEuclideanGap": 111,
+   "edge": 156,
+   "signLines": [
+    51,
+    51,
+    54
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 180",
+    "ana-label / sign": "outside 436",
+    "bao-label / wall": "inside 265",
+    "bao-label / sign": "outside 40"
+   },
+   "textGaps": {
+    "ana / sign text": 553,
+    "bao / sign text": 161,
+    "ana-label / sign text": 481,
+    "bao-label / sign text": 85
+   }
+  },
+  {
+   "frame": 27,
+   "bandShare": 0.481,
+   "anaBaoAxisGap": 109,
+   "anaBaoEuclideanGap": 109,
+   "edge": 148,
+   "signLines": [
+    52,
+    53,
+    56
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 172",
+    "ana-label / sign": "outside 437",
+    "bao-label / wall": "inside 248",
+    "bao-label / sign": "outside 40"
+   },
+   "textGaps": {
+    "ana / sign text": 555,
+    "bao / sign text": 161,
+    "ana-label / sign text": 482,
+    "bao-label / sign text": 85
+   }
+  },
+  {
+   "frame": 28,
+   "bandShare": 0.483,
+   "anaBaoAxisGap": 107,
+   "anaBaoEuclideanGap": 107,
+   "edge": 140,
+   "signLines": [
+    52,
+    53,
+    57
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 164",
+    "ana-label / sign": "outside 438",
+    "bao-label / wall": "inside 228",
+    "bao-label / sign": "outside 41"
+   },
+   "textGaps": {
+    "ana / sign text": 558,
+    "bao / sign text": 162,
+    "ana-label / sign text": 484,
+    "bao-label / sign text": 87
+   }
+  },
+  {
+   "frame": 29,
+   "bandShare": 0.485,
+   "anaBaoAxisGap": 105,
+   "anaBaoEuclideanGap": 105,
+   "edge": 132,
+   "signLines": [
+    55,
+    55,
+    59
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 156",
+    "ana-label / sign": "outside 440",
+    "bao-label / wall": "inside 208",
+    "bao-label / sign": "outside 41"
+   },
+   "textGaps": {
+    "ana / sign text": 560,
+    "bao / sign text": 162,
+    "ana-label / sign text": 486,
+    "bao-label / sign text": 87
+   }
+  },
+  {
+   "frame": 30,
+   "bandShare": 0.487,
+   "anaBaoAxisGap": 102,
+   "anaBaoEuclideanGap": 102,
+   "edge": 124,
+   "signLines": [
+    56,
+    56,
+    60
+   ],
+   "outlines": {
+    "ana-label / wall": "inside 150",
+    "ana-label / sign": "outside 442",
+    "bao-label / wall": "inside 186",
+    "bao-label / sign": "outside 42"
+   },
+   "textGaps": {
+    "ana / sign text": 561,
+    "bao / sign text": 163,
+    "ana-label / sign text": 488,
+    "bao-label / sign text": 88
+   }
+  }
+ ]
+}

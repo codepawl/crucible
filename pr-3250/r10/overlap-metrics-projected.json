@@ -1,0 +1,3663 @@
+{
+ "config": {
+  "startDegrees": 30,
+  "spanDegrees": 60,
+  "radius": 7.07,
+  "eyeHeight": 2.7,
+  "fov": 49.8,
+  "baoX": 0.74,
+  "labelScreenHeight": 0.032,
+  "wallWidth": 8,
+  "anaX": -0.66,
+  "anaZ": 1.8,
+  "baoZ": 2.03,
+  "targetX": 0,
+  "targetY": 2.3,
+  "targetZ": 2.83,
+  "charScale": 1.62,
+  "wallHeight": 5.4,
+  "signY": 4.3,
+  "signFont": 0.26,
+  "signWidth": 2,
+  "signHeight": 1.2
+ },
+ "width": 1080,
+ "height": 1920,
+ "summary": {
+  "minGapPixelsPerPair": {
+   "ana / bao": {
+    "gapPixels": 46,
+    "frame": 0
+   },
+   "ana-label / bao-label": {
+    "gapPixels": 322.3,
+    "frame": 9
+   },
+   "ana-label / bao": {
+    "gapPixels": 63.4,
+    "frame": 0
+   },
+   "bao-label / ana": {
+    "gapPixels": 395.1,
+    "frame": 7
+   },
+   "ana / wall": {
+    "gapPixels": -438.4,
+    "frame": 0
+   },
+   "bao / wall": {
+    "gapPixels": -823.7,
+    "frame": 0
+   },
+   "ana-label / wall": {
+    "gapPixels": -496.9,
+    "frame": 1
+   },
+   "bao-label / wall": {
+    "gapPixels": -629.3,
+    "frame": 0
+   },
+   "ana-label / sign": {
+    "gapPixels": 418.3,
+    "frame": 3
+   },
+   "bao-label / sign": {
+    "gapPixels": 28,
+    "frame": 0
+   },
+   "ana / sign": {
+    "gapPixels": 490.8,
+    "frame": 2
+   },
+   "bao / sign": {
+    "gapPixels": 105.3,
+    "frame": 0
+   }
+  },
+  "minGapPixelsAnyPair": -823.7,
+  "minEdgeMarginPixels": 76.2,
+  "minCharacterHeightShare": 0.221,
+  "minBandShare": 0.472,
+  "minOutlineMarginPixels": 27.99112001697415,
+  "bboxGap3dMetres": 0.428,
+  "bodyChecks": {
+   "ana": {
+    "bodyBaseToGroundMetres": 0,
+    "headBottomMinusBodyTopMetres": -0.0486
+   },
+   "bao": {
+    "bodyBaseToGroundMetres": 0,
+    "headBottomMinusBodyTopMetres": -0.0486,
+    "hatBottomMinusHeadTopMetres": -0.0486,
+    "puffBottomMinusHatTopMetres": -0.2268
+   }
+  }
+ },
+ "frames": [
+  {
+   "frame": 0,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 276.13649972806616
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 418.70342425748345
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 519.0304902508759
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 27.99112001697415
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 45.964011825069406
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 324.24944827961144
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 63.41338905531518
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 396.6815008486526
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -438.3653096700764
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -823.7438899825819
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -481.4717237666233
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -629.2585191401636
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 418.70342425748345
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 27.99112001697415
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 491.1354768265246
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 105.2984924091146
+    }
+   ],
+   "edgeMarginPixels": 76.17748364152806,
+   "rects": {
+    "ana": {
+     "left": 406.03940325698994,
+     "right": 646.0521350080959,
+     "top": 1122.166085028121,
+     "bottom": 1545.8648707195462
+    },
+    "bao": {
+     "left": 692.0161468331653,
+     "right": 970.8749239938087,
+     "top": 736.329100610711,
+     "bottom": 1635.2750838950365
+    },
+    "wall": {
+     "left": 147.13103401122677,
+     "right": 1910.602489590647,
+     "top": 96.22606503930484,
+     "bottom": 1560.5313946981973
+    },
+    "sign": {
+     "left": 634.6952135370248,
+     "right": 1057.715461685757,
+     "top": 319.57582360039044,
+     "bottom": 631.0306082015964
+    },
+    "ana-label": {
+     "left": 423.26753373929296,
+     "right": 628.6027577778501,
+     "top": 1049.7340324590798,
+     "bottom": 1111.545022838909
+    },
+    "bao-label": {
+     "left": 666.1615242621027,
+     "right": 1003.822516358472,
+     "top": 659.0217282185705,
+     "bottom": 725.4845841794684
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 423.6987856914252,
+    "bao": 898.9459832843255
+   },
+   "bandShare": 0.508465289414826
+  },
+  {
+   "frame": 1,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 295.8589612597005
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 418.43740130241645
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 544.6808800879928
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 28.276255130563868
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 52.57334743245519
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 323.7891090094023
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 70.05803267400302
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 396.27497574530014
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -424.43886765994785
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -809.8421606977117
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -496.9247343958457
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -614.7781217919041
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 418.43740130241645
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 28.276255130563868
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 490.9232680383143
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 105.5199750005504
+    }
+   ],
+   "edgeMarginPixels": 81.08681496828149,
+   "rects": {
+    "ana": {
+     "left": 395.35876006384086,
+     "right": 635.4960405841769,
+     "top": 1122.255005211533,
+     "bottom": 1546.1128117556543
+    },
+    "bao": {
+     "left": 688.069388016632,
+     "right": 965.4217624038295,
+     "top": 736.8517121737691,
+     "bottom": 1631.2563121320864
+    },
+    "wall": {
+     "left": 116.79694736080218,
+     "right": 1875.9073539770893,
+     "top": 111.20190767432871,
+     "bottom": 1546.6938728714808
+    },
+    "sign": {
+     "left": 614.0371238030616,
+     "right": 1038.3996983263762,
+     "top": 324.03798490311766,
+     "bottom": 631.3317371732187
+    },
+    "ana-label": {
+     "left": 412.65590862050266,
+     "right": 618.011355342629,
+     "top": 1049.7691384756351,
+     "bottom": 1111.7045210798053
+    },
+    "bao-label": {
+     "left": 661.477827448795,
+     "right": 998.9131850317185,
+     "top": 659.6079923037826,
+     "bottom": 725.9800294662328
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 423.85780654412133,
+    "bao": 894.4045999583172
+   },
+   "bandShare": 0.5060668332439082
+  },
+  {
+   "frame": 2,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 315.70575243291165
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 418.2935128410919
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 534.6749950147741
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 28.62681604451666
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 58.725971042975516
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 323.3887291652096
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 76.3390662459899
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 395.93244018427583
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -411.05638011647784
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -796.088775885673
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -483.60009113554406
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -600.9529626461398
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 418.2935128410919
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 28.62681604451666
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 490.83722386015813
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 105.80482809096293
+    }
+   ],
+   "edgeMarginPixels": 86.28903385402009,
+   "rects": {
+    "ana": {
+     "left": 384.77748221440896,
+     "right": 625.0554407718618,
+     "top": 1122.3960481848005,
+     "bottom": 1546.4841559665276
+    },
+    "bao": {
+     "left": 683.7814118148373,
+     "right": 959.5501954396065,
+     "top": 737.3636524156053,
+     "bottom": 1627.3161661545748
+    },
+    "wall": {
+     "left": 86.3498903305233,
+     "right": 1841.2492965333663,
+     "top": 125.51064535438488,
+     "bottom": 1533.4524283012784
+    },
+    "sign": {
+     "left": 593.3660460967369,
+     "right": 1018.9300929194108,
+     "top": 328.29392575166173,
+     "bottom": 631.5588243246424
+    },
+    "ana-label": {
+     "left": 402.05564276343495,
+     "right": 607.4423455688474,
+     "top": 1049.8523371657343,
+     "bottom": 1111.9138087340425
+    },
+    "bao-label": {
+     "left": 656.5099952736721,
+     "right": 993.7109661459799,
+     "top": 660.185640369159,
+     "bottom": 726.4636080005247
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 424.0881077817271,
+    "bao": 889.9525137389695
+   },
+   "bandShare": 0.5037138155132374
+  },
+  {
+   "frame": 3,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 335.6915523621443
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 418.2714795937404
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 521.5753447183384
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 29.042087118548352
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 64.67481873088673
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 323.0487214757834
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 82.42841425604558
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 395.6492617135175
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -398.2011028058773
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -782.9218603830661
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -470.8016430436114
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -587.7560157177471
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 418.2714795937404
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 29.042087118548352
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 490.8720198314745
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 106.15126225428571
+    }
+   ],
+   "edgeMarginPixels": 91.77431215930415,
+   "rects": {
+    "ana": {
+     "left": 374.19179897232084,
+     "right": 614.6565805137757,
+     "top": 1122.5840873881825,
+     "bottom": 1546.978841915769
+    },
+    "bao": {
+     "left": 679.3313992446624,
+     "right": 953.5954026341002,
+     "top": 737.8633298109937,
+     "bottom": 1623.457632564633
+    },
+    "wall": {
+     "left": 55.78249971077669,
+     "right": 1806.6577049677255,
+     "top": 139.1788099569179,
+     "bottom": 1520.7851901940599
+    },
+    "sign": {
+     "left": 572.6856765944638,
+     "right": 999.3188186675953,
+     "top": 332.3468373420981,
+     "bottom": 631.712067556708
+    },
+    "ana-label": {
+     "left": 391.474052072921,
+     "right": 596.9029849886168,
+     "top": 1049.9835471504484,
+     "bottom": 1112.1729248618058
+    },
+    "bao-label": {
+     "left": 651.2667760238246,
+     "right": 988.2256878406959,
+     "top": 660.7541546752564,
+     "bottom": 726.934825674665
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 424.39475452758643,
+    "bao": 885.5943027536393
+   },
+   "bandShare": 0.501408061400717
+  },
+  {
+   "frame": 4,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 355.8309885072847
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 418.3712916555826
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 509.3351998843548
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 29.52134622162407
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 70.21455444216338
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 322.76951560742395
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 88.02424414298036
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 395.4281446131283
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -386.08550449820814
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -770.5560327896212
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -458.7441335039125
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -575.4156297108893
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 418.3712916555826
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 29.52134622162407
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 491.02992066128695
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 106.55939236987388
+    }
+   ],
+   "edgeMarginPixels": 97.5327324520373,
+   "rects": {
+    "ana": {
+     "left": 363.548920252544,
+     "right": 604.2101789244197,
+     "top": 1122.8215212225737,
+     "bottom": 1547.6257522925214
+    },
+    "bao": {
+     "left": 674.424733366583,
+     "right": 947.3597693681783,
+     "top": 738.3509929311606,
+     "bottom": 1619.718716748532
+    },
+    "wall": {
+     "left": 25.087575905582746,
+     "right": 1772.157688374834,
+     "top": 151.977746898556,
+     "bottom": 1508.9070257207818
+    },
+    "sign": {
+     "left": 551.9996449127166,
+     "right": 979.5772327840916,
+     "top": 336.19981675830195,
+     "bottom": 631.7916005612867
+    },
+    "ana-label": {
+     "left": 380.91856441286745,
+     "right": 586.4004892236027,
+     "top": 1050.1628922168693,
+     "bottom": 1112.4817521823911
+    },
+    "bao-label": {
+     "left": 645.7570301698179,
+     "right": 982.4672675479627,
+     "top": 661.3129467829108,
+     "bottom": 727.3933766094453
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 424.8042310699477,
+    "bao": 881.3677238173714
+   },
+   "bandShare": 0.4991696718570944
+  },
+  {
+   "frame": 5,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 376.1384227957008
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 418.5927590343871
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 497.6827535930259
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 30.06396177298882
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 75.38970347871714
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 322.5512710650819
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 93.4452027988732
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 395.27201803642606
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -374.45793809044426
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -758.741990133036
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -447.1786850617884
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -563.6602797893422
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 418.5927590343871
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 30.06396177298882
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 491.31350600573126
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 107.02945396313953
+    }
+   ],
+   "edgeMarginPixels": 103.55442122648742,
+   "rects": {
+    "ana": {
+     "left": 353.0282093918674,
+     "right": 593.9976780111602,
+     "top": 1123.110998775587,
+     "bottom": 1548.3668608036687
+    },
+    "bao": {
+     "left": 669.3873814898774,
+     "right": 940.7409793140733,
+     "top": 738.8269467329952,
+     "bottom": 1616.0312722426568
+    },
+    "wall": {
+     "left": -5.741891816234301,
+     "right": 1737.7705372881508,
+     "top": 164.17870094981862,
+     "bottom": 1497.5689368660312
+    },
+    "sign": {
+     "left": 531.2510773352149,
+     "right": 959.7159279475759,
+     "top": 339.8558591310766,
+     "bottom": 631.7974927698557
+    },
+    "ana-label": {
+     "left": 370.3965309794665,
+     "right": 575.9421786910042,
+     "top": 1050.3902518042428,
+     "bottom": 1112.840302359568
+    },
+    "bao-label": {
+     "left": 639.9895492842079,
+     "right": 976.4455787735126,
+     "top": 661.8614545428445,
+     "bottom": 727.8389807391609
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 425.25586202808176,
+    "bao": 877.2043255096615
+   },
+   "bandShare": 0.4969634467186522
+  },
+  {
+   "frame": 6,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 373.48141494437255
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 418.9358914643583
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 486.5713398973277
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 30.66957250167104
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 80.26822919021504
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 322.39426560359857
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 98.4801594670057
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 395.1744997910557
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -363.28404432306934
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -747.4405577728855
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -436.0642785105265
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -552.4433932564164
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 418.9358914643583
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 30.66957250167104
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 491.71612565181545
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 107.55961220199924
+    }
+   ],
+   "edgeMarginPixels": 109.82956107922803,
+   "rects": {
+    "ana": {
+     "left": 342.4206750966767,
+     "right": 583.7472673913312,
+     "top": 1123.4458749793039,
+     "bottom": 1549.2891693981592
+    },
+    "bao": {
+     "left": 664.0154965815462,
+     "right": 934.034530458056,
+     "top": 739.2893615294877,
+     "bottom": 1612.5024181471847
+    },
+    "wall": {
+     "left": -36.71269668840463,
+     "right": 1703.51413699928,
+     "top": 175.82798193183177,
+     "bottom": 1486.7299193023732
+    },
+    "sign": {
+     "left": 510.4204499204293,
+     "right": 939.7447817307782,
+     "top": 343.31785081153373,
+     "bottom": 631.7297493274884
+    },
+    "ana-label": {
+     "left": 359.91545769998345,
+     "right": 565.5353371145405,
+     "top": 1050.6656407918467,
+     "bottom": 1113.2485043580007
+    },
+    "bao-label": {
+     "left": 633.9730486461909,
+     "right": 970.170438920772,
+     "top": 662.3993218291595,
+     "bottom": 728.2713751882482
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 425.8432944188553,
+    "bao": 873.213056617697
+   },
+   "bandShare": 0.4948453626656381
+  },
+  {
+   "frame": 7,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 362.66585787707413
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 419.4007374232124
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 475.979355500583
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 31.33768414563758
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 84.82846564085105
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 322.29868905885667
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 103.21926127728602
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 395.14110751454893
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -352.5407482749931
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -736.6330077578158
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -425.3831667306854
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -541.7437197193011
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 419.4007374232124
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 31.33768414563758
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 492.24315587890464
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 108.15089639608198
+    }
+   ],
+   "edgeMarginPixels": 116.34836205427348,
+   "rects": {
+    "ana": {
+     "left": 331.88251023571036,
+     "right": 573.5781470148404,
+     "top": 1123.8314669698498,
+     "bottom": 1550.2907794653213
+    },
+    "bao": {
+     "left": 658.4066126556914,
+     "right": 927.1096355593305,
+     "top": 739.7392074870271,
+     "bottom": 1609.012678974242
+    },
+    "wall": {
+     "left": -67.8313820136743,
+     "right": 1669.4033384774336,
+     "top": 186.9466397359997,
+     "bottom": 1476.372215244843
+    },
+    "sign": {
+     "left": 489.5947282103062,
+     "right": 919.6730040397388,
+     "top": 346.5885634501242,
+     "bottom": 631.5883110909451
+    },
+    "ana-label": {
+     "left": 349.4829022504482,
+     "right": 555.1873513784054,
+     "top": 1050.9890485141575,
+     "bottom": 1113.7063573677688
+    },
+    "bao-label": {
+     "left": 627.716250109134,
+     "right": 963.6516379457265,
+     "top": 662.9259952365827,
+     "bottom": 728.6903594553008
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 426.4593124954715,
+    "bao": 869.2734714872148
+   },
+   "bandShare": 0.49275348111336414
+  },
+  {
+   "frame": 8,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 352.26511824311024
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 419.98741949978785
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 465.88620281723536
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 32.067910544134634
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 89.06541388374535
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 322.2648118328673
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 107.71735651938218
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 395.17304169376166
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -342.2100900842222
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -726.3023566565691
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -415.1183199451166
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -531.5408999400213
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 419.98741949978785
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 32.067910544134634
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 492.8956493606822
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 108.80338278833528
+    }
+   ],
+   "edgeMarginPixels": 123.10110941218852,
+   "rects": {
+    "ana": {
+     "left": 321.45222510357246,
+     "right": 563.557531534162,
+     "top": 1124.2687040114515,
+     "bottom": 1551.4736286409625
+    },
+    "bao": {
+     "left": 652.6229454179073,
+     "right": 919.835550278592,
+     "top": 740.1764374391046,
+     "bottom": 1605.6844063386156
+    },
+    "wall": {
+     "left": -99.10420446265837,
+     "right": 1635.450290910298,
+     "top": 197.55476237766857,
+     "bottom": 1466.4787940956737
+    },
+    "sign": {
+     "left": 468.77740689385445,
+     "right": 899.5091826153533,
+     "top": 349.67064888187855,
+     "bottom": 631.3730546507693
+    },
+    "ana-label": {
+     "left": 339.10649741268537,
+     "right": 544.9055888985251,
+     "top": 1051.3604741505571,
+     "bottom": 1114.2136758525635
+    },
+    "bao-label": {
+     "left": 621.2278333600775,
+     "right": 956.8988905878115,
+     "top": 663.4409651949039,
+     "bottom": 729.0956623176899
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 427.20492462951097,
+    "bao": 865.5079688995111
+   },
+   "bandShare": 0.49075179226234983
+  },
+  {
+   "frame": 9,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 342.2628828881534
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 420.6960494435492
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 456.2723607281426
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 32.86006371639667
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 92.95583405481341
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 322.2928247589565
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 111.77846617093462
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 395.2630952895239
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -332.28323644132934
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -716.4341938939798
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -405.25350697189674
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -521.8155216963387
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 420.6960494435492
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 32.86006371639667
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 493.6663199741166
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 109.51536252146616
+    }
+   ],
+   "edgeMarginPixels": 130.07815112119317,
+   "rects": {
+    "ana": {
+     "left": 310.92663423166437,
+     "right": 553.5201519243681,
+     "top": 1124.7501123526235,
+     "bottom": 1552.7498796908053
+    },
+    "bao": {
+     "left": 646.4759859791815,
+     "right": 912.4565541651782,
+     "top": 740.5991548999731,
+     "bottom": 1602.4168430592142
+    },
+    "wall": {
+     "left": -130.53709258530924,
+     "right": 1601.6647395753507,
+     "top": 207.671495366761,
+     "bottom": 1457.0333487939529
+    },
+    "sign": {
+     "left": 447.9720431665293,
+     "right": 879.2613266604901,
+     "top": 352.56663472702206,
+     "bottom": 631.0837923785069
+    },
+    "ana-label": {
+     "left": 328.7924950350304,
+     "right": 534.6975198082469,
+     "top": 1051.7798418220561,
+     "bottom": 1114.7704659057995
+    },
+    "bao-label": {
+     "left": 614.5163989458478,
+     "right": 949.9218488788068,
+     "top": 663.9438560949036,
+     "bottom": 729.4870170630996
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 427.99976733818175,
+    "bao": 861.8176881592411
+   },
+   "bandShare": 0.48878801404391176
+  },
+  {
+   "frame": 10,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 332.6436969538954
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 421.5268382802208
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 447.11925319835575
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 33.71404469289155
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 96.53536859364385
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 322.3827770875532
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 115.66164494025145
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 395.41890775138927
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -322.73704693308855
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -707.0114432900352
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -395.7731775969246
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -512.5492696981318
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 421.5268382802208
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 33.71404469289155
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 494.5629689440568
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 110.28857258711014
+    }
+   ],
+   "edgeMarginPixels": 137.26993225426588,
+   "rects": {
+    "ana": {
+     "left": 300.5626179512101,
+     "right": 543.6969299201222,
+     "top": 1125.2832414454424,
+     "bottom": 1554.1779829335517
+    },
+    "bao": {
+     "left": 640.2322985137661,
+     "right": 904.9327265501603,
+     "top": 741.0088450884957,
+     "bottom": 1599.279480779109
+    },
+    "wall": {
+     "left": -162.13559995569815,
+     "right": 1568.054292445443,
+     "top": 217.31506399592135,
+     "bottom": 1448.020288378531
+    },
+    "sign": {
+     "left": 427.18228289183526,
+     "right": 858.9369086655049,
+     "top": 355.2789206241943,
+     "bottom": 630.7202725013856
+    },
+    "ana-label": {
+     "left": 318.53504783675777,
+     "right": 524.5706535735146,
+     "top": 1052.2471107816064,
+     "bottom": 1115.3765914246355
+    },
+    "bao-label": {
+     "left": 607.5904326036995,
+     "right": 942.7300677457341,
+     "top": 664.4343171942771,
+     "bottom": 729.8643336940531
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 428.8947414881093,
+    "bao": 858.2706356906133
+   },
+   "bandShare": 0.48689852270043327
+  },
+  {
+   "frame": 11,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 323.4575968710792
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 422.4801532992817
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 438.4784726125864
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 34.62980541396314
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 99.6988791359039
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 322.53499487892464
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 119.1314967429048
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 395.6389341307479
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -313.6233071061531
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -698.0846705149912
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -386.72724635797636
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -503.79382561898035
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 422.4801532992817
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 34.62980541396314
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 495.58409255110496
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 111.12272914226685
+    }
+   ],
+   "edgeMarginPixels": 144.66698744720043,
+   "rects": {
+    "ana": {
+     "left": 290.22175833336826,
+     "right": 533.9652114791172,
+     "top": 1125.8662717591499,
+     "bottom": 1555.7283533704544
+    },
+    "bao": {
+     "left": 633.6640906150211,
+     "right": 897.0921868174386,
+     "top": 741.4049083503118,
+     "bottom": 1596.2401129639409
+    },
+    "wall": {
+     "left": -193.90485230425006,
+     "right": 1534.624658639134,
+     "top": 226.43351200942166,
+     "bottom": 1439.489578865303
+    },
+    "sign": {
+     "left": 406.41188710459176,
+     "right": 838.5429045126157,
+     "top": 357.80977502104525,
+     "bottom": 630.2821792080449
+    },
+    "ana-label": {
+     "left": 308.3573495385857,
+     "right": 514.5325938721163,
+     "top": 1052.7623325073266,
+     "bottom": 1116.0319819942238
+    },
+    "bao-label": {
+     "left": 600.4584444678362,
+     "right": 935.3330125527996,
+     "top": 664.911984622008,
+     "bottom": 730.227337628402
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 429.8620816113046,
+    "bao": 854.8352046136291
+   },
+   "bandShare": 0.4850667335114233
+  },
+  {
+   "frame": 12,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 314.74902721936314
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 423.55623362869176
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 430.39527402984027
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 35.607230198246725
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 102.62017532759842
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 322.7495579145342
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 122.3386135179781
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 395.9187817006783
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -304.990896847361
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -689.699302421754
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -378.16012063350513
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -495.5947195457511
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 423.55623362869176
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 35.607230198246725
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 496.7254574148359
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 112.01705184044283
+    }
+   ],
+   "edgeMarginPixels": 152.25997029690268,
+   "rects": {
+    "ana": {
+     "left": 279.9168965251791,
+     "right": 524.3094467801671,
+     "top": 1126.4945902050192,
+     "bottom": 1557.4006525674624
+    },
+    "bao": {
+     "left": 626.9296221077656,
+     "right": 889.1183999767655,
+     "top": 741.7861846306262,
+     "bottom": 1593.3003514860598
+    },
+    "wall": {
+     "left": -225.84948791706947,
+     "right": 1501.3798615481926,
+     "top": 234.9810889585898,
+     "bottom": 1431.4854870523802
+    },
+    "sign": {
+     "left": 385.6647589562631,
+     "right": 818.0858319456461,
+     "top": 360.16133245400397,
+     "bottom": 629.7691327901833
+    },
+    "ana-label": {
+     "left": 298.2674141709961,
+     "right": 504.59100858978746,
+     "top": 1053.325366418875,
+     "bottom": 1116.736459833017
+    },
+    "bao-label": {
+     "left": 593.1287824848713,
+     "right": 927.7400297030973,
+     "top": 665.3763629884301,
+     "bottom": 730.5758085043409
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 430.9060623624432,
+    "bao": 851.5141668554336
+   },
+   "bandShare": 0.4832937440091821
+  },
+  {
+   "frame": 13,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 306.3719133840673
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 424.75548254959483
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 422.7118321760038
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 36.64639657900318
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 105.13785156219944
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 323.0264671389468
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 125.28492701490796
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 396.26459587580075
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -296.68750929044495
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -681.7079715822373
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -369.9256380272989
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -487.7944510076486
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 424.75548254959483
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 36.64639657900318
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 497.99361128644875
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 112.97314899465641
+    }
+   ],
+   "edgeMarginPixels": 160.039543524603,
+   "rects": {
+    "ana": {
+     "left": 269.79967396438985,
+     "right": 514.9007326840511,
+     "top": 1127.174301112771,
+     "bottom": 1559.2244304306648
+    },
+    "bao": {
+     "left": 620.0385842462506,
+     "right": 881.0825392410942,
+     "top": 742.1538388209786,
+     "bottom": 1590.4942953897494
+    },
+    "wall": {
+     "left": -257.9735904988506,
+     "right": 1468.3224292137868,
+     "top": 243.11525422932166,
+     "bottom": 1423.861810403216
+    },
+    "sign": {
+     "left": 364.9449712030779,
+     "right": 797.5717874963423,
+     "top": 362.33559125556326,
+     "bottom": 629.1806898263222
+    },
+    "ana-label": {
+     "left": 288.2734108550292,
+     "right": 494.75365723134263,
+     "top": 1053.936172375917,
+     "bottom": 1117.4898970191487
+    },
+    "bao-label": {
+     "left": 585.6097822033402,
+     "right": 919.960456475397,
+     "top": 665.8270864053254,
+     "bottom": 730.9097052369702
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 432.05012931789383,
+    "bao": 848.3404565687707
+   },
+   "bandShare": 0.4815975046793875
+  },
+  {
+   "frame": 14,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 298.3142079401207
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 426.0783850332157
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 415.41401032096786
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 37.74774191869369
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 107.33542199840002
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 323.3659369606961
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 127.81773816198034
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 396.67321251082046
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -288.70433410935357
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -674.099329987864
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -362.0116096594779
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -480.37871647479375
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 426.0783850332157
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 37.74774191869369
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 499.38566058334004
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 113.99066470482956
+    }
+   ],
+   "edgeMarginPixels": 167.99669591912482,
+   "rects": {
+    "ana": {
+     "left": 259.6166013490034,
+     "right": 505.5106791270278,
+     "top": 1127.902003998608,
+     "bottom": 1561.1395141733924
+    },
+    "bao": {
+     "left": 612.8461011254278,
+     "right": 872.7608549634726,
+     "top": 742.5070081200976,
+     "bottom": 1587.7578457948468
+    },
+    "wall": {
+     "left": -290.2806136031478,
+     "right": 1435.45356428018,
+     "top": 250.85007501299384,
+     "bottom": 1416.6063381079616
+    },
+    "sign": {
+     "left": 344.25679433800684,
+     "right": 777.0064819620312,
+     "top": 364.3344116334888,
+     "bottom": 628.516343415268
+    },
+    "ana-label": {
+     "left": 278.38360258064864,
+     "right": 485.0283629634475,
+     "top": 1054.5947284484837,
+     "bottom": 1118.292130167841
+    },
+    "bao-label": {
+     "left": 577.9096509067006,
+     "right": 912.0033040808752,
+     "top": 666.2640853339617,
+     "bottom": 731.2287914877876
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 433.23751017478435,
+    "bao": 845.2508376747493
+   },
+   "bandShare": 0.479944666906711
+  },
+  {
+   "frame": 15,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 290.5644679069228
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 427.5254182284368
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 408.487850477493
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 38.91120663489312
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 109.27159127132643
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 323.76794511588355
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 130.16825237280534
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 397.14299687922767
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -281.0314705488604
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -666.8622353771492
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -354.4065223122045
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -473.33411695515315
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 427.5254182284368
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 38.91120663489312
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 500.90046999178094
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 115.06970516349213
+    }
+   ],
+   "edgeMarginPixels": 176.12222371244013,
+   "rects": {
+    "ana": {
+     "left": 249.60730316297818,
+     "right": 496.3197603390639,
+     "top": 1128.675993460098,
+     "bottom": 1563.235740633038
+    },
+    "bao": {
+     "left": 605.5913516103903,
+     "right": 864.2681052327026,
+     "top": 742.8452286318092,
+     "bottom": 1585.1894205262934
+    },
+    "wall": {
+     "left": -322.7732956305064,
+     "right": 1402.7732956305065,
+     "top": 258.19887962571715,
+     "bottom": 1409.7074640089584
+    },
+    "sign": {
+     "left": 323.60472546798036,
+     "right": 756.3952745320196,
+     "top": 366.15951407200816,
+     "bottom": 627.775523468317
+    },
+    "ana-label": {
+     "left": 268.606361649816,
+     "right": 475.423099237585,
+     "top": 1055.3009416967539,
+     "bottom": 1119.1429961020356
+    },
+    "bao-label": {
+     "left": 570.0365195128942,
+     "right": 903.8777762875599,
+     "top": 666.6867301032102,
+     "bottom": 731.5329965808703
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 434.55974717294,
+    "bao": 842.3441918944842
+   },
+   "bandShare": 0.47838681792868915
+  },
+  {
+   "frame": 16,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 296.564071935486
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 427.5382950209216
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 416.24483419675613
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 38.57856579448196
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 110.76814433756897
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 324.2325270438304
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 132.1019485324175
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 397.6787893872746
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -287.10543732832775
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -673.4369813258675
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -360.551699671772
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -480.9720363793654
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 427.5382950209216
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 38.57856579448196
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 500.98455736436586
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 114.65301336682614
+    }
+   ],
+   "edgeMarginPixels": 184.40730417333953,
+   "rects": {
+    "ana": {
+     "left": 239.72695288949262,
+     "right": 487.2797074463002,
+     "top": 1129.5009007796339,
+     "bottom": 1565.4070196733182
+    },
+    "bao": {
+     "left": 598.0478517838692,
+     "right": 855.8034228969545,
+     "top": 743.1693567820942,
+     "bottom": 1582.6770937677375
+    },
+    "wall": {
+     "left": -355.4535642801799,
+     "right": 1370.2806136031477,
+     "top": 250.85007501299384,
+     "bottom": 1416.6063381079616
+    },
+    "sign": {
+     "left": 302.99351803796884,
+     "right": 735.7432056619931,
+     "top": 364.3344116334888,
+     "bottom": 628.516343415268
+    },
+    "ana-label": {
+     "left": 258.9502082564698,
+     "right": 465.9459032514517,
+     "top": 1056.0546384361896,
+     "bottom": 1120.0422661724756
+    },
+    "bao-label": {
+     "left": 561.998446977345,
+     "right": 895.5926958266605,
+     "top": 667.09490920975,
+     "bottom": 731.8221113923593
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 435.9061188936844,
+    "bao": 839.5077369856433
+   },
+   "bandShare": 0.4768657211239518
+  },
+  {
+   "frame": 17,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 302.8720481372243
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 427.675119715139
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 424.37311050485664
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 38.30767490785604
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 112.09407220903813
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 324.75966798739034
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 133.7763082761988
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 398.2755305909544
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -293.49013825819065
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -680.383539561991
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -367.0060008617547
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -488.98088732474923
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 427.675119715139
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 38.30767490785604
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 501.19098231870305
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 114.29758101490268
+    }
+   ],
+   "edgeMarginPixels": 192.84306813691433,
+   "rects": {
+    "ana": {
+     "left": 229.85891724218547,
+     "right": 478.28718719096946,
+     "top": 1130.3716721450253,
+     "bottom": 1567.759194582075
+    },
+    "bao": {
+     "left": 590.3812594000076,
+     "right": 847.0821991892242,
+     "top": 743.4782708412249,
+     "bottom": 1580.3339560799773
+    },
+    "wall": {
+     "left": -388.3224292137867,
+     "right": 1337.9735904988506,
+     "top": 243.11525422932166,
+     "bottom": 1423.861810403216
+    },
+    "sign": {
+     "left": 282.4282125036578,
+     "right": 715.0550287969221,
+     "top": 362.33559125556326,
+     "bottom": 629.1806898263222
+    },
+    "ana-label": {
+     "left": 249.42379465679437,
+     "right": 456.6049511238088,
+     "top": 1056.8558095414612,
+     "bottom": 1120.9897622659917
+    },
+    "bao-label": {
+     "left": 553.803410442951,
+     "right": 887.1569318630857,
+     "top": 667.4883647341783,
+     "bottom": 732.0961415540709
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 437.3875224370497,
+    "bao": 836.8556852387524
+   },
+   "bandShare": 0.4754404121592703
+  },
+  {
+   "frame": 18,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 309.5003528750319
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 427.9351832597953
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 427.27035691588094
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 38.09757736491554
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 112.96970098238796
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 325.3495197193507
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 135.1912270051556
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 398.9347876070675
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -300.1959031146848
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -687.7133183685779
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -373.7811710024016
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -497.3737073720381
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 427.9351832597953
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 38.09757736491554
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 501.52045114751206
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 114.00303589361897
+    }
+   ],
+   "edgeMarginPixels": 201.42086899881156,
+   "rects": {
+    "ana": {
+     "left": 220.22435399169157,
+     "right": 469.6300164080495,
+     "top": 1131.2895839376954,
+     "bottom": 1570.2001976255694
+    },
+    "bao": {
+     "left": 582.5997173904375,
+     "right": 838.1440973049175,
+     "top": 743.7721686838023,
+     "bottom": 1578.0651871565287
+    },
+    "wall": {
+     "left": -421.3798615481925,
+     "right": 1305.8494879170694,
+     "top": 234.9810889585898,
+     "bottom": 1431.4854870523802
+    },
+    "sign": {
+     "left": 261.914168054354,
+     "right": 694.3352410437369,
+     "top": 360.16133245400397,
+     "bottom": 629.7691327901833
+    },
+    "ana-label": {
+     "left": 240.03596139683,
+     "right": 447.4084903852819,
+     "top": 1057.7043160499786,
+     "bottom": 1121.9851341773483
+    },
+    "bao-label": {
+     "left": 545.4593151721105,
+     "right": 878.5791310011884,
+     "top": 667.8667101550989,
+     "bottom": 732.3547963306279
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 438.91061368787405,
+    "bao": 834.2930184727264
+   },
+   "bandShare": 0.47406170677157805
+  },
+  {
+   "frame": 19,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 316.46135480378257
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 428.31775834789596
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 404.03697928844383
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 37.947567310421846
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 113.52481143251612
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 326.00178217887185
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 136.18787759450151
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 399.6595930391992
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -307.23183044903476
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -695.4379706144989
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -380.8896413093621
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -506.1646433676474
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 428.31775834789596
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 37.947567310421846
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 501.9755692082233
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 113.76942904275916
+    }
+   ],
+   "edgeMarginPixels": 210.13212698419363,
+   "rects": {
+    "ana": {
+     "left": 210.62278212033237,
+     "right": 461.027987776111,
+     "top": 1132.2577484162682,
+     "bottom": 1572.7908220752195
+    },
+    "bao": {
+     "left": 574.5527992086271,
+     "right": 829.3300936100371,
+     "top": 744.0516082508041,
+     "bottom": 1575.9349835152343
+    },
+    "wall": {
+     "left": -454.6246586391339,
+     "right": 1273.9048523042502,
+     "top": 226.43351200942166,
+     "bottom": 1439.489578865303
+    },
+    "sign": {
+     "left": 241.45709548738435,
+     "right": 673.5881128954082,
+     "top": 357.80977502104525,
+     "bottom": 630.2821792080449
+    },
+    "ana-label": {
+     "left": 230.7956014796783,
+     "right": 438.3649216141256,
+     "top": 1058.5999375559409,
+     "bottom": 1123.0282240615204
+    },
+    "bao-label": {
+     "left": 536.9739557974079,
+     "right": 869.8678730158064,
+     "top": 668.2297465184668,
+     "bottom": 732.598155377069
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 440.53307365895125,
+    "bao": 831.8833752644302
+   },
+   "bandShare": 0.4727631442691498
+  },
+  {
+   "frame": 20,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 323.90168474866414
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 428.8223117122684
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 381.10394279640616
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 37.85712440548116
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 113.8486161007088
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 326.7165319145399
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 136.99506242853448
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 400.44331685161706
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -314.75091922779984
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -675.6577508974575
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -388.47770416487697
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -515.5109883031927
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 428.8223117122684
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 37.85712440548116
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 502.54909664934553
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 113.59493863772423
+    }
+   ],
+   "edgeMarginPixels": 201.18261308955917,
+   "rects": {
+    "ana": {
+     "left": 201.18261308955917,
+     "right": 452.6292329575318,
+     "top": 1133.269369150731,
+     "bottom": 1575.4995953423936
+    },
+    "bao": {
+     "left": 566.4778490582406,
+     "right": 820.2872745167623,
+     "top": 744.3152111391098,
+     "bottom": 1573.9124594883401
+    },
+    "wall": {
+     "left": -488.05429244544325,
+     "right": 1242.1355999556981,
+     "top": 217.31506399592135,
+     "bottom": 1448.020288378531
+    },
+    "sign": {
+     "left": 221.0630913344951,
+     "right": 652.8177171081647,
+     "top": 355.2789206241943,
+     "bottom": 630.7202725013856
+    },
+    "ana-label": {
+     "left": 221.7118681938146,
+     "right": 429.48278662970614,
+     "top": 1059.542584213654,
+     "bottom": 1124.1186036298668
+    },
+    "bao-label": {
+     "left": 528.3550572586893,
+     "right": 861.031657159292,
+     "top": 668.5773969068667,
+     "bottom": 732.826052299114
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 442.2302261916625,
+    "bao": 829.5972483492303
+   },
+   "bandShare": 0.47235531168517025
+  },
+  {
+   "frame": 21,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 331.777347766297
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 429.4482699091849
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 358.4582873572433
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 37.825404169026115
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 113.70983934999191
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 327.49378354252167
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 137.39828246914834
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 401.2905237268226
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -322.70454632196015
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -652.3681109371702
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -396.50128650626107
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -525.3667833784091
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 429.4482699091849
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 37.825404169026115
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 503.2450100934858
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 113.48001646277532
+    }
+   ],
+   "edgeMarginPixels": 191.96945674303677,
+   "rects": {
+    "ana": {
+     "left": 191.96945674303677,
+     "right": 444.4591422981471,
+     "top": 1134.3288024719927,
+     "bottom": 1578.3256098918241
+    },
+    "bao": {
+     "left": 558.168981648139,
+     "right": 811.0263666092656,
+     "top": 744.5638088412823,
+     "bottom": 1571.9983810143297
+    },
+    "wall": {
+     "left": -521.6647395753508,
+     "right": 1210.5370925853092,
+     "top": 207.671495366761,
+     "bottom": 1457.0333487939529
+    },
+    "sign": {
+     "left": 200.73867333950994,
+     "right": 632.0279568334706,
+     "top": 352.56663472702206,
+     "bottom": 631.0837923785069
+    },
+    "ana-label": {
+     "left": 212.79400427735231,
+     "right": 420.7706991789907,
+     "top": 1060.5320622876918,
+     "bottom": 1125.2560010276559
+    },
+    "bao-label": {
+     "left": 519.6102789144825,
+     "right": 852.0788052280659,
+     "top": 668.909196547533,
+     "bottom": 733.0382787451701
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 443.9968074198314,
+    "bao": 827.4345721730474
+   },
+   "bandShare": 0.4736543819501516
+  },
+  {
+   "frame": 22,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 340.03882290101296
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 430.1950979731271
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 336.0866381633832
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 37.85206231781979
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 113.39180390721981
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 328.3331099295035
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 137.5207967775325
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 402.2025363569471
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -331.04121504433374
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -629.3459638074676
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -404.91064147177735
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -535.6802803167243
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 430.1950979731271
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 37.85206231781979
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 504.0645244005707
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 113.42461423632346
+    }
+   ],
+   "edgeMarginPixels": 182.7599799476493,
+   "rects": {
+    "ana": {
+     "left": 182.7599799476493,
+     "right": 436.3664367479712,
+     "top": 1135.43757905134,
+     "bottom": 1581.2996717651022
+    },
+    "bao": {
+     "left": 549.758240655191,
+     "right": 801.8877246967637,
+     "top": 744.7976688870928,
+     "bottom": 1570.2243049721203
+    },
+    "wall": {
+     "left": -555.4502909102979,
+     "right": 1179.1042044626586,
+     "top": 197.55476237766857,
+     "bottom": 1466.4787940956737
+    },
+    "sign": {
+     "left": 180.4908173846467,
+     "right": 611.2225931061456,
+     "top": 349.67064888187855,
+     "bottom": 631.3730546507693
+    },
+    "ana-label": {
+     "left": 204.05138122774585,
+     "right": 412.2374438776585,
+     "top": 1061.5681526238964,
+     "bottom": 1126.4399711946608
+    },
+    "bao-label": {
+     "left": 510.7471883009665,
+     "right": 843.0175662992754,
+     "top": 669.2251169685891,
+     "bottom": 733.2350426943929
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 445.8620927137622,
+    "bao": 825.4266360850276
+   },
+   "bandShare": 0.4750388306231839
+  },
+  {
+   "frame": 23,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 348.7020861948304
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 431.0622356122219
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 313.97537213610326
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 37.93673941341024
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 112.61243094802984
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 329.2344927052452
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 137.3643346513096
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 403.1709977048258
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -339.78516354209523
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -606.575119523504
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -413.72166854167585
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -546.4694142619221
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 431.0622356122219
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 37.93673941341024
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 504.99874061180253
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 113.42684562059799
+    }
+   ],
+   "edgeMarginPixels": 173.83496822523009,
+   "rects": {
+    "ana": {
+     "left": 173.83496822523009,
+     "right": 428.6438315421405,
+     "top": 1136.5870517027477,
+     "bottom": 1584.357295768518
+    },
+    "bao": {
+     "left": 541.2562624901703,
+     "right": 792.5978086644868,
+     "top": 745.0151567115431,
+     "bottom": 1568.5289672867725
+    },
+    "wall": {
+     "left": -589.4033384774336,
+     "right": 1147.8313820136743,
+     "top": 186.9466397359997,
+     "bottom": 1476.372215244843
+    },
+    "sign": {
+     "left": 160.32699596026129,
+     "right": 590.4052717896939,
+     "top": 346.5885634501242,
+     "bottom": 631.5883110909451
+    },
+    "ana-label": {
+     "left": 195.4936145061594,
+     "right": 403.89192783886074,
+     "top": 1062.650546703167,
+     "bottom": 1127.6701290500125
+    },
+    "bao-label": {
+     "left": 501.7733141526697,
+     "right": 833.8560098775711,
+     "top": 669.5250505043554,
+     "bottom": 733.4160539979218
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 447.7702440657704,
+    "bao": 823.5138105752294
+   },
+   "bandShare": 0.4764751277417514
+  },
+  {
+   "frame": 24,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 357.78385119728114
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 432.04931731534225
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 292.11046219252853
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 38.07889579548794
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 111.41400169102798
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 330.197681405043
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 136.70458259325648
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 404.20339764520656
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -348.94513641937897
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -584.2649540841651
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -422.95085265954253
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -557.7534033059559
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 432.04931731534225
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 38.07889579548794
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 506.0550335555058
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 113.487966004295
+    }
+   ],
+   "edgeMarginPixels": 165.03062790580978,
+   "rects": {
+    "ana": {
+     "left": 165.03062790580978,
+     "right": 421.0337409132115,
+     "top": 1137.7847828829943,
+     "bottom": 1587.593532090392
+    },
+    "bao": {
+     "left": 532.4477426042395,
+     "right": 783.1153974663187,
+     "top": 745.2177153317834,
+     "bottom": 1567.0051294068658
+    },
+    "wall": {
+     "left": -623.51413699928,
+     "right": 1116.7126966884045,
+     "top": 175.82798193183177,
+     "bottom": 1486.7299193023732
+    },
+    "sign": {
+     "left": 140.25521826922184,
+     "right": 569.5795500795707,
+     "top": 343.31785081153373,
+     "bottom": 631.7297493274884
+    },
+    "ana-label": {
+     "left": 187.1303797518189,
+     "right": 395.743160010983,
+     "top": 1063.7790666428307,
+     "bottom": 1128.946068105092
+    },
+    "bao-label": {
+     "left": 492.6960789469669,
+     "right": 824.602234495876,
+     "top": 669.8086451229764,
+     "bottom": 733.5813852377877
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 449.8087492073978,
+    "bao": 821.7874140750823
+   },
+   "bandShare": 0.47801296196219567
+  },
+  {
+   "frame": 25,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 367.30176577284374
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 433.15583926966303
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 270.47776902260296
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 38.27825545850499
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 109.99050804541469
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 331.22246824596425
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 135.84473759130356
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 405.2984121446776
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -358.5396609277991
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -562.0968287945045
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -432.6156048265125
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -569.5521628437359
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 433.15583926966303
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 38.27825545850499
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 507.2317831683764
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 113.60758695198263
+    }
+   ],
+   "edgeMarginPixels": 156.39466092158884,
+   "rects": {
+    "ana": {
+     "left": 156.39466092158884,
+     "right": 413.6545549763151,
+     "top": 1139.029275938232,
+     "bottom": 1590.894484985392
+    },
+    "bao": {
+     "left": 523.6450630217298,
+     "right": 773.6926420195363,
+     "top": 745.4050797218383,
+     "bottom": 1565.5458854236106
+    },
+    "wall": {
+     "left": -657.7705372881508,
+     "right": 1085.7418918162343,
+     "top": 164.17870094981862,
+     "bottom": 1497.5689368660312
+    },
+    "sign": {
+     "left": 120.28407205242407,
+     "right": 548.7489226647851,
+     "top": 339.8558591310766,
+     "bottom": 631.7974927698557
+    },
+    "ana-label": {
+     "left": 178.97154277056805,
+     "right": 387.80032543042626,
+     "top": 1064.9533320395187,
+     "bottom": 1130.2671710931875
+    },
+    "bao-label": {
+     "left": 483.52286423429587,
+     "right": 815.2641227936314,
+     "top": 670.0757482283607,
+     "bottom": 733.7308637935545
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 451.86520904715985,
+    "bao": 820.1408057017723
+   },
+   "bandShare": 0.4795930920609538
+  },
+  {
+   "frame": 26,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 377.2740754897736
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 434.3814354272745
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 249.06289733636254
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 38.534694604357924
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 107.94699966257718
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 332.3085103770021
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 134.4377014915068
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 406.4494761896234
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -368.5930239195993
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -540.4020072352304
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -442.7339897322206
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -580.6513937805528
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 434.3814354272745
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 38.534694604357924
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 508.52240123989577
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 113.78450278980267
+    }
+   ],
+   "edgeMarginPixels": 148.07123705594032,
+   "rects": {
+    "ana": {
+     "left": 148.07123705594032,
+     "right": 406.5634171966097,
+     "top": 1140.3140018011825,
+     "bottom": 1594.3727132531235
+    },
+    "bao": {
+     "left": 514.5104168591869,
+     "right": 764.2270257138896,
+     "top": 745.5761033510894,
+     "bottom": 1564.2584926115146
+    },
+    "wall": {
+     "left": -692.1576883748338,
+     "right": 1054.9124240944172,
+     "top": 151.977746898556,
+     "bottom": 1508.9070257207818
+    },
+    "sign": {
+     "left": 100.42276721590841,
+     "right": 528.0003550872834,
+     "top": 336.19981675830195,
+     "bottom": 631.7916005612867
+    },
+    "ana-label": {
+     "left": 171.02714990062026,
+     "right": 380.0727153676801,
+     "top": 1066.1730359885612,
+     "bottom": 1131.6329502310082
+    },
+    "bao-label": {
+     "left": 474.26103031386447,
+     "right": 805.8495267580547,
+     "top": 670.3262951656446,
+     "bottom": 733.8645256115591
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 454.058711451941,
+    "bao": 818.6823892604252
+   },
+   "bandShare": 0.48127417608722856
+  },
+  {
+   "frame": 27,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 387.7423997956696
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 435.7257505702655
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 227.85137177718934
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 38.84800898931974
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 105.77713750073349
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 333.45545467035595
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 132.79549844671396
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 407.66342256359485
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -379.1394041738474
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -518.8522691378987
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -453.3473720670863
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -559.2997144302078
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 435.7257505702655
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 38.84800898931974
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 509.9337184635044
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 114.0200119042637
+    }
+   ],
+   "edgeMarginPixels": 139.76396702936668,
+   "rects": {
+    "ana": {
+     "left": 139.76396702936668,
+     "right": 399.58809365059113,
+     "top": 1141.6457860202124,
+     "bottom": 1597.9286846811046
+    },
+    "bao": {
+     "left": 505.3652311513246,
+     "right": 754.593248479343,
+     "top": 745.7320794609717,
+     "bottom": 1563.0519315315503
+    },
+    "wall": {
+     "left": -726.6577049677255,
+     "right": 1024.2175002892234,
+     "top": 139.1788099569179,
+     "bottom": 1520.7851901940599
+    },
+    "sign": {
+     "left": 80.68118133240472,
+     "right": 507.3143234055363,
+     "top": 332.3468373420981,
+     "bottom": 631.712067556708
+    },
+    "ana-label": {
+     "left": 163.30736774470196,
+     "right": 372.56973270461066,
+     "top": 1067.4378181269735,
+     "bottom": 1133.0427903983903
+    },
+    "bao-label": {
+     "left": 464.9177858590156,
+     "right": 796.366128512034,
+     "top": 670.5600765460277,
+     "bottom": 733.9823634566176
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 456.2828986608922,
+    "bao": 817.3198520705786
+   },
+   "bandShare": 0.4830044834036859
+  },
+  {
+   "frame": 28,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 398.9564037734251
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 437.18833536566615
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 206.82853179843426
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 39.21830134506558
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 103.21554449580111
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 334.66288040984637
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 130.94534068941073
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 408.93673790926005
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -390.43141111155614
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -497.40384079112124
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -464.7052686109698
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -538.1496831088522
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 437.18833536566615
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 39.21830134506558
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 511.4621928650798
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 114.31359474627072
+    }
+   ],
+   "edgeMarginPixels": 131.79792141693966,
+   "rects": {
+    "ana": {
+     "left": 131.79792141693966,
+     "right": 393.03072438255435,
+     "top": 1143.0210171897222,
+     "bottom": 1601.6269189123873
+    },
+    "bao": {
+     "left": 496.24626887835547,
+     "right": 744.9532379184963,
+     "top": 745.8724190709131,
+     "bottom": 1561.9872053724375
+    },
+    "wall": {
+     "left": -761.2492965333663,
+     "right": 993.6501096694767,
+     "top": 125.51064535438488,
+     "bottom": 1533.4524283012784
+    },
+    "sign": {
+     "left": 61.069907080589275,
+     "right": 486.6339539032632,
+     "top": 328.29392575166173,
+     "bottom": 631.5588243246424
+    },
+    "ana-label": {
+     "left": 155.82247411486262,
+     "right": 365.30092818894474,
+     "top": 1068.7471596903085,
+     "bottom": 1134.4960245278533
+    },
+    "bao-label": {
+     "left": 455.50042656062453,
+     "right": 786.8215778710425,
+     "top": 670.777125669708,
+     "bottom": 734.0842792804622
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 458.60590172266507,
+    "bao": 816.1147863015244
+   },
+   "bandShare": 0.4848176006472288
+  },
+  {
+   "frame": 29,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 410.7019163629386
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 438.768944305521
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 185.97960306372113
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 39.64546721677766
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 100.27246247532582
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 335.9305505129354
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 128.62411740322796
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 410.26607317703395
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -402.25766872864256
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -476.30296448074495
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -476.5931913927411
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -517.1869457253076
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 438.768944305521
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 39.64546721677766
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 513.1044669696196
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 114.66485696555424
+    }
+   ],
+   "edgeMarginPixels": 124.02328816614258,
+   "rects": {
+    "ana": {
+     "left": 124.02328816614258,
+     "right": 386.62762568312706,
+     "top": 1144.4362041428383,
+     "bottom": 1605.4326200714947
+    },
+    "bao": {
+     "left": 486.9000881584529,
+     "right": 735.3806563065109,
+     "top": 745.9965941387729,
+     "bottom": 1561.0342837903752
+    },
+    "wall": {
+     "left": -795.9073539770892,
+     "right": 963.2030526391978,
+     "top": 111.20190767432871,
+     "bottom": 1546.6938728714808
+    },
+    "sign": {
+     "left": 41.60030167362381,
+     "right": 465.9628761969384,
+     "top": 324.03798490311766,
+     "bottom": 631.3317371732187
+    },
+    "ana-label": {
+     "left": 148.58298000207793,
+     "right": 358.27597075522493,
+     "top": 1070.1006814787397,
+     "bottom": 1135.9919565085422
+    },
+    "bao-label": {
+     "left": 446.01610691389027,
+     "right": 777.2234495754767,
+     "top": 670.9772043899964,
+     "bottom": 734.1701309658043
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 460.99641592865646,
+    "bao": 815.0376896516022
+   },
+   "bandShare": 0.4866955290007804
+  },
+  {
+   "frame": 30,
+   "outlines": {
+    "ana-label / wall": {
+     "state": "inside",
+     "marginPixels": 423.0016137961825
+    },
+    "ana-label / sign": {
+     "state": "outside",
+     "marginPixels": 440.4672292516789
+    },
+    "bao-label / wall": {
+     "state": "inside",
+     "marginPixels": 165.28969551672515
+    },
+    "bao-label / sign": {
+     "state": "outside",
+     "marginPixels": 40.12964129754664
+    }
+   },
+   "gaps": [
+    {
+     "pair": "ana / bao",
+     "gapPixels": 96.96972741189097
+    },
+    {
+     "pair": "ana-label / bao-label",
+     "gapPixels": 337.2577581540244
+    },
+    {
+     "pair": "ana-label / bao",
+     "gapPixels": 125.97778337731165
+    },
+    {
+     "pair": "bao-label / ana",
+     "gapPixels": 411.6564722283812
+    },
+    {
+     "pair": "ana / wall",
+     "gapPixels": -414.6348431705653
+    },
+    {
+     "pair": "bao / wall",
+     "gapPixels": -455.38651299812085
+    },
+    {
+     "pair": "ana-label / wall",
+     "gapPixels": -489.0335572449221
+    },
+    {
+     "pair": "bao-label / wall",
+     "gapPixels": -496.39699676878155
+    },
+    {
+     "pair": "ana-label / sign",
+     "gapPixels": 440.4672292516789
+    },
+    {
+     "pair": "bao-label / sign",
+     "gapPixels": 40.12964129754664
+    },
+    {
+     "pair": "ana / sign",
+     "gapPixels": 514.8659433260357
+    },
+    {
+     "pair": "bao / sign",
+     "gapPixels": 115.07499672921722
+    }
+   ],
+   "edgeMarginPixels": 116.4498524688806,
+   "rects": {
+    "ana": {
+     "left": 116.4498524688806,
+     "right": 380.5127255787614,
+     "top": 1145.896551527632,
+     "bottom": 1609.343774422222
+    },
+    "bao": {
+     "left": 477.48245299065235,
+     "right": 725.66315984053,
+     "top": 746.1056049308136,
+     "bottom": 1560.1934464009328
+    },
+    "wall": {
+     "left": -830.6024895906472,
+     "right": 932.8689659887732,
+     "top": 96.22606503930484,
+     "bottom": 1560.5313946981973
+    },
+    "sign": {
+     "left": 22.284538314243044,
+     "right": 445.3047864629753,
+     "top": 319.57582360039044,
+     "bottom": 631.0306082015964
+    },
+    "ana-label": {
+     "left": 141.59938358902946,
+     "right": 351.5046696133407,
+     "top": 1071.4978374532752,
+     "bottom": 1137.5297809020149
+    },
+    "bao-label": {
+     "left": 436.47196921999165,
+     "right": 767.579270472048,
+     "top": 671.160249499143,
+     "bottom": 734.2400792992509
+    }
+   },
+   "characterHeightPixels": {
+    "ana": 463.4472228945899,
+    "bao": 814.0878414701192
+   },
+   "bandShare": 0.4886372525641036
+  }
+ ]
+}
