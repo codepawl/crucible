@@ -10,13 +10,13 @@ const SHEET_GROUPS = Object.freeze([
   Object.freeze({ title: 'File', icon: 'save' }),
   Object.freeze({ title: 'History', icon: 'undo' }),
   Object.freeze({ title: 'Selection', icon: 'check' }),
+  Object.freeze({ title: 'Mouse', icon: 'select' }),
   Object.freeze({ title: 'Clipboard and objects', icon: 'duplicate' }),
   Object.freeze({ title: 'Transform and tools', icon: 'translate' }),
   Object.freeze({ title: 'View', icon: 'camera' }),
   Object.freeze({ title: 'Animation', icon: 'keyframe' }),
   Object.freeze({ title: 'Mesh editing', icon: 'meshVertex' }),
   Object.freeze({ title: 'Holding an object', icon: 'handle' }),
-  Object.freeze({ title: 'Mouse', icon: 'select' }),
   Object.freeze({ title: 'Help and settings', icon: 'help' }),
 ]);
 
@@ -79,9 +79,9 @@ export function shortcutSheetGroups(keymap) {
     rowsByGroup.get(title).push({ label, keys: keysOfAction(keymap, item.id, item.bindings.length) });
   }
   rowsByGroup.get('Mouse').push(
-    { label: 'Add or remove an object from the selection', keys: 'Shift + click' },
+    { label: 'Add or remove from the selection', keys: 'Shift + click' },
     { label: 'Snap to a step or an angle', keys: 'Shift + drag' },
-    { label: 'Menu of the object under the pointer', keys: 'Right click' },
+    { label: 'Object menu', keys: 'Right click' },
     { label: 'Scrub a number', keys: 'Drag X, Y or Z' },
     ...mouseRows(keymap).map(({ label, keys }) => ({ label, keys })),
   );
@@ -90,22 +90,39 @@ export function shortcutSheetGroups(keymap) {
     .filter(group => group.rows.length > 0);
 }
 
-/** Splits the groups into two columns of about equal height, keeping their order and never cutting a group. */
-export function balanceSheetColumns(groups) {
-  const weight = group => group.rows.length + 2;
-  const total = groups.reduce((sum, group) => sum + weight(group), 0);
-  let running = 0;
-  let splitIndex = groups.length;
-  let bestGap = Infinity;
-  groups.forEach((group, index) => {
-    running += weight(group);
-    const gap = Math.abs(total - running - running);
-    if (gap < bestGap) {
-      bestGap = gap;
-      splitIndex = index + 1;
+/** How many columns the sheet takes in a window this wide: three when the dialog can be wide, one when it must stack. */
+export function sheetColumnCount(windowWidth) {
+  if (windowWidth >= 1000) return 3;
+  return windowWidth > 760 ? 2 : 1;
+}
+
+/** Splits the groups into `columnCount` columns, keeping their order and never cutting a group, so the tallest column is as short as it can be. */
+export function balanceSheetColumns(groups, columnCount = 2) {
+  const weight = group => group.rows.length + 1;
+  const heightOf = (from, to) => groups.slice(from, to).reduce((sum, group) => sum + weight(group), 0);
+  let best = null;
+  const search = (cuts, from) => {
+    if (cuts.length === columnCount - 1) {
+      const bounds = [0, ...cuts, groups.length];
+      const tallest = Math.max(...bounds.slice(1).map((end, index) => heightOf(bounds[index], end)));
+      if (best === null || tallest < best.tallest) best = { tallest, bounds };
+      return;
     }
-  });
-  return [groups.slice(0, splitIndex), groups.slice(splitIndex)];
+    for (let cut = from; cut <= groups.length; cut += 1) search([...cuts, cut], cut);
+  };
+  search([], 0);
+  return best.bounds.slice(1).map((end, index) => groups.slice(best.bounds[index], end));
+}
+
+/** Marks `element` with data-more while rows are hidden below its visible part, so a fade can say that it scrolls. */
+export function watchScrolledToEnd(element) {
+  const sync = () => {
+    const hidden = (element.scrollHeight ?? 0) - (element.clientHeight ?? 0) - (element.scrollTop ?? 0);
+    if (hidden > 1) element.dataset.more = 'true';
+    else delete element.dataset.more;
+  };
+  element.addEventListener('scroll', sync);
+  return sync;
 }
 
 /** Opens the Studio guide through the host's `openExternal` hook, or in a new tab that cannot reach back into Studio. */

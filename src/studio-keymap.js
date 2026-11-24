@@ -59,7 +59,7 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('mesh.vertexMode', 'Select vertices', 'Edit mode', 'mesh', binding('1')),
   action('mesh.edgeMode', 'Select edges', 'Edit mode', 'mesh', binding('2')),
   action('mesh.faceMode', 'Select faces', 'Edit mode', 'mesh', binding('3')),
-  action('mesh.noop', 'Keys that act on the whole object', 'Edit mode', 'mesh', binding('x'), binding('Delete'), binding('Backspace')),
+  action('mesh.noop', 'Whole object keys', 'Edit mode', 'mesh', binding('x'), binding('Delete'), binding('Backspace')),
   action('modal.place', 'Place', 'Holding an object', 'modal', binding('Enter'), binding(' ')),
   action('modal.cancel', 'Put back', 'Holding an object', 'modal', binding('Escape')),
   action('modal.axisX', 'Keep to the X axis', 'Holding an object', 'modal', binding('x')),

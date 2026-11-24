@@ -15,7 +15,7 @@ import { encodePackOrRefuse } from './studio-pack-refusal.js';
 import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shaders.js';
 import { STUDIO_CSS } from './studio-styles.js';
 import { findKeymapAction, findMouseNavigation, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset } from './studio-keymap.js';
-import { balanceSheetColumns, openStudioGuide, shortcutSheetGroups } from './studio-help.js';
+import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrolledToEnd } from './studio-help.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
 import { detectStudioHardware, gatherStudioHardwareInputs, rendererChangeFor, resolveStudioPerformanceTier, studioViewportSettingsFor } from './studio-hardware.js';
@@ -1522,7 +1522,7 @@ export function createStudio(container, {
   const helpPopover = createMenuPopover(
     'crucible-studio-pop-help',
     createMenuItem('Keyboard shortcuts', 'help.shortcuts', () => showShortcutsSheet(helpMenuButton), 'keyboard'),
-    createMenuItem('Documentation', '', () => openStudioGuide({ openExternal, windowReference: documentReference.defaultView }), 'help'),
+    createMenuItem('Documentation', '', () => openStudioGuide({ openExternal, windowReference: documentReference.defaultView }), 'book'),
     createMenuItem('Set up Studio…', '', () => openSetup(), 'settings'),
     createMenuItem('Save diagnostics report', '', () => saveDiagnosticsReport(), 'saveAs'),
   );
@@ -2595,7 +2595,9 @@ export function createStudio(container, {
     )),
   );
   function fillShortcutsGrid() {
-    const columns = balanceSheetColumns(shortcutSheetGroups(keymap));
+    const columnCount = sheetColumnCount(documentReference.defaultView?.innerWidth ?? 1280);
+    shortcutsDialog.dataset.columns = String(columnCount);
+    const columns = balanceSheetColumns(shortcutSheetGroups(keymap), columnCount);
     shortcutsGrid.replaceChildren(...columns.map(columnGroups => createElement(
       documentReference,
       'div',
@@ -2603,7 +2605,6 @@ export function createStudio(container, {
       ...columnGroups.map(createShortcutGroup),
     )));
   }
-  fillShortcutsGrid();
   const shortcutsDialog = createElement(
     documentReference,
     'dialog',
@@ -2611,12 +2612,16 @@ export function createStudio(container, {
     createElement(documentReference, 'div', { className: 'crucible-studio-shortcuts-head' }, shortcutsHeading, shortcutsCloseButton),
     shortcutsGrid,
   );
+  fillShortcutsGrid();
+  const syncShortcutsFade = watchScrolledToEnd(shortcutsGrid);
   shortcutsCloseButton.addEventListener('click', () => shortcutsDialog.close());
   // The sheet opened from the Help menu gives the focus back to that button when it closes.
   let shortcutsFocusTarget = null;
   function showShortcutsSheet(returnFocusTo = null) {
     shortcutsFocusTarget = returnFocusTo;
+    fillShortcutsGrid();
     shortcutsDialog.showModal();
+    syncShortcutsFade();
   }
   shortcutsDialog.addEventListener('close', () => {
     shortcutsDialog.returnValue = '';

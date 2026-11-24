@@ -2,7 +2,8 @@ import './support/load-agent-scene-modules.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createStudio } from '../src/studio.js';
-import { balanceSheetColumns, openStudioGuide, shortcutSheetGroups, STUDIO_GUIDE_URL } from '../src/studio-help.js';
+import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, STUDIO_GUIDE_URL, watchScrolledToEnd } from '../src/studio-help.js';
+import { STUDIO_ICON_PATHS } from '../src/studio-icons.js';
 import { DEFAULT_KEYMAP_ACTIONS, keyLabel, resolveKeymap, resolveKeymapPreset } from '../src/studio-keymap.js';
 import { byText, createFakeRenderer, dispatch, installStudioDom } from './support/studio-dom.mjs';
 
@@ -85,8 +86,8 @@ test('the groups follow what a person is doing, each with a few rows, in two bal
   for (const group of groups) assert.ok(group.rows.length >= 2 && group.rows.length <= 8, `${group.title} has ${group.rows.length} rows`);
   const [left, right] = balanceSheetColumns(groups);
   assert.deepEqual([...left, ...right].map(group => group.title), names, 'order kept, no group cut or lost');
-  const height = column => column.reduce((sum, group) => sum + group.rows.length + 2, 0);
-  assert.ok(Math.abs(height(left) - height(right)) <= 10);
+  const height = column => column.reduce((sum, group) => sum + group.rows.length + 1, 0);
+  assert.ok(Math.abs(height(left) - height(right)) <= 8);
 });
 
 test('a rebound key shows its new label on the sheet', testContext => {
@@ -137,4 +138,41 @@ test('Documentation hands the guide address to the host, or opens a tab that can
 
 test('openStudioGuide does nothing harmful when no window or host exists', () => {
   assert.equal(openStudioGuide({}), null);
+});
+
+test('the sheet takes three columns in a wide window and one in a narrow one, and the tallest column is as short as it can be', () => {
+  assert.equal(sheetColumnCount(1280), 3);
+  assert.equal(sheetColumnCount(900), 2);
+  assert.equal(sheetColumnCount(720), 1);
+  const groups = shortcutSheetGroups(resolveKeymap());
+  const columns = balanceSheetColumns(groups, 3);
+  assert.equal(columns.length, 3);
+  assert.deepEqual(columns.flat().map(group => group.title), groups.map(group => group.title));
+  const height = column => column.reduce((sum, group) => sum + group.rows.length + 1, 0);
+  const total = groups.reduce((sum, group) => sum + group.rows.length + 1, 0);
+  assert.ok(Math.max(...columns.map(height)) <= Math.ceil(total / 3) + 3);
+});
+
+test('no sheet label is long enough to wrap in a third of the dialog, and Documentation leads with a book', testContext => {
+  for (const presetId of ['crucible', 'maya', 'cinema4d']) {
+    for (const row of shortcutSheetGroups(resolveKeymapPreset(presetId)).flatMap(group => group.rows)) {
+      assert.ok(row.label.length + row.keys.length <= 52, `${presetId}: "${row.label}" is too long for one line`);
+    }
+  }
+  const ui = mountStudio(testContext);
+  const bookPath = STUDIO_ICON_PATHS.book;
+  assert.equal(byText(ui.helpMenu, 'Documentation').querySelector('path').getAttribute('d'), bookPath);
+  assert.notEqual(bookPath, STUDIO_ICON_PATHS.help);
+});
+
+test('the sheet marks that rows are hidden below until it is scrolled to the end', () => {
+  const body = new EventTarget();
+  body.dataset = {};
+  Object.assign(body, { scrollHeight: 600, clientHeight: 300, scrollTop: 0 });
+  const sync = watchScrolledToEnd(body);
+  sync();
+  assert.equal(body.dataset.more, 'true');
+  body.scrollTop = 300;
+  body.dispatchEvent(new Event('scroll'));
+  assert.equal(body.dataset.more, undefined);
 });

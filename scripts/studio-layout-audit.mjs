@@ -178,7 +178,8 @@ const FAKE_POINTER_LOCK_SCRIPT = () => {
 
 export async function launchBrowser() {
   const { chromium } = await import('playwright');
-  const options = { headless: true, args: process.platform === 'win32' ? GPU_ARGUMENTS : SOFTWARE_ARGUMENTS };
+  // Headless Chrome hides scrollbars by default; a person sees them, so the audit does too.
+  const options = { headless: true, ignoreDefaultArgs: ['--hide-scrollbars'], args: process.platform === 'win32' ? GPU_ARGUMENTS : SOFTWARE_ARGUMENTS };
   if (CHROME_PATH && existsSync(CHROME_PATH)) return chromium.launch({ ...options, executablePath: CHROME_PATH });
   return chromium.launch(options).catch(() => chromium.launch({ ...options, channel: 'chrome' }));
 }
@@ -287,7 +288,14 @@ function probeShortcutSheet() {
   const surfaceLuminance = luminance(toRgb(style.backgroundColor));
   const contrast = (Math.max(textLuminance, surfaceLuminance) + 0.05) / (Math.min(textLuminance, surfaceLuminance) + 0.05);
   if (contrast < 4.5) problems.push('The key text contrast is ' + contrast.toFixed(2) + ':1: it must be 4.5:1 or more.');
-  return { problems, numbers: { padding: insets[0], headGap, rowGap, groupGap, contrast: Number(contrast.toFixed(2)) } };
+  const scrollBody = dialog.querySelector('.crucible-studio-shortcuts');
+  const scrolls = scrollBody.scrollHeight > scrollBody.clientHeight;
+  if (scrolls && scrollBody.offsetWidth - scrollBody.clientWidth <= 0) problems.push('The sheet scrolls but shows no scrollbar track: keep scrollbar-gutter stable and the thin scrollbar.');
+  if (scrolls && scrollBody.scrollTop === 0 && scrollBody.dataset.more !== 'true') problems.push('The sheet has rows below but shows no fade at its bottom edge.');
+  const tallRows = Array.from(dialog.querySelectorAll('.crucible-studio-shortcut-item')).filter(row => row.getBoundingClientRect().height > 20);
+  if (tallRows.length > 0) problems.push('These sheet rows wrap to more than one line: ' + tallRows.map(row => row.textContent).join(', ') + '.');
+  const columnCount = dialog.querySelectorAll('.crucible-studio-shortcut-column').length;
+  return { problems, numbers: { padding: insets[0], headGap, rowGap, groupGap, contrast: Number(contrast.toFixed(2)), columns: columnCount, scrolls } };
 }
 
 // With a short window the sheet scrolls inside itself: the last group is reachable and the title row with the close button stays in view.

@@ -2466,12 +2466,21 @@ export const STUDIO_CSS = `
   min-block-size: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--studio-text) 38%, transparent) transparent;
   font-size: 12.5px;
 }
+/* Rows are hidden below: the bottom edge fades out, and the fade goes when the end is reached. */
+.crucible-studio-shortcuts[data-more="true"] {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--studio-space-24) * 2), transparent);
+}
+.crucible-studio-shortcuts-dialog[data-columns="3"] .crucible-studio-shortcuts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.crucible-studio-shortcuts-dialog[data-columns="1"] .crucible-studio-shortcuts { grid-template-columns: minmax(0, 1fr); }
 .crucible-studio-shortcut-column {
   display: flex;
   flex-direction: column;
-  gap: var(--studio-space-24);
+  gap: var(--studio-space-16);
 }
 .crucible-studio-shortcut-group {
   display: flex;
@@ -2485,6 +2494,8 @@ export const STUDIO_CSS = `
   margin: 0;
   font-family: var(--studio-font-heading);
   font-size: 13px;
+  font-weight: 700;
+  color: var(--studio-text);
 }
 .crucible-studio-shortcut-group h3 .crucible-studio-icon {
   inline-size: 16px;
@@ -2495,15 +2506,14 @@ export const STUDIO_CSS = `
   justify-content: space-between;
   align-items: baseline;
   gap: var(--studio-space-8);
+  font-weight: 400;
+  color: color-mix(in srgb, var(--studio-text) 84%, var(--studio-muted));
 }
 .crucible-studio-shortcut-keys {
   color: var(--studio-muted);
   flex: none;
   text-align: end;
   white-space: nowrap;
-}
-@media (max-width: 760px) {
-  .crucible-studio-shortcuts { grid-template-columns: minmax(0, 1fr); }
 }
 .crucible-studio kbd {
   padding: 2px 8px;
@@ -2517,6 +2527,9 @@ export const STUDIO_CSS = `
 .crucible-studio dialog.crucible-studio-shortcuts-dialog {
   width: min(680px, calc(100vw - 32px));
   padding: var(--studio-space-24);
+}
+.crucible-studio dialog.crucible-studio-shortcuts-dialog[data-columns="3"] {
+  width: min(960px, calc(100vw - 32px));
 }
 .crucible-studio dialog.crucible-studio-shortcuts-dialog[open] {
   display: flex;
