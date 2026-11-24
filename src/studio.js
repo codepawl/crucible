@@ -8,6 +8,7 @@ import { VIEW_TRANSFORM_NAMES } from './view-transform-names.js';
 import { CrucibleRenderer, studioFloorHeight } from './renderer.js';
 import { ProgramNotReady, isLinkComplete, setPreparing } from './gl-program.js';
 import { exportGlb } from './export.js';
+import { createExportPanel, dataUrlByteLength, formatFileSize } from './studio-export.js';
 import { encodePack } from './scene-pack-format.js';
 import { checkImageBudget } from './scene-pack-limits.js';
 import { packedSkyOf } from './scene-pack-sky.js';
@@ -104,12 +105,13 @@ function matchingViewChip(camera) {
 const STUDIO_STYLE_ID = 'crucible-studio-styles';
 const COMPACT_WIDTH = 820;
 const TIGHT_WIDTH = 920;
-// The work runs left to right: build the scene, give it its look, then set it in motion. Each workspace shows only the
-// panels its step needs.
+// The work runs left to right: build the scene, give it its look, set it in motion, then write it out. Each workspace shows
+// only the panels its step needs.
 const STUDIO_WORKSPACES = Object.freeze([
   Object.freeze({ id: 'build', label: 'Build', icon: 'node', tabs: Object.freeze(['node']) }),
   Object.freeze({ id: 'look', label: 'Look', icon: 'material', tabs: Object.freeze(['material', 'look']) }),
   Object.freeze({ id: 'animate', label: 'Animate', icon: 'play', tabs: Object.freeze(['camera', 'node']) }),
+  Object.freeze({ id: 'export', label: 'Export', icon: 'export', tabs: Object.freeze(['export']) }),
 ]);
 const DEFAULT_CLEARCOAT_ROUGHNESS = 0.08;
 const PRIMITIVE_LABELS = Object.freeze({ icoSphere: 'Icosphere', disc: 'Circle' });
@@ -1519,13 +1521,6 @@ export function createStudio(container, {
     createMenuItem('Set up Studio…', '', () => openSetup(), 'settings'),
     createMenuItem('Save diagnostics report', '', () => saveDiagnosticsReport(), 'saveAs'),
   );
-  const exportMenuButton = createElement(
-    documentReference,
-    'button',
-    { type: 'button', className: 'crucible-studio-primary-btn', attributes: { popovertarget: 'crucible-studio-pop-export' } },
-    createIcon(documentReference, 'export'),
-    createElement(documentReference, 'span', { textContent: 'Export' }),
-  );
 
   const newPopover = createElement(documentReference, 'div', {
     id: 'crucible-studio-pop-new',
@@ -1646,35 +1641,22 @@ export function createStudio(container, {
     attributes: { popover: 'auto' },
   }, syncStatusNote, autoReloadButton, copyPromptButton);
 
-  const exportPngButton = createElement(documentReference, 'button', { type: 'button', textContent: 'PNG image' });
-  const exportGlbButton = createElement(documentReference, 'button', { type: 'button', textContent: 'GLB model' });
-  const exportPackButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Web pack' });
   const editJsonButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Recipe JSON' });
-  const exportPopover = createElement(documentReference, 'div', {
-    id: 'crucible-studio-pop-export',
-    className: 'crucible-studio-popover',
-    attributes: { popover: 'auto' },
-  }, exportPngButton, exportGlbButton, exportPackButton);
   giveMenuIcon(openButton, 'open');
   if (importButton) giveMenuIcon(importButton, 'add');
   giveMenuIcon(saveButton, 'save');
   giveMenuIcon(saveAsButton, 'saveAs');
   giveMenuIcon(editJsonButton, 'code');
-  giveMenuIcon(exportPngButton, 'image');
-  giveMenuIcon(exportGlbButton, 'node');
-  giveMenuIcon(exportPackButton, 'globe');
   newPopover.prepend(
     openButton,
     ...(importButton ? [importButton] : []),
     saveButton,
     saveAsButton,
     editJsonButton,
-    createMenuItem('Export PNG image', '', () => exportPngButton.click(), 'image'),
-    createMenuItem('Export GLB model', '', () => exportGlbButton.click(), 'node'),
-    createMenuItem('Export web pack', '', () => exportPackButton.click(), 'globe'),
+    createMenuItem('Export…', '', () => selectWorkspace('export'), 'export'),
     createElement(documentReference, 'p', { className: 'crucible-studio-popover-note', textContent: 'New scene' }),
   );
-  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, viewPopover, helpPopover]) {
+  for (const popoverElement of [newPopover, addPopover, editPopover, objectPopover, viewPopover, helpPopover]) {
     popoverElement.addEventListener('click', event => {
       if (event.target.closest?.('button')) popoverElement.hidePopover?.();
     });
@@ -1730,11 +1712,10 @@ export function createStudio(container, {
     ),
     workspaceList,
     createElement(documentReference, 'span', { className: 'crucible-studio-spacer' }),
-    createElement(documentReference, 'div', { className: 'crucible-studio-island' }, filePill, watchPill, exportMenuButton),
+    createElement(documentReference, 'div', { className: 'crucible-studio-island' }, filePill, watchPill),
     newPopover,
     addPopover,
     aiSyncPopover,
-    exportPopover,
     editPopover,
     objectPopover,
     viewPopover,
@@ -1798,7 +1779,6 @@ export function createStudio(container, {
   addMenuButton.addEventListener('click', () => { addMenuAnchor = addMenuButton; });
   bindPopoverAnchor(() => addMenuAnchor, addPopover, { beside: true });
   bindPopoverAnchor(aiSyncMenuButton, aiSyncPopover);
-  bindPopoverAnchor(exportMenuButton, exportPopover);
 
   // Left Outliner + Material Palette Dock
   const outlinerSearch = createElement(documentReference, 'input', { type: 'search', placeholder: 'Find an object', attributes: { 'aria-label': 'Filter the scene list' } });
@@ -2085,10 +2065,11 @@ export function createStudio(container, {
   });
   const stopWatchingDiagnostics = watchStudioDiagnostics(studioDiagnostics, { windowReference: documentReference.defaultView, canvas });
   const stopWatchingContextLoss = watchContextLoss(canvas, { onLost: pauseForContextLoss, onRestored: recoverFromContextLoss });
-  viewportElement.append(canvas, maskFilterSvg, gizmoSvg, agentPresence.element, viewWidget.element, readout, hintBar, statusRegion, bakeMark.element, dropOverlay, pausedNotice.element, postPassNotice.element, draftNotice.element);
+  const exportFrameGuide = createElement(documentReference, 'div', { className: 'crucible-studio-export-guide', attributes: { 'aria-hidden': 'true' } });
+  viewportElement.append(canvas, exportFrameGuide, maskFilterSvg, gizmoSvg, agentPresence.element, viewWidget.element, readout, hintBar, statusRegion, bakeMark.element, dropOverlay, pausedNotice.element, postPassNotice.element, draftNotice.element);
 
   // Right 4-Tab Inspector Dock (Modern Web Guidance: tabs pattern)
-  const tabLabels = { node: 'Object', material: 'Material', look: 'Look', camera: 'Camera' };
+  const tabLabels = { node: 'Object', material: 'Material', look: 'Look', camera: 'Camera', export: 'Export' };
   const tabButtons = STUDIO_TABS.map(tab => createIconButton(documentReference, tab, tabLabels[tab], {
     id: `crucible-studio-tab-${tab}`,
     dataset: { tab },
@@ -2362,7 +2343,9 @@ export function createStudio(container, {
     ),
   );
 
+  const exportPanel = createExportPanel({ documentReference, createElement, createIcon: iconName => createIcon(documentReference, iconName) });
   const panelsByTab = {
+    export: createElement(documentReference, 'div', { id: 'crucible-studio-panel-export', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-export', hidden: 'until-found' } }, exportPanel.element),
     node: createElement(documentReference, 'div', { id: 'crucible-studio-panel-node', tabIndex: 0, attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-node' } }, nodePanelBody),
     material: createElement(documentReference, 'div', { id: 'crucible-studio-panel-material', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-material', hidden: 'until-found' } }, materialPanelBody),
     look: createElement(documentReference, 'div', { id: 'crucible-studio-panel-look', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-look', hidden: 'until-found' } }, lookPanelBody),
@@ -2385,6 +2368,7 @@ export function createStudio(container, {
     }
     const workspaceWasOpen = root.dataset.workspace === workspace.id;
     root.dataset.workspace = workspace.id;
+    if (workspace.id !== 'export') exportPanel.clearResults();
     for (const button of workspaceButtons) {
       button.setAttribute('aria-selected', button.dataset.workspace === workspace.id ? 'true' : 'false');
     }
@@ -2440,7 +2424,7 @@ export function createStudio(container, {
       propertiesMinimizeButton,
     ),
     tabListElement,
-    createElement(documentReference, 'div', { className: 'crucible-studio-panels crucible-studio-scroll' }, panelsByTab.node, panelsByTab.material, panelsByTab.look, panelsByTab.camera),
+    createElement(documentReference, 'div', { className: 'crucible-studio-panels crucible-studio-scroll' }, panelsByTab.node, panelsByTab.material, panelsByTab.look, panelsByTab.camera, panelsByTab.export),
   );
 
   // Bottom Timeline & Telemetry Bar
@@ -2822,6 +2806,11 @@ export function createStudio(container, {
     announce('Saved the diagnostics report');
   }
 
+  // The still is the scene's own shot without the editor's aids. The Export workspace draws the viewport the same way, so what it shows is what gets saved.
+  function drawingTheShot() {
+    return capturingStill || root.dataset.workspace === 'export';
+  }
+
   function capturePngDataUrl() {
     // Nothing draws while the context is gone, so a still taken then would be a blank picture.
     if (contextLost) {
@@ -2870,6 +2859,7 @@ export function createStudio(container, {
     viewWidget.update(camera);
     const gridStep = gridLayout({ visibleHeight: cameraVisibleHeight(camera), viewportHeight: controller.viewportHeight, target: camera.target, eye: camera.projection === 'orthographic' ? undefined : camera.eye }).step;
     readoutCamera.textContent = gridVisible ? `${describeCamera(camera)} · Grid ${describeGridStep(gridStep)}` : describeCamera(camera);
+    if (controller.activeTab === 'export') syncExportFacts();
     if (selectionReadoutStale) {
       selectionReadoutStale = false;
       readoutSelection.textContent = describeSelection();
@@ -3008,58 +2998,81 @@ export function createStudio(container, {
     if (file) await importFileIntoScene(file);
   });
 
-  exportPngButton.addEventListener('click', async () => {
-    exportPopover.hidePopover?.();
-    const dataUrl = capturePngDataUrl();
-    const baseName = activeFileName.replace(/\.(scene\.)?json$/i, '') || 'crucible-render';
-    if (desktop?.savePng) {
-      const response = await desktop.savePng({ dataUrl, suggestedName: `${baseName}.png` });
-      if (!response?.canceled) announce(`Saved ${response.fileName}`);
-      return;
+  // Each action says what it wrote under its button: the file, and its size. A refused or failed export says why instead.
+  function reportExport(kindId, { fileName, detail }) {
+    exportPanel.showResult(kindId, { ok: true, text: [fileName, ...detail].join(', ') });
+  }
+
+  function reportExportFailure(kindId, error) {
+    announce(error.message);
+    exportPanel.showResult(kindId, { ok: false, text: error.message });
+  }
+
+  exportPanel.actions.image.addEventListener('click', async () => {
+    try {
+      const dataUrl = capturePngDataUrl();
+      const baseName = activeFileName.replace(/\.(scene\.)?json$/i, '') || 'crucible-render';
+      const detail = [`${canvas.width} × ${canvas.height}`, formatFileSize(dataUrlByteLength(dataUrl))];
+      if (desktop?.savePng) {
+        const response = await desktop.savePng({ dataUrl, suggestedName: `${baseName}.png` });
+        if (!response?.canceled) {
+          announce(`Saved ${response.fileName}`);
+          reportExport('image', { fileName: response.fileName, detail });
+        }
+        return;
+      }
+      const bytes = Uint8Array.from(atob(dataUrl.split(',')[1]), character => character.charCodeAt(0));
+      triggerBlobDownload(bytes, `${baseName}.png`, 'image/png');
+      announce('Saved PNG still');
+      reportExport('image', { fileName: `${baseName}.png`, detail });
+    } catch (error) {
+      reportExportFailure('image', error);
     }
-    const bytes = Uint8Array.from(atob(dataUrl.split(',')[1]), character => character.charCodeAt(0));
-    triggerBlobDownload(bytes, `${baseName}.png`, 'image/png');
-    announce('Saved PNG still');
   });
 
-  exportGlbButton.addEventListener('click', async () => {
-    exportPopover.hidePopover?.();
+  exportPanel.actions.model.addEventListener('click', async () => {
     try {
       const glbBytes = exportGlbBytes();
       const baseName = activeFileName.replace(/\.(scene\.)?json$/i, '') || 'crucible-scene';
+      const detail = [formatFileSize(glbBytes.byteLength)];
       if (desktop?.saveGlb) {
         const response = await desktop.saveGlb({ bytes: glbBytes, suggestedName: `${baseName}.glb` });
-        if (!response?.canceled) announce(`Exported ${response.fileName}`);
+        if (!response?.canceled) {
+          announce(`Exported ${response.fileName}`);
+          reportExport('model', { fileName: response.fileName, detail });
+        }
         return;
       }
       triggerBlobDownload(glbBytes, `${baseName}.glb`, 'model/gltf-binary');
       announce('Exported GLB mesh');
+      reportExport('model', { fileName: `${baseName}.glb`, detail });
     } catch (error) {
-      announce(error.message);
+      reportExportFailure('model', error);
     }
   });
 
-  exportPackButton.addEventListener('click', async () => {
-    exportPopover.hidePopover?.();
+  exportPanel.actions.pack.addEventListener('click', async () => {
     try {
       const payload = await buildWebPackPayload();
+      const detail = [formatFileSize(payload.packBytes.byteLength)];
       if (desktop?.packWebBundle) {
         const response = await desktop.packWebBundle(payload);
         if (!response?.canceled) {
           const note = payload.stripped.length ? ` (static snapshot, omitted ${payload.stripped[0]})` : '';
           announce(`Packed web bundle to ${response.outDir}${note}`);
+          reportExport('pack', { fileName: `${payload.title}.pack`, detail });
         }
         return;
       }
       triggerBlobDownload(payload.packBytes, `${payload.title}.pack`, 'application/octet-stream');
       announce('Downloaded scene.pack');
+      reportExport('pack', { fileName: `${payload.title}.pack`, detail });
     } catch (error) {
-      announce(error.message);
+      reportExportFailure('pack', error);
     }
   });
 
   editJsonButton.addEventListener('click', () => {
-    exportPopover.hidePopover?.();
     openImportDialog();
   });
 
@@ -3138,7 +3151,7 @@ export function createStudio(container, {
 
   // The grid is drawn with the scene so objects hide it, but it is never part of the scene: not picked, saved or exported.
   function partsToDraw() {
-    if (!gridVisible || capturingStill) {
+    if (!gridVisible || drawingTheShot()) {
       return controller.scene.parts;
     }
     gridParts ??= buildGridParts();
@@ -3193,7 +3206,7 @@ export function createStudio(container, {
   }
 
   function syncRendererParts(activeRenderer) {
-    const topology = `${controller.scene.topologyRevision}|${gridVisible && !capturingStill}`;
+    const topology = `${controller.scene.topologyRevision}|${gridVisible && !drawingTheShot()}`;
     if (renderedScene !== controller.scene || renderedTopology !== topology) {
       activeRenderer.replaceParts(partsToDraw());
       renderedScene = controller.scene;
@@ -3270,10 +3283,10 @@ export function createStudio(container, {
     const frameEnvironment = { ...environment, map: agentEnvironmentMap(environment) };
     activeRenderer.environment = frameEnvironment;
     // A still is the scene's own shot, so it keeps the animated camera even while the viewport looks around freely.
-    const frameCamera = capturingStill ? controller.scene.camera : controller.viewCamera;
+    const frameCamera = drawingTheShot() ? controller.scene.camera : controller.viewCamera;
     renderWithPostPasses(activeRenderer, {
       ...frameCamera,
-      ...(capturingStill ? {} : viewportClipPlanes(frameCamera)),
+      ...(drawingTheShot() ? {} : viewportClipPlanes(frameCamera)),
       environment: frameEnvironment,
       effects,
       exposure: effects.exposure,
@@ -3337,11 +3350,11 @@ export function createStudio(container, {
       syncViewportDimensions();
       drawSceneFrame();
       renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask, activeOutlineMask, { hideSelectionOutline: Boolean(meshEditor?.active), clearRadius: meshEditor?.active ? meshEditor.selectionScreenRadius() : null });
-      if (!capturingStill) {
+      if (!drawingTheShot()) {
         renderSceneObjectMarks(documentReference, gizmoSvg, controller);
       }
       drawAgentOutline();
-      if (meshEditor?.active && !capturingStill) meshEditor.draw(documentReference, gizmoSvg);
+      if (meshEditor?.active && !drawingTheShot()) meshEditor.draw(documentReference, gizmoSvg);
       syncViewportAids();
     } finally {
       insideDraw = false;
@@ -4019,6 +4032,21 @@ export function createStudio(container, {
   function syncPropertyPanels() {
     if (controller.activeTab === 'look') syncLookPanels();
     if (controller.activeTab === 'camera') cameraPanel.sync();
+    if (controller.activeTab === 'export') syncExportFacts();
+  }
+
+  // What each export will hold. The picture's size follows the window, so it is read each frame; the model and the pack follow the scene.
+  let exportFactsSceneKey = null;
+  function syncExportFacts() {
+    exportPanel.showFacts('image', [{ frame: [canvas.width, canvas.height] }, { text: `${canvas.width} × ${canvas.height}` }]);
+    const scene = controller.scene;
+    const sceneKey = `${scene.topologyRevision}|${scene.revision}`;
+    if (exportFactsSceneKey === sceneKey) return;
+    exportFactsSceneKey = sceneKey;
+    const partCount = scene.parts.length;
+    const triangleCount = Math.round(scene.parts.reduce((count, part) => count + (part.geometry?.indices?.length ?? 0) / 3, 0));
+    exportPanel.showFacts('model', [{ text: `${partCount} ${partCount === 1 ? 'part' : 'parts'}` }, { text: `${triangleCount.toLocaleString('en-US')} triangles` }]);
+    exportPanel.showFacts('pack', buildPackReadyRecipe(controller.exportRecipe()).stripped.map(name => ({ icon: 'warning', text: `${name} left out` })));
   }
 
   function syncLookPanels() {

@@ -1844,6 +1844,84 @@ export const STUDIO_CSS = `
   font-weight: 600;
   color: var(--studio-text);
 }
+/* The Export workspace: one group for each thing Studio writes. Groups sit 16px apart and the parts of a group 8px apart. */
+.crucible-studio-export-body {
+  display: grid;
+  gap: var(--studio-space-16);
+  padding: var(--studio-space-12);
+}
+.crucible-studio-export-group {
+  display: grid;
+  gap: var(--studio-space-8);
+}
+.crucible-studio-export-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  font-family: var(--studio-font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--studio-text);
+}
+.crucible-studio-export-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--studio-space-4);
+}
+.crucible-studio-export-facts:empty { display: none; }
+.crucible-studio-export-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--studio-space-4);
+  min-block-size: 24px;
+  padding-inline: var(--studio-space-8);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--studio-text) 6%, transparent);
+  color: var(--studio-muted);
+  font: 500 11.5px/1 var(--studio-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.crucible-studio-export-frame {
+  display: block;
+  box-sizing: border-box;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+}
+.crucible-studio button.crucible-studio-export-action {
+  inline-size: 100%;
+  background: var(--studio-text);
+  color: var(--studio-bg);
+  font-weight: 600;
+}
+@media (hover: hover) {
+  .crucible-studio button.crucible-studio-export-action:not([aria-disabled="true"]):hover {
+    background: color-mix(in srgb, var(--studio-text) 86%, var(--studio-bg));
+  }
+}
+.crucible-studio-export-result {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  font-size: 12px;
+  color: var(--studio-text);
+  overflow-wrap: anywhere;
+}
+.crucible-studio-export-result[hidden] { display: none; }
+.crucible-studio-export-result[data-state="ok"] .crucible-studio-icon { color: var(--studio-ok); }
+.crucible-studio-export-result[data-state="failed"] .crucible-studio-icon { color: var(--studio-accent); }
+/* The viewport shows the shot as it will be saved: the frame is the edge of the picture, and the editor's aids are off. */
+.crucible-studio-export-guide {
+  display: none;
+  position: absolute;
+  inset: var(--studio-space-4);
+  border: 2px solid var(--studio-accent);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 3;
+}
+.crucible-studio[data-workspace="export"] .crucible-studio-export-guide { display: block; }
+.crucible-studio[data-workspace="export"] .crucible-studio-gizmo { visibility: hidden; }
 .crucible-studio-bookmark-list {
   display: grid;
   gap: 4px;

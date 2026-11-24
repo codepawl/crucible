@@ -3,10 +3,11 @@
 // studio-layout-rules.mjs: unequal insets around the content of a padded container, a gap or padding off the spacing
 // scale, or a gap between groups smaller than the gap inside one. Every failure names the selector, the numbers and the fix.
 //
-//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover] [--records file.json]
+//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|export] [--records file.json]
 //
 // Without --origin it starts a Vite dev server on a free port and stops it (by its own PID) at the end. Screens: the Studio
 // page, each of its popover menus, and the five steps of the setup dialog, each in the dark and the light theme at 1280 by 720.
+// The Export workspace is measured before and after its three actions ran, at 1280 and at 720 pixels wide.
 import { spawn } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -20,8 +21,9 @@ const READY_EXPRESSION = 'Boolean(window.__studioPage?.renderer) && !document.ge
 const PREFERENCES_KEY = 'crucible-studio-preferences';
 const THEMES = ['dark', 'light'];
 const VIEWPORT = { width: 1280, height: 720 };
+const NARROW_VIEWPORT = { width: 720, height: 720 };
 const SERVER_START_TIMEOUT_MS = 60000;
-const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover] [--records file.json]';
+const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|export] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
 const SOFTWARE_ARGUMENTS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'];
@@ -158,8 +160,8 @@ export async function launchBrowser() {
   return chromium.launch(options).catch(() => chromium.launch({ ...options, channel: 'chrome' }));
 }
 
-export async function openStudio(browser, origin, theme, extraCss = '') {
-  const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+export async function openStudio(browser, origin, theme, extraCss = '', viewport = VIEWPORT) {
+  const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
   await context.addInitScript(FAKE_POINTER_LOCK_SCRIPT);
   await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [PREFERENCES_KEY, JSON.stringify({ theme, setupDone: true })]);
   const page = await context.newPage();
@@ -202,6 +204,27 @@ async function measureScreens(page, theme, only) {
   return screens;
 }
 
+// The Export workspace as a person finds it, then with each export done: the result lines show under the actions.
+export async function measureExportScreens(page, theme, viewport) {
+  const screens = [];
+  // A narrow window starts with the panels closed; the Export panel is what this measures, so it is opened.
+  await page.evaluate(() => {
+    window.__studioPage.setInspectorCollapsed(false);
+    window.__studioPage.setActiveTab('export');
+  });
+  await page.waitForTimeout(300);
+  screens.push({ name: `export workspace ${viewport.width} (${theme})`, records: await measure(page, '.crucible-studio') });
+  await page.evaluate(async () => {
+    for (const kind of ['image', 'model', 'pack']) {
+      document.querySelector(`[data-export="${kind}"]`).click();
+      await new Promise(resolveWait => setTimeout(resolveWait, 400));
+    }
+  });
+  await page.waitForTimeout(300);
+  screens.push({ name: `export results ${viewport.width} (${theme})`, records: await measure(page, '.crucible-studio') });
+  return screens;
+}
+
 // `extraCss` is added to the page before measuring: the test uses it to seed a spacing mistake the audit must catch.
 export async function runAudit({ origin, only, extraCss } = {}) {
   const server = origin ? { origin, stop: () => {} } : await startDevServer();
@@ -211,7 +234,13 @@ export async function runAudit({ origin, only, extraCss } = {}) {
     for (const theme of THEMES) {
       const { context, page } = await openStudio(browser, server.origin, theme, extraCss);
       screens.push(...await measureScreens(page, theme, only));
+      if (!only || only === 'export') screens.push(...await measureExportScreens(page, theme, VIEWPORT));
       await context.close();
+      if (!only || only === 'export') {
+        const narrow = await openStudio(browser, server.origin, theme, extraCss, NARROW_VIEWPORT);
+        screens.push(...await measureExportScreens(narrow.page, theme, NARROW_VIEWPORT));
+        await narrow.context.close();
+      }
     }
     return screens;
   } finally {

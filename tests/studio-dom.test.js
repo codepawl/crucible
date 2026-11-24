@@ -512,14 +512,7 @@ test('popover buttons open each menu, close it again on a click inside and stay 
   byText(newPopover, 'New scene').dispatchEvent(ui.dom.document.createEvent('click', { bubbles: true }));
   assert.equal(newPopover.popoverOpen, true);
 
-  const exportButton = byText(ui.root, 'Export').parentNode;
-  exportButton.box = { left: 1100, top: 8, width: 90, height: 30, right: 1190, bottom: 38 };
-  exportButton.click();
-  const exportPopover = ui.root.querySelector('#crucible-studio-pop-export');
-  assert.equal(exportPopover.style.left, 'auto');
-  assert.equal(exportPopover.style.right, '85px');
-  byText(exportPopover, 'PNG image').click();
-  assert.equal(exportPopover.popoverOpen, false);
+  assert.equal(ui.root.querySelector('#crucible-studio-pop-export'), null, 'Export is a workspace, so the top bar holds no export menu');
 
   const syncButton = ui.label('Work with an AI agent');
   syncButton.box = { left: 1000, top: 700, width: 30, height: 30, right: 1030, bottom: 730 };
@@ -1523,7 +1516,7 @@ test('Copy a prompt for the agent uses the clipboard and falls back to the recip
 test('Export saves a PNG still in the browser and through the desktop shell', async testContext => {
   const ui = mountStudio(testContext, { fileName: 'castle.scene.json' });
   const renderCountBefore = ui.renderer.frames.length;
-  byText(ui.root, 'PNG image').click();
+  byText(ui.root, 'Save PNG').click();
   await ui.dom.settle();
   assert.equal(ui.canvas.lastDataUrlType, 'image/png');
   assert.ok(ui.renderer.frames.length > renderCountBefore, 'a still renders a fresh frame first');
@@ -1536,7 +1529,7 @@ test('Export saves a PNG still in the browser and through the desktop shell', as
 
   const desktop = createDesktop();
   const desktopUi = mountStudio(testContext, { sharedDom: ui.dom, desktop, fileName: 'castle.scene.json' });
-  byText(desktopUi.root, 'PNG image').click();
+  byText(desktopUi.root, 'Save PNG').click();
   await desktopUi.dom.settle();
   assert.equal(desktop.calls[0].name, 'savePng');
   assert.equal(desktop.calls[0].argument.suggestedName, 'castle.png');
@@ -1544,14 +1537,14 @@ test('Export saves a PNG still in the browser and through the desktop shell', as
   assert.equal(desktopUi.status(), 'Saved shot.png');
   desktop.savePng = async () => ({ canceled: true });
   desktopUi.dom.runTimers();
-  byText(desktopUi.root, 'PNG image').click();
+  byText(desktopUi.root, 'Save PNG').click();
   await desktopUi.dom.settle();
   assert.equal(desktopUi.status(), '');
 });
 
 test('Export writes a GLB model of the scene and reports a desktop failure', async testContext => {
   const ui = mountStudio(testContext);
-  byText(ui.root, 'GLB model').click();
+  byText(ui.root, 'Save GLB').click();
   await ui.dom.settle();
   const [download] = ui.dom.document.downloads;
   assert.equal(download.filename, 'untitled.glb');
@@ -1563,7 +1556,7 @@ test('Export writes a GLB model of the scene and reports a desktop failure', asy
 
   const desktop = createDesktop();
   const desktopUi = mountStudio(testContext, { sharedDom: ui.dom, desktop });
-  byText(desktopUi.root, 'GLB model').click();
+  byText(desktopUi.root, 'Save GLB').click();
   await desktopUi.dom.settle();
   assert.equal(desktop.calls[0].name, 'saveGlb');
   assert.equal(desktop.calls[0].argument.suggestedName, 'untitled.glb');
@@ -1572,19 +1565,19 @@ test('Export writes a GLB model of the scene and reports a desktop failure', asy
   desktop.saveGlb = async () => {
     throw new Error('Disk is full.');
   };
-  byText(desktopUi.root, 'GLB model').click();
+  byText(desktopUi.root, 'Save GLB').click();
   await desktopUi.dom.settle();
   assert.equal(desktopUi.status(), 'Disk is full.');
   desktop.saveGlb = async () => ({ canceled: true });
   desktopUi.dom.runTimers();
-  byText(desktopUi.root, 'GLB model').click();
+  byText(desktopUi.root, 'Save GLB').click();
   await desktopUi.dom.settle();
   assert.equal(desktopUi.status(), '');
 });
 
 test('Export packs a web bundle, naming what a still pack leaves out', async testContext => {
   const ui = mountStudio(testContext, { recipe: animatedRecipe() });
-  byText(ui.root, 'Web pack').click();
+  byText(ui.root, 'Save pack').click();
   await ui.dom.settle();
   const [download] = ui.dom.document.downloads;
   assert.equal(download.filename, 'untitled.pack');
@@ -1600,20 +1593,20 @@ test('Export packs a web bundle, naming what a still pack leaves out', async tes
 
   const desktop = createDesktop();
   const desktopUi = mountStudio(testContext, { sharedDom: ui.dom, desktop, recipe: animatedRecipe(), fileName: 'castle.scene.json' });
-  byText(desktopUi.root, 'Web pack').click();
+  byText(desktopUi.root, 'Save pack').click();
   await desktopUi.dom.settle();
   assert.equal(desktop.calls[0].name, 'packWebBundle');
   assert.equal(desktop.calls[0].argument.title, 'castle');
   assert.equal(desktopUi.status(), 'Packed web bundle to C:/out/web (static snapshot, omitted motion)');
   desktop.packWebBundle = async () => ({ canceled: true });
   desktopUi.dom.runTimers();
-  byText(desktopUi.root, 'Web pack').click();
+  byText(desktopUi.root, 'Save pack').click();
   await desktopUi.dom.settle();
   assert.equal(desktopUi.status(), '');
   desktop.packWebBundle = async () => {
     throw new Error('Out folder is not writable.');
   };
-  byText(desktopUi.root, 'Web pack').click();
+  byText(desktopUi.root, 'Save pack').click();
   await desktopUi.dom.settle();
   assert.equal(desktopUi.status(), 'Out folder is not writable.');
 
@@ -1622,7 +1615,7 @@ test('Export packs a web bundle, naming what a still pack leaves out', async tes
   assert.deepEqual(plainPayload.stripped, []);
   const plainDesktop = createDesktop();
   const plainDesktopUi = mountStudio(testContext, { sharedDom: ui.dom, desktop: plainDesktop });
-  byText(plainDesktopUi.root, 'Web pack').click();
+  byText(plainDesktopUi.root, 'Save pack').click();
   await plainDesktopUi.dom.settle();
   assert.equal(plainDesktopUi.status(), 'Packed web bundle to C:/out/web');
 });
@@ -2145,15 +2138,15 @@ test('a new object lands beside the ones already there, and ground pieces stay a
   assert.deepEqual(studio.controller.addPrimitive('box', { translation: [0, 0.5, 0] }).translation, [0, 0.5, 0], 'a given place is kept');
 });
 
-test('workspaces run Build, Look, Animate and each shows only the panels its step needs', testContext => {
+test('workspaces run Build, Look, Animate, Export and each shows only the panels its step needs', testContext => {
   const ui = mountStudio(testContext);
   const workspaceTab = id => byDataset(ui.root, 'workspace', id);
   const shownTabs = () => STUDIO_TABS.filter(tab => !ui.tab(tab).hasAttribute('hidden'));
   const tabList = ui.root.querySelector('.crucible-studio-tablist');
   const workspaceList = ui.root.querySelector('.crucible-studio-workspaces');
-  assert.deepEqual(workspaceList.querySelectorAll('.crucible-studio-workspace-label').map(label => label.textContent), ['Build', 'Look', 'Animate']);
-  assert.deepEqual(workspaceList.querySelectorAll('button').map(button => button.querySelector('svg') !== null), [true, true, true], 'each workspace tab leads with an icon');
-  assert.deepEqual(workspaceList.querySelectorAll('button').map(button => button.getAttribute('aria-label')), ['Build', 'Look', 'Animate']);
+  assert.deepEqual(workspaceList.querySelectorAll('.crucible-studio-workspace-label').map(label => label.textContent), ['Build', 'Look', 'Animate', 'Export']);
+  assert.deepEqual(workspaceList.querySelectorAll('button').map(button => button.querySelector('svg') !== null), [true, true, true, true], 'each workspace tab leads with an icon');
+  assert.deepEqual(workspaceList.querySelectorAll('button').map(button => button.getAttribute('aria-label')), ['Build', 'Look', 'Animate', 'Export']);
   assert.equal(workspaceList.getAttribute('role'), 'tablist');
   assert.equal(workspaceList.parentNode.className, 'crucible-studio-menubar', 'the tabs share the menu bar, not a row of their own');
 
@@ -2186,6 +2179,61 @@ test('workspaces run Build, Look, Animate and each shows only the panels its ste
   assert.equal(ui.root.dataset.workspace, 'build', 'opening a panel brings its workspace forward');
   dispatch(ui.dom.document, 'keydown', { key: 'k' });
   assert.equal(ui.root.dataset.workspace, 'animate', 'a keyframe opens the timeline');
+
+  workspaceTab('export').click();
+  assert.equal(ui.root.dataset.workspace, 'export');
+  assert.equal(workspaceTab('export').getAttribute('aria-selected'), 'true');
+  assert.deepEqual(shownTabs(), ['export'], 'Export shows its own panel alone');
+  assert.ok(tabList.hasAttribute('hidden'), 'one panel needs no tab row');
+  assert.equal(ui.controller.activeTab, 'export');
+  assert.equal(JSON.stringify(ui.studio.exportRecipe()), recipeBefore, 'entering Export keeps the scene');
+  assert.equal(ui.controller.canUndo, false);
+});
+
+test('the Export workspace holds an image, a model and a web pack, each with its facts, one action and a result line', async testContext => {
+  const ui = mountStudio(testContext, { recipe: animatedRecipe(), fileName: 'castle.scene.json' });
+  ui.canvas.width = 640;
+  ui.canvas.height = 360;
+  byDataset(ui.root, 'workspace', 'export').click();
+  const groups = ui.root.querySelectorAll('.crucible-studio-export-group');
+  assert.deepEqual(groups.map(group => group.dataset.kind), ['image', 'model', 'pack']);
+  assert.deepEqual(groups.map(group => group.querySelector('.crucible-studio-export-heading span').textContent), ['Image', 'Model', 'Web pack']);
+  for (const group of groups) {
+    assert.ok(group.querySelector('.crucible-studio-export-heading svg'), 'each group title has an icon');
+    assert.equal(group.querySelectorAll('button').length, 1, 'one action for each export');
+    assert.ok(group.querySelector('button svg'), 'the action has an icon');
+    assert.equal(group.querySelector('.crucible-studio-export-result').hasAttribute('hidden'), true, 'no result before an export');
+  }
+  const factTexts = kind => groups.find(group => group.dataset.kind === kind).querySelectorAll('.crucible-studio-export-fact').map(fact => fact.textContent);
+  assert.ok(factTexts('model').some(text => /parts?$/.test(text)) && factTexts('model').some(text => /triangles$/.test(text)), 'the model names its parts and triangles');
+  assert.deepEqual(factTexts('pack'), ['motion left out'], 'the pack names what a static snapshot leaves out');
+  assert.deepEqual(factTexts('image'), ['', '640 × 360'], 'the image shows its shape and names its size in pixels');
+
+  byText(ui.root, 'Save PNG').click();
+  await ui.dom.settle();
+  const imageResult = groups.find(group => group.dataset.kind === 'image').querySelector('.crucible-studio-export-result');
+  assert.match(imageResult.textContent, /^castle\.png, 640 × 360, \d+ B$/);
+  byText(ui.root, 'Save GLB').click();
+  await ui.dom.settle();
+  const modelResult = groups.find(group => group.dataset.kind === 'model').querySelector('.crucible-studio-export-result');
+  assert.equal(modelResult.dataset.state, 'ok');
+  assert.match(modelResult.textContent, /^castle\.glb, \d+(\.\d)? (B|KB|MB)$/);
+  assert.ok(modelResult.querySelector('svg'), 'a result leads with a mark');
+
+  const failing = createDesktop();
+  failing.saveGlb = async () => {
+    throw new Error('Disk is full.');
+  };
+  const failingUi = mountStudio(testContext, { sharedDom: ui.dom, desktop: failing });
+  byText(failingUi.root, 'Save GLB').click();
+  await failingUi.dom.settle();
+  const failedResult = failingUi.root.querySelectorAll('.crucible-studio-export-group').find(group => group.dataset.kind === 'model').querySelector('.crucible-studio-export-result');
+  assert.equal(failedResult.dataset.state, 'failed');
+  assert.equal(failedResult.textContent, 'Disk is full.');
+  assert.notEqual(failedResult.querySelector('path').getAttribute('d'), modelResult.querySelector('path').getAttribute('d'), 'success and failure differ in shape');
+
+  byDataset(ui.root, 'workspace', 'build').click();
+  assert.equal(modelResult.hasAttribute('hidden'), true, 'leaving the workspace clears the results');
 });
 
 test('each scene row draws the shape of its object in the colour of its material', testContext => {
@@ -2400,8 +2448,11 @@ test('the top bar has File, Edit, View, Agent and Help menus that do what their 
 
   menuButton('File').click();
   assert.equal(popover('new').popoverOpen, true);
-  assert.deepEqual(rows('new').slice(0, 7), ['Open…', 'Save', 'Save as…', 'Recipe JSON', 'Export PNG image', 'Export GLB model', 'Export web pack']);
+  assert.deepEqual(rows('new').slice(0, 5), ['Open…', 'Save', 'Save as…', 'Recipe JSON', 'Export…']);
   assert.equal(byText(popover('new'), 'Save').dataset.shortcut, 'Ctrl+S');
+  byText(popover('new'), 'Export…').click();
+  assert.equal(ui.root.dataset.workspace, 'export', 'the one Export row opens the workspace');
+  assert.equal(popover('new').popoverOpen, false, 'a row closes its menu');
 
   menuButton('Edit').click();
   assert.deepEqual(rows('edit'), ['Undo', 'Redo', 'Copy', 'Paste', 'Duplicate', 'Delete', 'Deselect', 'Hide', 'Show all', 'Reset position', 'Reset rotation', 'Reset scale', 'Settings…']);
@@ -3046,6 +3097,35 @@ test('the Animated camera row shows only when a track drives the camera, and swi
   row.click();
   assert.equal(driven.controller.freeView, false);
   assert.equal(row.getAttribute('aria-checked'), 'true');
+});
+
+test('the Export workspace draws the viewport as the saved shot: the scene camera, no grid, and the free view comes back after it (#3343)', testContext => {
+  const drivenRecipe = makeRecipe();
+  drivenRecipe.motion = {
+    duration: 4,
+    loop: false,
+    tracks: [{ kind: 'camera', property: 'fov', interpolation: 'LINEAR', keyframes: [{ time: 0, value: 40 }, { time: 4, value: 30 }] }],
+  };
+  const ui = mountStudio(testContext, { recipe: drivenRecipe });
+  const sceneParts = ui.controller.scene.parts.length;
+  const sceneEye = Array.from(ui.controller.scene.camera.eye);
+  ui.controller.moveViewportCamera({ eye: [9, 9, 9], target: [0, 0, 0] });
+  ui.studio.renderNow();
+  assert.deepEqual([...ui.renderer.frames.at(-1).eye], [9, 9, 9], 'Build draws the free view');
+  assert.equal(ui.renderer.partCount, sceneParts + GRID_LINE_COUNT, 'Build draws the grid');
+  assert.ok(ui.renderer.frames.at(-1).near !== undefined, 'Build widens the clip planes');
+
+  byDataset(ui.root, 'workspace', 'export').click();
+  ui.studio.renderNow();
+  assert.deepEqual([...ui.renderer.frames.at(-1).eye], sceneEye, 'Export draws the scene camera, which is what a PNG uses');
+  assert.equal(ui.renderer.partCount, sceneParts, 'Export leaves the grid out, as the saved image does');
+  assert.equal(ui.renderer.frames.at(-1).near, ui.controller.scene.camera.near, 'Export keeps the scene camera clip planes');
+  assert.equal(ui.controller.freeView, true, 'the free view is kept while Export is open');
+
+  byDataset(ui.root, 'workspace', 'build').click();
+  ui.studio.renderNow();
+  assert.deepEqual([...ui.renderer.frames.at(-1).eye], [9, 9, 9], 'leaving Export brings the free view back');
+  assert.equal(ui.renderer.partCount, sceneParts + GRID_LINE_COUNT, 'and the grid');
 });
 
 test('the scene list shows the camera, the sun and each light above the nodes, selects them and honours the filter', testContext => {
