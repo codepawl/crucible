@@ -83,6 +83,8 @@ function isInteriorVertex(escapedShare) {
 
 // A room open on one side has a gradient of escaping rays towards its opening, so the hard cut above would draw a ragged contour across the ceiling
 // (#3389): its fill fades out over the next quarter of escaping rays instead. A room walled all round keeps the hard cut, byte for byte.
+// The same room also skips the corner falloff of the fill and is cut twice as fine: a corner point and the coarse point next to it differ a lot, and the
+// triangles between them drew a scalloped line along the rounded edge of every wall.
 export function interiorWeight(escapedShare, softEdge) {
   if (escapedShare <= INTERIOR_MAXIMUM_ESCAPE) return 1;
   return softEdge ? Math.max(0, 1 - (escapedShare - INTERIOR_MAXIMUM_ESCAPE) / INTERIOR_MAXIMUM_ESCAPE) : 0;
@@ -115,7 +117,7 @@ function applyInteriorFill(tracedParts, openShare, softEdge = false) {
     for (const vertex of tracedVertices) {
       const weight = interiorWeight(escapedShares[vertex], softEdge);
       if (weight === 0) continue;
-      const pointFill = fill * weight * interiorCornerWeight(nearShares[vertex]);
+      const pointFill = fill * weight * (softEdge ? 1 : interiorCornerWeight(nearShares[vertex]));
       const lifted = Math.min(1, skyVisibility[vertex] + pointFill);
       const fillShare = sunlit[vertex] || lifted === 0 ? 0 : (lifted - skyVisibility[vertex]) / lifted;
       skyVisibility[vertex] = lifted;
@@ -533,7 +535,7 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
     const bounds = worldBounds(parts[index]);
     return total + (bounds.maximum[0] - bounds.minimum[0]) * (bounds.maximum[2] - bounds.minimum[2]);
   }, 0);
-  const maximumEdge = Math.sqrt(footprint / maximumTexels) * (everySurface ? ROOM_SURFACE_EDGE_SCALE : 1.4);
+  const maximumEdge = Math.sqrt(footprint / maximumTexels) * (everySurface ? (openSided ? ROOM_SURFACE_EDGE_SCALE / 2 : ROOM_SURFACE_EDGE_SCALE) : 1.4);
   const tracer = createTracer(world);
   const offset = sceneScale(world.positions) * 1e-4;
   const samples = fixedSamples(raysPerTexel);
@@ -572,8 +574,6 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
       worldNormal[2] /= length;
       if (centres && isBuriedInside(tracer, world, point, worldNormal, offset, centres, vertex, matrix)) {
         skyVisibility[vertex] = 1 - strength;
-        // A point inside a slab is as near a surface as a point can be: left at 0 it took the fill at full weight, and its traced neighbours at the edge of a wall took less, a scalloped line along every edge (#3389).
-        if (openSided) nearShares[vertex] = 1;
         continue;
       }
       let escaped = 0;

@@ -79,8 +79,8 @@ test('a room walled all round keeps the hard cut at a quarter of escaping rays',
   assert.equal(interiorWeight(0.375, false), 0);
 });
 
-// The rounded edge of the back wall runs along its top and bottom: points inside the slab used to take the fill at full weight and their
-// traced neighbours less, which drew a scalloped line there. Points on one ring of the rounded edge share a height.
+// The rounded edge of the back wall runs along its top and bottom: with the corner falloff of the fill and a coarse cut, a point there and its
+// neighbours differed a lot, which drew a scalloped line. Points on one ring of the rounded edge share a height.
 test('the rounded edge of a wall of an open-sided set has no alternating sky values', () => {
   const result = applyDefaultFloorSky(setParts(), SUN, { maximumTexels: 3000 });
   const { positions, normals, skyVisibility } = result.parts.find(part => part.name === 'wall-back').geometry;
