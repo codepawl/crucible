@@ -537,7 +537,7 @@ const meshEdit = z.discriminatedUnion('op', [
     target: z.record(z.string(), z.unknown()).describe('Primitive to wrap onto, a record like a boolean cutter ({"type":"sphere"}), placed by translation, rotation and scale.'),
     translation: vector3.optional(), rotation: quaternion.optional(), scale: vector3.optional(),
     mode: z.enum(['nearest', 'project']).optional(), direction: vector3.optional(), offset: finite.optional(), maxDistance: finite.optional(), onMiss: z.enum(['error', 'keep']).optional(),
-  }).describe('Move the selected vertices onto the target surface, like Blender. Fields and defaults in scene_capabilities meshSculpt.'),
+  }).describe('Move the selected vertices onto the target surface. Fields and defaults in scene_capabilities meshSculpt.'),
 ]);
 const stackNodes = [
   z.strictObject({
@@ -576,11 +576,11 @@ const stackNodes = [
     levels: z.number().int().min(1).max(4).optional().describe('Catmull-Clark levels; each multiplies the faces by about 4 (n-gons become n quads). Defaults to 1.'),
     crease: z.record(z.string(), z.unknown()).optional().describe('Edge rule for creased edges, the same rules as bevel: {"angle":60} keeps the rims of a cylinder sharp. Boundary edges are always sharp.'),
     sharpness: bounded(0, 10).optional().describe('Crease strength, only with crease. A crease stays fully sharp for that many levels and a fraction blends smooth and sharp. Defaults to 10, sharp at every level.'),
-  }).describe('Catmull-Clark subdivision with semi-sharp creases, like Blender. Faces keep their tags and corner attributes such as uv blend linearly. Put it before uv_unwrap. Check the budget: 3 levels make 64 times the faces.'),
+  }).describe('Catmull-Clark subdivision with semi-sharp creases. Faces keep their tags and corner attributes such as uv blend linearly. Put it before uv_unwrap. Check the budget: 3 levels make 64 times the faces.'),
   z.strictObject({
     op: z.literal('decimate'),
     ratio: z.number().gt(0).max(1).describe('Share of the triangles to keep, counted after triangulation. 0.25 keeps a quarter.'),
-  }).describe('Quadric edge collapse like Blender. Open boundaries and tag borders stay, tags carry over, uv and colour are dropped, so unwrap after it. Reports triangles and stoppedEarly.'),
+  }).describe('Quadric edge collapse. Open boundaries and tag borders stay, tags carry over, uv and colour are dropped, so unwrap after it. Reports triangles and stoppedEarly.'),
   z.strictObject({
     op: z.literal('remesh'),
     voxelSize: z.number().positive().optional().describe('Edge of one grid cell. Give this or resolution.'),
