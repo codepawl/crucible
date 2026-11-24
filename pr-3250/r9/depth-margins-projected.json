@@ -1,0 +1,158 @@
+{
+ "width": 1080,
+ "height": 1920,
+ "depth-default-hidden": {
+  "smallestMarginPixels": 71.8,
+  "parts": {
+   "ana": {
+    "left": 257.5692236393351,
+    "right": 419.8851029600749,
+    "top": 1053.521984478084,
+    "bottom": 1208.3438091223247,
+    "marginPixels": 257.6,
+    "lowestWorldY": 0
+   },
+   "ana-head": {
+    "left": 265.3861064910679,
+    "right": 411.22857579312677,
+    "top": 935.2110228899785,
+    "bottom": 1069.5871584494828,
+    "marginPixels": 265.4,
+    "lowestWorldY": 0.658
+   },
+   "ana-tag": {
+    "left": 233.54269663901826,
+    "right": 441.1541201030234,
+    "top": 860.9496598141661,
+    "bottom": 923.1839109259361,
+    "marginPixels": 233.5,
+    "lowestWorldY": 1.422
+   },
+   "bao": {
+    "left": 647.145671456998,
+    "right": 791.5730570643292,
+    "top": 1034.2400001915903,
+    "bottom": 1170.2345305849628,
+    "marginPixels": 288.4,
+    "lowestWorldY": 0
+   },
+   "bao-head": {
+    "left": 654.8128607480177,
+    "right": 784.645707378251,
+    "top": 928.0443118592455,
+    "bottom": 1047.790915422062,
+    "marginPixels": 295.4,
+    "lowestWorldY": 0.658
+   },
+   "bao-hat": {
+    "left": 662.1298971213517,
+    "right": 778.6990187186886,
+    "top": 763.6730200188256,
+    "bottom": 937.2487324231352,
+    "marginPixels": 301.3,
+    "lowestWorldY": 1.316
+   },
+   "bao-puff": {
+    "left": 648.2959015611702,
+    "right": 793.4307590540632,
+    "top": 703.5140986841134,
+    "bottom": 800.6839472767002,
+    "marginPixels": 286.6,
+    "lowestWorldY": 2.1
+   },
+   "bao-tag": {
+    "left": 554.7110136354931,
+    "right": 890.43265565274,
+    "top": 626.3539332869934,
+    "bottom": 693.1520222474617,
+    "marginPixels": 189.6,
+    "lowestWorldY": 2.733
+   },
+   "occluder": {
+    "left": 71.84263561741881,
+    "right": 435.1846909184434,
+    "top": 676.1641785955228,
+    "bottom": 1330.9631098024233,
+    "marginPixels": 71.8,
+    "lowestWorldY": 0
+   }
+  }
+ },
+ "depth-always-on-top": {
+  "smallestMarginPixels": 71.8,
+  "parts": {
+   "ana": {
+    "left": 257.5692236393351,
+    "right": 419.8851029600749,
+    "top": 1053.521984478084,
+    "bottom": 1208.3438091223247,
+    "marginPixels": 257.6,
+    "lowestWorldY": 0
+   },
+   "ana-head": {
+    "left": 265.3861064910679,
+    "right": 411.22857579312677,
+    "top": 935.2110228899785,
+    "bottom": 1069.5871584494828,
+    "marginPixels": 265.4,
+    "lowestWorldY": 0.658
+   },
+   "ana-tag": {
+    "left": 233.54269663901826,
+    "right": 441.1541201030234,
+    "top": 860.9496598141661,
+    "bottom": 923.1839109259361,
+    "marginPixels": 233.5,
+    "lowestWorldY": 1.422
+   },
+   "bao": {
+    "left": 647.145671456998,
+    "right": 791.5730570643292,
+    "top": 1034.2400001915903,
+    "bottom": 1170.2345305849628,
+    "marginPixels": 288.4,
+    "lowestWorldY": 0
+   },
+   "bao-head": {
+    "left": 654.8128607480177,
+    "right": 784.645707378251,
+    "top": 928.0443118592455,
+    "bottom": 1047.790915422062,
+    "marginPixels": 295.4,
+    "lowestWorldY": 0.658
+   },
+   "bao-hat": {
+    "left": 662.1298971213517,
+    "right": 778.6990187186886,
+    "top": 763.6730200188256,
+    "bottom": 937.2487324231352,
+    "marginPixels": 301.3,
+    "lowestWorldY": 1.316
+   },
+   "bao-puff": {
+    "left": 648.2959015611702,
+    "right": 793.4307590540632,
+    "top": 703.5140986841134,
+    "bottom": 800.6839472767002,
+    "marginPixels": 286.6,
+    "lowestWorldY": 2.1
+   },
+   "bao-tag": {
+    "left": 554.7110136354931,
+    "right": 890.43265565274,
+    "top": 626.3539332869934,
+    "bottom": 693.1520222474617,
+    "marginPixels": 189.6,
+    "lowestWorldY": 2.733
+   },
+   "occluder": {
+    "left": 71.84263561741881,
+    "right": 435.1846909184434,
+    "top": 676.1641785955228,
+    "bottom": 1330.9631098024233,
+    "marginPixels": 71.8,
+    "lowestWorldY": 0
+   }
+  }
+ }
+}
