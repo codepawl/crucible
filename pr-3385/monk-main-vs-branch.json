@@ -1,0 +1,7 @@
+{
+ "note": "960x540 luma RGB RMSE, main vs this branch, same scene and camera",
+ "results": {
+  "cascades1": "out/main-m1.png out/fixed-m1.png rmse 0.00",
+  "cascades3": "out/main-m3.png out/fixed-m3.png rmse 0.00"
+ }
+}
