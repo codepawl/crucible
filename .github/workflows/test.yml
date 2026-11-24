@@ -13,11 +13,42 @@ on:
 permissions:
   contents: read
 
+# A pull request keeps one run and a new push cancels the older one. Pushes to main share the group `test-main`, so a batch of
+# merges tests the newest main once and cancels the older main runs (#3378). publish.yml calls this workflow on a push to main
+# too, and a release run must never be cancelled: inside a called workflow `github.workflow` is the caller's name ("Publish
+# Crucible"), not "Test", so a release run falls through to its own run_id group and is never cancelled.
 concurrency:
-  group: test-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: test-${{ github.event.pull_request.number || (github.workflow == 'Test' && github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main') || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.workflow == 'Test' && github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 jobs:
+  # Decides how much to run. A pull request that changes only docs, change notes, markdown, site pages or the Studio UI runs
+  # "light": the affected tests in one job, without the 12 shards, the coverage gate, the bun smoke and the leg without Cook.
+  # Every other run, and every push to main and release, runs "full". The rules are in scripts/ci-plan.mjs.
+  plan:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      tests: ${{ steps.plan.outputs.tests }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Choose light or full
+        id: plan
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            node scripts/ci-plan.mjs | tee -a "$GITHUB_OUTPUT"
+          else
+            printf 'mode=full\nreason=not a pull request\ntests=\n' | tee -a "$GITHUB_OUTPUT"
+          fi
+
   audit:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
@@ -76,7 +107,8 @@ jobs:
   # `node --test` already runs every file in its own process (Node 24 default, --test-isolation=process), so one pass over
   # the files is also the isolation check. Twelve shards dealt by measured file time (scripts/shard-test-files.mjs, config/test-timings.json). The slowest file (about 150 s) is the floor that more shards approach. Change the matrix and the count in the test command together; tests/shard-test-files.test.js checks they agree.
   unit:
-    if: ${{ !github.event.pull_request.draft }}
+    needs: plan
+    if: ${{ !github.event.pull_request.draft && needs.plan.outputs.mode == 'full' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -97,6 +129,24 @@ jobs:
             coverage/shard-${{ matrix.shard }}.info
             coverage/timings-${{ matrix.shard }}.json
           if-no-files-found: error
+
+  # The light run: only the test files that mention a changed file (scripts/ci-plan.mjs), in one job. An empty list passes.
+  unit-light:
+    needs: plan
+    if: ${{ !github.event.pull_request.draft && needs.plan.outputs.mode == 'light' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AFFECTED_TESTS: ${{ needs.plan.outputs.tests }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - name: Build the library
+        if: env.AFFECTED_TESTS != ''
+        run: npm run build:lib
+      - name: Run the affected tests
+        if: env.AFFECTED_TESTS != ''
+        run: node --test --import ./scripts/test-hang-guard.mjs --test-timeout=300000 --test-reporter=spec $AFFECTED_TESTS
 
   coverage:
     needs: unit
@@ -142,7 +192,8 @@ jobs:
 
   # Users may start the MCP server with bunx, so the packed server also runs the package smoke under bun.
   bun:
-    if: ${{ !github.event.pull_request.draft }}
+    needs: plan
+    if: ${{ !github.event.pull_request.draft && needs.plan.outputs.mode == 'full' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -161,7 +212,8 @@ jobs:
   # The tests that load Cook through tests/support/cook.js must skip, not fail, when the package is absent. COOK_DISABLE=1
   # also makes the library build use the stub packer, so this leg checks the build without Cook too.
   unit-without-cook:
-    if: ${{ !github.event.pull_request.draft }}
+    needs: plan
+    if: ${{ !github.event.pull_request.draft && needs.plan.outputs.mode == 'full' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -208,20 +260,27 @@ jobs:
 
   test:
     if: always() && !github.event.pull_request.draft
-    needs: [audit, change-note, size, addon-python, unit, unit-without-cook, coverage, package, bun]
+    needs: [plan, audit, change-note, size, addon-python, unit, unit-light, unit-without-cook, coverage, package, bun]
     runs-on: ubuntu-latest
     steps:
-      # A skipped size job is expected outside pull requests. Anything else that is not a success fails the check.
+      # A skipped size job is expected outside pull requests. In a light run the full-only jobs skip, and in a full run the
+      # light job skips. Anything else that is not a success fails the check, and so does a skipped plan, which would
+      # otherwise make both unit jobs skip and let nothing run the tests.
       - name: Fail unless every job succeeded
         env:
           RESULTS: ${{ toJSON(needs) }}
           EVENT_NAME: ${{ github.event_name }}
+          PLAN_MODE: ${{ needs.plan.outputs.mode }}
         run: |
           echo "$RESULTS" | node -e '
             const needs = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            const lightRun = process.env.PLAN_MODE === "light";
+            const fullOnlyJobs = ["unit", "coverage", "bun", "unit-without-cook"];
             let failed = false;
             for (const [name, { result }] of Object.entries(needs)) {
-              const expectedSkip = (name === "size" || name === "change-note") && process.env.EVENT_NAME !== "pull_request";
+              const skippedOutsidePullRequests = (name === "size" || name === "change-note") && process.env.EVENT_NAME !== "pull_request";
+              const skippedByPlan = lightRun ? fullOnlyJobs.includes(name) : name === "unit-light";
+              const expectedSkip = skippedOutsidePullRequests || (process.env.PLAN_MODE !== "" && skippedByPlan);
               const ok = result === "success" || (result === "skipped" && expectedSkip);
               console.log(`${ok ? "ok  " : "FAIL"} ${name}: ${result}`);
               if (!ok) failed = true;

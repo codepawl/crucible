@@ -44,6 +44,8 @@ Run the full preflight once before you push. A green preflight covers the PR gat
 `npm ci` installs a pre-push hook that runs `npm run preflight -- --skip-tests`, which includes those fast tests, and stops a push that would fail those gates.
 `SKIP_PREFLIGHT=1 git push` skips it once; use that only for a push you know the gates do not cover.
 
+CI runs a pull request light when it changes only docs, change notes, markdown, site pages or the Studio UI: the affected tests, with no shards or coverage gate (`scripts/ci-plan.mjs`). Anything else runs the full set.
+
 For one test file: `node --test tests/<area>.test.js`.
 
 Between one file and the full pass, while you iterate (each prints at most about 20 lines for 10 failures and writes the full TAP to `artifacts/test-logs/`):
