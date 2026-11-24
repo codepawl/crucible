@@ -1,0 +1,914 @@
+{
+ "summary": {
+  "frames": 30,
+  "labelsFound": 60,
+  "smallestDrawnMarginPixels": 54,
+  "smallestProjectedMarginPixels": 54.4,
+  "framesWithoutALabel": [],
+  "smallestDrawnLabelToLabelPixels": 121
+ },
+ "gaps": [
+  {
+   "frame": 0,
+   "gapPixels": 157
+  },
+  {
+   "frame": 1,
+   "gapPixels": 157
+  },
+  {
+   "frame": 2,
+   "gapPixels": 374
+  },
+  {
+   "frame": 3,
+   "gapPixels": 378
+  },
+  {
+   "frame": 4,
+   "gapPixels": 381
+  },
+  {
+   "frame": 5,
+   "gapPixels": 383
+  },
+  {
+   "frame": 6,
+   "gapPixels": 386
+  },
+  {
+   "frame": 7,
+   "gapPixels": 385
+  },
+  {
+   "frame": 8,
+   "gapPixels": 384
+  },
+  {
+   "frame": 9,
+   "gapPixels": 382
+  },
+  {
+   "frame": 10,
+   "gapPixels": 378
+  },
+  {
+   "frame": 11,
+   "gapPixels": 375
+  },
+  {
+   "frame": 12,
+   "gapPixels": 300
+  },
+  {
+   "frame": 13,
+   "gapPixels": 369
+  },
+  {
+   "frame": 14,
+   "gapPixels": 363
+  },
+  {
+   "frame": 15,
+   "gapPixels": 356
+  },
+  {
+   "frame": 16,
+   "gapPixels": 212
+  },
+  {
+   "frame": 17,
+   "gapPixels": 339
+  },
+  {
+   "frame": 18,
+   "gapPixels": 328
+  },
+  {
+   "frame": 19,
+   "gapPixels": 197
+  },
+  {
+   "frame": 20,
+   "gapPixels": 304
+  },
+  {
+   "frame": 21,
+   "gapPixels": 291
+  },
+  {
+   "frame": 22,
+   "gapPixels": 276
+  },
+  {
+   "frame": 23,
+   "gapPixels": 312
+  },
+  {
+   "frame": 24,
+   "gapPixels": 121
+  },
+  {
+   "frame": 25,
+   "gapPixels": 336
+  },
+  {
+   "frame": 26,
+   "gapPixels": 347
+  },
+  {
+   "frame": 27,
+   "gapPixels": 354
+  },
+  {
+   "frame": 28,
+   "gapPixels": 362
+  },
+  {
+   "frame": 29,
+   "gapPixels": 368
+  }
+ ],
+ "rows": [
+  {
+   "frame": 0,
+   "id": "bao-tag",
+   "pixels": 10374,
+   "drawn": {
+    "left": 619,
+    "right": 1008,
+    "top": 810,
+    "bottom": 915
+   },
+   "drawnMargin": 71,
+   "projectedMargin": 70.8
+  },
+  {
+   "frame": 0,
+   "id": "ana-tag",
+   "pixels": 7289,
+   "drawn": {
+    "left": 296,
+    "right": 461,
+    "top": 934,
+    "bottom": 983
+   },
+   "drawnMargin": 296,
+   "projectedMargin": 295
+  },
+  {
+   "frame": 1,
+   "id": "bao-tag",
+   "pixels": 10389,
+   "drawn": {
+    "left": 609,
+    "right": 1013,
+    "top": 810,
+    "bottom": 916
+   },
+   "drawnMargin": 66,
+   "projectedMargin": 65.9
+  },
+  {
+   "frame": 1,
+   "id": "ana-tag",
+   "pixels": 7319,
+   "drawn": {
+    "left": 284,
+    "right": 451,
+    "top": 935,
+    "bottom": 983
+   },
+   "drawnMargin": 284,
+   "projectedMargin": 284.2
+  },
+  {
+   "frame": 2,
+   "id": "bao-tag",
+   "pixels": 10515,
+   "drawn": {
+    "left": 744,
+    "right": 1019,
+    "top": 866,
+    "bottom": 917
+   },
+   "drawnMargin": 60,
+   "projectedMargin": 61.8
+  },
+  {
+   "frame": 2,
+   "id": "ana-tag",
+   "pixels": 7296,
+   "drawn": {
+    "left": 200,
+    "right": 369,
+    "top": 938,
+    "bottom": 987
+   },
+   "drawnMargin": 200,
+   "projectedMargin": 273.7
+  },
+  {
+   "frame": 3,
+   "id": "bao-tag",
+   "pixels": 10466,
+   "drawn": {
+    "left": 740,
+    "right": 1016,
+    "top": 867,
+    "bottom": 917
+   },
+   "drawnMargin": 63,
+   "projectedMargin": 58.7
+  },
+  {
+   "frame": 3,
+   "id": "ana-tag",
+   "pixels": 7455,
+   "drawn": {
+    "left": 192,
+    "right": 361,
+    "top": 938,
+    "bottom": 987
+   },
+   "drawnMargin": 192,
+   "projectedMargin": 263.4
+  },
+  {
+   "frame": 4,
+   "id": "bao-tag",
+   "pixels": 10466,
+   "drawn": {
+    "left": 736,
+    "right": 1012,
+    "top": 867,
+    "bottom": 917
+   },
+   "drawnMargin": 67,
+   "projectedMargin": 56.4
+  },
+  {
+   "frame": 4,
+   "id": "ana-tag",
+   "pixels": 7544,
+   "drawn": {
+    "left": 186,
+    "right": 354,
+    "top": 938,
+    "bottom": 987
+   },
+   "drawnMargin": 186,
+   "projectedMargin": 253.4
+  },
+  {
+   "frame": 5,
+   "id": "bao-tag",
+   "pixels": 10440,
+   "drawn": {
+    "left": 732,
+    "right": 1007,
+    "top": 867,
+    "bottom": 918
+   },
+   "drawnMargin": 72,
+   "projectedMargin": 55
+  },
+  {
+   "frame": 5,
+   "id": "ana-tag",
+   "pixels": 7525,
+   "drawn": {
+    "left": 179,
+    "right": 348,
+    "top": 938,
+    "bottom": 987
+   },
+   "drawnMargin": 179,
+   "projectedMargin": 243.6
+  },
+  {
+   "frame": 6,
+   "id": "bao-tag",
+   "pixels": 10332,
+   "drawn": {
+    "left": 728,
+    "right": 1002,
+    "top": 867,
+    "bottom": 918
+   },
+   "drawnMargin": 77,
+   "projectedMargin": 54.4
+  },
+  {
+   "frame": 6,
+   "id": "ana-tag",
+   "pixels": 7542,
+   "drawn": {
+    "left": 172,
+    "right": 341,
+    "top": 938,
+    "bottom": 988
+   },
+   "drawnMargin": 172,
+   "projectedMargin": 234.2
+  },
+  {
+   "frame": 7,
+   "id": "bao-tag",
+   "pixels": 10352,
+   "drawn": {
+    "left": 722,
+    "right": 997,
+    "top": 867,
+    "bottom": 918
+   },
+   "drawnMargin": 82,
+   "projectedMargin": 54.6
+  },
+  {
+   "frame": 7,
+   "id": "ana-tag",
+   "pixels": 7264,
+   "drawn": {
+    "left": 167,
+    "right": 336,
+    "top": 940,
+    "bottom": 989
+   },
+   "drawnMargin": 167,
+   "projectedMargin": 225.1
+  },
+  {
+   "frame": 8,
+   "id": "bao-tag",
+   "pixels": 10369,
+   "drawn": {
+    "left": 716,
+    "right": 990,
+    "top": 868,
+    "bottom": 919
+   },
+   "drawnMargin": 89,
+   "projectedMargin": 55.6
+  },
+  {
+   "frame": 8,
+   "id": "ana-tag",
+   "pixels": 7505,
+   "drawn": {
+    "left": 162,
+    "right": 331,
+    "top": 940,
+    "bottom": 989
+   },
+   "drawnMargin": 162,
+   "projectedMargin": 216.3
+  },
+  {
+   "frame": 9,
+   "id": "bao-tag",
+   "pixels": 10360,
+   "drawn": {
+    "left": 710,
+    "right": 983,
+    "top": 868,
+    "bottom": 919
+   },
+   "drawnMargin": 96,
+   "projectedMargin": 57.3
+  },
+  {
+   "frame": 9,
+   "id": "ana-tag",
+   "pixels": 7586,
+   "drawn": {
+    "left": 158,
+    "right": 327,
+    "top": 940,
+    "bottom": 989
+   },
+   "drawnMargin": 158,
+   "projectedMargin": 207.9
+  },
+  {
+   "frame": 10,
+   "id": "bao-tag",
+   "pixels": 10352,
+   "drawn": {
+    "left": 702,
+    "right": 975,
+    "top": 868,
+    "bottom": 919
+   },
+   "drawnMargin": 104,
+   "projectedMargin": 59.8
+  },
+  {
+   "frame": 10,
+   "id": "ana-tag",
+   "pixels": 7603,
+   "drawn": {
+    "left": 153,
+    "right": 323,
+    "top": 940,
+    "bottom": 990
+   },
+   "drawnMargin": 153,
+   "projectedMargin": 199.9
+  },
+  {
+   "frame": 11,
+   "id": "bao-tag",
+   "pixels": 10361,
+   "drawn": {
+    "left": 695,
+    "right": 967,
+    "top": 868,
+    "bottom": 919
+   },
+   "drawnMargin": 112,
+   "projectedMargin": 63
+  },
+  {
+   "frame": 11,
+   "id": "ana-tag",
+   "pixels": 7380,
+   "drawn": {
+    "left": 150,
+    "right": 319,
+    "top": 941,
+    "bottom": 990
+   },
+   "drawnMargin": 150,
+   "projectedMargin": 192.3
+  },
+  {
+   "frame": 12,
+   "id": "bao-tag",
+   "pixels": 10463,
+   "drawn": {
+    "left": 742,
+    "right": 1017,
+    "top": 865,
+    "bottom": 916
+   },
+   "drawnMargin": 62,
+   "projectedMargin": 66.9
+  },
+  {
+   "frame": 12,
+   "id": "ana-tag",
+   "pixels": 7159,
+   "drawn": {
+    "left": 274,
+    "right": 441,
+    "top": 935,
+    "bottom": 983
+   },
+   "drawnMargin": 274,
+   "projectedMargin": 185.1
+  },
+  {
+   "frame": 13,
+   "id": "bao-tag",
+   "pixels": 10423,
+   "drawn": {
+    "left": 687,
+    "right": 959,
+    "top": 868,
+    "bottom": 919
+   },
+   "drawnMargin": 120,
+   "projectedMargin": 71.5
+  },
+  {
+   "frame": 13,
+   "id": "ana-tag",
+   "pixels": 7661,
+   "drawn": {
+    "left": 146,
+    "right": 317,
+    "top": 941,
+    "bottom": 991
+   },
+   "drawnMargin": 146,
+   "projectedMargin": 178.4
+  },
+  {
+   "frame": 14,
+   "id": "bao-tag",
+   "pixels": 10398,
+   "drawn": {
+    "left": 678,
+    "right": 951,
+    "top": 868,
+    "bottom": 919
+   },
+   "drawnMargin": 128,
+   "projectedMargin": 76.7
+  },
+  {
+   "frame": 14,
+   "id": "ana-tag",
+   "pixels": 7618,
+   "drawn": {
+    "left": 144,
+    "right": 314,
+    "top": 942,
+    "bottom": 991
+   },
+   "drawnMargin": 144,
+   "projectedMargin": 172.2
+  },
+  {
+   "frame": 15,
+   "id": "bao-tag",
+   "pixels": 10308,
+   "drawn": {
+    "left": 670,
+    "right": 941,
+    "top": 869,
+    "bottom": 919
+   },
+   "drawnMargin": 138,
+   "projectedMargin": 82.5
+  },
+  {
+   "frame": 15,
+   "id": "ana-tag",
+   "pixels": 7674,
+   "drawn": {
+    "left": 142,
+    "right": 313,
+    "top": 942,
+    "bottom": 991
+   },
+   "drawnMargin": 142,
+   "projectedMargin": 166.4
+  },
+  {
+   "frame": 16,
+   "id": "bao-tag",
+   "pixels": 10326,
+   "drawn": {
+    "left": 524,
+    "right": 931,
+    "top": 813,
+    "bottom": 919
+   },
+   "drawnMargin": 148,
+   "projectedMargin": 88.8
+  },
+  {
+   "frame": 16,
+   "id": "ana-tag",
+   "pixels": 7581,
+   "drawn": {
+    "left": 142,
+    "right": 311,
+    "top": 942,
+    "bottom": 992
+   },
+   "drawnMargin": 142,
+   "projectedMargin": 161.2
+  },
+  {
+   "frame": 17,
+   "id": "bao-tag",
+   "pixels": 10280,
+   "drawn": {
+    "left": 651,
+    "right": 921,
+    "top": 869,
+    "bottom": 919
+   },
+   "drawnMargin": 158,
+   "projectedMargin": 95.8
+  },
+  {
+   "frame": 17,
+   "id": "ana-tag",
+   "pixels": 7438,
+   "drawn": {
+    "left": 142,
+    "right": 311,
+    "top": 944,
+    "bottom": 993
+   },
+   "drawnMargin": 142,
+   "projectedMargin": 156.5
+  },
+  {
+   "frame": 18,
+   "id": "bao-tag",
+   "pixels": 10223,
+   "drawn": {
+    "left": 641,
+    "right": 911,
+    "top": 870,
+    "bottom": 919
+   },
+   "drawnMargin": 168,
+   "projectedMargin": 103.2
+  },
+  {
+   "frame": 18,
+   "id": "ana-tag",
+   "pixels": 7557,
+   "drawn": {
+    "left": 142,
+    "right": 312,
+    "top": 944,
+    "bottom": 993
+   },
+   "drawnMargin": 142,
+   "projectedMargin": 152.4
+  },
+  {
+   "frame": 19,
+   "id": "bao-tag",
+   "pixels": 10225,
+   "drawn": {
+    "left": 511,
+    "right": 901,
+    "top": 810,
+    "bottom": 919
+   },
+   "drawnMargin": 178,
+   "projectedMargin": 111.2
+  },
+  {
+   "frame": 19,
+   "id": "ana-tag",
+   "pixels": 7581,
+   "drawn": {
+    "left": 143,
+    "right": 313,
+    "top": 944,
+    "bottom": 993
+   },
+   "drawnMargin": 143,
+   "projectedMargin": 148.9
+  },
+  {
+   "frame": 20,
+   "id": "bao-tag",
+   "pixels": 10160,
+   "drawn": {
+    "left": 620,
+    "right": 889,
+    "top": 870,
+    "bottom": 919
+   },
+   "drawnMargin": 190,
+   "projectedMargin": 119.6
+  },
+  {
+   "frame": 20,
+   "id": "ana-tag",
+   "pixels": 7579,
+   "drawn": {
+    "left": 145,
+    "right": 315,
+    "top": 944,
+    "bottom": 993
+   },
+   "drawnMargin": 145,
+   "projectedMargin": 146
+  },
+  {
+   "frame": 21,
+   "id": "bao-tag",
+   "pixels": 10133,
+   "drawn": {
+    "left": 609,
+    "right": 878,
+    "top": 870,
+    "bottom": 919
+   },
+   "drawnMargin": 201,
+   "projectedMargin": 128.4
+  },
+  {
+   "frame": 21,
+   "id": "ana-tag",
+   "pixels": 7439,
+   "drawn": {
+    "left": 148,
+    "right": 317,
+    "top": 946,
+    "bottom": 995
+   },
+   "drawnMargin": 148,
+   "projectedMargin": 143.7
+  },
+  {
+   "frame": 22,
+   "id": "bao-tag",
+   "pixels": 10158,
+   "drawn": {
+    "left": 598,
+    "right": 867,
+    "top": 870,
+    "bottom": 919
+   },
+   "drawnMargin": 212,
+   "projectedMargin": 137.7
+  },
+  {
+   "frame": 22,
+   "id": "ana-tag",
+   "pixels": 7582,
+   "drawn": {
+    "left": 152,
+    "right": 321,
+    "top": 946,
+    "bottom": 995
+   },
+   "drawnMargin": 152,
+   "projectedMargin": 142.1
+  },
+  {
+   "frame": 23,
+   "id": "bao-tag",
+   "pixels": 10518,
+   "drawn": {
+    "left": 744,
+    "right": 1020,
+    "top": 865,
+    "bottom": 917
+   },
+   "drawnMargin": 59,
+   "projectedMargin": 147.4
+  },
+  {
+   "frame": 23,
+   "id": "ana-tag",
+   "pixels": 7182,
+   "drawn": {
+    "left": 264,
+    "right": 431,
+    "top": 936,
+    "bottom": 984
+   },
+   "drawnMargin": 264,
+   "projectedMargin": 141.2
+  },
+  {
+   "frame": 24,
+   "id": "bao-tag",
+   "pixels": 10586,
+   "drawn": {
+    "left": 543,
+    "right": 1023,
+    "top": 814,
+    "bottom": 917
+   },
+   "drawnMargin": 56,
+   "projectedMargin": 157.4
+  },
+  {
+   "frame": 24,
+   "id": "ana-tag",
+   "pixels": 7314,
+   "drawn": {
+    "left": 254,
+    "right": 421,
+    "top": 935,
+    "bottom": 985
+   },
+   "drawnMargin": 254,
+   "projectedMargin": 141
+  },
+  {
+   "frame": 25,
+   "id": "bao-tag",
+   "pixels": 10537,
+   "drawn": {
+    "left": 748,
+    "right": 1024,
+    "top": 866,
+    "bottom": 917
+   },
+   "drawnMargin": 55,
+   "projectedMargin": 167.8
+  },
+  {
+   "frame": 25,
+   "id": "ana-tag",
+   "pixels": 7436,
+   "drawn": {
+    "left": 244,
+    "right": 411,
+    "top": 936,
+    "bottom": 985
+   },
+   "drawnMargin": 244,
+   "projectedMargin": 141.4
+  },
+  {
+   "frame": 26,
+   "id": "bao-tag",
+   "pixels": 10590,
+   "drawn": {
+    "left": 749,
+    "right": 1025,
+    "top": 866,
+    "bottom": 917
+   },
+   "drawnMargin": 54,
+   "projectedMargin": 178.5
+  },
+  {
+   "frame": 26,
+   "id": "ana-tag",
+   "pixels": 7483,
+   "drawn": {
+    "left": 234,
+    "right": 401,
+    "top": 936,
+    "bottom": 985
+   },
+   "drawnMargin": 234,
+   "projectedMargin": 142.7
+  },
+  {
+   "frame": 27,
+   "id": "bao-tag",
+   "pixels": 10624,
+   "drawn": {
+    "left": 748,
+    "right": 1025,
+    "top": 866,
+    "bottom": 917
+   },
+   "drawnMargin": 54,
+   "projectedMargin": 189.5
+  },
+  {
+   "frame": 27,
+   "id": "ana-tag",
+   "pixels": 7481,
+   "drawn": {
+    "left": 226,
+    "right": 393,
+    "top": 936,
+    "bottom": 985
+   },
+   "drawnMargin": 226,
+   "projectedMargin": 144.6
+  },
+  {
+   "frame": 28,
+   "id": "bao-tag",
+   "pixels": 10636,
+   "drawn": {
+    "left": 748,
+    "right": 1023,
+    "top": 866,
+    "bottom": 917
+   },
+   "drawnMargin": 56,
+   "projectedMargin": 200.8
+  },
+  {
+   "frame": 28,
+   "id": "ana-tag",
+   "pixels": 7585,
+   "drawn": {
+    "left": 216,
+    "right": 385,
+    "top": 936,
+    "bottom": 985
+   },
+   "drawnMargin": 216,
+   "projectedMargin": 147.3
+  },
+  {
+   "frame": 29,
+   "id": "bao-tag",
+   "pixels": 10525,
+   "drawn": {
+    "left": 746,
+    "right": 1021,
+    "top": 866,
+    "bottom": 917
+   },
+   "drawnMargin": 58,
+   "projectedMargin": 212.3
+  },
+  {
+   "frame": 29,
+   "id": "ana-tag",
+   "pixels": 7260,
+   "drawn": {
+    "left": 208,
+    "right": 377,
+    "top": 937,
+    "bottom": 986
+   },
+   "drawnMargin": 208,
+   "projectedMargin": 150.8
+  }
+ ]
+}
