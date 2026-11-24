@@ -1080,7 +1080,7 @@ export function createStudioController({
 
   const SELECTION_MODES = Object.freeze(['replace', 'add', 'toggle', 'remove']);
 
-  // Ids a person can select with a click or a key: hidden nodes stay out of Select all and Invert, as in Blender.
+  // Ids a person can select with a click or a key: hidden nodes stay out of Select all and Invert.
   function selectableNodeIds(recipe) {
     return recipe.nodes.filter(node => node.visible !== false).map(node => node.id);
   }

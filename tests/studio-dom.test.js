@@ -511,7 +511,7 @@ test('popover buttons open each menu, close it again on a click inside and stay 
   assert.equal(newPopover.style.left, '15px');
   assert.equal(newPopover.style.right, 'auto');
   assert.equal(newPopover.style.top, '48px');
-  byText(newPopover, 'New scene').dispatchEvent(ui.dom.document.createEvent('click', { bubbles: true }));
+  newPopover.querySelector('#crucible-studio-recent-list').dispatchEvent(ui.dom.document.createEvent('click', { bubbles: true }));
   assert.equal(newPopover.popoverOpen, true);
 
   const exportButton = byText(ui.root, 'Export').parentNode;
@@ -1467,6 +1467,32 @@ test('a host that can rename is asked, never overwrites and reports a taken name
   assert.equal(desktop.calls.at(-1).argument.filePath, 'C:/scenes/fresh.scene.json');
 });
 
+test('renaming the scene renames its entry in Open recent, and a scene that was never listed stays out of it (#3344)', async testContext => {
+  let entries = [{ id: 'h1', name: 'old.scene.json' }];
+  const recentScenes = {
+    list: async () => entries.map(entry => ({ ...entry })),
+    remember: async ({ name }) => {
+      entries = [{ id: `h-${name}`, name }, ...entries.filter(entry => entry.name !== name)];
+    },
+    remove: async id => {
+      entries = entries.filter(entry => entry.id !== id);
+    },
+  };
+  const desktop = createDesktop({
+    recentScenes,
+    renameScene: async ({ fileName }) => ({ filePath: `C:/scenes/${fileName}`, fileName }),
+  });
+  const ui = mountStudio(testContext, { desktop });
+  ui.studio.setFileContext({ filePath: 'C:/scenes/old.scene.json', fileName: 'old.scene.json', dirty: false });
+  await renameSceneTo(ui, 'fresh');
+  assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, 'fresh.scene.json');
+  assert.deepEqual(entries.map(entry => entry.name), ['fresh.scene.json'], 'the list shows the new name and no leftover of the old one');
+
+  entries = [{ id: 'h2', name: 'other.scene.json' }];
+  await renameSceneTo(ui, 'again');
+  assert.deepEqual(entries.map(entry => entry.name), ['other.scene.json'], 'a scene that was not in the list is not added by a rename');
+});
+
 test('a host without a rename method sends the next Save through Save as with the new name (#3344)', async testContext => {
   const desktop = createDesktop();
   const ui = mountStudio(testContext, { desktop });
@@ -1944,9 +1970,13 @@ test('the New scene menu replaces the scene with a template and resets the file'
   const spec = STUDIO_TEMPLATES[templateKey];
   filePill.click();
   const newPopover = ui.root.querySelector('#crucible-studio-pop-new');
-  byText(newPopover, spec.label).click();
+  byText(newPopover, 'New scene…').click();
   await ui.dom.settle();
   assert.equal(newPopover.popoverOpen, false);
+  byText(ui.root, spec.label).parentNode.click();
+  await ui.dom.settle();
+  byText(ui.root.querySelector('.crucible-studio-confirm-dialog'), 'Discard').click();
+  await ui.dom.settle();
   assert.equal(filePill.textContent, `${templateKey}.scene.json`);
   assert.equal(filePill.dataset.dirty, 'false');
   assert.equal(ui.status(), `New ${spec.label}`);
@@ -2851,7 +2881,7 @@ test('the top bar has File, Edit, View, Agent and Help menus that do what their 
 
   menuButton('File').click();
   assert.equal(popover('new').popoverOpen, true);
-  assert.deepEqual(rows('new').slice(0, 7), ['Open…', 'Save', 'Save as…', 'Recipe JSON', 'Export PNG image', 'Export GLB model', 'Export web pack']);
+  assert.deepEqual(rows('new'), ['New scene…', 'Open…', 'Open recent', 'Save', 'Save as…', 'Export PNG image', 'Export GLB model', 'Export web pack', 'Recipe JSON']);
   assert.equal(byText(popover('new'), 'Save').dataset.shortcut, 'Ctrl+S');
 
   menuButton('Edit').click();
@@ -4454,7 +4484,9 @@ test('choosing a new scene on purpose clears the draft and its notice', async te
   const ui = mountStudio(testContext, { preferenceStorage: storage });
   await ui.studio.ready;
   assert.equal(ui.root.querySelector('.crucible-studio-draft').hidden, false);
-  byText(ui.root, 'Clean stage').click();
+  ui.studio.openNewScene();
+  await ui.dom.settle();
+  byDataset(ui.root, 'template', 'empty').click();
   await ui.dom.settle();
   assert.equal(storage.entries.has(DRAFT_KEY), false);
   assert.equal(ui.root.querySelector('.crucible-studio-draft').hidden, true);
