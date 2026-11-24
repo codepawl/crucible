@@ -1552,22 +1552,6 @@ export function createStudio(container, {
     className: 'crucible-studio-popover',
     attributes: { popover: 'auto' },
   });
-  for (const [templateKey, spec] of Object.entries(STUDIO_TEMPLATES)) {
-    const templateButton = createElement(documentReference, 'button', { type: 'button', textContent: spec.label, title: spec.description });
-    templateButton.addEventListener('click', async () => {
-      newPopover.hidePopover?.();
-      const recipe = buildTemplateRecipe(templateKey);
-      await prepareRecipe(recipe);
-      controller.loadRecipe(recipe);
-      activeFilePath = null;
-      activeFileName = `${templateKey}.scene.json`;
-      isDirty = false;
-      discardDraft();
-      syncFileBanner();
-      announce(`New ${spec.label}`);
-    });
-    newPopover.append(giveMenuIcon(templateButton));
-  }
 
   const addPopover = createElement(documentReference, 'div', {
     id: 'crucible-studio-pop-add',
@@ -1693,20 +1677,41 @@ export function createStudio(container, {
   giveMenuIcon(exportPngButton, 'image');
   giveMenuIcon(exportGlbButton, 'node');
   giveMenuIcon(exportPackButton, 'globe');
-  newPopover.prepend(
-    openButton,
-    ...(importButton ? [importButton] : []),
-    saveButton,
-    saveAsButton,
-    editJsonButton,
+  // The rows come in three groups, set apart by space: starting and opening, saving, then importing and exporting.
+  const startMenuGroup = item => {
+    item.dataset.groupStart = 'true';
+    return item;
+  };
+  const recentChevron = createIcon(documentReference, 'chevron');
+  recentChevron.dataset.recentChevron = 'true';
+  const openRecentButton = giveMenuIcon(createElement(
+    documentReference,
+    'button',
+    { type: 'button', disabled: true, dataset: { keepsMenu: 'true' }, attributes: { 'aria-expanded': 'false', 'aria-controls': 'crucible-studio-recent-list' } },
+    createElement(documentReference, 'span', { textContent: 'Open recent' }),
+    recentChevron,
+  ), 'recent');
+  const recentList = createElement(documentReference, 'div', { id: 'crucible-studio-recent-list', className: 'crucible-studio-recent-list', hidden: true, attributes: { role: 'group', 'aria-label': 'Recent scenes' } });
+  const exportRows = [
     createMenuItem('Export PNG image', '', () => exportPngButton.click(), 'image'),
     createMenuItem('Export GLB model', '', () => exportGlbButton.click(), 'node'),
     createMenuItem('Export web pack', '', () => exportPackButton.click(), 'globe'),
-    createElement(documentReference, 'p', { className: 'crucible-studio-popover-note', textContent: 'New scene' }),
+  ];
+  const importAndExportRows = [...(importButton ? [importButton] : []), ...exportRows, editJsonButton];
+  newPopover.prepend(
+    createMenuItem('New scene…', '', () => openNewScene(), 'newScene'),
+    openButton,
+    openRecentButton,
+    recentList,
+    startMenuGroup(saveButton),
+    saveAsButton,
+    startMenuGroup(importAndExportRows[0]),
+    ...importAndExportRows.slice(1),
   );
   for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover]) {
     popoverElement.addEventListener('click', event => {
-      if (event.target.closest?.('button')) popoverElement.hidePopover?.();
+      const clickedButton = event.target.closest?.('button');
+      if (clickedButton && !clickedButton.dataset.keepsMenu) popoverElement.hidePopover?.();
     });
   }
 
@@ -2584,6 +2589,9 @@ export function createStudio(container, {
       const parsed = JSON.parse(dialogTextarea.value);
       await prepareRecipe(parsed);
       controller.loadRecipe(parsed);
+      // Apply is one undo step and asks nothing, but the scene now differs from its file, so it counts as changed.
+      isDirty = true;
+      syncFileBanner();
       recipeDialog.close('apply');
       announceSuccess('Recipe applied');
     } catch (error) {
@@ -2970,6 +2978,8 @@ export function createStudio(container, {
     const madeByAgent = agent ?? (filePath !== null && filePath === activeFilePath);
     const agentLabel = assertAgentName(madeByAgent?.name ?? defaultAgentName);
     const recipeBefore = madeByAgent ? controller.exportRecipe() : null;
+    // A host or a watched-file reload does not ask first: the scene it replaces stays one undo step away, and this says so.
+    const replacedUnsavedChanges = isDirty && recordUndo;
     await prepareRecipe(parsed);
     controller.loadRecipe(parsed, { recordUndo });
     if (madeByAgent) {
@@ -2981,20 +2991,169 @@ export function createStudio(container, {
     activeFileName = fileName;
     isDirty = false;
     syncFileBanner();
+    if (replacedUnsavedChanges) announce('Replaced unsaved changes. Undo brings them back.');
+  }
+
+  // The New scene chooser, the unsaved-changes question and the recent list load on first use, so Studio's entry stays small.
+  let newSceneDialogs = null;
+  let newSceneDialogsPromise = null;
+  function loadNewSceneDialogs() {
+    newSceneDialogsPromise ??= import('./studio-new-scene.js').then(module => {
+      newSceneDialogs = module.createNewSceneDialogs({ documentReference, createElement, createIcon });
+      root.append(...newSceneDialogs.dialogs);
+      return newSceneDialogs;
+    });
+    return newSceneDialogsPromise;
+  }
+
+  // File handles keep a file reopenable where the browser has them; elsewhere the recent list keeps a bounded copy of the recipe.
+  const canKeepFileHandles = () => typeof documentReference.defaultView?.showOpenFilePicker === 'function' && Boolean(documentReference.defaultView?.indexedDB);
+  let recentScenesPromise = null;
+  function loadRecentScenes() {
+    recentScenesPromise ??= import('./studio-recent-scenes.js').then(module => module.createRecentScenes({
+      storage: preferenceStorage,
+      handleStore: canKeepFileHandles() ? module.createIndexedDbHandleStore(documentReference.defaultView.indexedDB) : null,
+      host: desktop?.recentScenes ?? null,
+    }));
+    return recentScenesPromise;
+  }
+
+  async function rememberFile({ name, text, handle = null, filePath = null }) {
+    try {
+      const recentScenes = await loadRecentScenes();
+      await recentScenes.remember(handle ? { name, handle } : { name, text, filePath });
+    } catch {
+      // The recent list is a convenience: a scene that cannot be listed is still open.
+    }
+  }
+
+  /** Asks what to do with unsaved changes before a scene is replaced. Resolves true when it is safe to go on. */
+  async function confirmReplaceScene() {
+    if (!isDirty) return true;
+    const { askUnsavedChanges } = await loadNewSceneDialogs();
+    const choice = await askUnsavedChanges(activeFileName);
+    if (choice === 'cancel') return false;
+    if (choice === 'save') {
+      await performSaveFile({ forceAs: false });
+      // A cancelled save leaves the scene unsaved, so the scene stays.
+      return !isDirty;
+    }
+    return true;
+  }
+
+  // Asked twice (a menu click and a host call), it is one chooser and one answer.
+  let openingNewScene = null;
+  function openNewScene() {
+    openingNewScene ??= startNewScene().finally(() => {
+      openingNewScene = null;
+    });
+    return openingNewScene;
+  }
+
+  async function startNewScene() {
+    const { chooseTemplate } = await loadNewSceneDialogs();
+    const templateKey = await chooseTemplate();
+    if (!templateKey || !(await confirmReplaceScene())) return;
+    try {
+      const recipe = buildTemplateRecipe(templateKey);
+      await prepareRecipe(recipe);
+      controller.loadRecipe(recipe);
+      activeFilePath = null;
+      activeFileName = `${templateKey}.scene.json`;
+      isDirty = false;
+      discardDraft();
+      syncFileBanner();
+      announce(`New ${STUDIO_TEMPLATES[templateKey].label}`);
+    } catch (error) {
+      announceError(error.message);
+    }
+  }
+
+  function setRecentExpanded(expanded) {
+    recentList.hidden = !expanded;
+    openRecentButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  }
+
+  async function refreshRecentList() {
+    let entries = [];
+    try {
+      entries = await (await loadRecentScenes()).list();
+    } catch {
+      entries = [];
+    }
+    openRecentButton.disabled = entries.length === 0;
+    const rows = entries.map(entry => {
+      const row = giveMenuIcon(createElement(
+        documentReference,
+        'button',
+        { type: 'button', title: entry.name, dataset: { recentId: entry.id } },
+        createElement(documentReference, 'span', { className: 'crucible-studio-recent-name', textContent: entry.name }),
+      ));
+      row.addEventListener('click', () => openRecentScene(entry.id));
+      return row;
+    });
+    const clearRow = giveMenuIcon(createElement(documentReference, 'button', { type: 'button', textContent: 'Clear recent', dataset: { clearRecent: 'true' } }), 'remove');
+    clearRow.addEventListener('click', async () => {
+      try {
+        await (await loadRecentScenes()).clear();
+        announce('Cleared the recent list');
+      } catch (error) {
+        announceError(error.message);
+      }
+      refreshRecentList();
+    });
+    recentList.replaceChildren(...rows, clearRow);
+    if (entries.length === 0) setRecentExpanded(false);
+  }
+  openRecentButton.addEventListener('click', () => setRecentExpanded(recentList.hidden));
+  newPopover.addEventListener('beforetoggle', event => {
+    if (event.newState === 'open') refreshRecentList();
+  });
+
+  async function openRecentScene(id) {
+    try {
+      const recentScenes = await loadRecentScenes();
+      if (!(await confirmReplaceScene())) return;
+      const opened = await recentScenes.open(id);
+      await loadExternalTextFile(opened.text, { filePath: opened.filePath ?? null, fileName: opened.fileName });
+      discardDraft();
+      announceSuccess(`Opened ${opened.fileName}`);
+      rememberFile({ name: opened.fileName, text: opened.text, handle: opened.handle, filePath: opened.filePath });
+    } catch (error) {
+      announceError(error.message);
+      refreshRecentList();
+    }
+  }
+
+  async function openPickedFile({ text, fileName, filePath = null, handle = null, verb = 'Opened' }) {
+    if (!(await confirmReplaceScene())) return;
+    try {
+      await loadExternalTextFile(text, { filePath, fileName });
+      discardDraft();
+      announceSuccess(`${verb} ${fileName}`);
+      rememberFile({ name: fileName, text, handle, filePath });
+    } catch (error) {
+      announceError(error.message);
+    }
   }
 
   async function performOpenFile() {
     if (desktop?.openFile) {
       const picked = await desktop.openFile();
       if (!picked || picked.canceled) return;
-      try {
-        await loadExternalTextFile(picked.text, { filePath: picked.filePath, fileName: picked.fileName });
-        discardDraft();
-        announceSuccess(`Opened ${picked.fileName}`);
-      } catch (error) {
-        announceError(error.message);
-      }
+      await openPickedFile({ text: picked.text, fileName: picked.fileName, filePath: picked.filePath });
       return;
+    }
+    if (canKeepFileHandles()) {
+      try {
+        const [handle] = await documentReference.defaultView.showOpenFilePicker({ types: [{ description: 'Crucible scene', accept: { 'application/json': ['.json'] } }] });
+        const file = await handle.getFile();
+        await openPickedFile({ text: await file.text(), fileName: file.name, handle });
+        return;
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+        // A page that may not use the picker (a frame, a blocked permission) falls back to the file input.
+      }
     }
     fileInput.click();
   }
@@ -3011,6 +3170,7 @@ export function createStudio(container, {
       isDirty = false;
       discardDraft();
       syncFileBanner();
+      rememberFile({ name: activeFileName, text: recipeText, filePath: activeFilePath });
       announceSuccess(`Saved ${activeFileName}`);
       return;
     }
@@ -3018,6 +3178,7 @@ export function createStudio(container, {
     isDirty = false;
     discardDraft();
     syncFileBanner();
+    rememberFile({ name: activeFileName, text: recipeText });
     announceSuccess(`Downloaded ${activeFileName}`);
   }
 
@@ -3029,13 +3190,7 @@ export function createStudio(container, {
     const file = fileInput.files?.[0];
     fileInput.value = '';
     if (!file) return;
-    try {
-      await loadExternalTextFile(await file.text(), { filePath: null, fileName: file.name });
-      discardDraft();
-      announceSuccess(`Loaded ${file.name}`);
-    } catch (error) {
-      announceError(error.message);
-    }
+    await openPickedFile({ text: await file.text(), fileName: file.name, verb: 'Loaded' });
   });
 
   // The import code loads on the first import; an import is one undo step, and a refusal says what to do and changes nothing.
@@ -4298,7 +4453,7 @@ export function createStudio(container, {
     } catch (error) {
       // Edit mode refuses a move it could not write down before the pointer moves, and says why.
       if (!meshEditor?.active) throw error;
-      announce(error);
+      announceError(error.message);
       return;
     }
     pointerState = { mode: 'gizmo', pointerId: event.pointerId };
@@ -4477,12 +4632,7 @@ export function createStudio(container, {
       await importFileIntoScene(file);
       return;
     }
-    try {
-      await loadExternalTextFile(await file.text(), { filePath: file.path || null, fileName: file.name });
-      announceSuccess(`Loaded ${file.name}`);
-    } catch (error) {
-      announceError(error.message);
-    }
+    await openPickedFile({ text: await file.text(), fileName: file.name, filePath: file.path || null, verb: 'Loaded' });
   });
 
   // A slider or a switch keeps the focus after a click, but nothing is typed into it, so only the keys it moves with stay its own.
@@ -4565,7 +4715,7 @@ export function createStudio(container, {
     const pressedOnNodeId = controller.selectedNodeId;
     const editor = await loadMeshEditor();
     const converted = editor.conversionOf(pressedOnNodeId);
-    if (converted) await loadAgentSceneModules({ geometries: [converted] }).catch(error => announce(error));
+    if (converted) await loadAgentSceneModules({ geometries: [converted] }).catch(error => announceError(error.message));
     if (!meshEnterPending) return;
     meshEnterPending = false;
     // The generator code that was loaded belongs to the object Tab was pressed on: another selection by now gets nothing.
@@ -4754,7 +4904,7 @@ export function createStudio(container, {
       return;
     }
     // A Ctrl key works over an open dialog; a plain key does not.
-    const dialogIsOpen = recipeDialog.open || shortcutsDialog.open || settingsDialog.open;
+    const dialogIsOpen = recipeDialog.open || shortcutsDialog.open || settingsDialog.open || Boolean(newSceneDialogs?.dialogs.some(dialog => dialog.open));
     if (dialogIsOpen && !match.binding.ctrl) {
       return;
     }
@@ -4987,6 +5137,8 @@ export function createStudio(container, {
     get preferences() { return { ...preferences }; },
     /** Opens the first-run setup, one step a page. Studio never opens it on its own. */
     openSetup,
+    /** Opens the New scene chooser, as File > New scene does. Resolves when the chosen scene is on screen, or the person cancelled. */
+    openNewScene,
     get setupDone() { return preferences.setupDone; },
     selectNode: nodeId => controller.selectNode(nodeId),
     setTool: tool => controller.setTool(tool),
