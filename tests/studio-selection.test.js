@@ -419,7 +419,7 @@ test('the stylesheet gives the active row more weight than the other selected ro
   const selected = /\.crucible-studio-tree-row\[data-selected="true"\]\s*{([^}]*)}/.exec(STUDIO_CSS);
   const active = /\.crucible-studio-tree-row\[data-active="true"\]\s*{([^}]*)}/.exec(STUDIO_CSS);
   assert.ok(selected && active, 'both rules exist');
-  const share = rule => Number(/var\(--studio-text\) (\d+)%/.exec(rule[1])?.[1]);
+  const share = rule => Number(/var\(--studio-(?:text|accent)\) (\d+)%/.exec(rule[1])?.[1]);
   assert.ok(share(active) > share(selected) && share(selected) > 6, 'active > selected > the 6 percent hover');
   assert.doesNotMatch(selected[1] + active[1], /border|box-shadow/);
 });

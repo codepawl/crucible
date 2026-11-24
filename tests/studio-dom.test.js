@@ -510,7 +510,7 @@ test('popover buttons open each menu, close it again on a click inside and stay 
   assert.equal(newPopover.style.left, '15px');
   assert.equal(newPopover.style.right, 'auto');
   assert.equal(newPopover.style.top, '48px');
-  byText(newPopover, 'New scene').dispatchEvent(ui.dom.document.createEvent('click', { bubbles: true }));
+  newPopover.querySelector('#crucible-studio-recent-list').dispatchEvent(ui.dom.document.createEvent('click', { bubbles: true }));
   assert.equal(newPopover.popoverOpen, true);
 
   assert.equal(ui.root.querySelector('#crucible-studio-pop-export'), null, 'Export is a workspace, so the top bar holds no export menu');
@@ -1487,9 +1487,13 @@ test('the New scene menu replaces the scene with a template and resets the file'
   const spec = STUDIO_TEMPLATES[templateKey];
   filePill.click();
   const newPopover = ui.root.querySelector('#crucible-studio-pop-new');
-  byText(newPopover, spec.label).click();
+  byText(newPopover, 'New scene…').click();
   await ui.dom.settle();
   assert.equal(newPopover.popoverOpen, false);
+  byText(ui.root, spec.label).parentNode.click();
+  await ui.dom.settle();
+  byText(ui.root.querySelector('.crucible-studio-confirm-dialog'), 'Discard').click();
+  await ui.dom.settle();
   assert.equal(filePill.textContent, `${templateKey}.scene.json`);
   assert.equal(filePill.dataset.dirty, 'false');
   assert.equal(ui.status(), `New ${spec.label}`);
@@ -2611,7 +2615,7 @@ test('the top bar has File, Edit, View, Agent and Help menus that do what their 
 
   menuButton('File').click();
   assert.equal(popover('new').popoverOpen, true);
-  assert.deepEqual(rows('new').slice(0, 5), ['Open…', 'Save', 'Save as…', 'Recipe JSON', 'Export…']);
+  assert.deepEqual(rows('new'), ['New scene…', 'Open…', 'Open recent', 'Save', 'Save as…', 'Export…', 'Recipe JSON']);
   assert.equal(byText(popover('new'), 'Save').dataset.shortcut, 'Ctrl+S');
   byText(popover('new'), 'Export…').click();
   assert.equal(ui.root.dataset.workspace, 'export', 'the one Export row opens the workspace');
@@ -4247,10 +4251,29 @@ test('choosing a new scene on purpose clears the draft and its notice', async te
   const ui = mountStudio(testContext, { preferenceStorage: storage });
   await ui.studio.ready;
   assert.equal(ui.root.querySelector('.crucible-studio-draft').hidden, false);
-  byText(ui.root, 'Clean stage').click();
+  ui.studio.openNewScene();
+  await ui.dom.settle();
+  byDataset(ui.root, 'template', 'empty').click();
   await ui.dom.settle();
   assert.equal(storage.entries.has(DRAFT_KEY), false);
   assert.equal(ui.root.querySelector('.crucible-studio-draft').hidden, true);
+});
+
+test('New scene works from the Export workspace like Open does: it replaces the scene and Export stays open (#3343)', async testContext => {
+  const ui = mountStudio(testContext);
+  await ui.studio.ready;
+  byDataset(ui.root, 'workspace', 'export').click();
+  assert.equal(ui.root.dataset.workspace, 'export');
+  assert.ok(ui.node('hero'), 'the scene has its object before');
+  const newSceneRow = byText(ui.root.querySelector('#crucible-studio-pop-new'), 'New scene…');
+  assert.notEqual(newSceneRow.getAttribute('aria-disabled'), 'true', 'the row is not locked in Export');
+  newSceneRow.click();
+  await ui.dom.settle();
+  byDataset(ui.root, 'template', 'empty').click();
+  await ui.dom.settle();
+  assert.equal(ui.node('hero'), undefined, 'the scene was replaced');
+  assert.equal(ui.root.dataset.workspace, 'export', 'the workspace stays on Export');
+  assert.equal(byDataset(ui.root, 'export', 'image').disabled, false, 'the export actions follow the new scene');
 });
 
 test('a delete leaves nothing selected, so a second Delete removes nothing, and its undo brings the object back in hand (#2817)', testContext => {

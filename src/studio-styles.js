@@ -300,10 +300,12 @@ export const STUDIO_CSS = `
   stroke: none;
 }
 .crucible-studio-scene-mark-ray {
-  stroke: var(--studio-text);
+  /* Drawn over the dark viewport in both themes, so it takes the trace colour, not the theme's text. */
+  stroke: var(--studio-trace);
   stroke-width: 1.6;
   stroke-linecap: round;
   pointer-events: none;
+  filter: drop-shadow(0 0 1px var(--studio-trace-edge));
 }
 .crucible-studio-scene-mark-ray[data-selected="true"] { stroke: var(--studio-accent); }
 .crucible-studio-gizmo [data-scene-object] {
@@ -610,6 +612,8 @@ export const STUDIO_CSS = `
   margin-inline: 2px 8px;
   border-radius: 999px;
   background: var(--studio-ok);
+  /* The green alone is 2.15:1 on the light panel, so the dot is edged in the muted text colour. */
+  box-shadow: 0 0 0 1px var(--studio-muted);
   flex-shrink: 0;
 }
 .crucible-studio-watch-pill[hidden] { display: none; }
@@ -1082,12 +1086,14 @@ export const STUDIO_CSS = `
   padding: 0 2px 0 var(--studio-space-8);
   border-radius: 8px;
 }
-/* Every selected row is tinted; the active one, which the panels follow, more strongly. */
+/* Every selected row is tinted in the accent, with its icon in the accent too (3:1 against the panel in both themes, which a tint alone cannot reach; the active tint stays at 16% so the icon keeps 3:1 on it); the active one, which the panels follow, more strongly. No border. */
 .crucible-studio-tree-row[data-selected="true"] {
-  background: color-mix(in srgb, var(--studio-text) 10%, transparent);
+  background: color-mix(in srgb, var(--studio-accent) 10%, transparent);
 }
+.crucible-studio-tree-row[data-selected="true"] .crucible-studio-tree-select .crucible-studio-icon { color: var(--studio-accent); }
+.crucible-studio-tree-row[data-selected="true"] .crucible-studio-tree-badge { stroke: var(--studio-accent); }
 .crucible-studio-tree-row[data-active="true"] {
-  background: color-mix(in srgb, var(--studio-text) 18%, transparent);
+  background: color-mix(in srgb, var(--studio-accent) 16%, transparent);
 }
 @media (hover: hover) {
   .crucible-studio-tree-row:not([data-selected="true"]):hover {
@@ -1703,7 +1709,8 @@ export const STUDIO_CSS = `
   flex: none;
   inline-size: 44px;
   margin-inline-start: auto;
-  border: 0;
+  /* An edge in the muted text colour, so a near-white colour still shows on the soft field (3:1 in both themes). */
+  border: 1px solid var(--studio-muted);
   border-radius: 5px;
 }
 /* A row whose condition fails (the f-stop while depth of field is off) stays readable but dimmed. */
@@ -2225,6 +2232,135 @@ export const STUDIO_CSS = `
   margin: 0;
   accent-color: var(--studio-text);
 }
+/* New scene: a chooser of cards, each a rendered picture of its scene over its name. */
+.crucible-studio dialog.crucible-studio-new-dialog {
+  width: min(720px, calc(100vw - 32px));
+  max-block-size: calc(100dvh - 48px);
+}
+.crucible-studio dialog.crucible-studio-new-dialog:focus { outline: none; }
+.crucible-studio dialog.crucible-studio-new-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--studio-space-16);
+  padding: var(--studio-space-24);
+}
+.crucible-studio-new-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--studio-space-16);
+}
+.crucible-studio dialog .crucible-studio-new-head h2 { margin: 0; }
+.crucible-studio dialog button.crucible-studio-new-close {
+  display: grid;
+  place-items: center;
+  flex: none;
+  inline-size: 32px;
+  block-size: 32px;
+  padding: 0;
+  background: transparent;
+  color: var(--studio-muted);
+}
+.crucible-studio dialog button.crucible-studio-new-close { margin-block: -8px; }
+.crucible-studio dialog button.crucible-studio-new-close:hover,
+.crucible-studio dialog button.crucible-studio-new-close:focus-visible { color: var(--studio-text); }
+.crucible-studio-new-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+  gap: var(--studio-space-16);
+  min-block-size: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--studio-muted) transparent;
+}
+.crucible-studio dialog button.crucible-studio-new-card {
+  display: grid;
+  align-content: start;
+  justify-items: stretch;
+  gap: var(--studio-space-8);
+  min-inline-size: 0;
+  block-size: auto;
+  padding: var(--studio-space-8);
+  border: 1px solid var(--studio-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--studio-text) 6%, transparent);
+  text-align: start;
+  cursor: pointer;
+}
+.crucible-studio dialog button.crucible-studio-new-card:hover { border-color: var(--studio-muted); }
+/* Keyboard focus is one inset ring that takes the border's place, so the scrolling grid never clips it. */
+.crucible-studio dialog button.crucible-studio-new-card:focus-visible {
+  outline: none;
+  border-color: var(--studio-accent);
+  box-shadow: inset 0 0 0 1px var(--studio-accent);
+}
+.crucible-studio-new-thumb {
+  display: block;
+  aspect-ratio: 8 / 5;
+  overflow: hidden;
+  border: 1px solid var(--studio-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--studio-text) 8%, transparent);
+}
+.crucible-studio-new-thumb img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+.crucible-studio-new-name { font-weight: 600; }
+/* The question about unsaved changes. */
+.crucible-studio dialog.crucible-studio-confirm-dialog {
+  width: min(420px, calc(100vw - 32px));
+}
+.crucible-studio dialog.crucible-studio-confirm-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--studio-space-16);
+  padding: var(--studio-space-24);
+}
+.crucible-studio dialog.crucible-studio-confirm-dialog h2,
+.crucible-studio-confirm-message { margin: 0; }
+.crucible-studio dialog.crucible-studio-confirm-dialog h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+}
+.crucible-studio dialog.crucible-studio-confirm-dialog h2 .crucible-studio-icon { flex: none; }
+.crucible-studio-confirm-dialog .crucible-studio-dialog-actions { margin-top: 0; }
+/* File menu: the groups are set apart by space, and Open recent opens its list in place. */
+.crucible-studio-popover > [data-group-start="true"] { margin-block-start: var(--studio-space-8); }
+/* A fixed width, so the menu does not change size when the recent list opens; long names are cut with an ellipsis. */
+#crucible-studio-pop-new { inline-size: 264px; max-block-size: calc(100dvh - 16px); overflow-y: auto; }
+/* The scenes are children of Open recent: indented one step, with Clear recent set apart and quieter. */
+.crucible-studio-recent-list {
+  display: grid;
+  gap: 2px;
+  padding-inline-start: var(--studio-space-16);
+}
+.crucible-studio-recent-list > button[data-clear-recent="true"] {
+  margin-block-start: var(--studio-space-8);
+  color: var(--studio-muted);
+}
+.crucible-studio-recent-list[hidden] { display: none; }
+.crucible-studio-recent-list > button { gap: 0; }
+.crucible-studio-recent-list > button > .crucible-studio-icon,
+.crucible-studio-recent-list > button > .crucible-studio-menu-gap { margin-inline-end: var(--studio-space-8); }
+.crucible-studio-recent-name {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The row has three parts (icon, label, chevron), so its spacing is margin: a flex gap of 8 px here would read as a group gap. */
+.crucible-studio-popover > button[data-keeps-menu="true"] { gap: 0; }
+.crucible-studio-popover > button[data-keeps-menu="true"] > .crucible-studio-icon:first-child { margin-inline-end: var(--studio-space-8); }
+.crucible-studio-popover button[data-keeps-menu="true"] > .crucible-studio-icon[data-recent-chevron] {
+  margin-inline-start: auto;
+}
+.crucible-studio-popover button[data-keeps-menu="true"][aria-expanded="true"] > .crucible-studio-icon[data-recent-chevron] { transform: rotate(90deg); }
+.crucible-studio-popover button:disabled { opacity: 0.45; cursor: default; }
 .crucible-studio dialog.crucible-studio-setup-dialog {
   width: min(780px, calc(100vw - 32px));
   max-block-size: calc(100vh - 48px);
