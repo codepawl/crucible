@@ -2491,6 +2491,8 @@ export function createStudio(container, {
 
   // The History panel: the edits in the order they were made, oldest at the top, so a recording reads downward. The row of the
   // edit the scene shows is filled and strong; the edits after it (undone, still redoable) are dimmed and stay clickable.
+  const historyMinimizeButton = createIconButton(documentReference, 'minimize', 'Minimize History', { attributes: { 'aria-expanded': 'true' } });
+  historyMinimizeButton.addEventListener('click', () => setPreference('historyMinimized', !preferences.historyMinimized));
   const historyList = createElement(documentReference, 'div', { className: 'crucible-studio-history-list crucible-studio-scroll', attributes: { role: 'list', 'aria-label': 'Edits' } });
   const historyDock = createElement(
     documentReference,
@@ -2501,6 +2503,8 @@ export function createStudio(container, {
       'div',
       { className: 'crucible-studio-dock-head' },
       createElement(documentReference, 'span', { className: 'crucible-studio-dock-title' }, createIcon(documentReference, 'history'), createElement(documentReference, 'span', { textContent: 'History' })),
+      createElement(documentReference, 'span', { className: 'crucible-studio-spacer' }),
+      historyMinimizeButton,
     ),
     historyList,
   );
@@ -2525,7 +2529,8 @@ export function createStudio(container, {
     row.addEventListener('click', () => {
       controller.goToHistoryPosition(position);
       syncHistoryPanel();
-      currentHistoryRow()?.focus?.();
+      currentHistoryRow()?.focus?.({ preventScroll: true });
+      revealHistoryRow(historyRowButtons().indexOf(currentHistoryRow()));
       announce(position === 0 ? 'Back to the start' : `Went to ${name}`);
     });
     return row;
@@ -2545,11 +2550,65 @@ export function createStudio(container, {
     labels.forEach((name, index) => rows.push({ name, detail: details[index], position: index + 1, state: stateOf(index + 1) }));
     const hadFocus = historyList.contains(documentReference.activeElement);
     historyList.replaceChildren(...rows.map(createHistoryRow));
+    fitHistoryListToWholeRows();
     const current = currentHistoryRow();
-    // The newest row first, so the undone rows after the current one are in view, then the current row, which wins when both cannot fit.
-    historyList.lastElementChild?.scrollIntoView?.({ block: 'nearest' });
-    current?.scrollIntoView?.({ block: 'nearest' });
-    if (hadFocus) current?.focus?.();
+    revealHistoryRow(historyRowButtons().indexOf(current), { preferLast: true });
+    if (hadFocus) current?.focus?.({ preventScroll: true });
+  }
+
+  // The list is as tall as a whole number of rows and scrolls a whole row at a time, so no row is ever cut in half. It shows at
+  // most six rows, and at most a third of the column, so Properties keeps the rest; a compact window shows four.
+  const HISTORY_MOST_ROWS = 6;
+  const HISTORY_COMPACT_ROWS = 4;
+  function historyRowMetrics() {
+    const firstRow = historyList.firstElementChild;
+    const rowHeight = firstRow?.getBoundingClientRect().height ?? 0;
+    if (!(rowHeight > 0)) return null;
+    const style = documentReference.defaultView.getComputedStyle(historyList);
+    const gap = parseFloat(style.rowGap) || 0;
+    return { gap, padding: parseFloat(style.paddingTop) || 0, pitch: rowHeight + gap };
+  }
+  function fitHistoryListToWholeRows() {
+    const metrics = historyRowMetrics();
+    if (!metrics) {
+      historyList.style.maxBlockSize = '';
+      return;
+    }
+    const { gap, padding, pitch } = metrics;
+    let rows = HISTORY_MOST_ROWS;
+    if (root.dataset.compact === 'true') {
+      rows = HISTORY_COMPACT_ROWS;
+    } else {
+      const columnStyle = documentReference.defaultView.getComputedStyle(sideColumn);
+      const columnHeight = sideColumn.getBoundingClientRect().height - (parseFloat(columnStyle.paddingTop) || 0) - (parseFloat(columnStyle.paddingBottom) || 0);
+      const headHeight = historyDock.querySelector('.crucible-studio-dock-head').getBoundingClientRect().height;
+      const borders = 2;
+      // A third of the column at most, and what is left after the Scene card (30% at most) and the 240 px Properties keeps.
+      const sceneHeight = Math.min(outlinerDock.getBoundingClientRect().height, columnHeight * 0.3);
+      const propertiesHeight = root.dataset.inspectorCollapsed === 'true' ? 0 : root.dataset.inspectorMinimized === 'true' ? inspectorElement.getBoundingClientRect().height : 240;
+      const cardGaps = (parseFloat(columnStyle.rowGap) || 0) * 2;
+      const cardRoom = Math.min(columnHeight / 3, columnHeight - sceneHeight - propertiesHeight - cardGaps);
+      const room = cardRoom - headHeight - borders - padding * 2;
+      rows = Math.max(1, Math.min(rows, Math.floor((room + gap) / pitch)));
+    }
+    historyList.style.maxBlockSize = `${rows * pitch - gap + padding * 2}px`;
+  }
+  // The room changed (a resize, a card minimized): cut the list to whole rows again and keep the current row in view.
+  function refitHistoryList() {
+    fitHistoryListToWholeRows();
+    revealHistoryRow(historyRowButtons().indexOf(currentHistoryRow()), { preferLast: true });
+  }
+  // Scrolls to a row boundary that keeps the row at `index` in view: the newest rows when `preferLast` and the current row fits with them.
+  function revealHistoryRow(index, { preferLast = false } = {}) {
+    const metrics = historyRowMetrics();
+    if (!metrics || index < 0) return;
+    const { gap, padding, pitch } = metrics;
+    const visibleRows = Math.max(1, Math.round((historyList.clientHeight - padding * 2 + gap) / pitch));
+    let firstVisible = Math.round(historyList.scrollTop / pitch);
+    if (preferLast) firstVisible = Math.max(0, historyRowButtons().length - visibleRows);
+    if (index < firstVisible) firstVisible = index;
+    if (index > firstVisible + visibleRows - 1) firstVisible = index - visibleRows + 1;
+    historyList.scrollTop = firstVisible * pitch;
   }
 
   // Up and Down move between rows, Home and End go to the ends; Enter and Space press the focused row like any button.
@@ -2564,8 +2623,8 @@ export function createStudio(container, {
     if (!target) return;
     event.preventDefault();
     for (const row of rows) row.tabIndex = row === target ? 0 : -1;
-    target.focus?.();
-    target.scrollIntoView?.({ block: 'nearest' });
+    target.focus?.({ preventScroll: true });
+    revealHistoryRow(rows.indexOf(target));
   });
 
   // Showing is remembered with the other view preferences. In a compact window the panel starts closed like the others.
@@ -2573,6 +2632,9 @@ export function createStudio(container, {
     historyShown = shown;
     root.dataset.historyCollapsed = shown ? 'false' : 'true';
     renderedHistoryKey = '';
+    // In a compact window the two cards would cover each other, so showing one puts the other away; the panels button or
+    // View > Properties brings Properties back and puts History away.
+    if (shown && root.dataset.compact === 'true') setInspectorCollapsed(true);
     if (remember) setPreference('historyVisible', shown);
     syncHistoryPanel();
     syncMenuToggles();
@@ -2808,6 +2870,8 @@ export function createStudio(container, {
     showPanelSizes(preferences);
     showPanelMinimized(sceneMinimizeButton, 'outlinerMinimized', 'Scene', preferences.sceneMinimized);
     showPanelMinimized(propertiesMinimizeButton, 'inspectorMinimized', 'Properties', preferences.propertiesMinimized);
+    showPanelMinimized(historyMinimizeButton, 'historyMinimized', 'History', preferences.historyMinimized);
+    refitHistoryList();
     for (const [name, control] of settingControls) {
       if (STUDIO_PREFERENCE_CHOICES[name]) control.value = String(preferences[name]);
       else control.checked = preferences[name];
@@ -5136,6 +5200,7 @@ export function createStudio(container, {
 
   function setInspectorCollapsed(collapsed) {
     root.dataset.inspectorCollapsed = collapsed ? 'true' : 'false';
+    if (!collapsed && root.dataset.compact === 'true' && historyShown) setHistoryShown(false, { remember: false });
     toggleDocksButton.setAttribute('aria-pressed', root.dataset.outlinerCollapsed === 'false' || root.dataset.inspectorCollapsed === 'false' ? 'true' : 'false');
     requestFrame();
   }
@@ -5250,6 +5315,7 @@ export function createStudio(container, {
   if (typeof ResizeObserver === 'function') {
     resizeObserver = new ResizeObserver(() => {
       syncCompactLayout();
+      refitHistoryList();
       refitTreeToWholeRows();
       requestFrame();
     });

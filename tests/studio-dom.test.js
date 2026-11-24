@@ -2292,6 +2292,7 @@ test('Settings change the snap, the handles and what the viewport shows, and are
     sceneMinimized: false,
     propertiesMinimized: false,
     historyVisible: false,
+    historyMinimized: false,
     propertyGroupsOpen: {},
     panelsFloating: false,
     moveSnapStep: 1,
@@ -4950,12 +4951,40 @@ test('Edit > History shows the panel and puts focus on the current row', testCon
   assert.equal(historyRows(ui).length, 6);
 });
 
-test('a compact window starts with the History panel closed even when it is remembered as shown', testContext => {
+test('a compact window starts with the History panel closed, and History and Properties take turns there', testContext => {
   const ui = mountStudio(testContext, { containerWidth: 600, preferences: { historyVisible: true } });
   assert.equal(ui.root.dataset.compact, 'true');
   assert.equal(ui.root.dataset.historyCollapsed, 'true');
   showHistoryFromViewMenu(ui);
   assert.equal(ui.root.dataset.historyCollapsed, 'false');
+  assert.equal(ui.root.dataset.inspectorCollapsed, 'true', 'showing History puts Properties away');
+  ui.label('Show or hide the panels').click();
+  assert.equal(ui.root.dataset.inspectorCollapsed, 'false', 'the panels button brings Properties back');
+  assert.equal(ui.root.dataset.historyCollapsed, 'true', 'and puts History away');
+  assert.equal(ui.studio.preferences.historyVisible, true, 'the remembered choice is untouched');
+});
+
+test('the History card minimizes to its title row like the Scene and Properties cards and remembers it', testContext => {
+  const { saved, preferenceStorage, ui } = mountWithStorage(testContext);
+  showHistoryFromViewMenu(ui);
+  const minimize = historyPanelOf(ui).querySelector('.crucible-studio-dock-head').querySelectorAll('button')[0];
+  assert.equal(minimize.getAttribute('aria-label'), 'Minimize History');
+  assert.equal(ui.root.dataset.historyMinimized, 'false');
+  minimize.click();
+  assert.equal(ui.root.dataset.historyMinimized, 'true');
+  assert.equal(minimize.getAttribute('aria-label'), 'Expand History');
+  assert.equal(JSON.parse(saved.get('crucible-studio-preferences')).historyMinimized, true);
+  assert.ok(STUDIO_CSS.includes('[data-history-minimized="true"] .crucible-studio-history > :not(.crucible-studio-dock-head) { display: none; }'));
+  const second = mountStudio(testContext, { preferenceStorage });
+  assert.equal(second.root.dataset.historyMinimized, 'true', 'a new Studio opens with it minimized');
+  minimize.click();
+  assert.equal(ui.root.dataset.historyMinimized, 'false');
+});
+
+test('the column rule keeps Properties at 240 px or more and History to a third of the column', () => {
+  const flat = STUDIO_CSS.replace(/\s+/g, ' ');
+  assert.ok(flat.includes('.crucible-studio-dock.crucible-studio-history { flex: 0 1 auto; min-block-size: 0; max-block-size: 34%;'));
+  assert.ok(flat.includes('.crucible-studio-side > .crucible-studio-inspector { min-block-size: 240px; }'));
 });
 
 test('the History position is validated and names every kind of edit', testContext => {

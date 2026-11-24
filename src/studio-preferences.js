@@ -71,6 +71,7 @@ export const STUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   sceneMinimized: false,
   propertiesMinimized: false,
   historyVisible: false,
+  historyMinimized: false,
   propertyGroupsOpen: Object.freeze({}),
   panelsFloating: false,
   moveSnapStep: 0.25,

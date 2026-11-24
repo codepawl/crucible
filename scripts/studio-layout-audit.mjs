@@ -359,6 +359,60 @@ function createCapture(page, theme, label) {
   return capture;
 }
 
+// The column rule and the whole-row rule, measured: History is a whole number of rows, at most six (four in a compact window), the
+// first row shown starts at the top of the list, History takes at most a third of the column and leaves Properties 240 px or more,
+// and a dimmed row is the plain muted token with no opacity on top of it. Returns the Properties height for the collapsed check.
+async function checkHistoryLayout(page) {
+  const found = await page.evaluate(() => {
+    const root = document.querySelector('.crucible-studio');
+    const list = document.querySelector('.crucible-studio-history-list');
+    const rows = [...list.children];
+    const style = getComputedStyle(list);
+    const gap = parseFloat(style.rowGap);
+    const padding = parseFloat(style.paddingTop);
+    const pitch = rows[0].getBoundingClientRect().height + gap;
+    const listBox = list.getBoundingClientRect();
+    const wholeRows = (list.clientHeight - padding * 2 + gap) / pitch;
+    const firstShown = rows.find(row => row.getBoundingClientRect().bottom > listBox.top + 1);
+    const inspector = document.querySelector('.crucible-studio-inspector');
+    const undone = rows.find(row => row.dataset.state === 'undone');
+    const lastBox = rows.at(-1).getBoundingClientRect();
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--studio-muted)';
+    root.append(probe);
+    const mutedColor = getComputedStyle(probe).color;
+    probe.remove();
+    return {
+      compact: root.dataset.compact === 'true',
+      wholeRows,
+      lastRowCut: lastBox.bottom - listBox.bottom,
+      firstTopGap: firstShown.getBoundingClientRect().top - listBox.top,
+      columnHeight: document.querySelector('.crucible-studio-side').getBoundingClientRect().height,
+      historyHeight: document.querySelector('.crucible-studio-history').getBoundingClientRect().height,
+      inspectorHeight: inspector.getBoundingClientRect().height,
+      inspectorShown: getComputedStyle(inspector).display !== 'none',
+      undoneOpacity: getComputedStyle(undone).opacity,
+      nameOpacity: getComputedStyle(undone.querySelector('.crucible-studio-history-name')).opacity,
+      nameColor: getComputedStyle(undone.querySelector('.crucible-studio-history-name')).color,
+      mutedColor,
+    };
+  });
+  const expect = (condition, message) => {
+    if (!condition) throw new Error(`History panel layout: ${message}: ${JSON.stringify(found)}`);
+  };
+  expect(Math.abs(found.wholeRows - Math.round(found.wholeRows)) < 0.02, 'the list is not a whole number of rows tall');
+  expect(found.firstTopGap >= -0.5, 'the first row shown starts above the top of the list');
+  expect(found.lastRowCut <= 1, 'the newest row is cut at the bottom of the list');
+  expect(Math.round(found.wholeRows) <= (found.compact ? 4 : 6), 'the list shows more rows than its limit');
+  if (!found.compact) {
+    expect(found.historyHeight <= found.columnHeight / 3 + 1, 'History takes more than a third of the column');
+    expect(found.inspectorShown && found.inspectorHeight >= 239, 'Properties is under 240 px');
+  }
+  expect(found.undoneOpacity === '1' && found.nameOpacity === '1', 'a dimmed row also has an opacity');
+  expect(found.nameColor === found.mutedColor, 'the text of a dimmed row is not the plain muted token');
+  return found;
+}
+
 // What a person does in the History panel, in a real browser: Edit > History shows it with focus on the current row, a click on
 // an earlier row steps back and dims the rows after it, a click on a dimmed row steps forward, and a new edit drops the dimmed rows.
 async function checkHistoryBehavior(page) {
@@ -387,6 +441,8 @@ async function checkHistoryBehavior(page) {
   const expect = (condition, message, found) => {
     if (!condition) throw new Error(`History panel behavior: ${message}: ${JSON.stringify(found)}`);
   };
+  await page.locator('.crucible-studio-menu-button', { hasText: 'Edit' }).click();
+  await page.locator('#crucible-studio-pop-edit button', { hasText: 'History' }).click();
   let found = await state();
   expect(found.states.filter(value => value === 'undone').length === 2, 'two rows are undone', found);
   expect(found.focusedState === 'current', 'focus starts on the current row', found);
@@ -424,6 +480,17 @@ async function measureHistoryPanel(page, theme, label) {
   const menuStillOpen = await page.evaluate(() => document.getElementById('crucible-studio-pop-edit').matches(':popover-open'));
   if (menuStillOpen) throw new Error('History panel behavior: the Edit menu stays open over the scene after History is chosen');
   await capture('history panel', '.crucible-studio-history');
+  const layout = await checkHistoryLayout(page);
+  await page.locator('.crucible-studio-history button[aria-label="Minimize History"]').click();
+  await capture('history panel collapsed', '.crucible-studio-history');
+  const collapsed = await page.evaluate(() => ({
+    minimized: document.querySelector('.crucible-studio').dataset.historyMinimized,
+    historyHeight: document.querySelector('.crucible-studio-history').getBoundingClientRect().height,
+    inspectorHeight: document.querySelector('.crucible-studio-inspector').getBoundingClientRect().height,
+  }));
+  if (collapsed.minimized !== 'true' || collapsed.historyHeight > 60) throw new Error(`History panel layout: it does not collapse to its title row: ${JSON.stringify(collapsed)}`);
+  if (!layout.compact && collapsed.inspectorHeight <= layout.inspectorHeight) throw new Error(`History panel layout: Properties does not get the room back: ${JSON.stringify({ collapsed, layout })}`);
+  await page.locator('.crucible-studio-history button[aria-label="Expand History"]').click();
   await checkHistoryBehavior(page);
   return capture.screens;
 }
