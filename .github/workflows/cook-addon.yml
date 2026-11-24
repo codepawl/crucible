@@ -110,6 +110,7 @@ on:
       - 'src/area-light-portal.js'
       - 'src/asset-material-graph.js'
       - 'src/auto-exposure.js'
+      - 'src/bloom-keep-hue.js'
       - 'src/blend-output.js'
       - 'src/blink-curve.js'
       - 'src/bvh-limits.js'

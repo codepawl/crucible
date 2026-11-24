@@ -116,31 +116,74 @@ function fillThemePreview(documentReference, createElement, createIcon, preview,
 }
 
 /**
- * The host's built-in agent, when the page runs inside one that offers it (the desktop app): one button that signs in,
- * shown above the prompt for an agent of one's own. builtInAgent is { isSignedIn(), signIn() }, both async; signIn
- * resolves to { signedIn }. Nothing forces it: Skip still closes the setup, and the prompt stays the free route.
+ * The AI agent step is one or two cards, each with its own icon and title: the host's built-in AI, only when the page runs
+ * inside a host that offers it (the desktop app), and an agent of one's own, whose prompt and copy button are one box.
+ * builtInAgent is { isSignedIn(), signIn() }, both async; signIn resolves to { signedIn }. A host may also offer
+ * account.get(), which resolves to { signedIn, name?, email? } and says who is signed in; without it isSignedIn() decides.
+ * Nothing forces either: Skip still closes the setup, and the prompt stays the free route.
  */
-function createBuiltInAgentButton(documentReference, createElement, createIcon, builtInAgent) {
-  const button = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-setup-action crucible-studio-setup-sign-in' });
-  function show(state) {
-    const signedIn = state === 'signed-in';
-    button.disabled = state !== 'signed-out';
-    button.dataset.state = state;
-    const label = { 'signed-out': 'Sign in for the built-in AI', waiting: 'Finish signing in in your browser', 'signed-in': 'Signed in to the built-in AI' }[state];
-    button.replaceChildren(createIcon(documentReference, signedIn ? STUDIO_ACTION_ICONS.signedIn : STUDIO_ACTION_ICONS.signIn), createElement(documentReference, 'span', { textContent: label }));
+function createAgentCard(documentReference, createElement, createIcon, { titleId, iconName, title, control = null, content = [] }) {
+  return createElement(
+    documentReference,
+    'div',
+    { className: 'crucible-studio-setup-agent-card', attributes: { role: 'group', 'aria-labelledby': titleId } },
+    createElement(
+      documentReference,
+      'div',
+      { className: 'crucible-studio-setup-agent-head' },
+      createIcon(documentReference, iconName),
+      createElement(documentReference, 'span', { id: titleId, className: 'crucible-studio-setup-agent-title', textContent: title }),
+      ...(control ? [control] : []),
+    ),
+    ...content,
+  );
+}
+
+async function readSignInState(builtInAgent, account) {
+  if (account) {
+    const answer = await account.get();
+    return { signedIn: Boolean(answer?.signedIn), name: answer?.name, email: answer?.email };
   }
-  show('signed-out');
-  Promise.resolve(builtInAgent.isSignedIn()).then(signedIn => { if (signedIn) show('signed-in'); }).catch(() => {});
-  button.addEventListener('click', async () => {
-    show('waiting');
+  return { signedIn: Boolean(await builtInAgent.isSignedIn()) };
+}
+
+function createSignInControl(documentReference, createElement, createIcon, builtInAgent, account) {
+  const control = createElement(documentReference, 'span', { className: 'crucible-studio-setup-sign-in', attributes: { 'aria-live': 'polite' } });
+  const signInButton = createElement(documentReference, 'button', { type: 'button' });
+  function showSignedOut(waiting) {
+    control.dataset.state = waiting ? 'waiting' : 'signed-out';
+    signInButton.disabled = waiting;
+    signInButton.replaceChildren(
+      createIcon(documentReference, STUDIO_ACTION_ICONS.signIn),
+      createElement(documentReference, 'span', { textContent: waiting ? 'Finish in your browser' : 'Sign in' }),
+    );
+    control.replaceChildren(signInButton);
+  }
+  function showSignedIn(who) {
+    control.dataset.state = 'signed-in';
+    const identity = who?.name || who?.email;
+    control.replaceChildren(
+      createIcon(documentReference, STUDIO_ACTION_ICONS.signedIn),
+      createElement(documentReference, 'span', { textContent: identity ? `Signed in as ${identity}` : 'Signed in' }),
+    );
+  }
+  showSignedOut(false);
+  readSignInState(builtInAgent, account).then(state => { if (state.signedIn) showSignedIn(state); }).catch(() => {});
+  signInButton.addEventListener('click', async () => {
+    showSignedOut(true);
     try {
       const answer = await builtInAgent.signIn();
-      show(answer?.signedIn ? 'signed-in' : 'signed-out');
+      if (!answer?.signedIn) {
+        showSignedOut(false);
+        return;
+      }
+      const state = await readSignInState(builtInAgent, account).catch(() => null);
+      showSignedIn(state?.signedIn ? state : null);
     } catch {
-      show('signed-out');
+      showSignedOut(false);
     }
   });
-  return button;
+  return control;
 }
 
 export function createStudioSetup({
@@ -154,6 +197,7 @@ export function createStudioSetup({
   agentPromptText,
   copyAgentPrompt,
   builtInAgent,
+  account,
   onClose,
 }) {
   setupInstanceCount += 1;
@@ -280,7 +324,7 @@ export function createStudioSetup({
     details: [createKeycaps(presetId)],
   }));
 
-  // The agent step shows the prompt itself, and the button copies it.
+  // The agent step shows the prompt itself, and the copy button sits on the same box.
   const promptBlock = createElement(documentReference, 'textarea', {
     className: 'crucible-studio-setup-prompt',
     readOnly: true,
@@ -291,14 +335,28 @@ export function createStudioSetup({
   function showCopied(copied) {
     copyPromptButton.replaceChildren(
       createIcon(documentReference, copied ? STUDIO_ACTION_ICONS.copied : STUDIO_ACTION_ICONS.copyPrompt),
-      createElement(documentReference, 'span', { textContent: copied ? 'Copied' : 'Copy an agent prompt' }),
+      createElement(documentReference, 'span', { textContent: copied ? 'Copied' : 'Copy prompt' }),
     );
   }
   showCopied(false);
   copyPromptButton.addEventListener('click', async () => {
-    showCopied(await copyAgentPrompt());
+    // The button shows Copied itself, so the status toast would say it twice.
+    showCopied(await copyAgentPrompt({ announceResult: false }));
   });
-  const signInButton = builtInAgent ? createBuiltInAgentButton(documentReference, createElement, createIcon, builtInAgent) : null;
+  const builtInCard = builtInAgent
+    ? createAgentCard(documentReference, createElement, createIcon, {
+      titleId: `crucible-studio-setup-${instanceId}-built-in`,
+      iconName: 'chat',
+      title: 'Built-in AI',
+      control: createSignInControl(documentReference, createElement, createIcon, builtInAgent, account),
+    })
+    : null;
+  const ownAgentCard = createAgentCard(documentReference, createElement, createIcon, {
+    titleId: `crucible-studio-setup-${instanceId}-own-agent`,
+    iconName: 'code',
+    title: 'Your own agent',
+    content: [createElement(documentReference, 'div', { className: 'crucible-studio-setup-prompt-box' }, promptBlock, copyPromptButton)],
+  });
 
   const groups = [
     { title: 'Theme', stepName: 'Theme', icon: 'theme', content: [createCardGroup('Theme', themeCards, 'crucible-studio-setup-cards-theme')] },
@@ -309,10 +367,8 @@ export function createStudioSetup({
       documentReference,
       'div',
       { className: 'crucible-studio-setup-agent' },
-      createElement(documentReference, 'span', { className: 'crucible-studio-setup-agent-mark' }, createIcon(documentReference, 'chat')),
-      ...(signInButton ? [signInButton] : []),
-      promptBlock,
-      copyPromptButton,
+      ...(builtInCard ? [builtInCard] : []),
+      ownAgentCard,
     )] },
   ];
   const sections = groups.map(({ title, content }, index) => createElement(

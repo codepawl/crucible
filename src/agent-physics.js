@@ -4,9 +4,9 @@ import { restWorldMatrix, boneTails, boneNodeId } from './rig.js';
 import { createRagdoll, ragdollPatches, ragdollReport } from './ragdoll.js';
 import { bakePhysicsScene, loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader } from './physics.js';
 import { normalizeForceFields } from './force-fields.js';
-import { normalizeFloat } from './physics-buoyancy.js';
+import { normalizeFloat, normalizeOcean, seaHeightAt } from './physics-buoyancy.js';
 import { rotateByQuaternion } from './physics-values.js';
-import { MAX_WAKE_POINTS, wakeTrail } from './ocean-wake.js';
+import { MAX_WAKE_POINTS, slamStrength, wakeTrail } from './ocean-wake.js';
 import { AGENT_SCENE_CAPABILITIES, PHYSICS_BODY_SHAPES } from './agent-scene-capabilities.js';
 
 export { loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader };
@@ -629,10 +629,11 @@ export function physicsBakeKey(recipe, geometryRecords) {
  * The wake of the first boat body that asks for one, or null: a function (geometryId, time) that returns the `wake` field for the
  * ocean nodes of the sea geometry (the at most 64 points behind the stern, a pure function of the bake), or undefined for another geometry.
  */
-function createBoatWake(physics, scene) {
+function createBoatWake(physics, scene, oceanInput) {
   const body = physics.bodies.find(candidate => candidate.float?.boat?.wake);
   if (!body) return null;
-  const { width, strength, height, lifetime } = body.float.boat.wake;
+  const { width, strength, height, lifetime, slamSpeed, slamForward, slamDecay } = body.float.boat.wake;
+  const sea = normalizeOcean(oceanInput);
   const stern = scene.sternOf(body.node);
   const bodyOffset = scene.bodyIndex(body.node) * 7;
   const pose = new Float32Array(scene.bodyNames.length * 7);
@@ -653,6 +654,17 @@ function createBoatWake(physics, scene) {
     const [nextX, nextZ] = sternAt(scene.timestep);
     return { x: startX + (startX - nextX) / scene.timestep * -time, z: startZ + (startZ - nextZ) / scene.timestep * -time, speed: Math.hypot(nextX - startX, nextZ - startZ) / scene.timestep };
   };
+  // How fast the bow closes on the sea surface under it: the bow height minus the water height there, falling.
+  const bowGapAt = time => {
+    scene.sample(time, pose);
+    const rotated = rotateByQuaternion([-stern[0], -stern[1], -stern[2]], { x: pose[bodyOffset + 3], y: pose[bodyOffset + 4], z: pose[bodyOffset + 5], w: pose[bodyOffset + 6] });
+    const bowX = pose[bodyOffset] + rotated[0];
+    const bowZ = pose[bodyOffset + 2] + rotated[2];
+    return pose[bodyOffset + 1] + rotated[1] - (sea.level + seaHeightAt(sea, bowX, bowZ, time));
+  };
+  const closingSpeedAt = time => Math.max(0, (bowGapAt(Math.max(0, time - scene.timestep)) - bowGapAt(time)) / scene.timestep);
+  const forwardSpeedAt = time => sample(time).speed;
+  const slamAt = time => strength * slamStrength({ closingSpeedAt, forwardSpeedAt, time, decay: slamDecay, fullSpeed: slamSpeed, fullForward: slamForward, step: scene.timestep * 2 });
   // White water where the hull meets the sea: one point at the middle of the hull and one at the bow (the stern is the head of the trail).
   const hullCollar = (time, trailStrength) => {
     const [sternX, sternZ] = sternAt(time);
@@ -660,12 +672,22 @@ function createBoatWake(physics, scene) {
     const centreZ = pose[bodyOffset + 2];
     return [[centreX, centreZ, trailStrength, width * 0.75], [2 * centreX - sternX, 2 * centreZ - sternZ, trailStrength, width * 0.5]];
   };
+  // A slam bursts white and wide at the bow and, weaker, amidships; it only reshapes the two hull points, so foam stays around the hull and never reaches the open sea.
+  const burstCollar = (time, collar) => {
+    if (slamSpeed === null) return collar;
+    const slam = slamAt(time);
+    const [middle, bow] = collar;
+    return [
+      [middle[0], middle[1], Math.max(middle[2], slam * 0.6), middle[3] * (1 + slam)],
+      [bow[0], bow[1], Math.max(bow[2], slam), bow[3] * (1 + 3 * slam)],
+    ];
+  };
   return (geometryId, time) => {
     if (geometryId !== physics.ocean.geometry) return undefined;
     const at = Math.min(time, scene.duration);
     const trail = wakeTrail({ sample: sampleWithRunIn, time: at, lifetime, width, strength, count: MAX_WAKE_POINTS - 2 });
     const underway = trail.length > 0 ? trail[0][2] : 0;
-    return { wake: { points: [...hullCollar(at, underway), ...trail], height } };
+    return { wake: { points: [...burstCollar(at, hullCollar(at, underway)), ...trail], height } };
   };
 }
 
@@ -690,7 +712,7 @@ export function bakeAgentPhysics(physics, recipe, geometries) {
   let reportCache = null;
   return Object.freeze({
     duration: physics.duration,
-    wakeField: createBoatWake(physics, scene),
+    wakeField: createBoatWake(physics, scene, definition.ocean),
     sample(time) {
       scene.sample(time, pose);
       ragdoll?.writePatches(readBodyPose, ragdollTable);

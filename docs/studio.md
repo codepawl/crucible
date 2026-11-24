@@ -56,6 +56,8 @@ Not there yet, and said so on screen when you reach it:
 - A mesh holds at most 64 edits, and a move needs one. At the limit Studio refuses the drag before it starts.
 - A move of more than 19 vertices that are not whole faces cannot be written yet; pick whole faces, or fewer vertices.
 - A mesh with a modifier stack is refused. A mesh of more than 8,000 triangles draws only the picked elements, with a notice.
+- **Alt+A** selects none and **Ctrl+I** inverts the selection, in the mode you are in (vertices, edges or faces); the object stays selected. Inverting nothing selects everything of that mode. Like a pick, neither is an undo step.
+- **C** starts circle select. A circle follows the pointer: drag with the left button to select what it passes over, drag with the middle button (or hold **Shift**) to deselect, turn the wheel to make the circle bigger or smaller (4 to 400 pixels, 25 to start), and press **Esc** or right click to stop. In vertex mode it takes the vertices inside the circle, in edge mode the edges it touches, in face mode the faces it overlaps. Only what faces the camera is taken. The circle keeps its size until you change it.
 - Rotate, scale, box select, extrude and the other tools come next.
 
 If another object uses the same geometry, entering edit mode gives this object a geometry of its own (the same conversion step), so the other one keeps its shape and does not move with it.
@@ -71,6 +73,12 @@ The add button on the rail and the one in the Scene head (or Shift+A) open the s
 | Light | point, spot and area |
 
 Each shape is an ordinary recipe geometry, so an agent can keep editing it: a circle is a `circle` geometry, and the rest are `plane`, `box`, `sphere`, `icoSphere`, `cylinder`, `cone`, `torus` and `text`. A new shape is about a metre wide and rests on the ground. A menu that opens low on the screen grows upward, so it stays inside the window. People build everything else from these, and an agent can still write any other geometry (`extrude`, `lathe`, `tube`, `terrain` and the rest) into the recipe: a scene that holds one opens, shows in the Scene list, selects and moves like any other object.
+
+### Shape settings
+
+Select a plane, box, circle, sphere, icosphere, cylinder, cone or torus and the node panel shows a Shape section with the fields of its geometry: segments, rings, bevel, bevel segments, subdivisions, the radii of a cone, the inner radius of a circle, and the tube radius and sides of a torus. A shape's size is its scale, which stays in the Transform rows. Type a number and press Enter: the shape is rebuilt and the change is one undo step. A shape that another object uses is copied for the selected one, so the others keep theirs. A number outside the range, or text that is not a number, is refused with a message that names the range, and the field goes back to the recipe.
+
+An edit in edit mode turns the shape into a mesh, which has no such fields. The section then says so instead of showing them; undoing the edit brings them back. A geometry that is not one of these shapes (text, lathe, extrude, terrain and the rest) shows no Shape section.
 
 ## Camera and lights in the Scene list
 
@@ -120,6 +128,7 @@ Every selected object has an outline in the accent colour with a thin ring of th
 | A, Alt+A, Ctrl+I | Select all, select none, invert the selection |
 | Tab | Edit the mesh of the selected object; Tab again leaves |
 | 1, 2, 3 | In edit mode: select vertices, edges or faces |
+| Alt+A, Ctrl+I, C | In edit mode: select none, invert the selection, circle select (Esc or right click ends it) |
 | H, Alt+H | Hide the selection, show everything that is hidden |
 | Alt+G, Alt+R, Alt+S | Reset the position, rotation or scale of the selection |
 | Right click | Menu of the object under the pointer |
@@ -225,7 +234,7 @@ The setup is five steps, one page each, named in a row at the top with an icon a
 - **Performance.** One row of four cards with an icon that reads as a pixel grid getting finer (Light, Balanced, Sharp) and a loop for Automatic. Each tier shows its pixel ratio and anti-aliasing on this screen; Automatic names the tier it took and the graphics card and cores it found.
 - **Modelling.** Move snap, rotate snap, handle size and start workspace, each row led by an icon and the workspace chips by the workspace's own icon.
 - **Keys.** Three cards, Blender, Maya and Cinema 4D, each with the program's logo and four of its real keys (Move, Rotate, Scale, Frame) read from the keymap, so the difference is shown.
-- **AI agent.** The prompt the **Agent** menu copies, beside a chat mark, and a button that copies it. When the page runs inside a host that offers its own built-in agent (`window.crucibleShell.builtInAgent`, with async `isSignedIn()` and `signIn()`; `signIn()` resolves to `{ signedIn }`), a sign-in button sits above the prompt and shows when it is waiting and when it is signed in. It never blocks: Skip still closes the setup, and the prompt stays the route for an agent of your own.
+- **AI agent.** One or two cards, each with its own icon and title. **Your own agent** holds the prompt the **Agent** menu copies in one box with a **Copy prompt** button on it; the button turns into a check and **Copied** once the prompt is on the clipboard. When the page runs inside a host that offers its own built-in agent (`window.crucibleShell.builtInAgent`, with async `isSignedIn()` and `signIn()`; `signIn()` resolves to `{ signedIn }`), a **Built-in AI** card sits above it with a **Sign in** button; it shows when it is waiting, then a check mark and **Signed in**. A host may also offer `window.crucibleShell.account.get()`, resolving to `{ signedIn, name?, email? }`: the card then follows it and reads **Signed in as** the name, or the email when there is no name. Without a host only the own-agent card shows. Nothing blocks: Skip still closes the setup, and the prompt stays the route for an agent of your own.
 
 Finishing, skipping or pressing Esc marks it done. Choices are the Settings preferences, so nothing is stored twice. All five steps share one grid cell, so the dialog is as tall as the tallest step (capped at the window height minus 48 pixels, then it scrolls inside) and never changes size between steps; a step with one block fills the cell.
 
