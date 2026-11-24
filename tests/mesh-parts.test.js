@@ -199,11 +199,13 @@ function assertNormalsPointOutward({ positions, normals, vertexCount }) {
 }
 
 test('a joined mesh with weighted normals keeps unit outward normals under rotation and non-uniform scale', () => {
-  assertNormalsPointOutward(joinedBoxNormals({ matrix: [0, 2, 0, 0, -1, 0, 0, 0, 0, 0, 3, 0, 4, 0, 0, 1] }));
+  assertNormalsPointOutward(joinedBoxNormals({ firstEdits: [{ op: 'weighted_normal' }], matrix: [0, 2, 0, 0, -1, 0, 0, 0, 0, 0, 3, 0, 4, 0, 0, 1] }));
+  const half = Math.SQRT1_2;
+  assertNormalsPointOutward(joinedBoxNormals({ firstEdits: [{ op: 'weighted_normal' }], matrix: [half, half, 0, 0, -half, half, 0, 0, 0, 0, 1, 0, 4, 0, 0, 1] }));
 });
 
 test('a joined mesh with weighted normals keeps outward normals under a mirroring scale', () => {
-  assertNormalsPointOutward(joinedBoxNormals({ matrix: [-2, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 4, 0, 0, 1] }));
+  assertNormalsPointOutward(joinedBoxNormals({ firstEdits: [{ op: 'weighted_normal' }], matrix: [-2, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 4, 0, 0, 1] }));
 });
 
 test('a normal attribute only one side carries never leaves zero-length normals', () => {
