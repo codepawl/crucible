@@ -29,7 +29,7 @@ import {
 } from './studio-preferences.js';
 import { createOutlineMask } from './studio-outline-mask.js';
 import { createPanelGrips } from './studio-panel-grips.js';
-import { STUDIO_BRAND_ICON_NAMES, STUDIO_ICON_ACCENTS, studioIconPath } from './studio-icons.js';
+import { leadWithActionIcon, STUDIO_ACTION_ICONS, STUDIO_BRAND_ICON_NAMES, STUDIO_FILLED_ICON_NAMES, STUDIO_ICON_ACCENTS, STUDIO_LIGHT_ICONS, STUDIO_NOTICE_ICONS, STUDIO_PRIMITIVE_ICONS, studioIconPath } from './studio-icons.js';
 import { createPropertyLine, createPropertyPanel } from './studio-property-panel.js';
 import { createKeyMarkers } from './studio-timeline-keys.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
@@ -177,6 +177,9 @@ function createIcon(documentReference, iconName) {
   const icon = createSvgElement(documentReference, 'svg', { viewBox: '0 0 24 24', class: 'crucible-studio-icon', 'aria-hidden': 'true' });
   if (STUDIO_BRAND_ICON_NAMES.includes(iconName)) {
     icon.dataset.brand = 'true';
+  }
+  if (STUDIO_FILLED_ICON_NAMES.includes(iconName)) {
+    icon.dataset.filled = 'true';
   }
   icon.append(createSvgElement(documentReference, 'path', { d: studioIconPath(iconName) }));
   for (const { kind, path } of STUDIO_ICON_ACCENTS[iconName] ?? []) {
@@ -1554,16 +1557,23 @@ export function createStudio(container, {
     className: 'crucible-studio-popover',
     attributes: { popover: 'auto' },
   });
+  // A shape or light of the add menu leads with its picture; a shape without one keeps its label alone.
+  const giveEntryIcon = (button, iconName) => {
+    if (iconName) {
+      button.prepend(createIcon(documentReference, iconName));
+    }
+  };
   const addPrimitiveButtonFor = primitiveType => {
     const addPrimitiveButton = createElement(documentReference, 'button', { type: 'button', textContent: primitiveLabel(primitiveType) });
+    giveEntryIcon(addPrimitiveButton, STUDIO_PRIMITIVE_ICONS[primitiveType]);
     addPrimitiveButton.addEventListener('click', async () => {
       addPopover.hidePopover?.();
       try {
         await loadAgentSceneModules({ geometries: [primitiveGeometrySpec(primitiveType).geometry] });
         const created = controller.addPrimitive(primitiveType);
-        announce(`Added ${created.label}`);
+        announceSuccess(`Added ${created.label}`);
       } catch (error) {
-        announce(error.message);
+        announceError(error.message);
       }
     });
     return addPrimitiveButton;
@@ -1586,9 +1596,12 @@ export function createStudio(container, {
       selectInspectorTab('look');
       announce(`${countLabel}: ${count}`);
     } catch (error) {
-      announce(error.message);
+      announceError(error.message);
     }
   };
+  giveEntryIcon(addPointLightButton, STUDIO_LIGHT_ICONS.point);
+  giveEntryIcon(addSpotLightButton, STUDIO_LIGHT_ICONS.spot);
+  giveEntryIcon(addAreaLightButton, STUDIO_LIGHT_ICONS.area);
   addPointLightButton.addEventListener('click', () => addLightFromMenu('point', 'Point lights'));
   addSpotLightButton.addEventListener('click', () => addLightFromMenu('spot', 'Spot lights'));
   addAreaLightButton.addEventListener('click', () => addLightFromMenu('area', 'Area lights'));
@@ -1627,7 +1640,7 @@ export function createStudio(container, {
     const promptText = agentPromptText();
     try {
       await navigator.clipboard.writeText(promptText);
-      announce('Copied AI prompt to clipboard');
+      announceSuccess('Copied AI prompt to clipboard');
       return true;
     } catch {
       openImportDialog(promptText);
@@ -1812,7 +1825,7 @@ export function createStudio(container, {
   newMaterialQuickButton.addEventListener('click', () => {
     const created = controller.createMaterial({ assignToNodeId: controller.selectedNodeId });
     selectInspectorTab('material');
-    announce(`Created ${created.id}`);
+    announceSuccess(`Created ${created.id}`);
   });
 
   const sceneMinimizeButton = createIconButton(documentReference, 'minimize', 'Minimize Scene', { attributes: { 'aria-expanded': 'true' } });
@@ -1900,6 +1913,7 @@ export function createStudio(container, {
     clearTimeout(statusExitTimer);
     statusRegion.textContent = '';
     delete statusRegion.dataset.state;
+    statusRegion.removeAttribute('data-outcome');
   }
 
   function hideStatus() {
@@ -1919,17 +1933,24 @@ export function createStudio(container, {
     }
   });
 
-  function announce(message, durationMilliseconds = STATUS_DEFAULT_MILLISECONDS) {
+  // The outcome picks the mark the notice leads with: success, warning, error or the plain info.
+  function announce(message, durationMilliseconds = STATUS_DEFAULT_MILLISECONDS, outcome = 'info') {
     clearTimeout(statusTimer);
     clearTimeout(statusExitTimer);
     if (!message) {
       clearStatus();
       return;
     }
-    statusRegion.textContent = message;
+    const noticeIcon = createIcon(documentReference, STUDIO_NOTICE_ICONS[outcome]);
+    statusRegion.replaceChildren(noticeIcon, createElement(documentReference, 'span', { textContent: message }));
+    statusRegion.setAttribute('data-outcome', outcome);
     statusRegion.dataset.state = 'in';
     statusTimer = setTimeout(hideStatus, durationMilliseconds);
   }
+
+  const announceError = (message, durationMilliseconds = STATUS_DEFAULT_MILLISECONDS) => announce(message, durationMilliseconds, 'error');
+  const announceSuccess = message => announce(message, STATUS_DEFAULT_MILLISECONDS, 'success');
+  const announceWarning = message => announce(message, STATUS_DEFAULT_MILLISECONDS, 'warning');
 
   // Viewport Top-Left Toolbar (Modern Web Guidance: toolbar pattern)
   const toolLabels = { select: 'Select', translate: 'Move', rotate: 'Rotate', scale: 'Scale', snap: 'Snap' };
@@ -1993,7 +2014,7 @@ export function createStudio(container, {
       const cloned = controller.duplicateSelected();
       announce(`Duplicated to ${cloned.label}`);
     } catch (error) {
-      announce(error.message);
+      announceError(error.message);
     }
   });
   deleteButton.addEventListener('click', () => {
@@ -2001,7 +2022,7 @@ export function createStudio(container, {
     try {
       deleteSelection();
     } catch (error) {
-      announce(error.message);
+      announceError(error.message);
     }
   });
   frameButton.addEventListener('click', () => {
@@ -2123,7 +2144,7 @@ export function createStudio(container, {
     try {
       controller.updateNodeTransform(controller.selectedNodeId, { parent: nodeParentSelect.value || null });
     } catch (error) {
-      announce(error.message);
+      announceError(error.message);
       syncUi();
     }
   });
@@ -2170,7 +2191,7 @@ export function createStudio(container, {
       treeInspector = treeTools.createTreeInspector({ documentReference, createElement, createSliderField, controller, announce });
       treeSection.append(treeInspector.element);
       treeInspector.sync(controller.exportRecipe().nodes.find(node => node.id === controller.selectedNodeId));
-    }).catch(error => announce(error.message)).finally(() => {
+    }).catch(error => announceError(error.message)).finally(() => {
       treeInspectorLoading = false;
     });
   }
@@ -2195,7 +2216,7 @@ export function createStudio(container, {
       try {
         controller.assignNodeMaterial(controller.selectedNodeId, materialSelect.value);
       } catch (error) {
-        announce(error.message);
+        announceError(error.message);
       }
     }
   });
@@ -2342,9 +2363,9 @@ export function createStudio(container, {
       await loadAgentSceneModules({ timeline: { shots: [] } });
       controller.saveBookmark(name);
       bookmarkNameInput.value = '';
-      announce(`Saved view ${name}`);
+      announceSuccess(`Saved view ${name}`);
     } catch (error) {
-      announce(error.message);
+      announceError(error.message);
     }
   });
   const cameraPanelBody = createElement(
@@ -2458,7 +2479,7 @@ export function createStudio(container, {
 
   playButton.addEventListener('click', () => {
     if (!hasAnimatedData(controller.exportRecipe())) {
-      announce(`Add a keyframe first (${lastKeyLabel(keymap, 'animate.keyframe')})`);
+      announceWarning(`Add a keyframe first (${lastKeyLabel(keymap, 'animate.keyframe')})`);
       return;
     }
     selectWorkspace('animate');
@@ -2475,7 +2496,7 @@ export function createStudio(container, {
       controller.insertNodeKeyframe();
       announce(`Keyframed at ${controller.motionTime.toFixed(2)} s`);
     } catch (error) {
-      announce(error.message);
+      announceError(error.message);
     }
   });
   autoKeyButton.addEventListener('click', () => controller.setAutoKey(!controller.autoKey));
@@ -2505,10 +2526,13 @@ export function createStudio(container, {
 
   // Native Dialogs (Modern Web Guidance: native <dialog>, aria-labelledby, form method="dialog", returnValue reset)
   const dialogHeading = createElement(documentReference, 'h2', { id: 'crucible-studio-json-title', textContent: 'Recipe JSON' });
+  dialogHeading.prepend(createIcon(documentReference, 'code'));
   const dialogTextarea = createElement(documentReference, 'textarea', { rows: 14, autofocus: true, attributes: { 'aria-label': 'Scene recipe JSON' } });
   const dialogFileButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Load file…' });
   const dialogCloseButton = createElement(documentReference, 'button', { type: 'submit', value: 'close', textContent: 'Close' });
   const dialogApplyButton = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-primary-btn', textContent: 'Apply JSON' });
+  leadWithActionIcon(dialogFileButton, createIcon(documentReference, STUDIO_ACTION_ICONS.loadFile), STUDIO_ACTION_ICONS.loadFile);
+  leadWithActionIcon(dialogApplyButton, createIcon(documentReference, STUDIO_ACTION_ICONS.applyJson), STUDIO_ACTION_ICONS.applyJson);
   const recipeDialog = createElement(
     documentReference,
     'dialog',
@@ -2536,13 +2560,14 @@ export function createStudio(container, {
       await prepareRecipe(parsed);
       controller.loadRecipe(parsed);
       recipeDialog.close('apply');
-      announce('Recipe applied');
+      announceSuccess('Recipe applied');
     } catch (error) {
-      announce(error.message);
+      announceError(error.message);
     }
   });
 
   const shortcutsHeading = createElement(documentReference, 'h2', { id: 'crucible-studio-shortcuts-title', textContent: 'Studio keyboard shortcuts' });
+  shortcutsHeading.prepend(createIcon(documentReference, 'keyboard'));
   const shortcutsGrid = createElement(documentReference, 'div', { className: 'crucible-studio-shortcuts' });
   function fillShortcutsGrid() {
     shortcutsGrid.replaceChildren(...shortcutRowsFor(keymap).map(({ keys, label }) => createElement(
@@ -2581,17 +2606,20 @@ export function createStudio(container, {
     return createElement(documentReference, 'label', { className: 'crucible-studio-setting' }, createElement(documentReference, 'span', { textContent: label }), control);
   });
   const settingsResetButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Reset' });
+  leadWithActionIcon(settingsResetButton, createIcon(documentReference, STUDIO_ACTION_ICONS.resetSettings), STUDIO_ACTION_ICONS.resetSettings);
   settingsResetButton.addEventListener('click', () => {
     preferences = normalizeStudioPreferences({ setupDone: preferences.setupDone });
     storePreferences();
     applyPreferences();
     announce('Settings reset');
   });
+  const settingsHeading = createElement(documentReference, 'h2', { id: 'crucible-studio-settings-title', textContent: 'Settings' });
+  settingsHeading.prepend(createIcon(documentReference, 'settings'));
   const settingsDialog = createElement(
     documentReference,
     'dialog',
     { className: 'crucible-studio-settings-dialog', attributes: { 'aria-labelledby': 'crucible-studio-settings-title', closedby: 'any' } },
-    createElement(documentReference, 'h2', { id: 'crucible-studio-settings-title', textContent: 'Settings' }),
+    settingsHeading,
     createElement(documentReference, 'div', { className: 'crucible-studio-settings' }, ...settingRows),
     createElement(
       documentReference,
@@ -2819,7 +2847,7 @@ export function createStudio(container, {
     const reportText = `${JSON.stringify(studioDiagnostics.report(), null, 2)}
 `;
     triggerBlobDownload(reportText, 'crucible-studio-diagnostics.json', 'application/json');
-    announce('Saved the diagnostics report');
+    announceSuccess('Saved the diagnostics report');
   }
 
   function capturePngDataUrl() {
@@ -2937,9 +2965,9 @@ export function createStudio(container, {
       try {
         await loadExternalTextFile(picked.text, { filePath: picked.filePath, fileName: picked.fileName });
         discardDraft();
-        announce(`Opened ${picked.fileName}`);
+        announceSuccess(`Opened ${picked.fileName}`);
       } catch (error) {
-        announce(error.message);
+        announceError(error.message);
       }
       return;
     }
@@ -2958,14 +2986,14 @@ export function createStudio(container, {
       isDirty = false;
       discardDraft();
       syncFileBanner();
-      announce(`Saved ${activeFileName}`);
+      announceSuccess(`Saved ${activeFileName}`);
       return;
     }
     triggerBlobDownload(recipeText, activeFileName, 'application/json');
     isDirty = false;
     discardDraft();
     syncFileBanner();
-    announce(`Downloaded ${activeFileName}`);
+    announceSuccess(`Downloaded ${activeFileName}`);
   }
 
   openButton.addEventListener('click', () => performOpenFile());
@@ -2979,16 +3007,16 @@ export function createStudio(container, {
     try {
       await loadExternalTextFile(await file.text(), { filePath: null, fileName: file.name });
       discardDraft();
-      announce(`Loaded ${file.name}`);
+      announceSuccess(`Loaded ${file.name}`);
     } catch (error) {
-      announce(error.message);
+      announceError(error.message);
     }
   });
 
   // The import code loads on the first import; an import is one undo step, and a refusal says what to do and changes nothing.
   async function importFileIntoScene(file) {
     if (!canImport) {
-      announce(NO_STORE_MESSAGE);
+      announceWarning(NO_STORE_MESSAGE);
       return;
     }
     try {
@@ -2997,7 +3025,7 @@ export function createStudio(container, {
       announce(message, importMessageDuration(message, STATUS_DEFAULT_MILLISECONDS));
     } catch (error) {
       const { importMessageDuration } = await import('./studio-import.js');
-      announce(error.message, importMessageDuration(error.message, STATUS_DEFAULT_MILLISECONDS));
+      announceError(error.message, importMessageDuration(error.message, STATUS_DEFAULT_MILLISECONDS));
     }
   }
 
@@ -3014,12 +3042,12 @@ export function createStudio(container, {
     const baseName = activeFileName.replace(/\.(scene\.)?json$/i, '') || 'crucible-render';
     if (desktop?.savePng) {
       const response = await desktop.savePng({ dataUrl, suggestedName: `${baseName}.png` });
-      if (!response?.canceled) announce(`Saved ${response.fileName}`);
+      if (!response?.canceled) announceSuccess(`Saved ${response.fileName}`);
       return;
     }
     const bytes = Uint8Array.from(atob(dataUrl.split(',')[1]), character => character.charCodeAt(0));
     triggerBlobDownload(bytes, `${baseName}.png`, 'image/png');
-    announce('Saved PNG still');
+    announceSuccess('Saved PNG still');
   });
 
   exportGlbButton.addEventListener('click', async () => {
@@ -3029,13 +3057,13 @@ export function createStudio(container, {
       const baseName = activeFileName.replace(/\.(scene\.)?json$/i, '') || 'crucible-scene';
       if (desktop?.saveGlb) {
         const response = await desktop.saveGlb({ bytes: glbBytes, suggestedName: `${baseName}.glb` });
-        if (!response?.canceled) announce(`Exported ${response.fileName}`);
+        if (!response?.canceled) announceSuccess(`Exported ${response.fileName}`);
         return;
       }
       triggerBlobDownload(glbBytes, `${baseName}.glb`, 'model/gltf-binary');
-      announce('Exported GLB mesh');
+      announceSuccess('Exported GLB mesh');
     } catch (error) {
-      announce(error.message);
+      announceError(error.message);
     }
   });
 
@@ -3052,9 +3080,9 @@ export function createStudio(container, {
         return;
       }
       triggerBlobDownload(payload.packBytes, `${payload.title}.pack`, 'application/octet-stream');
-      announce('Downloaded scene.pack');
+      announceSuccess('Downloaded scene.pack');
     } catch (error) {
-      announce(error.message);
+      announceError(error.message);
     }
   });
 
@@ -4350,7 +4378,7 @@ export function createStudio(container, {
       controller.moveSceneObject(key, hit.map((component, axis) => component + grabOffset[axis]));
     } catch (error) {
       pointerState.planeNormal = null;
-      announce(error.message);
+      announceError(error.message);
     }
   }
 
@@ -4426,9 +4454,9 @@ export function createStudio(container, {
     }
     try {
       await loadExternalTextFile(await file.text(), { filePath: file.path || null, fileName: file.name });
-      announce(`Loaded ${file.name}`);
+      announceSuccess(`Loaded ${file.name}`);
     } catch (error) {
-      announce(error.message);
+      announceError(error.message);
     }
   });
 
@@ -4473,16 +4501,16 @@ export function createStudio(container, {
   function copySelection() {
     if (!controller.selectedNodeId) return;
     controller.copySelected();
-    announce('Copied');
+    announceSuccess('Copied');
   }
 
   function pasteCopy() {
     if (!controller.canPaste) return;
     try {
       const pasted = controller.pasteCopy();
-      announce(`Pasted ${pasted.label}`);
+      announceSuccess(`Pasted ${pasted.label}`);
     } catch (error) {
-      announce(error.message);
+      announceError(error.message);
     }
   }
 
@@ -4782,10 +4810,10 @@ export function createStudio(container, {
       controller.loadRecipe(draft.recipe);
       isDirty = true;
       syncFileBanner();
-      announce('Restored the unsaved changes');
+      announceSuccess('Restored the unsaved changes');
     } catch (error) {
       clearStudioDraft(preferenceStorage);
-      announce(`The saved draft could not be restored: ${error.message}`);
+      announceError(`The saved draft could not be restored: ${error.message}`);
     }
   }
 
@@ -4870,7 +4898,7 @@ export function createStudio(container, {
       isDirty = false;
       syncFileBanner();
     }).catch(error => {
-      announce(error.message);
+      announceError(error.message);
       throw error;
     })
     : Promise.resolve();

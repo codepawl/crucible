@@ -3,10 +3,12 @@
 // studio-layout-rules.mjs: unequal insets around the content of a padded container, a gap or padding off the spacing
 // scale, or a gap between groups smaller than the gap inside one. Every failure names the selector, the numbers and the fix.
 //
-//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover] [--records file.json]
+//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|notices] [--records file.json]
 //
 // Without --origin it starts a Vite dev server on a free port and stops it (by its own PID) at the end. Screens: the Studio
 // page, each of its popover menus, and the five steps of the setup dialog, each in the dark and the light theme at 1280 by 720.
+// The notices (a draft found in storage, the paused picture after a lost context) and the recipe, settings and shortcuts
+// dialogs are measured at 1280 and at 720 pixels wide, because their buttons wrap first when the window narrows.
 import { spawn } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -20,8 +22,17 @@ const READY_EXPRESSION = 'Boolean(window.__studioPage?.renderer) && !document.ge
 const PREFERENCES_KEY = 'crucible-studio-preferences';
 const THEMES = ['dark', 'light'];
 const VIEWPORT = { width: 1280, height: 720 };
+const NARROW_VIEWPORT = { width: 720, height: 720 };
+const DRAFT_STORAGE_KEY = 'crucible.studio.draft';
+// A genuine draft, as the autosave writes it: a scene that differs from the one that opened, so Studio offers it by itself.
+const SEEDED_DRAFT = JSON.stringify({ fileName: 'room.scene.json', recipe: { format: 'crucible.scene', nodes: [{ id: 'seeded-draft-node' }] } });
+const DIALOG_SELECTORS = Object.freeze({
+  'recipe dialog': 'dialog[aria-labelledby="crucible-studio-json-title"]',
+  'settings dialog': 'dialog.crucible-studio-settings-dialog',
+  'shortcuts dialog': 'dialog.crucible-studio-shortcuts-dialog',
+});
 const SERVER_START_TIMEOUT_MS = 60000;
-const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover] [--records file.json]';
+const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|notices] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
 const SOFTWARE_ARGUMENTS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'];
@@ -158,10 +169,11 @@ export async function launchBrowser() {
   return chromium.launch(options).catch(() => chromium.launch({ ...options, channel: 'chrome' }));
 }
 
-export async function openStudio(browser, origin, theme, extraCss = '') {
-  const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+export async function openStudio(browser, origin, theme, extraCss = '', { viewport = VIEWPORT, draft = false } = {}) {
+  const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
   await context.addInitScript(FAKE_POINTER_LOCK_SCRIPT);
   await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [PREFERENCES_KEY, JSON.stringify({ theme, setupDone: true })]);
+  if (draft) await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [DRAFT_STORAGE_KEY, SEEDED_DRAFT]);
   const page = await context.newPage();
   await page.goto(origin + STUDIO_PAGE, { waitUntil: 'load', timeout: 120000 });
   await page.waitForFunction(READY_EXPRESSION, null, { timeout: 120000 });
@@ -202,6 +214,29 @@ async function measureScreens(page, theme, only) {
   return screens;
 }
 
+// Runs on a page loaded with a seeded draft, so the draft notice is there on its own and the paused notice comes from a real
+// lost WebGL context. The dialogs are opened the way the menu opens them, with showModal.
+async function measureNoticesAndDialogs(page, theme, label) {
+  const screens = [];
+  await page.waitForSelector('.crucible-studio-draft:not([hidden])');
+  screens.push({ name: `draft notice${label} (${theme})`, records: await measure(page, '.crucible-studio-draft') });
+  for (const [dialogName, selector] of Object.entries(DIALOG_SELECTORS)) {
+    await page.evaluate(dialogSelector => document.querySelector(dialogSelector).showModal(), selector);
+    await page.waitForTimeout(250);
+    screens.push({ name: `${dialogName}${label} (${theme})`, records: await measure(page, selector) });
+    await page.evaluate(dialogSelector => document.querySelector(dialogSelector).close(), selector);
+  }
+  await page.locator('.crucible-studio-draft button', { hasText: 'Discard' }).click();
+  await page.evaluate(() => {
+    const canvas = document.querySelector('.crucible-studio canvas');
+    const context = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
+    context.getExtension('WEBGL_lose_context').loseContext();
+  });
+  await page.waitForSelector('.crucible-studio-paused:not([hidden])');
+  screens.push({ name: `paused notice${label} (${theme})`, records: await measure(page, '.crucible-studio-paused') });
+  return screens;
+}
+
 // `extraCss` is added to the page before measuring: the test uses it to seed a spacing mistake the audit must catch.
 export async function runAudit({ origin, only, extraCss } = {}) {
   const server = origin ? { origin, stop: () => {} } : await startDevServer();
@@ -212,6 +247,13 @@ export async function runAudit({ origin, only, extraCss } = {}) {
       const { context, page } = await openStudio(browser, server.origin, theme, extraCss);
       screens.push(...await measureScreens(page, theme, only));
       await context.close();
+      if (!only || only === 'notices') {
+        for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
+          const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport, draft: true });
+          screens.push(...await measureNoticesAndDialogs(opened.page, theme, label));
+          await opened.context.close();
+        }
+      }
     }
     return screens;
   } finally {

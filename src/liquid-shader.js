@@ -4,6 +4,7 @@ import { drawLiquidPass } from './liquid-renderer.js';
 import { probeLookupGlsl, probeUniformsGlsl } from './probe-glsl.js';
 import { ballLensGlsl } from './glass-ball-lens.js';
 import { glassDepthMarchGlsl } from './glass-depth-march.js';
+import { glassBackFaceGlsl } from './glass-back-face.js';
 import { transmissionBlurGlsl } from './transmission-blur.js';
 import { waterMirrorFunctionsGlsl, waterMirrorUniformsGlsl } from './water-mirror-glsl.js';
 
@@ -109,6 +110,7 @@ vec3 ambientLight(vec3 normal) {
 ${transmissionBlurGlsl}
 ${ballLensGlsl}
 ${glassDepthMarchGlsl}
+${glassBackFaceGlsl}
 vec3 displayed(vec3 radiance) {
   return hdrEnabled > 0.5 ? clamp(radiance * exposure, vec3(0), vec3(65504.0)) : pow(toneMap(radiance * exposure), vec3(1.0 / 2.2));
 }
@@ -127,6 +129,10 @@ void main() {
   // While the mirror picture is drawn, nothing under the water plane is part of it.
   if (waterClip.y > 0.5 && worldPosition.y < waterClip.x + 0.05) discard;
   vec3 normal = normalize(worldNormal);
+  if (glassBackPass > 0.5) {
+    outputColor = vec4(normal * 0.5 + 0.5, 1.0);
+    return;
+  }
   // Screen-space steps of the position and the normal give the radius of curvature the ball lens model needs.
   float positionStep = length(fwidth(worldPosition));
   float normalStep = length(fwidth(normal));
@@ -169,6 +175,13 @@ void main() {
     if (glassMediumContinues < 0.5) {
       ballLensRay(worldPosition, normal, viewDirection, indexOfRefraction, curvatureRadius(positionStep, normalStep, thickness), thickness, rayOrigin, rayDirection);
       reach = thickness * SCENE_REACH_PER_THICKNESS;
+      // A closed shape's own back face gives the real exit; where none is found the ball lens estimate above stays.
+      vec3 backExit;
+      vec3 backDirection;
+      if (glassBackEnabled > 0.5 && glassBackFaceRay(worldPosition, normal, viewDirection, indexOfRefraction, thickness, backExit, backDirection)) {
+        rayOrigin = backExit;
+        rayDirection = backDirection;
+      }
     }
     samplePosition = rayOrigin + rayDirection * reach;
     depthHit = marchSceneDepth(rayOrigin, rayDirection, thickness * MARCH_REACH_PER_THICKNESS);

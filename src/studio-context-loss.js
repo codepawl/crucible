@@ -5,6 +5,8 @@
 // How long the notice waits before it offers a reload: the context often returns by itself within a moment.
 export const RELOAD_OFFER_MILLISECONDS = 3000;
 
+import { leadWithActionIcon, STUDIO_ACTION_ICONS } from './studio-icons.js';
+
 export const CONTEXT_LOST_MESSAGE = 'The picture is paused: the graphics context was lost. It comes back on its own, or reload to restore it.';
 
 export function describeFrameFailure(error) {
@@ -21,6 +23,7 @@ export function createPausedPictureNotice({ documentReference, createIcon, reloa
   const reloadButton = documentReference.createElement('button');
   reloadButton.type = 'button';
   reloadButton.textContent = 'Reload';
+  leadWithActionIcon(reloadButton, createIcon(STUDIO_ACTION_ICONS.reload), STUDIO_ACTION_ICONS.reload);
   reloadButton.hidden = true;
   reloadButton.addEventListener('click', reload);
 

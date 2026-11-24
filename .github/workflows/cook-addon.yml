@@ -175,6 +175,7 @@ on:
       - 'src/game-rules.js'
       - 'src/game-setup.js'
       - 'src/gas-sim.js'
+      - 'src/glass-back-face.js'
       - 'src/glass-ball-lens.js'
       - 'src/glass-depth-march.js'
       - 'src/geometry-normals.js'

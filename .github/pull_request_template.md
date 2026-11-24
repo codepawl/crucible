@@ -11,6 +11,10 @@ Closes #
 
 - [ ]
 
+## Studio form
+
+<!-- Only for a Studio feature that Blender also has. Name the form Blender uses and the form Studio uses (tool, toggle, mode, operator, modifier, setting or panel). They match, or the row in docs/studio-blender-parity.md says why. CONTRIBUTING.md#studio-changes. Delete this section otherwise. -->
+
 ## Evidence
 
 <!-- Show what changed from old to new. For what can be seen: a before and an after picture or clip, rendered by Crucible. For what can be measured: the numbers before and after (speed, size, memory, a score, a bench table). Drag pictures and clips into this box. If nothing can be seen or measured, write one line that says so. CONTRIBUTING.md#show-the-evidence -->
