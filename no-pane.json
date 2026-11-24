@@ -1,0 +1,172 @@
+{
+ "recipe": {
+  "format": "crucible.scene",
+  "schemaVersion": 1,
+  "geometries": [
+   {
+    "id": "box",
+    "type": "box",
+    "bevel": 0
+   },
+   {
+    "id": "ball",
+    "type": "sphere",
+    "segments": 64
+   }
+  ],
+  "materials": [
+   {
+    "id": "floor",
+    "color": [
+     0.55,
+     0.55,
+     0.58
+    ],
+    "roughness": 0.9
+   },
+   {
+    "id": "glass",
+    "color": [
+     1,
+     1,
+     1
+    ],
+    "roughness": 0.02,
+    "metallic": 0,
+    "transmission": 1,
+    "ior": 1.5,
+    "thickness": 0,
+    "attenuationColor": [
+     0.8,
+     0.95,
+     1
+    ],
+    "attenuationDistance": 2,
+    "alphaMode": "blend",
+    "opacity": 0.25
+   },
+   {
+    "id": "stripe0",
+    "color": [
+     0.9,
+     0.1,
+     0.1
+    ],
+    "roughness": 0.6
+   },
+   {
+    "id": "stripe1",
+    "color": [
+     0.95,
+     0.75,
+     0.1
+    ],
+    "roughness": 0.6
+   },
+   {
+    "id": "stripe2",
+    "color": [
+     0.1,
+     0.65,
+     0.2
+    ],
+    "roughness": 0.6
+   },
+   {
+    "id": "stripe3",
+    "color": [
+     0.1,
+     0.4,
+     0.9
+    ],
+    "roughness": 0.6
+   },
+   {
+    "id": "stripe4",
+    "color": [
+     0.6,
+     0.15,
+     0.8
+    ],
+    "roughness": 0.6
+   },
+   {
+    "id": "stripe5",
+    "color": [
+     0.95,
+     0.95,
+     0.95
+    ],
+    "roughness": 0.6
+   },
+   {
+    "id": "beam",
+    "color": [
+     1,
+     0.9,
+     0.5
+    ],
+    "alphaMode": "add",
+    "opacity": 1,
+    "emission": 1,
+    "roughness": 1
+   }
+  ],
+  "nodes": [
+   {
+    "id": "wall",
+    "geometry": "box",
+    "material": "floor",
+    "translation": [
+     0,
+     0.8,
+     -1.5
+    ],
+    "scale": [
+     4,
+     2.4,
+     0.1
+    ]
+   },
+   {
+    "id": "beam",
+    "geometry": "box",
+    "material": "beam",
+    "translation": [
+     0,
+     0.8,
+     -0.5
+    ],
+    "scale": [
+     0.06,
+     1.8,
+     0.06
+    ]
+   }
+  ],
+  "camera": {
+   "eye": [
+    0,
+    1,
+    5.2
+   ],
+   "target": [
+    0,
+    0.7,
+    0
+   ],
+   "fov": 32
+  },
+  "environment": {
+   "world": true,
+   "hdri": "studio-softbox",
+   "environmentIntensity": 0.25
+  }
+ },
+ "settings": {
+  "kind": "image",
+  "width": 960,
+  "height": 540
+ },
+ "mode": "raster"
+}
