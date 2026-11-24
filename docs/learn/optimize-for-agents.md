@@ -6,16 +6,16 @@ This page shows how to make an agent finish a Crucible task with fewer tool call
 
 An agent pays for three things: the tool list, the results of its calls, and the pictures that it reads.
 
-**The tool list.** The harness sends every tool's name, description and input schema to the model. The 25 tools total 79,461 bytes, about 22,700 tokens (measured 2026-11-23 on main; 70,401 bytes for 24 tools on 2026-11-10 after the schema diet, 196,826 bytes before it). A tool lists its common fields and one line naming the rest, and every call is still checked against the full schema. `scene_capabilities` with a `topic` gives the field list of one recipe part. Three tools make up most of it:
+**The tool list.** The harness sends every tool's name, description and input schema to the model. The 26 tools total 78,074 bytes, about 22,300 tokens (measured 2026-11-24 on main; 79,461 bytes for 25 tools on 2026-11-23; 70,401 bytes for 24 tools on 2026-11-10 after the schema diet, 196,826 bytes before it). A tool lists its common fields and one line naming the rest, and every call is still checked against the full schema. `scene_capabilities` with a `topic` gives the field list of one recipe part. Three tools make up most of it:
 
 | Tool | Schema size | Estimated tokens |
 | --- | --- | --- |
-| `scene_apply` | 19,178 B | 5,479 |
-| `scene_create` | 13,838 B | 3,954 |
-| `scene_create_asset` | 9,245 B | 2,641 |
-| `mesh_edit` | 2,988 B | 854 |
-| `mesh_stack` | 2,173 B | 621 |
-| The other 20 tools | 32,039 B | 9,154 |
+| `scene_apply` | 20,019 B | 5,720 |
+| `scene_create` | 14,296 B | 4,085 |
+| `scene_create_asset` | 9,343 B | 2,670 |
+| `mesh_edit` | 2,842 B | 812 |
+| `mesh_stack` | 2,009 B | 574 |
+| The other 21 tools | 29,565 B | 8,447 |
 
 Claude Code loads tool schemas on demand through tool search by default, so it pays this cost only for the tools that a task uses. Other harnesses can send the whole list on every turn. If your harness does that, cut the list to the tools that your task needs:
 
