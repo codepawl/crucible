@@ -400,6 +400,7 @@ on:
       - 'src/subsurface-limits.js'
       - 'src/subsurface-shader.js'
       - 'src/sun-bounce.js'
+      - 'src/sun-bounce-shell.js'
       - 'src/sun-clock.js'
       - 'src/surface-nets.js'
       - 'src/tangent-encoding.js'
