@@ -33,9 +33,22 @@ test('in src/ only a comment is scanned', () => {
 });
 
 test('commentTextOf keeps a comment line and a trailing comment, and drops code', () => {
-  assert.equal(commentTextOf('const a = 1;'), '');
-  assert.equal(commentTextOf('const a = 1; // note'), ' // note');
-  assert.equal(commentTextOf('  /* note */'), '/* note */');
+  assert.equal(commentTextOf('const a = 1;').text, '');
+  assert.equal(commentTextOf('const a = 1; // note').text, ' // note');
+  assert.equal(commentTextOf('  /* note */').text, ' /* note */');
+  assert.equal(commentTextOf('/* opens').insideBlock, true);
+  assert.deepEqual(commentTextOf('closes */ code', true), { text: 'closes ', insideBlock: false });
+});
+
+test('a block comment line that does not start with a star is scanned, and the code after the block is not', () => {
+  const lines = [
+    '/* The first line is fine',
+    'this line copies Houdini without a star',
+    'and ends here */ const label = "Maya";',
+    'const after = 1;',
+  ];
+  const findings = findOutsideNames(lines.map((text, index) => ({ path: 'src/a.js', line: index + 1, text })));
+  assert.deepEqual(findings.map(finding => [finding.line, finding.word]), [[2, 'Houdini']]);
 });
 
 test('the description is scanned and the template comments are not', () => {
@@ -46,15 +59,28 @@ test('the description is scanned and the template comments are not', () => {
 
 test('a keymap preset label passes, the same word in prose fails', () => {
   assert.equal(findOutsideNames(added('docs/studio.md', 'Pick the Maya preset in Settings.')).length, 0);
-  assert.equal(findOutsideNames(added('docs/studio.md', 'The keymap offers Cinema 4D and Maya.')).length, 0);
+  assert.equal(findOutsideNames(added('docs/studio.md', 'The Cinema 4D keys and the Maya 2024 preset are listed.')).length, 0);
   assert.equal(findOutsideNames(added('docs/studio.md', 'The gizmo is modelled on Maya.')).length, 1);
   assert.equal(findOutsideNamesInBody('The Cinema 4D preset is new.').length, 0);
 });
 
+test('a preset word on the line does not excuse a name that is not followed by it', () => {
+  const [finding] = findOutsideNames(added('docs/studio.md', 'Crucible matches the Blender preset system.'));
+  assert.equal(finding.word, 'Blender');
+  assert.equal(findOutsideNames(added('docs/studio.md', 'The keymap offers Cinema 4D and Maya.')).length, 2);
+});
+
 test('an import file format passes, the same tool in prose fails', () => {
   assert.equal(findOutsideNames(added('docs/import.md', 'Open a Blender `.blend` file to import it.')).length, 0);
-  assert.equal(findOutsideNames(added('docs/import.md', 'A 3ds Max .max file is read as a file format.')).length, 0);
+  assert.equal(findOutsideNames(added('docs/import.md', 'A 3ds Max .max file is read.')).length, 0);
+  assert.equal(findOutsideNames(added('docs/import.md', 'The Maya file format is read.')).length, 0);
   assert.equal(findOutsideNames(added('docs/import.md', 'The importer is as good as Blender.')).length, 1);
+  assert.equal(findOutsideNames(added('docs/import.md', 'Maya reads the .blend file format.')).length, 1);
+});
+
+test('a line with an allowed preset name and a second bare name reports only the second', () => {
+  const findings = findOutsideNames(added('docs/studio.md', 'The Maya preset is new and the scale follows Houdini.'));
+  assert.deepEqual(findings.map(finding => finding.word), ['Houdini']);
 });
 
 test('the compatibility docs are not scanned', () => {

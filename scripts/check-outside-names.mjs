@@ -17,35 +17,44 @@ const END = '(?![\\w/-])';
 // After a word and a space, not after a full stop, so the English word that opens a sentence ("Unity of style") is not a tool.
 const MID_SENTENCE = '(?<=[\\w,;:)] )';
 
+// `extensions` are the file extensions of the tool's own files, which the file format exception accepts.
 // Names that are also plain English words ("unity", "substance", "cycles") match only in the form the tool is written.
 export const OUTSIDE_NAMES = Object.freeze([
-  { word: 'Blender', pattern: new RegExp(`${START}blender${END}`, 'i') },
-  { word: 'Maya', pattern: new RegExp(`${START}maya${END}`, 'i') },
-  { word: 'Cinema 4D', pattern: new RegExp(`${START}cinema 4d${END}`, 'i') },
-  { word: 'C4D', pattern: new RegExp(`${START}c4d${END}`, 'i') },
-  { word: 'Houdini', pattern: new RegExp(`${START}houdini${END}`, 'i') },
-  { word: '3ds Max', pattern: new RegExp(`${START}3ds max${END}`, 'i') },
+  { word: 'Blender', extensions: ['blend'], pattern: new RegExp(`${START}blender${END}`, 'i') },
+  { word: 'Maya', extensions: ['ma','mb'], pattern: new RegExp(`${START}maya${END}`, 'i') },
+  { word: 'Cinema 4D', extensions: ['c4d'], pattern: new RegExp(`${START}cinema 4d${END}`, 'i') },
+  { word: 'C4D', extensions: ['c4d'], pattern: new RegExp(`${START}c4d${END}`, 'i') },
+  { word: 'Houdini', extensions: ['hip','hiplc','hipnc','hda'], pattern: new RegExp(`${START}houdini${END}`, 'i') },
+  { word: '3ds Max', extensions: ['max'], pattern: new RegExp(`${START}3ds max${END}`, 'i') },
   { word: 'Unreal', pattern: new RegExp(`${START}Unreal${END}`) },
   { word: 'Unity', pattern: new RegExp(`${MID_SENTENCE}Unity${END}`) },
-  { word: 'ZBrush', pattern: new RegExp(`${START}zbrush${END}`, 'i') },
+  { word: 'ZBrush', extensions: ['ztl'], pattern: new RegExp(`${START}zbrush${END}`, 'i') },
   { word: 'Substance', pattern: new RegExp(`${START}Substance (?:Painter|Designer|3D)${END}`) },
   { word: 'Cycles', pattern: new RegExp(`${START}Cycles (?:renderer|path tracer|render engine)${END}`, 'i') },
   { word: 'Modo', pattern: new RegExp(`${MID_SENTENCE}Modo${END}`) },
-  { word: 'SketchUp', pattern: new RegExp(`${START}sketchup${END}`, 'i') },
+  { word: 'SketchUp', extensions: ['skp'], pattern: new RegExp(`${START}sketchup${END}`, 'i') },
   { word: 'Marmoset', pattern: new RegExp(`${START}marmoset${END}`, 'i') },
 ]);
 
-// Exceptions on context. A match passes when its line carries one of these, and each says why.
-export const CONTEXT_EXCEPTIONS = Object.freeze([
-  {
-    reason: 'a keymap preset is named after the program whose keys it copies, and the person picks it by that label in Settings',
-    pattern: /\bkey ?maps?\b|\bpresets?\b/i,
-  },
-  {
-    reason: 'an import file format is named by its extension or as a file format, and the user needs it to pick the file',
-    pattern: /\.(?:blend|max|c4d|hip|hiplc|hipnc|ma|mb|ztl|skp)\b|\bfile formats?\b/i,
-  },
-]);
+// Exceptions on context. Each one applies to one occurrence of a name, never to the whole line, so a second name on the line is
+// still reported.
+// 1. A keymap preset is named after the program whose keys it copies, and the person picks it by that label in Settings. The name
+//    passes when a preset or keys word follows it directly, with at most one word between ("the <Name> 2.8 preset"). "<Name> preset
+//    system" describes a model, not a label a person picks, so it does not pass.
+const PRESET_AFTER_NAME = /^(?:'s)?\s+(?:[\w.-]+\s+)?(?:presets?|key ?maps?|keys)\b(?!\s+(?:systems?|models?|workflows?|behaviou?rs?|styles?|conventions?)\b)/i;
+// 2. An import file format: the name passes when "file" or "files" follows it ("<Name> file format"), or the line carries one of
+//    that tool's own extensions, which the user needs to pick the file.
+const FILE_AFTER_NAME = /^(?:'s)?\s+files?\b/i;
+
+function ownExtensionOnLine(name, lineText) {
+  if (!name.extensions) return false;
+  return new RegExp(`\\.(?:${name.extensions.join('|')})(?!\\w)`, 'i').test(lineText);
+}
+
+function isAllowedOccurrence(name, lineText, matchEnd) {
+  const after = lineText.slice(matchEnd);
+  return PRESET_AFTER_NAME.test(after) || FILE_AFTER_NAME.test(after) || ownExtensionOnLine(name, lineText);
+}
 
 // Whole files kept out of the scan, with the reason. Their job is to name the tool.
 export const EXCLUDED_PATHS = Object.freeze({
@@ -65,24 +74,35 @@ export function isScannedPath(path) {
   return COMMENT_ONLY_PATH.test(normalized) && SOURCE_FILE.test(normalized);
 }
 
-// The comment part of one source line: a line that is a comment, or the text after a trailing `//`. A line in the middle of
-// a block comment starts with `*`. A `//` inside a string such as `https://` has no space before it, so it is not a comment.
-export function commentTextOf(sourceLine) {
+// The comment part of one source line, and whether the next added line is still inside a block comment. A line is a comment
+// when it starts with `//` or `*`, or follows an opened `/*` that no `*/` closed yet; otherwise only a trailing `//` or `/*`
+// counts. A `//` inside a string such as `https://` has no space before it, so it is not a comment.
+export function commentTextOf(sourceLine, insideBlock = false) {
+  if (insideBlock) {
+    const close = sourceLine.indexOf('*/');
+    return { text: close < 0 ? sourceLine : sourceLine.slice(0, close), insideBlock: close < 0 };
+  }
   const trimmed = sourceLine.trim();
-  if (/^(\/\/|\/\*|\*)/.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('//') || trimmed.startsWith('*')) return { text: trimmed, insideBlock: false };
+  const opener = /(?:^|\s)\/\*/.exec(sourceLine);
+  if (opener) {
+    const text = sourceLine.slice(opener.index);
+    return { text, insideBlock: !text.includes('*/') };
+  }
   const trailing = /\s\/\/.*$/.exec(sourceLine);
-  return trailing ? trailing[0] : '';
+  return { text: trailing ? trailing[0] : '', insideBlock: false };
 }
 
-function scannedTextOf(path, text) {
-  return COMMENT_ONLY_PATH.test(path) ? commentTextOf(text) : text;
-}
-
+// The names this text uses outside the exceptions, one entry per occurrence.
 function findInText(text) {
-  const names = OUTSIDE_NAMES.filter(name => name.pattern.test(text));
-  if (names.length === 0) return [];
-  if (CONTEXT_EXCEPTIONS.some(exception => exception.pattern.test(text))) return [];
-  return names.map(name => name.word);
+  const words = [];
+  for (const name of OUTSIDE_NAMES) {
+    const everywhere = new RegExp(name.pattern.source, name.pattern.flags + 'g');
+    for (const match of text.matchAll(everywhere)) {
+      if (!isAllowedOccurrence(name, text, match.index + match[0].length)) words.push(name.word);
+    }
+  }
+  return words;
 }
 
 function messageFor(place, word) {
@@ -92,10 +112,17 @@ function messageFor(place, word) {
 // `addedLines` are { path, line, text }. Returns { path, line, word, message } for each name found. Pure.
 export function findOutsideNames(addedLines) {
   const findings = [];
+  const insideBlockByPath = new Map();
   for (const { path, line, text } of addedLines) {
     const normalized = path.replace(/\\/g, '/');
     if (!isScannedPath(normalized)) continue;
-    for (const word of findInText(scannedTextOf(normalized, text))) {
+    let scanned = text;
+    if (COMMENT_ONLY_PATH.test(normalized)) {
+      const comment = commentTextOf(text, insideBlockByPath.get(normalized) ?? false);
+      insideBlockByPath.set(normalized, comment.insideBlock);
+      scanned = comment.text;
+    }
+    for (const word of findInText(scanned)) {
       findings.push({ path: normalized, line, word, message: messageFor(`${normalized}:${line}`, word) });
     }
   }
