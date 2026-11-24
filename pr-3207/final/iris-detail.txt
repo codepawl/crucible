@@ -1,0 +1,10 @@
+sigma 1.5
+  before           front 0.00133   tq 0.00112
+  after            front 0.00100   tq 0.00096
+  tracer raw       front 0.00295   tq 0.00174
+  tracer denoised  front 0.00146   tq 0.00089
+sigma 2.5
+  before           front 0.00024   tq 0.00024
+  after            front 0.00022   tq 0.00024
+  tracer raw       front 0.00049   tq 0.00033
+  tracer denoised  front 0.00036   tq 0.00025
