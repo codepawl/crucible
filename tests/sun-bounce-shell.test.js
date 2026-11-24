@@ -2,7 +2,7 @@ import './support/load-agent-scene-modules.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAgentScene } from '../src/agent-scene.js';
-import { findSunBounceLights, findSunBounceLightsOnShell, SUN_BOUNCE_REASONS } from '../src/sun-bounce.js';
+import { findSunBounceLights, findSunBounceLightsOnShell, roomIrradiance, SUN_BOUNCE_REASONS, SUN_BOUNCE_SHELL_SCALE_RANGE } from '../src/sun-bounce.js';
 import { buildOccupancyGrid, proxyPairBudget, PROXY_MAXIMUM_PAIRS, PROXY_MINIMUM_PAIRS, rayHitDistance } from '../src/sky-voxel-proxy.js';
 import { withFileSceneInteriorLight } from '../src/dense-lods.js';
 
@@ -147,4 +147,32 @@ test('rayHitDistance says how far a ray goes before it meets a cell, and Infinit
   const distance = rayHitDistance(grid, 3, 1, 0, 0, 1, 0);
   assert.ok(Math.abs(distance - 3) < 2 * grid.cellSize, `distance ${distance}`);
   assert.equal(rayHitDistance(grid, 20, 1, 20, 0, 1, 0), Infinity);
+});
+
+test('the shell scale is derived from the room and lands near the triangle path on a room with a small opening', () => {
+  const { parts, environment } = createAgentScene(roomScene());
+  const report = {};
+  const shellLights = findSunBounceLightsOnShell(parts, environment, { report });
+  const triangleLights = findSunBounceLights(parts, environment);
+  const [minimum, maximum] = SUN_BOUNCE_SHELL_SCALE_RANGE;
+  assert.ok(report.shellScale >= minimum && report.shellScale <= maximum, `scale ${report.shellScale}`);
+  assert.ok(report.shellScale > 0.5 && report.shellScale < 2, `a small opening needs about the physical amount, got ${report.shellScale}`);
+  const brightest = lights => Math.max(...lights.map(light => light.intensity));
+  const patchIntensities = shellLights.slice(0, -1).map(light => light.intensity);
+  assert.ok(Math.max(...patchIntensities) < 5 * brightest(triangleLights), 'no shell patch light is blown out against the triangle path');
+});
+
+test('the shell adds one neutral light under the ceiling, inside the room', () => {
+  const { parts, environment } = createAgentScene(roomScene());
+  const lights = findSunBounceLightsOnShell(parts, environment);
+  const ceiling = lights.at(-1);
+  assert.deepEqual(ceiling.color, [1, 1, 1]);
+  assert.ok(ceiling.position[1] > 1 && ceiling.position[1] < 4 && Math.abs(ceiling.position[0]) < 5 && Math.abs(ceiling.position[2]) < 5, `ceiling light at ${ceiling.position}`);
+  assert.ok(lights.length <= 6, 'the patches and the ceiling light fit the six lights a scene gets');
+});
+
+test('roomIrradiance is the reflected power over the inside area and what it bounces on', () => {
+  const samples = [{ flux: [3, 3, 3] }, { flux: [3, 3, 3] }];
+  assert.equal(roomIrradiance(samples, { area: 10, meanAlbedo: 0.5 }), 6 / (10 * 0.5));
+  assert.equal(roomIrradiance(samples, { area: 0, meanAlbedo: 0.5 }), 0);
 });

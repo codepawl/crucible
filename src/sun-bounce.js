@@ -30,10 +30,13 @@ const LIFT_IN_RADII = 1;
 export const SUN_BOUNCE_GAIN = 0.3;
 // The strength a scene gets when it sets no `environment.sunBounce`.
 export const DEFAULT_SUN_BOUNCE = 1;
-// The shell finds fewer lit, enclosed faces than the triangles do (a face beside a window sees too much sky to count as inside, a
-// cell is as large as 6 cm), and the sky trace through the grid removes light the bounce has to give back. Fitted on the Classroom
-// demo against its Cook still (bounce x1 gave a median of 32, x4 51, x10 75 of Cook's 85); `environment.sunBounce` multiplies it.
-export const SUN_BOUNCE_SHELL_SCALE = 12;
+// The shell's lights are scaled per scene (`shellBounceScale`), within these bounds, so that a room's walls and ceiling get the
+// light the sunlit patches' power bounces around it (#2771).
+export const SUN_BOUNCE_SHELL_SCALE_RANGE = Object.freeze([0.25, 32]);
+// A light is not counted as nearer to a point than this share of the room's depth, or a light beside a wall would decide the scale.
+const SHELL_NEAREST_LIGHT_SHARE = 0.05;
+// The mean cosine of the light that reaches a surface from a point light over a room's faces.
+const SHELL_MEAN_COSINE = 0.5;
 // A light closer than this share of the scene to a surface blows up as 1/d^2 into a hard speck, so a patch with less free space in front is left out.
 const MINIMUM_LIFT_SHARE = 0.03;
 const KEY_THRESHOLD = 1e-3;
@@ -276,11 +279,69 @@ export function findSunBounceLightsOnShell(parts, environment, { strength = 1, m
   return room ? lightsOfShell(room.surfaces, room.sun, { strength, maximumLights, report }) : [];
 }
 
+function median(values) {
+  const sorted = Float64Array.from(values).sort();
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+// Half of the room's bounced light comes from the patch lights, half from one light under the ceiling: a patch light stands low and
+// near the sunlit patch, and the ceiling and the far walls would stay dark.
+const PATCH_SHARE_OF_ROOM_LIGHT = 0.35;
+const CEILING_LIGHT_HEIGHT_SHARE = 0.55;
+const CEILING_LIGHT_RADIUS = 0.5;
+
+/**
+ * The irradiance the room's inside gets from the light its sunlit patches bounce. The power they reflect, `P` (the sum of their
+ * flux), spreads over the inside, `A` (the area of the shell faces that pass the room test), and what it bounces on again
+ * adds up to 1 / (1 - albedo): `P / (A (1 - albedo))`. Nothing in it is fitted to a scene.
+ */
+export function roomIrradiance(samples, interior) {
+  const power = samples.reduce((total, sample) => total + (sample.flux[0] + sample.flux[1] + sample.flux[2]) / 3, 0);
+  return interior.area > 0 ? power / (interior.area * (1 - Math.min(interior.meanAlbedo, 0.95))) : 0;
+}
+
+// The median over the points of the room's inside of the irradiance `lights` give (`sum(intensity / distance^2)` times the mean cosine).
+function medianLightIrradiance(lights, interior) {
+  const depth = spanOf(interior.points.map(point => ({ point })));
+  const nearest = (depth * SHELL_NEAREST_LIGHT_SHARE) ** 2;
+  const delivered = interior.points.map(point => lights.reduce((total, light) => total + (light.intensity * SHELL_MEAN_COSINE) / Math.max(nearest, light.position.reduce((sum, value, axis) => sum + (value - point[axis]) ** 2, 0)), 0));
+  return median(delivered);
+}
+
+function ceilingLight(interior) {
+  const heights = interior.points.map(point => point[1]);
+  const low = Math.min(...heights);
+  const high = Math.max(...heights);
+  const count = interior.points.length;
+  const middle = [0, 2].map(axis => interior.points.reduce((total, point) => total + point[axis], 0) / count);
+  return { position: [middle[0], low + (high - low) * CEILING_LIGHT_HEIGHT_SHARE, middle[1]], color: [1, 1, 1], intensity: 1, radius: CEILING_LIGHT_RADIUS };
+}
+
+/**
+ * The factor by which the patch lights are multiplied, and the ceiling light, so that together they deliver `roomIrradiance` at the
+ * median point of the room's inside: `target / median irradiance of the lights`, within SUN_BOUNCE_SHELL_SCALE_RANGE. A room with
+ * few lit patches or large walls gets less than one with many. Returns `{ scale, ceiling }`; the ceiling light is null when the room has no inside.
+ */
+export function shellBounceLights(patchLights, samples, interior) {
+  const [minimum, maximum] = SUN_BOUNCE_SHELL_SCALE_RANGE;
+  const target = roomIrradiance(samples, interior);
+  if (patchLights.length === 0 || interior.points.length === 0 || !(target > 0)) return { scale: 1, ceiling: null };
+  const given = medianLightIrradiance(patchLights, interior);
+  const scale = given > 0 ? Math.min(maximum, Math.max(minimum, (PATCH_SHARE_OF_ROOM_LIGHT * target) / given)) : 1;
+  const unit = ceilingLight(interior);
+  const unitGiven = medianLightIrradiance([unit], interior);
+  const ceilingIntensity = unitGiven > 0 ? Math.min(1e5, ((1 - PATCH_SHARE_OF_ROOM_LIGHT) * target) / unitGiven) : 0;
+  return { scale, ceiling: { ...unit, intensity: ceilingIntensity } };
+}
+
 function lightsOfShell(surfaces, sun, { strength, maximumLights, report }) {
-  const { samples, freeDistanceOf } = sampleShellSurfaces(surfaces, sun, { roomRays: ROOM_RAYS, enclosedShare: ENCLOSED_SHARE });
+  const { samples, freeDistanceOf, interior } = sampleShellSurfaces(surfaces, sun, { roomRays: ROOM_RAYS, enclosedShare: ENCLOSED_SHARE });
   if (samples.length === 0) return fewerThanAsked(report, 'no lit surface');
-  if (report) report.method = 'shell';
-  return lightsOfSamples(samples, { strength: strength * SUN_BOUNCE_SHELL_SCALE, maximumLights, freeDistanceOf });
+  const patches = lightsOfSamples(samples, { strength, maximumLights: Math.max(1, maximumLights - 1), freeDistanceOf });
+  const { scale, ceiling } = shellBounceLights(patches, samples, interior);
+  if (report) Object.assign(report, { method: 'shell', shellScale: scale });
+  const lights = patches.map(light => scaledLight(light, scale));
+  return ceiling && ceiling.intensity > 0 && maximumLights > 1 ? [...lights, scaledLight(ceiling, strength)] : lights;
 }
 
 const lightsOfParts = new WeakMap();

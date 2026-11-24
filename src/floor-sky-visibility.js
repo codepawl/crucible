@@ -88,7 +88,7 @@ function isInteriorVertex(escapedShare) {
  * colour, in proportion to the share of the point's light that is fill and not at all where the sun reaches the point.
  * Each traced part is `{ skyVisibility, escapedShares, nearShares, sunlit, colors, tracedVertices, albedo }`; their `skyVisibility` and `colors` are changed in place.
  */
-function applyInteriorFill(tracedParts, openShare) {
+function applyInteriorFill(tracedParts, openShare, { tinted = true } = {}) {
   let count = 0;
   const albedoTotal = [0, 0, 0];
   for (const { escapedShares, tracedVertices, albedo, levelOfPart = false } of tracedParts) {
@@ -110,6 +110,7 @@ function applyInteriorFill(tracedParts, openShare) {
       const lifted = Math.min(1, skyVisibility[vertex] + pointFill);
       const fillShare = sunlit[vertex] || lifted === 0 ? 0 : (lifted - skyVisibility[vertex]) / lifted;
       skyVisibility[vertex] = lifted;
+      if (!tinted) continue;
       for (let channel = 0; channel < 3; channel++) colors[vertex * 3 + channel] *= 1 + fillShare * (tint[channel] - 1);
     }
   }
@@ -453,7 +454,8 @@ function applyProxySkyVisibility({ parts, occluders, floorIndices, everySurface,
     const [levelZero] = nextLevels;
     nextParts[index] = Object.freeze(part.lods ? { ...part, geometry: levelZero.geometry, lods: nextLevels } : { ...part, geometry: levelZero.geometry });
   }
-  const interiorFill = everySurface ? applyInteriorFill(tracedParts, measuredOpenShare(tracedParts)) : 0;
+  const interiorFill = everySurface ? applyInteriorFill(tracedParts, measuredOpenShare(tracedParts), { tinted: false }) : 0;
+  // Untinted: the tint multiplies the vertex colour, so it also colours the sun and the lamps, and the grid has no sunlit test to leave sunlit points alone (the Classroom's walls came out ochre, #2771).
   for (const { floor, skyVisibility } of tracedParts) {
     if (!floor) continue;
     let sum = 0;

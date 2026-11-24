@@ -20,10 +20,10 @@ function isOccupied(grid, cellX, cellY, cellZ) {
   return occupied[(cellZ * size[1] + cellY) * size[0] + cellX] === 1;
 }
 
-// The faces of the shell that look toward the sun, as cell index x 6 + face axis, in cell order.
-function sunFacingFaces(grid, sunDirection) {
+// The faces of the shell that look toward the sun (every face when `sunDirection` is null), as cell index x 6 + face axis, in cell order.
+function shellFaces(grid, sunDirection) {
   const { size } = grid;
-  const facing = FACE_AXES.map(axis => axis[0] * sunDirection[0] + axis[1] * sunDirection[1] + axis[2] * sunDirection[2]);
+  const facing = FACE_AXES.map(axis => (sunDirection ? axis[0] * sunDirection[0] + axis[1] * sunDirection[1] + axis[2] * sunDirection[2] : 1));
   const faces = [];
   for (let cellZ = 0; cellZ < size[2]; cellZ++) {
     for (let cellY = 0; cellY < size[1]; cellY++) {
@@ -50,7 +50,7 @@ export function sampleShellSurfaces(surfaces, sun, { roomRays, enclosedShare }) 
   const grid = buildOccupancyGrid(surfaces, { recordOwners: true });
   const { minimum, cellSize, size, owners } = grid;
   const albedoOfPart = surfaces.map(part => partDiffuseAlbedo(part.material ?? {}));
-  const faces = sunFacingFaces(grid, sun.direction);
+  const faces = shellFaces(grid, sun.direction);
   const keepShare = Math.min(1, SHELL_MAXIMUM_CANDIDATES / Math.max(faces.length, 1));
   const faceArea = cellSize * cellSize / keepShare;
   const fan = [0, 0, 0];
@@ -80,5 +80,45 @@ export function sampleShellSurfaces(surfaces, sun, { roomRays, enclosedShare }) 
     const start = point.map((value, axis) => value + normal[axis] * cellSize * START_OFFSET_CELLS);
     return cellSize * START_OFFSET_CELLS + rayHitDistance(grid, start[0], start[1], start[2], normal[0], normal[1], normal[2]);
   };
-  return { samples, freeDistanceOf, cellSize };
+  const interior = sampleInterior(grid, albedoOfPart, { roomRays, enclosedShare });
+  return { samples, freeDistanceOf, cellSize, interior };
+}
+
+/** The most faces of the whole shell examined for the interior's area. */
+export const SHELL_MAXIMUM_INTERIOR_FACES = 20_000;
+
+/**
+ * The room's inside, from the faces of the whole shell (not only the sunlit ones) that pass the room test: their total area,
+ * their area-weighted mean albedo and their points. The scale of the sun bounce is derived from them, see `bounceScale`.
+ */
+function sampleInterior(grid, albedoOfPart, { roomRays, enclosedShare }) {
+  const { minimum, cellSize, size, owners } = grid;
+  const faces = shellFaces(grid, null);
+  const keepShare = Math.min(1, SHELL_MAXIMUM_INTERIOR_FACES / Math.max(faces.length, 1));
+  const faceArea = cellSize * cellSize / keepShare;
+  const fan = [0, 0, 0];
+  const points = [];
+  const albedoTotal = [0, 0, 0];
+  for (const entry of faces) {
+    const cell = Math.floor(entry / 6);
+    const face = entry - cell * 6;
+    if (keepShare < 1 && hashUnit(cell, face, 4) >= keepShare) continue;
+    const normal = FACE_AXES[face];
+    const cellX = cell % size[0];
+    const cellY = Math.floor(cell / size[0]) % size[1];
+    const cellZ = Math.floor(cell / (size[0] * size[1]));
+    const centre = [minimum[0] + (cellX + 0.5) * cellSize, minimum[1] + (cellY + 0.5) * cellSize, minimum[2] + (cellZ + 0.5) * cellSize];
+    const origin = centre.map((value, axis) => value + normal[axis] * cellSize * START_OFFSET_CELLS);
+    let blocked = 0;
+    for (let ray = 0; ray < roomRays; ray++) {
+      cosineDirection(normal, (ray + 0.5) / roomRays, radicalInverse(ray + 1), fan);
+      if (!rayEscapes(grid, origin[0], origin[1], origin[2], fan[0], fan[1], fan[2])) blocked++;
+    }
+    if (blocked / roomRays < enclosedShare) continue;
+    const albedo = albedoOfPart[owners[cell] - 1];
+    for (let channel = 0; channel < 3; channel++) albedoTotal[channel] += albedo[channel];
+    points.push(origin);
+  }
+  const meanAlbedo = points.length ? (albedoTotal[0] + albedoTotal[1] + albedoTotal[2]) / (3 * points.length) : 0;
+  return { area: points.length * faceArea, meanAlbedo, points };
 }
