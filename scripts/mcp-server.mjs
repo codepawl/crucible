@@ -486,9 +486,9 @@ const meshEdit = z.discriminatedUnion('op', [
   }).describe('Loop cut across quads. Bands between cuts get <name>.band-0 (low side) to <name>.band-<cuts>.'),
   z.strictObject({ op: z.literal('fill_holes'), name: editName, sides: z.number().int().min(3).max(4096).optional().describe('Skip boundary loops with more edges than this.') }).describe('Cap each closed boundary loop with one polygon, tagged <name>.fill. Fixes the lint boundary-edge warning.'),
   z.strictObject({ op: z.literal('dissolve_faces'), name: editName, select: selectRule }).describe('Merge connected selected faces into one polygon each, tagged <name>.merged.'),
-  z.strictObject({ op: z.literal('dissolve_edges'), name: editName, edges: edgeRule }).describe('Merge the two faces beside each selected edge, tagged <name>.merged.'),
+  z.strictObject({ op: z.literal('dissolve_edges'), name: editName, edges: edgeRule, removeStraight: z.boolean().optional() }).describe('Merge the two faces beside each selected edge, tagged <name>.merged.'),
   z.strictObject({ op: z.literal('dissolve_verts'), name: editName, verts: z.record(z.string(), z.unknown()).describe('Vertex rule: {"all":true}, {"vertices":[indices]}, {"valence":2} or {"inside":{"min":[x,y,z],"max":[x,y,z]}}.') }).describe('Remove vertices. Two-edge vertices leave their faces; others merge the faces around them.'),
-  z.strictObject({ op: z.literal('dissolve_limited'), name: editName, edges: edgeRule.optional().describe('Defaults to all edges.'), angle: bounded(0, 180).optional().describe('Degrees of bend still counted as flat. Defaults to 5.') }).describe('Dissolve flat edges and the straight vertices left behind; undoes a loop cut.'),
+  z.strictObject({ op: z.literal('dissolve_limited'), name: editName, edges: edgeRule.optional().describe('Defaults to all edges.'), angle: bounded(0, 180).optional().describe('Degrees of bend still counted as flat. Defaults to 5.') }).describe('Dissolve flat edges and the straight vertices left behind.'),
   z.strictObject({
     op: z.literal('bisect_plane'), name: editName,
     point: vector3.describe('A point on the plane, in the mesh\'s local space.'), normal: vector3.describe('Plane normal. The inner side is behind it, the outer side in front.'),
@@ -505,14 +505,15 @@ const meshEdit = z.discriminatedUnion('op', [
   z.strictObject({
     op: z.literal('knife_project'), name: editName,
     path: z.array(vector3).min(2).max(256).describe('Polyline in the mesh\'s local space.'), direction: vector3.describe('Direction the line is projected along, for example [0,0,-1].'),
-  }).describe('Cut along a polyline projected along a direction, through front and back faces. Split faces get <name>.cut.'),
+  }).describe('Cut along a polyline projected along a direction. Split faces get <name>.cut.'),
   z.strictObject({ op: z.literal('poke'), select: selectRule.optional(), name: editName, offset: finite.optional().describe('Move each new centre along the face normal. Defaults to 0.'), relative: z.boolean().optional().describe('Scale offset by the face\'s average corner distance.') }).describe('Triangle fan around a centre vertex per selected face, tagged <name>.poke.'),
-  z.strictObject({ op: z.literal('dual'), name: editName }).describe('Dual mesh: a vertex per face centre, a face per vertex, tagged <name>.dual. Needs a closed, consistently wound mesh.'),
-  z.strictObject({ op: z.literal('tris_to_quads'), select: selectRule.optional(), name: editName, angle: bounded(0, 180).optional().describe('Largest angle in degrees between the two triangle normals. Defaults to 40.') }).describe('Join adjacent triangles into convex quads, best-shaped first, tagged <name>.merged.'),
+  z.strictObject({ op: z.literal('dual'), name: editName }).describe('Dual mesh, tagged <name>.dual. Needs a closed, consistently wound mesh.'),
+  z.strictObject({ op: z.literal('tris_to_quads'), select: selectRule.optional(), name: editName, angle: bounded(0, 180).optional().describe('Largest angle in degrees between the two triangle normals. Defaults to 40.') }).describe('Join adjacent triangles into convex quads, tagged <name>.merged.'),
   z.strictObject({ op: z.literal('symmetrize'), name: editName, axis: z.enum(['x', 'y', 'z']).optional(), keep: z.enum(['positive', 'negative']).optional().describe('Side of the plane kept and mirrored. Defaults to positive.'), distance: bounded(0, 1).optional().describe('Vertices this close to the plane count as on it. Defaults to 0.0001.') }).describe('Cut at the origin plane, drop one half, mirror the kept half. Mirrored faces get <name>.mirrored.'),
   z.strictObject({ op: z.literal('scale_elements'), select: selectRule.optional(), scale: finite.describe('Factor above 0 about each connected group of selected faces.') }).describe('Scale each connected group of selected faces about its centre.'),
   z.strictObject({ op: z.literal('extrude_edges'), name: editName, edges: edgeRule.describe('Edges to extrude, usually {"open":true} for a boundary.'), offset: vector3.describe('Where the copied vertices move.') }).describe('Extrude edges into quads, tagged <name>.side.'),
   z.strictObject({ op: z.literal('split_edges'), name: editName, edges: edgeRule.describe('Edges to open.') }).describe('Open the surface along these edges.'),
+  z.strictObject({ op: z.literal('merge_verts'), vertices: z.array(z.number().int().min(0).max(16777215)).min(2).max(4096).describe('Indices in pick order.'), at: z.enum(['center', 'first', 'last', 'collapse']).optional() }).describe('Merge picked vertices into one.'),
   z.strictObject({ op: z.literal('delete_loose') }).describe('Remove vertices no face uses.'),
   z.strictObject({ op: z.literal('flatten'), verts: vertexRule, normal: vector3.optional().describe('Plane normal.'), factor: unit.optional().describe('0 to 1, default 1.') }).describe('Move vertices onto a plane.'),
   z.strictObject({ op: z.literal('unsubdivide') }).describe('Reverse one Catmull-Clark level.'),
@@ -537,14 +538,14 @@ const meshEdit = z.discriminatedUnion('op', [
     target: z.record(z.string(), z.unknown()).describe('Primitive to wrap onto, a record like a boolean cutter ({"type":"sphere"}), placed by translation, rotation and scale.'),
     translation: vector3.optional(), rotation: quaternion.optional(), scale: vector3.optional(),
     mode: z.enum(['nearest', 'project']).optional(), direction: vector3.optional(), offset: finite.optional(), maxDistance: finite.optional(), onMiss: z.enum(['error', 'keep']).optional(),
-  }).describe('Move the selected vertices onto the target surface, like Blender. Fields and defaults in scene_capabilities meshSculpt.'),
+  }).describe('Move the selected vertices onto the target surface. Fields and defaults in scene_capabilities meshSculpt.'),
 ]);
 const stackNodes = [
   z.strictObject({
     op: z.literal('set_position'), select: selectRule.optional(),
     position: fieldExpression.optional().describe('Vector expression for the new position of each selected vertex. Defaults to the current position.'),
     offset: fieldExpression.optional().describe('Vector expression added after position, for example {"vec":[0,{"noise":{"scale":3}},0]}. Give position, offset or both.'),
-  }).describe('Set Position with field expressions on the input positions, for the vertices of the selected faces.'),
+  }).describe('Field expressions set the vertex positions of the selected faces.'),
   z.strictObject({
     op: z.literal('displace'), select: selectRule.optional(),
     field: fieldExpression.describe('Number expression used as the texture.'),
@@ -576,11 +577,11 @@ const stackNodes = [
     levels: z.number().int().min(1).max(4).optional().describe('Catmull-Clark levels; each multiplies the faces by about 4 (n-gons become n quads). Defaults to 1.'),
     crease: z.record(z.string(), z.unknown()).optional().describe('Edge rule for creased edges, the same rules as bevel: {"angle":60} keeps the rims of a cylinder sharp. Boundary edges are always sharp.'),
     sharpness: bounded(0, 10).optional().describe('Crease strength, only with crease. A crease stays fully sharp for that many levels and a fraction blends smooth and sharp. Defaults to 10, sharp at every level.'),
-  }).describe('Catmull-Clark subdivision with semi-sharp creases, like Blender. Faces keep their tags and corner attributes such as uv blend linearly. Put it before uv_unwrap. Check the budget: 3 levels make 64 times the faces.'),
+  }).describe('Catmull-Clark subdivision with semi-sharp creases. Faces keep their tags and corner attributes such as uv blend linearly. Put it before uv_unwrap. Check the budget: 3 levels make 64 times the faces.'),
   z.strictObject({
     op: z.literal('decimate'),
     ratio: z.number().gt(0).max(1).describe('Share of the triangles to keep, counted after triangulation. 0.25 keeps a quarter.'),
-  }).describe('Quadric edge collapse like Blender. Open boundaries and tag borders stay, tags carry over, uv and colour are dropped, so unwrap after it. Reports triangles and stoppedEarly.'),
+  }).describe('Quadric edge collapse. Open boundaries and tag borders stay, tags carry over, uv and colour are dropped, so unwrap after it. Reports triangles and stoppedEarly.'),
   z.strictObject({
     op: z.literal('remesh'),
     voxelSize: z.number().positive().optional().describe('Edge of one grid cell. Give this or resolution.'),

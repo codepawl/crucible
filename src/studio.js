@@ -1451,21 +1451,63 @@ export function createStudio(container, {
     createMenuItem('Reset scale', 'edit.resetScale', () => resetSelectionTransform('scale'), 'scale'),
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
   );
-  function openObjectMenu(clientX, clientY) {
+  // Edit mode's Delete and Merge menus (X and M). Dissolve acts on the selection of any mode; the merges need picked
+  // vertices, and At First and At Last follow the order of the picks, which only vertex mode keeps.
+  const dissolveSelection = kind => {
+    meshEditor.dissolve(kind);
+    syncUi();
+    requestFrame();
+  };
+  const mergeSelection = target => {
+    meshEditor.merge(target);
+    syncUi();
+    requestFrame();
+  };
+  const meshDeletePopover = createMenuPopover(
+    'crucible-studio-pop-mesh-delete',
+    createMenuItem('Dissolve Vertices', '', () => dissolveSelection('vertices'), 'meshVertex'),
+    createMenuItem('Dissolve Edges', '', () => dissolveSelection('edges'), 'meshEdge'),
+    createMenuItem('Dissolve Faces', '', () => dissolveSelection('faces'), 'meshFace'),
+  );
+  const meshMergeCenterItem = createMenuItem('At Center', '', () => mergeSelection('center'), 'meshVertex');
+  const meshMergeFirstItem = createMenuItem('At First', '', () => mergeSelection('first'), 'meshVertex');
+  const meshMergeLastItem = createMenuItem('At Last', '', () => mergeSelection('last'), 'meshVertex');
+  const meshMergeCollapseItem = createMenuItem('Collapse', '', () => mergeSelection('collapse'), 'meshVertex');
+  const meshMergePopover = createMenuPopover('crucible-studio-pop-mesh-merge', meshMergeCenterItem, meshMergeFirstItem, meshMergeLastItem, meshMergeCollapseItem);
+  function openPopoverAt(popover, clientX, clientY) {
     const windowWidth = documentReference.defaultView?.innerWidth ?? 1280;
     const windowHeight = documentReference.defaultView?.innerHeight ?? 800;
-    objectPopover.togglePopover?.(false);
-    objectPopover.style.left = `${Math.round(Math.max(8, Math.min(clientX, windowWidth - 256)))}px`;
-    objectPopover.style.right = 'auto';
+    popover.togglePopover?.(false);
+    popover.style.left = `${Math.round(Math.max(8, Math.min(clientX, windowWidth - 256)))}px`;
+    popover.style.right = 'auto';
     // In the lower half the menu hangs from the pointer and grows upward, so it stays on screen at any height.
     const opensUpward = clientY > windowHeight / 2;
-    objectPopover.style.top = opensUpward ? 'auto' : `${Math.round(clientY)}px`;
-    objectPopover.style.bottom = opensUpward ? `${Math.round(Math.max(8, windowHeight - clientY))}px` : 'auto';
+    popover.style.top = opensUpward ? 'auto' : `${Math.round(clientY)}px`;
+    popover.style.bottom = opensUpward ? `${Math.round(Math.max(8, windowHeight - clientY))}px` : 'auto';
     const opening = popoverOpeningStyle({ opensUpward });
-    objectPopover.style.setProperty('--studio-popover-origin', opening.origin);
-    objectPopover.style.setProperty('--studio-popover-shift', opening.shift);
-    objectPopover.showPopover?.();
+    popover.style.setProperty('--studio-popover-origin', opening.origin);
+    popover.style.setProperty('--studio-popover-shift', opening.shift);
+    popover.showPopover?.();
   }
+  function openObjectMenu(clientX, clientY) {
+    openPopoverAt(objectPopover, clientX, clientY);
+  }
+  // The keys open these menus at the middle of the selection, as the pointer is not tracked between clicks.
+  function openMeshMenu(popover) {
+    const bounds = canvas.getBoundingClientRect();
+    const centre = meshEditor.selectionCentre;
+    const pixel = centre ? controller.projectWorldPoint(centre) : null;
+    const isAtFirstOrLastAvailable = meshEditor.mode === 'vertex';
+    for (const item of [meshMergeFirstItem, meshMergeLastItem]) item.setAttribute('aria-disabled', isAtFirstOrLastAvailable ? 'false' : 'true');
+    openPopoverAt(popover, bounds.left + (pixel?.x ?? bounds.width / 2), bounds.top + (pixel?.y ?? bounds.height / 2));
+  }
+  const meshMenuIsOpen = () => [meshDeletePopover, meshMergePopover].some(popover => {
+    try {
+      return popover.matches(':popover-open');
+    } catch {
+      return false;
+    }
+  });
   function hideSelection() {
     if (!controller.selectedNodeId) return;
     controller.updateNodeTransform(controller.selectedNodeId, { visible: false });
@@ -1687,7 +1729,7 @@ export function createStudio(container, {
     createMenuItem('Export web pack', '', () => exportPackButton.click(), 'globe'),
     createElement(documentReference, 'p', { className: 'crucible-studio-popover-note', textContent: 'New scene' }),
   );
-  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, viewPopover, helpPopover]) {
+  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, meshDeletePopover, meshMergePopover, viewPopover, helpPopover]) {
     popoverElement.addEventListener('click', event => {
       if (event.target.closest?.('button')) popoverElement.hidePopover?.();
     });
@@ -1750,6 +1792,8 @@ export function createStudio(container, {
     exportPopover,
     editPopover,
     objectPopover,
+    meshDeletePopover,
+    meshMergePopover,
     viewPopover,
     helpPopover,
   );
@@ -4600,7 +4644,14 @@ export function createStudio(container, {
     'mesh.vertexMode': () => chooseMeshMode('vertex'),
     'mesh.edgeMode': () => chooseMeshMode('edge'),
     'mesh.faceMode': () => chooseMeshMode('face'),
-    'mesh.noop': event => event.preventDefault(),
+    'mesh.deleteMenu': event => {
+      event.preventDefault();
+      openMeshMenu(meshDeletePopover);
+    },
+    'mesh.mergeMenu': event => {
+      event.preventDefault();
+      openMeshMenu(meshMergePopover);
+    },
   };
 
   // Handlers of the normal context by action id. A handler calls preventDefault for the keys the browser would
@@ -4717,6 +4768,10 @@ export function createStudio(container, {
       return;
     }
     if (isEditableTarget(event.target, event.key)) {
+      return;
+    }
+    // Esc or a key pressed over an open Delete or Merge menu belongs to the menu, not to edit mode.
+    if (meshMenuIsOpen()) {
       return;
     }
     const editingMesh = Boolean(meshEditor?.active);

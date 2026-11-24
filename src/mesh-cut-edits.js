@@ -34,6 +34,9 @@ export function normalizeCutEdit(edit, normalized, index, { finiteNumber, vector
     case 'dissolve_faces':
       break;
     case 'dissolve_edges':
+      normalized.edges = editEdgeRule(edit.edges, index, 'edges', EDGE_RULE_HINT);
+      if (edit.removeStraight !== undefined) normalized.removeStraight = booleanField(edit.removeStraight, index, 'removeStraight');
+      break;
     case 'bridge_edge_loops':
     case 'subdivide_edges':
     case 'grid_fill':
@@ -102,8 +105,8 @@ export function runCutEdit(mesh, edit) {
       return { mesh: outcome.mesh, result: { merged: outcome.merged } };
     }
     case 'dissolve_edges': {
-      const outcome = dissolveEdges(mesh, edgeMaskOf(mesh, edit.edges), { name: edit.name });
-      return { mesh: outcome.mesh, result: { merged: outcome.merged, dissolvedEdges: outcome.dissolvedEdges } };
+      const outcome = dissolveEdges(mesh, edgeMaskOf(mesh, edit.edges), { name: edit.name, removeStraight: edit.removeStraight });
+      return { mesh: outcome.mesh, result: { merged: outcome.merged, dissolvedEdges: outcome.dissolvedEdges, ...(edit.removeStraight ? { removedStraight: outcome.removedStraight } : {}) } };
     }
     case 'dissolve_verts': {
       const outcome = dissolveVertices(mesh, selectVertices(mesh, edit.verts), { name: edit.name });

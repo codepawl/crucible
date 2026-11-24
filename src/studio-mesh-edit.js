@@ -10,6 +10,7 @@ import { meshEditSourceOf } from './agent-mesh.js';
 import { roundVector } from './studio-controller.js';
 import { isLiveGeometry, unmarkLiveGeometry } from './live-geometry.js';
 import { updatePartVertices } from './update-part-vertices.js';
+import { MAX_SELECTED_ELEMENTS, MERGE_TARGETS } from './mesh-operations.js';
 
 export const MESH_SELECTION_MODES = Object.freeze(['vertex', 'edge', 'face']);
 export const MAX_MASK_VERTICES = 19;
@@ -23,6 +24,7 @@ const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const NEEDS_A_MESH = 'Edit mode needs a mesh geometry or a shape of the Add menu.';
 const NEEDS_NO_MODIFIERS = 'Edit mode does not work on a mesh with modifiers yet. Add a plain shape from the Mesh group and edit that, or have the modifiers applied first.';
 const LOG_IS_FULL = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take another move.`;
+const LOG_IS_FULL_FOR_EDIT = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take a dissolve or a merge.`;
 const TOO_MANY_VERTICES = `Moving more than ${MAX_MASK_VERTICES} vertices that are not whole faces is not possible yet; select whole faces or fewer vertices.`;
 const MESH_CHANGED = 'Edit mode ended because this object uses a different mesh now.';
 const EDIT_MODE_HINT = 'Edit mode: pick a vertex, edge or face.';
@@ -154,6 +156,92 @@ export function previewNormalsOf(indices, positions, normals) {
     }
   }
   return normals;
+}
+
+/** The vertices a selection of `mode` covers: the picked ones, the ends of picked edges, or the corners of picked faces. */
+export function verticesOfSelection(mesh, mode, selected) {
+  const vertices = new Set();
+  for (const element of selected) {
+    if (mode === 'vertex') {
+      vertices.add(element);
+    } else if (mode === 'edge') {
+      vertices.add(mesh.edgeVertices[element * 2]);
+      vertices.add(mesh.edgeVertices[element * 2 + 1]);
+    } else {
+      for (let corner = mesh.faceOffsets[element]; corner < mesh.faceOffsets[element + 1]; corner += 1) vertices.add(mesh.cornerVertices[corner]);
+    }
+  }
+  return vertices;
+}
+
+// The edges a selection dissolves: the picked ones, those between two picked vertices, or those around a picked face.
+function edgesOfSelection(mesh, mode, selected) {
+  if (mode === 'edge') return [...selected].sort((first, second) => first - second);
+  if (mode === 'vertex') {
+    const edges = [];
+    for (let edge = 0; edge < mesh.edgeCount; edge += 1) {
+      if (selected.has(mesh.edgeVertices[edge * 2]) && selected.has(mesh.edgeVertices[edge * 2 + 1])) edges.push(edge);
+    }
+    return edges;
+  }
+  const edges = new Set();
+  for (const face of selected) {
+    for (let corner = mesh.faceOffsets[face]; corner < mesh.faceOffsets[face + 1]; corner += 1) edges.add(mesh.cornerEdges[corner]);
+  }
+  return [...edges].sort((first, second) => first - second);
+}
+
+// The faces a selection dissolves: the picked ones, or those whose every corner is picked.
+function facesOfSelection(mesh, mode, selected) {
+  if (mode === 'face') return [...selected].sort((first, second) => first - second);
+  return facesInsideVertexSet(mesh, verticesOfSelection(mesh, mode, selected)).faces;
+}
+
+function refuseTooMany(count, noun) {
+  if (count > MAX_SELECTED_ELEMENTS) throw new RangeError(`Dissolving more than ${MAX_SELECTED_ELEMENTS} ${noun} at once is not possible; pick fewer.`);
+}
+
+/**
+ * The log entry that dissolves the selection as `kind` ("vertices", "edges" or "faces"), from the Delete menu. Dissolving
+ * edges also removes the vertices that are left with two edges, so a dissolved loop leaves clean polygons. Throws a sentence that
+ * says what to pick when the selection holds none of that kind.
+ */
+export function planMeshDissolve(mesh, mode, selected, kind) {
+  if (kind === 'vertices') {
+    const vertices = [...verticesOfSelection(mesh, mode, selected)].sort((first, second) => first - second);
+    if (vertices.length === 0) throw new RangeError('Pick a vertex, edge or face to dissolve first.');
+    refuseTooMany(vertices.length, 'vertices');
+    return { op: 'dissolve_verts', verts: { vertices } };
+  }
+  if (kind === 'edges') {
+    const edges = edgesOfSelection(mesh, mode, selected);
+    if (edges.length === 0) throw new RangeError('Dissolve Edges needs at least one edge: pick an edge, two vertices that share one, or a face.');
+    refuseTooMany(edges.length, 'edges');
+    const pairs = edges.map(edge => [mesh.edgeVertices[edge * 2], mesh.edgeVertices[edge * 2 + 1]]);
+    return { op: 'dissolve_edges', edges: { edges: pairs }, removeStraight: true };
+  }
+  if (kind === 'faces') {
+    const faces = facesOfSelection(mesh, mode, selected);
+    if (faces.length === 0) throw new RangeError('Dissolve Faces needs at least one whole face: pick a face, or every vertex of one.');
+    refuseTooMany(faces.length, 'faces');
+    return { op: 'dissolve_faces', select: { faces } };
+  }
+  throw new RangeError(`Unknown dissolve kind "${String(kind)}"; use one of vertices, edges, faces.`);
+}
+
+/**
+ * The log entry that merges the selected vertices at `at` (center, first, last or collapse), from the Merge menu. First
+ * and last follow the order of the picks, which only vertex mode keeps, so the other modes refuse them.
+ */
+export function planMeshMerge(mesh, mode, selected, at) {
+  if (!MERGE_TARGETS.includes(at)) throw new RangeError(`Unknown merge target "${String(at)}"; use one of ${MERGE_TARGETS.join(', ')}.`);
+  if ((at === 'first' || at === 'last') && mode !== 'vertex') {
+    throw new RangeError('At First and At Last follow the order the vertices were picked, so they work in vertex mode (key 1).');
+  }
+  const vertices = mode === 'vertex' ? [...selected] : [...verticesOfSelection(mesh, mode, selected)].sort((first, second) => first - second);
+  if (vertices.length < 2) throw new RangeError('Pick at least two vertices to merge.');
+  if (vertices.length > MAX_SELECTED_ELEMENTS) throw new RangeError(`Merging more than ${MAX_SELECTED_ELEMENTS} vertices at once is not possible; pick fewer.`);
+  return { op: 'merge_verts', vertices, at };
 }
 
 function triangleCountOf(mesh) {
@@ -605,16 +693,48 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     drag = null;
     // A move below the rounding step would be an entry that moves nothing and takes one of the 64 slots.
     if (!changed || roundVector(localDelta).every(component => component === 0)) return;
-    const { nodeId, geometryId } = state;
-    writingOwnEntry = true;
     try {
-      const edit = planMeshMove(state.mesh, vertices, localDelta);
-      controller.applyImportOperations([{ type: 'edit-mesh', geometry: geometryId, edits: [edit] }], { detail: { kind: 'topology', nodeId } });
+      writeEntry(planMeshMove(state.mesh, vertices, localDelta));
     } catch (error) {
       announce(error);
     }
-    refresh();
-    writingOwnEntry = false;
+  }
+
+  // One entry of the edit log, as one scene change (one undo step); the cage is read again after it.
+  function writeEntry(edit) {
+    const { nodeId, geometryId } = state;
+    writingOwnEntry = true;
+    try {
+      controller.applyImportOperations([{ type: 'edit-mesh', geometry: geometryId, edits: [edit] }], { detail: { kind: 'topology', nodeId } });
+    } finally {
+      refresh();
+      writingOwnEntry = false;
+    }
+  }
+
+  // The topology edits of the Delete and Merge menus: the selection goes in as one entry. The pick is gone after it, because
+  // the numbers of the old mesh mean nothing in the new one.
+  function runTopologyEdit(plan, done) {
+    if (!state) return refuse('Enter edit mode before dissolving or merging.');
+    if (drag) return refuse('Let go of the move before dissolving or merging.');
+    if (state.editCount >= MAX_LOG_ENTRIES) return refuse(LOG_IS_FULL_FOR_EDIT);
+    try {
+      writeEntry(plan());
+    } catch (error) {
+      return refuse(error.message);
+    }
+    announce(done);
+    return { ok: true };
+  }
+
+  /** Dissolves the selection as "vertices", "edges" or "faces" (the Delete menu): one undo step. */
+  function dissolve(kind) {
+    return runTopologyEdit(() => planMeshDissolve(state.mesh, state.mode, state.selected, kind), `Dissolved ${kind}`);
+  }
+
+  /** Merges the selected vertices at "center", "first", "last" or "collapse" (the Merge menu): one undo step. */
+  function merge(at) {
+    return runTopologyEdit(() => planMeshMerge(state.mesh, state.mode, state.selected, at), `Merged the vertices ${at === 'collapse' ? 'by collapse' : `at ${at}`}`);
   }
 
   const session = {
@@ -758,12 +878,15 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     get mode() { return state?.mode ?? null; },
     get nodeId() { return state?.nodeId ?? null; },
     get selection() { return state ? { mode: state.mode, indices: [...state.selected].sort((first, second) => first - second) } : null; },
+    get selectionCentre() { return state ? selectionCentreWorld() : null; },
     get cage() { return state ? { positions: state.positions, mesh: state.mesh, tooLarge: state.tooLarge, editCount: state.editCount } : null; },
     conversionOf,
     enter,
     leave,
     setMode,
     clearSelection,
+    dissolve,
+    merge,
     pick,
     refresh,
     cagePaths,
