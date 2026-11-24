@@ -55,7 +55,9 @@ test('open ground, a scene with no sun and a scene file that turns the steps off
 
   const parts = roomParts();
   const dark = { ...SUN, keyIntensity: 0 };
-  assert.deepEqual(await withFileSceneInteriorLight(parts, dark), { parts, environment: dark, skyReport: null });
+  const unlit = await withFileSceneInteriorLight(parts, dark);
+  assert.deepEqual({ parts: unlit.parts, environment: unlit.environment, skyReport: unlit.skyReport }, { parts, environment: dark, skyReport: null });
+  assert.equal(unlit.bounceReport.reason, 'no sun');
 
   const off = { ...SUN, floorSkyTrace: false, sunBounce: 0 };
   const unchanged = await withFileSceneInteriorLight(parts, off);

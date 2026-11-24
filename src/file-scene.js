@@ -121,7 +121,9 @@ async function start() {
   const viewport = document.querySelector('#file-viewport');
   const deferLods = lodTiming() === 'deferred';
   const plan = deferLods ? planLodsForRendererOptions(reflection.parts, viewport, rendererOptions) : null;
+  const interiorStarted = performance.now();
   const interior = await withFileSceneInteriorLight(deferLods ? reflection.parts : partsForRendererOptions(reflection.parts, viewport, rendererOptions), drawn.environment);
+  const interiorLight = { sky: interior.skyReport, bounce: interior.bounceReport, seconds: (performance.now() - interiorStarted) / 1000 };
   const rendererParts = interior.parts;
   const renderer = new CrucibleRenderer(viewport, rendererParts, {
     ground: false, hdr: true, samples: 4, memoryBudgetMiB: 384,
@@ -142,7 +144,7 @@ async function start() {
   // `parts` and `environment` let scripts/render-file-native.mjs pack the same scene for the native path tracer.
   const sky = interior.skyReport ? { ...(await import('./floor-sky-visibility.js')), environment: drawn.environment } : null;
   const lodsReady = plan?.geometries.length ? deferLevels({ plan, sourceParts: reflection.parts, rendererParts, renderer, sky }) : Promise.resolve();
-  window.__scene = { renderer, lodsReady, duration: camera?.duration, renderAt, poseClipAt: seconds => renderAt.clipPlayer?.applyAt(seconds), pause() {}, parts: reflection.parts, environment: { ...sceneEnvironment, map } };
+  window.__scene = { renderer, lodsReady, duration: camera?.duration, renderAt, poseClipAt: seconds => renderAt.clipPlayer?.applyAt(seconds), pause() {}, parts: reflection.parts, interiorLight, environment: { ...sceneEnvironment, map } };
 }
 
 start().catch(error => {

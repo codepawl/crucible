@@ -405,6 +405,20 @@ function allVertices(count) {
   return Array.from({ length: count }, (unused, index) => index);
 }
 
+// What the room opens to the sky, measured: the mean share of the grid's cosine rays that escape, over the points of every part (#2771).
+// The triangle trace passes 1 minus the closed-room ray share, fitted on a window room; a scanned room with large windows reads as
+// closed there (Classroom: 0.02) and its fill came out a fifth of what its walls bounce back.
+function measuredOpenShare(tracedParts) {
+  let total = 0;
+  let count = 0;
+  for (const { escapedShares, levelOfPart = false } of tracedParts) {
+    if (levelOfPart) continue;
+    for (let vertex = 0; vertex < escapedShares.length; vertex++) total += escapedShares[vertex];
+    count += escapedShares.length;
+  }
+  return count ? total / count : 0;
+}
+
 /**
  * The sky trace through the occupancy grid of src/sky-voxel-proxy.js, for a scene the triangle trace cannot take: more
  * triangles than the bake allows or more rays than the budget (#2771). The meshes are not cut; every vertex of the traced
@@ -439,7 +453,7 @@ function applyProxySkyVisibility({ parts, occluders, floorIndices, everySurface,
     const [levelZero] = nextLevels;
     nextParts[index] = Object.freeze(part.lods ? { ...part, geometry: levelZero.geometry, lods: nextLevels } : { ...part, geometry: levelZero.geometry });
   }
-  const interiorFill = everySurface ? applyInteriorFill(tracedParts, 1 - roomShare) : 0;
+  const interiorFill = everySurface ? applyInteriorFill(tracedParts, measuredOpenShare(tracedParts)) : 0;
   for (const { floor, skyVisibility } of tracedParts) {
     if (!floor) continue;
     let sum = 0;
