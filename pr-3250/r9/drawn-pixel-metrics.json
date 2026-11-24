@@ -17,6 +17,22 @@
    "bao-label / ana": {
     "gapPixels": 300,
     "frame": 29
+   },
+   "ana / wall": {
+    "gapPixels": -195,
+    "frame": 25
+   },
+   "bao / wall": {
+    "gapPixels": -200,
+    "frame": 0
+   },
+   "ana-label / wall": {
+    "gapPixels": -265,
+    "frame": 22
+   },
+   "bao-label / wall": {
+    "gapPixels": -270,
+    "frame": 0
    }
   },
   "minEdgeMarginPixels": 50,
@@ -54,7 +70,11 @@
     "ana / bao": 357,
     "ana-label / bao-label": 278,
     "ana-label / bao": 348,
-    "bao-label / ana": 307
+    "bao-label / ana": 307,
+    "ana / wall": 153,
+    "bao / wall": -200,
+    "ana-label / wall": 144,
+    "bao-label / wall": -270
    },
    "signLineHeightsPixels": [
     46,
@@ -112,7 +132,11 @@
     "ana / bao": 357,
     "ana-label / bao-label": 279,
     "ana-label / bao": 349,
-    "bao-label / ana": 306
+    "bao-label / ana": 306,
+    "ana / wall": 134,
+    "bao / wall": -185,
+    "ana-label / wall": 126,
+    "bao-label / wall": -255
    },
    "signLineHeightsPixels": [
     46,
@@ -170,7 +194,11 @@
     "ana / bao": 355,
     "ana-label / bao-label": 279,
     "ana-label / bao": 349,
-    "bao-label / ana": 308
+    "bao-label / ana": 308,
+    "ana / wall": 113,
+    "bao / wall": -169,
+    "ana-label / wall": 107,
+    "bao-label / wall": -239
    },
    "signLineHeightsPixels": [
     45,
@@ -229,7 +257,11 @@
     "ana / bao": 355,
     "ana-label / bao-label": 278,
     "ana-label / bao": 349,
-    "bao-label / ana": 307
+    "bao-label / ana": 307,
+    "ana / wall": 95,
+    "bao / wall": -152,
+    "ana-label / wall": 89,
+    "bao-label / wall": -223
    },
    "signLineHeightsPixels": [
     44,
@@ -287,7 +319,11 @@
     "ana / bao": 351,
     "ana-label / bao-label": 275,
     "ana-label / bao": 345,
-    "bao-label / ana": 308
+    "bao-label / ana": 308,
+    "ana / wall": 75,
+    "bao / wall": -137,
+    "ana-label / wall": 69,
+    "bao-label / wall": -207
    },
    "signLineHeightsPixels": [
     43,
@@ -346,7 +382,11 @@
     "ana / bao": 349,
     "ana-label / bao-label": 271,
     "ana-label / bao": 343,
-    "bao-label / ana": 308
+    "bao-label / ana": 308,
+    "ana / wall": 55,
+    "bao / wall": -121,
+    "ana-label / wall": 49,
+    "bao-label / wall": -193
    },
    "signLineHeightsPixels": [
     42,
@@ -404,7 +444,11 @@
     "ana / bao": 343,
     "ana-label / bao-label": 267,
     "ana-label / bao": 339,
-    "bao-label / ana": 307
+    "bao-label / ana": 307,
+    "ana / wall": 33,
+    "bao / wall": -105,
+    "ana-label / wall": 29,
+    "bao-label / wall": -177
    },
    "signLineHeightsPixels": [
     40,
@@ -462,7 +506,11 @@
     "ana / bao": 339,
     "ana-label / bao-label": 263,
     "ana-label / bao": 335,
-    "bao-label / ana": 308
+    "bao-label / ana": 308,
+    "ana / wall": 13,
+    "bao / wall": -91,
+    "ana-label / wall": 9,
+    "bao-label / wall": -163
    },
    "signLineHeightsPixels": [
     41,
@@ -521,7 +569,11 @@
     "ana / bao": 333,
     "ana-label / bao-label": 258,
     "ana-label / bao": 331,
-    "bao-label / ana": 308
+    "bao-label / ana": 308,
+    "ana / wall": -9,
+    "bao / wall": -75,
+    "ana-label / wall": -11,
+    "bao-label / wall": -148
    },
    "signLineHeightsPixels": [
     39,
@@ -579,7 +631,11 @@
     "ana / bao": 325,
     "ana-label / bao-label": 251,
     "ana-label / bao": 323,
-    "bao-label / ana": 309
+    "bao-label / ana": 309,
+    "ana / wall": -31,
+    "bao / wall": -61,
+    "ana-label / wall": -33,
+    "bao-label / wall": -133
    },
    "signLineHeightsPixels": [
     39,
@@ -638,7 +694,11 @@
     "ana / bao": 319,
     "ana-label / bao-label": 243,
     "ana-label / bao": 317,
-    "bao-label / ana": 308
+    "bao-label / ana": 308,
+    "ana / wall": -53,
+    "bao / wall": -45,
+    "ana-label / wall": -55,
+    "bao-label / wall": -119
    },
    "signLineHeightsPixels": [
     38,
@@ -696,7 +756,11 @@
     "ana / bao": 311,
     "ana-label / bao-label": 236,
     "ana-label / bao": 309,
-    "bao-label / ana": 308
+    "bao-label / ana": 308,
+    "ana / wall": -73,
+    "bao / wall": -31,
+    "ana-label / wall": -75,
+    "bao-label / wall": -106
    },
    "signLineHeightsPixels": [
     37,
@@ -754,7 +818,11 @@
     "ana / bao": 301,
     "ana-label / bao-label": 235,
     "ana-label / bao": 299,
-    "bao-label / ana": 309
+    "bao-label / ana": 309,
+    "ana / wall": -97,
+    "bao / wall": -19,
+    "ana-label / wall": -99,
+    "bao-label / wall": -95
    },
    "signLineHeightsPixels": [
     36,
@@ -814,7 +882,11 @@
     "ana / bao": 291,
     "ana-label / bao-label": 234,
     "ana-label / bao": 289,
-    "bao-label / ana": 308
+    "bao-label / ana": 308,
+    "ana / wall": -119,
+    "bao / wall": -9,
+    "ana-label / wall": -121,
+    "bao-label / wall": -83
    },
    "signLineHeightsPixels": [
     34,
@@ -873,7 +945,11 @@
     "ana / bao": 281,
     "ana-label / bao-label": 236,
     "ana-label / bao": 279,
-    "bao-label / ana": 308
+    "bao-label / ana": 308,
+    "ana / wall": -141,
+    "bao / wall": 5,
+    "ana-label / wall": -143,
+    "bao-label / wall": -71
    },
    "signLineHeightsPixels": [
     34,
@@ -932,7 +1008,11 @@
     "ana / bao": 269,
     "ana-label / bao-label": 235,
     "ana-label / bao": 267,
-    "bao-label / ana": 307
+    "bao-label / ana": 307,
+    "ana / wall": -165,
+    "bao / wall": 15,
+    "ana-label / wall": -167,
+    "bao-label / wall": -61
    },
    "signLineHeightsPixels": [
     34,
@@ -990,7 +1070,11 @@
     "ana / bao": 257,
     "ana-label / bao-label": 234,
     "ana-label / bao": 255,
-    "bao-label / ana": 308
+    "bao-label / ana": 308,
+    "ana / wall": -185,
+    "bao / wall": 27,
+    "ana-label / wall": -189,
+    "bao-label / wall": -49
    },
    "signLineHeightsPixels": [
     35,
@@ -1048,7 +1132,11 @@
     "ana / bao": 243,
     "ana-label / bao-label": 233,
     "ana-label / bao": 243,
-    "bao-label / ana": 307
+    "bao-label / ana": 307,
+    "ana / wall": -185,
+    "bao / wall": 37,
+    "ana-label / wall": -213,
+    "bao-label / wall": -40
    },
    "signLineHeightsPixels": [
     35,
@@ -1105,7 +1193,11 @@
     "ana / bao": 231,
     "ana-label / bao-label": 235,
     "ana-label / bao": 231,
-    "bao-label / ana": 307
+    "bao-label / ana": 307,
+    "ana / wall": -187,
+    "bao / wall": 49,
+    "ana-label / wall": -235,
+    "bao-label / wall": -29
    },
    "signLineHeightsPixels": [
     36,
@@ -1162,7 +1254,11 @@
     "ana / bao": 215,
     "ana-label / bao-label": 234,
     "ana-label / bao": 217,
-    "bao-label / ana": 306
+    "bao-label / ana": 306,
+    "ana / wall": -189,
+    "bao / wall": 59,
+    "ana-label / wall": -257,
+    "bao-label / wall": -19
    },
    "signLineHeightsPixels": [
     36,
@@ -1219,7 +1315,11 @@
     "ana / bao": 201,
     "ana-label / bao-label": 233,
     "ana-label / bao": 201,
-    "bao-label / ana": 305
+    "bao-label / ana": 305,
+    "ana / wall": -189,
+    "bao / wall": 67,
+    "ana-label / wall": -261,
+    "bao-label / wall": -11
    },
    "signLineHeightsPixels": [
     37,
@@ -1276,7 +1376,11 @@
     "ana / bao": 185,
     "ana-label / bao-label": 233,
     "ana-label / bao": 187,
-    "bao-label / ana": 305
+    "bao-label / ana": 305,
+    "ana / wall": -191,
+    "bao / wall": 77,
+    "ana-label / wall": -263,
+    "bao-label / wall": -2
    },
    "signLineHeightsPixels": [
     39,
@@ -1333,7 +1437,11 @@
     "ana / bao": 171,
     "ana-label / bao-label": 233,
     "ana-label / bao": 171,
-    "bao-label / ana": 307
+    "bao-label / ana": 307,
+    "ana / wall": -191,
+    "bao / wall": 87,
+    "ana-label / wall": -265,
+    "bao-label / wall": 7
    },
    "signLineHeightsPixels": [
     39,
@@ -1390,7 +1498,11 @@
     "ana / bao": 155,
     "ana-label / bao-label": 231,
     "ana-label / bao": 155,
-    "bao-label / ana": 305
+    "bao-label / ana": 305,
+    "ana / wall": -193,
+    "bao / wall": 97,
+    "ana-label / wall": -261,
+    "bao-label / wall": 17
    },
    "signLineHeightsPixels": [
     40,
@@ -1447,7 +1559,11 @@
     "ana / bao": 137,
     "ana-label / bao-label": 231,
     "ana-label / bao": 139,
-    "bao-label / ana": 305
+    "bao-label / ana": 305,
+    "ana / wall": -193,
+    "bao / wall": 105,
+    "ana-label / wall": -236,
+    "bao-label / wall": 25
    },
    "signLineHeightsPixels": [
     41,
@@ -1504,7 +1620,11 @@
     "ana / bao": 123,
     "ana-label / bao-label": 231,
     "ana-label / bao": 123,
-    "bao-label / ana": 305
+    "bao-label / ana": 305,
+    "ana / wall": -195,
+    "bao / wall": 115,
+    "ana-label / wall": -211,
+    "bao-label / wall": 33
    },
    "signLineHeightsPixels": [
     42,
@@ -1561,7 +1681,11 @@
     "ana / bao": 105,
     "ana-label / bao-label": 230,
     "ana-label / bao": 105,
-    "bao-label / ana": 304
+    "bao-label / ana": 304,
+    "ana / wall": -185,
+    "bao / wall": 123,
+    "ana-label / wall": -185,
+    "bao-label / wall": 41
    },
    "signLineHeightsPixels": [
     43,
@@ -1618,7 +1742,11 @@
     "ana / bao": 87,
     "ana-label / bao-label": 229,
     "ana-label / bao": 87,
-    "bao-label / ana": 303
+    "bao-label / ana": 303,
+    "ana / wall": -161,
+    "bao / wall": 131,
+    "ana-label / wall": -159,
+    "bao-label / wall": 48
    },
    "signLineHeightsPixels": [
     44,
@@ -1675,7 +1803,11 @@
     "ana / bao": 71,
     "ana-label / bao-label": 229,
     "ana-label / bao": 71,
-    "bao-label / ana": 303
+    "bao-label / ana": 303,
+    "ana / wall": -135,
+    "bao / wall": 139,
+    "ana-label / wall": -135,
+    "bao-label / wall": 55
    },
    "signLineHeightsPixels": [
     45,
@@ -1732,7 +1864,11 @@
     "ana / bao": 51,
     "ana-label / bao-label": 228,
     "ana-label / bao": 51,
-    "bao-label / ana": 300
+    "bao-label / ana": 300,
+    "ana / wall": -108,
+    "bao / wall": 146,
+    "ana-label / wall": -108,
+    "bao-label / wall": 63
    },
    "signLineHeightsPixels": [
     45,
