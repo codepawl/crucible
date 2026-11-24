@@ -1,0 +1,162 @@
+[
+  {
+    "part": "Ground",
+    "source": [
+      75,
+      151,
+      75
+    ],
+    "measured": [
+      75.1,
+      151.1,
+      75.1
+    ],
+    "pixels": 968126,
+    "from": "albedo pass",
+    "deltaE2000": 0.03
+  },
+  {
+    "part": "Red block turned 30 degrees",
+    "source": [
+      196,
+      40,
+      28
+    ],
+    "measured": [
+      196.1,
+      38.3,
+      28.2
+    ],
+    "pixels": 122623,
+    "from": "albedo pass",
+    "deltaE2000": 0.3
+  },
+  {
+    "part": "Blue ball",
+    "source": [
+      13,
+      105,
+      172
+    ],
+    "measured": [
+      12.7,
+      105,
+      171.9
+    ],
+    "pixels": 27572,
+    "from": "albedo pass",
+    "deltaE2000": 0.03
+  },
+  {
+    "part": "Wooden cylinder standing up",
+    "source": [
+      218,
+      133,
+      65
+    ],
+    "measured": [
+      218.1,
+      133.2,
+      63.8
+    ],
+    "pixels": 29977,
+    "from": "albedo pass",
+    "deltaE2000": 0.31
+  },
+  {
+    "part": "Ramp turned toward the camera",
+    "source": [
+      99,
+      95,
+      98
+    ],
+    "measured": [
+      99.3,
+      94.7,
+      97.8
+    ],
+    "pixels": 154779,
+    "from": "albedo pass",
+    "deltaE2000": 0.34
+  },
+  {
+    "part": "Wedge in its default pose",
+    "source": [
+      245,
+      205,
+      48
+    ],
+    "measured": [
+      245.1,
+      205.2,
+      49.6
+    ],
+    "pixels": 9655,
+    "from": "albedo pass",
+    "deltaE2000": 0.1
+  },
+  {
+    "part": "Glass pane",
+    "source": [
+      18,
+      238,
+      212
+    ],
+    "measured": [
+      18,
+      238,
+      212
+    ],
+    "pixels": 0,
+    "from": "scene material (a blended part is not a clean albedo)",
+    "deltaE2000": 0
+  },
+  {
+    "part": "Lamp",
+    "source": [
+      255,
+      170,
+      60
+    ],
+    "measured": [
+      255,
+      169.6,
+      61.3
+    ],
+    "pixels": 9660,
+    "from": "albedo pass",
+    "deltaE2000": 0.3
+  },
+  {
+    "part": "Spotlight housing",
+    "source": [
+      107,
+      50,
+      124
+    ],
+    "measured": [
+      106.3,
+      49.6,
+      123.6
+    ],
+    "pixels": 12211,
+    "from": "albedo pass",
+    "deltaE2000": 0.17
+  },
+  {
+    "part": "Ceiling panel",
+    "source": [
+      163,
+      162,
+      165
+    ],
+    "measured": [
+      162.7,
+      161.9,
+      165
+    ],
+    "pixels": 17327,
+    "from": "albedo pass",
+    "deltaE2000": 0.11
+  }
+]

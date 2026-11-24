@@ -1,0 +1,112 @@
+{
+  "candelaPerBrightness": 4,
+  "lampHeightMeters": 1,
+  "cards": {
+    "grey card (sRGB 128)": {
+      "rings": [
+        {
+          "radiusMeters": 0,
+          "lumaWithout": 174.5,
+          "lumaWith": 217.1,
+          "linearGain": 1.63
+        },
+        {
+          "radiusMeters": 0.5,
+          "lumaWithout": 174.2,
+          "lumaWith": 204.2,
+          "linearGain": 1.43
+        },
+        {
+          "radiusMeters": 1,
+          "lumaWithout": 174.1,
+          "lumaWith": 187.6,
+          "linearGain": 1.18
+        },
+        {
+          "radiusMeters": 1.5,
+          "lumaWithout": 174.3,
+          "lumaWith": 177.6,
+          "linearGain": 1.04
+        },
+        {
+          "radiusMeters": 2,
+          "lumaWithout": 174.5,
+          "lumaWith": 174.5,
+          "linearGain": 1
+        },
+        {
+          "radiusMeters": 2.24,
+          "lumaWithout": 174.4,
+          "lumaWith": 174.4,
+          "linearGain": 1
+        },
+        {
+          "radiusMeters": 3,
+          "lumaWithout": 174.7,
+          "lumaWith": 174.7,
+          "linearGain": 1
+        },
+        {
+          "radiusMeters": 4,
+          "lumaWithout": 174.9,
+          "lumaWith": 174.9,
+          "linearGain": 1
+        }
+      ],
+      "brightestChannelValue": 222
+    },
+    "white card (sRGB 255)": {
+      "rings": [
+        {
+          "radiusMeters": 0,
+          "lumaWithout": 236.9,
+          "lumaWith": 248.1,
+          "linearGain": 1.11
+        },
+        {
+          "radiusMeters": 0.5,
+          "lumaWithout": 236.9,
+          "lumaWith": 245.9,
+          "linearGain": 1.09
+        },
+        {
+          "radiusMeters": 1,
+          "lumaWithout": 236.9,
+          "lumaWith": 241.7,
+          "linearGain": 1.05
+        },
+        {
+          "radiusMeters": 1.5,
+          "lumaWithout": 236.9,
+          "lumaWith": 238.1,
+          "linearGain": 1.01
+        },
+        {
+          "radiusMeters": 2,
+          "lumaWithout": 237,
+          "lumaWith": 237,
+          "linearGain": 1
+        },
+        {
+          "radiusMeters": 2.24,
+          "lumaWithout": 237,
+          "lumaWith": 237,
+          "linearGain": 1
+        },
+        {
+          "radiusMeters": 3,
+          "lumaWithout": 237.1,
+          "lumaWith": 237.1,
+          "linearGain": 1
+        },
+        {
+          "radiusMeters": 4,
+          "lumaWithout": 237.1,
+          "lumaWith": 237.1,
+          "linearGain": 1
+        }
+      ],
+      "brightestChannelValue": 250
+    }
+  }
+}
