@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ALLOWLIST, runAudit, summarize } from '../scripts/studio-layout-audit.mjs';
+import { ALLOWLIST, launchBrowser, openStudio, runAudit, startDevServer, summarize } from '../scripts/studio-layout-audit.mjs';
 
 // The audit measures the real DOM of the setup dialog in headless Chrome, as the CI runners have it. Without a browser the
 // test skips, like the other Chrome tests.
@@ -47,4 +47,68 @@ test('the Export workspace, before and after its actions, passes the layout audi
     assert.ok(screen.records.some(record => String(record.selector).includes('crucible-studio-export-group')), `${screen.name} measured the export panel`);
   }
   assert.deepEqual(summarize(screens).findings.map(finding => finding.message), []);
+});
+
+test('the Export frame is the canvas, nothing moves when a result appears, blocked controls look disabled and the narrow picture is not covered (#3343)', { timeout: 240000 }, async context => {
+  let server;
+  let browser;
+  try {
+    server = await startDevServer();
+    browser = await launchBrowser();
+  } catch (error) {
+    await browser?.close();
+    server?.stop();
+    context.skip(`Chrome or the dev server did not start: ${String(error.message).split('\n')[0]}`);
+    return;
+  }
+  try {
+    for (const viewport of [{ width: 1280, height: 720 }, { width: 640, height: 480 }]) {
+      const { context: pageContext, page } = await openStudio(browser, server.origin, 'dark', '', viewport);
+      await page.evaluate(() => {
+        window.__studioPage.setInspectorCollapsed(false);
+        window.__studioPage.setActiveTab('export');
+      });
+      await page.waitForTimeout(400);
+      const before = await page.evaluate(() => {
+        const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
+        return {
+          buttons: ['image', 'model', 'pack'].map(kind => rect(`[data-export="${kind}"]`)),
+          facts: [...document.querySelectorAll('.crucible-studio-export-facts')].map(element => element.getBoundingClientRect().height),
+        };
+      });
+      await page.evaluate(async () => {
+        for (const kind of ['image', 'model', 'pack']) {
+          document.querySelector(`[data-export="${kind}"]`).click();
+          await new Promise(resolveWait => setTimeout(resolveWait, 300));
+        }
+      });
+      const after = await page.evaluate(() => {
+        const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON();
+        const inspector = rect('.crucible-studio-inspector');
+        return {
+          buttons: ['image', 'model', 'pack'].map(kind => rect(`[data-export="${kind}"]`)),
+          facts: [...document.querySelectorAll('.crucible-studio-export-facts')].map(element => element.getBoundingClientRect().height),
+          canvas: rect('.crucible-studio canvas'),
+          guide: rect('.crucible-studio-export-guide'),
+          viewport: rect('.crucible-studio-viewport'),
+          inspector,
+          gridButton: (() => {
+            const button = document.querySelector('[aria-label="Show or hide the grid"]');
+            return button ? { disabled: button.getAttribute('aria-disabled'), background: getComputedStyle(button).backgroundColor } : null;
+          })(),
+        };
+      });
+      assert.deepEqual(after.buttons, before.buttons, `${viewport.width}: the buttons stay where they were when results appear`);
+      assert.deepEqual(after.facts, before.facts, `${viewport.width}: the facts keep their rows`);
+      assert.deepEqual(after.gridButton, { disabled: 'true', background: 'rgba(0, 0, 0, 0)' }, `${viewport.width}: the grid toggle looks disabled and not pressed`);
+      assert.deepEqual(after.guide, after.canvas, `${viewport.width}: the frame encloses exactly the canvas pixels`);
+      if (viewport.width < 820) {
+        assert.ok(after.viewport.right <= after.inspector.left, `${viewport.width}: the panel sits beside the picture, not over it`);
+      }
+      await pageContext.close();
+    }
+  } finally {
+    await browser.close();
+    server.stop();
+  }
 });

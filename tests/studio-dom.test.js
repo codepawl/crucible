@@ -4919,3 +4919,34 @@ test('settleUntil gives up at its deadline when the work never finishes', async 
   const waited = performance.now() - started;
   assert.ok(waited >= 50 && waited < 5000, `waited ${waited} ms for a 50 ms deadline`);
 });
+
+test('in Export the controls that do nothing look disabled, a save draws no toast and the picture shape is labelled (#3343)', async testContext => {
+  const ui = mountStudio(testContext);
+  const gridButton = ui.root.querySelectorAll('button').find(button => button.getAttribute('aria-label') === 'Show or hide the grid');
+  const rowIn = (popoverId, label) => ui.root.querySelectorAll('.crucible-studio-popover').find(popover => popover.id === popoverId).querySelectorAll('button').find(button => button.textContent.startsWith(label));
+  const blockedRows = [['edit', 'Duplicate'], ['edit', 'Delete'], ['view', 'Grid'], ['view', 'Frame the selection']].map(([menu, label]) => rowIn(`crucible-studio-pop-${menu}`, label));
+  for (const control of [gridButton, ...blockedRows]) assert.notEqual(control.getAttribute('aria-disabled'), 'true', 'live in Build');
+  const allowedRows = [rowIn('crucible-studio-pop-new', 'Save'), rowIn('crucible-studio-pop-new', 'Open')];
+
+  byDataset(ui.root, 'workspace', 'export').click();
+  for (const control of [gridButton, ...blockedRows]) assert.equal(control.getAttribute('aria-disabled'), 'true', 'dimmed in Export like undo with nothing to undo');
+  for (const row of allowedRows) assert.notEqual(row.getAttribute('aria-disabled'), 'true', 'the file rows stay live');
+  const gridBefore = ui.controller.scene.revision;
+  gridButton.click();
+  assert.equal(ui.studio.gridVisible, true, 'the grid toggle does nothing in Export');
+  assert.equal(ui.controller.scene.revision, gridBefore);
+
+  const shape = ui.root.querySelectorAll('.crucible-studio-export-frame')[0];
+  assert.equal(shape.getAttribute('role'), 'img');
+  assert.equal(shape.getAttribute('aria-label'), 'Shape of the picture');
+
+  byText(ui.root, 'Save PNG').click();
+  await ui.dom.settle();
+  const toast = ui.root.querySelector('.crucible-studio-status');
+  assert.equal(ui.status(), 'Saved PNG still', 'a screen reader still hears it');
+  assert.equal(toast.getAttribute('data-quiet'), 'true', 'and nothing is drawn');
+  assert.ok(ui.root.querySelectorAll('.crucible-studio-export-result').some(result => result.textContent.includes('.png')), 'the result line is the report');
+
+  byDataset(ui.root, 'workspace', 'build').click();
+  for (const control of [gridButton, ...blockedRows]) assert.equal(control.getAttribute('aria-disabled'), 'false', 'live again in Build');
+});

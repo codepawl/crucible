@@ -1846,7 +1846,7 @@ export const STUDIO_CSS = `
 }
 /* The Export workspace: one group for each thing Studio writes. Groups sit 16px apart and the parts of a group 8px apart. */
 .crucible-studio-export-body {
-  --studio-export-frame-side: 36px;
+  --studio-export-frame-side: 20px;
   display: grid;
   gap: var(--studio-space-16);
   padding: var(--studio-space-12);
@@ -1871,18 +1871,15 @@ export const STUDIO_CSS = `
   gap: var(--studio-space-4);
 }
 .crucible-studio-export-facts:empty { display: none; }
-/* Once a group has written its file, the line of what was written takes the place of the facts about what would be. */
-.crucible-studio-export-group:has(.crucible-studio-export-result:not([hidden])) .crucible-studio-export-facts { display: none; }
 .crucible-studio-export-fact {
   display: inline-flex;
   align-items: center;
   gap: var(--studio-space-4);
-  min-block-size: 24px;
-  padding-inline: var(--studio-space-8);
+  padding: var(--studio-space-4) var(--studio-space-8);
   border-radius: 8px;
   background: color-mix(in srgb, var(--studio-text) 6%, transparent);
   color: var(--studio-text);
-  font: 500 11.5px/1 var(--studio-font-mono);
+  font: 500 11.5px/1.4 var(--studio-font-mono);
   font-variant-numeric: tabular-nums;
 }
 .crucible-studio-export-fact[data-warning="true"] .crucible-studio-icon { color: var(--studio-accent); }
@@ -1892,6 +1889,7 @@ export const STUDIO_CSS = `
   inline-size: var(--studio-export-frame-side);
   border: 1.5px solid currentColor;
   border-radius: 2px;
+  background: color-mix(in srgb, currentColor 15%, transparent);
 }
 .crucible-studio-export-frame[data-tall="true"] {
   inline-size: auto;
@@ -1909,8 +1907,10 @@ export const STUDIO_CSS = `
   font-size: 12px;
   color: var(--studio-text);
   overflow-wrap: anywhere;
+  /* The row is reserved under the button, so a result that appears or clears moves nothing. */
+  min-block-size: var(--studio-space-24);
 }
-.crucible-studio-export-result[hidden] { display: none; }
+.crucible-studio-export-result[hidden] { visibility: hidden; }
 .crucible-studio-export-result[data-state="ok"] .crucible-studio-icon { color: var(--studio-ok); }
 .crucible-studio-export-result[data-state="failed"] .crucible-studio-icon { color: var(--studio-accent); }
 /* The status region is always in the page for a screen reader and never seen. */
@@ -1926,9 +1926,9 @@ export const STUDIO_CSS = `
 .crucible-studio-export-guide {
   display: none;
   position: absolute;
-  inset: var(--studio-space-4);
+  inset: 0;
+  box-sizing: border-box;
   border: 2px solid var(--studio-accent);
-  border-radius: 4px;
   pointer-events: none;
   z-index: 3;
 }
@@ -1941,10 +1941,33 @@ export const STUDIO_CSS = `
 .crucible-studio[data-workspace="export"] .crucible-studio-outliner,
 .crucible-studio[data-workspace="export"] .crucible-studio-grip-split { display: none; }
 .crucible-studio-toolbar button[hidden] { display: none; }
-/* With the Scene card gone the Properties card has the column, so the three groups fit; a narrow window gives it the room above the rail too. */
+/* A control that does nothing here must not look pressed either. */
+.crucible-studio[data-workspace="export"] button[aria-pressed="true"][aria-disabled="true"] { background: transparent; }
+/* A quiet message is for a screen reader only. */
+.crucible-studio-status[data-quiet="true"] {
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+/* In a narrow window the panel is a column beside the picture, not a card over it: the viewport takes the free space, so the picture
+   and its frame are what is left of the window, and the frame is the edge of the saved image. */
+.crucible-studio[data-compact="true"][data-workspace="export"] {
+  --studio-export-column: min(260px, 45%);
+}
+.crucible-studio[data-compact="true"][data-workspace="export"] .crucible-studio-viewport {
+  inset: var(--studio-top) 0 var(--studio-edge) calc(var(--studio-edge) * 2 + var(--studio-rail));
+}
+.crucible-studio[data-compact="true"][data-workspace="export"][data-inspector-collapsed="false"] .crucible-studio-viewport {
+  inset-inline-end: calc(var(--studio-export-column) + var(--studio-edge) * 2);
+}
 .crucible-studio[data-compact="true"][data-workspace="export"] .crucible-studio-inspector {
-  inset-block-end: var(--studio-edge);
-  max-block-size: calc(100% - var(--studio-top) - var(--studio-edge) * 2);
+  inset-block: var(--studio-top) var(--studio-edge);
+  inset-inline: auto var(--studio-edge);
+  inline-size: var(--studio-export-column);
+  max-block-size: none;
 }
 .crucible-studio-bookmark-list {
   display: grid;

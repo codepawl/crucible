@@ -46,9 +46,9 @@ export function createExportPanel({ documentReference, createElement, createIcon
   function chipFor(fact) {
     if (fact.frame) {
       const [width, height] = fact.frame;
-      const picture = createElement(documentReference, 'span', { className: 'crucible-studio-export-frame', dataset: { tall: String(height > width) } });
+      const picture = createElement(documentReference, 'span', { className: 'crucible-studio-export-frame', dataset: { tall: String(height > width) }, attributes: { role: 'img', 'aria-label': 'Shape of the picture' } });
       picture.style.aspectRatio = `${width} / ${height}`;
-      return createElement(documentReference, 'span', { className: 'crucible-studio-export-fact', attributes: { 'aria-hidden': 'true' } }, picture);
+      return createElement(documentReference, 'span', { className: 'crucible-studio-export-fact' }, picture);
     }
     return createElement(documentReference, 'span', { className: 'crucible-studio-export-fact', dataset: { warning: String(Boolean(fact.icon === 'warning')) } }, ...(fact.icon ? [createIcon(fact.icon)] : []), createElement(documentReference, 'span', { textContent: fact.text }));
   }

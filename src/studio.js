@@ -1396,9 +1396,16 @@ export function createStudio(container, {
   const SHOT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'view.properties']);
   const viewingShot = () => root.dataset.workspace === 'export';
   const shotLocksAction = actionId => viewingShot() && !SHOT_PASS_THROUGH.has(actionId);
+  // The rows and rail buttons that do nothing in Export look disabled there, the way undo does with nothing to undo.
+  const shotLockedControls = [];
+  const lockInShot = control => {
+    shotLockedControls.push(control);
+    return control;
+  };
   // One row of a menu: its icon, what it does, and its key on the right.
   const createMenuItem = (label, actionId, onChoose, iconName) => {
     const item = showActionKey(createElement(documentReference, 'button', { type: 'button', textContent: label }), actionId);
+    if (actionId && !SHOT_PASS_THROUGH.has(actionId)) lockInShot(item);
     item.addEventListener('click', event => {
       if (actionId && shotLocksAction(actionId)) return;
       onChoose(event);
@@ -1497,7 +1504,7 @@ export function createStudio(container, {
     announce(`${TRANSFORM_PART_WORDS[part]} reset`);
   }
   // Shown only while a motion track drives the camera: off means the viewport looks around on its own.
-  const sceneCameraToggle = createMenuToggle('Animated camera', '', () => {
+  const sceneCameraToggle = lockInShot(createMenuToggle('Animated camera', '', () => {
     if (viewingShot()) return;
     if (controller.freeView) {
       controller.lookThroughSceneCamera();
@@ -1505,7 +1512,7 @@ export function createStudio(container, {
     }
     const camera = controller.viewCamera;
     controller.moveViewportCamera({ eye: [...camera.eye], target: [...camera.target] });
-  }, () => !controller.freeView, 'camera');
+  }, () => !controller.freeView, 'camera'));
   const viewPopover = createMenuPopover(
     'crucible-studio-pop-view',
     createMenuItem('Front view', 'view.front', () => showView('front')),
@@ -1513,7 +1520,7 @@ export function createStudio(container, {
     createMenuItem('Top view', 'view.top', () => showView('top')),
     createMenuItem('Perspective / Orthographic', 'view.projection', () => controller.toggleCameraProjection(), 'camera'),
     createMenuItem('Frame the selection', 'view.frame', () => flyToSelection(), 'frame'),
-    createMenuToggle('Grid', '', () => gridButton.click(), () => gridVisible, 'grid'),
+    lockInShot(createMenuToggle('Grid', '', () => gridButton.click(), () => gridVisible, 'grid')),
     sceneCameraToggle,
     createMenuToggle('Scene and Properties', '', () => toggleDocksButton.click(), () => root.dataset.outlinerCollapsed !== 'true' || root.dataset.inspectorCollapsed !== 'true', 'panels'),
     createMenuToggle('Properties', 'view.properties', () => setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true'), () => root.dataset.inspectorCollapsed !== 'true', 'settings'),
@@ -1908,13 +1915,16 @@ export function createStudio(container, {
     }
   });
 
-  function announce(message, durationMilliseconds = STATUS_DEFAULT_MILLISECONDS) {
+  // A quiet message is still announced to a screen reader but draws no box: Export reports each save on its own result line.
+  function announce(message, durationMilliseconds = STATUS_DEFAULT_MILLISECONDS, { quiet = false } = {}) {
     clearTimeout(statusTimer);
     clearTimeout(statusExitTimer);
     if (!message) {
       clearStatus();
       return;
     }
+    if (quiet) statusRegion.setAttribute('data-quiet', 'true');
+    else statusRegion.removeAttribute('data-quiet');
     statusRegion.textContent = message;
     statusRegion.dataset.state = 'in';
     statusTimer = setTimeout(hideStatus, durationMilliseconds);
@@ -1964,6 +1974,7 @@ export function createStudio(container, {
   const toggleDocksButton = createIconButton(documentReference, 'panels', 'Show or hide the panels', { attributes: { 'aria-pressed': 'true' } });
   const gridButton = createIconButton(documentReference, 'grid', 'Show or hide the grid', { attributes: { 'aria-pressed': 'true' } });
   gridButton.addEventListener('click', () => {
+    if (viewingShot()) return;
     setPreference('gridVisible', !gridVisible);
     announce(gridVisible ? 'Grid shown' : 'Grid hidden');
   });
@@ -2385,6 +2396,7 @@ export function createStudio(container, {
     if (!inExport) exportPanel.clearResults();
     outlinerDock.inert = inExport;
     for (const button of [...toolButtons, addMenuButton]) button.toggleAttribute('hidden', inExport);
+    for (const control of [...shotLockedControls, gridButton]) control.setAttribute('aria-disabled', inExport ? 'true' : 'false');
     showInspectorTitle(inExport);
     // A change of tab asks for no frame of its own, and the viewport draws the shot differently in Export.
     if (!workspaceWasOpen && !firstWorkspace) requestFrame();
@@ -3030,7 +3042,7 @@ export function createStudio(container, {
   }
 
   function reportExportFailure(kindId, error) {
-    announce(error.message);
+    announce(error.message, undefined, { quiet: true });
     exportResultSceneKey = currentSceneKey();
     exportPanel.showResult(kindId, { ok: false, text: error.message });
   }
@@ -3043,14 +3055,14 @@ export function createStudio(container, {
       if (desktop?.savePng) {
         const response = await desktop.savePng({ dataUrl, suggestedName: `${baseName}.png` });
         if (!response?.canceled) {
-          announce(`Saved ${response.fileName}`);
+          announce(`Saved ${response.fileName}`, undefined, { quiet: true });
           reportExport('image', { fileName: response.fileName, detail });
         }
         return;
       }
       const bytes = Uint8Array.from(atob(dataUrl.split(',')[1]), character => character.charCodeAt(0));
       triggerBlobDownload(bytes, `${baseName}.png`, 'image/png');
-      announce('Saved PNG still');
+      announce('Saved PNG still', undefined, { quiet: true });
       reportExport('image', { fileName: `${baseName}.png`, detail });
     } catch (error) {
       reportExportFailure('image', error);
@@ -3065,13 +3077,13 @@ export function createStudio(container, {
       if (desktop?.saveGlb) {
         const response = await desktop.saveGlb({ bytes: glbBytes, suggestedName: `${baseName}.glb` });
         if (!response?.canceled) {
-          announce(`Exported ${response.fileName}`);
+          announce(`Exported ${response.fileName}`, undefined, { quiet: true });
           reportExport('model', { fileName: response.fileName, detail });
         }
         return;
       }
       triggerBlobDownload(glbBytes, `${baseName}.glb`, 'model/gltf-binary');
-      announce('Exported GLB mesh');
+      announce('Exported GLB mesh', undefined, { quiet: true });
       reportExport('model', { fileName: `${baseName}.glb`, detail });
     } catch (error) {
       reportExportFailure('model', error);
@@ -3086,14 +3098,14 @@ export function createStudio(container, {
         const response = await desktop.packWebBundle(payload);
         if (!response?.canceled) {
           const note = payload.stripped.length ? ` (static snapshot, omitted ${payload.stripped[0]})` : '';
-          announce(`Packed web bundle to ${response.outDir}${note}`);
+          announce(`Packed web bundle to ${response.outDir}${note}`, undefined, { quiet: true });
           // The host writes a folder or a file of its own choosing: show the name it returns, not the one a browser download would carry.
           reportExport('pack', { fileName: lastPathName(response.fileName ?? response.outDir), detail });
         }
         return;
       }
       triggerBlobDownload(payload.packBytes, `${payload.title}.pack`, 'application/octet-stream');
-      announce('Downloaded scene.pack');
+      announce('Downloaded scene.pack', undefined, { quiet: true });
       reportExport('pack', { fileName: `${payload.title}.pack`, detail });
     } catch (error) {
       reportExportFailure('pack', error);
