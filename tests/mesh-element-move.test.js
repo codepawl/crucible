@@ -4,6 +4,7 @@ import { box } from '../src/geometry.js';
 import { meshFromGeometry, applyMeshEdits } from '../src/mesh.js';
 import { normalizeMeshEdits } from '../src/mesh-recipe.js';
 import { MAX_SELECTED_ELEMENTS } from '../src/mesh-operations.js';
+import { selectEdges, edgeFaces } from '../src/mesh-bevel.js';
 
 // #3262: translate and transform_selection take vertices ({ verts }) or edges ({ edges }) as well as faces, and every
 // edge-taking edit accepts { "edges": [[a, b], ...] }, an edge named by the two vertices it joins.
@@ -186,4 +187,68 @@ test('the same edits give the same geometry every time', () => {
   const first = applyMeshEdits(cube(), edits).mesh;
   const second = applyMeshEdits(cube(), edits).mesh;
   assert.deepEqual(Array.from(first.positions), Array.from(second.positions));
+});
+
+// Review of #3278: indices count the mesh just before the edit, a duplicate counts once, and one form per edge rule.
+
+test('an out-of-range vertex says how many vertices the mesh has at this edit, after earlier edits changed the count', () => {
+  assert.throws(() => runOne({ op: 'translate', verts: { vertices: [99] }, offset: [0, 1, 0] }), /Vertex 99 does not exist: this mesh has 8 vertices \(0 to 7\) at this edit/);
+  const edits = [{ op: 'subdivide', levels: 1 }, { op: 'translate', verts: { vertices: [99] }, offset: [0, 1, 0] }];
+  assert.throws(() => applyMeshEdits(cube(), edits), /this mesh has 26 vertices \(0 to 25\) at this edit/);
+  const pairEdits = [{ op: 'subdivide', levels: 1 }, { op: 'translate', edges: { edges: [[0, 99]] }, offset: [0, 1, 0] }];
+  assert.throws(() => applyMeshEdits(cube(), pairEdits), /names vertex 99, but the mesh has 26 vertices \(0 to 25\) at this edit/);
+});
+
+test('an index means the mesh just before that edit: vertex 9 exists only once an earlier subdivide added vertices', () => {
+  assert.throws(() => runOne({ op: 'translate', verts: { vertices: [9] }, offset: [0, 1, 0] }), /8 vertices/);
+  const later = applyMeshEdits(cube(), [{ op: 'subdivide', levels: 1 }, { op: 'translate', verts: { vertices: [9] }, offset: [0, 1, 0] }]);
+  assert.equal(later.results[1].selectedVertices, 1);
+  assert.equal(later.mesh.vertexCount, 26);
+});
+
+test('a vertex or an edge named twice counts once', () => {
+  const start = cube();
+  const { topFrontLeft, topFrontRight } = corners(start);
+  const once = runOne({ op: 'translate', verts: { vertices: [topFrontLeft] }, offset: [0, 1, 0] });
+  const twice = runOne({ op: 'translate', verts: { vertices: [topFrontLeft, topFrontLeft] }, offset: [0, 1, 0] });
+  assert.deepEqual(positionsOf(twice.mesh), positionsOf(once.mesh));
+  assert.equal(twice.results[0].selectedVertices, 1);
+  const pairOnce = runOne({ op: 'translate', edges: { edges: [[topFrontLeft, topFrontRight]] }, offset: [0, 1, 0] });
+  const pairTwice = runOne({ op: 'translate', edges: { edges: [[topFrontLeft, topFrontRight], [topFrontRight, topFrontLeft]] }, offset: [0, 1, 0] });
+  assert.deepEqual(positionsOf(pairTwice.mesh), positionsOf(pairOnce.mesh));
+  assert.equal(pairTwice.results[0].selectedVertices, 2);
+});
+
+test('an edge rule with vertex pairs and another key is refused, whichever key it is', () => {
+  const { topFrontLeft, topFrontRight } = corners(cube());
+  const pairs = [[topFrontLeft, topFrontRight]];
+  for (const extra of [{ along: [1, 0, 0] }, { angle: 30 }, { all: true }]) {
+    const rule = { edges: pairs, ...extra };
+    assert.throws(() => runOne({ op: 'translate', edges: rule, offset: [0, 1, 0] }), /edits\[0\]\.edges: .*one form: \{ "edges": \[\[a, b\], \.\.\.\] \} alone.*remove /, JSON.stringify(extra));
+    assert.throws(() => runOne({ op: 'bevel', edges: rule, width: 0.1 }), /one form: \{ "edges"/, JSON.stringify(extra));
+  }
+  assert.throws(() => selectEdges(meshFromGeometry(box(0, 1)), { edges: pairs, along: [1, 0, 0] }, edgeFaces(meshFromGeometry(box(0, 1)))), /Edge rule edges does not take along/);
+});
+
+test('every edit that takes an edge rule checks the shape of its pairs when the recipe is normalised', () => {
+  const badPairs = { edges: [[2, 2]] };
+  const edits = [
+    { op: 'bevel', edges: badPairs, width: 0.1 },
+    { op: 'loop_cut', edges: badPairs },
+    { op: 'dissolve_edges', edges: badPairs },
+    { op: 'dissolve_limited', edges: badPairs },
+    { op: 'subdivide_edges', edges: badPairs },
+    { op: 'extrude_edges', edges: badPairs, offset: [0, 1, 0] },
+    { op: 'split_edges', edges: badPairs },
+    { op: 'bridge_edge_loops', edges: badPairs },
+    { op: 'grid_fill', edges: badPairs },
+    { op: 'uv_unwrap', seams: badPairs },
+    { op: 'subdivide', crease: badPairs },
+  ];
+  for (const edit of edits) {
+    const field = edit.op === 'uv_unwrap' ? 'seams' : (edit.op === 'subdivide' ? 'crease' : 'edges');
+    assert.throws(() => normalizeMeshEdits([edit]), error => error.message.includes(`edits[0].${field}.edges: got [[2,2]]; expected an array of 1 to 4096 vertex pairs`) && error.message.includes('two different whole vertex indices'), edit.op);
+    assert.throws(() => normalizeMeshEdits([{ ...edit, [field]: { edges: [[0, 1]], angle: 30 } }]), error => error.message.includes(`edits[0].${field}: `) && error.message.includes('one form'), edit.op);
+    assert.throws(() => normalizeMeshEdits([{ ...edit, [field]: { edges: [] } }]), /expected an array of 1 to 4096 vertex pairs/, edit.op);
+  }
 });

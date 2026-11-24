@@ -152,8 +152,15 @@ Edits (names follow Blender's `bmesh.ops` where they match):
   once, in the mesh's local space, and `falloff` works the same way as for faces. `{ "op": "translate", "verts": { "vertices": [3] },
   "offset": [0, 0.2, 0] }` lifts one corner; `{ "op": "translate", "edges": { "edges": [[3, 7]] }, "offset": [0, 0.2, 0] }`
   lifts one edge. The result reports `selectedVertices` instead of `selected`.
-- An edge rule also takes `{ "edges": [[a, b], ...] }`: an edge named by the two vertices it joins, as the vertex indices of
-  the mesh before the edit, in either order, boundary edges too. Pairs are used rather than
+- Vertex indices, in `verts` and in edge pairs, are those of the base mesh just before that edit: after the earlier edits in
+  the list, before the modifier stack. An earlier edit that adds or removes vertices (`subdivide`, `merge_by_distance`,
+  `dissolve_*`, `delete`) changes the count and can renumber them, and a wrong but valid index moves another corner. After a
+  `subdivide` of a box, 0 to 7 are still the corners and 8 and up are new midpoints, so `{ "vertices": [9] }` names a
+  midpoint there and does not exist on the plain box. An index past the end throws and names the count: `Vertex 99 does
+  not exist: this mesh has 8 vertices (0 to 7) at this edit.` Every edit result reports `after.vertices`. A vertex or a pair
+  named twice (or a pair in both orders) counts once.
+- An edge rule also takes `{ "edges": [[a, b], ...] }`: an edge named by the two vertices it joins, in either order, boundary
+  edges too. It stands alone: another key beside it throws, so pass one form. Pairs are used rather than
   edge numbers because edge numbers change when an edit adds or removes faces, and a pair is what a person picking two
   corners, or an agent reading positions, already has. A pair that is not an edge throws and says so. Every op that takes an
   edge rule accepts it: `bevel`, `loop_cut`, `dissolve_edges`, `dissolve_limited`, `subdivide_edges`, `extrude_edges`,

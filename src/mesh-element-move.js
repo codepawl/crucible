@@ -1,7 +1,8 @@
 import { editMesh, meshData } from './mesh-edit.js';
 import { editField } from './mesh-edit-field.js';
 import { selectVertices } from './mesh-dissolve.js';
-import { selectEdges, edgeFaces, edgePairProblem } from './mesh-bevel.js';
+import { selectEdges, edgeFaces } from './mesh-bevel.js';
+import { editEdgeRule } from './mesh-edit-field.js';
 import { maskedVertices, maskedEdgeVertices, translateVertices, transformVertices } from './mesh-ops.js';
 import { MAX_SELECTED_ELEMENTS, ELEMENT_MOVE_OPERATIONS } from './mesh-operations.js';
 
@@ -35,10 +36,7 @@ export function normalizeMoveSelection(edit, normalized, index) {
     return true;
   }
   if (given[0] === 'edges') {
-    if (!isRuleObject(edit.edges)) throw editField(index, 'edges', edit.edges, 'an edge rule such as { "edges": [[0, 1], [1, 2]] } (vertex pairs), { "angle": 30 } or { "all": true }');
-    const problem = edit.edges.edges === undefined ? null : edgePairProblem(edit.edges.edges);
-    if (problem) throw editField(index, 'edges.edges', edit.edges.edges, problem);
-    normalized.edges = edit.edges;
+    normalized.edges = editEdgeRule(edit.edges, index, 'edges', 'an edge rule such as { "edges": [[0, 1], [1, 2]] } (vertex pairs), { "angle": 30 } or { "all": true }');
     return true;
   }
   return false;

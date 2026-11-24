@@ -476,7 +476,7 @@ const meshEdit = z.discriminatedUnion('op', [
   z.strictObject({ op: z.literal('delete'), select: selectRule }),
   z.strictObject({ op: z.literal('flip_normals'), select: selectRule.optional() }),
   z.strictObject({ op: z.literal('translate'), select: selectRule.optional(), verts: vertexRule.optional(), edges: edgeRule.optional(), offset: vector3, falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }).describe('Move the vertices of one of select, verts or edges (at most 4096 each); a shared vertex moves once.'),
-  z.strictObject({ op: z.literal('transform_selection'), select: selectRule.optional(), verts: vertexRule.optional(), edges: edgeRule.optional(), pivot: vector3.optional().describe('Point to turn and scale about. Defaults to the mean of the selected vertices.'), rotation: z.strictObject({ axis: vector3, angle: bounded(-6.283185307179586, 6.283185307179586).describe('Radians, not degrees: 90 degrees is 1.5708.') }).optional(), scale: z.union([bounded(0.000001, 1000), z.array(bounded(0.000001, 1000)).length(3)]).optional().describe('Factor above 0, or one per axis; applied before the rotation.'), falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }).describe('Rotate and/or scale the vertices of one of select, verts or edges (at most 4096 each) about a pivot; falloff fades to 0 at its radius.'),
+  z.strictObject({ op: z.literal('transform_selection'), select: selectRule.optional(), verts: vertexRule.optional(), edges: edgeRule.optional(), pivot: vector3.optional().describe('Point to turn and scale about. Defaults to the mean of the selected vertices.'), rotation: z.strictObject({ axis: vector3, angle: bounded(-6.283185307179586, 6.283185307179586).describe('Radians, not degrees: 90 degrees is 1.5708.') }).optional(), scale: z.union([bounded(0.000001, 1000), z.array(bounded(0.000001, 1000)).length(3)]).optional().describe('Factor above 0, or one per axis; applied before the rotation.'), falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }).describe('Rotate and/or scale the vertices of one of select, verts or edges about a pivot; falloff fades to 0 at its radius.'),
   z.strictObject({ op: z.literal('merge_by_distance'), distance: finite.optional() }),
   z.strictObject({
     op: z.literal('loop_cut'), name: editName,
@@ -529,7 +529,7 @@ const meshEdit = z.discriminatedUnion('op', [
     strokes: z.array(z.strictObject({
       type: z.enum(['inflate', 'displace', 'smooth']), center: vector3, radius: finite, strength: finite, direction: vector3.optional(),
     })).min(1).max(32),
-  }).describe('Brush strokes on the selected faces, in order. Fields and units in scene_capabilities meshSculpt.'),
+  }).describe('Brush strokes on the vertices of the selected faces, in order. Fields and units in scene_capabilities meshSculpt.'),
   z.strictObject({ op: z.literal('vertex_group'), name: z.string().max(48), select: shortSelect.optional(), weight: unit.optional(), field: shortField.optional(), gradient: z.record(z.string(), z.unknown()).optional() }).describe('Vertex group weights 0-1: weight, field or gradient. See meshAttributes.'),
   z.strictObject({ op: z.literal('vertex_color'), select: shortSelect.optional(), color: vector3.optional(), field: shortField.optional(), gradient: z.record(z.string(), z.unknown()).optional() }).describe('Vertex colors: color, vector field or gradient. See meshAttributes.'),
   z.strictObject({
@@ -544,14 +544,14 @@ const stackNodes = [
     op: z.literal('set_position'), select: selectRule.optional(),
     position: fieldExpression.optional().describe('Vector expression for the new position of each selected vertex. Defaults to the current position.'),
     offset: fieldExpression.optional().describe('Vector expression added after position, for example {"vec":[0,{"noise":{"scale":3}},0]}. Give position, offset or both.'),
-  }).describe('Blender Set Position: field expressions on the input positions, for the vertices of the selected faces.'),
+  }).describe('Set Position with field expressions on the input positions, for the vertices of the selected faces.'),
   z.strictObject({
     op: z.literal('displace'), select: selectRule.optional(),
     field: fieldExpression.describe('Number expression used as the texture.'),
     strength: finite.optional().describe('Defaults to 1.'), midlevel: finite.optional().describe('Field value that does not move. Defaults to 0.5, the middle of noise.'),
     direction: z.enum(['normal', 'x', 'y', 'z']).optional().describe('Defaults to normal.'),
     group: z.string().max(48).optional(),
-  }).describe('Each vertex moves by (field - midlevel) * strength, like Blender Displace.'),
+  }).describe('Each vertex moves by (field - midlevel) * strength.'),
   z.strictObject({ op: z.literal('mirror'), name: editName, axis: z.enum(['x', 'y', 'z']).optional().describe('Mirror across the plane through the local origin perpendicular to this axis. Defaults to x.'), merge: bounded(0, 1000).optional().describe('Vertices this close to the plane are shared by both halves. Defaults to 0.001. Faces lying in the plane are removed, so a closed half becomes a closed whole.') }),
   z.strictObject({ op: z.literal('array'), name: editName, count: z.number().int().min(1).max(256).optional(), offset: vector3.optional().describe('Constant step between copies.'), relativeOffset: vector3.optional().describe('Step in bounding-box sizes. Defaults to [1, 0, 0] unless offset is given.'), merge: bounded(0, 1000).optional().describe('Weld touching copies and remove the faces between them.') }),
   z.strictObject({ op: z.literal('solidify'), name: editName, thickness: finite.describe('Wall thickness, positive.'), offset: bounded(-1, 1).optional().describe('-1 grows inward (default), 1 outward, 0 centred.'), evenThickness: z.boolean().optional() }),
@@ -570,7 +570,7 @@ const stackNodes = [
     maxDistortion: bounded(0, 100).optional().describe('Islands stretching more than this (mean |area ratio - 1|) are split into charts by facing axis. Defaults to 0.25.'),
   }).describe('Conformal UV unwrap into the corner attribute uv, packed into 0..1. Put it last (or as the last stack node): later edits do not keep UVs exact. The result reports islands, flipped triangles and areaDistortion.'),
   z.strictObject({ op: z.literal('uv_project'), mode: z.enum(['cube', 'cylinder', 'sphere']), axis: z.enum(['x', 'y', 'z']).optional(), pack: z.boolean().optional(), margin: bounded(0, 0.2).optional(), rotate: z.boolean().optional() }).describe('Cube, cylinder or sphere uv projection, packed into 0..1. Detail: scene_capabilities meshUv.'),
-  z.strictObject({ op: z.literal('uv_pack'), margin: bounded(0, 0.2).optional(), rotate: z.boolean().optional() }).describe('Pack the uv islands into 0..1 with one scale.'),
+  z.strictObject({ op: z.literal('uv_pack'), margin: bounded(0, 0.2).optional(), rotate: z.boolean().optional() }).describe('Pack the existing uv islands into 0..1 with one scale.'),
   z.strictObject({
     op: z.literal('subdivide'),
     levels: z.number().int().min(1).max(4).optional().describe('Catmull-Clark levels; each multiplies the faces by about 4 (n-gons become n quads). Defaults to 1.'),

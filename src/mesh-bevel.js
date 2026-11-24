@@ -3,7 +3,7 @@ import { faceNormals } from './mesh-normals.js';
 import { selectFaces } from './mesh-select.js';
 import { MeshBuilder } from './mesh-stack.js';
 import { requireFiniteInRange } from './modeling-limits.js';
-import { MAX_SELECTED_ELEMENTS } from './mesh-operations.js';
+import { edgePairProblem } from './mesh-edit-field.js';
 
 export const MAX_BEVEL_SEGMENTS = 16;
 export const MAX_BEVEL_WIDTH = 1e6;
@@ -33,6 +33,7 @@ export function selectEdges(mesh, rule, table) {
   const keys = Object.keys(rule);
   const mask = new Uint8Array(mesh.edgeCount);
   const facesOf = edge => table.faces[edge];
+  if (rule.edges !== undefined && keys.length > 1) throw new TypeError(`Edge rule edges does not take ${keys.filter(key => key !== 'edges').join(', ')}; pass { "edges": [[a, b], ...] } alone or another edge rule without it.`);
   if (rule.open !== undefined && keys.length > 1) throw new TypeError(`Edge rule open does not take ${keys.filter(key => key !== 'open').join(', ')}.`);
   if (keys.length !== 1 && rule.along === undefined) throw new TypeError('Edge rule takes exactly one of between, angle, boundaryOf, along, open, all, edges.');
   if (rule.open !== undefined) return selectOpenEdges(mesh, rule, table);
@@ -98,25 +99,13 @@ export function selectEdges(mesh, rule, table) {
   throw new TypeError('Edge rule takes exactly one of between, angle, boundaryOf, along, open, all, edges.');
 }
 
-/**
- * Why a list of vertex pairs is not a valid { "edges": [[a, b], ...] } selection, or null when its shape is fine.
- * An edge is named by the two vertices it joins, which survives edits that renumber edges and reads the same to a person
- * and an agent. Whether each pair is an edge of the mesh is checked against the mesh, when the rule runs.
- */
-export function edgePairProblem(pairs) {
-  const expected = `an array of 1 to ${MAX_SELECTED_ELEMENTS} vertex pairs, such as [[0, 1], [1, 2]]`;
-  if (!Array.isArray(pairs) || pairs.length < 1 || pairs.length > MAX_SELECTED_ELEMENTS) return expected;
-  const valid = pairs.every(pair => Array.isArray(pair) && pair.length === 2 && pair.every(vertex => Number.isInteger(vertex) && vertex >= 0) && pair[0] !== pair[1]);
-  return valid ? null : `${expected}, each two different whole vertex indices`;
-}
-
 function selectEdgesByVertexPairs(mesh, pairs) {
   const problem = edgePairProblem(pairs);
   if (problem) throw new TypeError(`Edge rule edges got ${JSON.stringify(pairs)?.slice(0, 80)}; pass ${problem}.`);
   const wanted = new Map();
   for (const [first, second] of pairs) {
     if (first >= mesh.vertexCount || second >= mesh.vertexCount) {
-      throw new RangeError(`Edge rule edges names vertex ${Math.max(first, second)}, but the mesh has ${mesh.vertexCount} vertices (0 to ${mesh.vertexCount - 1}).`);
+      throw new RangeError(`Edge rule edges names vertex ${Math.max(first, second)}, but the mesh has ${mesh.vertexCount} vertices (0 to ${mesh.vertexCount - 1}) at this edit.`);
     }
     wanted.set(Math.min(first, second) * mesh.vertexCount + Math.max(first, second), [first, second]);
   }

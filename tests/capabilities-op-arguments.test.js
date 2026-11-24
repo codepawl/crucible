@@ -8,8 +8,8 @@ import { AGENT_SCENE_CAPABILITIES } from '../src/agent-scene.js';
 
 // Issue 1929: Haiku asked for meshEdit, then for meshEdit.<op> once per op. The first answer now carries each op's arguments.
 
-// #3262 raised meshEdit from 8000 to 8200 for the verts and edges selections of the two moves (the answer grew by 112 bytes).
-const MAX_UNION_ANSWER_BYTES = { meshEdit: 8200, meshStack: 3500 };
+// The first answer of a union topic stays about this small, so it does not become the cost it was meant to save.
+const MAX_UNION_ANSWER_BYTES = { meshEdit: 8000, meshStack: 3500 };
 
 async function connectClient(context) {
   const runtime = {

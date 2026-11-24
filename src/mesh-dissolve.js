@@ -229,7 +229,7 @@ export function selectVertices(mesh, rule) {
   if (rule.all === true) return mask.fill(1);
   if (Array.isArray(rule.vertices)) {
     for (const vertex of rule.vertices) {
-      if (!Number.isInteger(vertex) || vertex < 0 || vertex >= mesh.vertexCount) throw new RangeError(`Vertex ${vertex} does not exist.`);
+      if (!Number.isInteger(vertex) || vertex < 0 || vertex >= mesh.vertexCount) throw new RangeError(`Vertex ${vertex} does not exist: this mesh has ${mesh.vertexCount} vertices (0 to ${mesh.vertexCount - 1}) at this edit.`);
       mask[vertex] = 1;
     }
     return mask;
