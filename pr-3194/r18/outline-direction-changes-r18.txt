@@ -1,0 +1,2 @@
+before/hero-clouds-wet1.png: water px 1622, perimeter 887, direction changes 400, per 100 perimeter 45.1
+after/hero-clouds-wet1.png: water px 1590, perimeter 555, direction changes 214, per 100 perimeter 38.6

@@ -1,0 +1,80 @@
+{
+ "mask": "ground pixels that are water in the Glaze render (reflection-only luminance above 0.0065, the basin port is unreliable on the shallow left side), columns 0 to 191 of 480",
+ "region_px": 1909,
+ "glaze_total": {
+  "lum": 0.0539,
+  "chroma": [
+   0.941,
+   1.002,
+   1.057
+  ],
+  "px": 1909
+ },
+ "tracer_total": {
+  "lum": 0.0606,
+  "chroma": [
+   0.975,
+   0.983,
+   1.043
+  ],
+  "px": 1909
+ },
+ "glaze_reflection": {
+  "lum": 0.0134,
+  "chroma": [
+   0.948,
+   0.996,
+   1.056
+  ],
+  "px": 1909
+ },
+ "tracer_reflection": {
+  "lum": 0.0139,
+  "chroma": [
+   1.05,
+   0.95,
+   1.001
+  ],
+  "px": 1909
+ },
+ "columns below 120": {
+  "glaze_reflection": {
+   "lum": NaN,
+   "chroma": [
+    NaN,
+    NaN,
+    NaN
+   ],
+   "px": 0
+  },
+  "tracer_reflection": {
+   "lum": NaN,
+   "chroma": [
+    NaN,
+    NaN,
+    NaN
+   ],
+   "px": 0
+  }
+ },
+ "columns 120 to 191": {
+  "glaze_reflection": {
+   "lum": 0.0134,
+   "chroma": [
+    0.948,
+    0.996,
+    1.056
+   ],
+   "px": 1909
+  },
+  "tracer_reflection": {
+   "lum": 0.0139,
+   "chroma": [
+    1.05,
+    0.95,
+    1.001
+   ],
+   "px": 1909
+  }
+ }
+}

@@ -1,0 +1,15 @@
+{
+ "glaze": {
+  "rows": 66,
+  "median_column_480": 200.0,
+  "p10": 197.5,
+  "p90": 225.5
+ },
+ "tracer": {
+  "rows": 94,
+  "median_column_480": 201.0,
+  "p10": 192.0,
+  "p90": 233.7
+ },
+ "expected_column_480_from_geometry": 191.5
+}
