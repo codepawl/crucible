@@ -15,7 +15,7 @@ import { encodePackOrRefuse } from './studio-pack-refusal.js';
 import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shaders.js';
 import { STUDIO_CSS } from './studio-styles.js';
 import { findKeymapAction, findMouseNavigation, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset } from './studio-keymap.js';
-import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrolledToEnd } from './studio-help.js';
+import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
 import { detectStudioHardware, gatherStudioHardwareInputs, rendererChangeFor, resolveStudioPerformanceTier, studioViewportSettingsFor } from './studio-hardware.js';
@@ -1779,6 +1779,10 @@ export function createStudio(container, {
       }
     });
   }
+  // A menu button stays marked while its menu is open, as it is under the pointer.
+  for (const [menuButton, menuPopover] of menuPairs) {
+    menuPopover.addEventListener('toggle', event => menuButton.setAttribute('aria-expanded', event.newState === 'open' ? 'true' : 'false'));
+  }
   let fileMenuAnchor = filePill;
   filePill.addEventListener('click', () => { fileMenuAnchor = filePill; });
   fileMenuButton.addEventListener('click', () => { fileMenuAnchor = fileMenuButton; });
@@ -2613,7 +2617,7 @@ export function createStudio(container, {
     shortcutsGrid,
   );
   fillShortcutsGrid();
-  const syncShortcutsFade = watchScrolledToEnd(shortcutsGrid);
+  const syncShortcutsFade = watchScrollFades(shortcutsGrid);
   shortcutsCloseButton.addEventListener('click', () => shortcutsDialog.close());
   // The sheet opened from the Help menu gives the focus back to that button when it closes.
   let shortcutsFocusTarget = null;

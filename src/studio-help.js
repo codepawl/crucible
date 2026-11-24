@@ -114,12 +114,14 @@ export function balanceSheetColumns(groups, columnCount = 2) {
   return best.bounds.slice(1).map((end, index) => groups.slice(best.bounds[index], end));
 }
 
-/** Marks `element` with data-more while rows are hidden below its visible part, so a fade can say that it scrolls. */
-export function watchScrolledToEnd(element) {
+/** Marks `element` with data-above and data-more while rows are hidden above or below its visible part, so fades can say that it scrolls. */
+export function watchScrollFades(element) {
   const sync = () => {
-    const hidden = (element.scrollHeight ?? 0) - (element.clientHeight ?? 0) - (element.scrollTop ?? 0);
-    if (hidden > 1) element.dataset.more = 'true';
+    const hiddenBelow = (element.scrollHeight ?? 0) - (element.clientHeight ?? 0) - (element.scrollTop ?? 0);
+    if (hiddenBelow > 1) element.dataset.more = 'true';
     else delete element.dataset.more;
+    if ((element.scrollTop ?? 0) > 1) element.dataset.above = 'true';
+    else delete element.dataset.above;
   };
   element.addEventListener('scroll', sync);
   return sync;

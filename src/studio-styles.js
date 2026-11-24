@@ -760,6 +760,7 @@ export const STUDIO_CSS = `
   font-size: 13px;
 }
 .crucible-studio button.crucible-studio-menu-button:hover,
+.crucible-studio button.crucible-studio-menu-button[aria-expanded="true"],
 .crucible-studio button.crucible-studio-menu-button:has(+ *):focus-visible {
   background: color-mix(in srgb, var(--studio-text) 7%, transparent);
 }
@@ -2467,13 +2468,32 @@ export const STUDIO_CSS = `
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--studio-text) 38%, transparent) transparent;
+  /* The scrolling box reaches 16 px into the dialog padding: 8 px for the scrollbar and 8 px of air, so the text edges stay 24 px from both sides. */
+  margin-inline-end: calc(var(--studio-space-16) * -1);
+  padding-inline-end: var(--studio-space-8);
   font-size: 12.5px;
+  /* Rows hidden above or below fade at that edge; the strip over the scrollbar stays solid. */
+  --studio-fade-top: 0px;
+  --studio-fade-bottom: 0px;
+  mask-image:
+    linear-gradient(to bottom, transparent 0, #000 var(--studio-fade-top), #000 calc(100% - var(--studio-fade-bottom)), transparent 100%),
+    linear-gradient(to right, transparent calc(100% - var(--studio-space-16)), #000 calc(100% - var(--studio-space-16)));
+  mask-composite: add;
 }
-/* Rows are hidden below: the bottom edge fades out, and the fade goes when the end is reached. */
-.crucible-studio-shortcuts[data-more="true"] {
-  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--studio-space-24) * 2), transparent);
+.crucible-studio-shortcuts[data-above="true"] { --studio-fade-top: calc(var(--studio-space-24) * 2); }
+.crucible-studio-shortcuts[data-more="true"] { --studio-fade-bottom: calc(var(--studio-space-24) * 2); }
+.crucible-studio-shortcuts::-webkit-scrollbar { width: 8px; }
+.crucible-studio-shortcuts::-webkit-scrollbar-track { background: transparent; }
+.crucible-studio-shortcuts::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--studio-text) 38%, transparent);
+}
+.crucible-studio-shortcuts::-webkit-scrollbar-button { display: none; }
+@supports not selector(::-webkit-scrollbar) {
+  .crucible-studio-shortcuts {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--studio-text) 38%, transparent) transparent;
+  }
 }
 .crucible-studio-shortcuts-dialog[data-columns="3"] .crucible-studio-shortcuts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .crucible-studio-shortcuts-dialog[data-columns="1"] .crucible-studio-shortcuts { grid-template-columns: minmax(0, 1fr); }

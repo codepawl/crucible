@@ -2,7 +2,7 @@ import './support/load-agent-scene-modules.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createStudio } from '../src/studio.js';
-import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, STUDIO_GUIDE_URL, watchScrolledToEnd } from '../src/studio-help.js';
+import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, STUDIO_GUIDE_URL, watchScrollFades } from '../src/studio-help.js';
 import { STUDIO_ICON_PATHS } from '../src/studio-icons.js';
 import { DEFAULT_KEYMAP_ACTIONS, keyLabel, resolveKeymap, resolveKeymapPreset } from '../src/studio-keymap.js';
 import { byText, createFakeRenderer, dispatch, installStudioDom } from './support/studio-dom.mjs';
@@ -169,10 +169,23 @@ test('the sheet marks that rows are hidden below until it is scrolled to the end
   const body = new EventTarget();
   body.dataset = {};
   Object.assign(body, { scrollHeight: 600, clientHeight: 300, scrollTop: 0 });
-  const sync = watchScrolledToEnd(body);
+  const sync = watchScrollFades(body);
   sync();
   assert.equal(body.dataset.more, 'true');
   body.scrollTop = 300;
   body.dispatchEvent(new Event('scroll'));
   assert.equal(body.dataset.more, undefined);
+  assert.equal(body.dataset.above, 'true', 'rows are hidden above once it is scrolled');
+  body.scrollTop = 0;
+  body.dispatchEvent(new Event('scroll'));
+  assert.equal(body.dataset.above, undefined);
+});
+
+test('a menu button of the bar is marked expanded while its menu is open', testContext => {
+  const ui = mountStudio(testContext);
+  const openEvent = ui.dom.document.createEvent('toggle', { newState: 'open' });
+  ui.helpMenu.dispatchEvent(openEvent);
+  assert.equal(ui.helpButton.getAttribute('aria-expanded'), 'true');
+  ui.helpMenu.dispatchEvent(ui.dom.document.createEvent('toggle', { newState: 'closed' }));
+  assert.equal(ui.helpButton.getAttribute('aria-expanded'), 'false');
 });

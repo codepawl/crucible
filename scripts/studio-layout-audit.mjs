@@ -294,8 +294,18 @@ function probeShortcutSheet() {
   if (scrolls && scrollBody.scrollTop === 0 && scrollBody.dataset.more !== 'true') problems.push('The sheet has rows below but shows no fade at its bottom edge.');
   const tallRows = Array.from(dialog.querySelectorAll('.crucible-studio-shortcut-item')).filter(row => row.getBoundingClientRect().height > 20);
   if (tallRows.length > 0) problems.push('These sheet rows wrap to more than one line: ' + tallRows.map(row => row.textContent).join(', ') + '.');
+  const dialogBox = dialog.getBoundingClientRect();
+  const keyRights = Array.from(dialog.querySelectorAll('.crucible-studio-shortcut-keys')).map(keys => keys.getBoundingClientRect().right);
+  const labelLefts = Array.from(dialog.querySelectorAll('.crucible-studio-shortcut-item > span:first-child')).map(label => label.getBoundingClientRect().left);
+  const leftInset = Math.round((Math.min(...labelLefts) - dialogBox.left) * 10) / 10;
+  const rightInset = Math.round((dialogBox.right - Math.max(...keyRights)) * 10) / 10;
+  const scrollbarWidth = scrollBody.offsetWidth - scrollBody.clientWidth;
+  const scrollbarLeft = scrollBody.getBoundingClientRect().right - scrollbarWidth;
+  const scrollbarGap = Math.round((scrollbarLeft - Math.max(...keyRights)) * 10) / 10;
+  if (scrolls && scrollbarGap < 8) problems.push('The key text ends ' + scrollbarGap + ' px from the scrollbar: keep at least 8.');
+  if (!scrolls && Math.abs(leftInset - rightInset) > 1) problems.push('The text is ' + leftInset + ' px from the left edge of the sheet and ' + rightInset + ' px from the right one: they must match within 1 px.');
   const columnCount = dialog.querySelectorAll('.crucible-studio-shortcut-column').length;
-  return { problems, numbers: { padding: insets[0], headGap, rowGap, groupGap, contrast: Number(contrast.toFixed(2)), columns: columnCount, scrolls } };
+  return { problems, numbers: { padding: insets[0], headGap, rowGap, groupGap, contrast: Number(contrast.toFixed(2)), columns: columnCount, scrolls, leftInset, rightInset, scrollbarGap } };
 }
 
 // With a short window the sheet scrolls inside itself: the last group is reachable and the title row with the close button stays in view.
