@@ -4568,7 +4568,11 @@ export function createStudio(container, {
       const coordinates = localCoordinates(event);
       if (meshEditor?.active) {
         if ((event.button ?? 0) === 0) {
-          meshEditor.pick(coordinates.x, coordinates.y, { additive: event.shiftKey });
+          if (event.altKey) {
+            meshEditor.pickLoop(coordinates.x, coordinates.y, { ring: event.ctrlKey || event.metaKey, additive: event.shiftKey });
+          } else {
+            meshEditor.pick(coordinates.x, coordinates.y, { additive: event.shiftKey });
+          }
           syncUi();
           requestFrame();
         }
@@ -4801,6 +4805,11 @@ export function createStudio(container, {
     endCircleSelect();
   }, true);
 
+  function updateMeshSelectionView() {
+    syncUi();
+    requestFrame();
+  }
+
   function chooseMeshMode(mode) {
     meshEditor.setMode(mode);
     syncUi();
@@ -4847,6 +4856,26 @@ export function createStudio(container, {
       meshEditor.beginCircleSelect();
       syncUi();
       requestFrame();
+    },
+    // L under the pointer; Ctrl+L and Ctrl+Plus or Minus have browser actions of their own (the address bar, the zoom).
+    'mesh.selectLinked': () => {
+      if (viewportPointer) meshEditor.selectLinkedAt(viewportPointer.x, viewportPointer.y);
+      updateMeshSelectionView();
+    },
+    'mesh.selectLinkedSelection': event => {
+      event.preventDefault();
+      meshEditor.selectLinkedFromSelection();
+      updateMeshSelectionView();
+    },
+    'mesh.growSelection': event => {
+      event.preventDefault();
+      meshEditor.growSelection();
+      updateMeshSelectionView();
+    },
+    'mesh.shrinkSelection': event => {
+      event.preventDefault();
+      meshEditor.shrinkSelection();
+      updateMeshSelectionView();
     },
     'mesh.noop': event => event.preventDefault(),
   };

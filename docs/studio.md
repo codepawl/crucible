@@ -57,6 +57,9 @@ Not there yet, and said so on screen when you reach it:
 - A move of more than 19 vertices that are not whole faces cannot be written yet; pick whole faces, or fewer vertices.
 - A mesh with a modifier stack is refused. A mesh of more than 8,000 triangles draws only the picked elements, with a notice.
 - **Alt+A** selects none and **Ctrl+I** inverts the selection, in the mode you are in (vertices, edges or faces); the object stays selected. Inverting nothing selects everything of that mode. Like a pick, neither is an undo step.
+- **Alt+click** selects a loop: in edge mode (or vertex mode) the loop of edges through the edge nearest the pointer, in face mode the band of faces that crosses the face edge nearest the pointer. **Ctrl+Alt+click** selects the ring of edges, or in face mode the band across the next edge round the face. **Shift** with either adds to the selection. A loop goes straight on through a vertex with four edges and four quads around it, and stops at a corner where 3 or 5 or more edges meet, at the border of the mesh and at a triangle or a larger polygon. A ring crosses quads only.
+- **L** selects everything joined to the element under the pointer, and **Ctrl+L** everything joined to the selection; parts that share a vertex count as joined.
+- **]** grows the selection by one step and **[** shrinks it by one, in the mode you are in: vertices step along edges, edges and faces step to the ones that share a vertex. **Ctrl+Numpad +** and **Ctrl+Numpad -** do the same. The brackets come first because Ctrl with plus or minus zooms the page and a laptop has no numpad.
 - **C** starts circle select. A circle follows the pointer: drag with the left button to select what it passes over, drag with the middle button (or hold **Shift**) to deselect, turn the wheel to make the circle bigger or smaller (4 to 400 pixels, 25 to start), and press **Esc** or right click to stop. In vertex mode it takes the vertices inside the circle, in edge mode the edges it touches, in face mode the faces it overlaps. Only what faces the camera is taken. The circle keeps its size until you change it.
 - Rotate, scale, box select, extrude and the other tools come next.
 
@@ -129,6 +132,9 @@ Every selected object has an outline in the accent colour with a thin ring of th
 | Tab | Edit the mesh of the selected object; Tab again leaves |
 | 1, 2, 3 | In edit mode: select vertices, edges or faces |
 | Alt+A, Ctrl+I, C | In edit mode: select none, invert the selection, circle select (Esc or right click ends it) |
+| L, Ctrl+L | In edit mode: select what is linked under the pointer, or linked to the selection |
+| ], Ctrl+Numpad + | In edit mode: grow the selection by one step |
+| [, Ctrl+Numpad - | In edit mode: shrink the selection by one step |
 | H, Alt+H | Hide the selection, show everything that is hidden |
 | Alt+G, Alt+R, Alt+S | Reset the position, rotation or scale of the selection |
 | Right click | Menu of the object under the pointer |
