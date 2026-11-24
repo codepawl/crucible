@@ -1,0 +1,29 @@
+{
+ "glb": "/lawn.glb",
+ "hdri": "/sky.hdr",
+ "eye": [
+  1.4,
+  0.1,
+  2.4
+ ],
+ "target": [
+  0,
+  0.04,
+  0
+ ],
+ "renderer": {
+  "memoryBudgetMiB": 512
+ },
+ "exposure": 1,
+ "environment": {
+  "groundCover": [
+   {
+    "surfaces": "Lawn",
+    "preset": "lawn",
+    "length": 0.12,
+    "density": 900,
+    "wind": 0.3
+   }
+  ]
+ }
+}

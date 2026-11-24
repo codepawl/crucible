@@ -21,8 +21,7 @@
     "surfaces": "Lawn",
     "preset": "lawn",
     "length": 0.12,
-    "density": 900,
-    "wind": 0.3
+    "density": 900
    }
   ]
  }
