@@ -3,7 +3,7 @@
 // studio-layout-rules.mjs: unequal insets around the content of a padded container, a gap or padding off the spacing
 // scale, or a gap between groups smaller than the gap inside one. Every failure names the selector, the numbers and the fix.
 //
-//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover] [--records file.json]
+//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|rename|popover] [--records file.json]
 //
 // Without --origin it starts a Vite dev server on a free port and stops it (by its own PID) at the end. Screens: the Studio
 // page, each of its popover menus, and the five steps of the setup dialog, each in the dark and the light theme at 1280 by 720.
@@ -21,7 +21,7 @@ const PREFERENCES_KEY = 'crucible-studio-preferences';
 const THEMES = ['dark', 'light'];
 const VIEWPORT = { width: 1280, height: 720 };
 const SERVER_START_TIMEOUT_MS = 60000;
-const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover] [--records file.json]';
+const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|rename|popover] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
 const SOFTWARE_ARGUMENTS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'];
@@ -136,6 +136,27 @@ export async function startDevServer() {
   throw new Error(`The Vite dev server did not answer on ${origin} within ${SERVER_START_TIMEOUT_MS / 1000} s.`);
 }
 
+const RENAME_WIDTHS = [1280, 720];
+
+// The top bar with the scene name editor open, then with an error under it, at both widths. The name is a button until it is clicked.
+async function measureRenameScreens(page, theme) {
+  const screens = [];
+  for (const width of RENAME_WIDTHS) {
+    await page.setViewportSize({ width, height: VIEWPORT.height });
+    await page.waitForTimeout(400);
+    await page.click('.crucible-studio-filepill');
+    await page.waitForSelector('.crucible-studio-name-editor input');
+    screens.push({ name: `rename editing ${width} (${theme})`, records: await measure(page, '.crucible-studio') });
+    await page.fill('.crucible-studio-name-editor input', 'bad|name');
+    await page.waitForTimeout(100);
+    screens.push({ name: `rename error ${width} (${theme})`, records: await measure(page, '.crucible-studio') });
+    await page.keyboard.press('Escape');
+  }
+  await page.setViewportSize(VIEWPORT);
+  await page.waitForTimeout(300);
+  return screens;
+}
+
 // A real pointer lock would grab the desktop cursor of whoever runs this.
 const FAKE_POINTER_LOCK_SCRIPT = () => {
   let lockedElement = null;
@@ -178,6 +199,7 @@ function measure(page, selector) {
 async function measureScreens(page, theme, only) {
   const screens = [];
   if (!only || only === 'studio') screens.push({ name: `studio (${theme})`, records: await measure(page, '.crucible-studio') });
+  if (!only || only === 'rename') screens.push(...await measureRenameScreens(page, theme));
   if (!only || only === 'popover') {
     const identifiers = await page.evaluate(() => Array.from(document.querySelectorAll('.crucible-studio [popover]')).map(element => element.id).filter(Boolean));
     for (const identifier of identifiers) {

@@ -531,7 +531,6 @@ export const STUDIO_CSS = `
 .crucible-studio-menubar > .crucible-studio-island:first-child { justify-self: start; }
 .crucible-studio-menubar > .crucible-studio-spacer { display: none; }
 .crucible-studio-menubar > .crucible-studio-spacer + .crucible-studio-island { justify-self: end; }
-.crucible-studio[data-tight="true"] .crucible-studio-filepill { display: none; }
 .crucible-studio[data-desktop="true"] .crucible-studio-menubar {
   -webkit-app-region: drag;
   pointer-events: auto;
@@ -603,13 +602,13 @@ export const STUDIO_CSS = `
   line-height: 22px;
 }
 .crucible-studio-name-field {
-  display: inline-grid;
-  min-inline-size: 12ch;
+  position: relative;
+  display: inline-block;
+  min-inline-size: 6ch;
   max-inline-size: 32ch;
 }
 .crucible-studio-name-mirror,
 .crucible-studio input.crucible-studio-name-input {
-  grid-area: 1 / 1;
   padding: var(--studio-space-4) var(--studio-space-8);
   border: 1px solid transparent;
   font: inherit;
@@ -617,11 +616,14 @@ export const STUDIO_CSS = `
   line-height: inherit;
 }
 .crucible-studio-name-mirror {
+  display: block;
   visibility: hidden;
   white-space: pre;
   overflow: hidden;
 }
 .crucible-studio input.crucible-studio-name-input {
+  position: absolute;
+  inset: 0;
   min-inline-size: 0;
   inline-size: 100%;
   border-color: var(--studio-accent);
@@ -646,14 +648,14 @@ export const STUDIO_CSS = `
 }
 .crucible-studio-name-suffix {
   flex: none;
-  padding-inline-end: var(--studio-space-4);
+  padding-inline: var(--studio-space-4);
   color: var(--studio-muted);
   user-select: none;
 }
 .crucible-studio-name-error {
   position: absolute;
   inset-block-start: calc(100% + var(--studio-space-8));
-  inset-inline-start: 0;
+  inset-inline-end: 0;
   z-index: 8;
   display: flex;
   align-items: center;
@@ -843,7 +845,6 @@ export const STUDIO_CSS = `
 }
 .crucible-studio[data-compact="true"] .crucible-studio-menu-button[popovertarget="crucible-studio-pop-view"],
 .crucible-studio[data-compact="true"] .crucible-studio-menu-button[popovertarget="crucible-studio-pop-help"],
-.crucible-studio[data-compact="true"] .crucible-studio-filepill,
 .crucible-studio[data-compact="true"] .crucible-studio-primary-btn span {
   display: none;
 }
