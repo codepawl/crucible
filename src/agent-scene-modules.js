@@ -16,6 +16,7 @@ const MODULE_LOADERS = {
   drive: () => import('./agent-drive.js'),
   physics: () => import('./agent-physics.js'),
   fracture: () => import('./agent-fracture.js'),
+  meshParts: () => import('./agent-mesh-parts.js'),
   explosion: () => import('./agent-explosion.js'),
   vehicleDamage: () => import('./vehicle-damage.js'),
   cloth: () => import('./agent-cloth.js'),
@@ -87,7 +88,8 @@ const DEFAULT_STAGE_MARKERS = {
 
 // Each test errs on the side of loading: a false positive costs a chunk, a false negative a clear error.
 const MODULE_MARKERS = {
-  mesh: ['"type":"mesh"', '"instances"'],
+  mesh: ['"type":"mesh"', '"instances"', '"separate-faces"', '"join-meshes"'],
+  meshParts: ['"separate-faces"', '"join-meshes"'],
   modeling: ['"type":"lathe"', '"type":"extrude"', '"type":"tube"', '"type":"curve"', '"type":"sdf"', '"type":"cloud"'],
   text: ['"type":"text"'],
   motion: ['"motion":{', '"bake-motion"', '"add-explosion"'],

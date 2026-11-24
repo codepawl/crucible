@@ -753,6 +753,41 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     svg.append(...over);
   }
 
+  // The faces a pick stands for: the picked faces, or in vertex and edge mode every face whose vertices are all picked.
+  function selectedFaces() {
+    if (!state) return [];
+    if (state.mode === 'face') return [...state.selected].sort((first, second) => first - second);
+    const vertices = selectedVertices();
+    const { mesh } = state;
+    const faces = [];
+    for (let face = 0; face < mesh.faceCount; face += 1) {
+      let covered = true;
+      for (let corner = mesh.faceOffsets[face]; corner < mesh.faceOffsets[face + 1]; corner += 1) covered &&= vertices.has(mesh.cornerVertices[corner]);
+      if (covered) faces.push(face);
+    }
+    return faces;
+  }
+
+  // The picked faces become a node of their own, in one scene change (one undo step); the object keeps the rest and edit mode stays on it.
+  function separateSelection() {
+    if (!state || drag) return refuse('Enter edit mode on a mesh to separate part of it.');
+    const faces = selectedFaces();
+    if (faces.length === 0) return refuse('Pick the faces to separate first.');
+    if (faces.length === state.mesh.faceCount) return refuse('Pick part of the mesh: separating every face would leave this object empty.');
+    const { nodeId } = state;
+    const takenIds = new Set(controller.exportRecipe().nodes.map(node => node.id));
+    let partId = `${nodeId}-part`;
+    for (let suffix = 2; takenIds.has(partId); suffix += 1) partId = `${nodeId}-part-${suffix}`;
+    try {
+      controller.applyImportOperations([{ type: 'separate-faces', node: nodeId, faces, id: partId }], { detail: { kind: 'topology', nodeId } });
+    } catch (error) {
+      return refuse(error.message);
+    }
+    refresh();
+    announce(`Separated ${faces.length} ${faces.length === 1 ? 'face' : 'faces'} into ${partId}`);
+    return { ok: true, nodeId: partId };
+  }
+
   return Object.freeze({
     get active() { return state !== null; },
     get mode() { return state?.mode ?? null; },
@@ -764,6 +799,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     leave,
     setMode,
     clearSelection,
+    separateSelection,
     pick,
     refresh,
     cagePaths,

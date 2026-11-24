@@ -32,6 +32,7 @@ import './field-rotation.js';
 import './field-mesh-inputs.js';
 import './field-voronoi.js';
 import './mesh-hull-modifiers.js';
+import './mesh-join.js';
 import './mesh-ocean-modifier.js';
 import './mesh-build-modifier.js';
 import { remeshMesh, remeshGridSize, MAX_REMESH_RESOLUTION } from './mesh-remesh.js';
@@ -471,14 +472,14 @@ function surfaceLoader(resolveCutter) {
   };
 }
 
-function runEdit(current, edit, index, { resolveCutter, resolveHeight, limits }) {
+function runEdit(current, edit, index, { resolveCutter, resolveHeight, resolveJoinMesh, limits }) {
   const loadSurface = surfaceLoader(resolveCutter);
   const result = { op: edit.op };
   if (edit.name) result.name = edit.name;
   if (isModifierOperation(edit.op)) {
     let outcome;
     try {
-      outcome = runModifierEdit(current, edit, limits);
+      outcome = runModifierEdit(current, edit, { ...limits, resolveJoinMesh });
     } catch (error) {
       throw editFailure(error, index, `${edit.op}`);
     }
@@ -727,14 +728,14 @@ function tagSummary(mesh, name) {
  * the tags it created (and their face counts) and the mesh size after it.
  * An edit that selects no faces throws, because silently doing nothing hides a wrong selection from the agent.
  */
-export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 250_000, resolveCutter, resolveHeight } = {}) {
+export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 250_000, resolveCutter, resolveHeight, resolveJoinMesh } = {}) {
   const normalized = normalizeMeshEdits(edits);
   const limits = { maxVertices, maxFaces };
   const results = [];
   let current = mesh;
   normalized.forEach((edit, index) => {
     checkArrayBudget(current, edit, limits, index);
-    const outcome = runEdit(current, edit, index, { resolveCutter, resolveHeight, limits });
+    const outcome = runEdit(current, edit, index, { resolveCutter, resolveHeight, resolveJoinMesh, limits });
     current = outcome.mesh;
     checkBudget(current, limits, index, edit.op);
     outcome.result.after = { vertices: current.vertexCount, faces: current.faceCount };

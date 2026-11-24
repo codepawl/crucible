@@ -1430,6 +1430,7 @@ export function createStudio(container, {
     createMenuItem('Copy', 'edit.copy', () => copySelection(), 'duplicate'),
     createMenuItem('Paste', 'edit.paste', () => pasteCopy(), 'duplicate'),
     createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicate'),
+    createMenuItem('Join', 'edit.join', () => joinSelection(), 'duplicate'),
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
     createMenuItem('Deselect', 'edit.deselect', () => controller.selectNode(null)),
     createMenuItem('Hide', 'edit.hide', () => hideSelection(), 'eyeOff'),
@@ -1451,20 +1452,28 @@ export function createStudio(container, {
     createMenuItem('Reset scale', 'edit.resetScale', () => resetSelectionTransform('scale'), 'scale'),
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
   );
+  // P in edit mode: what to separate. Selection is the picked faces.
+  const separatePopover = createMenuPopover(
+    'crucible-studio-pop-separate',
+    createMenuItem('Selection', 'mesh.separate', () => separateMeshSelection(), 'duplicate'),
+  );
   function openObjectMenu(clientX, clientY) {
+    openPopoverAt(objectPopover, clientX, clientY);
+  }
+  function openPopoverAt(popover, clientX, clientY) {
     const windowWidth = documentReference.defaultView?.innerWidth ?? 1280;
     const windowHeight = documentReference.defaultView?.innerHeight ?? 800;
-    objectPopover.togglePopover?.(false);
-    objectPopover.style.left = `${Math.round(Math.max(8, Math.min(clientX, windowWidth - 256)))}px`;
-    objectPopover.style.right = 'auto';
+    popover.togglePopover?.(false);
+    popover.style.left = `${Math.round(Math.max(8, Math.min(clientX, windowWidth - 256)))}px`;
+    popover.style.right = 'auto';
     // In the lower half the menu hangs from the pointer and grows upward, so it stays on screen at any height.
     const opensUpward = clientY > windowHeight / 2;
-    objectPopover.style.top = opensUpward ? 'auto' : `${Math.round(clientY)}px`;
-    objectPopover.style.bottom = opensUpward ? `${Math.round(Math.max(8, windowHeight - clientY))}px` : 'auto';
+    popover.style.top = opensUpward ? 'auto' : `${Math.round(clientY)}px`;
+    popover.style.bottom = opensUpward ? `${Math.round(Math.max(8, windowHeight - clientY))}px` : 'auto';
     const opening = popoverOpeningStyle({ opensUpward });
-    objectPopover.style.setProperty('--studio-popover-origin', opening.origin);
-    objectPopover.style.setProperty('--studio-popover-shift', opening.shift);
-    objectPopover.showPopover?.();
+    popover.style.setProperty('--studio-popover-origin', opening.origin);
+    popover.style.setProperty('--studio-popover-shift', opening.shift);
+    popover.showPopover?.();
   }
   function hideSelection() {
     if (!controller.selectedNodeId) return;
@@ -1687,7 +1696,7 @@ export function createStudio(container, {
     createMenuItem('Export web pack', '', () => exportPackButton.click(), 'globe'),
     createElement(documentReference, 'p', { className: 'crucible-studio-popover-note', textContent: 'New scene' }),
   );
-  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, viewPopover, helpPopover]) {
+  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, separatePopover, viewPopover, helpPopover]) {
     popoverElement.addEventListener('click', event => {
       if (event.target.closest?.('button')) popoverElement.hidePopover?.();
     });
@@ -1750,6 +1759,7 @@ export function createStudio(container, {
     exportPopover,
     editPopover,
     objectPopover,
+    separatePopover,
     viewPopover,
     helpPopover,
   );
@@ -4537,6 +4547,48 @@ export function createStudio(container, {
   // The second Tab pressed while the editor is still loading takes the first one back.
   let meshEnterPending = false;
 
+  // Ctrl+J: the other selected objects join the active one (the last picked), one undo step. A shape becomes a mesh first.
+  async function joinSelection() {
+    const activeId = controller.selectedNodeId;
+    const otherIds = controller.selectedNodeIds.filter(nodeId => nodeId !== activeId);
+    if (!activeId || otherIds.length === 0) {
+      announce('Select two or more objects to join. The one picked last keeps the result.');
+      return;
+    }
+    const recipe = controller.exportRecipe();
+    const operations = [];
+    const active = recipe.nodes.find(node => node.id === activeId);
+    const activeGeometry = recipe.geometries.find(geometry => geometry.id === active?.geometry);
+    if (activeGeometry && activeGeometry.type !== 'mesh') {
+      const { meshGeometryOfPrimitive } = await import('./studio-mesh-edit.js');
+      const converted = meshGeometryOfPrimitive(activeGeometry);
+      if (converted) {
+        const takenIds = new Set(recipe.geometries.map(geometry => geometry.id));
+        let meshId = `${activeGeometry.id}-mesh`;
+        for (let suffix = 2; takenIds.has(meshId); suffix += 1) meshId = `${activeGeometry.id}-mesh-${suffix}`;
+        operations.push({ type: 'add-geometry', geometry: { ...converted, id: meshId } }, { type: 'set-node', id: activeId, geometry: meshId });
+      }
+    }
+    operations.push({ type: 'join-meshes', node: activeId, nodes: otherIds });
+    try {
+      controller.applyImportOperations(operations, { selectNodeId: activeId, detail: { kind: 'topology', nodeId: activeId } });
+      announce(`Joined ${otherIds.length + 1} objects into ${activeId}`);
+    } catch (error) {
+      announce(error.message);
+    }
+  }
+
+  function separateMeshSelection() {
+    meshEditor?.separateSelection();
+    syncUi();
+    requestFrame();
+  }
+
+  function openSeparateMenu() {
+    const bounds = canvas.getBoundingClientRect();
+    openPopoverAt(separatePopover, bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+  }
+
   async function enterMeshEdit() {
     if (meshEnterPending) {
       meshEnterPending = false;
@@ -4601,6 +4653,10 @@ export function createStudio(container, {
     'mesh.edgeMode': () => chooseMeshMode('edge'),
     'mesh.faceMode': () => chooseMeshMode('face'),
     'mesh.noop': event => event.preventDefault(),
+    'mesh.separate': event => {
+      event.preventDefault();
+      openSeparateMenu();
+    },
   };
 
   // Handlers of the normal context by action id. A handler calls preventDefault for the keys the browser would
@@ -4622,6 +4678,10 @@ export function createStudio(container, {
     'edit.duplicate': (event, binding) => {
       if (binding.ctrl) event.preventDefault();
       duplicateSelection();
+    },
+    'edit.join': event => {
+      event.preventDefault();
+      joinSelection();
     },
     'edit.delete': event => {
       if (!controller.selectedNodeId && !selectedObjectIsDeletable()) return;

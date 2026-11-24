@@ -58,6 +58,10 @@ Not there yet, and said so on screen when you reach it:
 - A mesh with a modifier stack is refused. A mesh of more than 8,000 triangles draws only the picked elements, with a notice.
 - Rotate, scale, box select, extrude and the other tools come next.
 
+**P** in edit mode opens a small menu at the middle of the viewport with **Selection**: the picked faces (in vertex or edge mode, the faces whose vertices are all picked) become a new object named `<name>-part`, with the same position, size, parent and material, so nothing moves. The object keeps its other faces and stays in edit mode; with nothing picked, or every face picked, it says what to do and changes nothing. It is one undo step.
+
+**Ctrl+J** (or **Edit ▸ Join**) joins the selected objects into the one picked last: each mesh is added to it where it stood in the scene, and the other objects go. Select two or more first (Shift or Ctrl with a click, or the Scene list). A shape joins as a mesh, and a joined object that has children, motion or a physics body is refused with the reason. The objects must share one material, since a mesh draws with one; if they differ, give them the same material first or keep them apart. It is one undo step.
+
 If another object uses the same geometry, entering edit mode gives this object a geometry of its own (the same conversion step), so the other one keeps its shape and does not move with it.
 
 ## Add an object or a light
@@ -115,11 +119,13 @@ The keys follow Blender where Studio has the same action. **Help ▸ Keyboard sh
 | Shift+A | Add an object or a light |
 | Ctrl+C, Ctrl+V | Copy the selected object, paste a copy of it (one undo step, still works after the original is deleted) |
 | Shift+D or Ctrl+D | Duplicate |
+| Ctrl+J | Join the selected objects into the one picked last |
 | X, Delete or Backspace | Delete |
 | Esc | Deselect |
 | A, Alt+A, Ctrl+I | Select all, select none, invert the selection |
 | Tab | Edit the mesh of the selected object; Tab again leaves |
 | 1, 2, 3 | In edit mode: select vertices, edges or faces |
+| P | In edit mode: separate the picked faces into their own object |
 | H, Alt+H | Hide the selection, show everything that is hidden |
 | Alt+G, Alt+R, Alt+S | Reset the position, rotation or scale of the selection |
 | Right click | Menu of the object under the pointer |

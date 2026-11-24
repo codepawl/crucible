@@ -5,6 +5,8 @@
 export const FOLDED_APPLY_OPERATION_NOTES = Object.freeze({
   'bake-motion': '{ nodes [node IDs, 32 at most], start, end, step, tolerance }: samples motion into keyframes. More: topic motionBake.',
   'fracture-node': '{ node, cells 2-64, strength N s, seed, impact [x,y,z], impactRadius, density, friction }: breaks a convex root node into glued physics pieces. More: topic physics.',
+  'separate-faces': '{ node, faces [face numbers of the mesh, as edit mode counts them], id }: the picked faces become a new node with the same transform and material, so nothing moves; the node keeps the rest. A mesh geometry other nodes use is copied first.',
+  'join-meshes': '{ node, nodes [node IDs, 32 at most] }: adds the meshes of nodes to the mesh of node, each placed where it stood in the world, and removes those nodes. They need the same material as node; a join mesh edit does the placing.',
   'add-explosion': '{ id, center [x,y,z], size m 0.5-100, ... }: layered blast. More: topic explosion.',
   settle: '{ settle: { id, geometry, material, colliders, ... } }: drops parts until they rest. More: topic settle.',
   'set-armatures': '{ armatures: [...] or null }: the same array as recipe.armatures in scene_create, 16 at most. More: topic armatures.',

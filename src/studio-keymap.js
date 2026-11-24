@@ -27,6 +27,7 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('edit.copy', 'Copy', 'Edit', 'normal', binding('c', { ctrl: true, shift: false })),
   action('edit.paste', 'Paste', 'Edit', 'normal', binding('v', { ctrl: true, shift: false })),
   action('edit.duplicate', 'Duplicate', 'Edit', 'normal', binding('d', { shift: true }), binding('d', { ctrl: true })),
+  action('edit.join', 'Join the selected objects', 'Edit', 'normal', binding('j', { ctrl: true })),
   action('edit.delete', 'Delete', 'Edit', 'normal', binding('x'), binding('Delete'), binding('Backspace')),
   action('edit.deselect', 'Deselect', 'Edit', 'normal', binding('Escape')),
   action('select.all', 'Select all', 'Edit', 'normal', binding('a', { shift: false })),
@@ -59,6 +60,7 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('mesh.vertexMode', 'Select vertices', 'Edit mode', 'mesh', binding('1')),
   action('mesh.edgeMode', 'Select edges', 'Edit mode', 'mesh', binding('2')),
   action('mesh.faceMode', 'Select faces', 'Edit mode', 'mesh', binding('3')),
+  action('mesh.separate', 'Separate the selection', 'Edit mode', 'mesh', binding('p')),
   action('mesh.noop', 'Keys that act on the whole object', 'Edit mode', 'mesh', binding('x'), binding('Delete'), binding('Backspace')),
   action('modal.place', 'Place', 'Holding an object', 'modal', binding('Enter'), binding(' ')),
   action('modal.cancel', 'Put back', 'Holding an object', 'modal', binding('Escape')),
@@ -82,6 +84,7 @@ export const SHORTCUT_ROWS = Object.freeze([
   Object.freeze({ keys: '{add.open}', label: 'Add an object or a light' }),
   Object.freeze({ keys: '{edit.copy} / {edit.paste}', label: 'Copy / Paste' }),
   Object.freeze({ keys: '{edit.duplicate} / {edit.duplicate#1}', label: 'Duplicate' }),
+  Object.freeze({ keys: '{edit.join}', label: 'Join the selected objects into the last one picked' }),
   Object.freeze({ keys: '{edit.delete} / {edit.delete#1}', label: 'Delete' }),
   Object.freeze({ keys: '{edit.deselect}', label: 'Deselect' }),
   Object.freeze({ keys: '{select.all} / {select.none} / {select.invert}', label: 'Select all / none / invert' }),
@@ -101,6 +104,7 @@ export const SHORTCUT_ROWS = Object.freeze([
   Object.freeze({ keys: 'Drag X / Y / Z', label: 'Scrub a number' }),
   Object.freeze({ keys: '{mesh.enter}', label: 'Edit the mesh / leave edit mode' }),
   Object.freeze({ keys: '{mesh.vertexMode} / {mesh.edgeMode} / {mesh.faceMode}', label: 'In edit mode: select vertices / edges / faces' }),
+  Object.freeze({ keys: '{mesh.separate}', label: 'In edit mode: separate the picked faces into their own object' }),
   Object.freeze({ keys: '{help.shortcuts}', label: 'This list' }),
 ]);
 

@@ -23,6 +23,7 @@ export const MODIFIER_OPERATIONS = /* @__PURE__ */ Object.freeze({
   wave: { fields: ['height', 'width', 'narrowness', 'speed', 'time', 'timeOffset', 'start', 'cyclic', 'axes', 'normal'], tags: [] },
   weighted_normal: { fields: ['angle', 'weight'], tags: [] },
   smooth_by_angle: { fields: ['angle', 'ignoreSharp'], tags: [] },
+  join: { fields: ['geometry', 'matrix'], tags: [] },
   bounding_box: { fields: [], tags: [] },
   convex_hull: { fields: [], tags: [] },
   build: { fields: ['order', 'axis', 'seed', 'frame', 'start', 'length', 'reverse'], tags: [] },
