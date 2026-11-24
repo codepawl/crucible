@@ -164,7 +164,46 @@ Maya and Cinema 4D also take **Alt** with a mouse button on the viewport: Alt an
 
 ## Settings
 
-**Edit ▸ Settings** (Ctrl+,) opens Settings: the step and the angle a Shift drag snaps to, the size of the handles, the workspace Studio opens in, the theme (System, Light or Dark), the performance tier, the keys (Blender, Maya or Cinema 4D), and whether the grid, the readout, the axis widget and the agent cursor show. They are kept in the browser (`localStorage`, key `crucible-studio-preferences`), not in the scene recipe, so a scene looks the same for everyone and each person keeps their own setup. **Reset** brings back the defaults. An app can pass `preferences` to `createStudio` to start from other values, `preferenceStorage: null` to keep nothing, and call `studio.setPreference(name, value)`.
+**Edit ▸ Settings** (Ctrl+,) opens Settings. A short list of sections stands on the left, each with an icon, and the rows of the chosen section are beside it; the dialog keeps the height of the tallest section, so it does not jump when you switch. On a narrow window the list shows only the icons.
+
+| Section | Rows |
+| --- | --- |
+| Interface | Theme (System, Light or Dark), Open in (the workspace Studio opens in), Floating panels, Motion |
+| Viewport | Performance tier, Grid, Camera and size readout, Axis widget, Agent cursor, Handle size, Zoom direction |
+| Editing | Move snap step and Rotate snap angle for a Shift drag |
+| Keys | The key preset (Blender, Maya or Cinema 4D) and a button that opens the shortcuts list |
+| Account | Only when the host page offers an account, see below |
+
+They are kept in the browser (`localStorage`, key `crucible-studio-preferences`), not in the scene recipe, so a scene looks the same for everyone and each person keeps their own setup. **Reset** brings back the defaults of every row. **Run setup again** opens the first-run setup. An app can pass `preferences` to `createStudio` to start from other values, `preferenceStorage: null` to keep nothing, and call `studio.setPreference(name, value)`.
+
+**Motion** is `motion`: `'system'` (the default) follows the system's reduced-motion setting, and `'reduced'` turns off Studio's own motion whatever the system says: menus, hover fades and the agent pointer's glide take no time, the bake pulse stops, and F frames the selection with a jump instead of a flight. Both ways go through one switch, so the system setting and the preference never disagree. Showing full motion over a system that asks for less is not offered: the motion rules are written as `prefers-reduced-motion` media queries, which a preference cannot turn back on.
+
+**Zoom direction** is `zoomDirection`: `'normal'` (the default) moves the camera away when the wheel scrolls down, `'inverted'` brings it closer. A trackpad pinch arrives as a wheel with Ctrl held and follows the same choice.
+
+**Units** (metres, centimetres, millimetres, feet and inches) are not a setting yet: the readout, the drag labels and the number fields each format lengths on their own, so a display unit needs one shared length formatter first.
+
+### Account
+
+When the host page provides `globalThis.crucibleShell.account`, Settings gets an **Account** section. Studio holds no token and makes no network call: it shows what the object reports and calls the functions it offers.
+
+```js
+globalThis.crucibleShell = {
+  account: {
+    // Required. Every optional field may be missing; text fields are shown as plain text.
+    async get() {
+      return { signedIn: true, name: 'Sample Person', email: 'sample.person@example.com', remainingText: '1,240 credits left', planText: 'Studio plan' };
+    },
+    async signIn() {},        // resolves when the sign-in is done; rejecting shows its message under the status
+    async signOut() {},       // resolves when done; Sign out is shown only when this exists
+    buyCredits() {},          // optional: "Buy more" is shown only when this exists
+    manageBilling() {},       // optional: "Manage billing" is shown only when this exists
+  },
+};
+// When the account changes, tell Studio and it reads get() again:
+document.dispatchEvent(new Event('crucible-shell:account-changed'));
+```
+
+Signed out, the section shows a lock mark, "Signed out" and one **Sign in** button; while `signIn()` runs the button reads "Waiting" and is disabled. Signed in, it shows a check mark, the person in a round avatar with an initial (no remote images), then `remainingText` as "Left to use" and `planText` as "Plan" when given, and the buttons. A host that has only the older `crucibleShell.builtInAgent` (`isSignedIn()`, `signIn()`) gets the section with the state and Sign in. With neither, there is no Account section.
 
 **Theme** forces the Studio light or dark whatever the system says; System follows the system. The dialogs and menus follow it too. An app that wants to theme its own frame passes `onThemeChange(theme)` to `createStudio`; it is called with `'light'` or `'dark'` at the start and on each change.
 
@@ -174,7 +213,7 @@ Maya and Cinema 4D also take **Alt** with a mouse button on the viewport: Alt an
 
 Studio spaces everything on one scale: 4, 8, 12, 16 and 24 px, as `--studio-space-4` to `--studio-space-24` on the Studio root, and 0. A 2 px step is allowed only between touching controls of one group (the buttons of a tool row); 6, 10, 14 and 18 px are not, because every use turned out to be a 4, 8, 12 or 16. Inside a group the gap is small (4 or 8), between groups it is larger (16 in a card), and the gap between groups is never smaller than the gap inside one. A card has the same inset on all four sides, measured from its real children.
 
-`node scripts/studio-layout-audit.mjs [--json] [--only setup|studio|popover]` checks this on the real DOM in headless Chrome: the Studio page, each of its menus and the five steps of the setup dialog, in the dark and the light theme at 1280 by 720. It fails with the selector, the measured numbers and the token to use when a container with a visible edge shows unequal insets (more than 2 px apart), when a gap or padding is off the scale, or when the gap between groups is smaller than the gap inside them. A container with no gap is not held to the last rule, since it keeps its parts apart with padding or is one surface. The few insets that are meant to differ (the tool rail, the end of an outliner row, a menu row) are declared with a reason in `ALLOWLIST` of `scripts/studio-layout-audit.mjs`; fix a real finding in the CSS instead of listing it. The rules are plain functions in `scripts/studio-layout-rules.mjs`, tested without a browser in `tests/studio-layout-rules.test.js`; `tests/studio-layout-audit.test.js` runs the audit in Chrome with the unit tests and seeds a mistake it must catch.
+`node scripts/studio-layout-audit.mjs [--json] [--only setup|settings|studio|popover]` checks this on the real DOM in headless Chrome: the Studio page, each of its menus, each section of Settings (with a sample signed-in host, so Account is measured) and the five steps of the setup dialog, in the dark and the light theme at 1280 by 720. It fails with the selector, the measured numbers and the token to use when a container with a visible edge shows unequal insets (more than 2 px apart), when a gap or padding is off the scale, or when the gap between groups is smaller than the gap inside them. A container with no gap is not held to the last rule, since it keeps its parts apart with padding or is one surface. The few insets that are meant to differ (the tool rail, the end of an outliner row, a menu row) are declared with a reason in `ALLOWLIST` of `scripts/studio-layout-audit.mjs`; fix a real finding in the CSS instead of listing it. The rules are plain functions in `scripts/studio-layout-rules.mjs`, tested without a browser in `tests/studio-layout-rules.test.js`; `tests/studio-layout-audit.test.js` runs the audit in Chrome with the unit tests and seeds a mistake it must catch.
 
 ## Set up Studio
 

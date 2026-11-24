@@ -2296,6 +2296,8 @@ test('Settings change the snap, the handles and what the viewport shows, and are
     theme: 'system',
     performance: 'automatic',
     keymap: 'crucible',
+    motion: 'system',
+    zoomDirection: 'normal',
     setupDone: false,
     gridVisible: false,
     readoutVisible: false,

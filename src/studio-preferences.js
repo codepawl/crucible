@@ -15,6 +15,10 @@ export const STUDIO_PREFERENCE_CHOICES = Object.freeze({
   theme: Object.freeze(['system', 'light', 'dark']),
   performance: Object.freeze(['automatic', 'light', 'balanced', 'sharp']),
   keymap: KEYMAP_PRESET_IDS,
+  // Motion: follow the system's reduced-motion setting, or reduce Studio's own motion whatever the system says.
+  motion: Object.freeze(['system', 'reduced']),
+  // Which way the wheel and a pinch zoom: normal brings the scene closer when the wheel scrolls up.
+  zoomDirection: Object.freeze(['normal', 'inverted']),
 });
 
 export const STUDIO_PANEL_WIDTH = Object.freeze({ least: 240, most: 520, initial: 284 });
@@ -79,6 +83,8 @@ export const STUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   theme: 'system',
   performance: 'automatic',
   keymap: 'crucible',
+  motion: 'system',
+  zoomDirection: 'normal',
   setupDone: false,
   gridVisible: true,
   readoutVisible: true,

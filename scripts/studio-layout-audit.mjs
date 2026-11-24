@@ -3,7 +3,7 @@
 // studio-layout-rules.mjs: unequal insets around the content of a padded container, a gap or padding off the spacing
 // scale, or a gap between groups smaller than the gap inside one. Every failure names the selector, the numbers and the fix.
 //
-//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover] [--records file.json]
+//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|popover] [--records file.json]
 //
 // Without --origin it starts a Vite dev server on a free port and stops it (by its own PID) at the end. Screens: the Studio
 // page, each of its popover menus, and the five steps of the setup dialog, each in the dark and the light theme at 1280 by 720.
@@ -21,9 +21,14 @@ const PREFERENCES_KEY = 'crucible-studio-preferences';
 const THEMES = ['dark', 'light'];
 const VIEWPORT = { width: 1280, height: 720 };
 const SERVER_START_TIMEOUT_MS = 60000;
-const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover] [--records file.json]';
+const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|popover] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
+// A signed-in host with every optional field, so the Account section of Settings is on screen and measured.
+const SAMPLE_ACCOUNT_HOST = `globalThis.crucibleShell = { account: {
+  get: async () => ({ signedIn: true, name: 'Sample Person', email: 'sample.person@example.com', remainingText: '1,240 credits left', planText: 'Studio plan' }),
+  signIn: async () => {}, signOut: async () => {}, buyCredits: () => {}, manageBilling: () => {},
+} };`;
 const SOFTWARE_ARGUMENTS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'];
 
 // An uneven inset or an off-scale value that is meant. Each entry names the kind, the selector (a substring of the
@@ -32,6 +37,7 @@ export const ALLOWLIST = Object.freeze([
   { kind: 'uneven-inset', selector: 'crucible-studio-toolbar', reason: 'The tool rail is a strip as tall as the window; its buttons sit at the top and the strip ends below them.' },
   { kind: 'uneven-inset', selector: 'crucible-studio-tree-row', reason: 'The visibility button at the end of an outliner row is a hit area with its own room, so the row keeps 2px on that side.' },
   { kind: 'uneven-inset', selector: 'crucible-studio-popover > button', reason: 'A menu row is a full-width hit area whose label starts at the leading edge; the free space is the end of the row.' },
+  { kind: 'uneven-inset', selector: 'crucible-studio-settings-section', reason: 'A section of the Settings list is a full-width hit area whose icon and label start at the leading edge; the free space is the end of the row.' },
 ]);
 
 // Runs inside the page. Returns one record per visible element under `rootElement`; the rules read them in Node.
@@ -161,6 +167,7 @@ export async function launchBrowser() {
 export async function openStudio(browser, origin, theme, extraCss = '') {
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
   await context.addInitScript(FAKE_POINTER_LOCK_SCRIPT);
+  await context.addInitScript(SAMPLE_ACCOUNT_HOST);
   await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [PREFERENCES_KEY, JSON.stringify({ theme, setupDone: true })]);
   const page = await context.newPage();
   await page.goto(origin + STUDIO_PAGE, { waitUntil: 'load', timeout: 120000 });
@@ -186,6 +193,17 @@ async function measureScreens(page, theme, only) {
       screens.push({ name: `${identifier} (${theme})`, records: await measure(page, `#${identifier}`) });
       await page.evaluate(id => document.getElementById(id).hidePopover(), identifier);
     }
+  }
+  if (!only || only === 'settings') {
+    await page.evaluate(() => document.querySelector('dialog.crucible-studio-settings-dialog').showModal());
+    const sections = page.locator('.crucible-studio-settings-section');
+    for (let index = 0; index < await sections.count(); index += 1) {
+      await sections.nth(index).click();
+      await page.waitForTimeout(200);
+      const sectionName = await sections.nth(index).getAttribute('data-section');
+      screens.push({ name: `settings ${sectionName} (${theme})`, records: await measure(page, 'dialog.crucible-studio-settings-dialog') });
+    }
+    await page.evaluate(() => document.querySelector('dialog.crucible-studio-settings-dialog').close());
   }
   if (!only || only === 'setup') {
     await page.evaluate(() => window.__studioPage.openSetup());

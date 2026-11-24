@@ -14,9 +14,10 @@ import { packedSkyOf } from './scene-pack-sky.js';
 import { encodePackOrRefuse } from './studio-pack-refusal.js';
 import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shaders.js';
 import { STUDIO_CSS } from './studio-styles.js';
-import { findKeymapAction, findMouseNavigation, formatShortcutKeys, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
+import { findKeymapAction, findMouseNavigation, formatShortcutKeys, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
+import { createStudioSettings } from './studio-settings.js';
 import { detectStudioHardware, gatherStudioHardwareInputs, rendererChangeFor, resolveStudioPerformanceTier, studioViewportSettingsFor } from './studio-hardware.js';
 import { createStudioDiagnostics, describeStudioEnvironment, watchStudioDiagnostics } from './studio-diagnostics.js';
 import {
@@ -965,22 +966,6 @@ const TRANSFORM_AT_REST = Object.freeze({ translation: [0, 0, 0], rotation: [0, 
 const TRANSFORM_PART_WORDS = Object.freeze({ translation: 'Position', rotation: 'Rotation', scale: 'Scale' });
 const VIEW_PRESET_BY_ACTION = Object.freeze({ 'view.front': 'front', 'view.right': 'right', 'view.top': 'top' });
 
-// One row of the Settings dialog each: the preference, what the row is called and, for a choice, how a value reads.
-const STUDIO_SETTING_ROWS = Object.freeze([
-  ['moveSnapStep', 'Move snap step', value => `${value} m`],
-  ['rotateSnapDegrees', 'Rotate snap angle', value => `${value}°`],
-  ['gizmoSize', 'Handle size', value => value[0].toUpperCase() + value.slice(1)],
-  ['startWorkspace', 'Open in', value => value[0].toUpperCase() + value.slice(1)],
-  ['theme', 'Theme', value => value[0].toUpperCase() + value.slice(1)],
-  ['performance', 'Performance', value => value[0].toUpperCase() + value.slice(1)],
-  ['keymap', 'Keys', value => KEYMAP_PRESETS[value].label],
-  ['gridVisible', 'Grid'],
-  ['readoutVisible', 'Camera and size readout'],
-  ['viewWidgetVisible', 'Axis widget'],
-  ['agentCursorVisible', 'Agent cursor'],
-  ['panelsFloating', 'Floating panels'],
-]);
-
 function browserPreferenceStorage() {
   try {
     return globalThis.localStorage ?? null;
@@ -1225,7 +1210,7 @@ export function createStudio(container, {
     createMenuItem('Reset position', 'edit.resetPosition', () => resetSelectionTransform('translation'), 'translate'),
     createMenuItem('Reset rotation', 'edit.resetRotation', () => resetSelectionTransform('rotation'), 'rotate'),
     createMenuItem('Reset scale', 'edit.resetScale', () => resetSelectionTransform('scale'), 'scale'),
-    createMenuItem('Settings…', 'settings.open', () => settingsDialog.showModal(), 'settings'),
+    createMenuItem('Settings…', 'settings.open', () => settings.open(), 'settings'),
   );
   // A right click on an object, in the viewport or in the Scene list, opens the actions on that object where the
   // pointer is. The rows are the Edit menu's own, so a key learned in one place works in the other.
@@ -1847,7 +1832,7 @@ export function createStudio(container, {
   const readoutCamera = createElement(documentReference, 'span');
   const readoutSelection = createElement(documentReference, 'span', { className: 'crucible-studio-readout-selection' });
   const readout = createElement(documentReference, 'div', { className: 'crucible-studio-readout', attributes: { 'aria-hidden': 'true' } }, readoutCamera, readoutSelection);
-  const agentPresence = createAgentPresence(documentReference, { controller, requestDraw: () => requestFrame() });
+  const agentPresence = createAgentPresence(documentReference, { controller, requestDraw: () => requestFrame(), isReducedMotion: () => motionIsReduced() });
   const pausedNotice = createPausedPictureNotice({
     documentReference,
     createIcon: iconName => createIcon(documentReference, iconName),
@@ -2351,43 +2336,28 @@ export function createStudio(container, {
     shortcutsDialog.returnValue = '';
   });
 
-  const settingControls = new Map();
-  const settingRows = STUDIO_SETTING_ROWS.map(([name, label, describeChoice]) => {
-    const choices = STUDIO_PREFERENCE_CHOICES[name];
-    const control = choices
-      ? createElement(documentReference, 'select', {}, ...choices.map(choice => createElement(documentReference, 'option', { value: String(choice), textContent: describeChoice(choice) })))
-      : createElement(documentReference, 'input', { type: 'checkbox' });
-    control.dataset.setting = name;
-    control.addEventListener('change', () => {
-      setPreference(name, choices ? choices.find(choice => String(choice) === control.value) : control.checked);
-    });
-    settingControls.set(name, control);
-    return createElement(documentReference, 'label', { className: 'crucible-studio-setting' }, createElement(documentReference, 'span', { textContent: label }), control);
-  });
-  const settingsResetButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Reset' });
-  settingsResetButton.addEventListener('click', () => {
-    preferences = normalizeStudioPreferences({ setupDone: preferences.setupDone });
-    storePreferences();
-    applyPreferences();
-    announce('Settings reset');
-  });
-  const settingsDialog = createElement(
+  const settings = createStudioSettings({
     documentReference,
-    'dialog',
-    { className: 'crucible-studio-settings-dialog', attributes: { 'aria-labelledby': 'crucible-studio-settings-title', closedby: 'any' } },
-    createElement(documentReference, 'h2', { id: 'crucible-studio-settings-title', textContent: 'Settings' }),
-    createElement(documentReference, 'div', { className: 'crucible-studio-settings' }, ...settingRows),
-    createElement(
-      documentReference,
-      'form',
-      { method: 'dialog', className: 'crucible-studio-dialog-actions' },
-      settingsResetButton,
-      createElement(documentReference, 'button', { type: 'submit', value: 'close', autofocus: true, textContent: 'Done' }),
-    ),
-  );
-  settingsDialog.addEventListener('close', () => {
-    settingsDialog.returnValue = '';
+    createElement,
+    createIcon,
+    shell: globalThis.crucibleShell,
+    onChange: (name, value) => setPreference(name, value),
+    onReset: () => {
+      preferences = normalizeStudioPreferences({ setupDone: preferences.setupDone });
+      storePreferences();
+      applyPreferences();
+      announce('Settings reset');
+    },
+    onRunSetup: () => {
+      settings.dialog.close();
+      openSetup();
+    },
+    onOpenShortcuts: () => {
+      settings.dialog.close();
+      shortcutsDialog.showModal();
+    },
   });
+  const settingsDialog = settings.dialog;
 
   const setup = createStudioSetup({
     documentReference,
@@ -2430,6 +2400,7 @@ export function createStudio(container, {
     applyTheme();
     applyPerformance();
     if (setup.dialog.open) setup.refresh();
+    root.dataset.motion = preferences.motion;
     root.dataset.readout = preferences.readoutVisible ? 'on' : 'off';
     root.dataset.viewWidget = preferences.viewWidgetVisible ? 'on' : 'off';
     // Floating panels lie over a scene that fills the window. Docked ones take the window's edges and the viewport
@@ -2442,7 +2413,7 @@ export function createStudio(container, {
     showPanelSizes(preferences);
     showPanelMinimized(sceneMinimizeButton, 'outlinerMinimized', 'Scene', preferences.sceneMinimized);
     showPanelMinimized(propertiesMinimizeButton, 'inspectorMinimized', 'Properties', preferences.propertiesMinimized);
-    for (const [name, control] of settingControls) {
+    for (const [name, control] of settings.controls) {
       if (STUDIO_PREFERENCE_CHOICES[name]) control.value = String(preferences[name]);
       else control.checked = preferences[name];
     }
@@ -2935,6 +2906,11 @@ export function createStudio(container, {
   // F flies the camera to the framed object instead of jumping there, so the eye can follow where the view went. The
   // flight ends the moment anything else moves the camera (an orbit, a view key, undo, a new file). With reduced motion
   // the view jumps.
+  // The one switch for Studio's own motion: the Motion preference, or the system's reduced-motion setting while it follows the system.
+  function motionIsReduced() {
+    return preferences.motion === 'reduced' || (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
   function stopFlight() {
     if (flightHandle) {
       cancelAnimationFrame(flightHandle);
@@ -2944,8 +2920,7 @@ export function createStudio(container, {
 
   function flyToSelection() {
     stopFlight();
-    const reducedMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reducedMotion || typeof requestAnimationFrame !== 'function') {
+    if (motionIsReduced() || typeof requestAnimationFrame !== 'function') {
       controller.frameSelection();
       return;
     }
@@ -4160,7 +4135,7 @@ export function createStudio(container, {
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
     stopFlight();
-    controller.orbitCamera({ zoomScale: 1 + Math.max(-0.35, Math.min(0.35, event.deltaY * 0.0012)) });
+    controller.orbitCamera({ zoomScale: 1 + Math.max(-0.35, Math.min(0.35, event.deltaY * 0.0012 * (preferences.zoomDirection === 'inverted' ? -1 : 1))) });
   }, { passive: false });
 
   viewportElement.addEventListener('dragover', event => {
@@ -4389,7 +4364,7 @@ export function createStudio(container, {
     },
     'settings.open': event => {
       event.preventDefault();
-      settingsDialog.showModal();
+      settings.open();
     },
     'help.shortcuts': () => shortcutsDialog.showModal(),
     'mesh.enter': event => {
@@ -4674,6 +4649,7 @@ export function createStudio(container, {
       clearTimeout(statusExitTimer);
       clearTimeout(awaitedProgramTimer);
       agentPresence.dispose();
+      settings.dispose();
       systemSchemeQuery?.removeEventListener?.('change', onSystemSchemeChange);
       if (frameHandle) cancelAnimationFrame(frameHandle);
       stopFlight();

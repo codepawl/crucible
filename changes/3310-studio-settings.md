@@ -1,0 +1,1 @@
+- Studio Settings is grouped into Interface, Viewport, Editing and Keys sections with icons, gains an Account section when the host page provides `crucibleShell.account`, and adds Motion, Zoom direction and Run setup again (#3310)
