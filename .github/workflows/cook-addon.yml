@@ -251,6 +251,7 @@ on:
       - 'src/mesh-edgesplit.js'
       - 'src/mesh-edit-field.js'
       - 'src/mesh-edit.js'
+      - 'src/mesh-element-move.js'
       - 'src/mesh-field-edits.js'
       - 'src/mesh-field-surfaces.js'
       - 'src/mesh-fields.js'
