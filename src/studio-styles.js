@@ -1218,6 +1218,7 @@ export const STUDIO_CSS = `
 }
 .crucible-studio[data-modal] .crucible-studio-viewport { cursor: move; }
 .crucible-studio-hint-delta { min-inline-size: 9ch; }
+.crucible-studio-hint-typed { font-variant-numeric: tabular-nums; color: var(--studio-text); font-weight: 600; }
 .crucible-studio-hint-chip {
   display: inline-flex;
   align-items: center;
