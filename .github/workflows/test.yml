@@ -108,7 +108,7 @@ jobs:
   # the files is also the isolation check. Twelve shards dealt by measured file time (scripts/shard-test-files.mjs, config/test-timings.json). The slowest file (about 150 s) is the floor that more shards approach. Change the matrix and the count in the test command together; tests/shard-test-files.test.js checks they agree.
   unit:
     needs: plan
-    if: ${{ !github.event.pull_request.draft && needs.plan.outputs.mode == 'full' }}
+    if: ${{ needs.plan.outputs.mode == 'full' && !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -133,7 +133,7 @@ jobs:
   # The light run: only the test files that mention a changed file (scripts/ci-plan.mjs), in one job. An empty list passes.
   unit-light:
     needs: plan
-    if: ${{ !github.event.pull_request.draft && needs.plan.outputs.mode == 'light' }}
+    if: ${{ needs.plan.outputs.mode == 'light' && !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -193,7 +193,7 @@ jobs:
   # Users may start the MCP server with bunx, so the packed server also runs the package smoke under bun.
   bun:
     needs: plan
-    if: ${{ !github.event.pull_request.draft && needs.plan.outputs.mode == 'full' }}
+    if: ${{ needs.plan.outputs.mode == 'full' && !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -213,7 +213,7 @@ jobs:
   # also makes the library build use the stub packer, so this leg checks the build without Cook too.
   unit-without-cook:
     needs: plan
-    if: ${{ !github.event.pull_request.draft && needs.plan.outputs.mode == 'full' }}
+    if: ${{ needs.plan.outputs.mode == 'full' && !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
