@@ -73,6 +73,36 @@ function mergedAttributes(firstAttributes, secondAttributes, total, firstPlaceme
   return merged;
 }
 
+// Corner normals are stored as final shading directions, so the placed copy gets them turned by the matrix. A direction moves
+// by the inverse transpose, which is the cofactor matrix divided by the determinant; the cofactor alone keeps the sign a
+// mirror needs, so the normals of a mirrored mesh come out flipped with the faces and nothing else has to know.
+function placedCornerNormals(normals, matrix) {
+  const [firstColumn, secondColumn, thirdColumn] = [0, 4, 8].map(start => [matrix[start], matrix[start + 1], matrix[start + 2]]);
+  const cross = (left, right) => [left[1] * right[2] - left[2] * right[1], left[2] * right[0] - left[0] * right[2], left[0] * right[1] - left[1] * right[0]];
+  const rows = [cross(secondColumn, thirdColumn), cross(thirdColumn, firstColumn), cross(firstColumn, secondColumn)];
+  const data = new Float32Array(normals.data.length);
+  for (let offset = 0; offset < data.length; offset += 3) {
+    const placed = rows.map(row => row[0] * normals.data[offset] + row[1] * normals.data[offset + 1] + row[2] * normals.data[offset + 2]);
+    const length = Math.hypot(...placed) || 1;
+    for (let axis = 0; axis < 3; axis++) data[offset + axis] = placed[axis] / length;
+  }
+  return { data, size: 3 };
+}
+
+// Corner normals join only when both meshes carry them: a side without them has no shading to copy, and zero-filled normals
+// would draw black. Without the attribute the renderer derives normals from the faces for the whole joined mesh.
+function joinedCornerAttributes(first, second, matrix) {
+  const firstCorner = { ...first.attributes.corner };
+  const secondCorner = { ...second.attributes.corner };
+  if (firstCorner.normal && secondCorner.normal) {
+    secondCorner.normal = placedCornerNormals(secondCorner.normal, matrix);
+  } else {
+    delete firstCorner.normal;
+    delete secondCorner.normal;
+  }
+  return [firstCorner, secondCorner];
+}
+
 const identityPlacement = (count, offset = 0) => ({ count, source: item => item, destination: item => item + offset });
 
 /**
@@ -114,10 +144,11 @@ export function joinMeshes(first, second, matrix) {
   };
   const firstEdgePlacement = { count: first.cornerCount, source: corner => first.cornerEdges[corner], destination: corner => edges.cornerEdges[corner] };
   const secondEdgePlacement = { count: second.cornerCount, source: item => secondEdgeSources[item], destination: item => edges.cornerEdges[item + first.cornerCount] };
+  const [firstCornerAttributes, secondCornerAttributes] = joinedCornerAttributes(first, second, matrix);
   const attributes = {
     point: mergedAttributes(first.attributes.point, second.attributes.point, vertexCount, identityPlacement(first.vertexCount), identityPlacement(second.vertexCount, first.vertexCount)),
     face: mergedAttributes(first.attributes.face, second.attributes.face, first.faceCount + second.faceCount, identityPlacement(first.faceCount), identityPlacement(second.faceCount, first.faceCount)),
-    corner: mergedAttributes(first.attributes.corner, second.attributes.corner, cornerVertices.length, identityPlacement(first.cornerCount), secondCornerPlacement),
+    corner: mergedAttributes(firstCornerAttributes, secondCornerAttributes, cornerVertices.length, identityPlacement(first.cornerCount), secondCornerPlacement),
     edge: mergedAttributes(first.attributes.edge, second.attributes.edge, edges.edgeCount, firstEdgePlacement, secondEdgePlacement),
   };
   return createMeshData({ positions, faceOffsets, cornerVertices, edgeVertices: edges.edgeVertices, cornerEdges: edges.cornerEdges, attributes });

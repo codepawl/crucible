@@ -168,3 +168,46 @@ test('join-meshes is one revision and leaves a geometry another node uses alone'
   assert.equal(trianglesOf(scene, 'a'), 24);
   assert.equal(scene.revision, before + 1);
 });
+
+function joinedBoxNormals({ matrix, firstEdits = [], secondEdits = [{ op: 'weighted_normal' }] }) {
+  const recipe = {
+    format: 'crucible.scene', schemaVersion: 1,
+    geometries: [
+      { id: 'block', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: [...firstEdits, { op: 'join', geometry: 'pillar', matrix }] },
+      { id: 'pillar', type: 'mesh', base: { type: 'box', bevel: 0 }, edits: secondEdits },
+    ],
+    materials: [{ id: 'stone', color: [0.5, 0.5, 0.5] }],
+    nodes: [{ id: 'a', geometry: 'block', material: 'stone' }],
+  };
+  const { positions, normals } = createAgentScene(recipe).parts[0].geometry;
+  return { positions, normals, vertexCount: positions.length / 3 };
+}
+
+// Every vertex of a joined box carries a unit normal that points away from the box's centre. The first 24 vertices are the
+// untouched block, the next 24 the placed shell.
+function assertNormalsPointOutward({ positions, normals, vertexCount }) {
+  assert.equal(vertexCount, 48);
+  for (const [from, to] of [[0, 24], [24, 48]]) {
+    const centre = [0, 1, 2].map(axis => { let sum = 0; for (let vertex = from; vertex < to; vertex++) sum += positions[vertex * 3 + axis]; return sum / (to - from); });
+    for (let vertex = from; vertex < to; vertex++) {
+      const normal = [0, 1, 2].map(axis => normals[vertex * 3 + axis]);
+      assert.ok(Math.abs(Math.hypot(...normal) - 1) < 1e-4, `vertex ${vertex} has a unit normal, got ${normal}`);
+      const outward = [0, 1, 2].reduce((sum, axis) => sum + normal[axis] * (positions[vertex * 3 + axis] - centre[axis]), 0);
+      assert.ok(outward > 0, `vertex ${vertex} normal points outward, dot ${outward}`);
+    }
+  }
+}
+
+test('a joined mesh with weighted normals keeps unit outward normals under rotation and non-uniform scale', () => {
+  assertNormalsPointOutward(joinedBoxNormals({ matrix: [0, 2, 0, 0, -1, 0, 0, 0, 0, 0, 3, 0, 4, 0, 0, 1] }));
+});
+
+test('a joined mesh with weighted normals keeps outward normals under a mirroring scale', () => {
+  assertNormalsPointOutward(joinedBoxNormals({ matrix: [-2, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 4, 0, 0, 1] }));
+});
+
+test('a normal attribute only one side carries never leaves zero-length normals', () => {
+  const matrix = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 4, 0, 0, 1];
+  assertNormalsPointOutward(joinedBoxNormals({ matrix, firstEdits: [{ op: 'weighted_normal' }], secondEdits: [] }));
+  assertNormalsPointOutward(joinedBoxNormals({ matrix }));
+});
