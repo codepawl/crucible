@@ -2214,7 +2214,7 @@ export const STUDIO_CSS = `
 .crucible-studio-keyboard {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: var(--studio-space-16);
+  gap: var(--studio-space-24);
   block-size: 100%;
   min-block-size: 0;
 }
@@ -2231,11 +2231,15 @@ export const STUDIO_CSS = `
 .crucible-studio-keyboard-tools > input { flex: 1 1 0; min-inline-size: 0; }
 .crucible-studio-keyboard-actions { flex: none; }
 .crucible-studio-keyboard button:disabled { opacity: 0.45; }
+/* The box reaches 16 px past the labels on the left (the gutter of the changed-row dot, and room for the tint of a row with a message) so
+   labels keep the pane's left edge. A group starts 24 px below the last row of the one above; rows sit 8 px apart. */
 .crucible-studio-keyboard-list {
   display: flex;
   flex-direction: column;
-  gap: var(--studio-space-16);
+  gap: var(--studio-space-24);
   min-block-size: 0;
+  margin-inline-start: calc(var(--studio-space-16) * -1);
+  padding-inline-start: var(--studio-space-16);
 }
 .crucible-studio-keyboard-tools > input::placeholder { color: var(--studio-muted); opacity: 1; }
 .crucible-studio-keyboard-group { display: flex; flex-direction: column; gap: var(--studio-space-8); }
@@ -2246,6 +2250,8 @@ export const STUDIO_CSS = `
   margin: 0;
   font-family: var(--studio-font-heading);
   font-size: 13px;
+  font-weight: 700;
+  color: var(--studio-text);
 }
 .crucible-studio-keyboard-group h4 .crucible-studio-icon { flex: none; inline-size: 16px; block-size: 16px; color: var(--studio-muted); }
 .crucible-studio-keyboard-rows { display: flex; flex-direction: column; gap: var(--studio-space-8); }
@@ -2257,6 +2263,8 @@ export const STUDIO_CSS = `
   min-block-size: 28px;
 }
 .crucible-studio-keyboard-name {
+  position: relative;
+  font-weight: 400;
   display: flex;
   align-items: center;
   gap: var(--studio-space-8);
@@ -2264,7 +2272,8 @@ export const STUDIO_CSS = `
 }
 .crucible-studio-keyboard-name > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .crucible-studio-keyboard-changed {
-  flex: none;
+  position: absolute;
+  inset-inline-start: calc(var(--studio-space-12) * -1);
   inline-size: var(--studio-space-8);
   block-size: var(--studio-space-8);
   border-radius: 50%;
@@ -2941,13 +2950,16 @@ export const STUDIO_CSS = `
   /* The strip over the scrollbar stays solid. */
   --studio-fade-top: 0px;
   --studio-fade-bottom: 0px;
+  /* Where rows are hidden, the last 8 px at the edge are fully clear, so no hairline of a cut control shows. */
+  --studio-clear-top: 0px;
+  --studio-clear-bottom: 0px;
   mask-image:
-    linear-gradient(to bottom, transparent 0, #000 var(--studio-fade-top), #000 calc(100% - var(--studio-fade-bottom)), transparent 100%),
+    linear-gradient(to bottom, transparent 0, transparent var(--studio-clear-top), #000 var(--studio-fade-top), #000 calc(100% - var(--studio-fade-bottom)), transparent calc(100% - var(--studio-clear-bottom)), transparent 100%),
     linear-gradient(to right, transparent calc(100% - var(--studio-space-16)), #000 calc(100% - var(--studio-space-16)));
   mask-composite: add;
 }
-.crucible-studio-fade-scroll[data-above="true"] { --studio-fade-top: calc(var(--studio-space-24) * 2); }
-.crucible-studio-fade-scroll[data-more="true"] { --studio-fade-bottom: calc(var(--studio-space-24) * 2); }
+.crucible-studio-fade-scroll[data-above="true"] { --studio-fade-top: calc(var(--studio-space-24) * 2); --studio-clear-top: var(--studio-space-8); }
+.crucible-studio-fade-scroll[data-more="true"] { --studio-fade-bottom: calc(var(--studio-space-24) * 2); --studio-clear-bottom: var(--studio-space-8); }
 .crucible-studio-fade-scroll::-webkit-scrollbar { width: 8px; }
 .crucible-studio-fade-scroll::-webkit-scrollbar-button { display: none; }
 .crucible-studio-fade-scroll::-webkit-scrollbar-track { background: transparent; }

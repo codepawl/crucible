@@ -273,8 +273,25 @@ function checkKeyboardScrollCue() {
     if (rect.top < box.top - 1 && list.dataset.above !== 'true') problems.push(label + ' is cut at the top without a fade');
     if (rect.bottom > box.bottom + 1 && list.dataset.more !== 'true') problems.push(label + ' is cut at the bottom without a fade');
   }
+  const labelLeft = row => row.querySelector('.crucible-studio-keyboard-name > span:last-child').getBoundingClientRect().left;
+  const rows = [...list.querySelectorAll('.crucible-studio-keyboard-row')];
+  if (rows.some(row => Math.abs(labelLeft(row) - labelLeft(rows[0])) > 1)) problems.push('row labels do not share one left edge');
+  const groups = [...list.querySelectorAll('.crucible-studio-keyboard-group')];
+  const groupRows = groups.map(group => [...group.querySelectorAll('.crucible-studio-keyboard-row')]);
+  if (groups.length > 1) {
+    const rowGap = groupRows[0][1].getBoundingClientRect().top - groupRows[0][0].getBoundingClientRect().bottom;
+    const titleGap = groups[1].querySelector('h4').getBoundingClientRect().top - groupRows[0].at(-1).getBoundingClientRect().bottom;
+    if (titleGap < rowGap + 16) problems.push(`the gap above a group title (${titleGap}px) is not 16px larger than the gap between rows (${rowGap}px)`);
+  }
   const note = list.querySelector('.crucible-studio-keyboard-row[data-noted="true"]');
   if (note) {
+    const block = note.getBoundingClientRect();
+    const lastButton = [...note.querySelectorAll('.crucible-studio-keyboard-note button')].at(-1);
+    if (lastButton) {
+      const leftInset = labelLeft(note) - block.left;
+      const rightInset = block.right - lastButton.getBoundingClientRect().right;
+      if (Math.abs(leftInset - rightInset) > 1) problems.push(`the tinted block has ${leftInset}px of room left of the label and ${rightInset}px right of the buttons`);
+    }
     const keysRight = note.querySelector('.crucible-studio-keyboard-keys').getBoundingClientRect().right;
     const buttons = [...note.querySelectorAll('.crucible-studio-keyboard-note button')];
     if (buttons.length > 0 && Math.abs(buttons.at(-1).getBoundingClientRect().right - keysRight) > 1) problems.push('the clash buttons do not end at the key column edge');
@@ -323,6 +340,17 @@ async function measureKeyboard(page, theme) {
   if (!state.open || state.recording || state.saved) {
     throw new Error('Escape while recording must cancel the recording, keep Settings open and save nothing: ' + JSON.stringify(state));
   }
+  // A changed row shows its dot in the gutter, so its label keeps the left edge of the others. The dot is drawn here without saving a key
+  // change, which would carry into the screens measured after this one.
+  await page.evaluate(() => {
+    const name = document.querySelector('.crucible-studio-keyboard-row[data-action] .crucible-studio-keyboard-name');
+    const dot = document.createElement('span');
+    dot.className = 'crucible-studio-keyboard-changed';
+    dot.dataset.auditDot = 'true';
+    name.prepend(dot);
+  });
+  await assertKeyboardScrollCue(page, 'changed row');
+  await page.evaluate(() => document.querySelector('[data-audit-dot]').remove());
   await page.evaluate(() => document.querySelector('dialog.crucible-studio-settings-dialog').close());
   return screens;
 }
