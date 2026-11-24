@@ -241,7 +241,8 @@ function resolveSettings(options) {
  * Options: `preset` ('meadow', 'lawn', 'savanna', 'wild'), `terrainHeight(x, z)`, `mask(x, z)` (0..1 coverage),
  * `density` (blades per square metre near the camera), `height` [min, max], `width`, `clumpSize`, `clumpStrength`,
  * `bend` [min, max], `dryness`, `patchiness` (0..1 field-scale height and density patches), `stalks` (share of seed
- * stalks), linear `base`, `tip` and `dry` colours, `castShadow`, `levels`, `cullDistance`, `seed`, `eye`.
+ * stalks), linear `base`, `tip` and `dry` colours, `castShadow`, `levels`, `cullDistance`, `seed`, `eye`, `windScale` (0..1, the share of the
+ * scene wind these blades feel; unset means all of it, as before).
  * Returns `{ parts, update(eye), material, stats(), groundColor }`; tint the ground under the grass with `groundColor`. `update` returns true when tiles changed level; then call
  * `renderer.replaceParts([...otherParts, ...grass.parts])`. Grass parts are rigid and untextured, so they stream.
  */
@@ -249,6 +250,10 @@ export function createGrass(options = {}) {
   const settings = resolveSettings({ tileSize: 4, seed: 1, terrainHeight: () => 0, castShadow: false, ...options });
   requireSeed(settings.seed, 'grass seed');
   const material = { tag: 'grass', color: [1, 1, 1], roughness: 0.8, metallic: 0, emission: 0, doubleSided: true };
+  if (settings.windScale !== undefined) {
+    requireFiniteInRange('createGrass', 'windScale', settings.windScale, 0, 1);
+    material.windScale = settings.windScale;
+  }
 
   function buildParts(tile, levelIndex) {
     const level = settings.levels[levelIndex];

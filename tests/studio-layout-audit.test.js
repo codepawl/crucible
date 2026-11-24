@@ -63,7 +63,7 @@ test('the Export frame is the canvas, nothing moves when a result appears, block
   }
   try {
     for (const viewport of [{ width: 1280, height: 720 }, { width: 640, height: 480 }]) {
-      const { context: pageContext, page } = await openStudio(browser, server.origin, 'dark', '', viewport);
+      const { context: pageContext, page } = await openStudio(browser, server.origin, 'dark', '', { viewport });
       await page.evaluate(() => {
         window.__studioPage.setInspectorCollapsed(false);
         window.__studioPage.setActiveTab('export');

@@ -1,6 +1,7 @@
 // The first-run setup dialog: five steps of choice cards (theme, performance, modelling, keys, working with an agent) that
 // change the live Studio behind it, one step a page. It is built from the preferences Studio already keeps, so nothing
 // here is saved anywhere new.
+import { STUDIO_ACTION_ICONS } from './studio-icons.js';
 import { KEYMAP_PRESET_IDS, KEYMAP_PRESETS, keyLabel, resolveKeymapPreset } from './studio-keymap.js';
 import { STUDIO_PREFERENCE_CHOICES } from './studio-preferences.js';
 import { STUDIO_TOOLS } from './studio-templates.js';
@@ -126,7 +127,7 @@ function createBuiltInAgentButton(documentReference, createElement, createIcon, 
     button.disabled = state !== 'signed-out';
     button.dataset.state = state;
     const label = { 'signed-out': 'Sign in for the built-in AI', waiting: 'Finish signing in in your browser', 'signed-in': 'Signed in to the built-in AI' }[state];
-    button.replaceChildren(createIcon(documentReference, signedIn ? 'check' : 'agent'), createElement(documentReference, 'span', { textContent: label }));
+    button.replaceChildren(createIcon(documentReference, signedIn ? STUDIO_ACTION_ICONS.signedIn : STUDIO_ACTION_ICONS.signIn), createElement(documentReference, 'span', { textContent: label }));
   }
   show('signed-out');
   Promise.resolve(builtInAgent.isSignedIn()).then(signedIn => { if (signedIn) show('signed-in'); }).catch(() => {});
@@ -289,7 +290,7 @@ export function createStudioSetup({
   const copyPromptButton = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-setup-action' });
   function showCopied(copied) {
     copyPromptButton.replaceChildren(
-      createIcon(documentReference, copied ? 'check' : 'agent'),
+      createIcon(documentReference, copied ? STUDIO_ACTION_ICONS.copied : STUDIO_ACTION_ICONS.copyPrompt),
       createElement(documentReference, 'span', { textContent: copied ? 'Copied' : 'Copy an agent prompt' }),
     );
   }
@@ -343,11 +344,13 @@ export function createStudioSetup({
   const nextButton = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-setup-primary', textContent: 'Next' });
   const doneButton = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-setup-primary', textContent: 'Done' });
 
+  const setupHeading = createElement(documentReference, 'h2', { id: `crucible-studio-setup-${instanceId}-heading`, textContent: 'Set up Studio' });
+  setupHeading.prepend(createIcon(documentReference, 'agent'));
   const dialog = createElement(
     documentReference,
     'dialog',
     { className: 'crucible-studio-setup-dialog', tabIndex: -1, attributes: { 'aria-labelledby': `crucible-studio-setup-${instanceId}-heading` } },
-    createElement(documentReference, 'h2', { id: `crucible-studio-setup-${instanceId}-heading`, textContent: 'Set up Studio' }),
+    setupHeading,
     stepRow,
     createElement(documentReference, 'div', { className: 'crucible-studio-setup-body' }, ...sections),
     createElement(documentReference, 'div', { className: 'crucible-studio-dialog-actions crucible-studio-setup-actions' }, skipButton, backButton, nextButton, doneButton),

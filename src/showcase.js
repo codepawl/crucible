@@ -341,6 +341,7 @@ async function selectScene(id) {
     // scene.json stores cascades as plain options; the renderer takes the cascade object built from them.
     const shadowCascades = rendererOptions.shadowCascades ? createCascadedShadows(rendererOptions.shadowCascades) : undefined;
     // A scene that sets waterReflection mirrors itself in its largest flat, smooth surface (water or a polished floor).
+    if (description.environment?.groundCover !== undefined) console.warn('environment.groundCover is drawn only by render-media.mjs --scene file; this page ignores it.');
     const reflection = description.waterReflection ? applyWaterReflection(asset.parts) : { parts: asset.parts, surface: null };
     renderer = new CrucibleRenderer(canvas, reflection.parts, {
       ground: false, hdr: true, samples: 4, memoryBudgetMiB: 384,

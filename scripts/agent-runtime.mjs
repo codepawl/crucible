@@ -525,14 +525,19 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
     return { ...settings, items };
   }
 
-  /** Bytes of the catalog files a recipe places, each file once however many copies the scene holds, for the render time estimate. */
-  async function placedAssetFileBytes(recipe) {
+  /** Bytes, triangles and image counts of the catalog files a recipe places, each file once however many copies the scene holds, for the render estimate. */
+  async function placedAssetFootprint(recipe) {
     const needs = recipeAssetNeeds(recipe);
-    if (!needs.length) return 0;
+    const byAssetId = new Map();
+    let assetFileBytes = 0;
+    if (!needs.length) return { assetFileBytes, byAssetId };
     const readyCatalog = await catalog();
-    let totalBytes = 0;
-    for (const { id } of needs) totalBytes += (await readyCatalog.describeSize(id)).bytes;
-    return totalBytes;
+    for (const { id } of needs) {
+      const described = await readyCatalog.describeSize(id);
+      assetFileBytes += described.bytes;
+      byAssetId.set(id, { triangles: described.triangles ?? 0, textures: described.images ?? 0, textureMiB: described.textureMiB ?? (described.images ?? 0) * 4 });
+    }
+    return { assetFileBytes, byAssetId };
   }
 
   /** The file name and byte length of each catalog asset a recipe or edit list places, for the error of a call that ran long. */
@@ -1878,7 +1883,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         try {
           // The estimate is made before the job exists, because the job suspends the scene and starts at once.
           const size = sceneSizeFrom(await invoke('inspect', { sessionId, limit: Math.max(1, snapshot.recipe.nodes?.length ?? 1) }), snapshot.recipe,
-            { assetFileBytes: await placedAssetFileBytes(snapshot.recipe) });
+            await placedAssetFootprint(snapshot.recipe));
           const history = await readRenderHistory();
           const estimateOf = rawSettings => estimateRenderJob({ size, settings: normalizeJobSettings(rawSettings, snapshot.clips, snapshot.recipe), backend, memoryBudgetMiB: memory, history, gpuTracerWarm });
           if (settings?.quality !== undefined && settings.budget !== undefined) throw new TypeError('budget picks the tier: leave settings.quality out, or leave settings.budget out.');
