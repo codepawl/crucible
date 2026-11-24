@@ -1,0 +1,61 @@
+{
+  "format": "crucible.scene",
+  "schemaVersion": 1,
+  "materials": [
+    {
+      "id": "wood",
+      "color": [
+        0.72,
+        0.5,
+        0.3
+      ]
+    }
+  ],
+  "geometries": [
+    {
+      "id": "crate",
+      "type": "mesh",
+      "base": {
+        "type": "box",
+        "bevel": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "crate",
+      "geometry": "crate",
+      "material": "wood",
+      "translation": [
+        0,
+        0.6,
+        0
+      ],
+      "scale": [
+        2.2,
+        1.2,
+        1.4
+      ]
+    }
+  ],
+  "camera": {
+    "eye": [
+      4.2,
+      3.6,
+      6.5
+    ],
+    "target": [
+      0,
+      0.9,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ],
+    "fov": 45,
+    "near": 0.1,
+    "far": 100
+  }
+}

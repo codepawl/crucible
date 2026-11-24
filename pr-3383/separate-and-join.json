@@ -1,0 +1,17 @@
+{
+  "issue": 3302,
+  "page": "bench/studio/index.html?setup=off (Studio, headless Chrome, GPU)",
+  "size": [1280, 800],
+  "sceneBefore": "scene-before.json",
+  "sceneAfterJoin": "scene-after-join.json",
+  "camera": { "eye": [4.2, 3.6, 6.5], "target": [0, 0.9, 0], "up": [0, 1, 0], "fov": 45 },
+  "sun": "Studio default sun",
+  "seed": "none (no randomness)",
+  "steps": [
+    "Tab (edit mesh), 3 (face mode), click the top face",
+    "P then Selection: top face becomes object crate-part (scene list 3 rows to 4)",
+    "Tab out, pick crate-part in the scene list, G Y and move it up 0.81 m",
+    "Pick crate-part then Ctrl+click crate, Ctrl+J: both become crate (scene list back to 3 rows), outline covers the one object"
+  ],
+  "measured": { "objectsAfterSeparate": ["crate", "crate-part"], "objectsAfterJoin": ["crate"], "sizeAfterJoin": "2.20 x 2.01 x 1.40 m" }
+}
