@@ -14,6 +14,7 @@ import { LIQUID_OPTICS, resolveLiquidOptics } from './liquid-optics.js';
 import { createLightingSetupMap, createCatalogEnvironmentMap, lightingSetupFields, setupMapShowsBackground } from './lighting-setups.js';
 import { agentSceneModule } from './agent-scene-modules.js';
 import { splitHdriSun } from './hdri.js';
+import { withReflectionEnvironment } from './environment.js';
 import { lightShapeSupport, postStepSupport } from './shader-registry.js';
 import { VIEW_TRANSFORM_NAMES, LOOK_NAMES } from './view-transform-names.js';
 import { BUNDLED_ENVIRONMENT_NAMES, BUNDLED_CUBE_LOOK_NAMES, isEnvironmentReference, isCubeLookReference } from './look-catalog.js';
@@ -33,7 +34,7 @@ function resolveEmissionRampOnDemand(input, shape, label) {
 const MAX_LOOK_ARRAY_ENTRIES = Math.max(MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS);
 
 const ENVIRONMENT_FIELDS = [
-  'world', 'ground', 'setup', 'hdri', 'keyFromHdri', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity', 'ambientColor', 'ambientMix', 'fillColor', 'environmentDiffuseScale', 'skybox',
+  'world', 'ground', 'setup', 'hdri', 'reflectionHdri', 'keyFromHdri', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity', 'ambientColor', 'ambientMix', 'fillColor', 'environmentDiffuseScale', 'skybox',
   'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'localVolumes', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'wind', 'sky', 'wetness', 'puddles',
 ];
 const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom', 'depthOfField', 'motionBlur'];
@@ -384,6 +385,9 @@ function environmentFrom(input = {}) {
     if (input.hdri || input.sky) {
       throw invalidField('environment.skybox', 'set beside hdri or sky', 'a skybox alone: it is the sky, so remove "hdri" or "sky", or remove "skybox"');
     }
+    if (input.reflectionHdri) {
+      throw invalidField('environment.skybox', 'set beside reflectionHdri', 'a skybox alone (it is already the sky that is reflected): remove "reflectionHdri", or remove "skybox"');
+    }
     environment.skybox = copiedJson(agentSceneModule('skybox').resolveSkybox(input.skybox, invalidField));
   }
   // Scales the light the sunlit patches of a sun-lit closed room bounce on (src/sun-bounce.js); 0 turns it off.
@@ -430,6 +434,13 @@ function environmentFrom(input = {}) {
       throw invalidField('environment.hdri', input.hdri, `one of ${BUNDLED_ENVIRONMENT_NAMES.join(', ')} or the 64-character ID of a .hdr file in the asset catalog`);
     }
     environment.hdri = input.hdri;
+  }
+  // A second HDRI that only the reflections read (withReflectionEnvironment in src/environment.js); the diffuse light stays the lighting map's.
+  if (input.reflectionHdri !== undefined && input.reflectionHdri !== null) {
+    if (typeof input.reflectionHdri !== 'string' || !isEnvironmentReference(input.reflectionHdri)) {
+      throw invalidField('environment.reflectionHdri', input.reflectionHdri, `one of ${BUNDLED_ENVIRONMENT_NAMES.join(', ')} or the 64-character ID of a .hdr file in the asset catalog`);
+    }
+    environment.reflectionHdri = input.reflectionHdri;
   }
   // The key light takes the HDRI's sun when the scene is built (agentEnvironmentKey), since the HDRI data loads after the recipe is checked.
   if (input.keyFromHdri !== undefined) {
@@ -514,8 +525,21 @@ export function agentEnvironmentKey(environment) {
   return keysFromHdri(environment) ? { ...environment, ...hdriSunSplit(environment).environment } : environment;
 }
 
-/** The procedural environment map that lights a normalized environment; the same object returns while inputs hold. */
-export function agentEnvironmentMap(environment) {
+/**
+ * The environment map that lights a normalized environment; the same object returns while inputs hold. With `reflectionHdri`
+ * the specular light and the sky drawn come from that HDRI and the diffuse light from the lighting map. `withReflection: false`
+ * returns the lighting map alone, for the path tracer, which has one map for every bounce.
+ */
+export function agentEnvironmentMap(environment, { withReflection = true } = {}) {
+  const lightingMap = agentLightingMap(environment);
+  if (!withReflection || !environment.reflectionHdri) {
+    return lightingMap;
+  }
+  const reflectionMap = createCatalogEnvironmentMap(environment.reflectionHdri, { intensity: environment.environmentIntensity, rotation: environment.environmentRotation, showBackground: environment.world });
+  return withReflectionEnvironment(lightingMap, reflectionMap);
+}
+
+function agentLightingMap(environment) {
   if (environment.skybox) {
     return agentSceneModule('skybox').createSkyboxMap(environment);
   }
