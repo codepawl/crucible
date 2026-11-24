@@ -5,6 +5,7 @@ import { createAgentScene } from './agent-scene.js';
 import { createSceneQuery } from './scene-query.js';
 import { agentSceneModule } from './agent-scene-modules.js';
 import { operationsBetweenRecipes, sameRecipeValue } from './studio-history-diff.js';
+import { EDIT_LABEL_FALLBACK, GIZMO_EDIT_LABELS, nameEditOperations } from './studio-edit-names.js';
 import { MAX_POINT_LIGHTS, MAX_AREA_LIGHTS, MAX_SPOT_LIGHTS } from './light-limits.js';
 import {
   STUDIO_MATERIAL_PRESETS,
@@ -759,7 +760,7 @@ export function createStudioController({
 
   // A step that did not touch the camera keeps the viewport where the person left it when it is undone:
   // orbiting is navigation, not an edit, so it must not be rolled back with the edit before it.
-  function pushUndoSnapshot(recipe, { restoresCamera = false } = {}) {
+  function pushUndoSnapshot(recipe, { restoresCamera = false, label = EDIT_LABEL_FALLBACK } = {}) {
     if (undoGroupOpen) {
       if (undoGroupRecorded) {
         const groupEntry = undoStack[undoStack.length - 1];
@@ -768,7 +769,7 @@ export function createStudioController({
       }
       undoGroupRecorded = true;
     }
-    undoStack.push({ recipe, restoresCamera, selection: currentSelection() });
+    undoStack.push({ recipe, restoresCamera, selection: currentSelection(), label });
     while (undoStack.length > maxHistory) {
       undoStack.shift();
     }
@@ -807,7 +808,7 @@ export function createStudioController({
     currentScene.apply(operations, { expectedRevision: currentScene.revision });
     if (before) {
       const restoresCamera = operations.some(operation => operation.type === 'set-camera');
-      pushUndoSnapshot(before, { restoresCamera });
+      pushUndoSnapshot(before, { restoresCamera, label: nameEditOperations(operations) });
     }
   }
 
@@ -828,7 +829,7 @@ export function createStudioController({
     endUndoGroup();
     const entry = sourceStack.pop();
     const currentRecipe = currentScene.exportRecipe();
-    targetStack.push({ recipe: currentRecipe, restoresCamera: entry.restoresCamera, selection: currentSelection() });
+    targetStack.push({ recipe: currentRecipe, restoresCamera: entry.restoresCamera, selection: currentSelection(), label: entry.label });
     // The step brings back what was selected with it, so an object that returns is the one in hand again;
     // settleSelectionAndMotion drops a selection the restored recipe no longer holds.
     commitNodeSelection([...(entry.selection.nodeIds ?? (entry.selection.nodeId ? [entry.selection.nodeId] : []))], entry.selection.nodeId);
@@ -1940,7 +1941,7 @@ export function createStudioController({
     }
     if (changed) {
       const keyed = autoKeyDraggedProperties(nodeId, authoredPose);
-      pushUndoSnapshot(baseRecipe);
+      pushUndoSnapshot(baseRecipe, { label: GIZMO_EDIT_LABELS[activeTool] ?? EDIT_LABEL_FALLBACK });
       notify({ kind: 'transformCommit', deltaLabel: '', keyed });
     } else {
       notify({ kind: 'transformCancel', deltaLabel: '' });
@@ -2903,13 +2904,38 @@ export function createStudioController({
     return true;
   }
 
+  // The edits in the order they were made: the ones behind the scene, then the ones undo has set aside, nearest first.
+  function historyLabels() {
+    return [...undoStack.map(entry => entry.label), ...redoStack.map(entry => entry.label).reverse()];
+  }
+
+  /** Steps through undo or redo until `position` edits are applied (0 is before the first one), so the scene is exactly that edit's. */
+  function goToHistoryPosition(position) {
+    const total = undoStack.length + redoStack.length;
+    if (!Number.isInteger(position) || position < 0 || position > total) {
+      throw new RangeError(`History position must be a whole number from 0 to ${total}; pass a position that \`history\` lists.`);
+    }
+    const stepsBack = position < undoStack.length;
+    const startedAt = undoStack.length;
+    while (undoStack.length > position) {
+      stepHistory(undoStack, redoStack);
+    }
+    while (undoStack.length < position) {
+      stepHistory(redoStack, undoStack);
+    }
+    if (undoStack.length !== startedAt) {
+      notify({ kind: stepsBack ? 'undo' : 'redo' });
+    }
+    return undoStack.length;
+  }
+
   function loadRecipe(recipeInput, { recordUndo = true } = {}) {
     const before = recordUndo ? currentScene.exportRecipe() : null;
     endUndoGroup();
     freeViewPose = null;
     loadRecipeKeepingScene(recipeInput);
     if (before) {
-      pushUndoSnapshot(before, { restoresCamera: true });
+      pushUndoSnapshot(before, { restoresCamera: true, label: 'Open scene' });
     }
     notify({ kind: 'load' });
     return currentScene.revision;
@@ -2938,6 +2964,11 @@ export function createStudioController({
     get viewportHeight() { return height; },
     get canUndo() { return undoStack.length > 0; },
     get canRedo() { return redoStack.length > 0; },
+    /** The named edits oldest first, how many are applied, and whether the list reaches back to the scene as it was opened. */
+    get history() {
+      return { labels: historyLabels(), position: undoStack.length, reachesStart: undoStack.length < maxHistory };
+    },
+    goToHistoryPosition,
     setViewportSize(nextWidth, nextHeight) {
       width = assertPositiveFinite(nextWidth, 'viewportWidth');
       height = assertPositiveFinite(nextHeight, 'viewportHeight');

@@ -1,0 +1,1 @@
+- The Studio Edit menu now has History, a list of the recent edits by name with the current one marked, and a click steps the scene back or forward to that edit; Undo and Redo in the menu are dimmed when there is nothing to step to (#3368)

@@ -12,7 +12,7 @@ The scene fills the window and the controls float on top of it.
 
 | Where | What it does |
 | --- | --- |
-| Top left | The menus. **File**: open, save, the recipe JSON, the three exports and the starting scenes. **Edit**: undo, redo, copy, paste, duplicate, delete, deselect and Settings. **View**: front, right and top view, perspective or orthographic, frame the selection, the grid and the panels. **Agent**: copy a prompt for an AI agent and reload when it edits the file. **Help**: the keyboard shortcuts. Each row shows its key. |
+| Top left | The menus. **File**: open, save, the recipe JSON, the three exports and the starting scenes. **Edit**: undo, redo, the history of edits, copy, paste, duplicate, delete, deselect and Settings. **View**: front, right and top view, perspective or orthographic, frame the selection, the grid and the panels. **Agent**: copy a prompt for an AI agent and reload when it edits the file. **Help**: the keyboard shortcuts. Each row shows its key. |
 | Top centre | The workspaces, in the order the work runs: **Build** (objects and their place), **Look** (materials, lighting, sun, exposure, fog) and **Animate** (camera, lens, shots and the timeline). Each one shows only the panels its step needs. Opening a panel from anywhere, or adding a keyframe, brings its workspace forward. A workspace is a way of looking at the scene: it is not saved in the recipe and undo does not touch it. |
 | Top right | The file name, which opens the File menu, and **Export** (PNG image, GLB model, web pack). A green dot beside the name means Studio reloads the file when an agent edits it. |
 | Left rail | The tools that change the scene come first: select, move, rotate, scale, snap to a surface, then add an object or a light, undo and redo. Under one line sit the switches that only change what you see: show or hide the grid, show or hide the panels. |
@@ -71,6 +71,14 @@ The add button on the rail and the one in the Scene head (or Shift+A) open the s
 | Light | point, spot and area |
 
 Each shape is an ordinary recipe geometry, so an agent can keep editing it: a circle is a `circle` geometry, and the rest are `plane`, `box`, `sphere`, `icoSphere`, `cylinder`, `cone`, `torus` and `text`. A new shape is about a metre wide and rests on the ground. A menu that opens low on the screen grows upward, so it stays inside the window. People build everything else from these, and an agent can still write any other geometry (`extrude`, `lathe`, `tube`, `terrain` and the rest) into the recipe: a scene that holds one opens, shows in the Scene list, selects and moves like any other object.
+
+## The Edit menu and History
+
+The **Edit** menu sits next to File in the top bar. Its first rows are Undo, Redo, History and, further down, Settings, each with an icon, and Undo and Redo show the keys of the active keymap. Undo and Redo are dimmed while there is nothing to step to; History is dimmed until the first edit.
+
+**History** lists the recent edits by name, newest first, up to 30: Move, Rotate, Scale, Add box, Hide, Change material, Edit animation and so on. A filled mark sits on the edit the scene shows now, and **Start** at the foot is the scene as it was opened (it is left out once the oldest steps have fallen off the 32-step stack). Click a row to go there: the scene steps back or forward through undo and redo until it matches that edit, and an edit made afterwards replaces the ones ahead. The rail buttons stay.
+
+In code, `controller.history` gives `{ labels, position, reachesStart }` (the names oldest first, how many edits are applied, and whether the list starts at the opened scene), and `controller.goToHistoryPosition(position)` steps to a position from 0 to `labels.length`. The name of an edit comes from the operations it applied, so a handle, a field and an agent that make the same edit read the same.
 
 ## Camera and lights in the Scene list
 

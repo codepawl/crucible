@@ -3,7 +3,7 @@
 // studio-layout-rules.mjs: unequal insets around the content of a padded container, a gap or padding off the spacing
 // scale, or a gap between groups smaller than the gap inside one. Every failure names the selector, the numbers and the fix.
 //
-//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|dialog|notice|notices] [--records file.json]
+//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|dialog|notice|notices|editmenu] [--records file.json]
 //
 // Without --origin it starts a Vite dev server on a free port and stops it (by its own PID) at the end. Screens: the Studio
 // page, each of its popover menus, and the five steps of the setup dialog, each in the dark and the light theme at 1280 by 720.
@@ -36,7 +36,7 @@ const DIALOG_SELECTORS = Object.freeze({
   'shortcuts dialog': 'dialog.crucible-studio-shortcuts-dialog',
 });
 const SERVER_START_TIMEOUT_MS = 60000;
-const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|dialog|notice|notices] [--records file.json]';
+const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|dialog|notice|notices|editmenu] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
 const SOFTWARE_ARGUMENTS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'];
@@ -296,6 +296,31 @@ export async function runSelectionBehavior({ origin } = {}) {
   }
 }
 
+// The Edit menu open, then its History list after five edits: the two surfaces a person reaches from the top bar. When
+// STUDIO_AUDIT_STILLS names a folder, each one is also saved there as a picture.
+async function measureEditMenu(page, theme, label) {
+  await page.evaluate(() => {
+    const controller = window.__studioPage.controller;
+    controller.updateNodeTransform('cube', { translation: [1, 0.5, 0] });
+    controller.updateNodeTransform('cube', { rotationDegrees: [0, 45, 0] });
+    controller.updateNodeTransform('cube', { scale: [1.2, 1.2, 1.2] });
+    controller.addPrimitive('box');
+    controller.updateNodeTransform('cube', { visible: false });
+  });
+  const screens = [];
+  const stillsFolder = process.env.STUDIO_AUDIT_STILLS;
+  const capture = async (name, selector) => {
+    await page.waitForTimeout(250);
+    screens.push({ name: `${name}${label} (${theme})`, records: await measure(page, selector) });
+    if (stillsFolder) await page.screenshot({ path: `${stillsFolder}/${name.replace(/ /g, '-')}${label.replace(/ /g, '-')}-${theme}.png` });
+  };
+  await page.locator('.crucible-studio-menu-button', { hasText: 'Edit' }).click();
+  await capture('edit menu', '#crucible-studio-pop-edit');
+  await page.locator('#crucible-studio-pop-edit button', { hasText: 'History' }).click();
+  await capture('edit history', '#crucible-studio-pop-history');
+  return screens;
+}
+
 // Runs on a page loaded with a seeded draft, so the draft notice is there on its own and the paused notice comes from a real
 // lost WebGL context. The dialogs are opened the way the menu opens them, with showModal.
 async function measureNoticesAndDialogs(page, theme, label) {
@@ -329,6 +354,13 @@ export async function runAudit({ origin, only, extraCss } = {}) {
       const { context, page } = await openStudio(browser, server.origin, theme, extraCss);
       screens.push(...await measureScreens(page, theme, only));
       await context.close();
+      if (!only || only === 'editmenu') {
+        for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
+          const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport });
+          screens.push(...await measureEditMenu(opened.page, theme, label));
+          await opened.context.close();
+        }
+      }
       if (!only || only === 'notice') screens.push(await measureDraftNotice(browser, server.origin, theme, extraCss));
       if (!only || only === 'notices') {
         for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {

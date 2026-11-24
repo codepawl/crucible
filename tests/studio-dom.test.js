@@ -2404,7 +2404,7 @@ test('the top bar has File, Edit, View, Agent and Help menus that do what their 
   assert.equal(byText(popover('new'), 'Save').dataset.shortcut, 'Ctrl+S');
 
   menuButton('Edit').click();
-  assert.deepEqual(rows('edit'), ['Undo', 'Redo', 'Copy', 'Paste', 'Duplicate', 'Delete', 'Deselect', 'Hide', 'Show all', 'Reset position', 'Reset rotation', 'Reset scale', 'Settings…']);
+  assert.deepEqual(rows('edit'), ['Undo', 'Redo', 'History', 'Copy', 'Paste', 'Duplicate', 'Delete', 'Deselect', 'Hide', 'Show all', 'Reset position', 'Reset rotation', 'Reset scale', 'Settings…']);
   ui.selectRow('hero');
   const countBefore = ui.studio.exportRecipe().nodes.length;
   byText(popover('edit'), 'Duplicate').click();
@@ -4743,4 +4743,139 @@ test('settleUntil gives up at its deadline when the work never finishes', async 
   await dom.settleUntil(() => false, 50);
   const waited = performance.now() - started;
   assert.ok(waited >= 50 && waited < 5000, `waited ${waited} ms for a 50 ms deadline`);
+});
+
+function makeFiveEdits(ui) {
+  ui.controller.updateNodeTransform('hero', { translation: [1, 0.5, 0] });
+  ui.controller.updateNodeTransform('hero', { rotationDegrees: [0, 45, 0] });
+  ui.controller.updateNodeTransform('orb', { scale: [0.8, 0.8, 0.8] });
+  ui.controller.addPrimitive('box');
+  ui.controller.updateNodeTransform('hero', { visible: false });
+}
+
+function historyRows(ui) {
+  return ui.root.querySelector('#crucible-studio-pop-history').querySelectorAll('button');
+}
+
+test('the Edit menu shows Undo, Redo, History and Settings with an icon, and Undo and Redo show their keys', testContext => {
+  const ui = mountStudio(testContext);
+  const editMenu = ui.root.querySelector('#crucible-studio-pop-edit');
+  const rowNames = editMenu.querySelectorAll('button').map(row => row.textContent);
+  assert.deepEqual(rowNames.slice(0, 3), ['Undo', 'Redo', 'History']);
+  assert.ok(rowNames.includes('Settings…'));
+  for (const name of ['Undo', 'Redo', 'History', 'Settings…']) {
+    assert.match(String(byText(editMenu, name).children[0].getAttribute('class')), /crucible-studio-icon/, name);
+  }
+  assert.equal(byText(editMenu, 'Undo').dataset.shortcut, 'Ctrl+Z');
+  assert.equal(byText(editMenu, 'Redo').dataset.shortcut, 'Ctrl+Shift+Z');
+  const settingsDialog = ui.root.querySelector('dialog');
+  byText(editMenu, 'Settings…').click();
+  assert.ok(ui.root.querySelectorAll('dialog').some(dialog => dialog.open), 'Settings opens');
+  assert.ok(settingsDialog);
+});
+
+test('Undo, Redo and History in the Edit menu are disabled until the stack has something to step to', testContext => {
+  const ui = mountStudio(testContext);
+  const editMenu = ui.root.querySelector('#crucible-studio-pop-edit');
+  const disabled = name => byText(editMenu, name).getAttribute('aria-disabled');
+  assert.deepEqual(['Undo', 'Redo', 'History'].map(disabled), ['true', 'true', 'true']);
+
+  ui.controller.updateNodeTransform('hero', { translation: [1, 0.5, 0] });
+  assert.deepEqual(['Undo', 'Redo', 'History'].map(disabled), ['false', 'true', 'false']);
+
+  ui.controller.undo();
+  assert.deepEqual(['Undo', 'Redo', 'History'].map(disabled), ['true', 'false', 'false']);
+});
+
+test('History lists the recent edits by name, newest first, and marks the one the scene shows', testContext => {
+  const ui = mountStudio(testContext);
+  makeFiveEdits(ui);
+  const historyButton = byText(ui.root.querySelector('#crucible-studio-pop-edit'), 'History');
+  historyButton.click();
+  const historyPopover = ui.root.querySelector('#crucible-studio-pop-history');
+  assert.equal(historyPopover.popoverOpen, true);
+  assert.deepEqual(historyRows(ui).map(row => row.textContent), ['Hide', 'Add box', 'Scale', 'Rotate', 'Move', 'Start']);
+  assert.deepEqual(historyRows(ui).map(row => row.getAttribute('aria-checked')), ['true', 'false', 'false', 'false', 'false', 'false']);
+
+  ui.controller.undo();
+  ui.controller.undo();
+  historyPopover.hidePopover();
+  historyButton.click();
+  assert.deepEqual(historyRows(ui).map(row => row.getAttribute('aria-checked')), ['false', 'false', 'true', 'false', 'false', 'false']);
+});
+
+test('a History row steps back or forward to that edit and the scene matches it', testContext => {
+  const ui = mountStudio(testContext);
+  const original = ui.studio.exportRecipe();
+  ui.controller.updateNodeTransform('hero', { translation: [1, 0.5, 0] });
+  const afterMove = ui.studio.exportRecipe();
+  ui.controller.updateNodeTransform('orb', { scale: [0.8, 0.8, 0.8] });
+  ui.controller.addPrimitive('box');
+  const afterAdd = ui.studio.exportRecipe();
+  const historyButton = byText(ui.root.querySelector('#crucible-studio-pop-edit'), 'History');
+
+  historyButton.click();
+  byText(ui.root.querySelector('#crucible-studio-pop-history'), 'Move').click();
+  assert.deepEqual(ui.studio.exportRecipe(), afterMove, 'the scene is the one after the move');
+  assert.equal(ui.root.querySelector('#crucible-studio-pop-history').popoverOpen, false, 'a row closes the list');
+  assert.equal(ui.controller.canRedo, true);
+  assert.equal(ui.status(), 'Went to Move');
+
+  historyButton.click();
+  byText(ui.root.querySelector('#crucible-studio-pop-history'), 'Add box').click();
+  assert.deepEqual(ui.studio.exportRecipe(), afterAdd, 'a row ahead of the scene redoes up to it');
+
+  historyButton.click();
+  byText(ui.root.querySelector('#crucible-studio-pop-history'), 'Start').click();
+  assert.deepEqual(ui.studio.exportRecipe(), original);
+  assert.equal(ui.controller.canUndo, false);
+  assert.equal(ui.status(), 'Back to the start');
+});
+
+test('History keeps the newest edits when there are more than the list shows', testContext => {
+  const ui = mountStudio(testContext, { maxHistory: 128 });
+  for (let step = 0; step < 40; step += 1) {
+    ui.controller.updateNodeTransform('hero', { translation: [step, 0.5, 0] });
+  }
+  byText(ui.root.querySelector('#crucible-studio-pop-edit'), 'History').click();
+  assert.equal(historyRows(ui).length, 30);
+  assert.equal(historyRows(ui)[0].getAttribute('aria-checked'), 'true');
+  assert.ok(historyRows(ui).every(row => row.textContent === 'Move'));
+});
+
+test('the History position is validated and names every kind of edit', testContext => {
+  const ui = mountStudio(testContext);
+  assert.throws(() => ui.controller.goToHistoryPosition(1), /from 0 to 0/);
+  ui.controller.updateNodeTransform('hero', { label: 'Boss' });
+  ui.controller.updateNodeTransform('hero', { translation: [0, 1, 0], scale: [2, 2, 2] });
+  ui.controller.updateNodeTransform('hero', { visible: false });
+  ui.controller.updateNodeTransform('hero', { visible: true });
+  ui.controller.beginUndoGroup();
+  ui.controller.updateNodeTransform('orb', { translation: [3, 0.5, 0] });
+  ui.controller.updateNodeTransform('orb', { rotationDegrees: [0, 10, 0] });
+  ui.controller.endUndoGroup();
+  assert.deepEqual(ui.controller.history.labels, ['Rename', 'Transform', 'Hide', 'Show', 'Move']);
+  assert.throws(() => ui.controller.goToHistoryPosition(1.5), /whole number/);
+  assert.equal(ui.controller.goToHistoryPosition(0), 0);
+  assert.equal(ui.controller.goToHistoryPosition(3), 3);
+  assert.equal(ui.controller.history.position, 3);
+});
+
+test('the Edit menu opens from its button and its rows are reached in order', testContext => {
+  const ui = mountStudio(testContext);
+  makeFiveEdits(ui);
+  const editButton = ui.root.querySelector('.crucible-studio-menus').children.find(button => button.textContent === 'Edit');
+  assert.equal(editButton.getAttribute('popovertarget'), 'crucible-studio-pop-edit');
+  editButton.click();
+  const editMenu = ui.root.querySelector('#crucible-studio-pop-edit');
+  assert.equal(editMenu.popoverOpen, true);
+  const order = editMenu.querySelectorAll('button').map(row => row.textContent);
+  assert.deepEqual(order.slice(0, 3), ['Undo', 'Redo', 'History']);
+  assert.equal(byText(editMenu, 'Redo').getAttribute('aria-disabled'), 'true', 'nothing to redo yet');
+  byText(editMenu, 'History').click();
+  assert.equal(ui.root.querySelector('#crucible-studio-pop-history').popoverOpen, true);
+  const rows = historyRows(ui);
+  assert.equal(rows[0].textContent, 'Hide', 'the first row to reach is the newest edit');
+  rows[2].click();
+  assert.equal(ui.controller.history.position, 3);
 });

@@ -1377,6 +1377,7 @@ export function createStudio(container, {
   const saveAsButton = showActionKey(createElement(documentReference, 'button', { type: 'button', textContent: 'Save as…' }), 'file.saveAs');
   const addMenuButton = createIconButton(documentReference, 'add', 'Add an object or a light', { attributes: { popovertarget: 'crucible-studio-pop-add' } });
   // The menus of the top bar, as a desktop app lays them out. Each one opens a popover of rows.
+  const HISTORY_ROW_LIMIT = 30;
   const createMenuButton = (label, popoverId, attributes = {}) => createElement(documentReference, 'button', {
     type: 'button',
     className: 'crucible-studio-menu-button',
@@ -1423,10 +1424,43 @@ export function createStudio(container, {
     controller.setCameraViewPreset(presetName);
     announce(`${presetName[0].toUpperCase()}${presetName.slice(1)} view`);
   };
+  const editUndoItem = createMenuItem('Undo', 'edit.undo', () => undoButton.click(), 'undo');
+  const editRedoItem = createMenuItem('Redo', 'edit.redo', () => redoButton.click(), 'redo');
+  const historyItem = createMenuItem('History', '', () => historyPopover.showPopover?.(), 'history');
+  // The recent edits by name, newest first, with a filled mark on the one the scene shows. A row steps undo or redo to that edit.
+  const historyPopover = createMenuPopover('crucible-studio-pop-history');
+  const createHistoryRow = (label, editPosition, appliedCount) => {
+    const row = createElement(documentReference, 'button', {
+      type: 'button',
+      textContent: label,
+      attributes: { role: 'menuitemcheckbox', 'aria-checked': editPosition === appliedCount ? 'true' : 'false' },
+    });
+    row.addEventListener('click', () => {
+      controller.goToHistoryPosition(editPosition);
+      announce(editPosition === 0 ? 'Back to the start' : `Went to ${label}`);
+    });
+    return row;
+  };
+  const renderHistoryRows = () => {
+    const { labels, position, reachesStart } = controller.history;
+    const oldestEdit = Math.max(1, Math.min(labels.length - HISTORY_ROW_LIMIT + 1, position));
+    const rows = [];
+    for (let editPosition = labels.length; editPosition >= oldestEdit; editPosition -= 1) {
+      rows.push(createHistoryRow(labels[editPosition - 1], editPosition, position));
+    }
+    if (oldestEdit === 1 && reachesStart) {
+      rows.push(createHistoryRow('Start', 0, position));
+    }
+    historyPopover.replaceChildren(...rows);
+  };
+  historyPopover.addEventListener('beforetoggle', event => {
+    if (event.newState === 'open') renderHistoryRows();
+  });
   const editPopover = createMenuPopover(
     'crucible-studio-pop-edit',
-    createMenuItem('Undo', 'edit.undo', () => undoButton.click(), 'undo'),
-    createMenuItem('Redo', 'edit.redo', () => redoButton.click(), 'redo'),
+    editUndoItem,
+    editRedoItem,
+    historyItem,
     createMenuItem('Copy', 'edit.copy', () => copySelection(), 'duplicate'),
     createMenuItem('Paste', 'edit.paste', () => pasteCopy(), 'duplicate'),
     createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicate'),
@@ -1687,7 +1721,7 @@ export function createStudio(container, {
     createMenuItem('Export web pack', '', () => exportPackButton.click(), 'globe'),
     createElement(documentReference, 'p', { className: 'crucible-studio-popover-note', textContent: 'New scene' }),
   );
-  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, viewPopover, helpPopover]) {
+  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, historyPopover, objectPopover, viewPopover, helpPopover]) {
     popoverElement.addEventListener('click', event => {
       if (event.target.closest?.('button')) popoverElement.hidePopover?.();
     });
@@ -1749,6 +1783,7 @@ export function createStudio(container, {
     aiSyncPopover,
     exportPopover,
     editPopover,
+    historyPopover,
     objectPopover,
     viewPopover,
     helpPopover,
@@ -1805,6 +1840,7 @@ export function createStudio(container, {
   }
   bindPopoverAnchor(() => fileMenuAnchor, newPopover);
   bindPopoverAnchor(editMenuButton, editPopover);
+  bindPopoverAnchor(editMenuButton, historyPopover);
   bindPopoverAnchor(viewMenuButton, viewPopover);
   bindPopoverAnchor(helpMenuButton, helpPopover);
   let addMenuAnchor = addMenuButton;
@@ -3920,6 +3956,9 @@ export function createStudio(container, {
     meshModeButtons.forEach(button => button.setAttribute('aria-pressed', editingMesh && button.dataset.meshMode === meshEditor.mode ? 'true' : 'false'));
     undoButton.setAttribute('aria-disabled', controller.canUndo ? 'false' : 'true');
     redoButton.setAttribute('aria-disabled', controller.canRedo ? 'false' : 'true');
+    editUndoItem.setAttribute('aria-disabled', controller.canUndo ? 'false' : 'true');
+    editRedoItem.setAttribute('aria-disabled', controller.canRedo ? 'false' : 'true');
+    historyItem.setAttribute('aria-disabled', controller.canUndo || controller.canRedo ? 'false' : 'true');
     const selectedNode = recipe.nodes.find(node => node.id === controller.selectedNodeId) ?? null;
     const hasNode = Boolean(selectedNode);
     const selectedCount = controller.selectedNodeIds.length;

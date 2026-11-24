@@ -54,6 +54,7 @@ export const STUDIO_ICON_PATHS = Object.freeze({
   check: 'M5 12.5l4.5 4.5L19 7',
   theme: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 3v18M12 7.5h4.5M12 12h6M12 16.5h4.5',
   speed: 'M4 17a8 8 0 1 1 16 0M12 17l4-5M12 17h.01',
+  history: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7.5V12l3 2',
   // Edit mode selection: the same square each time; what is picked is drawn on top of it (STUDIO_ICON_ACCENTS).
   meshVertex: 'M5 5h14v14H5z',
   meshEdge: 'M19 5v14H5V5z',

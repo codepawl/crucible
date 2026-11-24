@@ -694,6 +694,7 @@ export const STUDIO_CSS = `
 .crucible-studio-popover-grid + .crucible-studio-popover-grid { margin-block-start: 10px; }
 #crucible-studio-pop-add .crucible-studio-popover-grid { grid-template-columns: minmax(0, 1fr); }
 #crucible-studio-pop-add { max-block-size: calc(100dvh - 16px); overflow-y: auto; }
+#crucible-studio-pop-history { max-block-size: calc(100dvh - 72px); overflow-y: auto; }
 .crucible-studio-popover button[aria-expanded="true"] { background: color-mix(in srgb, var(--studio-text) 8%, transparent); }
 .crucible-studio-tree-section { display: grid; }
 .crucible-studio-tree-section[hidden], .crucible-studio-tree-controls[hidden] { display: none; }
