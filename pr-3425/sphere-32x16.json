@@ -1,0 +1,146 @@
+{
+  "asset": "sphere-32x16",
+  "source": "generated: 32 x 16 UV sphere baked from a 192 x 96 sphere with a ridged surface (6 ridges around, 4 along, height 0.06)",
+  "commit": {
+    "head": "9c1bcc46198b775cd72441699dd591333cd55d4a",
+    "base": "e0405ecdeb77fe511dd5bec46643764eca40b3b9",
+    "dirty": false
+  },
+  "recipe": {
+    "imageSize": 640,
+    "fieldOfViewDegrees": 35,
+    "edgeBandPixels": 4,
+    "gateMeanDegrees": 3,
+    "material": {
+      "tag": "surface",
+      "color": [
+        0.8,
+        0.75,
+        0.7
+      ],
+      "metallic": 0,
+      "roughness": 0.45
+    },
+    "renderer": {
+      "ground": false,
+      "world": true,
+      "samples": 1,
+      "pixelRatio": 1
+    },
+    "backend": "ANGLE d3d11 (GPU), headless Chrome"
+  },
+  "camera": {
+    "eye": [
+      2.2,
+      1.1,
+      2.6
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "fov": 35,
+    "up": [
+      0,
+      1,
+      0
+    ]
+  },
+  "mapResolution": 512,
+  "bake": {
+    "coveredTexels": 262144,
+    "hitTexels": 262094
+  },
+  "results": {
+    "noMap": {
+      "insideMask": {
+        "pixels": 270195,
+        "meanDegrees": 10.007554274087113,
+        "p95Degrees": 17.534469604492188
+      },
+      "interior": {
+        "pixels": 260835,
+        "meanDegrees": 10.058862915431074,
+        "p95Degrees": 17.516103744506836
+      },
+      "shaderFeatures": [
+        "studioLighting",
+        "fill",
+        "fragmentShadowPosition",
+        "renderPass"
+      ],
+      "tangentsReachedGeometry": false,
+      "againstOracle": {
+        "pixels": 271731,
+        "meanDegrees": 9.687104905838302,
+        "p95Degrees": 17.1297550201416
+      }
+    },
+    "derivative": {
+      "insideMask": {
+        "pixels": 270195,
+        "meanDegrees": 9.50565097019532,
+        "p95Degrees": 23.2244873046875
+      },
+      "interior": {
+        "pixels": 260835,
+        "meanDegrees": 9.463004393060798,
+        "p95Degrees": 23.104629516601562
+      },
+      "shaderFeatures": [
+        "normalMap",
+        "studioLighting",
+        "fill",
+        "fragmentShadowPosition",
+        "renderPass"
+      ],
+      "tangentsReachedGeometry": false,
+      "againstOracle": {
+        "pixels": 271731,
+        "meanDegrees": 8.999738564487036,
+        "p95Degrees": 23.002338409423828
+      }
+    },
+    "generated": {
+      "insideMask": {
+        "pixels": 270195,
+        "meanDegrees": 2.15988738514498,
+        "p95Degrees": 10.683547019958496
+      },
+      "interior": {
+        "pixels": 260835,
+        "meanDegrees": 1.957004395750133,
+        "p95Degrees": 9.908864974975586
+      },
+      "shaderFeatures": [
+        "normalMap",
+        "tangents",
+        "studioLighting",
+        "fill",
+        "fragmentShadowPosition",
+        "renderPass"
+      ],
+      "tangentsReachedGeometry": true,
+      "againstOracle": {
+        "pixels": 271731,
+        "meanDegrees": 0.5252539084315248,
+        "p95Degrees": 0.7033677101135254
+      }
+    },
+    "oracle": {
+      "insideMask": {
+        "pixels": 270195,
+        "meanDegrees": 2.296078043877358,
+        "p95Degrees": 11.396538734436035
+      },
+      "interior": {
+        "pixels": 260835,
+        "meanDegrees": 2.054864338055789,
+        "p95Degrees": 10.312980651855469
+      },
+      "shaderFeatures": [],
+      "tangentsReachedGeometry": true
+    }
+  }
+}

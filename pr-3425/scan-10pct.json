@@ -1,0 +1,167 @@
+{
+  "asset": "scan-10pct",
+  "source": "Boulder 01 (Poly Haven), CC0 1.0, https://polyhaven.com/a/boulder_01",
+  "commit": {
+    "head": "9c1bcc46198b775cd72441699dd591333cd55d4a",
+    "base": "e0405ecdeb77fe511dd5bec46643764eca40b3b9",
+    "dirty": false
+  },
+  "recipe": {
+    "imageSize": 640,
+    "fieldOfViewDegrees": 35,
+    "edgeBandPixels": 4,
+    "gateMeanDegrees": 3,
+    "material": {
+      "tag": "surface",
+      "color": [
+        0.8,
+        0.75,
+        0.7
+      ],
+      "metallic": 0,
+      "roughness": 0.45
+    },
+    "renderer": {
+      "ground": false,
+      "world": true,
+      "samples": 1,
+      "pixelRatio": 1
+    },
+    "backend": "ANGLE d3d11 (GPU), headless Chrome"
+  },
+  "camera": {
+    "eye": [
+      2.691352033917845,
+      2.063614422259495,
+      3.3308593503293284
+    ],
+    "target": [
+      -0.11209189891815186,
+      0.4282721281051636,
+      -0.0332733690738678
+    ],
+    "fov": 35,
+    "up": [
+      0,
+      1,
+      0
+    ]
+  },
+  "mapResolution": 1024,
+  "bake": {
+    "coveredTexels": 252796,
+    "hitTexels": 252796
+  },
+  "triangles": {
+    "scan": 66122,
+    "low": 6612
+  },
+  "unwrapReport": {
+    "islands": 1205,
+    "flipped": 0,
+    "areaDistortion": 0.03053164165341151
+  },
+  "scanFiles": [
+    {
+      "name": "boulder_01_8k.gltf",
+      "sha256": "bb9ab25f9f547d27cd6847409133718e16e5eb612138396c750c9e3d8e0d80e7",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/boulder_01/boulder_01_8k.gltf"
+    },
+    {
+      "name": "boulder_01.bin",
+      "sha256": "7f5b06503d62bd95bfe9c6b8a354a5cc8ff04a4d271a8cf87a3e3125db4232d7",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/boulder_01/boulder_01.bin"
+    }
+  ],
+  "results": {
+    "noMap": {
+      "insideMask": {
+        "pixels": 55962,
+        "meanDegrees": 20.837260738877166,
+        "p95Degrees": 46.98461151123047
+      },
+      "interior": {
+        "pixels": 50920,
+        "meanDegrees": 20.721779219739254,
+        "p95Degrees": 46.74357223510742
+      },
+      "shaderFeatures": [
+        "studioLighting",
+        "fill",
+        "fragmentShadowPosition",
+        "renderPass"
+      ],
+      "tangentsReachedGeometry": false,
+      "againstOracle": {
+        "pixels": 56105,
+        "meanDegrees": 21.097902828334924,
+        "p95Degrees": 47.31336975097656
+      }
+    },
+    "derivative": {
+      "insideMask": {
+        "pixels": 55962,
+        "meanDegrees": 29.45725710642826,
+        "p95Degrees": 74.59590148925781
+      },
+      "interior": {
+        "pixels": 50920,
+        "meanDegrees": 29.43625885448248,
+        "p95Degrees": 74.5867919921875
+      },
+      "shaderFeatures": [
+        "normalMap",
+        "studioLighting",
+        "fill",
+        "fragmentShadowPosition",
+        "renderPass"
+      ],
+      "tangentsReachedGeometry": false,
+      "againstOracle": {
+        "pixels": 56105,
+        "meanDegrees": 29.94443347157771,
+        "p95Degrees": 76.94563293457031
+      }
+    },
+    "generated": {
+      "insideMask": {
+        "pixels": 55962,
+        "meanDegrees": 5.693811061284684,
+        "p95Degrees": 24.773595809936523
+      },
+      "interior": {
+        "pixels": 50920,
+        "meanDegrees": 5.481216091831489,
+        "p95Degrees": 23.866758346557617
+      },
+      "shaderFeatures": [
+        "normalMap",
+        "tangents",
+        "studioLighting",
+        "fill",
+        "fragmentShadowPosition",
+        "renderPass"
+      ],
+      "tangentsReachedGeometry": true,
+      "againstOracle": {
+        "pixels": 56105,
+        "meanDegrees": 4.013582303965098,
+        "p95Degrees": 13.736541748046875
+      }
+    },
+    "oracle": {
+      "insideMask": {
+        "pixels": 55963,
+        "meanDegrees": 6.582198930777268,
+        "p95Degrees": 27.52008056640625
+      },
+      "interior": {
+        "pixels": 50921,
+        "meanDegrees": 6.444180911441927,
+        "p95Degrees": 26.879806518554688
+      },
+      "shaderFeatures": [],
+      "tangentsReachedGeometry": true
+    }
+  }
+}
