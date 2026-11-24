@@ -182,9 +182,19 @@ async function measureScreens(page, theme, only) {
   if (!only || only === 'studio') {
     // The Modifiers tab with two blocks, one folded away from the default, so its cards and rows are measured too.
     await page.evaluate(() => window.__studioPage.setActiveTab('modifiers'));
-    for (const modifier of ['mirror', 'array']) await page.selectOption('.crucible-studio-modifier-add', modifier);
+    for (const modifier of ['mirror', 'array']) {
+      await page.click('.crucible-studio-modifier-add');
+      await page.click(`.crucible-studio-modifier-add-menu [data-modifier="${modifier}"]`);
+    }
+    // Scrolled to the end, so the bottom inset of the last block is measured too.
+    await page.evaluate(() => document.querySelector('.crucible-studio-panels').scrollTo(0, 1e6));
     await page.waitForTimeout(250);
     screens.push({ name: `modifiers (${theme})`, records: await measure(page, '.crucible-studio') });
+    await page.click('.crucible-studio-modifier-add');
+    await page.evaluate(() => document.querySelector('.crucible-studio-panels').scrollTo(0, 0));
+    await page.waitForTimeout(250);
+    screens.push({ name: `modifiers add menu (${theme})`, records: await measure(page, '.crucible-studio') });
+    await page.click('.crucible-studio-modifier-add');
     await page.evaluate(() => window.__studioPage.setActiveTab('node'));
   }
   if (!only || only === 'popover') {

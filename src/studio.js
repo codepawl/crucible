@@ -2366,7 +2366,7 @@ export function createStudio(container, {
   const modifierPanel = createModifierPanel({ documentReference, controller, announce, builders: { createElement, createIcon, createIconButton, createVectorRow } });
   const panelsByTab = {
     node: createElement(documentReference, 'div', { id: 'crucible-studio-panel-node', tabIndex: 0, attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-node' } }, nodePanelBody),
-    modifiers: createElement(documentReference, 'div', { id: 'crucible-studio-panel-modifiers', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-modifiers', hidden: 'until-found' } }, createElement(documentReference, 'div', { className: 'crucible-studio-panel-body' }, modifierPanel.element)),
+    modifiers: createElement(documentReference, 'div', { id: 'crucible-studio-panel-modifiers', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-modifiers', hidden: 'until-found' } }, createElement(documentReference, 'div', { className: 'crucible-studio-panel-body crucible-studio-modifier-body' }, modifierPanel.element)),
     material: createElement(documentReference, 'div', { id: 'crucible-studio-panel-material', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-material', hidden: 'until-found' } }, materialPanelBody),
     look: createElement(documentReference, 'div', { id: 'crucible-studio-panel-look', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-look', hidden: 'until-found' } }, lookPanelBody),
     camera: createElement(documentReference, 'div', { id: 'crucible-studio-panel-camera', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-camera', hidden: 'until-found' } }, cameraPanelBody),

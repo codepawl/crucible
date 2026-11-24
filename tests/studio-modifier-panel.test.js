@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createStudio } from '../src/studio.js';
 import { MODIFIER_LIMITS } from '../src/studio-modifier-panel.js';
-import { MAX_STACK_NODES } from '../src/mesh-operations.js';
+import { MAX_ARRAY_COUNT, MAX_STACK_NODES } from '../src/mesh-operations.js';
 import { MAX_BEVEL_SEGMENTS } from '../src/mesh-bevel.js';
 import { MAX_SUBDIVISION_LEVELS } from '../src/mesh-subdivide.js';
 import { evaluateMeshStack, normalizeMeshStack } from '../src/mesh-recipe.js';
@@ -47,10 +47,13 @@ function mount(testContext, selected = 'hero') {
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
+function addMenuOf(ui) {
+  return ui.panel.querySelector('.crucible-studio-modifier-add-menu');
+}
+
 function add(ui, operation) {
-  const select = ui.panel.querySelector('.crucible-studio-modifier-add');
-  select.value = operation;
-  dispatch(select, 'change');
+  dispatch(ui.panel.querySelector('.crucible-studio-modifier-add'), 'click');
+  dispatch(addMenuOf(ui).descendants().find(item => item.dataset.modifier === operation), 'click');
 }
 
 function sections(ui) {
@@ -103,8 +106,9 @@ test('the panel limits are the limits of the recipe', () => {
   assert.equal(MODIFIER_LIMITS.subdivisionLevels, MAX_SUBDIVISION_LEVELS);
   assert.equal(MODIFIER_LIMITS.bevelSegments, MAX_BEVEL_SEGMENTS);
   assert.equal(MODIFIER_LIMITS.maxStackNodes, MAX_STACK_NODES);
+  assert.equal(MODIFIER_LIMITS.arrayCount, MAX_ARRAY_COUNT);
   assert.doesNotThrow(() => normalizeMeshStack([{ op: 'array', count: MODIFIER_LIMITS.arrayCount }, { op: 'mirror', merge: MODIFIER_LIMITS.distance }]));
-  assert.throws(() => normalizeMeshStack([{ op: 'array', count: MODIFIER_LIMITS.arrayCount + 1 }]), /count/);
+  assert.throws(() => normalizeMeshStack([{ op: 'array', count: MAX_ARRAY_COUNT + 1 }]), /count/);
   assert.throws(() => normalizeMeshStack([{ op: 'mirror', merge: MODIFIER_LIMITS.distance + 1 }]), /merge/);
 });
 
@@ -124,8 +128,23 @@ test('a switched-off node is skipped by evaluation, and an agent cannot apply it
   });
   const faces = scene.parts.find(part => part.name === 'n').geometry.indices.length / 3;
   assert.equal(faces, 12, 'a box stays 12 triangles while its subdivision is off');
-  assert.throws(() => scene.apply([{ type: 'set-mesh-stack', geometry: 'm', apply: 1 }], { expectedRevision: scene.revision }), /enabled/);
+  assert.throws(() => scene.apply([{ type: 'set-mesh-stack', geometry: 'm', apply: 1 }], { expectedRevision: scene.revision }), /stops before stack node 0.*switched off/);
   await settle();
+});
+
+test('Add Modifier is a menu: it opens, lists the five, closes after a pick and on Escape', t => {
+  const ui = mount(t);
+  const button = ui.panel.querySelector('.crucible-studio-modifier-add');
+  assert.equal(addMenuOf(ui).hidden, true);
+  dispatch(button, 'click');
+  assert.equal(addMenuOf(ui).hidden, false);
+  assert.equal(button.getAttribute('aria-expanded'), 'true');
+  assert.deepEqual(addMenuOf(ui).descendants().filter(item => item.dataset.modifier).map(item => item.dataset.modifier), ['subdivide', 'mirror', 'array', 'bevel', 'solidify']);
+  dispatch(ui.panel, 'keydown', { key: 'Escape' });
+  assert.equal(addMenuOf(ui).hidden, true);
+  add(ui, 'mirror');
+  assert.equal(addMenuOf(ui).hidden, true, 'a pick closes the menu');
+  assert.deepEqual(stackOf(ui).map(node => node.op), ['mirror']);
 });
 
 test('the Modifiers tab lists the five modifiers and adds each as one undo step', t => {
@@ -254,9 +273,8 @@ test('a mesh two objects share is copied before it takes a modifier, and the twi
   studio.controller.selectNode('hero');
   studio.setActiveTab('modifiers');
   const panel = dom.container.firstElementChild.querySelector('.crucible-studio-modifiers');
-  const select = panel.querySelector('.crucible-studio-modifier-add');
-  select.value = 'mirror';
-  dispatch(select, 'change');
+  dispatch(panel.querySelector('.crucible-studio-modifier-add'), 'click');
+  dispatch(panel.querySelector('.crucible-studio-modifier-add-menu').descendants().find(item => item.dataset.modifier === 'mirror'), 'click');
   const after = studio.controller.exportRecipe();
   assert.equal(after.geometries.find(geometry => geometry.id === 'half').stack, undefined, 'the twin still has no modifier');
   assert.notEqual(after.nodes.find(node => node.id === 'hero').geometry, 'half');

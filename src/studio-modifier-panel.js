@@ -1,5 +1,6 @@
 import { createPropertyLine } from './studio-property-panel.js';
 import { CONVERTIBLE_PRIMITIVES, planOwnMesh } from './studio-own-mesh.js';
+import { MAX_ARRAY_COUNT, MAX_STACK_NODES } from './mesh-operations.js';
 
 // The Modifiers tab of the Properties editor. Blender keeps modifiers in a Properties tab as a stack of collapsible panels, each
 // with a header (name, show in viewport, apply, delete, move) and its main fields, and an Add Modifier menu above them. This panel
@@ -8,7 +9,7 @@ import { CONVERTIBLE_PRIMITIVES, planOwnMesh } from './studio-own-mesh.js';
 
 // The bounds of the recipe (mesh-subdivide.js, mesh-bevel.js, mesh-recipe.js), kept here because those modules are large and the
 // panel is part of the core entry. tests/studio-modifier-panel.test.js keeps them equal to the recipe's own.
-export const MODIFIER_LIMITS = Object.freeze({ subdivisionLevels: 4, bevelSegments: 16, arrayCount: 256, distance: 1000, maxStackNodes: 16 });
+export const MODIFIER_LIMITS = Object.freeze({ subdivisionLevels: 4, bevelSegments: 16, arrayCount: MAX_ARRAY_COUNT, distance: 1000, maxStackNodes: MAX_STACK_NODES });
 
 const ADD_PLACEHOLDER = 'Add Modifier';
 const NO_SELECTION = 'Select a shape or a mesh to give it modifiers.';
@@ -92,13 +93,17 @@ function stackTargetOf(recipe, nodeId) {
 export function createModifierPanel({ documentReference, controller, announce, builders }) {
   const { createElement, createIcon, createIconButton, createVectorRow } = builders;
   const element = createElement(documentReference, 'div', { className: 'crucible-studio-modifiers' });
-  const addSelect = createElement(documentReference, 'select', {
+  // Add Modifier is a menu, as in Blender: a button that opens a list of the five, drawn in the panel so it shows in a recording.
+  const addButton = createElement(documentReference, 'button', {
+    type: 'button',
     className: 'crucible-studio-modifier-add',
-    attributes: { 'aria-label': ADD_PLACEHOLDER },
-  }, createElement(documentReference, 'option', { value: '', textContent: ADD_PLACEHOLDER }), ...MODIFIER_NAMES.map(operation => createElement(documentReference, 'option', { value: operation, textContent: MODIFIERS[operation].title })));
+    attributes: { 'aria-haspopup': 'menu', 'aria-expanded': 'false' },
+  }, createIcon(documentReference, 'modifiers'), createElement(documentReference, 'span', { textContent: ADD_PLACEHOLDER }), createIcon(documentReference, 'expand'));
+  const addMenu = createElement(documentReference, 'div', { className: 'crucible-studio-modifier-add-menu', hidden: true, attributes: { role: 'menu', 'aria-label': ADD_PLACEHOLDER } },
+    ...MODIFIER_NAMES.map(operation => createElement(documentReference, 'button', { type: 'button', dataset: { modifier: operation }, attributes: { role: 'menuitem' }, textContent: MODIFIERS[operation].title })));
   const emptyMessage = createElement(documentReference, 'p', { className: 'crucible-studio-modifier-empty' });
   const list = createElement(documentReference, 'div', { className: 'crucible-studio-modifier-list' });
-  element.append(createElement(documentReference, 'div', { className: 'crucible-studio-modifier-bar' }, createIcon(documentReference, 'modifiers'), addSelect), emptyMessage, list);
+  element.append(createElement(documentReference, 'div', { className: 'crucible-studio-modifier-bar' }, addButton, addMenu), emptyMessage, list);
 
   let shownKey = null;
   let sections = [];
@@ -216,7 +221,7 @@ export function createModifierPanel({ documentReference, controller, announce, b
     }, createIcon(documentReference, 'chevron'), createElement(documentReference, 'span', { textContent: title }));
     const visibility = createElement(documentReference, 'button', {
       type: 'button',
-      className: 'crucible-studio-switch',
+      className: 'crucible-studio-switch crucible-studio-modifier-switch',
       attributes: { role: 'switch', 'aria-checked': 'true', 'aria-label': `Show ${title} in viewport` },
       dataset: { action: 'enable' },
     }, createElement(documentReference, 'span', { className: 'crucible-studio-switch-knob', attributes: { 'aria-hidden': 'true' } }));
@@ -318,8 +323,9 @@ export function createModifierPanel({ documentReference, controller, announce, b
     emptyMessage.hidden = !target.refusal;
     emptyMessage.textContent = target.refusal ?? '';
     const full = !target.refusal && target.stack.length >= MODIFIER_LIMITS.maxStackNodes;
-    addSelect.disabled = Boolean(target.refusal) || full;
-    addSelect.title = full ? `A stack holds at most ${MODIFIER_LIMITS.maxStackNodes} modifiers.` : '';
+    addButton.disabled = Boolean(target.refusal) || full;
+    if (addButton.disabled) setAddMenuOpen(false);
+    addButton.title = full ? `A stack holds at most ${MODIFIER_LIMITS.maxStackNodes} modifiers.` : '';
     // The sections are drawn again only when the stack changes shape; a value edit leaves them, and the focus in them, alone.
     const key = target.refusal ? 'none' : `${target.nodeId}|${target.geometryId}|${target.stack.map(node => node.op).join(',')}`;
     if (key !== shownKey) {
@@ -330,9 +336,21 @@ export function createModifierPanel({ documentReference, controller, announce, b
     if (!target.refusal) showValues();
   }
 
-  addSelect.addEventListener('change', () => {
-    const operation = addSelect.value;
-    addSelect.value = '';
+  function setAddMenuOpen(open) {
+    addMenu.hidden = !open;
+    addButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  addButton.addEventListener('click', () => setAddMenuOpen(addMenu.hidden));
+  element.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || addMenu.hidden) return;
+    event.stopPropagation();
+    setAddMenuOpen(false);
+    addButton.focus?.();
+  });
+  addMenu.addEventListener('click', event => {
+    const operation = event.target.dataset?.modifier;
+    setAddMenuOpen(false);
     if (!MODIFIERS[operation] || target.refusal) return;
     writeStack([...target.stack, MODIFIERS[operation].create()]);
   });

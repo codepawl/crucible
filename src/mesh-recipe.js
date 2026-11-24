@@ -37,6 +37,7 @@ import './mesh-build-modifier.js';
 import { remeshMesh, remeshGridSize, MAX_REMESH_RESOLUTION } from './mesh-remesh.js';
 import {
   MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES, SCULPT_STROKE_TYPES, MAX_SCULPT_STROKES, SHRINKWRAP_MODES,
+  MAX_ARRAY_COUNT,
 } from './mesh-operations.js';
 export { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES };
 
@@ -268,7 +269,7 @@ export function normalizeMeshEdits(edits) {
         normalized.merge = edit.merge === undefined ? 0.001 : finiteNumber(edit.merge, index, 'merge', { minimum: 0, maximum: 1e3 });
         break;
       case 'array':
-        if (!Number.isInteger(edit.count ?? 2) || (edit.count ?? 2) < 1 || (edit.count ?? 2) > 256) throw editField(index, 'count', edit.count, 'a whole number from 1 to 256, such as 4');
+        if (!Number.isInteger(edit.count ?? 2) || (edit.count ?? 2) < 1 || (edit.count ?? 2) > MAX_ARRAY_COUNT) throw editField(index, 'count', edit.count, `a whole number from 1 to ${MAX_ARRAY_COUNT}, such as 4`);
         normalized.count = edit.count ?? 2;
         normalized.offset = edit.offset === undefined ? [0, 0, 0] : vector(edit.offset, index, 'offset');
         normalized.relativeOffset = edit.relativeOffset === undefined ? (edit.offset === undefined ? [1, 0, 0] : [0, 0, 0]) : vector(edit.relativeOffset, index, 'relativeOffset');
