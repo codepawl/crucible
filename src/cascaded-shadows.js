@@ -187,12 +187,12 @@ export function planCascadeSplits(count, near, receiverReach, maximumDistance, l
 
 /**
  * The view depth where the receivers end, so the far slice stops there: nothing past it gets a shadow from the single map
- * either. Bounds the scene wrote (`shadowBounds.extent`) say where that is. Without them the sun's view is a default box
- * (7 m studio, 130 m world) that says nothing about the scene, and a room wider than it would read as sunlit past the box
- * (#3379), so the parts' own bounds decide. A scene whose parts have no placement keeps the default view.
+ * either. Bounds the scene wrote (`shadowBounds.extent`) say where that is. Without them a studio scene's sun view is a 7 m
+ * default box that says nothing about the scene, and a room wider than it would read as sunlit past the box (#3379), so the
+ * parts' own bounds decide. A world scene keeps its world view, which its terrain would stretch to the whole far plane. A scene whose parts have no placement keeps the default view.
  */
 function receiverBoundsFarDistance(renderer, light) {
-  const partBounds = renderer.shadowBounds?.extent === undefined ? renderer.receiverBounds?.() : null;
+  const partBounds = !renderer.world && renderer.shadowBounds?.extent === undefined ? renderer.receiverBounds?.() : null;
   if (partBounds) return farthestDepthOfBounds(partBounds, renderer.view);
   return viewDepthOf(light.target, renderer.view) + light.extent;
 }

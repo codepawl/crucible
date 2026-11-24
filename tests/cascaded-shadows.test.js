@@ -167,12 +167,12 @@ test('a scene that fits inside maximumDistance keeps the layer count it asked fo
 });
 
 // A room lit through windows (#3379): the file scene gives no shadow bounds, so the sun's view is the 7 m studio box at the origin.
-function interiorRenderer({ shadowBounds = {}, sceneBounds }) {
+function interiorRenderer({ shadowBounds = {}, sceneBounds, world = false }) {
   const projection = mat4.perspective(mat4.create(), 0.7, 16 / 9, 0.05, 2000);
   const view = mat4.lookAt(mat4.create(), [2.5, 1.1, 4.5], [1, 1.2, -1.7], [0, 1, 0]);
   const inverseViewProjection = mat4.invert(mat4.create(), mat4.multiply(mat4.create(), projection, view));
   return {
-    world: false,
+    world,
     activeLightDirection: [0.87, 0.48, 0.08],
     shadowBounds,
     inverseViewProjection,
@@ -199,4 +199,11 @@ test('explicit shadow bounds still end the far slice, and a scene with no bounds
   const unknown = createCascadedShadows({ count: 1 });
   unknown.fitToCamera(interiorRenderer({ sceneBounds: null }));
   assert.equal(unknown.splits[0], explicit.splits[0], 'a scene with no bounds falls back to the default view');
+});
+
+test('a world scene that writes no bounds keeps its world view instead of stretching to its terrain', () => {
+  const cascades = createCascadedShadows({ count: 1 });
+  cascades.fitToCamera(interiorRenderer({ world: true, sceneBounds: { minimum: [-3000, -1, -3000], maximum: [3000, 50, 3000] } }));
+  assert.equal(cascades.layerCount, 1, 'terrain bounds add no far layer');
+  assert.ok(cascades.splits[0] < 100, `the slice still ends inside the world view (${cascades.splits[0].toFixed(1)} m)`);
 });
