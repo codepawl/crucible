@@ -4749,7 +4749,7 @@ export function createStudio(container, {
     } else if (meshEditor.circleSelecting) {
       endCircleSelect();
     } else if (meshEditor.boxSelecting) {
-      meshEditor.endBoxSelect();
+      cancelBoxSelect();
     } else if (!meshEditor.clearSelection()) {
       meshEditor.leave();
     }
@@ -4813,6 +4813,13 @@ export function createStudio(container, {
   // Box select (B): one left drag over the viewport selects what lies inside the rectangle, then the key is spent.
   let boxDrag = null;
 
+  // Escape or B again drops a box that is being dragged, so letting go of the button afterwards selects nothing.
+  function cancelBoxSelect() {
+    if (boxDrag) viewportElement.releasePointerCapture?.(boxDrag.pointerId);
+    boxDrag = null;
+    meshEditor.endBoxSelect();
+  }
+
   function boxRectangleOf(event) {
     const { x, y } = localCoordinates(event);
     return { left: Math.min(boxDrag.x, x), right: Math.max(boxDrag.x, x), top: Math.min(boxDrag.y, y), bottom: Math.max(boxDrag.y, y) };
@@ -4834,7 +4841,7 @@ export function createStudio(container, {
   });
 
   viewportElement.addEventListener('pointerup', event => {
-    if (boxDrag?.pointerId !== event.pointerId) return;
+    if (boxDrag?.pointerId !== event.pointerId || !meshEditor?.boxSelecting) return;
     const { left, top, right, bottom } = boxRectangleOf(event);
     boxDrag = null;
     viewportElement.releasePointerCapture?.(event.pointerId);
@@ -4901,7 +4908,7 @@ export function createStudio(container, {
     },
     'mesh.boxSelect': () => {
       if (meshEditor.boxSelecting) {
-        meshEditor.endBoxSelect();
+        cancelBoxSelect();
       } else {
         meshEditor.beginBoxSelect();
         announce('Drag a rectangle over what to select. Shift adds to the selection.');

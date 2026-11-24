@@ -171,4 +171,17 @@ test('Alt+Z through the page is view state: the bar button follows it, undo is u
   press('z', { code: 'KeyZ', altKey: true });
   assert.equal(studio.seeThrough, false);
   assert.equal(button.getAttribute('aria-pressed'), 'false');
+  press('Escape');
+  studio.renderNow();
+  assert.equal(picked(), 0, 'Escape with a selection clears it');
+  press('b');
+  const from = toScreen([-0.5, 0.5, 0.5]);
+  const to = toScreen([0.5, -0.5, 0.5]);
+  dispatch(canvas, 'pointerdown', { clientX: from.clientX - 12, clientY: from.clientY - 12, button: 0 });
+  dispatch(viewport, 'pointermove', { clientX: to.clientX + 12, clientY: to.clientY + 12 });
+  press('Escape');
+  dispatch(viewport, 'pointerup', { clientX: to.clientX + 12, clientY: to.clientY + 12 });
+  studio.renderNow();
+  assert.equal(picked(), 0, 'Escape during the drag drops the box, so letting go selects nothing');
+  assert.equal(root.dataset.meshEdit, 'true', 'Escape during the drag stays in edit mode');
 });
