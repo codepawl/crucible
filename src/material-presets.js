@@ -12,20 +12,24 @@ export const MATERIAL_PRESET_NAMES = Object.freeze(['smoothPlastic', 'wood', 'gr
 const BLADE_POSITION = Object.freeze({ mul: Object.freeze([Object.freeze({ uv: 'both' }), Object.freeze({ vec: Object.freeze([4, 1, 1]) })]) });
 const BLADE_CELLS = Object.freeze({ voronoi: Object.freeze({ scale: 6, output: 'cell', at: BLADE_POSITION }) });
 const BLADE_DOME = Object.freeze({ invert: Object.freeze({ voronoi: Object.freeze({ scale: 6, output: 'distance', at: BLADE_POSITION }) }) });
-const BLADE_SHAPE = Object.freeze({ mul: Object.freeze([
+// The gap between the nearest and second nearest point is 0 on the line between two cells; fading each blade to 0 there keeps the
+// height continuous across the line (a blade next to bare turf used to step, and the normal map drew that step as a dark hairline).
+const BLADE_GAP = Object.freeze({ voronoi: Object.freeze({ scale: 6, output: 'edge', at: BLADE_POSITION }) });
+const BLADE_PRESENCE = Object.freeze({ mul: Object.freeze([
   Object.freeze({ smoothstep: Object.freeze([0.3, 0.45, BLADE_CELLS]) }),
-  Object.freeze({ pow: Object.freeze([BLADE_DOME, 2]) }),
+  Object.freeze({ smoothstep: Object.freeze([0, 0.2, BLADE_GAP]) }),
 ]) });
+const BLADE_SHAPE = Object.freeze({ mul: Object.freeze([BLADE_PRESENCE, Object.freeze({ pow: Object.freeze([BLADE_DOME, 2]) })]) });
 const GRASS_TONE = Object.freeze({ add: Object.freeze([
-  Object.freeze({ add: Object.freeze([0.2, Object.freeze({ mul: Object.freeze([Object.freeze({ noise: Object.freeze({ scale: 4, octaves: 2 }) }), 0.2]) })]) }),
-  Object.freeze({ mul: Object.freeze([BLADE_SHAPE, 0.85]) }),
+  Object.freeze({ add: Object.freeze([0.32, Object.freeze({ mul: Object.freeze([Object.freeze({ noise: Object.freeze({ scale: 4, octaves: 2 }) }), 0.12]) })]) }),
+  Object.freeze({ mul: Object.freeze([BLADE_SHAPE, 0.7]) }),
 ]) });
 const GRASS_PATTERN = Object.freeze({
   type: 'graph', size: 0.6, bump: 1.1,
   graph: Object.freeze({
     color: Object.freeze({ ramp: Object.freeze({
       value: Object.freeze({ clamp: Object.freeze([GRASS_TONE, 0, 1]) }),
-      stops: Object.freeze([Object.freeze([0, Object.freeze([0.1, 0.1, 0.1])]), Object.freeze([1, Object.freeze([1, 1, 1])])]),
+      stops: Object.freeze([Object.freeze([0, Object.freeze([0.2, 0.2, 0.2])]), Object.freeze([1, Object.freeze([1, 1, 1])])]),
     }) }),
     height: BLADE_SHAPE,
   }),
@@ -54,7 +58,7 @@ const NEON_PATTERN = Object.freeze({
 // Glass edge light: Schlick's Fresnel as a factor of emission, so the faces seen at a grazing angle catch a bright edge.
 const GLASS_EDGE_PATTERN = Object.freeze({
   type: 'graph', size: 1,
-  graph: Object.freeze({ emission: Object.freeze({ mul: Object.freeze([Object.freeze({ fresnel: Object.freeze({ ior: 1.5 }) }), 6]) }) }),
+  graph: Object.freeze({ emission: Object.freeze({ mul: Object.freeze([Object.freeze({ fresnel: Object.freeze({ ior: 1.5 }) }), 30]) }) }),
 });
 
 const MATERIAL_PRESETS = Object.freeze({
@@ -78,9 +82,9 @@ const MATERIAL_PRESETS = Object.freeze({
     note: 'A glowing panel: emission 1.5 times a map with a bright tube frame along the edge of each face (4) and a calmer face inside (1.1), in a saturated version of the part colour (emissiveColor) over a near-black base. Pair it with effects.bloom { strength 1, threshold 0.8, radius 3 } for the halo and a point light of the same colour near it for the spill; the default bloom is faint. Set pattern.size to the part width for one frame per face.',
   }),
   glass: Object.freeze({
-    color: Object.freeze([0.85, 0.95, 1]), roughness: 0.03, metallic: 0, opacity: 0.55, clearcoat: 1,
-    transmission: 0.9, ior: 1.5, thickness: 0.05, pattern: GLASS_EDGE_PATTERN,
-    note: 'Blended pane, opacity 0.55, that refracts what is behind it (transmission 0.9, ior 1.5, thickness 0.05), with a clear coat that mirrors the sky and a Fresnel edge light, tinted by color.',
+    color: Object.freeze([0.55, 0.82, 0.95]), roughness: 0.03, metallic: 0, opacity: 0.5, clearcoat: 1,
+    transmission: 0.9, ior: 1.12, thickness: 0.05, pattern: GLASS_EDGE_PATTERN,
+    note: 'Blended pane, opacity 0.5, that refracts what is behind it (transmission 0.9, ior 1.12, thickness 0.05), with a clear coat that mirrors the sky and a Fresnel edge light, tinted by color.',
   }),
   brick: Object.freeze({
     color: Object.freeze([0.6, 0.14, 0.09]), roughness: 0.9, metallic: 0,
