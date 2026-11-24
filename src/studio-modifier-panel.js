@@ -22,11 +22,13 @@ const AXIS_CHOICES = Object.freeze(['x', 'y', 'z'].map(axis => Object.freeze({ v
 const MODIFIERS = Object.freeze({
   subdivide: Object.freeze({
     title: 'Subdivision',
+    icon: 'sphere',
     create: () => ({ op: 'subdivide', levels: 1 }),
     fields: [{ key: 'levels', label: 'Levels', control: 'integer', min: 1, max: MODIFIER_LIMITS.subdivisionLevels, fallback: () => 1 }],
   }),
   mirror: Object.freeze({
     title: 'Mirror',
+    icon: 'duplicate',
     create: () => ({ op: 'mirror', axis: 'x', merge: 0.001 }),
     fields: [
       { key: 'axis', label: 'Axis', control: 'choice', choices: AXIS_CHOICES, fallback: () => 'x' },
@@ -35,6 +37,7 @@ const MODIFIERS = Object.freeze({
   }),
   array: Object.freeze({
     title: 'Array',
+    icon: 'grid',
     create: () => ({ op: 'array', count: 2, relativeOffset: [1, 0, 0] }),
     fields: [
       { key: 'count', label: 'Count', control: 'integer', min: 1, max: MODIFIER_LIMITS.arrayCount, fallback: () => 2 },
@@ -45,6 +48,7 @@ const MODIFIERS = Object.freeze({
   }),
   bevel: Object.freeze({
     title: 'Bevel',
+    icon: 'cone',
     create: () => ({ op: 'bevel', width: 0.05, segments: 2 }),
     fields: [
       { key: 'width', label: 'Width', control: 'number', min: 0, exclusiveMinimum: true, max: MODIFIER_LIMITS.distance, step: 0.01, fallback: () => 0.05 },
@@ -54,6 +58,7 @@ const MODIFIERS = Object.freeze({
   }),
   solidify: Object.freeze({
     title: 'Solidify',
+    icon: 'node',
     create: () => ({ op: 'solidify', thickness: 0.1 }),
     fields: [
       { key: 'thickness', label: 'Thickness', control: 'number', min: 0, exclusiveMinimum: true, max: MODIFIER_LIMITS.distance, step: 0.01, fallback: () => 0.1 },
@@ -99,8 +104,8 @@ export function createModifierPanel({ documentReference, controller, announce, b
     className: 'crucible-studio-modifier-add',
     attributes: { 'aria-haspopup': 'menu', 'aria-expanded': 'false' },
   }, createIcon(documentReference, 'modifiers'), createElement(documentReference, 'span', { textContent: ADD_PLACEHOLDER }), createIcon(documentReference, 'expand'));
-  const addMenu = createElement(documentReference, 'div', { className: 'crucible-studio-modifier-add-menu', hidden: true, attributes: { role: 'menu', 'aria-label': ADD_PLACEHOLDER } },
-    ...MODIFIER_NAMES.map(operation => createElement(documentReference, 'button', { type: 'button', dataset: { modifier: operation }, attributes: { role: 'menuitem' }, textContent: MODIFIERS[operation].title })));
+  const addMenu = createElement(documentReference, 'div', { className: 'crucible-studio-modifier-menu crucible-studio-modifier-add-menu', hidden: true, attributes: { role: 'menu', 'aria-label': ADD_PLACEHOLDER } },
+    ...MODIFIER_NAMES.map(operation => menuItem(MODIFIERS[operation].icon, MODIFIERS[operation].title, { modifier: operation })));
   const emptyMessage = createElement(documentReference, 'p', { className: 'crucible-studio-modifier-empty' });
   const list = createElement(documentReference, 'div', { className: 'crucible-studio-modifier-list' });
   element.append(createElement(documentReference, 'div', { className: 'crucible-studio-modifier-bar' }, addButton, addMenu), emptyMessage, list);
@@ -198,9 +203,9 @@ export function createModifierPanel({ documentReference, controller, announce, b
     return createIconButton(documentReference, iconName, label, { dataset: { action } });
   }
 
-  // A row of the block menu: the icon and the word, since the three actions are not worth a header button each.
-  function menuItem(iconName, label, action) {
-    const item = createElement(documentReference, 'button', { type: 'button', dataset: { action }, attributes: { role: 'menuitem' } }, createIcon(documentReference, iconName), createElement(documentReference, 'span', { textContent: label }));
+  // A row of a menu: the icon and the word. The Add Modifier list and the block menu look the same.
+  function menuItem(iconName, label, dataset) {
+    const item = createElement(documentReference, 'button', { type: 'button', dataset, attributes: { role: 'menuitem' } }, createIcon(documentReference, iconName), createElement(documentReference, 'span', { textContent: label }));
     item.setAttribute('aria-disabled', 'false');
     return item;
   }
@@ -225,9 +230,9 @@ export function createModifierPanel({ documentReference, controller, announce, b
       attributes: { role: 'switch', 'aria-checked': 'true', 'aria-label': `Show ${title} in viewport` },
       dataset: { action: 'enable' },
     }, createElement(documentReference, 'span', { className: 'crucible-studio-switch-knob', attributes: { 'aria-hidden': 'true' } }));
-    const up = menuItem('minimize', 'Move up', 'up');
-    const down = menuItem('expand', 'Move down', 'down');
-    const apply = menuItem('check', 'Apply', 'apply');
+    const up = menuItem('minimize', 'Move up', { action: 'up' });
+    const down = menuItem('expand', 'Move down', { action: 'down' });
+    const apply = menuItem('check', 'Apply', { action: 'apply' });
     const menu = createElement(documentReference, 'div', { className: 'crucible-studio-modifier-menu', hidden: true, attributes: { role: 'menu', 'aria-label': `${title} actions` } }, up, down, apply);
     const menuButton = createIconButton(documentReference, 'more', `${title} actions`, { attributes: { 'aria-haspopup': 'menu', 'aria-expanded': 'false' } });
     const remove = headerButton('remove', `Delete ${title}`, 'remove');
@@ -349,7 +354,10 @@ export function createModifierPanel({ documentReference, controller, announce, b
     addButton.focus?.();
   });
   addMenu.addEventListener('click', event => {
-    const operation = event.target.dataset?.modifier;
+    // A click lands on the icon or the word inside the row, so walk up to the row that names the modifier.
+    let row = event.target;
+    while (row && row !== addMenu && row.dataset?.modifier === undefined) row = row.parentNode;
+    const operation = row?.dataset?.modifier;
     setAddMenuOpen(false);
     if (!MODIFIERS[operation] || target.refusal) return;
     writeStack([...target.stack, MODIFIERS[operation].create()]);

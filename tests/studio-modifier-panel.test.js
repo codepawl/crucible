@@ -53,7 +53,9 @@ function addMenuOf(ui) {
 
 function add(ui, operation) {
   dispatch(ui.panel.querySelector('.crucible-studio-modifier-add'), 'click');
-  dispatch(addMenuOf(ui).descendants().find(item => item.dataset.modifier === operation), 'click');
+  // The click lands on the word inside the row, as a pointer's does.
+  const row = addMenuOf(ui).descendants().find(item => item.dataset.modifier === operation);
+  dispatch(row.children.at(-1), 'click');
 }
 
 function sections(ui) {

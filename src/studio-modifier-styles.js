@@ -12,7 +12,8 @@ export const MODIFIER_CSS = `
   align-content: start;
   gap: var(--studio-space-12);
 }
-.crucible-studio-modifiers [hidden] { display: none; }
+.crucible-studio-modifiers [hidden],
+.crucible-studio-modifiers .crucible-studio-modifier-menu[hidden] { display: none; }
 .crucible-studio-modifier-bar {
   display: flex;
   align-items: center;
@@ -28,15 +29,14 @@ export const MODIFIER_CSS = `
 }
 .crucible-studio-modifier-add > span { flex: 1; text-align: start; }
 .crucible-studio-modifier-add[aria-expanded="true"] > .crucible-studio-icon:last-child { transform: rotate(180deg); }
-.crucible-studio-modifier-add-menu {
+.crucible-studio-modifier-menu.crucible-studio-modifier-add-menu {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   flex-basis: 100%;
-  gap: var(--studio-space-4);
   padding: var(--studio-space-8);
   border-radius: 8px;
   background: var(--studio-surface);
 }
-.crucible-studio-modifier-add-menu > button { justify-content: flex-start; min-block-size: 28px; padding: 4px 8px; }
 .crucible-studio-modifier-empty {
   margin: 0;
   color: var(--studio-muted);
@@ -62,7 +62,7 @@ export const MODIFIER_CSS = `
   flex-wrap: wrap;
   gap: var(--studio-space-4);
 }
-.crucible-studio-modifier-menu > button { min-block-size: 28px; padding: 4px 8px; }
+.crucible-studio-modifier-menu > button { justify-content: flex-start; min-block-size: 28px; padding: 4px 8px; }
 .crucible-studio-modifier-head {
   min-inline-size: 0;
   display: flex;
@@ -81,7 +81,9 @@ export const MODIFIER_CSS = `
 .crucible-studio-modifier-title > span { overflow: hidden; text-overflow: ellipsis; }
 .crucible-studio-modifier-title .crucible-studio-icon:first-child { transition: transform var(--studio-motion-quick) var(--studio-ease-out); }
 .crucible-studio-modifier[data-open="true"] .crucible-studio-modifier-title .crucible-studio-icon:first-child { transform: rotate(90deg); }
-.crucible-studio button.crucible-studio-modifier-grip { cursor: grab; color: color-mix(in srgb, var(--studio-text) 80%, transparent); }
+.crucible-studio button.crucible-studio-modifier-grip { cursor: grab; color: var(--studio-text); }
+.crucible-studio-modifier-grip .crucible-studio-icon { inline-size: 20px; block-size: 20px; stroke-width: 2.6; }
+.crucible-studio-modifier-head button[aria-haspopup] .crucible-studio-icon { stroke-width: 3.2; }
 /* The off switch is the state people look for, so its outline and knob are stronger than the other switches of Studio. */
 .crucible-studio button.crucible-studio-modifier-switch { border-color: color-mix(in srgb, var(--studio-text) 80%, transparent); }
 .crucible-studio-modifier-switch .crucible-studio-switch-knob { background: color-mix(in srgb, var(--studio-text) 90%, transparent); }
