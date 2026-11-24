@@ -30,7 +30,7 @@ function shadowDirectionProblem(world, lightDirection, shadowBounds) {
     'Drop shadowBounds.eye, or point lightDirection from shadowBounds.target to it.');
 }
 
-const DRAWN_EFFECTS = resolveEffects({ motionBlur: { objects: 1 } });
+const DRAWN_EFFECTS = resolveEffects({ motionBlur: { objects: 1 }, dither: true });
 const DRAWN_NAMES = Object.keys(DRAWN_EFFECTS).join(', ');
 
 /** One warning per effect key, or group field, that renderer.render reads nothing from, so the frame never shows it. */

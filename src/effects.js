@@ -13,6 +13,11 @@ function numberInRange(value, fallback, minimum, maximum, name) {
   return result;
 }
 
+/** True when the final output gets the dither of one 8-bit step (#3258). Off unless a recipe sets `effects.dither: true`: it adds no light and no colour noise, but it makes PNG and MP4 files 2 to 4 times larger. The renderer asks only this. */
+export function isDitherActive(effects) {
+  return effects?.dither === true;
+}
+
 export const BLOOM_STRENGTH_MAX = 8;
 export const BLOOM_RADIUS_MAX = 16;
 // One blur pair spreads a glow cleanly up to this tap spacing (in half-resolution texels); a wider radius repeats the pair.
@@ -37,7 +42,10 @@ export function resolveEffects(effects = {}) {
   const motionBlur = effects.motionBlur ?? {};
   if (typeof depthOfField !== 'object' || Array.isArray(depthOfField)) throw new Error('Depth of field must be an object.');
   if (typeof motionBlur !== 'object' || Array.isArray(motionBlur)) throw new Error('Motion blur must be an object.');
+  if (effects.dither !== undefined && typeof effects.dither !== 'boolean') throw new Error('Dither must be true or false: true adds a one-step noise so smooth gradients do not band, false (the default) keeps flat colour.');
   return {
+    // `dither` appears only when it is on, so a scene that leaves it alone resolves and exports as before.
+    ...(effects.dither === true ? { dither: true } : {}),
     depthOfField: {
       blur: numberInRange(depthOfField.blur, 0, 0, 1, 'Depth of field blur'),
       focusDistance: numberInRange(depthOfField.focusDistance, 5, 0.01, 100000, 'Depth of field focus distance'),
