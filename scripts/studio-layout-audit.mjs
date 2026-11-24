@@ -296,6 +296,32 @@ export async function runSelectionBehavior({ origin } = {}) {
   }
 }
 
+// What a person does in the open History list, in a real browser: focus starts on the current edit, a click on another row
+// steps there and leaves the list open, and Escape goes back to the Edit menu before a second Escape closes it.
+async function checkHistoryBehavior(page) {
+  const state = () => page.evaluate(() => ({
+    historyOpen: document.getElementById('crucible-studio-pop-history').matches(':popover-open'),
+    editOpen: document.getElementById('crucible-studio-pop-edit').matches(':popover-open'),
+    focusedChecked: document.activeElement?.getAttribute('aria-checked') ?? null,
+    focusedLabel: document.activeElement?.dataset?.label ?? null,
+    markedLabel: document.querySelector('#crucible-studio-pop-history [aria-checked="true"]')?.dataset.label ?? null,
+  }));
+  const expect = (condition, message, found) => {
+    if (!condition) throw new Error(`Edit menu behavior: ${message}: ${JSON.stringify(found)}`);
+  };
+  let found = await state();
+  expect(found.focusedChecked === 'true', 'focus starts on the current edit', found);
+  await page.locator('#crucible-studio-pop-history button[data-label="Rotate"]').click();
+  found = await state();
+  expect(found.historyOpen && found.markedLabel === 'Rotate' && found.focusedLabel === 'Rotate', 'a click steps and leaves the list open', found);
+  await page.keyboard.press('Escape');
+  found = await state();
+  expect(!found.historyOpen && found.editOpen, 'Escape returns to the Edit menu', found);
+  await page.keyboard.press('Escape');
+  found = await state();
+  expect(!found.historyOpen && !found.editOpen, 'a second Escape closes the menu', found);
+}
+
 // The Edit menu open, then its History list after five edits: the two surfaces a person reaches from the top bar. When
 // STUDIO_AUDIT_STILLS names a folder, each one is also saved there as a picture.
 async function measureEditMenu(page, theme, label) {
@@ -310,6 +336,8 @@ async function measureEditMenu(page, theme, label) {
   const screens = [];
   const stillsFolder = process.env.STUDIO_AUDIT_STILLS;
   const capture = async (name, selector) => {
+    // The pointer waits away from the list, so no row shows the highlight of a hover.
+    await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height - 24);
     await page.waitForTimeout(250);
     screens.push({ name: `${name}${label} (${theme})`, records: await measure(page, selector) });
     if (stillsFolder) await page.screenshot({ path: `${stillsFolder}/${name.replace(/ /g, '-')}${label.replace(/ /g, '-')}-${theme}.png` });
@@ -318,6 +346,7 @@ async function measureEditMenu(page, theme, label) {
   await capture('edit menu', '#crucible-studio-pop-edit');
   await page.locator('#crucible-studio-pop-edit button', { hasText: 'History' }).click();
   await capture('edit history', '#crucible-studio-pop-history');
+  await checkHistoryBehavior(page);
   return screens;
 }
 

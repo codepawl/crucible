@@ -695,6 +695,25 @@ export const STUDIO_CSS = `
 #crucible-studio-pop-add .crucible-studio-popover-grid { grid-template-columns: minmax(0, 1fr); }
 #crucible-studio-pop-add { max-block-size: calc(100dvh - 16px); overflow-y: auto; }
 #crucible-studio-pop-history { max-block-size: calc(100dvh - 72px); overflow-y: auto; }
+.crucible-studio-popover .crucible-studio-history-title {
+  margin-block-end: var(--studio-space-4);
+  font-weight: 600;
+}
+.crucible-studio-popover > button[data-label] { gap: 0; }
+.crucible-studio-history-detail {
+  min-inline-size: 0;
+  margin-inline-start: var(--studio-space-8);
+  overflow: hidden;
+  color: var(--studio-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A dimmed menu row keeps its text at the muted token: the 0.35 opacity of other buttons is under 3:1 on the menu surface. */
+.crucible-studio .crucible-studio-popover button[aria-disabled="true"] {
+  opacity: 1;
+  color: var(--studio-muted);
+}
 .crucible-studio-popover button[aria-expanded="true"] { background: color-mix(in srgb, var(--studio-text) 8%, transparent); }
 .crucible-studio-tree-section { display: grid; }
 .crucible-studio-tree-section[hidden], .crucible-studio-tree-controls[hidden] { display: none; }
@@ -761,6 +780,7 @@ export const STUDIO_CSS = `
   font-size: 13px;
 }
 .crucible-studio button.crucible-studio-menu-button:hover,
+.crucible-studio button.crucible-studio-menu-button[data-open="true"],
 .crucible-studio button.crucible-studio-menu-button:has(+ *):focus-visible {
   background: color-mix(in srgb, var(--studio-text) 7%, transparent);
 }

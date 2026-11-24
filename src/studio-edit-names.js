@@ -52,16 +52,35 @@ function nameAddedNode(node) {
   return kind ? `Add ${kind}` : 'Add object';
 }
 
-/** A short name for the edit that applied these scene operations, such as "Move", "Add cube" or "Change material". */
-export function nameEditOperations(operations) {
+function leadingOperation(operations) {
   const types = new Set(operations.map(operation => operation.type));
-  const leading = operations.find(operation => {
+  return operations.find(operation => {
     if (!(operation.type in SUPPORTING_TYPES)) {
       return true;
     }
     const supported = SUPPORTING_TYPES[operation.type];
     return supported === null ? types.size === 1 : !types.has(supported);
   }) ?? operations[0];
+}
+
+/** The label of a node in a recipe, or its id when it has none; '' when the recipe has no such node. */
+export function nodeLabelIn(recipe, nodeId) {
+  const node = recipe?.nodes?.find(candidate => candidate.id === nodeId);
+  return node ? String(node.label ?? node.id) : '';
+}
+
+/** What the edit acted on, read from the recipe before it ran: an object's label or a material's id; '' when the edit has no single target. */
+export function nameEditTarget(operations, recipeBefore) {
+  const leading = leadingOperation(operations);
+  if (leading?.type === 'set-node' || leading?.type === 'remove-node') {
+    return nodeLabelIn(recipeBefore, leading.id);
+  }
+  return leading?.type === 'set-material' ? String(leading.id) : '';
+}
+
+/** A short name for the edit that applied these scene operations, such as "Move", "Add cube" or "Change material". */
+export function nameEditOperations(operations) {
+  const leading = leadingOperation(operations);
   if (!leading) {
     return EDIT_LABEL_FALLBACK;
   }

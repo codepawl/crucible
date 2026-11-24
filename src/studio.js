@@ -1427,34 +1427,65 @@ export function createStudio(container, {
   const editUndoItem = createMenuItem('Undo', 'edit.undo', () => undoButton.click(), 'undo');
   const editRedoItem = createMenuItem('Redo', 'edit.redo', () => redoButton.click(), 'redo');
   const historyItem = createMenuItem('History', '', () => historyPopover.showPopover?.(), 'history');
-  // The recent edits by name, newest first, with a filled mark on the one the scene shows. A row steps undo or redo to that edit.
+  // The recent edits by name, newest first, under a title that leads back to the Edit menu. A filled mark sits on the edit the
+  // scene shows; a row steps undo or redo to that edit and the list stays open, so a person can step several times.
   const historyPopover = createMenuPopover('crucible-studio-pop-history');
-  const createHistoryRow = (label, editPosition, appliedCount) => {
+  const historyTitle = giveMenuIcon(createElement(documentReference, 'button', {
+    type: 'button',
+    className: 'crucible-studio-history-title',
+    textContent: 'History',
+    attributes: { title: 'Back to the Edit menu' },
+  }), 'history');
+  const createHistoryRow = (name, detail, editPosition, appliedCount) => {
     const row = createElement(documentReference, 'button', {
       type: 'button',
-      textContent: label,
+      dataset: { label: name },
       attributes: { role: 'menuitemcheckbox', 'aria-checked': editPosition === appliedCount ? 'true' : 'false' },
-    });
+    }, createElement(documentReference, 'span', { textContent: name }));
+    if (detail) {
+      row.append(createElement(documentReference, 'span', { className: 'crucible-studio-history-detail', textContent: detail }));
+    }
     row.addEventListener('click', () => {
       controller.goToHistoryPosition(editPosition);
-      announce(editPosition === 0 ? 'Back to the start' : `Went to ${label}`);
+      renderHistoryRows();
+      focusCurrentHistoryRow();
+      announce(editPosition === 0 ? 'Back to the start' : `Went to ${name}`);
     });
     return row;
   };
-  const renderHistoryRows = () => {
-    const { labels, position, reachesStart } = controller.history;
+  function renderHistoryRows() {
+    const { labels, details, position, reachesStart } = controller.history;
     const oldestEdit = Math.max(1, Math.min(labels.length - HISTORY_ROW_LIMIT + 1, position));
     const rows = [];
     for (let editPosition = labels.length; editPosition >= oldestEdit; editPosition -= 1) {
-      rows.push(createHistoryRow(labels[editPosition - 1], editPosition, position));
+      rows.push(createHistoryRow(labels[editPosition - 1], details[editPosition - 1], editPosition, position));
     }
     if (oldestEdit === 1 && reachesStart) {
-      rows.push(createHistoryRow('Start', 0, position));
+      rows.push(createHistoryRow('Start', '', 0, position));
     }
-    historyPopover.replaceChildren(...rows);
-  };
+    historyPopover.replaceChildren(historyTitle, ...rows);
+  }
+  // Focus starts on the edit the scene shows, so the mark and the key focus agree and Tab moves on from it.
+  function focusCurrentHistoryRow() {
+    Array.from(historyPopover.children).find(child => child.getAttribute('aria-checked') === 'true')?.focus?.();
+  }
   historyPopover.addEventListener('beforetoggle', event => {
     if (event.newState === 'open') renderHistoryRows();
+  });
+  historyPopover.addEventListener('toggle', event => {
+    if (event.newState === 'open') focusCurrentHistoryRow();
+  });
+  // One step back: the title, the Left key and Escape return to the Edit menu with focus on its History row.
+  const returnToEditMenu = () => {
+    historyPopover.hidePopover?.();
+    editPopover.showPopover?.();
+    historyItem.focus?.();
+  };
+  historyTitle.addEventListener('click', returnToEditMenu);
+  historyPopover.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' && event.key !== 'ArrowLeft') return;
+    event.preventDefault();
+    returnToEditMenu();
   });
   const editPopover = createMenuPopover(
     'crucible-studio-pop-edit',
@@ -1462,10 +1493,10 @@ export function createStudio(container, {
     editRedoItem,
     historyItem,
     createMenuItem('Copy', 'edit.copy', () => copySelection(), 'duplicate'),
-    createMenuItem('Paste', 'edit.paste', () => pasteCopy(), 'duplicate'),
-    createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicate'),
+    createMenuItem('Paste', 'edit.paste', () => pasteCopy(), 'clipboard'),
+    createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicateObject'),
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
-    createMenuItem('Deselect', 'edit.deselect', () => controller.selectNode(null)),
+    createMenuItem('Deselect', 'edit.deselect', () => controller.selectNode(null), 'deselect'),
     createMenuItem('Hide', 'edit.hide', () => hideSelection(), 'eyeOff'),
     createMenuItem('Show all', 'edit.showAll', () => showAllHidden(), 'eye'),
     createMenuItem('Reset position', 'edit.resetPosition', () => resetSelectionTransform('translation'), 'translate'),
@@ -1473,12 +1504,24 @@ export function createStudio(container, {
     createMenuItem('Reset scale', 'edit.resetScale', () => resetSelectionTransform('scale'), 'scale'),
     createMenuItem('Settings…', 'settings.open', () => settingsDialog.showModal(), 'settings'),
   );
+  // The Edit button stays shown as open while either of its two surfaces (the menu, then History) is on screen.
+  const openEditSurfaces = new Set();
+  for (const surface of [editPopover, historyPopover]) {
+    surface.addEventListener('toggle', event => {
+      if (event.newState === 'open') {
+        openEditSurfaces.add(surface);
+      } else {
+        openEditSurfaces.delete(surface);
+      }
+      editMenuButton.dataset.open = openEditSurfaces.size > 0 ? 'true' : 'false';
+    });
+  }
   // A right click on an object, in the viewport or in the Scene list, opens the actions on that object where the
   // pointer is. The rows are the Edit menu's own, so a key learned in one place works in the other.
   const objectPopover = createMenuPopover(
     'crucible-studio-pop-object',
     createMenuItem('Frame', 'view.frame', () => flyToSelection(), 'frame'),
-    createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicate'),
+    createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicateObject'),
     createMenuItem('Hide', 'edit.hide', () => hideSelection(), 'eyeOff'),
     createMenuItem('Reset position', 'edit.resetPosition', () => resetSelectionTransform('translation'), 'translate'),
     createMenuItem('Reset rotation', 'edit.resetRotation', () => resetSelectionTransform('rotation'), 'rotate'),
@@ -1721,7 +1764,7 @@ export function createStudio(container, {
     createMenuItem('Export web pack', '', () => exportPackButton.click(), 'globe'),
     createElement(documentReference, 'p', { className: 'crucible-studio-popover-note', textContent: 'New scene' }),
   );
-  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, historyPopover, objectPopover, viewPopover, helpPopover]) {
+  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, viewPopover, helpPopover]) {
     popoverElement.addEventListener('click', event => {
       if (event.target.closest?.('button')) popoverElement.hidePopover?.();
     });
@@ -2032,7 +2075,7 @@ export function createStudio(container, {
 
   const undoButton = createKeyedIconButton('undo', () => `Undo (${keyLabel(keymap, 'edit.undo')})`, { attributes: { 'aria-disabled': 'true' } });
   const redoButton = createKeyedIconButton('redo', () => `Redo (${keyLabel(keymap, 'edit.redo')})`, { attributes: { 'aria-disabled': 'true' } });
-  const duplicateButton = createKeyedIconButton('duplicate', () => `Duplicate (${lastKeyLabel(keymap, 'edit.duplicate')})`);
+  const duplicateButton = createKeyedIconButton('duplicateObject', () => `Duplicate (${lastKeyLabel(keymap, 'edit.duplicate')})`);
   const deleteButton = createIconButton(documentReference, 'remove', 'Delete (Del)');
   const frameButton = createKeyedIconButton('frame', () => `Frame in view (${keyLabel(keymap, 'view.frame')})`);
   const toggleDocksButton = createIconButton(documentReference, 'panels', 'Show or hide the panels', { attributes: { 'aria-pressed': 'true' } });
