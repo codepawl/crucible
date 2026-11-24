@@ -4,7 +4,7 @@ import { materialTags, registeredFeatureCode } from './shader-registry.js';
 import { mat4, mat3 } from 'gl-matrix';
 import { BLEND_FACTORS } from './blend-output.js';
 import { packNormalsWithTangents, validateGeometryTangents } from './tangent-encoding.js';
-import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, WETNESS_FEATURE, FRAGMENT_SHADOW_POSITION_FEATURE, VERTEX_OPACITY_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, TANGENT_FEATURE, vertexShader, liquidFragmentSource, createFragmentShader, liquidPassDrawer, createDepthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
+import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, WETNESS_FEATURE, HEIGHT_MAP_FEATURE, FRAGMENT_SHADOW_POSITION_FEATURE, VERTEX_OPACITY_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, TANGENT_FEATURE, vertexShader, liquidFragmentSource, createFragmentShader, liquidPassDrawer, createDepthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
 import { postFragment, createPostFragment, GRID_MOTION_STEP, GRID_DETAIL_STEP, NOISE_OCTAVES_STEP, localVolumeKindSteps, POST_STEPS, POST_STEPS_WITH_OPTIONAL_CODE, skyFragment, bloomFragment } from './post.js';
 import { createGlazeBackend } from './glaze-backend.js';
 import { fullscreenVertex, compileProgram, ProgramNotReady, isLinkComplete, setPreparing, releaseStartedPrograms } from './gl-program.js';
@@ -23,6 +23,8 @@ import { resolveVolumeFog, validateFogField } from './volumetric.js';
 import { requireEnvironmentSupport, DEFAULT_SUN_ANGULAR_RADIUS } from './environment-shading.js';
 import { materialLayerState, materialLayerValue } from './material-layers.js';
 import { MaterialSnapshot } from './material-snapshot.js';
+import { HEIGHT_MAP_UNIT } from './height-parallax-shader.js';
+import { HEIGHT_PARALLAX_DEFAULTS, HEIGHT_PARALLAX_LIMITS } from './texture-set-fields.js';
 import { wearUniformValues } from './material-wear.js';
 import { wetnessKeepOutBoxes, wetnessGroundHeight } from './wetness-keep-out.js';
 import { fittedFogDensity } from './fog-fit.js';
@@ -264,6 +266,7 @@ export function shaderFeaturesOfParts(parts) {
     if (material.environmentProbe) features.add('probe');
     if (material.irradianceGrid) features.add('irradianceGrid');
     if (material.normalMap?.uvTransform) features.add('normalMapTransform');
+    if (usesHeightParallax(material)) features.add(HEIGHT_MAP_FEATURE);
     Object.keys(material.layerMaps ?? {}).forEach(name => features.add(name));
     if (material.layers) features.add('splat');
     for (const name of POSITIVE_SHADER_FEATURES) {
@@ -320,6 +323,8 @@ const ENVIRONMENT_LOOKUP_UNIFORMS = ['environmentSpecular', 'environmentEnabled'
 const ENVIRONMENT_UNIFORMS = [...ENVIRONMENT_LOOKUP_UNIFORMS, 'environmentBrdf', 'environmentIrradiance[0]', 'environmentBounce', 'environmentDiffuseFrame'];
 // Shares a unit with the skin influence texture, which no light-mapped (rigid) batch binds.
 const LIGHT_MAP_UNIT = 6;
+// The parallax height map: past every other fragment sampler, so no other feature shares it.
+const HEIGHT_STATE_OFFSET = 30;
 const ENVIRONMENT_SPECULAR_UNIT = 9;
 const ENVIRONMENT_BRDF_UNIT = 10;
 const LOCAL_SHADOW_UNIT = 15;
@@ -374,7 +379,7 @@ function materialMapState(material) {
   const occlusionStrength = material.occlusionStrength ?? 1;
   if (material.layers || material.splat) requireSplatSupport().validate(material);
   if (material.layers && PROCEDURAL_MATERIAL_TAGS.has(material.tag)) throw new Error('Splat layers require a standard PBR material tag.');
-  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), material.layers ?? null, material.splat ?? null, material.layerMaps ?? null, material.environmentProbe ?? null, material.waterReflection ?? null, material.irradianceGrid ?? null, material.wear ?? null, material.foamEdge ?? null, material.foamWidth ?? null, material.foamColor ?? null, material.foamVeins ?? null, material.contactFoam ?? null, material.waterRamp ?? null, material.ripples ?? null];
+  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), material.layers ?? null, material.splat ?? null, material.layerMaps ?? null, material.environmentProbe ?? null, material.waterReflection ?? null, material.irradianceGrid ?? null, material.wear ?? null, material.foamEdge ?? null, material.foamWidth ?? null, material.foamColor ?? null, material.foamVeins ?? null, material.contactFoam ?? null, material.waterRamp ?? null, material.ripples ?? null, ...heightParallaxState(material)];
 }
 
 // A baked light map reads the second UV set, so it is only drawn for parts that cannot be skinned or morphed.
@@ -384,6 +389,28 @@ function lightMapState(material) {
   if (!Number.isFinite(scale) || scale < 0) throw new RangeError('lightMapScale must be a nonnegative number.');
   if ((material.lightMap.colorSpace ?? 'srgb') !== 'srgb') throw new Error('lightMap requires an srgb texture descriptor.');
   return [material.lightMap, scale];
+}
+
+/** Whether a material draws its heightMap: a map and a heightScale above zero. A zero scale leaves the map unread and the shader unchanged. */
+function usesHeightParallax(material) {
+  return material.heightScale > 0 && Boolean(material.heightMap);
+}
+
+/** [descriptor or null, depth in metres, fade distance in metres, ray steps] of a material's parallax; the descriptor is null when it is not drawn. */
+function heightParallaxState(material) {
+  const { scale, fade, steps } = HEIGHT_PARALLAX_LIMITS;
+  const withinRange = (value, [minimum, maximum]) => typeof value === 'number' && value >= minimum && value <= maximum;
+  const depth = material.heightScale ?? 0;
+  const fadeDistance = material.heightFade ?? HEIGHT_PARALLAX_DEFAULTS.fade;
+  const stepCount = material.heightSteps ?? HEIGHT_PARALLAX_DEFAULTS.steps;
+  if (!withinRange(depth, scale)) throw new RangeError(`heightScale must be between ${scale[0]} and ${scale[1]} metres; got ${depth}. Use a depth such as 0.02.`);
+  if (!withinRange(fadeDistance, fade)) throw new RangeError(`heightFade must be between ${fade[0]} and ${fade[1]} metres; got ${fadeDistance}. Use a distance such as 12.`);
+  if (!Number.isInteger(stepCount) || !withinRange(stepCount, steps)) throw new RangeError(`heightSteps must be a whole number between ${steps[0]} and ${steps[1]}; got ${stepCount}. Use a count such as 16.`);
+  if (!usesHeightParallax(material)) return [null, depth, fadeDistance, stepCount];
+  if (material.boxMapScale > 0 || PROCEDURAL_MATERIAL_TAGS.has(material.tag) || material.tag === 'unlit') throw new Error('heightMap needs a standard PBR material with UVs: remove heightMap, or remove boxMapScale and use the surface tag.');
+  if (material.heightMap.colorSpace !== 'linear') throw new Error('heightMap requires a linear texture descriptor.');
+  if (material.alphaMode === 'mask') throw new Error('heightMap does not combine with alphaMode mask: the depth pass cannot follow the parallax. Use alphaMode opaque or blend.');
+  return [material.heightMap, depth, fadeDistance, stepCount];
 }
 
 function validateAlphaMaterial(material) {
@@ -1029,10 +1056,10 @@ export class CrucibleRenderer {
     const maps = new Set();
     for (const group of groups) {
       const material = group[0].material;
-      for (const [field, map] of [...MATERIAL_MAPS, 'lightMap'].map(name => [name, material[name]]).concat(Object.entries(material.layerMaps ?? {}))) {
+      for (const [field, map] of [...MATERIAL_MAPS, 'lightMap', ...(usesHeightParallax(material) ? ['heightMap'] : [])].map(name => [name, material[name]]).concat(Object.entries(material.layerMaps ?? {}))) {
         if (!map) continue;
         const info = textureDescriptorInfo(map, textureLimit);
-        if (['normalMap', 'metallicRoughnessMap', 'occlusionMap'].includes(field) && map.colorSpace !== 'linear') throw new Error(`${field} requires a linear texture descriptor.`);
+        if (['normalMap', 'metallicRoughnessMap', 'occlusionMap', 'heightMap'].includes(field) && map.colorSpace !== 'linear') throw new Error(`${field} requires a linear texture descriptor.`);
         if (field === 'emissiveMap' && (map.colorSpace ?? 'srgb') !== 'srgb') throw new Error('emissiveMap requires an srgb texture descriptor.');
         if (!maps.has(map)) this.textureBytes += info.bytes;
         maps.add(map);
@@ -1320,7 +1347,7 @@ export class CrucibleRenderer {
 
   finishMainProgram(pendingProgram) {
     this.program = this.backend.finishProgram(pendingProgram);
-    this.uniforms = Object.fromEntries(['materialDielectric', 'materialEmissionFresnel', 'materialSoftEdge', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'lightLinkMask', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'viewProjection', 'flushBias', 'clipPerMetre', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'shadowBiasPerSlope', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', 'wetnessState', 'wetnessKeepOut[0]', 'wearEnabled', 'wearMetal', 'wearDirt', 'wearShape', 'wearDirtShape', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', 'baseColor', 'surface', 'instanceEmission', 'instanceOpacity', 'boxNormalMatrix', 'shadowBlind', 'compositeMode', 'tintShadowMap', 'tintBlind', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['materialDielectric', 'materialEmissionFresnel', 'materialSoftEdge', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'lightLinkMask', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'heightMap', 'heightState', 'viewProjection', 'flushBias', 'clipPerMetre', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'shadowBiasPerSlope', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', 'wetnessState', 'wetnessKeepOut[0]', 'wearEnabled', 'wearMetal', 'wearDirt', 'wearShape', 'wearDirtShape', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', 'baseColor', 'surface', 'instanceEmission', 'instanceOpacity', 'boxNormalMatrix', 'shadowBlind', 'compositeMode', 'tintShadowMap', 'tintBlind', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     Object.assign(this.uniforms, clipPlaneLocations(this.context, this.program));
     for (const name of LIGHT_UNIFORMS) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
@@ -1491,6 +1518,19 @@ export class CrucibleRenderer {
   }
 
   /** Sets the surface wear uniforms of a batch; a material without wear turns the term off. */
+  // The parallax uniforms and height texture of a batch, in programs that compiled the parallax code. A batch without a height map in such a
+  // program sends w = 0, which skips the march.
+  bindHeightParallax(batch) {
+    if (!this.shaderFeatures?.has(HEIGHT_MAP_FEATURE)) return;
+    const context = this.context;
+    const [, depth, fadeDistance, stepCount] = batch.mapState.slice(HEIGHT_STATE_OFFSET);
+    context.uniform4f(this.uniforms.heightState, depth, fadeDistance, stepCount, batch.heightTexture ? 1 : 0);
+    if (!batch.heightTexture) return;
+    context.activeTexture(context.TEXTURE0 + HEIGHT_MAP_UNIT);
+    context.bindTexture(context.TEXTURE_2D, batch.heightTexture);
+    context.uniform1i(this.uniforms.heightMap, HEIGHT_MAP_UNIT);
+  }
+
   bindSurfaceWear(wear) {
     const { context, uniforms } = this;
     context.uniform1f(uniforms.wearEnabled, wear ? 1 : 0);
@@ -1720,6 +1760,7 @@ export class CrucibleRenderer {
     const mapState = materialMapState(parts[0].material);
     const textures = mapState.slice(0, 5).map((descriptor, index) => this.createTexture(descriptor, index === 1));
     const splat = parts[0].material.layers ? requireSplatSupport().createResources(this, parts[0].material, requireSplatSupport()) : null;
+    const heightTexture = mapState[HEIGHT_STATE_OFFSET] ? this.createTexture(mapState[HEIGHT_STATE_OFFSET]) : null;
     const lightMapTexture = mapState[14] ? this.createTexture(mapState[14]) : null;
     if (lightMapTexture && (parts[0].skin || parts[0].morph || !geometry.lightUvs)) throw new Error('A light map needs lightUvs on rigid geometry, with no skin or morph.');
     const skin = parts[0].skin ?? null;
@@ -1733,7 +1774,7 @@ export class CrucibleRenderer {
     const [alphaMode, alphaCutoff, opacity, doubleSided, retro, waterGlint, depthTest] = materialAlphaState(parts[0].material);
     const layerState = materialLayerState(parts[0].material);
     const culling = this.createCullingState(parts);
-    const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, retro, waterGlint, depthTest, mirrored: isMirroredMatrix(parts[0].matrix), layerState, wear: parts[0].material.wear ?? null, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, lightMapTexture, texture: textures[0], map, skin, skinTexture, influenceTexture, crowd, crowdTexture, morph, morphTexture, morphWeights, indexCount: flushOrder?.indices.length ?? geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), tintedShadow: castsTintedShadow(parts[0]), tintBlind: Object.keys(parts[0].material.layerMaps ?? {}).length >= 3, receivesShadow: receivesShadow(parts[0]), compositeMode: compositeModeOf(parts[0]), depthLayer: depthLayerOf(parts[0]), flushOrder, flushIndexBuffer, pass: partPass(parts[0]), clipPlanes: parts[0].clipPlanes ?? null };
+    const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, retro, waterGlint, depthTest, mirrored: isMirroredMatrix(parts[0].matrix), layerState, wear: parts[0].material.wear ?? null, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, lightMapTexture, heightTexture, texture: textures[0], map, skin, skinTexture, influenceTexture, crowd, crowdTexture, morph, morphTexture, morphWeights, indexCount: flushOrder?.indices.length ?? geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), tintedShadow: castsTintedShadow(parts[0]), tintBlind: Object.keys(parts[0].material.layerMaps ?? {}).length >= 3, receivesShadow: receivesShadow(parts[0]), compositeMode: compositeModeOf(parts[0]), depthLayer: depthLayerOf(parts[0]), flushOrder, flushIndexBuffer, pass: partPass(parts[0]), clipPlanes: parts[0].clipPlanes ?? null };
     if (parts[0].lods) culling.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level));
     culling.shadowLevels?.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level, batch.shadowLevels));
     parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, layerState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
@@ -1994,6 +2035,7 @@ export class CrucibleRenderer {
         if ((part.material[MATERIAL_MAPS[index]] ?? null) !== mapState[index]) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
       }
       const [lightMapDescriptor, lightMapScale] = lightMapState(part.material);
+      if (heightParallaxState(part.material).some((value, index) => value !== mapState[HEIGHT_STATE_OFFSET + index])) throw new Error(`Height map and parallax changes require a new renderer: ${part.name}`);
       if (lightMapDescriptor !== (mapState[14] ?? null) || lightMapScale !== (mapState[15] ?? 0) || (part.material.layerMaps ?? null) !== (mapState[18] ?? null)) throw new Error(`Light map and layer texture changes require a new renderer: ${part.name}`);
       if (normalScale[0] !== mapState[5] || normalScale[1] !== mapState[6] || (part.material.occlusionStrength ?? 1) !== mapState[7] || mossState(part.material).some((value, index) => value !== mapState[8 + index]) || materialLayerState(part.material).some((value, index) => value !== location.layerState[index])) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
       validateTransform(part, location.normalMatrix, hidden);
@@ -3068,6 +3110,7 @@ export class CrucibleRenderer {
       this.context.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
       if (this.shaderFeatures?.has('splat')) requireSplatSupport().bind(this, batch.splat);
       layerTextureSupport.bind?.(this, batch.mapState, layers, batch);
+      this.bindHeightParallax(batch);
       this.context.uniform1f(this.uniforms.hasLightMap, batch.lightMapTexture ? 1 : 0);
       if (batch.lightMapTexture) {
         this.context.activeTexture(this.context.TEXTURE0 + LIGHT_MAP_UNIT);
