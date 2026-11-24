@@ -293,10 +293,10 @@ function mountNewSceneStudio(testContext, { sharedDom = null, ...options } = {})
 test('the File menu lists New scene, Open, Open recent, Save, Save as, Export, Recipe JSON and no template rows', testContext => {
   const ui = mountNewSceneStudio(testContext);
   const rows = ui.popover.querySelectorAll('button').map(button => button.textContent);
-  assert.deepEqual(rows, ['New scene…', 'Open…', 'Open recent', 'Save', 'Save as…', 'Export PNG image', 'Export GLB model', 'Export web pack', 'Recipe JSON']);
+  assert.deepEqual(rows, ['New scene…', 'Open…', 'Open recent', 'Save', 'Save as…', 'Export…', 'Recipe JSON']);
   for (const spec of Object.values(STUDIO_TEMPLATES)) assert.ok(!rows.includes(spec.label), spec.label);
   const groupStarts = ui.popover.descendants().filter(item => item.dataset.groupStart === 'true').map(item => item.textContent);
-  assert.deepEqual(groupStarts, ['Save', 'Export PNG image']);
+  assert.deepEqual(groupStarts, ['Save', 'Export…']);
   assert.equal(byText(ui.popover, 'New scene…').parentNode.dataset.shortcut ?? byText(ui.popover, 'New scene…').dataset?.shortcut, undefined, 'no key is claimed: the browser keeps Ctrl+N');
   assert.equal(byText(ui.popover, 'Open recent').parentNode.disabled, true, 'with no recent scene the row is disabled');
 });
