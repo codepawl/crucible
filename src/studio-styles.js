@@ -731,7 +731,7 @@ export const STUDIO_CSS = `
 .crucible-studio-popover button[role="menuitemcheckbox"][aria-checked="true"]::before {
   background: var(--studio-text);
 }
-#crucible-studio-pop-snap button { padding-inline-end: 24px; }
+#crucible-studio-pop-snap button { padding-inline-end: var(--studio-space-24); }
 .crucible-studio-menus {
   display: flex;
   align-items: center;

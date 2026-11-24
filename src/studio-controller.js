@@ -1694,7 +1694,7 @@ export function createStudioController({
       authoredPose: { ...authoredPose, rotation: normalizeQuaternion(authoredPose.rotation) },
       parentInverse: parentWorld ? mat4.invert(mat4.create(), parentWorld) : null,
       parentWorld: parentWorld ?? null,
-      companions: elementSession ? [] : moveCompanionsOf(recipe.nodes, node.id, worldMatrices),
+      companions: elementSession ? [] : moveCompanionsOf(recipe, node.id, worldMatrices),
       selectionIds,
       ownPoints: sampledOwnPoints,
       snapMarker: null,
@@ -1801,7 +1801,9 @@ export function createStudioController({
 
   // The other selected objects that move with the dragged one: the selection's roots, minus what already moves with it
   // (its own children) and what carries it (its selected ancestors).
-  function moveCompanionsOf(recipeNodes, activeId, worldMatrices) {
+  // They start from the pose the dragged node starts from: the sampled pose under auto-key, the authored one otherwise.
+  function moveCompanionsOf(recipe, activeId, worldMatrices) {
+    const recipeNodes = recipe.nodes;
     const carriedByActive = descendantIdsOf(recipeNodes, activeId);
     return selectionRootsIn(recipeNodes)
       .filter(nodeId => !carriedByActive.has(nodeId) && !descendantIdsOf(recipeNodes, nodeId).has(activeId))
@@ -1809,9 +1811,11 @@ export function createStudioController({
         const node = recipeNodes.find(candidate => candidate.id === nodeId);
         const parentWorld = node.parent ? worldMatrices.get(node.parent) : null;
         const authored = authoredNodePose(node);
+        const startPose = autoKey ? sampledNodePose(recipe, node, motionTime) : authored;
         return {
           nodeId,
           authoredPose: { ...authored, rotation: normalizeQuaternion(authored.rotation) },
+          baseTranslation: startPose.translation,
           parentInverse: parentWorld ? mat4.invert(mat4.create(), parentWorld) : null,
         };
       });
@@ -1824,9 +1828,9 @@ export function createStudioController({
     }
     const localDelta = translation.map((component, axis) => component - dragState.baseTranslation[axis]);
     const worldDelta = dragState.parentWorld ? directionThroughMatrix(localDelta, dragState.parentWorld) : localDelta;
-    return dragState.companions.map(({ nodeId, authoredPose, parentInverse }) => {
+    return dragState.companions.map(({ nodeId, baseTranslation, parentInverse }) => {
       const companionDelta = toNodeLocalDelta(worldDelta, parentInverse);
-      const moved = authoredPose.translation.map((component, axis) => component + companionDelta[axis]);
+      const moved = baseTranslation.map((component, axis) => component + companionDelta[axis]);
       return { type: 'set-node', id: nodeId, translation: roundVector(moved) };
     });
   }

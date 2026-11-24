@@ -5,7 +5,10 @@ import { createAgentScene } from '../src/agent-scene.js';
 import { createStudioController } from '../src/studio.js';
 import { normalizeStudioPreferences, STUDIO_PREFERENCE_DEFAULTS } from '../src/studio-preferences.js';
 import {
+  OWN_VERTEX_LIMIT,
   SNAP_TARGET_IDS,
+  VERTEX_SNAP_MAX_RANKED_PARTS,
+  VERTEX_SNAP_MAX_VERTICES,
   findVertexUnderPointer,
   moveToLandVertex,
   sampleVertices,
@@ -280,4 +283,75 @@ test('Increment in a plane puts the position on the grid along the plane and kee
   assert.equal(moved[1], 0.5, 'the cube stays at its height instead of dropping to the grid');
   assert.ok(Math.abs(moved[0] / 0.25 - Math.round(moved[0] / 0.25)) < 1e-6 && Math.abs(moved[2] / 0.25 - Math.round(moved[2] / 0.25)) < 1e-6, `${moved} is on the grid in X and Z`);
   controller.endGizmoDrag();
+});
+
+test('the search is bounded by hard caps however many parts the scene has, and so is the moved object sample', () => {
+  const parts = Array.from({ length: 5000 }, (_, index) => ({
+    matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, index, 0, 0, 1],
+    geometry: { positions: new Float32Array(300) },
+  }));
+  let projections = 0;
+  const counting = point => {
+    projections += 1;
+    return { x: point[0], y: point[1], depth: point[2] };
+  };
+  findVertexUnderPointer({ parts, project: counting, pointer: { x: 0, y: 0 } });
+  assert.ok(projections <= VERTEX_SNAP_MAX_RANKED_PARTS + VERTEX_SNAP_MAX_VERTICES, `projected ${projections} points for 5000 parts`);
+  assert.ok(sampleVertices(parts).length <= OWN_VERTEX_LIMIT, 'the moved object tries at most the cap, over all its parts');
+  assert.ok(sampleVertices(parts, 64).length <= 64);
+  const fewParts = sampleVertices(parts.slice(0, 3));
+  assert.ok(fewParts.length > 3 && fewParts.length <= OWN_VERTEX_LIMIT, 'a few parts share the cap');
+});
+
+test('Shift alone no longer steps a move: the key is Ctrl', () => {
+  const controller = mountController({ snapEnabled: false });
+  const onStep = value => Math.abs(value / 0.25 - Math.round(value / 0.25)) < 1e-6;
+  const heroX = dragAlongX(controller, 0.83, { shiftKey: true });
+  assert.equal(onStep(heroX), false, `Shift leaves the move free: ${heroX}`);
+});
+
+test('preferences stored before the snapping state existed load with snapping off and Increment', () => {
+  const loaded = normalizeStudioPreferences({ theme: 'dark', moveSnapStep: 1, setupDone: true });
+  assert.equal(loaded.snapEnabled, false);
+  assert.equal(loaded.snapTarget, 'increment');
+  assert.equal(loaded.moveSnapStep, 1, 'what was stored stays');
+});
+
+test('Vertex: several selected objects move together by the same step when the active one lands on a vertex', () => {
+  const controller = mountController({ snapEnabled: true, snapTarget: 'vertex' });
+  controller.selectNodes(['hero', 'orb'], { active: 'hero' });
+  const heroBefore = nodeOf(controller, 'hero').translation.slice();
+  const orbBefore = nodeOf(controller, 'orb').translation.slice();
+  const origin = controller.gizmoHandles().origin;
+  const target = controller.projectWorldPoint(cornerOfBlock());
+  controller.beginGizmoDrag('screen', origin.x, origin.y);
+  controller.updateGizmoDrag(target.x + 5, target.y - 4);
+  assert.ok(controller.snapMarker(), 'a vertex was found');
+  controller.endGizmoDrag();
+  const heroAfter = nodeOf(controller, 'hero').translation;
+  const orbAfter = nodeOf(controller, 'orb').translation;
+  assert.ok(Math.hypot(...heroAfter.map((value, axis) => value - heroBefore[axis])) > 1, 'the active object moved');
+  [0, 1, 2].forEach(axis => {
+    assert.ok(Math.abs((orbAfter[axis] - orbBefore[axis]) - (heroAfter[axis] - heroBefore[axis])) < 1e-6, 'the other object keeps its offset');
+  });
+});
+
+test('under auto-key the other selected objects move from the pose they show at this time', () => {
+  const controller = mountController({});
+  controller.setAutoKey(true);
+  controller.setMotionTime(0);
+  controller.selectNode('orb');
+  controller.insertNodeKeyframe('orb');
+  controller.setMotionTime(2);
+  controller.updateNodeTransform('orb', { translation: [-0.2, 0.5, 0] });
+  controller.setMotionTime(1);
+  const partX = id => controller.scene.parts.find(part => part.name === id).matrix[12];
+  controller.selectNodes(['hero', 'orb'], { active: 'hero' });
+  const heroBefore = partX('hero');
+  const orbBefore = partX('orb');
+  assert.ok(Math.abs(orbBefore - -1.2) < 1e-6, `orb shows its sampled pose half way: ${orbBefore}`);
+  dragAlongX(controller, 0.8);
+  const heroShift = partX('hero') - heroBefore;
+  assert.ok(Math.abs(heroShift) > 0.5, `the active object moved: ${heroShift}`);
+  assert.ok(Math.abs((partX('orb') - orbBefore) - heroShift) < 1e-6, `the other object moved by the same amount from what it shows: ${partX('orb')}`);
 });

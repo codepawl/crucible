@@ -4714,8 +4714,9 @@ test('Shift+Tab toggles snapping from the page or the canvas, and leaves Tab to 
 
   assert.equal(shiftTab(ui.dom.document).defaultPrevented, true);
   assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
   shiftTab(ui.canvas);
-  assert.equal(toggle.getAttribute('aria-pressed'), 'false', 'from the canvas too');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false', 'from the canvas too, with the pointer over the viewport');
 
   const onButton = shiftTab(ui.label('Delete (Del)'));
   assert.equal(onButton.defaultPrevented, false, 'a focused control keeps Shift+Tab as the way back');
@@ -4796,6 +4797,7 @@ test('G and R obey the snapping state, and Ctrl flips it while the object is hel
   const degrees = (2 * Math.asin(Math.max(Math.abs(turned[0]), Math.abs(turned[1]), Math.abs(turned[2]))) * 180) / Math.PI;
   assert.ok(Math.abs(degrees / 15 - Math.round(degrees / 15)) < 1e-3 && degrees > 1, `R turns in 15 degree steps: ${degrees}`);
   press('Escape');
+});
 
 test('settleUntil keeps waiting past a few hundred event-loop turns, as a thread-pool hash on a loaded runner needs (#3330)', async testContext => {
   const dom = installStudioDom();
@@ -4817,4 +4819,102 @@ test('settleUntil gives up at its deadline when the work never finishes', async 
   await dom.settleUntil(() => false, 50);
   const waited = performance.now() - started;
   assert.ok(waited >= 50 && waited < 5000, `waited ${waited} ms for a 50 ms deadline`);
+});
+
+test('Shift+Tab on the focused canvas is the browser reverse tab while the pointer is off the viewport (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const { toggle } = snapParts(ui);
+  const shiftTab = target => dispatch(target, 'keydown', { key: 'Tab', shiftKey: true });
+
+  const withoutPointer = shiftTab(ui.canvas);
+  assert.equal(withoutPointer.defaultPrevented, false, 'no pointer over the viewport: the browser takes it');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  assert.equal(shiftTab(ui.canvas).defaultPrevented, true, 'pointer over the viewport: snapping takes it');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+
+  dispatch(ui.viewport, 'pointerleave');
+  const afterLeaving = shiftTab(ui.canvas);
+  assert.equal(afterLeaving.defaultPrevented, false, 'the pointer left: the browser takes it again');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+
+  assert.equal(shiftTab(ui.dom.document).defaultPrevented, true, 'with nothing focused it still toggles');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+});
+
+test('no object menu opens over a handle drag or a G, R or S move, and its context menu is still swallowed (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const menu = ui.root.querySelector('#crucible-studio-pop-object');
+  ui.selectRow('hero');
+  ui.tool('translate').click();
+  ui.studio.renderNow();
+  const handles = ui.controller.gizmoHandles();
+  const tip = ui.controller.projectWorldPoint(handles.pivot.map((value, index) => value + handles.basis.x[index] * handles.handleLength));
+
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(tip));
+  assert.equal(ui.controller.dragging, true);
+  const duringDrag = dispatch(ui.gizmo, 'contextmenu', { clientX: 300, clientY: 200 });
+  assert.equal(duringDrag.defaultPrevented, true);
+  assert.notEqual(menu.popoverOpen, true, 'no menu over a handle drag');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(tip));
+
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  dispatch(ui.dom.document, 'keydown', { key: 'g' });
+  assert.equal(ui.root.dataset.modal !== undefined, true);
+  const duringMove = dispatch(ui.gizmo, 'contextmenu', { clientX: 300, clientY: 200 });
+  assert.equal(duringMove.defaultPrevented, true);
+  assert.notEqual(menu.popoverOpen, true, 'no menu over a G move');
+  dispatch(ui.dom.document, 'keydown', { key: 'Escape' });
+
+  dispatch(ui.gizmo, 'contextmenu', { clientX: 300, clientY: 200 });
+  assert.equal(menu.popoverOpen, true, 'with nothing in hand the menu opens as before');
+});
+
+test('the window losing focus during a handle drag lets go of Ctrl, and a cancel with Ctrl held puts the object back (#3342)', testContext => {
+  const dom = installStudioDom();
+  const windowListeners = new Map();
+  dom.document.defaultView.addEventListener = (type, listener) => windowListeners.set(type, listener);
+  dom.document.defaultView.removeEventListener = type => windowListeners.delete(type);
+  testContext.after(() => dom.uninstall());
+  const ui = mountStudio(testContext, { sharedDom: dom });
+  ui.selectRow('hero');
+  ui.tool('translate').click();
+  ui.studio.renderNow();
+  const handles = ui.controller.gizmoHandles();
+  const along = distance => ui.controller.projectWorldPoint(handles.pivot.map((value, index) => value + handles.basis.x[index] * distance));
+  const heroX = () => ui.node('hero').translation[0];
+  const onStep = value => Math.abs(value / 0.25 - Math.round(value / 0.25)) < 1e-6;
+  const start = heroX();
+
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(along(handles.handleLength + 0.83)));
+  const free = heroX();
+  dispatch(ui.dom.document, 'keydown', { key: 'Control', ctrlKey: true });
+  assert.equal(onStep(heroX()), true, 'Ctrl held: on the step');
+  windowListeners.get('blur')();
+  assert.equal(heroX(), free, 'blur lets go of Ctrl: the free move is back');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength + 0.83)));
+
+  ui.controller.updateNodeTransform('hero', { translation: [start, 0.5, 0] });
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(along(handles.handleLength + 0.83)));
+  dispatch(ui.dom.document, 'keydown', { key: 'Control', ctrlKey: true });
+  assert.equal(ui.controller.cancelGizmoDrag(), true);
+  assert.equal(heroX(), start, 'cancel with Ctrl held puts the object back');
+  dispatch(ui.dom.document, 'keyup', { key: 'Control', ctrlKey: false });
+  windowListeners.get('blur')();
+  assert.equal(heroX(), start, 'a later Ctrl release or blur moves nothing');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength)));
+  assert.equal(heroX(), start);
+});
+
+test('the target button always shows the icon of the active target, open or closed (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const { targetButton, popover } = snapParts(ui);
+  assert.equal(targetButton.dataset.icon, 'grid');
+  popover.showPopover();
+  assert.equal(targetButton.dataset.icon, 'grid', 'opening the menu is not a different glyph');
+  byDataset(popover, 'snapTarget', 'vertex').click();
+  assert.equal(targetButton.dataset.icon, 'meshVertex', 'choosing a target changes it for good');
 });

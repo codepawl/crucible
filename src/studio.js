@@ -515,21 +515,30 @@ function arrowHeadPoints(origin, tip) {
   return corners.map(corner => `${corner[0].toFixed(1)},${corner[1].toFixed(1)}`).join(' ');
 }
 
-// What a drag has changed so far: a dashed outline where the object was and, for a move, a dashed line from there to
-// where it is now. Nothing here takes the pointer.
-// The vertex a drag is snapping to: a ring with a dot, in the accent colour, over a halo so it reads on any surface.
+// The ring is a little wider than the 6.5 px centre handle, so a vertex that lands under the handle stays visible, and
+// the dot is the vertex itself. The dark halo is wider than the pale ring by 2 px a side so the ring reads over the
+// accent outline of the selected object and over a pale surface alike.
+const SNAP_MARKER_RING_RADIUS = 10;
+const SNAP_MARKER_DOT_RADIUS = 2.5;
+const SNAP_MARKER_HALO_WIDTH = 6;
+const SNAP_MARKER_RING_WIDTH = 2;
+
+// The vertex a drag is snapping to. Drawn after the handles and the outline, so nothing covers it.
 function appendSnapMarker(documentReference, gizmoSvg, marker) {
   if (!marker) {
     return;
   }
   const centre = { cx: marker.x.toFixed(1), cy: marker.y.toFixed(1), 'pointer-events': 'none' };
   gizmoSvg.append(
-    createSvgElement(documentReference, 'circle', { ...centre, r: '9', fill: 'none', stroke: 'var(--studio-trace-edge)', 'stroke-width': '5', 'data-snap-halo': 'vertex' }),
-    createSvgElement(documentReference, 'circle', { ...centre, r: '9', fill: 'none', stroke: 'var(--studio-accent)', 'stroke-width': '2', 'data-snap-marker': 'vertex' }),
-    createSvgElement(documentReference, 'circle', { ...centre, r: '2.5', fill: 'var(--studio-accent)', 'data-snap-marker': 'dot' }),
+    createSvgElement(documentReference, 'circle', { ...centre, r: String(SNAP_MARKER_RING_RADIUS), fill: 'none', stroke: 'var(--studio-trace-edge)', 'stroke-width': String(SNAP_MARKER_HALO_WIDTH), 'data-snap-halo': 'vertex' }),
+    createSvgElement(documentReference, 'circle', { ...centre, r: String(SNAP_MARKER_DOT_RADIUS + 1), fill: 'var(--studio-trace-edge)', 'data-snap-halo': 'dot' }),
+    createSvgElement(documentReference, 'circle', { ...centre, r: String(SNAP_MARKER_RING_RADIUS), fill: 'none', stroke: 'var(--studio-trace)', 'stroke-width': String(SNAP_MARKER_RING_WIDTH), 'data-snap-marker': 'vertex' }),
+    createSvgElement(documentReference, 'circle', { ...centre, r: String(SNAP_MARKER_DOT_RADIUS), fill: 'var(--studio-trace)', 'data-snap-marker': 'dot' }),
   );
 }
 
+// What a drag has changed so far: a dashed outline where the object was and, for a move, a dashed line from there to
+// where it is now. Nothing here takes the pointer.
 function appendDragTrace(documentReference, gizmoSvg, trace) {
   if (!trace) {
     return;
@@ -918,7 +927,6 @@ function renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask,
     appendHullOutline(documentReference, gizmoSvg, outline.points, outline.active);
   }
   appendDragTrace(documentReference, gizmoSvg, controller.dragTrace());
-  appendSnapMarker(documentReference, gizmoSvg, controller.snapMarker());
   const handles = controller.gizmoHandles();
   if (!handles || !handles.origin.visible) {
     return;
@@ -1497,7 +1505,9 @@ export function createStudio(container, {
     createMenuItem('Reset scale', 'edit.resetScale', () => resetSelectionTransform('scale'), 'scale'),
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
   );
+  // No menu while an object is in hand: a Ctrl press on a Mac is a right click, and it would open this over the move.
   function openObjectMenu(clientX, clientY) {
+    if (controller.dragging || modalTransform) return;
     const windowWidth = documentReference.defaultView?.innerWidth ?? 1280;
     const windowHeight = documentReference.defaultView?.innerHeight ?? 800;
     objectPopover.togglePopover?.(false);
@@ -1816,14 +1826,14 @@ export function createStudio(container, {
   filePill.addEventListener('click', () => { fileMenuAnchor = filePill; });
   fileMenuButton.addEventListener('click', () => { fileMenuAnchor = fileMenuButton; });
 
-  function bindPopoverAnchor(triggerButton, popoverElement, { beside = false } = {}) {
+  function bindPopoverAnchor(triggerButton, popoverElement, { beside = false, topOffset = 8 } = {}) {
     popoverElement.addEventListener('beforetoggle', event => {
       if (event.newState !== 'open') return;
       const rectangle = (typeof triggerButton === 'function' ? triggerButton() : triggerButton).getBoundingClientRect();
       const viewportWidth = documentReference.defaultView?.innerWidth ?? 1280;
       const viewportHeight = documentReference.defaultView?.innerHeight ?? 800;
       const wantedLeft = beside ? rectangle.right + 16 : rectangle.left - 5;
-      const wantedTop = beside ? rectangle.top - 8 : rectangle.bottom + 14;
+      const wantedTop = beside ? rectangle.top - topOffset : rectangle.bottom + 14;
       const clampedLeft = Math.max(8, Math.min(wantedLeft, Math.max(8, viewportWidth - 256)));
       const clampedTop = Math.max(8, Math.min(wantedTop, Math.max(8, viewportHeight - 300)));
       // A trigger in the right half opens towards the left, so the menu never leaves the window.
@@ -1848,7 +1858,8 @@ export function createStudio(container, {
   addMenuButton.addEventListener('click', () => { addMenuAnchor = addMenuButton; });
   bindPopoverAnchor(() => addMenuAnchor, addPopover, { beside: true });
   bindPopoverAnchor(aiSyncMenuButton, aiSyncPopover);
-  bindPopoverAnchor(snapTargetButton, snapPopover, { beside: true });
+  // The menu's top edge is the top edge of the button that opens it.
+  bindPopoverAnchor(snapTargetButton, snapPopover, { beside: true, topOffset: 0 });
   bindPopoverAnchor(exportMenuButton, exportPopover);
 
   // Left Outliner + Material Palette Dock
@@ -3392,6 +3403,7 @@ export function createStudio(container, {
       syncViewportDimensions();
       drawSceneFrame();
       renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask, activeOutlineMask, { hideSelectionOutline: Boolean(meshEditor?.active), clearRadius: meshEditor?.active ? meshEditor.selectionScreenRadius() : null });
+      appendSnapMarker(documentReference, gizmoSvg, controller.snapMarker());
       if (!capturingStill) {
         renderSceneObjectMarks(documentReference, gizmoSvg, controller);
       }
@@ -4187,6 +4199,11 @@ export function createStudio(container, {
     finishModalTransform(false);
   }
 
+  // The window losing focus during a handle drag: the key-up of Ctrl will never arrive, so the drag goes on as if it were up.
+  function onWindowBlur() {
+    if (pointerState?.mode === 'gizmo') replayDragWithCtrl(false);
+  }
+
   function startModalTransform(tool) {
     if (modalTransform || pointerState || !viewportPointer || !controller.selectedNodeId) {
       return false;
@@ -4642,8 +4659,11 @@ export function createStudio(container, {
   const keyHandlers = {
     'tool.select': () => controller.setTool('select'),
     // Tab is also how the keyboard moves between controls, so Shift+Tab snaps only from the page or the canvas.
+    // With the canvas focused, the keys go to the area under the pointer, as in Blender: Shift+Tab with the pointer elsewhere
+    // is the browser's way back out of the canvas.
     'snap.toggle': event => {
-      if (event.key === 'Tab' && !tabBelongsToViewport(event.target)) return;
+      const canvasHasFocus = event.target === canvas;
+      if (event.key === 'Tab' && (canvasHasFocus ? viewportPointer === null : !tabBelongsToViewport(event.target))) return;
       event.preventDefault();
       toggleSnapping();
     },
@@ -4794,6 +4814,7 @@ export function createStudio(container, {
   };
   documentReference.addEventListener('keydown', onKeyDown);
   documentReference.addEventListener('keyup', onKeyUp);
+  documentReference.defaultView?.addEventListener?.('blur', onWindowBlur);
   documentReference.addEventListener('pointerdown', onPointerInput, true);
 
   const onVisibilityChange = () => {
@@ -5024,6 +5045,7 @@ export function createStudio(container, {
       documentReference.removeEventListener('pointerdown', onAnyPointerDown, true);
       documentReference.removeEventListener('keydown', onKeyDown);
       documentReference.removeEventListener('keyup', onKeyUp);
+      documentReference.defaultView?.removeEventListener?.('blur', onWindowBlur);
       documentReference.removeEventListener('pointerdown', onPointerInput, true);
       documentReference.removeEventListener('visibilitychange', onVisibilityChange);
       documentReference.removeEventListener('visibilitychange', flushDraftWhenHidden);

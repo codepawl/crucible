@@ -18,14 +18,28 @@ export const VERTEX_SNAP_RADIUS_PIXELS = 12;
 
 const SAME_SPOT_PIXELS = 2;
 
-/** The most vertices one search projects: parts are sampled evenly past it, so a heavy scene stays responsive. */
+/** The most vertices one search projects in all, taken evenly from each searched part, so a heavy scene stays responsive. */
 export const VERTEX_SNAP_MAX_VERTICES = 20000;
 
-/** The most parts one search looks at, the ones whose centre lies nearest the pointer on screen. */
+/** The most parts one search searches: the ones whose centre lies nearest the pointer on screen. */
 export const VERTEX_SNAP_MAX_PARTS = 48;
 
-/** The most vertices of the moved object that are tried for the one that lands on the target. */
+/** The most parts one search ranks by distance to the pointer, picked evenly from the scene; the rest are not looked at. */
+export const VERTEX_SNAP_MAX_RANKED_PARTS = 512;
+
+/** Each ranked part has its centre guessed from this many of its vertices. */
+const CENTRE_SAMPLE_VERTICES = 8;
+
+/** The most vertices of the moved object, over all its parts, that are tried for the one that lands on the target. */
 export const OWN_VERTEX_LIMIT = 512;
+
+// Up to `wanted` indices from 0 to count - 1, spread evenly: all of them when there are no more than wanted.
+function evenIndices(count, wanted) {
+  if (count <= wanted) {
+    return Array.from({ length: count }, (_, index) => index);
+  }
+  return Array.from({ length: wanted }, (_, step) => Math.floor((step * count) / wanted));
+}
 
 /** Snapping is on when the toggle says so, flipped while Ctrl is held. */
 export function snapIsActive(enabled, ctrlHeld) {
@@ -62,18 +76,15 @@ function usableParts(parts) {
 
 function partCentre(part) {
   const positions = part.geometry.positions;
-  const vertexCount = positions.length / 3;
-  const stride = Math.max(1, Math.floor(vertexCount / 16));
   const sum = [0, 0, 0];
-  let count = 0;
-  for (let vertex = 0; vertex < vertexCount; vertex += stride) {
+  const sampled = evenIndices(positions.length / 3, CENTRE_SAMPLE_VERTICES);
+  for (const vertex of sampled) {
     const point = transformedPoint(part.matrix, positions, vertex);
     sum[0] += point[0];
     sum[1] += point[1];
     sum[2] += point[2];
-    count += 1;
   }
-  return sum.map(component => component / count);
+  return sum.map(component => component / sampled.length);
 }
 
 // The nearer to the pointer wins; two within a pixel or two of each other on screen go to the one nearer the camera,
@@ -97,8 +108,11 @@ export function findVertexUnderPointer({
   radiusPixels = VERTEX_SNAP_RADIUS_PIXELS,
   maxVertices = VERTEX_SNAP_MAX_VERTICES,
   maxParts = VERTEX_SNAP_MAX_PARTS,
+  maxRankedParts = VERTEX_SNAP_MAX_RANKED_PARTS,
 }) {
-  const ranked = usableParts(parts)
+  const usable = usableParts(parts);
+  const ranked = evenIndices(usable.length, maxRankedParts)
+    .map(index => usable[index])
     .map(part => {
       const screen = project(partCentre(part));
       return { part, distance: screen ? Math.hypot(screen.x - pointer.x, screen.y - pointer.y) : Infinity };
@@ -106,12 +120,11 @@ export function findVertexUnderPointer({
     .filter(entry => Number.isFinite(entry.distance))
     .sort((first, second) => first.distance - second.distance)
     .slice(0, maxParts);
-  const totalVertices = ranked.reduce((sum, entry) => sum + entry.part.geometry.positions.length / 3, 0);
-  const stride = Math.max(1, Math.ceil(totalVertices / maxVertices));
+  const verticesPerPart = Math.max(1, Math.floor(maxVertices / Math.max(1, ranked.length)));
   let best = null;
   for (const { part } of ranked) {
     const positions = part.geometry.positions;
-    for (let vertex = 0; vertex < positions.length / 3; vertex += stride) {
+    for (const vertex of evenIndices(positions.length / 3, verticesPerPart)) {
       const world = transformedPoint(part.matrix, positions, vertex);
       const screen = project(world);
       if (!screen) {
@@ -130,11 +143,11 @@ export function findVertexUnderPointer({
 /** Up to `limit` world points of `parts`' vertices, taken evenly: the moved object's own candidates for the one that lands. */
 export function sampleVertices(parts, limit = OWN_VERTEX_LIMIT) {
   const usable = usableParts(parts);
-  const total = usable.reduce((sum, part) => sum + part.geometry.positions.length / 3, 0);
-  const stride = Math.max(1, Math.ceil(total / limit));
+  const chosenParts = evenIndices(usable.length, limit).map(index => usable[index]);
+  const verticesPerPart = Math.max(1, Math.floor(limit / Math.max(1, chosenParts.length)));
   const points = [];
-  for (const part of usable) {
-    for (let vertex = 0; vertex < part.geometry.positions.length / 3; vertex += stride) {
+  for (const part of chosenParts) {
+    for (const vertex of evenIndices(part.geometry.positions.length / 3, verticesPerPart)) {
       points.push(transformedPoint(part.matrix, part.geometry.positions, vertex));
     }
   }
