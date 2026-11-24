@@ -1,0 +1,102 @@
+{
+  "subject": "forest",
+  "seed": 4,
+  "distance": 8,
+  "sun": [
+    0.93,
+    0.34,
+    0.12
+  ],
+  "sunName": "side",
+  "treeHeight": 16,
+  "backend": "gpu",
+  "size": [
+    640,
+    480
+  ],
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "ground",
+        "type": "terrain",
+        "size": 200,
+        "resolution": 64,
+        "seed": 3,
+        "amplitude": 1
+      }
+    ],
+    "materials": [
+      {
+        "id": "soil",
+        "color": [
+          0.16,
+          0.24,
+          0.07
+        ],
+        "metallic": 0,
+        "roughness": 0.95
+      }
+    ],
+    "nodes": [
+      {
+        "id": "ground",
+        "geometry": "ground",
+        "material": "soil"
+      },
+      {
+        "id": "trees",
+        "vegetation": {
+          "preset": "oak",
+          "seed": 4,
+          "scatter": {
+            "ground": "ground",
+            "density": 0.02,
+            "area": {
+              "min": [
+                -50,
+                -50
+              ],
+              "max": [
+                50,
+                50
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "camera": {
+      "eye": [
+        0,
+        2,
+        58
+      ],
+      "target": [
+        0,
+        9.6,
+        0
+      ],
+      "fov": 24
+    },
+    "environment": {
+      "world": true,
+      "lightDirection": [
+        0.93,
+        0.34,
+        0.12
+      ]
+    },
+    "shadow": {
+      "target": [
+        0,
+        8,
+        0
+      ],
+      "extent": 120,
+      "distance": 240,
+      "far": 720
+    }
+  }
+}
