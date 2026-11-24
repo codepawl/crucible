@@ -86,11 +86,53 @@ function spliceOnce(source, anchor, replacement) {
   return source.replace(anchor, () => replacement);
 }
 
+// The main shader picks box mapping or UV mapping with `BOX_MAPPED ? boxCall : uvCall`. Where the global parallaxShift feeds the UV branch,
+// the GPU programs measured (Chrome, ANGLE on Direct3D 11) returned the unshifted sample from that ternary, although the same call made as
+// a statement was shifted (#2839). A statement with an early return gives the same picture in the other programs and the shifted one here.
+const MAPPED_SAMPLE_HELPERS = `vec4 mappedSample(sampler2D source, float flag) {
+  if (BOX_MAPPED) return sampleBox(source);
+  return texture(source, mapUV(flag));
+}
+vec3 mappedOrBoxNormal(vec3 normal) {
+  if (BOX_MAPPED) return boxMappedNormal(normal);
+  return mappedNormal(normal);
+}
+void main() {`;
+const SAMPLE_TERNARY = /BOX_MAPPED \? sampleBox\((\w+)\) : texture\(\1, mapUV\((\w+)\)\)/g;
+const NORMAL_TERNARY = 'BOX_MAPPED ? boxMappedNormal(normal) : mappedNormal(normal)';
+
 /** The main fragment shader with every UV-set-0 map read through the parallax shift; the normal frame keeps the unshifted UV. */
 export function withHeightParallax(source) {
   const mapped = spliceOnce(source, `vec2 mapUV(float flag) {
   return flag > 1.5 ? lightmapUV : textureUV;
 }`, MAPPED_UV);
-  return spliceOnce(mapped, `vec2 uvX = dFdx(normalCoordinates);
+  const framed = spliceOnce(mapped, `vec2 uvX = dFdx(normalCoordinates);
   vec2 uvY = dFdy(normalCoordinates);`, FRAME_UV);
+  const withHelpers = spliceOnce(framed, 'void main() {', MAPPED_SAMPLE_HELPERS);
+  const withSamples = withHelpers.replace(SAMPLE_TERNARY, (_match, sampler, flag) => `mappedSample(${sampler}, ${flag})`);
+  return spliceOnce(withSamples, NORMAL_TERNARY, 'mappedOrBoxNormal(normal)');
+}
+
+/**
+ * The march of parallaxUvShift on the CPU, as the check of its numbers (the shader runs only on a GPU). `heightAt(offsetU, offsetV)` is the
+ * height texel (1 top, 0 at depth) at the pixel's UV plus that offset, `fullShift` the UV shift the eye ray makes over the full depth and
+ * `steps` the ray steps. Returns the UV shift to add to the pixel's UV, as the shader does.
+ */
+export function referenceParallaxShift(heightAt, fullShift, steps) {
+  const stepDepth = 1 / steps;
+  let rayDepth = 0;
+  let previousRayDepth = 0;
+  let surfaceDepth = 1 - heightAt(0, 0);
+  let previousSurfaceDepth = surfaceDepth;
+  for (let stepIndex = 0; stepIndex < steps && rayDepth < surfaceDepth; stepIndex++) {
+    previousRayDepth = rayDepth;
+    previousSurfaceDepth = surfaceDepth;
+    rayDepth += stepDepth;
+    surfaceDepth = 1 - heightAt(-fullShift[0] * rayDepth, -fullShift[1] * rayDepth);
+  }
+  const above = Math.max(previousSurfaceDepth - previousRayDepth, 0);
+  const below = Math.max(rayDepth - surfaceDepth, 0);
+  const crossing = previousRayDepth + stepDepth * above / Math.max(above + below, 1e-6);
+  const depth = Math.min(crossing, rayDepth);
+  return [-fullShift[0] * depth, -fullShift[1] * depth];
 }

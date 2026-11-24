@@ -1,0 +1,2 @@
+- scene:agent-scene+lazy: the parallax march and its shader splice join the bundle only through the heightMap feature, about 1.4 KB minified for the agent-facing relief capability (#2839).
+- goal:agent-scene: a program without a heightMap compiles the same source as before; the code is dead weight only in the bundle, and the splice code is the part every renderer carries.
