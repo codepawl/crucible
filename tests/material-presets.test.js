@@ -39,7 +39,7 @@ test('presets fill the fields their name promises', async () => {
   const scene = await build(recipeWith(MATERIAL_PRESET_NAMES.map(name => ({ id: name, preset: name }))));
   assert.equal(materialOf(scene, 'wood').pattern.type, 'wood');
   assert.equal(materialOf(scene, 'brick').pattern.type, 'bricks');
-  assert.equal(materialOf(scene, 'grass').pattern.type, 'metal');
+  assert.equal(materialOf(scene, 'grass').pattern.type, 'graph');
   assert.equal(materialOf(scene, 'smoothPlastic').pattern, undefined);
   assert.ok(materialOf(scene, 'neon').emission > 1);
   const glass = materialOf(scene, 'glass');
@@ -88,11 +88,23 @@ test('an explicit emissiveColor wins over the neon default', async () => {
   assert.deepEqual([...materialOf(scene, 'neon').emissiveColor], [0, 1, 0]);
 });
 
-test('grass and wood patterns carry contrast and direction', async () => {
-  const scene = await build(recipeWith([{ id: 'grass', preset: 'grass' }, { id: 'wood', preset: 'wood' }]));
-  for (const id of ['grass', 'wood']) {
-    const [dark, light] = materialOf(scene, id).pattern.colors;
-    assert.ok(light[0] / dark[0] >= 3, `${id} ramp keeps at least 3 to 1 contrast`);
-  }
-  assert.equal(materialOf(scene, 'grass').pattern.type, 'metal');
+test('wood keeps a contrasty ring ramp', async () => {
+  const scene = await build(recipeWith([{ id: 'wood', preset: 'wood' }]));
+  const [dark, light] = materialOf(scene, 'wood').pattern.colors;
+  assert.ok(light[0] / dark[0] >= 3, 'ring ramp keeps at least 3 to 1 contrast');
+});
+
+test('grass is a graph of stretched tufts with a colour ramp of two tones and a height output', async () => {
+  const scene = await build(recipeWith([{ id: 'grass', preset: 'grass' }]));
+  const pattern = materialOf(scene, 'grass').pattern;
+  assert.equal(pattern.type, 'graph');
+  assert.ok(pattern.graph.height, 'blades have height variation');
+  const [darkStop, lightStop] = pattern.graph.color.ramp.stops;
+  assert.ok(lightStop[1][0] / darkStop[1][0] >= 3, 'two tones with at least 3 to 1 contrast');
+});
+
+test('brick defaults to a deep red', async () => {
+  const scene = await build(recipeWith([{ id: 'brick', preset: 'brick' }]));
+  const [red, green, blue] = materialOf(scene, 'brick').color;
+  assert.ok(red >= 0.5 && green <= 0.2 && blue <= 0.15, 'deep brick red, not peach');
 });

@@ -6,6 +6,25 @@
 
 export const MATERIAL_PRESET_NAMES = Object.freeze(['smoothPlastic', 'wood', 'grass', 'neon', 'glass', 'brick']);
 
+// Short blades: Voronoi cells stretched four times along v, each with its own tone (cell) and a dome of height (distance), over fine noise.
+const TUFT_POSITION = Object.freeze({ mul: Object.freeze([Object.freeze({ uv: 'both' }), Object.freeze({ vec: Object.freeze([1, 4, 1]) })]) });
+const TUFT_CELLS = Object.freeze({ voronoi: Object.freeze({ scale: 14, output: 'cell', at: TUFT_POSITION }) });
+const TUFT_DOME = Object.freeze({ invert: Object.freeze({ voronoi: Object.freeze({ scale: 14, output: 'distance', at: TUFT_POSITION }) }) });
+const TUFT_TONE = Object.freeze({ add: Object.freeze([
+  Object.freeze({ add: Object.freeze([Object.freeze({ mul: Object.freeze([TUFT_CELLS, 0.45]) }), Object.freeze({ mul: Object.freeze([TUFT_DOME, 0.35]) })]) }),
+  Object.freeze({ mul: Object.freeze([Object.freeze({ noise: Object.freeze({ scale: 64 }) }), 0.2]) }),
+]) });
+const GRASS_PATTERN = Object.freeze({
+  type: 'graph', size: 0.5, bump: 1,
+  graph: Object.freeze({
+    color: Object.freeze({ ramp: Object.freeze({
+      value: Object.freeze({ clamp: Object.freeze([TUFT_TONE, 0, 1]) }),
+      stops: Object.freeze([Object.freeze([0, Object.freeze([0.28, 0.28, 0.28])]), Object.freeze([1, Object.freeze([1, 1, 1])])]),
+    }) }),
+    height: Object.freeze({ add: Object.freeze([Object.freeze({ mul: Object.freeze([TUFT_DOME, 0.7]) }), Object.freeze({ mul: Object.freeze([TUFT_CELLS, 0.3]) })]) }),
+  }),
+});
+
 const MATERIAL_PRESETS = Object.freeze({
   smoothPlastic: Object.freeze({
     color: Object.freeze([0.7, 0.7, 0.7]), roughness: 0.28, metallic: 0,
@@ -18,19 +37,19 @@ const MATERIAL_PRESETS = Object.freeze({
   }),
   grass: Object.freeze({
     color: Object.freeze([0.3, 0.6, 0.18]), roughness: 1, metallic: 0,
-    pattern: Object.freeze({ type: 'metal', size: 0.5, count: 2, bump: 1, colors: Object.freeze([[0.3, 0.3, 0.3], [1, 1, 1]]) }),
-    note: 'Soft turf with fine streaks like blades running along the part, one repeat per 0.5 m, tinted by color.',
+    pattern: GRASS_PATTERN,
+    note: 'Soft turf made of short upright tufts in two tones with some height, one repeat per 0.5 m, tinted by color.',
   }),
   neon: Object.freeze({
     tag: 'unlit', color: Object.freeze([0.2, 1, 0.9]), emission: 1.5, glowsInColor: true,
-    note: 'Glows in the part colour (emission 1.5, emissiveColor = color, so the face stays saturated); the halo comes from effects.bloom (on by default, strength 0.12).',
+    note: 'Glows in the part colour (emission 1.5, emissiveColor = color, so the face stays saturated); the halo comes from effects.bloom and needs strength 0.3 or more to show (default 0.12 is faint).',
   }),
   glass: Object.freeze({
     color: Object.freeze([0.85, 0.95, 1]), roughness: 0.04, metallic: 0, opacity: 0.5, clearcoat: 1,
     note: 'Blended pane, opacity 0.5, roughness 0.04 and a clear coat that mirrors the sky, tinted by color.',
   }),
   brick: Object.freeze({
-    color: Object.freeze([0.75, 0.35, 0.25]), roughness: 0.9, metallic: 0,
+    color: Object.freeze([0.6, 0.14, 0.09]), roughness: 0.9, metallic: 0,
     pattern: Object.freeze({ type: 'bricks', size: 1, count: 4, bump: 1, colors: Object.freeze([[0.6, 0.6, 0.6], [0.95, 0.95, 0.95], [0.8, 0.8, 0.8]]) }),
     note: 'Courses of bricks, 4 across per 1 m repeat, mortar paler than the brick, tinted by color.',
   }),

@@ -145,12 +145,12 @@ Image textures come from catalog images (a colour map sequence, and scanned text
 | --- | --- |
 | `smoothPlastic` | roughness 0.28, no pattern |
 | `wood` | dark-ringed `wood` pattern, 0.8 m per repeat, roughness 0.8 |
-| `grass` | soft streaks like blades (stretched `metal` pattern), 0.5 m per repeat, roughness 1; a solid turf block, the `grass` tag is for swaying blades |
-| `neon` | emission 1.5 in a saturated version of the part colour (`emissiveColor`, so the face keeps its hue instead of going white); the halo comes from `effects.bloom` |
+| `grass` | a `graph` pattern of short upright tufts in two tones with some height, 0.5 m per repeat, roughness 1; a solid turf block, the `grass` tag is for swaying blades |
+| `neon` | emission 1.5 in a saturated version of the part colour (`emissiveColor`, so the face keeps its hue instead of going white); the halo comes from `effects.bloom` and needs strength 0.3 or more to show: measured, the added bloom light is about the same for red, blue and cyan and scales with the strength, so the default 0.12 gives a faint halo on every hue |
 | `glass` | opacity 0.5, roughness 0.04, clear coat, blended |
 | `brick` | `bricks` pattern, 1 m per repeat, roughness 0.9 |
 
-`color` is the part colour and tints the base: the patterns are grey ramps, so a red `wood` part is red wood. Without `color`, each preset uses its own tint. Pattern `size` is in metres after node scale, so a 4 m part and a 40 m part show the same grain size. An unknown name fails with the list of valid ones. `scene_capabilities` topic `materialPresets` lists the values.
+`color` is the part colour and tints the base: the patterns are grey ramps, so a red `wood` part is red wood. Without `color`, each preset uses its own tint. Pattern `size` is in metres after node scale, so a 4 m part and a 40 m part show the same grain size. Shadow edges on a pane and on its neighbours come from the shadow map, not the preset: under a large backdrop with the default shadow coverage they show stair steps, and a tighter `shadow.extent` around the parts removes them. An unknown name fails with the list of valid ones. `scene_capabilities` topic `materialPresets` lists the values.
 ### Material patterns
 
 `pattern` gives a `surface` material a procedural texture, baked once and shared by every material with the same definition:
