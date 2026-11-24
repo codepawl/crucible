@@ -3742,7 +3742,8 @@ test('the Look tab shows the lighting presets on one row and the sun direction p
 test('the stylesheet fades rows under a pinned group title and at the bottom of the panels, and keeps the label column wide enough', () => {
   assert.ok(STUDIO_CSS.includes('container-type: scroll-state;'), 'a group title can tell when it is pinned');
   assert.ok(STUDIO_CSS.includes('@container scroll-state(stuck: top)'), 'the fade under a title shows only while it is pinned');
-  assert.ok(STUDIO_CSS.includes('.crucible-studio-panels::after'), 'the panels fade at the bottom edge');
+  assert.ok(STUDIO_CSS.includes('.crucible-studio-scroll[data-fade-bottom="true"]'), 'a scrolling card body fades at the edges that hide content');
+  assert.ok(STUDIO_CSS.includes('scrollbar-gutter: stable'), 'the scrollbar gutter stays so content does not shift');
   assert.ok(STUDIO_CSS.includes('grid-template-columns: minmax(min-content, 45%) minmax(0, 1fr);'), 'a label column grows to its label');
   assert.ok(STUDIO_CSS.includes('scroll-snap-type: y mandatory;'), 'the Scene list scrolls a whole row at a time');
 });

@@ -39,6 +39,7 @@ import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, des
 import './replace-textured-parts.js';
 import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
 import { createBakeMark } from './studio-bake-mark.js';
+import { watchScrollFade } from './studio-scroll-cue.js';
 import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
 import { editIconName } from './studio-edit-names.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
@@ -1836,6 +1837,7 @@ export function createStudio(container, {
   const sceneAddButton = createIconButton(documentReference, 'add', 'Add to the scene', { attributes: { popovertarget: 'crucible-studio-pop-add' } });
   sceneAddButton.addEventListener('click', () => { addMenuAnchor = sceneAddButton; });
   const outlinerTree = createElement(documentReference, 'div', { className: 'crucible-studio-tree crucible-studio-scroll', attributes: { role: 'tree', 'aria-label': 'Scene hierarchy' } });
+  watchScrollFade(outlinerTree);
   const swatchContainer = createElement(documentReference, 'div', { className: 'crucible-studio-swatches crucible-studio-scroll' });
   const newMaterialQuickButton = createIconButton(documentReference, 'add', 'New material', { className: 'crucible-studio-swatch-add' });
   newMaterialQuickButton.addEventListener('click', () => {
@@ -2472,6 +2474,8 @@ export function createStudio(container, {
     onSelect: button => selectInspectorTab(button.dataset.tab),
   });
 
+  const panelsElement = createElement(documentReference, 'div', { className: 'crucible-studio-panels crucible-studio-scroll' }, panelsByTab.node, panelsByTab.material, panelsByTab.look, panelsByTab.camera);
+  watchScrollFade(panelsElement);
   const inspectorElement = createElement(
     documentReference,
     'aside',
@@ -2486,7 +2490,7 @@ export function createStudio(container, {
       propertiesMinimizeButton,
     ),
     tabListElement,
-    createElement(documentReference, 'div', { className: 'crucible-studio-panels crucible-studio-scroll' }, panelsByTab.node, panelsByTab.material, panelsByTab.look, panelsByTab.camera),
+    panelsElement,
   );
 
   // The History panel: the edits in the order they were made, oldest at the top, so a recording reads downward. The row of the
@@ -2494,6 +2498,7 @@ export function createStudio(container, {
   const historyMinimizeButton = createIconButton(documentReference, 'minimize', 'Minimize History', { attributes: { 'aria-expanded': 'true' } });
   historyMinimizeButton.addEventListener('click', () => setPreference('historyMinimized', !preferences.historyMinimized));
   const historyList = createElement(documentReference, 'div', { className: 'crucible-studio-history-list crucible-studio-scroll', attributes: { role: 'list', 'aria-label': 'Edits' } });
+  watchScrollFade(historyList);
   const historyDock = createElement(
     documentReference,
     'aside',

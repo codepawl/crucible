@@ -180,7 +180,8 @@ const FAKE_POINTER_LOCK_SCRIPT = () => {
 
 export async function launchBrowser() {
   const { chromium } = await import('playwright');
-  const options = { headless: true, args: process.platform === 'win32' ? GPU_ARGUMENTS : SOFTWARE_ARGUMENTS };
+  // Headless Chrome hides scrollbars unless told not to; the scroll cue of the panel column has to show in the pictures and the audit.
+  const options = { headless: true, ignoreDefaultArgs: ['--hide-scrollbars'], args: process.platform === 'win32' ? GPU_ARGUMENTS : SOFTWARE_ARGUMENTS };
   if (CHROME_PATH && existsSync(CHROME_PATH)) return chromium.launch({ ...options, executablePath: CHROME_PATH });
   return chromium.launch(options).catch(() => chromium.launch({ ...options, channel: 'chrome' }));
 }
@@ -413,6 +414,42 @@ async function checkHistoryLayout(page) {
   return found;
 }
 
+// The scroll cue of the panel column: a body whose content is taller than its card shows a scrollbar track at least 6 px wide, the
+// fade marker is set on the edge that hides content (top once scrolled down, bottom while more remains) and on no other edge, and
+// the fade is a real mask. A body that does not scroll carries no marker.
+async function checkScrollCue(page, step) {
+  const found = await page.evaluate(() => [
+    '.crucible-studio-panels',
+    '.crucible-studio-history-list',
+    '.crucible-studio-tree',
+  ].map(selector => {
+    const body = document.querySelector(selector);
+    const shown = Boolean(body) && body.getBoundingClientRect().height > 0;
+    if (!shown) return { selector, shown };
+    const hiddenBelow = body.scrollHeight - body.clientHeight - body.scrollTop;
+    return {
+      selector,
+      shown,
+      scrolls: body.scrollHeight - body.clientHeight > 1,
+      trackWidth: body.offsetWidth - body.clientWidth,
+      hiddenAbove: body.scrollTop > 1,
+      hiddenBelow: hiddenBelow > 1,
+      fadeTop: body.dataset.fadeTop === 'true',
+      fadeBottom: body.dataset.fadeBottom === 'true',
+      masked: getComputedStyle(body).maskImage !== 'none',
+    };
+  }));
+  for (const body of found.filter(entry => entry.shown)) {
+    const fail = message => { throw new Error(`Scroll cue (${step}): ${body.selector} ${message}: ${JSON.stringify(body)}`); };
+    if (body.scrolls && body.trackWidth < 6) fail('scrolls but shows no scrollbar track');
+    if (body.scrolls && body.hiddenAbove !== body.fadeTop) fail('has the top fade marker wrong');
+    if (body.scrolls && body.hiddenBelow !== body.fadeBottom) fail('has the bottom fade marker wrong');
+    if (!body.scrolls && (body.fadeTop || body.fadeBottom)) fail('carries a fade marker without scrolling');
+    if ((body.fadeTop || body.fadeBottom) && !body.masked) fail('has a fade marker but no fade');
+  }
+  return found;
+}
+
 // What a person does in the History panel, in a real browser: Edit > History shows it with focus on the current row, a click on
 // an earlier row steps back and dims the rows after it, a click on a dimmed row steps forward, and a new edit drops the dimmed rows.
 async function checkHistoryBehavior(page) {
@@ -481,6 +518,14 @@ async function measureHistoryPanel(page, theme, label) {
   if (menuStillOpen) throw new Error('History panel behavior: the Edit menu stays open over the scene after History is chosen');
   await capture('history panel', '.crucible-studio-history');
   const layout = await checkHistoryLayout(page);
+  await page.waitForTimeout(100);
+  await checkScrollCue(page, 'History shown');
+  await page.evaluate(() => { document.querySelector('.crucible-studio-history-list').scrollTop = 0; });
+  await page.waitForTimeout(100);
+  await checkScrollCue(page, 'History at the first row');
+  await page.evaluate(() => { const list = document.querySelector('.crucible-studio-history-list'); list.scrollTop = list.scrollHeight; });
+  await page.waitForTimeout(100);
+  await checkScrollCue(page, 'History at the last row');
   await page.locator('.crucible-studio-history button[aria-label="Minimize History"]').click();
   await capture('history panel collapsed', '.crucible-studio-history');
   const collapsed = await page.evaluate(() => ({
@@ -488,6 +533,8 @@ async function measureHistoryPanel(page, theme, label) {
     historyHeight: document.querySelector('.crucible-studio-history').getBoundingClientRect().height,
     inspectorHeight: document.querySelector('.crucible-studio-inspector').getBoundingClientRect().height,
   }));
+  await page.waitForTimeout(100);
+  await checkScrollCue(page, 'History minimized');
   if (collapsed.minimized !== 'true' || collapsed.historyHeight > 60) throw new Error(`History panel layout: it does not collapse to its title row: ${JSON.stringify(collapsed)}`);
   if (!layout.compact && collapsed.inspectorHeight <= layout.inspectorHeight) throw new Error(`History panel layout: Properties does not get the room back: ${JSON.stringify({ collapsed, layout })}`);
   await page.locator('.crucible-studio-history button[aria-label="Expand History"]').click();

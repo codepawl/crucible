@@ -32,6 +32,8 @@ export const STUDIO_CSS = `
   --studio-space-12: 12px;
   --studio-space-16: 16px;
   --studio-space-24: 24px;
+  --studio-scroll-thumb: color-mix(in srgb, var(--studio-text) 40%, transparent);
+  --studio-scroll-fade: 16px;
   --studio-top: 68px;
   --studio-rail: 44px;
   --studio-bar-clear: 54px;
@@ -1489,18 +1491,6 @@ export const STUDIO_CSS = `
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
-/* Rows dissolve into the card at the bottom edge while more of the panel lies below, instead of being cut. */
-.crucible-studio-panels::after {
-  content: "";
-  position: sticky;
-  inset-block-end: 0;
-  z-index: 3;
-  display: block;
-  block-size: 14px;
-  margin-block-start: -14px;
-  background: linear-gradient(to bottom, transparent, var(--studio-panel));
-  pointer-events: none;
-}
 .crucible-studio-panel-body {
   display: grid;
   gap: 12px;
@@ -1948,7 +1938,23 @@ export const STUDIO_CSS = `
   cursor: crosshair;
   touch-action: none;
 }
-/* The scroll areas of the panel column share one thin, arrowless scrollbar in the Studio colours. */
+/* The scroll areas of the panel column share one cue. A thin, arrowless scrollbar shows that the body scrolls, and its gutter stays so
+   the content never shifts. Rows dissolve at an edge that has content hidden past it (studio-scroll-cue.js sets data-fade-top and
+   data-fade-bottom); the mask leaves the scrollbar strip whole, so the fade never covers it. */
+.crucible-studio-scroll { scrollbar-gutter: stable; }
+.crucible-studio-scroll[data-fade-top="true"],
+.crucible-studio-scroll[data-fade-bottom="true"] {
+  --studio-fade-top: 0px;
+  --studio-fade-bottom: 0px;
+  mask-image:
+    linear-gradient(to bottom, transparent 0, #000 var(--studio-fade-top), #000 calc(100% - var(--studio-fade-bottom)), transparent 100%),
+    linear-gradient(#000, #000);
+  mask-size: calc(100% - 8px) 100%, 8px 100%;
+  mask-position: 0 0, 100% 0;
+  mask-repeat: no-repeat;
+}
+.crucible-studio-scroll[data-fade-top="true"] { --studio-fade-top: var(--studio-scroll-fade); }
+.crucible-studio-scroll[data-fade-bottom="true"] { --studio-fade-bottom: var(--studio-scroll-fade); }
 .crucible-studio-scroll::-webkit-scrollbar {
   inline-size: 8px;
   block-size: 8px;
@@ -1958,12 +1964,12 @@ export const STUDIO_CSS = `
 .crucible-studio-scroll::-webkit-scrollbar-corner { background: transparent; }
 .crucible-studio-scroll::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: color-mix(in srgb, var(--studio-text) 30%, transparent);
+  background: var(--studio-scroll-thumb);
 }
 @supports not selector(::-webkit-scrollbar) {
   .crucible-studio-scroll {
     scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--studio-text) 30%, transparent) transparent;
+    scrollbar-color: var(--studio-scroll-thumb) transparent;
   }
 }
 @media (prefers-reduced-motion: reduce) {
