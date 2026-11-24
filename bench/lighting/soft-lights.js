@@ -30,6 +30,8 @@ const CASES = {
   'area-shadow': { environment: { ...baseEnvironment, areaLights: [{ position: [-0.6, 2.6, 0.4], direction: [0.15, -1, -0.05], width: 0.7, height: 0.7, intensity: 30, castShadow: true }] }, needsShapes: true },
   'spot-plain': { environment: { ...baseEnvironment, spotLights: [{ position: [0, 3, 2.5], direction: [0, -1, -0.6], angle: 1.2, penumbra: 0.1, intensity: 60 }] } },
   'spot-ies': { environment: { ...baseEnvironment, spotLights: [{ position: [0, 3, 2.5], direction: [0, -1, -0.6], angle: 1.2, penumbra: 0.1, intensity: 60, ies: 'narrow-spot' }] }, needsShapes: true },
+  'point-shadow': { environment: { ...baseEnvironment, pointLights: [{ position: [0.9, 1.6, 1.2], color: [1, 0.9, 0.8], intensity: 25, radius: 0.1, range: 8, castShadow: true }] } },
+  'all-lights': { environment: { ...baseEnvironment, pointLights: [{ position: [0.9, 1.6, 1.2], color: [1, 0.9, 0.8], intensity: 25, radius: 0.1, range: 8, castShadow: true }, { position: [-1.8, 1.2, -0.8], color: [0.8, 0.9, 1], intensity: 15, radius: 0.1, range: 6 }], spotLights: [{ position: [0, 3, 2.5], direction: [0, -1, -0.6], angle: 1.2, penumbra: 0.1, intensity: 60, ies: 'narrow-spot', castShadow: true }], areaLights: [{ position: [-0.6, 2.6, 0.4], direction: [0.15, -1, -0.05], width: 0.7, height: 0.7, intensity: 30, castShadow: true, ies: 'batwing' }] }, needsShapes: true },
 };
 
 const camera = { eye: [3.4, 2.6, 4.2], target: [0, 0.4, 0], fov: 45 };

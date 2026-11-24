@@ -2,6 +2,9 @@ import { registeredFeatureCode, requireFeatureCode } from './shader-registry.js'
 
 export { fullscreenVertex } from './gl-program.js';
 
+// A marker step for a frame whose bloom asks for keepHue (#3326). Its code lives in bloom-keep-hue.js, so a program without the step has the source it had before.
+export const KEEP_HUE_STEP = 'keepHue';
+
 // The main function of the post pass; the local volume composite before bloom swaps it for a smaller one.
 const POST_MAIN = `void main() {
   vec2 texel = 1.0 / resolution;
@@ -278,10 +281,13 @@ function withOutputDither(mainBody) {
 
 // The post main with the code of the optional steps that change it; undefined leaves the main as it was.
 function postMainFor(enabledSteps) {
-  if (!enabledSteps.has('linearOutput') && !enabledSteps.has('autoExposure') && !enabledSteps.has('dither')) return undefined;
+  if (!enabledSteps.has('linearOutput') && !enabledSteps.has('autoExposure') && !enabledSteps.has(KEEP_HUE_STEP) && !enabledSteps.has('dither')) return undefined;
   let mainBody = POST_MAIN;
   if (enabledSteps.has('autoExposure')) mainBody = requireFeatureCode('autoExposure').post(mainBody);
   if (enabledSteps.has('linearOutput')) mainBody = requireFeatureCode('linearOutput').post(mainBody);
+  // After the two steps above, because it matches the bloom and tone map lines they leave in place.
+  if (enabledSteps.has(KEEP_HUE_STEP)) mainBody = requireFeatureCode('keepHue').post(mainBody);
+  // Dither goes after keepHue: it is added after the final colour line, which keepHue leaves in place.
   if (enabledSteps.has('dither')) mainBody = withOutputDither(mainBody);
   return mainBody;
 }

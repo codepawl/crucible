@@ -32,7 +32,7 @@ function tintRenderer(batches, { active = true } = {}) {
 }
 
 const opaqueBatch = { castShadow: true, tintedShadow: false };
-const glassBatch = { castShadow: true, tintedShadow: true, layerState: new Array(10).fill(0) };
+const glassBatch = { castShadow: true, tintedShadow: true, layerState: new Array(10).fill(0), parts: [{ material: {} }] };
 
 test('a scene without blended or transmissive casters draws no tint pass and allocates no tint texture', () => {
   const { renderer, calls, sizes } = tintRenderer([opaqueBatch, { floor: true, castShadow: true }]);

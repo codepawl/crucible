@@ -178,6 +178,10 @@ Name the task ids you ran in the pull request (`--dry-run` lists them). Skipped 
 
 A change to shaders, lighting, materials, the default render or a post step changes how every scene looks. Add a before and an after picture to the pull request. Run every picture and clip through `node scripts/check-preview.mjs <file> [--reference <Cook or Cycles still>]` before you send it for review, and fix what it fails ([docs/check-preview.md](docs/check-preview.md)). A bot adds the label `hold:look-approval`. Only the owner removes it, and nothing with that label merges. Once the owner removes it, the check counts the look as approved and stops asking for pictures. A file named like a look file that only gains a thrown message or an input check (every changed line is a throw, its guard, a comment or a plain `const`) is not counted as a look change. A maintainer (owner, member or collaborator) whose change touches a look file without changing a pixel, such as a compile fix, a refactor or a test, writes "The look is unchanged." in the description, and the bot adds no hold and asks for no picture. Outside pull requests keep the hold.
 
+### Studio changes
+
+State the interaction form of a Studio feature (tool, toggle, mode, operator, modifier, setting or panel) and the reason it fits, in the pull request, and add or update the feature's row in [docs/studio-interaction-forms.md](docs/studio-interaction-forms.md), which defines the seven forms. `tests/studio-interaction-forms.test.js` fails when a tool of the Studio rail has no row with the form `tool`, when a row uses a word outside the list, or when a reason is empty.
+
 ### Who runs the GPU and person checks
 
 You run the checks in the table above that apply, when you can. When you cannot (for example, you have no GPU), say so in the pull request. A maintainer runs them and adds the label `status:needs-gpu-check`. The merge waits for them only for look and renderer changes.

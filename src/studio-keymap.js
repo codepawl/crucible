@@ -29,6 +29,10 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('edit.duplicate', 'Duplicate', 'Edit', 'normal', binding('d', { shift: true }), binding('d', { ctrl: true })),
   action('edit.delete', 'Delete', 'Edit', 'normal', binding('x'), binding('Delete'), binding('Backspace')),
   action('edit.deselect', 'Deselect', 'Edit', 'normal', binding('Escape')),
+  action('select.all', 'Select all', 'Edit', 'normal', binding('a', { shift: false })),
+  // By code, because Option+A types a letter of its own on a Mac, so its key is not "a".
+  action('select.none', 'Select none', 'Edit', 'normal', { code: 'KeyA', alt: true }),
+  action('select.invert', 'Invert the selection', 'Edit', 'normal', binding('i', { ctrl: true })),
   action('edit.hide', 'Hide the selection', 'Edit', 'normal', binding('h')),
   action('edit.showAll', 'Show all', 'Edit', 'normal', binding('h', { alt: true })),
   action('edit.resetPosition', 'Reset position', 'Edit', 'normal', binding('g', { alt: true })),
@@ -55,6 +59,9 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('mesh.vertexMode', 'Select vertices', 'Edit mode', 'mesh', binding('1')),
   action('mesh.edgeMode', 'Select edges', 'Edit mode', 'mesh', binding('2')),
   action('mesh.faceMode', 'Select faces', 'Edit mode', 'mesh', binding('3')),
+  action('mesh.selectNone', 'Select none', 'Edit mode', 'mesh', { code: 'KeyA', alt: true }),
+  action('mesh.invertSelection', 'Invert the selection', 'Edit mode', 'mesh', binding('i', { ctrl: true })),
+  action('mesh.circleSelect', 'Circle select', 'Edit mode', 'mesh', binding('c')),
   action('mesh.noop', 'Keys that act on the whole object', 'Edit mode', 'mesh', binding('x'), binding('Delete'), binding('Backspace')),
   action('modal.place', 'Place', 'Holding an object', 'modal', binding('Enter'), binding(' ')),
   action('modal.cancel', 'Put back', 'Holding an object', 'modal', binding('Escape')),
@@ -80,6 +87,8 @@ export const SHORTCUT_ROWS = Object.freeze([
   Object.freeze({ keys: '{edit.duplicate} / {edit.duplicate#1}', label: 'Duplicate' }),
   Object.freeze({ keys: '{edit.delete} / {edit.delete#1}', label: 'Delete' }),
   Object.freeze({ keys: '{edit.deselect}', label: 'Deselect' }),
+  Object.freeze({ keys: '{select.all} / {select.none} / {select.invert}', label: 'Select all / none / invert' }),
+  Object.freeze({ keys: 'Shift + click', label: 'Add or remove an object from the selection' }),
   Object.freeze({ keys: '{edit.hide} / {edit.showAll}', label: 'Hide the selection / show all' }),
   Object.freeze({ keys: '{edit.resetPosition} / {edit.resetRotation} / {edit.resetScale}', label: 'Reset position / rotation / scale' }),
   Object.freeze({ keys: 'Right click', label: 'Menu of the object under the pointer' }),
@@ -95,6 +104,7 @@ export const SHORTCUT_ROWS = Object.freeze([
   Object.freeze({ keys: 'Drag X / Y / Z', label: 'Scrub a number' }),
   Object.freeze({ keys: '{mesh.enter}', label: 'Edit the mesh / leave edit mode' }),
   Object.freeze({ keys: '{mesh.vertexMode} / {mesh.edgeMode} / {mesh.faceMode}', label: 'In edit mode: select vertices / edges / faces' }),
+  Object.freeze({ keys: '{mesh.selectNone} / {mesh.invertSelection} / {mesh.circleSelect}', label: 'In edit mode: select none / invert / circle select' }),
   Object.freeze({ keys: '{help.shortcuts}', label: 'This list' }),
 ]);
 
