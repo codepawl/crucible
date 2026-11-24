@@ -3,7 +3,7 @@
 // studio-layout-rules.mjs: unequal insets around the content of a padded container, a gap or padding off the spacing
 // scale, or a gap between groups smaller than the gap inside one. Every failure names the selector, the numbers and the fix.
 //
-//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|dialog|notice|notices] [--records file.json]
+//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|dialog|notice|notices|helpmenu] [--records file.json]
 //
 // Without --origin it starts a Vite dev server on a free port and stops it (by its own PID) at the end. Screens: the Studio
 // page, each of its popover menus, and the five steps of the setup dialog, each in the dark and the light theme at 1280 by 720.
@@ -36,7 +36,7 @@ const DIALOG_SELECTORS = Object.freeze({
   'shortcuts dialog': 'dialog.crucible-studio-shortcuts-dialog',
 });
 const SERVER_START_TIMEOUT_MS = 60000;
-const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|dialog|notice|notices] [--records file.json]';
+const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|dialog|notice|notices|helpmenu] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
 const SOFTWARE_ARGUMENTS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'];
@@ -245,6 +245,28 @@ async function measureDraftNotice(browser, origin, theme, extraCss) {
   }
 }
 
+// The Help menu open, then the shortcut sheet opened from it. Escape must close the sheet and give the focus back to the Help button.
+async function measureHelpMenu(page, theme, label) {
+  const screens = [];
+  await page.locator('button.crucible-studio-menu-button', { hasText: 'Help' }).click();
+  await page.waitForTimeout(250);
+  screens.push({ name: `help menu${label} (${theme})`, records: await measure(page, '#crucible-studio-pop-help') });
+  await page.locator('#crucible-studio-pop-help button', { hasText: 'Keyboard shortcuts' }).click();
+  await page.waitForSelector('dialog.crucible-studio-shortcuts-dialog[open]');
+  await page.waitForTimeout(250);
+  screens.push({ name: `shortcut sheet${label} (${theme})`, records: await measure(page, 'dialog.crucible-studio-shortcuts-dialog') });
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  const state = await page.evaluate(() => ({
+    sheetOpen: document.querySelector('dialog.crucible-studio-shortcuts-dialog').open,
+    focusedLabel: document.activeElement?.textContent ?? '',
+  }));
+  if (state.sheetOpen || state.focusedLabel !== 'Help') {
+    throw new Error(`The shortcut sheet must close on Escape and return the focus to the Help button: it is ${state.sheetOpen ? 'still open' : 'closed'} and the focus is on "${state.focusedLabel}".`);
+  }
+  return screens;
+}
+
 async function measureScreens(page, theme, only) {
   const screens = [];
   if (!only || only === 'studio') screens.push({ name: `studio (${theme})`, records: await measure(page, '.crucible-studio') });
@@ -330,6 +352,13 @@ export async function runAudit({ origin, only, extraCss } = {}) {
       screens.push(...await measureScreens(page, theme, only));
       await context.close();
       if (!only || only === 'notice') screens.push(await measureDraftNotice(browser, server.origin, theme, extraCss));
+      if (!only || only === 'helpmenu') {
+        for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
+          const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport });
+          screens.push(...await measureHelpMenu(opened.page, theme, label));
+          await opened.context.close();
+        }
+      }
       if (!only || only === 'notices') {
         for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
           const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport, draft: true });

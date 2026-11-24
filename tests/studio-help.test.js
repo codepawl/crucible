@@ -1,0 +1,117 @@
+import './support/load-agent-scene-modules.mjs';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createStudio } from '../src/studio.js';
+import { openStudioGuide, shortcutSheetGroups, STUDIO_GUIDE_URL } from '../src/studio-help.js';
+import { DEFAULT_KEYMAP_ACTIONS, keyLabel, resolveKeymap, resolveKeymapPreset } from '../src/studio-keymap.js';
+import { byText, createFakeRenderer, dispatch, installStudioDom } from './support/studio-dom.mjs';
+
+const RECIPE = {
+  format: 'crucible.scene',
+  schemaVersion: 1,
+  geometries: [{ id: 'cube', type: 'box', bevel: 0 }],
+  materials: [{ id: 'paint', tag: 'surface', color: [0.8, 0.25, 0.2], roughness: 0.4, metallic: 0.1 }],
+  nodes: [{ id: 'hero', geometry: 'cube', material: 'paint', translation: [0, 0.5, 0] }],
+  camera: { eye: [0, 2, 6], target: [0, 0.5, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 100 },
+  environment: { setup: 'studio', lightDirection: [-2, 5, 3] },
+};
+
+function mountStudio(testContext, options = {}) {
+  const dom = installStudioDom();
+  const studio = createStudio(dom.container, { recipe: RECIPE, renderer: createFakeRenderer(), ...options });
+  testContext.after(() => {
+    studio.dispose();
+    dom.uninstall();
+  });
+  const root = dom.container.firstElementChild;
+  return {
+    dom,
+    studio,
+    root,
+    helpMenu: root.querySelector('#crucible-studio-pop-help'),
+    helpButton: root.querySelector('button[popovertarget="crucible-studio-pop-help"]'),
+    sheet: root.querySelector('.crucible-studio-shortcuts-dialog'),
+  };
+}
+
+const sheetRows = sheet => sheet.querySelectorAll('.crucible-studio-shortcut-item').map(item => ({
+  label: item.querySelector('span').textContent,
+  keys: item.querySelector('kbd').textContent,
+}));
+
+test('the Help menu is the last menu of the bar and offers the shortcuts and the guide, each with an icon', testContext => {
+  const ui = mountStudio(testContext);
+  const menuButtons = ui.root.querySelectorAll('.crucible-studio-menus .crucible-studio-menu-button');
+  assert.equal(menuButtons.at(-1), ui.helpButton);
+  assert.equal(ui.helpButton.textContent, 'Help');
+  const labels = ui.helpMenu.querySelectorAll('button').map(button => button.textContent);
+  assert.ok(labels.includes('Keyboard shortcuts'));
+  assert.ok(labels.includes('Documentation'));
+  for (const label of ['Keyboard shortcuts', 'Documentation']) {
+    assert.ok(byText(ui.helpMenu, label).querySelector('.crucible-studio-icon'), `${label} leads with an icon`);
+  }
+  assert.equal(byText(ui.helpMenu, 'Keyboard shortcuts').dataset.shortcut, '?');
+});
+
+test('the sheet lists every bound action of the active keymap under its area', testContext => {
+  for (const presetId of ['crucible', 'maya', 'cinema4d']) {
+    const keymap = resolveKeymapPreset(presetId);
+    const groups = shortcutSheetGroups(keymap);
+    const rows = groups.flatMap(group => group.rows);
+    for (const item of keymap.actions) {
+      if (item.bindings.length === 0) continue;
+      if (item.group === 'Holding an object' && !keymap.toolKeysGrab) continue;
+      const row = groups.find(group => group.title === item.group)?.rows.find(candidate => candidate.keys.split(' / ').includes(keyLabel(keymap, item.id)));
+      assert.ok(row, `${presetId}: ${item.id} is listed under ${item.group} with ${keyLabel(keymap, item.id)}`);
+    }
+    assert.ok(rows.length >= DEFAULT_KEYMAP_ACTIONS.length / 2);
+    assert.ok(groups.some(group => group.title === 'File'));
+    assert.ok(groups.some(group => group.title === 'Tools'));
+  }
+});
+
+test('a rebound key shows its new label on the sheet', testContext => {
+  const original = shortcutSheetGroups(resolveKeymap()).flatMap(group => group.rows).find(row => row.label === 'Save');
+  assert.equal(original.keys, 'Ctrl+S');
+  const rebound = resolveKeymap({ 'file.save': { key: 'w', ctrl: true } });
+  const row = shortcutSheetGroups(rebound).flatMap(group => group.rows).find(candidate => candidate.label === 'Save');
+  assert.equal(row.keys, keyLabel(rebound, 'file.save'));
+  assert.notEqual(row.keys, 'Ctrl+S');
+
+  const ui = mountStudio(testContext);
+  assert.ok(sheetRows(ui.sheet).some(item => item.label === 'Play' && item.keys === 'Space'));
+  const keymapControl = ui.root.querySelector('.crucible-studio-settings-dialog').descendants().find(element => element.dataset?.setting === 'keymap');
+  keymapControl.value = 'maya';
+  dispatch(keymapControl, 'change');
+  const mayaPlay = sheetRows(ui.sheet).find(item => item.label === 'Play');
+  assert.equal(mayaPlay.keys, keyLabel(resolveKeymapPreset('maya'), 'animate.play'));
+});
+
+test('the sheet opens from the menu and returns the focus to the Help button when it closes', testContext => {
+  const ui = mountStudio(testContext);
+  byText(ui.helpMenu, 'Keyboard shortcuts').click();
+  assert.equal(ui.sheet.open, true);
+  assert.ok(ui.sheet.querySelectorAll('.crucible-studio-shortcut-group').length >= 5);
+  ui.sheet.close();
+  assert.equal(ui.dom.document.activeElement, ui.helpButton);
+});
+
+test('Documentation hands the guide address to the host, or opens a tab that cannot reach back', testContext => {
+  const hostCalls = [];
+  const withHost = mountStudio(testContext, { openExternal: url => hostCalls.push(url) });
+  byText(withHost.helpMenu, 'Documentation').click();
+  assert.deepEqual(hostCalls, [STUDIO_GUIDE_URL]);
+
+  const tabCalls = [];
+  const plain = mountStudio(testContext);
+  plain.dom.document.defaultView.open = (...callArguments) => tabCalls.push(callArguments);
+  byText(plain.helpMenu, 'Documentation').click();
+  assert.equal(tabCalls.length, 1);
+  assert.equal(tabCalls[0][0], STUDIO_GUIDE_URL);
+  assert.match(tabCalls[0][2], /noopener/);
+  assert.match(STUDIO_GUIDE_URL, /^https:\/\/crucible\.codepawl\.com\//);
+});
+
+test('openStudioGuide does nothing harmful when no window or host exists', () => {
+  assert.equal(openStudioGuide({}), null);
+});

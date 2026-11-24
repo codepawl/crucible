@@ -764,7 +764,6 @@ export const STUDIO_CSS = `
   background: color-mix(in srgb, var(--studio-text) 7%, transparent);
 }
 .crucible-studio[data-compact="true"] .crucible-studio-menu-button[popovertarget="crucible-studio-pop-view"],
-.crucible-studio[data-compact="true"] .crucible-studio-menu-button[popovertarget="crucible-studio-pop-help"],
 .crucible-studio[data-compact="true"] .crucible-studio-filepill,
 .crucible-studio[data-compact="true"] .crucible-studio-primary-btn span {
   display: none;
@@ -2453,16 +2452,37 @@ export const STUDIO_CSS = `
 }
 .crucible-studio-shortcuts {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  align-items: start;
+  gap: var(--studio-space-24);
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   font-size: 12.5px;
+}
+.crucible-studio-shortcut-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--studio-space-8);
+}
+.crucible-studio-shortcut-group h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  margin: 0;
+  font-family: var(--studio-font-heading);
+  font-size: 13px;
+}
+.crucible-studio-shortcut-group h3 .crucible-studio-icon {
+  inline-size: 16px;
+  block-size: 16px;
 }
 .crucible-studio-shortcut-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+  gap: var(--studio-space-8);
+  padding: var(--studio-space-4) 0;
 }
 .crucible-studio kbd {
   padding: 2px 8px;
@@ -2475,6 +2495,12 @@ export const STUDIO_CSS = `
 }
 .crucible-studio dialog.crucible-studio-shortcuts-dialog {
   width: min(680px, calc(100vw - 32px));
+}
+.crucible-studio dialog.crucible-studio-shortcuts-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  max-block-size: calc(100vh - 32px);
+  box-sizing: border-box;
 }
 /* Docked panels: the bar, the rail and the column take the edges of the window and the viewport is the room they
    leave, so the scene is drawn at that size and nothing lies over it. Below the compact width the panels float. */
