@@ -58,7 +58,7 @@ const NEON_PATTERN = Object.freeze({
 // Glass edge light: Schlick's Fresnel as a factor of emission, so the faces seen at a grazing angle catch a bright edge.
 const GLASS_EDGE_PATTERN = Object.freeze({
   type: 'graph', size: 1,
-  graph: Object.freeze({ emission: Object.freeze({ mul: Object.freeze([Object.freeze({ fresnel: Object.freeze({ ior: 1.5 }) }), 30]) }) }),
+  graph: Object.freeze({ emission: Object.freeze({ mul: Object.freeze([Object.freeze({ fresnel: Object.freeze({ ior: 1.5 }) }), 60]) }) }),
 });
 
 const MATERIAL_PRESETS = Object.freeze({
@@ -72,7 +72,7 @@ const MATERIAL_PRESETS = Object.freeze({
     note: 'Wood grain, one repeat per 0.8 m, dark rings against light wood, tinted by color.',
   }),
   grass: Object.freeze({
-    color: Object.freeze([0.3, 0.6, 0.18]), roughness: 1, metallic: 0,
+    color: Object.freeze([0.18, 0.5, 0.08]), roughness: 1, metallic: 0,
     pattern: GRASS_PATTERN,
     note: 'Short turf with sparse upright blades, bright at the core and dark at the rim, one repeat per 0.6 m, tinted by color.',
   }),
@@ -82,7 +82,7 @@ const MATERIAL_PRESETS = Object.freeze({
     note: 'A glowing panel: emission 1.5 times a map with a bright tube frame along the edge of each face (4) and a calmer face inside (1.1), in a saturated version of the part colour (emissiveColor) over a near-black base. Pair it with effects.bloom { strength 1, threshold 0.8, radius 3 } for the halo and a point light of the same colour near it for the spill; the default bloom is faint. Set pattern.size to the part width for one frame per face.',
   }),
   glass: Object.freeze({
-    color: Object.freeze([0.55, 0.82, 0.95]), roughness: 0.03, metallic: 0, opacity: 0.4, clearcoat: 1,
+    color: Object.freeze([0.5, 0.8, 0.93]), roughness: 0.03, metallic: 0, opacity: 0.4, clearcoat: 1,
     transmission: 0.7, ior: 1.15, thickness: 0.06, pattern: GLASS_EDGE_PATTERN,
     note: 'Blended pane, opacity 0.4, that refracts what is behind it (transmission 0.7, ior 1.15, thickness 0.06), with a clear coat that mirrors the sky and a Fresnel edge light, tinted by color.',
   }),
