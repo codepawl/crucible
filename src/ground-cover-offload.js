@@ -3,7 +3,7 @@
 // a worker and the page return identical bytes for the same seed; this file only decides where it runs.
 
 import { buildWithKernels, runKernel } from './kernel-offload.js';
-import { groundCoverParts } from './ground-cover.js';
+import { groundCoverParts, normalizeGroundCover } from './ground-cover.js';
 
 /**
  * The fields of each part that `groundCoverParts` reads, as plain data a worker can receive: names to match the surfaces, the
@@ -27,4 +27,15 @@ export function snapshotGroundCoverParts(parts) {
 export function growGroundCover(parts, entries, eye, options) {
   const snapshot = snapshotGroundCoverParts(parts);
   return buildWithKernels(() => runKernel('groundCover', [snapshot, entries, eye], groundCoverParts), options);
+}
+
+/**
+ * Adds the grass of `environment.groundCover` (`value`, as written in scene.json) to `asset.parts`, grown for `eye`. No entries
+ * leaves the asset as it is. A scene file loads once and has no way to cancel, so no `signal` is passed (the page that
+ * previews recipes passes none either).
+ */
+export async function addGroundCoverToAsset(asset, value, eye, options) {
+  const entries = normalizeGroundCover(value);
+  if (!entries.length) return;
+  asset.parts = [...asset.parts, ...await growGroundCover(asset.parts, entries, eye, options)];
 }

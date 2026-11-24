@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { groundCoverParts, normalizeGroundCover } from '../src/ground-cover.js';
-import { growGroundCover } from '../src/ground-cover-offload.js';
+import { addGroundCoverToAsset, growGroundCover } from '../src/ground-cover-offload.js';
 import { kernelStats, resetKernelStats } from '../src/kernel-offload.js';
 import { createInProcessWorker, digestOf } from './support/kernel-offload-fixture.mjs';
 
@@ -43,4 +44,24 @@ test('a surface name that matches nothing raises the same error from the worker'
     growGroundCover(sceneParts(), missing, EYE, { createWorker: () => createInProcessWorker([]), available: true }),
     { name: 'TypeError', message: /environment\.groundCover\[0\]\.surfaces/ },
   );
+});
+
+test('the scene file adds its ground cover through the kernel, and an empty list adds nothing', async () => {
+  const requested = [];
+  const asset = { parts: sceneParts() };
+  await addGroundCoverToAsset(asset, [{ surfaces: 'Lawn', length: 0.12, density: 300, seed: 7 }], EYE, { createWorker: () => createInProcessWorker(requested), available: true });
+  assert.deepEqual(requested, ['groundCover']);
+  assert.equal(digestOf(asset.parts.slice(2)), digestOf(groundCoverParts(sceneParts(), entries(), EYE)));
+  const bare = { parts: sceneParts() };
+  await addGroundCoverToAsset(bare, [], EYE, { createWorker: () => createInProcessWorker(requested), available: true });
+  assert.equal(bare.parts.length, 2);
+});
+
+// src/file-scene.js is a page script that starts on import and needs WebGL, so a test cannot run it here. This pins its one
+// wiring: it hands the field to addGroundCoverToAsset and never calls the inline grower itself.
+test('src/file-scene.js grows ground cover through ground-cover-offload.js, not the inline grower', () => {
+  const source = readFileSync(new URL('../src/file-scene.js', import.meta.url), 'utf8');
+  assert.ok(source.includes("import('./ground-cover-offload.js')"));
+  assert.match(source, /await addGroundCoverToAsset\(/);
+  assert.doesNotMatch(source, /groundCoverParts/);
 });
