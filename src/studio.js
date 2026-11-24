@@ -4602,7 +4602,7 @@ export function createStudio(container, {
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
     if (meshEditor?.circleSelecting) {
-      meshEditor.resizeCircleBrush(event.deltaY < 0 ? 1 : -1);
+      meshEditor.wheelCircleBrush(event.deltaY, event.deltaMode);
       requestFrame();
       return;
     }
@@ -4721,6 +4721,7 @@ export function createStudio(container, {
 
   function leaveMeshEdit() {
     if (controller.dragging) pointerState = null;
+    stopWatchingCircleFocus();
     meshEditor?.leave();
     syncUi();
     requestFrame();
@@ -4734,6 +4735,7 @@ export function createStudio(container, {
     } else if (meshEditor.circleSelecting) {
       endCircleSelect();
     } else if (!meshEditor.clearSelection()) {
+      stopWatchingCircleFocus();
       meshEditor.leave();
     }
     syncUi();
@@ -4744,7 +4746,38 @@ export function createStudio(container, {
   // resizes the brush, right click or Esc ends it. The brush owns the viewport pointer until then, so the camera keys it.
   let circlePaint = null;
 
+  // The brush also ends when the window loses focus or the page is hidden, so it is not still armed on return.
+  const circleFocusWindow = documentReference.defaultView;
+  let watchingCircleFocus = false;
+
+  function endCircleSelectWhenAway() {
+    if (!meshEditor?.circleSelecting) {
+      stopWatchingCircleFocus();
+      return;
+    }
+    endCircleSelect();
+  }
+
+  function endCircleSelectWhenHidden() {
+    if (documentReference.hidden) endCircleSelectWhenAway();
+  }
+
+  function startWatchingCircleFocus() {
+    if (watchingCircleFocus) return;
+    watchingCircleFocus = true;
+    circleFocusWindow?.addEventListener?.('blur', endCircleSelectWhenAway);
+    documentReference.addEventListener('visibilitychange', endCircleSelectWhenHidden);
+  }
+
+  function stopWatchingCircleFocus() {
+    if (!watchingCircleFocus) return;
+    watchingCircleFocus = false;
+    circleFocusWindow?.removeEventListener?.('blur', endCircleSelectWhenAway);
+    documentReference.removeEventListener('visibilitychange', endCircleSelectWhenHidden);
+  }
+
   function endCircleSelect() {
+    stopWatchingCircleFocus();
     circlePaint = null;
     meshEditor.endCircleSelect();
     syncUi();
@@ -4844,7 +4877,7 @@ export function createStudio(container, {
         endCircleSelect();
         return;
       }
-      meshEditor.beginCircleSelect();
+      if (meshEditor.beginCircleSelect()) startWatchingCircleFocus();
       syncUi();
       requestFrame();
     },
@@ -5242,6 +5275,7 @@ export function createStudio(container, {
       if (frameHandle) cancelAnimationFrame(frameHandle);
       stopFlight();
       finishModalTransform(false);
+      stopWatchingCircleFocus();
       documentReference.removeEventListener('contextmenu', onModalContextMenu, true);
       documentReference.removeEventListener('click', onModalClick, true);
       documentReference.removeEventListener('pointerdown', onAnyPointerDown, true);
