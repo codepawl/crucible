@@ -2446,7 +2446,7 @@ test('the rail keeps scene tools above one line and the show and hide switches b
   assert.deepEqual(rows, ['Transform tool', 'Mesh selection', 'Edit the scene', 'line', 'Show or hide']);
   assert.equal(toolbar.children[1].hidden, true);
   const below = toolbar.children.at(-1).children.map(button => button.getAttribute('aria-label'));
-  assert.deepEqual(below, ['Show or hide the grid', 'Show or hide the panels']);
+  assert.deepEqual(below, ['Show or hide the grid', 'See through the surface (Alt+Z)', 'Show or hide the panels']);
   const above = toolbar.children[2].children.map(button => button.dataset.icon);
   assert.deepEqual(above, ['add', 'undo', 'redo']);
 });

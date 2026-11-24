@@ -46,6 +46,7 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('view.top', 'Top view', 'View', 'normal', binding('7')),
   action('view.projection', 'Perspective or orthographic', 'View', 'normal', binding('5')),
   action('view.properties', 'Show or hide Properties', 'View', 'normal', binding('n')),
+  action('view.seeThrough', 'See through the surface', 'View', 'normal', { code: 'KeyZ', alt: true }),
   action('animate.keyframe', 'Insert a keyframe', 'Animate', 'normal', binding('i'), binding('k')),
   action('animate.play', 'Play', 'Animate', 'normal', binding(' ')),
   action('mesh.enter', 'Edit the mesh', 'Edit', 'normal', binding('Tab')),
@@ -62,6 +63,7 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('mesh.selectNone', 'Select none', 'Edit mode', 'mesh', { code: 'KeyA', alt: true }),
   action('mesh.invertSelection', 'Invert the selection', 'Edit mode', 'mesh', binding('i', { ctrl: true })),
   action('mesh.circleSelect', 'Circle select', 'Edit mode', 'mesh', binding('c')),
+  action('mesh.boxSelect', 'Box select', 'Edit mode', 'mesh', binding('b')),
   action('mesh.noop', 'Keys that act on the whole object', 'Edit mode', 'mesh', binding('x'), binding('Delete'), binding('Backspace')),
   action('modal.place', 'Place', 'Holding an object', 'modal', binding('Enter'), binding(' ')),
   action('modal.cancel', 'Put back', 'Holding an object', 'modal', binding('Escape')),
@@ -104,7 +106,8 @@ export const SHORTCUT_ROWS = Object.freeze([
   Object.freeze({ keys: 'Drag X / Y / Z', label: 'Scrub a number' }),
   Object.freeze({ keys: '{mesh.enter}', label: 'Edit the mesh / leave edit mode' }),
   Object.freeze({ keys: '{mesh.vertexMode} / {mesh.edgeMode} / {mesh.faceMode}', label: 'In edit mode: select vertices / edges / faces' }),
-  Object.freeze({ keys: '{mesh.selectNone} / {mesh.invertSelection} / {mesh.circleSelect}', label: 'In edit mode: select none / invert / circle select' }),
+  Object.freeze({ keys: '{mesh.selectNone} / {mesh.invertSelection} / {mesh.circleSelect} / {mesh.boxSelect}', label: 'In edit mode: select none / invert / circle select / box select' }),
+  Object.freeze({ keys: '{view.seeThrough}', label: 'See through the surface' }),
   Object.freeze({ keys: '{help.shortcuts}', label: 'This list' }),
 ]);
 
