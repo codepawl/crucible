@@ -113,7 +113,8 @@ function encodeTexel(local) {
 /**
  * `low` is { positions, normals, uvs, indices, tangents } with four tangent values per vertex (x, y, z, handedness);
  * `high` is { positions, normals, indices }. Returns { width, height, data } as RGBA bytes with row 0 at v = 0, and
- * how many texels were covered by a low triangle and how many of those found a high surface.
+ * how many texels were covered by a low triangle and how many of those found a high surface, and `coverage`, a
+ * 0/1 array of the texels a low triangle covers (the rest is padding).
  * Options: resolution (default 512) and cage (distance above the low surface the rays start from).
  */
 export function bakeTangentSpaceNormalMap(low, high, { resolution = 512, cage } = {}) {
@@ -155,6 +156,7 @@ export function bakeTangentSpaceNormalMap(low, high, { resolution = 512, cage } 
   } finally {
     index.dispose();
   }
+  const coverage = covered.slice();
   dilate(data, covered, resolution);
-  return { width: resolution, height: resolution, data, coveredTexels, hitTexels };
+  return { width: resolution, height: resolution, data, coveredTexels, hitTexels, coverage };
 }

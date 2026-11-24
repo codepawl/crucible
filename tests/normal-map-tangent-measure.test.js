@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { angleStatistics, erodeMask, measureNormalPassAngle, pixelAngles, sharedCoverage } from '../scripts/normal-map-angle.mjs';
+import { angleStatistics, erodeMask, measureNormalPassAngle, meetsTangentGate, pixelAngles, sharedCoverage, TANGENT_GATE_MEAN_DEGREES } from '../scripts/normal-map-angle.mjs';
+import { normalReflectsAboveSurface, oraclePass, pixelsAwayFromIslandBorders } from '../scripts/normal-map-oracle.mjs';
 import { bakeTangentSpaceNormalMap, barycentricWeights } from '../scripts/normal-map-bake.mjs';
 
 // A normal pass stores n * 0.5 + 0.5 and zero where nothing is drawn.
@@ -99,4 +100,45 @@ test('the baker names what to pass for a bad resolution, cage or tangent array',
   assert.throws(() => bakeTangentSpaceNormalMap(low, high, { resolution: 0, cage: 1 }), /resolution/);
   assert.throws(() => bakeTangentSpaceNormalMap(low, high, { resolution: 8 }), /cage/);
   assert.throws(() => bakeTangentSpaceNormalMap({ ...low, tangents: new Float32Array(3) }, high, { resolution: 8, cage: 1 }), /four values per vertex/);
+});
+
+// The GPU half of the tangent gate (the renderer's generated-tangent pass against the spec pass, 0.5 degrees on four
+// meshes) needs Chrome and a GPU, so `node scripts/measure-normal-map-tangents.mjs` runs it and exits 1 when it fails.
+// What CI can pin is everything the gate stands on: the threshold, the spec pass reading back the baked normal in the
+// glTF basis for both handedness signs, and the masks that make the comparison fair.
+
+test('the tangent gate is 0.5 mean degrees and counts equal as a pass', () => {
+  assert.equal(TANGENT_GATE_MEAN_DEGREES, 0.5);
+  assert.equal(meetsTangentGate({ meanDegrees: 0.5 }), true);
+  assert.equal(meetsTangentGate({ meanDegrees: 0.57 }), false);
+});
+
+test('the spec pass reads a baked normal back as the high-poly normal, within the gate, for both handedness signs', () => {
+  const camera = { eye: [0.5, 0.5, 3], target: [0.5, 0.5, 0], up: [0, 1, 0], fov: 20 };
+  for (const handedness of [1, -1]) {
+    const low = { ...quad(0), tangents: Float32Array.of(1, 0, 0, handedness, 1, 0, 0, handedness, 1, 0, 0, handedness, 1, 0, 0, handedness) };
+    const lean = [0.3, 0.5, Math.sqrt(1 - 0.09 - 0.25)];
+    const high = { positions: low.positions, normals: Float32Array.from([...lean, ...lean, ...lean, ...lean]), indices: low.indices };
+    const map = bakeTangentSpaceNormalMap(low, high, { resolution: 64, cage: 0.2 });
+    const { pixels, texelOfPixel } = oraclePass(low, map, camera, 16, 10);
+    const expected = passOf(Array.from({ length: 256 }, () => lean));
+    const covered = Uint8Array.from(texelOfPixel, texel => (texel >= 0 ? 1 : 0));
+    assert.ok(covered.reduce((total, value) => total + value, 0) > 100, 'the quad covers most of the frame');
+    const statistics = angleStatistics(pixelAngles(pixels, expected, covered), covered);
+    assert.ok(statistics.meanDegrees <= TANGENT_GATE_MEAN_DEGREES, `handedness ${handedness}: ${statistics.meanDegrees}`);
+  }
+});
+
+test('the fair-pixel masks drop island borders and normals the renderer bends', () => {
+  const resolution = 8;
+  const coverage = new Uint8Array(64).fill(1);
+  for (let row = 0; row < resolution; row++) coverage[row * resolution + 7] = 0;
+  const texelOfPixel = Int32Array.of(3 * resolution + 3, 3 * resolution + 6, -1);
+  assert.deepEqual(Array.from(pixelsAwayFromIslandBorders(texelOfPixel, coverage, resolution, 1)), [1, 0, 0]);
+  assert.deepEqual(Array.from(pixelsAwayFromIslandBorders(texelOfPixel, coverage, resolution, 0)), [1, 1, 0]);
+  const geometric = [0, 0, 1];
+  const view = [0, 0, 1];
+  assert.equal(normalReflectsAboveSurface([0, 0, 1], geometric, view), true);
+  assert.equal(normalReflectsAboveSurface([0.99, 0, 0.14], geometric, view), false, 'tilted so far that the reflection dips below the surface');
+  assert.equal(normalReflectsAboveSurface([0, 0, -1], geometric, view), false, 'pointing into the surface');
 });

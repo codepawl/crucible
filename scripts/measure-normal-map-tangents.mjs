@@ -23,8 +23,8 @@ import { createMeshData } from '../src/mesh-data.js';
 import { extractRender } from '../src/mesh-render.js';
 import { unwrapUv } from '../src/mesh-uv.js';
 import { bakeTangentSpaceNormalMap } from './normal-map-bake.mjs';
-import { erodeMask, pixelAngles, angleStatistics, sharedCoverage } from './normal-map-angle.mjs';
-import { oraclePass } from './normal-map-oracle.mjs';
+import { erodeMask, pixelAngles, angleStatistics, sharedCoverage, meetsTangentGate, TANGENT_GATE_MEAN_DEGREES } from './normal-map-angle.mjs';
+import { oraclePass, pixelsAwayFromIslandBorders } from './normal-map-oracle.mjs';
 
 const SCAN_SOURCE = Object.freeze({
   name: 'Boulder 01 (Poly Haven)',
@@ -40,7 +40,7 @@ const RECIPE = Object.freeze({
   imageSize: 640,
   fieldOfViewDegrees: 35,
   edgeBandPixels: 4,
-  gateMeanDegrees: 3,
+  borderTexels: 2,
   material: { tag: 'surface', color: [0.8, 0.75, 0.7], metallic: 0, roughness: 0.45 },
   renderer: { ground: false, world: true, samples: 1, pixelRatio: 1 },
   backend: 'ANGLE d3d11 (GPU), headless Chrome',
@@ -284,23 +284,52 @@ async function drawNormalPasses(page, asset) {
     const low = geometryFrom(input.low);
     const { tangents, ...lowWithoutTangents } = low;
     const normalMap = { image: mapCanvas, colorSpace: 'linear' };
+    const nearestNormalMap = { image: mapCanvas, colorSpace: 'linear', minFilter: 9728, magFilter: 9728 };
     return {
       reference: normalPass('reference', geometryFrom(input.high), {}),
       noMap: normalPass('no-map', lowWithoutTangents, {}),
       derivative: normalPass('derivative', lowWithoutTangents, { normalMap }),
       generated: normalPass('generated', { ...lowWithoutTangents, tangents }, { normalMap }),
+      generatedNearest: normalPass('generated-nearest', { ...lowWithoutTangents, tangents }, { normalMap: nearestNormalMap }),
     };
   }, payload);
   const toFloats = field => new Float32Array(Uint8Array.from(Buffer.from(field.base64, 'base64')).buffer);
   return Object.fromEntries(Object.entries(result).map(([name, pass]) => [name, { ...pass, pixels: toFloats(pass) }]));
 }
 
-function measureVariant(variant, reference) {
+/** Angle of `variant` to `reference` where both draw, optionally only where `restrictTo` is 1, as every statistic of the table. */
+function measureVariant(variant, reference, restrictTo = null) {
   const pixelCount = reference.width * reference.height;
-  const mask = sharedCoverage(variant.pixels, reference.pixels, pixelCount);
-  const angles = pixelAngles(variant.pixels, reference.pixels, mask);
-  const interior = erodeMask(mask, reference.width, reference.height, RECIPE.edgeBandPixels);
-  return { angles, mask, inside: angleStatistics(angles, mask), interior: angleStatistics(angles, interior), shaderFeatures: variant.features, tangentsReachedGeometry: variant.tangentsReachedGeometry };
+  const shared = sharedCoverage(variant.pixels, reference.pixels, pixelCount);
+  const interior = erodeMask(shared, reference.width, reference.height, RECIPE.edgeBandPixels);
+  if (restrictTo) {
+    for (let pixel = 0; pixel < pixelCount; pixel++) {
+      shared[pixel] &= restrictTo[pixel];
+      interior[pixel] &= restrictTo[pixel];
+    }
+  }
+  const angles = pixelAngles(variant.pixels, reference.pixels, shared);
+  return { angles, mask: shared, inside: angleStatistics(angles, shared), interior: angleStatistics(angles, interior), shaderFeatures: variant.features, tangentsReachedGeometry: variant.tangentsReachedGeometry };
+}
+
+/**
+ * How far the generated-tangent path is from the spec pass, one change at a time: the map's default linear filter on the
+ * whole object, nearest texel (what the spec pass reads) on the whole object, then both on the pixels where the
+ * comparison is fair. Fair means the renderer leaves the mapped normal alone (it bends one whose reflection would dip
+ * below the surface, which the spec decode does not do) and the texel sits RECIPE.borderTexels from any island border,
+ * padding or seam. The last step is the gate; the derivative path is measured under the same mask for comparison.
+ */
+function gapToSpecSteps(passes, spec, bake) {
+  const fair = pixelsAwayFromIslandBorders(spec.texelOfPixel, bake.coverage, bake.width, RECIPE.borderTexels);
+  for (let pixel = 0; pixel < fair.length; pixel++) fair[pixel] &= spec.reflectsAboveSurface[pixel];
+  const step = (name, pass, restrictTo, isGate = false) => ({ step: name, statistics: measureVariant(passes[pass], passes.oracle, restrictTo).inside, isGate });
+  return [
+    step('generated, linear filter, whole object', 'generated', null),
+    step('generated, nearest texel, whole object', 'generatedNearest', null),
+    step('generated, linear filter, fair pixels', 'generated', fair),
+    step('generated, nearest texel, fair pixels', 'generatedNearest', fair, true),
+    step('derivative, linear filter, fair pixels', 'derivative', fair),
+  ];
 }
 
 // ---- stills ----
@@ -392,20 +421,32 @@ try {
   await page.route(address, route => route.fulfill({ status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'require-corp' }, body: '<!doctype html><title>Normal map measurement</title>' }));
   await page.goto(address);
   const table = [];
+  const gateRows = [];
+  const gateFailures = [];
   for (const asset of assets) {
     const passes = await drawNormalPasses(page, asset);
     if (passes.reference.width !== RECIPE.imageSize) throw new Error(`The renderer drew ${passes.reference.width} px, not ${RECIPE.imageSize}; the oracle needs the same size.`);
-    const oracle = { width: passes.reference.width, height: passes.reference.height, pixels: oraclePass(asset.low, asset.bake, asset.camera, RECIPE.imageSize, boundsOf(asset.high.positions).diagonal * 4), features: [], tangentsReachedGeometry: true };
+    const spec = oraclePass(asset.low, asset.bake, asset.camera, RECIPE.imageSize, boundsOf(asset.high.positions).diagonal * 4);
+    const oracle = { width: passes.reference.width, height: passes.reference.height, pixels: spec.pixels, features: [], tangentsReachedGeometry: true };
     passes.oracle = oracle;
     const measured = Object.fromEntries(['noMap', 'derivative', 'generated', 'oracle'].map(name => [name, measureVariant(passes[name], passes.reference)]));
     const againstOracle = Object.fromEntries(['noMap', 'derivative', 'generated'].map(name => [name, measureVariant(passes[name], passes.oracle)]));
+    const gapToSpec = gapToSpecSteps(passes, spec, asset.bake);
+    const gate = gapToSpec.find(step => step.isGate);
+    if (!meetsTangentGate(gate.statistics)) gateFailures.push(asset.name);
     writeStills(options.out, asset, passes, measured);
     const summary = Object.fromEntries(Object.entries(measured).map(([name, value]) => [name, { insideMask: value.inside, interior: value.interior, shaderFeatures: value.shaderFeatures, tangentsReachedGeometry: value.tangentsReachedGeometry, againstOracle: againstOracle[name]?.inside }]));
-    writeFileSync(join(options.out, `${asset.name}.json`), JSON.stringify({ asset: asset.name, source: asset.source, commit: commitLabel(), recipe: RECIPE, camera: asset.camera, mapResolution: asset.bake.width, bake: { coveredTexels: asset.bake.coveredTexels, hitTexels: asset.bake.hitTexels }, triangles: asset.triangles, unwrapReport: asset.unwrapReport, scanFiles: asset.name.startsWith('scan') ? SCAN_SOURCE.files.map(({ name, sha256, url }) => ({ name, sha256, url })) : undefined, results: summary }, null, 2));
+    writeFileSync(join(options.out, `${asset.name}.json`), JSON.stringify({ asset: asset.name, source: asset.source, commit: commitLabel(), recipe: RECIPE, camera: asset.camera, mapResolution: asset.bake.width, bake: { coveredTexels: asset.bake.coveredTexels, hitTexels: asset.bake.hitTexels }, triangles: asset.triangles, unwrapReport: asset.unwrapReport, gateMeanDegrees: TANGENT_GATE_MEAN_DEGREES, gapToSpec, gatePassed: meetsTangentGate(gate.statistics), scanFiles: asset.name.startsWith('scan') ? SCAN_SOURCE.files.map(({ name, sha256, url }) => ({ name, sha256, url })) : undefined, results: summary }, null, 2));
+    gateRows.push({ asset: asset.name, gapToSpec });
     for (const [name, value] of Object.entries(summary)) table.push({ asset: asset.name, path: name, mean: value.insideMask.meanDegrees.toFixed(2), p95: value.insideMask.p95Degrees.toFixed(2), interiorMean: value.interior.meanDegrees.toFixed(2), interiorP95: value.interior.p95Degrees.toFixed(2), pixels: value.insideMask.pixels, oracleMean: value.againstOracle?.meanDegrees.toFixed(2), oracleP95: value.againstOracle?.p95Degrees.toFixed(2) });
   }
   console.table(table);
+  console.table(gateRows.flatMap(({ asset, gapToSpec }) => gapToSpec.map(step => ({ asset, step: step.step, mean: step.statistics.meanDegrees.toFixed(3), p95: step.statistics.p95Degrees.toFixed(3), pixels: step.statistics.pixels, gate: step.isGate ? (meetsTangentGate(step.statistics) ? `PASS (<= ${TANGENT_GATE_MEAN_DEGREES})` : `FAIL (> ${TANGENT_GATE_MEAN_DEGREES})`) : '' }))));
   console.log(JSON.stringify(table));
+  if (gateFailures.length) {
+    console.error(`Tangent gate failed for ${gateFailures.join(', ')}: the generated path differs from the spec pass by more than ${TANGENT_GATE_MEAN_DEGREES} degrees.`);
+    process.exitCode = 1;
+  }
 } finally {
   await browser.close();
   server.kill();

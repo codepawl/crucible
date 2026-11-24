@@ -80,3 +80,11 @@ export function measureNormalPassAngle(passA, passB, pixelCount) {
   const mask = sharedCoverage(passA, passB, pixelCount);
   return angleStatistics(pixelAngles(passA, passB, mask), mask);
 }
+
+/** The most the generated-tangent path may differ from the spec pass, in mean degrees: it must draw what the glTF definition says. */
+export const TANGENT_GATE_MEAN_DEGREES = 0.5;
+
+/** Whether `statistics` (from angleStatistics) is within the tangent gate. */
+export function meetsTangentGate(statistics) {
+  return statistics.meanDegrees <= TANGENT_GATE_MEAN_DEGREES;
+}
