@@ -43,9 +43,9 @@ test('presets fill the fields their name promises', async () => {
   assert.equal(materialOf(scene, 'smoothPlastic').pattern, undefined);
   assert.ok(materialOf(scene, 'neon').emission > 1);
   const glass = materialOf(scene, 'glass');
-  assert.ok(glass.opacity <= 0.6);
-  assert.ok(glass.transmission >= 0.5, 'glass refracts what is behind it');
-  assert.ok(glass.thickness > 0);
+  assert.ok(glass.opacity <= 0.85);
+  assert.ok(!glass.transmission, 'transmission above 0 makes Glaze drop emission (#3279), which the rim needs');
+  assert.ok(glass.emission >= 20, 'a large emission factor lights the thin Fresnel rim');
   assert.ok(glass.pattern.graph.emission, 'glass carries a Fresnel edge light');
   assert.equal(glass.clearcoat, 1);
   assert.ok(glass.roughness <= 0.1);
