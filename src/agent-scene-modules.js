@@ -112,7 +112,7 @@ const MODULE_MARKERS = {
   reflections: [/"metallic":(0\.[5-9]|1(?![0-9]))/],
   // Wet ground mirrors the scene in its puddles through the water mirror (src/water-reflection.js).
   waterReflection: ['"puddles":'],
-  patterns: ['"pattern"', '"preset":"wood"', '"preset":"grass"', '"preset":"brick"', '"preset":"neon"', '"preset":"glass"'],
+  patterns: ['"pattern"', '"preset":"wood"', '"preset":"grass"', '"preset":"brick"', '"preset":"glass"'],
   // Any preset name loads it, so a wrong name gets the error that lists the right ones.
   materialPresets: ['"preset":'],
   // Only a graph on a placed asset needs it: the placement's "pattern" comes after its "asset":{ in the JSON.

@@ -4,7 +4,7 @@
 // `color` sets their hue, and a preset without `color` falls back to its own tint.
 // Pattern `size` is metres per repeat after node scale, so a 4 m and a 40 m part show the same grain size.
 
-export const MATERIAL_PRESET_NAMES = Object.freeze(['smoothPlastic', 'wood', 'grass', 'neon', 'glass', 'brick']);
+export const MATERIAL_PRESET_NAMES = Object.freeze(['smoothPlastic', 'wood', 'grass', 'glass', 'brick']);
 
 // Sparse upright blades: Voronoi cells squeezed four times along u so each is a tall sliver, kept only where the cell's random
 // value passes a threshold (the rest is bare turf), each a sharpened dome that is bright at the core and dark at the rim, over a
@@ -37,27 +37,6 @@ const GRASS_PATTERN = Object.freeze({
   }),
 });
 
-// Neon panel: the base is black metal (colour 0, metallic 1, roughness 1), because bloom multiplies every channel of a bright pixel by its strength
-// (up to 8), so the faint sky reflection of a dielectric or the lit albedo became a pastel wash over the face (saturation 0.27 against 0.61 for the black metal), and emission is brightest in a band along the
-// edge of each face (a lit tube frame) with a calmer face inside. The bright band is what the bloom pass lifts into a halo; a
-// uniformly bright face bloomed far less in measurements (the halo came from pixels well above the threshold at the edge).
-// The distance from the face centre is the larger of |u - 0.5| and |v - 0.5|; u and v are shifted by half a repeat so one repeat
-// of `size` metres is centred on the part when the part is as wide as `size`.
-const PANEL_DISTANCE = Object.freeze({ max: Object.freeze([
-  Object.freeze({ abs: Object.freeze({ sub: Object.freeze([Object.freeze({ fract: Object.freeze({ add: Object.freeze([Object.freeze({ uv: 'u' }), 0.5]) }) }), 0.5]) }) }),
-  Object.freeze({ abs: Object.freeze({ sub: Object.freeze([Object.freeze({ fract: Object.freeze({ add: Object.freeze([Object.freeze({ uv: 'v' }), 0.5]) }) }), 0.5]) }) }),
-]) });
-const NEON_PATTERN = Object.freeze({
-  type: 'graph', size: 1,
-  graph: Object.freeze({
-    color: 0,
-    emission: Object.freeze({ ramp: Object.freeze({
-      value: PANEL_DISTANCE,
-      stops: Object.freeze([[0, 0.12], [0.2, 0.12], [0.42, 6], [0.5, 6]].map(stop => Object.freeze(stop))),
-    }) }),
-  }),
-});
-
 // Glass edge light: Schlick's Fresnel of a near-1 ior is about 0 face-on and rises only within a few pixels of a silhouette,
 // so with a large emission factor it draws a thin bright rim and leaves the face clear. The factor is the `emission` field,
 // not a number in the graph, because the graph's emission map is a texture that clamps at 1. Glaze drops emission on a
@@ -81,11 +60,6 @@ const MATERIAL_PRESETS = Object.freeze({
     color: Object.freeze([0.18, 0.5, 0.08]), roughness: 1, metallic: 0,
     pattern: GRASS_PATTERN,
     note: 'Short turf with sparse upright blades, bright at the core and dark at the rim, one repeat per 1.25 m across, so a part under 1.2 m shows no repeat, tinted by color.',
-  }),
-  neon: Object.freeze({
-    color: Object.freeze([0.2, 1, 0.9]), roughness: 1, metallic: 1, emission: 80, glowsInColor: true,
-    pattern: NEON_PATTERN,
-    note: 'A glowing panel: emission 80 times a map with a bright tube frame along the edge of each face (6) and a dim face inside (0.12), in a saturated version of the part colour (emissiveColor) over a black metal base, so nothing but the glow reaches the screen. Pair it with effects.bloom { strength 8, threshold 10, radius 16 } for the halo (the bloom caps rose in #3283; the default bloom is faint). The frame is far above that threshold and the face (9.6) below it, so only the frame blooms and the face keeps its colour. A halo of a saturated colour adds little luma over a bright backdrop: on a mid-grey wall, lower the scene exposure (0.38 in the demo). Set pattern.size to the part width for one frame per face.',
   }),
   glass: Object.freeze({
     color: Object.freeze([0.5, 0.8, 0.93]), roughness: 0.03, metallic: 0, opacity: 0.8, clearcoat: 1,
@@ -111,17 +85,11 @@ export function applyMaterialPreset(value, fail) {
   if (typeof value.preset !== 'string' || !Object.hasOwn(MATERIAL_PRESETS, value.preset)) {
     throw fail(value.preset, `one of ${MATERIAL_PRESET_NAMES.join(', ')}, or remove preset`);
   }
-  const { note, glowsInColor, ...fields } = MATERIAL_PRESETS[value.preset];
+  const { note, ...fields } = MATERIAL_PRESETS[value.preset];
   const { preset, ...own } = value;
   const expanded = { ...own };
   for (const [field, fallback] of Object.entries(fields)) {
     if (expanded[field] === undefined) expanded[field] = structuredClone(fallback);
-  }
-  // Emission defaults to white light, which washes a coloured part out to near white, and tone mapping pales a bright face further:
-  // glow in the part colour pushed toward its pure hue (largest channel 1, the others raised to the sixth power: emission 80 times the frame (6) and bloom strength 8 turn even a 0.04 channel into a visible tint, so a blue part glowed cyan at the cube), so the face stays coloured.
-  if (glowsInColor && expanded.emissiveColor === undefined) {
-    const brightest = Math.max(...expanded.color, 1e-6);
-    expanded.emissiveColor = expanded.color.map(channel => (channel / brightest) ** 6);
   }
   return expanded;
 }

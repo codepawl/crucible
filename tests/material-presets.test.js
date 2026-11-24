@@ -23,7 +23,7 @@ function materialOf(scene, id) {
 
 test('every preset name is listed in scene_capabilities', async () => {
   assert.deepEqual([...AGENT_SCENE_CAPABILITIES.materialPresets.names], [...MATERIAL_PRESET_NAMES]);
-  assert.deepEqual([...MATERIAL_PRESET_NAMES], ['smoothPlastic', 'wood', 'grass', 'neon', 'glass', 'brick']);
+  assert.deepEqual([...MATERIAL_PRESET_NAMES], ['smoothPlastic', 'wood', 'grass', 'glass', 'brick']);
 });
 
 test('each preset builds, and the part colour is kept as the tint', async () => {
@@ -41,7 +41,6 @@ test('presets fill the fields their name promises', async () => {
   assert.equal(materialOf(scene, 'brick').pattern.type, 'bricks');
   assert.equal(materialOf(scene, 'grass').pattern.type, 'graph');
   assert.equal(materialOf(scene, 'smoothPlastic').pattern, undefined);
-  assert.ok(materialOf(scene, 'neon').emission > 1);
   const glass = materialOf(scene, 'glass');
   assert.ok(glass.opacity <= 0.85);
   assert.ok(!glass.transmission, 'transmission above 0 makes Glaze drop emission (#3279), which the rim needs');
@@ -79,28 +78,6 @@ test('an unknown preset names the valid ones', async () => {
   );
 });
 
-test('neon glows in a saturated version of the part colour, not white', async () => {
-  const scene = await build(recipeWith([{ id: 'neon', preset: 'neon', color: [0.8, 0.1, 0.08] }]));
-  const [red, green, blue] = materialOf(scene, 'neon').emissiveColor;
-  assert.equal(red, 1);
-  assert.ok(green < 0.05 && blue < 0.05, `emissive colour ${[red, green, blue]} must keep the hue of the part`);
-});
-
-test('neon keeps the hue of a blue part even at the frame emission', async () => {
-  const scene = await build(recipeWith([{ id: 'neon', preset: 'neon', color: [0.1, 0.3, 0.9] }]));
-  const neon = materialOf(scene, 'neon');
-  const frame = neon.pattern.graph.emission.ramp.stops.at(-1)[1];
-  const [red, green, blue] = neon.emissiveColor;
-  assert.equal(blue, 1);
-  assert.ok(green < 0.002, `green leak ${green} against blue 1 at frame emission ${neon.emission * frame}: bloom strength 8 would turn it cyan`);
-  assert.ok(red < green);
-});
-
-test('an explicit emissiveColor wins over the neon default', async () => {
-  const scene = await build(recipeWith([{ id: 'neon', preset: 'neon', emissiveColor: [0, 1, 0] }]));
-  assert.deepEqual([...materialOf(scene, 'neon').emissiveColor], [0, 1, 0]);
-});
-
 test('wood keeps a contrasty ring ramp', async () => {
   const scene = await build(recipeWith([{ id: 'wood', preset: 'wood' }]));
   const [dark, light] = materialOf(scene, 'wood').pattern.colors;
@@ -114,20 +91,6 @@ test('grass is a graph of sparse upright blades with a dark-to-bright ramp and a
   assert.ok(pattern.graph.height, 'blades have height variation');
   const [darkStop, lightStop] = pattern.graph.color.ramp.stops;
   assert.ok(lightStop[1][0] / darkStop[1][0] >= 3, 'two tones with at least 3 to 1 contrast');
-});
-
-test('neon is a lit surface with a bright frame along the face edge, which is what bloom lifts', async () => {
-  const scene = await build(recipeWith([{ id: 'neon', preset: 'neon' }]));
-  const neon = materialOf(scene, 'neon');
-  assert.equal(neon.tag, 'surface');
-  const stops = neon.pattern.graph.emission.ramp.stops;
-  const face = stops[0][1];
-  const frame = stops[stops.length - 1][1];
-  assert.ok(frame > face * 2, 'frame at least twice as bright as the face');
-  assert.ok(neon.emission * frame >= 100, 'frame is far above the bloom threshold of 10');
-  assert.ok(neon.emission * face < 10, 'face stays under the bloom threshold of 10 the notes ask for, so it keeps its colour');
-  assert.equal(neon.metallic, 1, 'black metal has no sky reflection for bloom to turn into a wash');
-  assert.equal(neon.roughness, 1);
 });
 
 test('brick defaults to a deep red', async () => {

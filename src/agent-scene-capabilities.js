@@ -306,8 +306,8 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass', 'water']),
   materialPresets: Object.freeze({
     field: 'material.preset',
-    names: Object.freeze(['smoothPlastic', 'wood', 'grass', 'neon', 'glass', 'brick']),
-    rule: 'Fills unset fields, color tints it, your fields win; docs/agent-scene.md Material presets. A neon part is a glowing panel with a bright tube frame on each face: for the halo set effects.bloom strength 8, threshold 10, radius 16 (the default is faint; lower effects.exposure over a bright wall) and add a point light of its colour for spill. Glass refracts (transmission 0.7, ior 1.15) and grass is sparse upright blades.',
+    names: Object.freeze(['smoothPlastic', 'wood', 'grass', 'glass', 'brick']),
+    rule: 'Fills unset fields, color tints it, your fields win; docs/agent-scene.md Material presets. Glass is a blended pane (opacity 0.8, no refraction) with a thin bright rim, and grass is sparse upright blades.',
   }),
   // A flat water sheet; the largest sets the level. A bed d metres down keeps exp(-absorption * d) per channel (RGB per metre).
   water: Object.freeze({ presets: WATER_PRESETS_SUMMARY, default: 'lake', note: 'absorption 0..20, turbidity 0..1 softens shadows below; opacity under 1 shows the bed. caustics {scale m 0.05-50, speed 0-10, intensity 0-10, depthFade 0-10} adds a moving sun net on surfaces below (off unless given, raster only). waterRamp {colors [3-5 display colours, deep to bright: #rrggbb shows as that hex, rgb numbers as their sRGB encoding], drivers {height, facing, sun: weights 0-1; default height 1}, heightRange [low, high] world y (-1, 1), steps hard|soft (hard), crestTint {color, strength 0-1}} paints flat tones that own the colour (no sky reflection; foam and glint stay), off by default.' }),
