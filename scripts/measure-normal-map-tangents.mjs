@@ -10,7 +10,7 @@
 // Each low-poly mesh is drawn three ways: with no normal map (the baseline), with the map and no tangents (the screen
 // derivative frame) and with the map and generated tangents (the glTF path). The reference is the high-poly mesh's
 // normal pass from the same camera. The error is the angle between the two normal passes where both draw the object.
-// Run it through the GPU lock: bash ~/.agents/tools/gpu-lock.sh node scripts/measure-normal-map-tangents.mjs
+// It needs a GPU and Chrome: run it as a light GPU job (node scripts/measure-normal-map-tangents.mjs).
 import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:net';
