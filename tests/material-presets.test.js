@@ -43,7 +43,10 @@ test('presets fill the fields their name promises', async () => {
   assert.equal(materialOf(scene, 'smoothPlastic').pattern, undefined);
   assert.ok(materialOf(scene, 'neon').emission > 1);
   const glass = materialOf(scene, 'glass');
-  assert.ok(glass.opacity <= 0.5);
+  assert.ok(glass.opacity <= 0.6);
+  assert.ok(glass.transmission >= 0.5, 'glass refracts what is behind it');
+  assert.ok(glass.thickness > 0);
+  assert.ok(glass.pattern.graph.emission, 'glass carries a Fresnel edge light');
   assert.equal(glass.clearcoat, 1);
   assert.ok(glass.roughness <= 0.1);
   assert.equal(glass.alphaMode, 'blend');
@@ -94,13 +97,25 @@ test('wood keeps a contrasty ring ramp', async () => {
   assert.ok(light[0] / dark[0] >= 3, 'ring ramp keeps at least 3 to 1 contrast');
 });
 
-test('grass is a graph of stretched tufts with a colour ramp of two tones and a height output', async () => {
+test('grass is a graph of sparse upright blades with a dark-to-bright ramp and a height output', async () => {
   const scene = await build(recipeWith([{ id: 'grass', preset: 'grass' }]));
   const pattern = materialOf(scene, 'grass').pattern;
   assert.equal(pattern.type, 'graph');
   assert.ok(pattern.graph.height, 'blades have height variation');
   const [darkStop, lightStop] = pattern.graph.color.ramp.stops;
   assert.ok(lightStop[1][0] / darkStop[1][0] >= 3, 'two tones with at least 3 to 1 contrast');
+});
+
+test('neon is a lit surface with a bright frame along the face edge, which is what bloom lifts', async () => {
+  const scene = await build(recipeWith([{ id: 'neon', preset: 'neon' }]));
+  const neon = materialOf(scene, 'neon');
+  assert.equal(neon.tag, 'surface');
+  const stops = neon.pattern.graph.emission.ramp.stops;
+  const face = stops[0][1];
+  const frame = stops[stops.length - 1][1];
+  assert.ok(frame > face * 2, 'frame at least twice as bright as the face');
+  assert.ok(neon.emission * frame >= 4, 'frame is well above the bloom threshold of 0.8');
+  assert.ok(neon.emission * face < 2.5, 'face stays low enough to keep its colour');
 });
 
 test('brick defaults to a deep red', async () => {
