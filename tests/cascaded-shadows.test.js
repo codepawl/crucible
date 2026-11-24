@@ -165,3 +165,38 @@ test('a scene that fits inside maximumDistance keeps the layer count it asked fo
   cascades.fitToCamera(farViewRenderer({ planeFar: 100, boundsExtent: 60 }));
   assert.equal(cascades.layerCount, 3);
 });
+
+// A room lit through windows (#3379): the file scene gives no shadow bounds, so the sun's view is the 7 m studio box at the origin.
+function interiorRenderer({ shadowBounds = {}, sceneBounds }) {
+  const projection = mat4.perspective(mat4.create(), 0.7, 16 / 9, 0.05, 2000);
+  const view = mat4.lookAt(mat4.create(), [2.5, 1.1, 4.5], [1, 1.2, -1.7], [0, 1, 0]);
+  const inverseViewProjection = mat4.invert(mat4.create(), mat4.multiply(mat4.create(), projection, view));
+  return {
+    world: false,
+    activeLightDirection: [0.87, 0.48, 0.08],
+    shadowBounds,
+    inverseViewProjection,
+    view,
+    viewForward: [-0.23, 0.01, -0.97],
+    receiverBounds: () => sceneBounds,
+  };
+}
+
+const ROOM_BOUNDS = { minimum: [-4, -0.1, -9], maximum: [6, 4, 6] };
+
+test('a closed room is shadowed to its far wall, not only to the edge of the default 7 m view', () => {
+  const cascades = createCascadedShadows({ count: 1 });
+  const renderer = interiorRenderer({ sceneBounds: ROOM_BOUNDS });
+  cascades.fitToCamera(renderer);
+  const farWallDepth = 4.5 + 9;
+  assert.ok(cascades.splits[0] >= farWallDepth, `the slice reaches the far wall at ${farWallDepth} m (ends at ${cascades.splits[0].toFixed(2)} m), so no wall past it reads as sunlit`);
+});
+
+test('explicit shadow bounds still end the far slice, and a scene with no bounds keeps the default view', () => {
+  const explicit = createCascadedShadows({ count: 1 });
+  explicit.fitToCamera(interiorRenderer({ shadowBounds: { target: [0, 1, 0], extent: 3.5 }, sceneBounds: ROOM_BOUNDS }));
+  assert.ok(explicit.splits[0] < 10, `bounds the scene file wrote are respected (ends at ${explicit.splits[0].toFixed(2)} m)`);
+  const unknown = createCascadedShadows({ count: 1 });
+  unknown.fitToCamera(interiorRenderer({ sceneBounds: null }));
+  assert.equal(unknown.splits[0], explicit.splits[0], 'a scene with no bounds falls back to the default view');
+});
