@@ -1,0 +1,6 @@
+before-eye-front.png     edge_r= 33px pupil_d= 66px core= 18.8 peak=187.8
+final-eye-front.png      edge_r= 42px pupil_d= 84px core= 18.0 peak=188.1
+trace-eye-front.png      edge_r= 44px pupil_d= 88px core= 12.5 peak=184.3
+before-eye-tq.png        edge_r= 25px pupil_d= 50px core= 15.6 peak=113.6
+final-eye-tq.png         edge_r= 53px pupil_d=106px core= 14.4 peak=108.7
+trace-eye-tq.png         edge_r= 55px pupil_d=110px core=  9.6 peak=120.3
