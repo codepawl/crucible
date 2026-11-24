@@ -20,6 +20,8 @@ const MODULE_LOADERS = {
   vehicleDamage: () => import('./vehicle-damage.js'),
   cloth: () => import('./agent-cloth.js'),
   particles: () => import('./agent-particles.js'),
+  textPanel: () => import('./text-panel.js'),
+  textBillboard: () => import('./text-billboard.js'),
   bake: () => import('./agent-bake.js'),
   bakeDeferred: () => import('./agent-bake-deferred.js'),
   reflections: () => import('./agent-reflections.js'),
@@ -102,6 +104,8 @@ const MODULE_MARKERS = {
   vehicleDamage: ['"type":"dented"'],
   cloth: ['"cloth":{'],
   particles: ['"particles":{', '"add-explosion"'],
+  textPanel: ['"text":{'],
+  textBillboard: ['"billboard":{'],
   bake: ['"bake":{'],
   bakeDeferred: ['"bake":{'],
   // A metallic value of 0.5 or more may make a part reflective; the module skips a scene that has no smooth one.

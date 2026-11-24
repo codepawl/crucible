@@ -77,6 +77,7 @@ Ideas that nobody is working on live here instead of as open issues, so the issu
 - Project style lock: pin reference assets and rules (bevel scale, palette, texel density, detail budget) so agent-built assets match one art direction
 - Spatial blockout to detail: place rough proxy boxes or guides in Studio for an agent to replace with fitted geometry
 - Studio: expose recipe geometry parameters and mesh_stack modifiers as live controls in Properties
+- Billboard `keepInView`: keep a label inside the frame given the output viewport; needs the viewport (width, height, aspect) passed through each render path to the billboard sampler (from #3237)
 
 ### Games
 

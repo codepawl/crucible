@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -54,8 +55,7 @@ test('a 2-frame dropout in the middle of a clip FAILS the continuity check and n
   assert.equal(result.pass, false);
   assert.deepEqual(result.luma.jumps.map(jump => jump.frame), [7, 9]);
   assert.deepEqual(result.dropouts, [{ firstFrame: 7, lastFrame: 8 }]);
-  assert.match(result.detail, /luma frame 7/);
-  assert.match(result.detail, /dropout frames 7-8/);
+  assert.match(result.detail, /luma frames 7-8: 120\.0 to 30\.0/);
 });
 
 const metricsOf = (luma, saturation) => ({ meanLuma: luma, meanSaturation: saturation, blownShare: 0, crushedShare: 0, pixelCount: 1 });
@@ -66,6 +66,64 @@ test('the absolute threshold: a single-frame jump of 6 levels FAILS and one of 4
   assert.equal(failing.pass, false);
   assert.deepEqual(failing.luma.jumps.map(entry => entry.frame), [6]);
   assert.equal(checkContinuity(clip(4)).pass, true);
+});
+
+test('the boundary: a jump of exactly 5 levels PASSES (the rule is more than 5) and one just above 5 FAILS', () => {
+  const clip = jump => Array.from({ length: 12 }, (_, index) => metricsOf(100 + (index >= 6 ? jump : 0), 40));
+  assert.equal(checkContinuity(clip(5)).pass, true);
+  assert.deepEqual(findJumps(clip(5).map(metrics => metrics.meanLuma)).jumps, []);
+  const justAbove = checkContinuity(clip(5.01));
+  assert.equal(justAbove.pass, false);
+  assert.deepEqual(justAbove.luma.jumps.map(entry => entry.frame), [6]);
+});
+
+test('a dropout of 2 frames is one line labelled with its range, and a 1-frame dropout with its frame', () => {
+  const dropoutAt = dropped => Array.from({ length: 20 }, (_, index) => metricsOf(dropped.includes(index) ? 30 : 120, 40));
+  const two = checkContinuity(dropoutAt([8, 9]));
+  assert.match(two.detail, /luma frames 8-9: 120\.0 to 30\.0/);
+  assert.doesNotMatch(two.detail, /luma frame 10/);
+  assert.equal(two.detail.match(/luma frame/g).length, 1);
+  const one = checkContinuity(dropoutAt([8]));
+  assert.match(one.detail, /luma frame 8: 120\.0 to 30\.0/);
+  assert.doesNotMatch(one.detail, /luma frames/);
+});
+
+test('two separate one-frame dips are two dropouts, and an exit is never reused as the next entry', () => {
+  const asMetrics = lumas => lumas.map(luma => metricsOf(luma, 40));
+  const apart = checkContinuity(asMetrics([120, 120, 30, 120, 120, 30, 120, 120]));
+  assert.deepEqual(apart.dropouts, [{ firstFrame: 2, lastFrame: 2 }, { firstFrame: 5, lastFrame: 5 }]);
+  assert.match(apart.detail, /^luma frame 2: 120\.0 to 30\.0 \(90\.0 levels\); luma frame 5: 120\.0 to 30\.0 \(90\.0 levels\)$/);
+  const alternating = checkContinuity(asMetrics([120, 30, 120, 30, 120]));
+  assert.deepEqual(alternating.dropouts, [{ firstFrame: 1, lastFrame: 1 }, { firstFrame: 3, lastFrame: 3 }]);
+  assert.equal(alternating.detail.match(/luma frame/g).length, 2);
+});
+
+test('a dropout names its first, last and 3-frame range', () => {
+  const dropoutAt = dropped => checkContinuity(Array.from({ length: 12 }, (_, index) => metricsOf(dropped.includes(index) ? 30 : 120, 40))).detail;
+  assert.match(dropoutAt([1]), /^luma frame 1:/);
+  assert.match(dropoutAt([2, 3, 4]), /^luma frames 2-4:/);
+  assert.match(dropoutAt([10, 11]), /^luma frame 10:/);
+});
+
+test('bad options throw before the --out folder is created', async () => {
+  const parent = await mkdtemp(join(tmpdir(), 'evidence-validate-'));
+  try {
+    const badRuns = [
+      [['--fps', '0'], /--fps must be a whole number/],
+      [['--backend', 'tpu'], /--backend must be gpu or cpu/],
+      [['--clip', 'abc'], /--clip must be a first and last frame/],
+      [['--clip-camera', 'nope'], /--clip-camera "nope" is not one of the cameras/],
+      [['--subject', '1,2'], /--subject needs 6 comma-separated numbers/],
+      [['--base', 'no-such-ref-3269'], /--base "no-such-ref-3269" is neither a checkout/],
+    ];
+    for (const [extra, message] of badRuns) {
+      const out = join(parent, `out-${extra[0].slice(2)}`);
+      await assert.rejects(main(['--issue', '1', '--builtin', 'bar', '--out', out, ...extra]), message, extra[0]);
+      assert.equal(existsSync(out), false, `${extra[0]} left the out folder behind`);
+    }
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
 });
 
 test('a step above 3 times the median step but at most 5 levels is a note, not a failure', () => {
@@ -95,17 +153,18 @@ test('a saturation jump in coloured frames FAILS and is named as saturation', ()
   assert.match(result.detail, /saturation frame 5/);
 });
 
-test('a dropout seen by luma and saturation is printed once, and a one-frame dropout reads "frame 7"', () => {
+test('a dropout seen by luma and saturation is one line per measure, and a one-frame dropout reads "frame 7"', () => {
   const dropped = new Set([7, 8]);
   const both = Array.from({ length: 16 }, (_, index) => (dropped.has(index) ? metricsOf(30, 150) : metricsOf(120, 40)));
   const result = checkContinuity(both);
   assert.equal(result.dropouts.length, 1);
-  assert.equal(result.detail.match(/dropout/g).length, 1);
-  assert.match(result.detail, /dropout frames 7-8/);
+  assert.match(result.detail, /luma frames 7-8: 120\.0 to 30\.0/);
+  assert.match(result.detail, /saturation frames 7-8: 40\.0 to 150\.0/);
+  assert.equal(result.detail.match(/frames? \d/g).length, 2);
   assert.equal(describeDropout({ firstFrame: 7, lastFrame: 7 }), 'frame 7');
   assert.equal(describeDropout({ firstFrame: 7, lastFrame: 8 }), 'frames 7-8');
   const single = checkContinuity(Array.from({ length: 12 }, (_, index) => metricsOf(index === 7 ? 30 : 120, 40)));
-  assert.match(single.detail, /dropout frame 7(?!-)/);
+  assert.match(single.detail, /luma frame 7: 120\.0 to 30\.0/);
 });
 
 test('focal length and aspect: a known point lands on its expected pixel in a non-square frame', () => {
@@ -235,8 +294,7 @@ test('--analyze numbers frames by the digits in their names, sorts them numerica
     await writeFile(join(folder, 'notes.txt'), 'not a frame');
     assert.deepEqual(listFrames(folder).map(entry => entry.frame), [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
     assert.equal(await main(['--issue', '1', '--analyze', folder]), 1);
-    assert.match(lines.join('\n'), /luma frame 6: 120\.0 to 20\.0/);
-    assert.match(lines.join('\n'), /dropout frames 6-7/);
+    assert.match(lines.join('\n'), /luma frames 6-7: 120\.0 to 20\.0/);
     await assert.rejects(main(['--issue', '1', '--analyze', folder, '--region', '0,0,99,99']), /--region "0,0,99,99" must be left,top,right,bottom inside the 16 by 16 frame/);
     assert.equal(await main(['--issue', '1', '--analyze', folder, '--region', '4,4,12,12']), 1);
     await assert.rejects(main(['--issue', '1', '--analyze', join(folder, 'missing')]), /does not exist\. Pass the folder that holds the frame PNGs/);

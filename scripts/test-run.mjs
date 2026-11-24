@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { testConcurrencyArguments } from './test-concurrency.mjs';
 
 export const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const reporterUrl = new URL('./test-compact-reporter.mjs', import.meta.url).href;
@@ -29,7 +30,7 @@ export function runTestFiles(testFiles, { folder = repositoryRoot, quiet = false
   const logPath = join(logFolder, `${stamp}.tap`);
   const failuresPath = join(logFolder, `${stamp}.failures.json`);
   const result = spawnSync(process.execPath, [
-    '--test', '--import', hangGuardUrl, '--test-timeout=300000',
+    '--test', ...testConcurrencyArguments([]), '--import', hangGuardUrl, '--test-timeout=300000',
     `--test-reporter=${reporterUrl}`, '--test-reporter-destination=stdout',
     '--test-reporter=tap', `--test-reporter-destination=${logPath}`,
     ...testFiles,

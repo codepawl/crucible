@@ -88,17 +88,29 @@ export function findJumps(values, { levels = DEFAULT_JUMP_LEVELS, medianFactor =
     if (step > levels) jumps.push(entry);
     else if (step > medianFactor * medianStep && step > MINIMUM_NOTE_LEVELS) notes.push(entry);
   }
-  return { jumps, notes, medianStep, dropouts: pairDropouts(jumps) };
+  return { jumps, notes, medianStep, dropouts: pairDropouts(jumps, levels) };
 }
 
-/** A jump one way followed within a few frames by a jump back the other way: the frames between are a dropout or a flash. */
-function pairDropouts(jumps, longestDropoutFrames = 4) {
+/**
+ * A jump one way followed within a few frames by a jump back the other way to about the level before it: the frames between are a
+ * dropout or a flash. Each jump is used once, so an exit is never also the entry of the next dropout.
+ */
+function pairDropouts(jumps, levels, longestDropoutFrames = 4) {
   const dropouts = [];
-  for (let index = 0; index < jumps.length - 1; index += 1) {
+  let index = 0;
+  while (index < jumps.length) {
     const into = jumps[index];
     const out = jumps[index + 1];
-    const oppositeDirection = Math.sign(into.to - into.from) === -Math.sign(out.to - out.from);
-    if (oppositeDirection && out.frame - into.frame <= longestDropoutFrames) dropouts.push({ firstFrame: into.frame, lastFrame: out.frame - 1 });
+    const isReturn = out !== undefined
+      && Math.sign(into.to - into.from) === -Math.sign(out.to - out.from)
+      && out.frame - into.frame <= longestDropoutFrames
+      && Math.abs(out.to - into.from) <= levels;
+    if (isReturn) {
+      dropouts.push({ firstFrame: into.frame, lastFrame: out.frame - 1 });
+      index += 2;
+    } else {
+      index += 1;
+    }
   }
   return dropouts;
 }
@@ -196,6 +208,11 @@ export function describeDropout({ firstFrame, lastFrame }) {
   return firstFrame === lastFrame ? `frame ${firstFrame}` : `frames ${firstFrame}-${lastFrame}`;
 }
 
+/** "frame 7" for a plain jump, the dropout's own label ("frames 7-8") for the jump into a dropout. */
+function describeJumpFrames(entry, dropout) {
+  return dropout ? describeDropout(dropout) : `frame ${entry.frame}`;
+}
+
 /**
  * PASS when neither mean luma nor mean saturation jumps more than the limit between frames; the detail names each jump frame and its
  * levels, each dropout once, and (without failing) any smaller step above 3 times the median step.
@@ -203,13 +220,20 @@ export function describeDropout({ firstFrame, lastFrame }) {
 export function checkContinuity(metricsPerFrame, { firstFrame = 0, ...jumpOptions } = {}) {
   const lumaResult = findJumps(metricsPerFrame.map(metrics => metrics.meanLuma), { ...jumpOptions, firstFrame });
   const saturationResult = findJumps(metricsPerFrame.map(metrics => metrics.meanSaturation), { ...jumpOptions, firstFrame });
-  const describe = (name, entries) => entries.map(entry => `${name} frame ${entry.frame}: ${entry.from.toFixed(1)} to ${entry.to.toFixed(1)} (${entry.step.toFixed(1)} levels)`);
-  const lines = [...describe('luma', lumaResult.jumps), ...describe('saturation', saturationResult.jumps)];
-  const noteLines = [...describe('luma', lumaResult.notes), ...describe('saturation', saturationResult.notes)];
+  // A dropout is reported once, under its range ("frames 8-9"); the jump back out of it is not a second line.
+  const describe = (name, result) => {
+    const dropoutByEntry = new Map(result.dropouts.map(dropout => [dropout.firstFrame, dropout]));
+    const exitFrames = new Set(result.dropouts.map(dropout => dropout.lastFrame + 1));
+    return result.jumps
+      .filter(entry => dropoutByEntry.has(entry.frame) || !exitFrames.has(entry.frame))
+      .map(entry => `${name} ${describeJumpFrames(entry, dropoutByEntry.get(entry.frame))}: ${entry.from.toFixed(1)} to ${entry.to.toFixed(1)} (${entry.step.toFixed(1)} levels)`);
+  };
+  const describeNotes = (name, entries) => entries.map(entry => `${name} frame ${entry.frame}: ${entry.from.toFixed(1)} to ${entry.to.toFixed(1)} (${entry.step.toFixed(1)} levels)`);
+  const lines = [...describe('luma', lumaResult), ...describe('saturation', saturationResult)];
+  const noteLines = [...describeNotes('luma', lumaResult.notes), ...describeNotes('saturation', saturationResult.notes)];
   const dropouts = [...new Map([...lumaResult.dropouts, ...saturationResult.dropouts].map(dropout => [describeDropout(dropout), dropout])).values()];
-  const pass = lines.length === 0;
-  const dropoutText = dropouts.length ? `; dropout ${dropouts.map(describeDropout).join(', ')}` : '';
+  const pass = lumaResult.jumps.length === 0 && saturationResult.jumps.length === 0;
   const noteText = noteLines.length ? ` (note, not a failure: ${noteLines.join('; ')})` : '';
-  const detail = pass ? `no single-frame jump over ${jumpOptions.levels ?? DEFAULT_JUMP_LEVELS} levels in ${metricsPerFrame.length} frames (median luma step ${lumaResult.medianStep.toFixed(2)})${noteText}` : `${lines.join('; ')}${dropoutText}${noteText}`;
+  const detail = pass ? `no single-frame jump over ${jumpOptions.levels ?? DEFAULT_JUMP_LEVELS} levels in ${metricsPerFrame.length} frames (median luma step ${lumaResult.medianStep.toFixed(2)})${noteText}` : `${lines.join('; ')}${noteText}`;
   return { pass, luma: lumaResult, saturation: saturationResult, dropouts, detail };
 }

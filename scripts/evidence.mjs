@@ -93,25 +93,35 @@ function writeJson(file, value) {
   writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-/** The built-in recipe: a red bar turning once a second over a floor, one scene file with its GLB and sky next to it. */
+/** The built-in recipe: a red bar turning once a second over a floor. Known up front so options can be checked before any file is written. */
+const BUILTIN_BAR = {
+  description: { glb: 'bar.glb', hdri: 'sky.hdr', eye: [0, 0.4, 6], target: [0, 0, 0], seed: 1, renderer: { ground: false, hdr: true, samples: 1, pixelRatio: 1, memoryBudgetMiB: 512 }, frame: { exposure: 1, fov: 45 } },
+  cameras: { front: { eye: [0, 0.4, 6], target: [0, 0, 0] }, wide: { eye: [0, 1.5, 9], target: [0, 0, 0] } },
+  subject: { min: [-1.05, -1.05, -0.1], max: [1.05, 1.05, 0.1] },
+};
+
+/** Writes the built-in recipe: one scene file with its GLB and sky next to it; returns the scene file's path. */
 function writeBuiltinBar(folder) {
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, 'bar.glb'), spinningBarGlb());
   copyFileSync(join(REPOSITORY_ROOT, 'assets/looks/sky-clouds.hdr'), join(folder, 'sky.hdr'));
   const recipe = join(folder, 'scene.json');
-  writeJson(recipe, { glb: 'bar.glb', hdri: 'sky.hdr', eye: [0, 0.4, 6], target: [0, 0, 0], seed: 1, renderer: { ground: false, hdr: true, samples: 1, pixelRatio: 1, memoryBudgetMiB: 512 }, frame: { exposure: 1, fov: 45 } });
-  return {
-    recipe,
-    cameras: { front: { eye: [0, 0.4, 6], target: [0, 0, 0] }, wide: { eye: [0, 1.5, 9], target: [0, 0, 0] } },
-    subject: { min: [-1.05, -1.05, -0.1], max: [1.05, 1.05, 0.1] },
-  };
+  writeJson(recipe, BUILTIN_BAR.description);
+  return recipe;
+}
+
+/** null for a base that is already a checkout, else the commit of the ref; throws when it is neither. */
+function baseCommit(base) {
+  if (existsSync(join(resolve(base), 'scripts/render-media.mjs'))) return null;
+  const sha = git(REPOSITORY_ROOT, 'rev-parse', '--verify', `${base}^{commit}`);
+  if (!sha) throw new Error(`--base "${base}" is neither a checkout containing scripts/render-media.mjs nor a git ref. Pass a worktree path or a ref such as origin/main.`);
+  return sha;
 }
 
 /** A checkout to render a side with: the branch itself, a worktree path, or a ref turned into a temporary worktree sharing node_modules. */
 function resolveBase(base) {
-  if (existsSync(join(resolve(base), 'scripts/render-media.mjs'))) return { root: resolve(base), cleanup: () => {} };
-  const sha = git(REPOSITORY_ROOT, 'rev-parse', '--verify', `${base}^{commit}`);
-  if (!sha) throw new Error(`--base "${base}" is neither a checkout containing scripts/render-media.mjs nor a git ref. Pass a worktree path or a ref such as origin/main.`);
+  const sha = baseCommit(base);
+  if (sha === null) return { root: resolve(base), cleanup: () => {} };
   // One folder per run, so two runs at once never remove each other's checkout.
   const root = join(REPOSITORY_ROOT, '.claude/worktrees', `evidence-base-${sha.slice(0, 9)}-${process.pid}-${Date.now()}`);
   const modules = join(root, 'node_modules');
@@ -245,10 +255,9 @@ export async function main(argv) {
   const options = parseArguments(argv);
   if (options.analyze) return analyzeFolder(options);
   const outRoot = resolve(options.out ?? join('artifacts', options.issue));
-  mkdirSync(outRoot, { recursive: true });
-  const builtin = options.builtin ? writeBuiltinBar(join(outRoot, 'recipe')) : null;
-  const recipe = resolve(builtin?.recipe ?? options.recipe);
-  const description = JSON.parse(readFileSync(recipe, 'utf8'));
+  const builtin = options.builtin ? BUILTIN_BAR : null;
+  const recipePath = builtin ? join(outRoot, 'recipe', 'scene.json') : resolve(options.recipe);
+  const description = builtin?.description ?? JSON.parse(readFileSync(recipePath, 'utf8'));
   const cameras = builtin?.cameras ?? JSON.parse(readFileSync(resolve(options.cameras ?? ''), 'utf8'));
   const cameraNames = options['camera-names'] ? options['camera-names'].split(',') : Object.keys(cameras);
   for (const name of cameraNames) {
@@ -262,6 +271,11 @@ export async function main(argv) {
   const clipCamera = options['clip-camera'] ?? cameraNames[0];
   if (!cameraNames.includes(clipCamera)) throw new Error(`--clip-camera "${clipCamera}" is not one of the cameras being rendered (${cameraNames.join(', ')}). Pass one of those names.`);
   const fov = description.frame?.fov ?? 45;
+  if (options.base) baseCommit(options.base);
+
+  // Every option is valid: only now does the run write anything.
+  mkdirSync(outRoot, { recursive: true });
+  const recipe = builtin ? writeBuiltinBar(dirname(recipePath)) : recipePath;
 
   const branchName = git(REPOSITORY_ROOT, 'rev-parse', '--abbrev-ref', 'HEAD');
   const sides = [{ name: 'branch', label: `branch ${branchName === 'HEAD' ? '' : `${branchName} `}${git(REPOSITORY_ROOT, 'rev-parse', '--short', 'HEAD')}`.replace('  ', ' '), root: REPOSITORY_ROOT, cleanup: () => {} }];

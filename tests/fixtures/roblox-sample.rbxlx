@@ -1,0 +1,154 @@
+<roblox version="4">
+  <!-- A small hand-written place in the format Roblox Studio saves: studs, CFrame as position plus a row-major rotation. -->
+  <Item class="Workspace" referent="RBX0">
+    <Properties>
+      <string name="Name">Workspace</string>
+      <Ref name="CurrentCamera">RBX1</Ref>
+    </Properties>
+    <Item class="Camera" referent="RBX1">
+      <Properties>
+        <string name="Name">Camera</string>
+        <float name="FieldOfView">65</float>
+        <CoordinateFrame name="CFrame">
+          <X>0</X><Y>13</Y><Z>26</Z>
+          <R00>1</R00><R01>0</R01><R02>0</R02>
+          <R10>0</R10><R11>0.907467</R11><R12>0.420124</R12>
+          <R20>0</R20><R21>-0.420124</R21><R22>0.907467</R22>
+        </CoordinateFrame>
+      </Properties>
+    </Item>
+    <Item class="Part" referent="RBX2">
+      <Properties>
+        <string name="Name">Ground</string>
+        <token name="shape">1</token>
+        <Vector3 name="size"><X>60</X><Y>1</Y><Z>60</Z></Vector3>
+        <CoordinateFrame name="CFrame"><X>0</X><Y>-0.5</Y><Z>0</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame>
+        <Color3uint8 name="Color3uint8">4283144011</Color3uint8>
+        <token name="Material">1280</token>
+      </Properties>
+    </Item>
+    <Item class="Model" referent="RBX3">
+      <Properties><string name="Name">Props</string></Properties>
+      <Item class="Part" referent="RBX4">
+        <Properties>
+          <string name="Name">Red block turned 30 degrees</string>
+          <token name="shape">1</token>
+          <Vector3 name="size"><X>5</X><Y>5</Y><Z>5</Z></Vector3>
+          <CoordinateFrame name="CFrame"><X>-2.5</X><Y>2.5</Y><Z>3</Z><R00>0.866025</R00><R01>0</R01><R02>0.5</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>-0.5</R20><R21>0</R21><R22>0.866025</R22></CoordinateFrame>
+          <Color3uint8 name="Color3uint8">4291045404</Color3uint8>
+          <token name="Material">848</token>
+        </Properties>
+      </Item>
+      <Item class="Part" referent="RBX5">
+        <Properties>
+          <string name="Name">Blue ball</string>
+          <token name="shape">0</token>
+          <Vector3 name="size"><X>5</X><Y>5</Y><Z>5</Z></Vector3>
+          <CoordinateFrame name="CFrame"><X>1</X><Y>2.5</Y><Z>-7</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame>
+          <Color3uint8 name="Color3uint8">4279069100</Color3uint8>
+          <token name="Material">256</token>
+        </Properties>
+      </Item>
+      <Item class="Part" referent="RBX6">
+        <Properties>
+          <string name="Name">Wooden cylinder standing up</string>
+          <token name="shape">2</token>
+          <Vector3 name="size"><X>7</X><Y>3.5</Y><Z>3.5</Z></Vector3>
+          <CoordinateFrame name="CFrame"><X>-4</X><Y>3.5</Y><Z>-2</Z><R00>0</R00><R01>-1</R01><R02>0</R02><R10>1</R10><R11>0</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame>
+          <Color3uint8 name="Color3uint8">4292511041</Color3uint8>
+          <token name="Material">512</token>
+        </Properties>
+      </Item>
+      <Item class="WedgePart" referent="RBX7">
+        <Properties>
+          <string name="Name">Ramp turned toward the camera</string>
+          <Vector3 name="size"><X>4</X><Y>3</Y><Z>6</Z></Vector3>
+          <CoordinateFrame name="CFrame"><X>0.6</X><Y>1.5</Y><Z>10</Z><R00>-0.939693</R00><R01>0</R01><R02>-0.34202</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0.34202</R20><R21>0</R21><R22>-0.939693</R22></CoordinateFrame>
+          <Color3uint8 name="Color3uint8">4284702562</Color3uint8>
+          <token name="Material">816</token>
+        </Properties>
+      </Item>
+      <Item class="WedgePart" referent="RBX8">
+        <Properties>
+          <string name="Name">Wedge in its default pose</string>
+          <Vector3 name="size"><X>4</X><Y>3</Y><Z>5</Z></Vector3>
+          <CoordinateFrame name="CFrame"><X>3.8</X><Y>1.5</Y><Z>-4.5</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame>
+          <Color3uint8 name="Color3uint8">4294298928</Color3uint8>
+          <token name="Material">256</token>
+        </Properties>
+      </Item>
+      <Item class="Part" referent="RBX9">
+        <Properties>
+          <string name="Name">Glass pane</string>
+          <token name="shape">1</token>
+          <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+          <CoordinateFrame name="CFrame"><X>4.5</X><Y>2</Y><Z>2</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame>
+          <Color3uint8 name="Color3uint8">4279430868</Color3uint8>
+          <token name="Material">1568</token>
+          <float name="Transparency">0.5</float>
+        </Properties>
+      </Item>
+    </Item>
+    <Item class="Part" referent="RBX10">
+      <Properties>
+        <string name="Name">Lamp</string>
+        <token name="shape">0</token>
+        <Vector3 name="size"><X>2</X><Y>2</Y><Z>2</Z></Vector3>
+        <CoordinateFrame name="CFrame"><X>-0.5</X><Y>7</Y><Z>-1</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame>
+        <Color3uint8 name="Color3uint8">4294945340</Color3uint8>
+        <token name="Material">288</token>
+      </Properties>
+      <Item class="PointLight" referent="RBX11">
+        <Properties>
+          <string name="Name">PointLight</string>
+          <float name="Brightness">1.5</float>
+          <float name="Range">20</float>
+          <Color3 name="Color"><R>1</R><G>0.84</G><B>0.47</B></Color3>
+        </Properties>
+      </Item>
+    </Item>
+    <Item class="Part" referent="RBX12">
+      <Properties>
+        <string name="Name">Spotlight housing</string>
+        <token name="shape">1</token>
+        <Vector3 name="size"><X>2</X><Y>1</Y><Z>2</Z></Vector3>
+        <CoordinateFrame name="CFrame"><X>4</X><Y>11</Y><Z>2</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame>
+        <Color3uint8 name="Color3uint8">4285215356</Color3uint8>
+        <token name="Material">256</token>
+      </Properties>
+      <Item class="SpotLight" referent="RBX13">
+        <Properties>
+          <string name="Name">SpotLight</string>
+          <float name="Brightness">2</float>
+          <float name="Range">30</float>
+          <float name="Angle">30</float>
+          <token name="Face">4</token>
+        </Properties>
+      </Item>
+    </Item>
+    <Item class="Part" referent="RBX14">
+      <Properties>
+        <string name="Name">Ceiling panel</string>
+        <token name="shape">1</token>
+        <Vector3 name="size"><X>8</X><Y>0.5</Y><Z>3</Z></Vector3>
+        <CoordinateFrame name="CFrame"><X>-3</X><Y>11</Y><Z>-4</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame>
+        <Color3uint8 name="Color3uint8">4288914085</Color3uint8>
+        <token name="Material">272</token>
+      </Properties>
+      <Item class="SurfaceLight" referent="RBX15">
+        <Properties>
+          <string name="Name">SurfaceLight</string>
+          <float name="Brightness">2</float>
+          <float name="Range">24</float>
+          <token name="Face">4</token>
+        </Properties>
+      </Item>
+    </Item>
+    <Item class="Script" referent="RBX16">
+      <Properties><string name="Name">Script</string></Properties>
+    </Item>
+  </Item>
+  <Item class="Lighting" referent="RBX17">
+    <Properties><string name="Name">Lighting</string></Properties>
+  </Item>
+</roblox>

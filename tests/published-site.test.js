@@ -112,7 +112,7 @@ test('the docs say three-compat is not on npm, three-bridge installs from npm, a
   ];
   for (const [file, phrase] of notes) assert.ok(readText(file).includes(phrase), file);
   for (const file of ['docs/three-bridge.md', 'packages/three-bridge/README.md']) assert.ok(!readText(file).includes('not on npm'), file);
-  for (const name of ['denoise-oidn', 'three-bridge', 'three-compat']) {
+  for (const name of ['denoise-oidn', 'roblox-import', 'three-bridge', 'three-compat']) {
     const pack = JSON.parse(readText(`packages/${name}/package.json`));
     assert.equal(pack.repository.directory, `packages/${name}`);
   }

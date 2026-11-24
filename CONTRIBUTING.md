@@ -109,6 +109,8 @@ Between one test file and the full pass there are four commands made for coding 
 - `npm run test:mutation-check -- tests/<name>.test.js` reverts your changes under `src/`, `bin/`, `packages/` and `scripts/`, runs the tests, prints the ones that fail and restores the tree. It exits 1 when none fail, because then the test does not pin your change. Stage unstaged edits outside those folders first and `git add -N` new files under them.
 - `npm test -- --test-reporter=./scripts/test-compact-reporter.mjs` gives the full pass the same short output.
 
+`npm test`, `npm run test:coverage`, `test:fast`, `test:affected` and the fast tests in preflight run at most 6 test files at once (`scripts/test-concurrency.mjs`), never more than Node would pick on the machine. Set `CRUCIBLE_TEST_CONCURRENCY` to another whole number to change it, or pass your own `--test-concurrency`.
+
 The checks it runs, if you want one alone:
 
 1. Run `npm test`. All Node tests must pass.

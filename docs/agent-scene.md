@@ -511,6 +511,20 @@ whole edit and names the relation. `relations: []` in `set-node` removes them an
 exported recipe holds both the relations and the solved translations. Motion and physics move nodes after the solve and
 know nothing of relations. The code loads on demand (`relations`, see On-demand code). The MCP schema only says `relations` is a list; the kinds and fields are in `scene_capabilities` under `relations`.
 
+### Text panels and billboards
+
+Signs, labels and name tags are text on a texture. `material.text` draws it on the CPU from the DejaVu Sans outlines that 3D text already bundles, so the same input gives the same bytes on every machine and in every backend (no canvas, no system font). Fields: `content` (1 to 512 characters, up to 32 lines, `\n` breaks a line, a character the font lacks draws as `?`), `width` and `height` (the metres the panel covers), `font` (`sans`, the only family bundled), `fontSize` (metres), `color`, `background` (leave it out for a transparent panel, which blends), `align`, `verticalAlign`, `wrap` (breaks at the width, and inside a word wider than a line), `padding` and `resolution` (pixels per metre, 256 by default). The texture is at most 1024 pixels on a side. The material takes the `surface` or `unlit` tag and no `pattern`, `map` or `colorMap`.
+
+A sign on one face of a part is a `plane` node, a child of the part, sized by its scale and placed a millimetre off the face with `decal: true`. A name tag is the same node with `billboard`: `size` `[width, height]` in metres or `screenHeight` (the share of the frame height, at any distance), and `offset` in world metres from the node. Leave `offset` out and the tag stands above the top of the world bounding box of its parent node and everything below it, with a gap of 20 percent of the tag's own height, so it never covers a head or a hat; an explicit `offset`, even `[0, 0, 0]`, wins. A billboard node casts no shadow unless it sets `castShadow: true`, so a tag leaves no stray line on the ground. A part in front hides the tag, like a Roblox `BillboardGui`; `alwaysOnTop: true` draws it through parts and needs a material with `depthTest: false` and `alphaMode: "blend"`, a pair that is checked. Its sheet faces the camera at every sampled time, follows the node under a moving parent, and ignores the node's rotation and scale. It faces the recipe camera or the camera track, perspective or orthographic. Neither goes into a `crucible pack`, which refuses a recipe that uses them. The fields are in `scene_capabilities` under `textPanel` and `billboard`; the code loads on demand (`textPanel`, `textBillboard`).
+
+```json
+{ "materials": [{ "id": "sign", "tag": "unlit", "text": { "content": "OPEN\nCoffee 24h", "width": 2, "height": 0.8, "color": [1, 0.9, 0.6], "background": [0.1, 0.05, 0.02] } }],
+  "nodes": [
+    { "id": "shop", "geometry": "box", "material": "wall", "scale": [4, 3, 0.3] },
+    { "id": "shop-sign", "parent": "shop", "geometry": "plane", "material": "sign", "translation": [0, 0.2, 0.502], "scale": [0.5, 0.267, 1], "decal": true },
+    { "id": "tag", "parent": "walker", "geometry": "plane", "material": "name", "billboard": { "screenHeight": 0.03 } } ] }
+```
+
 ## Transactions and ownership
 
 `apply(operations, { expectedRevision })` requires the current revision and returns the new revision.
