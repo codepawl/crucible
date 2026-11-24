@@ -1,0 +1,55 @@
+{
+  "scene": "file",
+  "kind": "image",
+  "backend": "gpu",
+  "preset": "balanced",
+  "aspect": "landscape",
+  "start": 0,
+  "frames": null,
+  "encoder": null,
+  "requestedEncoder": null,
+  "captureFormat": "png",
+  "jpegQuality": null,
+  "capturedFrames": 1,
+  "stageTimings": {
+    "renderSeconds": 0.02314780000000064,
+    "captureSeconds": 0.04223739999999998,
+    "readPixelsSeconds": 0,
+    "encoderBackpressureSeconds": 0,
+    "encoderFinishSeconds": 0
+  },
+  "effectiveFPS": 0.06896097960892104,
+  "speedRatio": null,
+  "assembly": null,
+  "width": 1280,
+  "height": 720,
+  "actualRenderSize": {
+    "width": 1280,
+    "height": 720,
+    "reduced": false
+  },
+  "fps": 24,
+  "duration": null,
+  "memoryBudgetMiB": 512,
+  "peakEstimatedRenderBytes": 500101060,
+  "peakNodeBytes": 109953024,
+  "peakBrowserHeap": 0,
+  "maximumPendingFrames": 0,
+  "firstFrameBytes": 488657,
+  "elapsedSeconds": 14.5009541,
+  "graphics": {
+    "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "samples": 4,
+    "capabilities": {
+      "hdr": true,
+      "hdrRequested": true,
+      "hdrFallbackReason": null,
+      "samples": 4,
+      "maximumTextureSize": 16384,
+      "reversedDepth": true
+    },
+    "glError": 0
+  },
+  "output": "closeup.png",
+  "errors": []
+}
