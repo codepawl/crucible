@@ -96,6 +96,10 @@ node scripts/evidence.mjs --issue 1234 --analyze <folder-of-frames>   # check fr
 
 Issues and pull requests are public. Leave out local paths (a Windows user folder, or a home folder under `/home` or `/Users`), tokens and personal data. Use a path inside the repository instead.
 
+### Keep outside names out
+
+Public text says what Crucible does, not which outside 3D software it was compared with or learned from. The `outside names` check of `npm run preflight` (`npm run check:outside-names`, also with `--skip-tests`) fails when a line your branch adds names such a tool: in `docs/`, `changes/`, `README.md` and `skills/` anywhere on the line, in `src/` only inside a comment. The `PR metadata` check runs the same rules on the files' added lines and on the description. The error gives the file, the line and the word; describe the behaviour instead. A keymap preset name (a line that says preset or keymap) and an import file format (a line with an extension such as `.blend`, or "file format") pass. `docs/studio-blender-parity.md` and the add-on guide are not scanned, and lines already on `main` are never checked. The name list and the exceptions, each with its reason, are in `scripts/check-outside-names.mjs`.
+
 ## Checks
 
 Run `npm run preflight` before you open a pull request. It runs every check below that applies to the files you changed, plus the size, tool cost and coverage gates, keeps going after a failure and ends with one line per check and how to fix it. Logs go to `artifacts/preflight/`. `--skip-tests` skips the slow test pass while you iterate but still runs the unit tests recorded under half a second (`scripts/fast-tests.mjs`, listed in `config/fast-tests.json`, made by `npm run record:fast-tests`).

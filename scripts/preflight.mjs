@@ -10,6 +10,7 @@ import { createWriteStream, mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isScannedPath } from './check-names.mjs';
+import { isScannedPath as isOutsideNameScannedPath } from './check-outside-names.mjs';
 import { RELEASE_FIX, readReleaseProblem } from './check-release-changelog.mjs';
 import { isFragmentName } from './changelog-fragments.mjs';
 
@@ -104,6 +105,12 @@ export function planChecks(changedPaths, { skipTests = false, release = false, b
     command: ['node', 'scripts/check-names.mjs'],
     skipped: paths.some(path => isScannedPath(path)) ? null : 'no scanned source file changed',
     fix: 'Rename each declaration the report names to what it holds; only i j k n, x y z u v, t, w h, r g b a and _ may stay short (scripts/check-names.mjs).',
+  });
+  checks.push({
+    name: 'outside names',
+    command: ['node', 'scripts/check-outside-names.mjs', '--base', baseRef ?? 'origin/main'],
+    skipped: paths.some(path => isOutsideNameScannedPath(path)) ? null : 'no public text file changed',
+    fix: 'Describe the behaviour instead of naming the outside tool on each line the report names; a keymap preset or file format name is allowed in that context (scripts/check-outside-names.mjs).',
   });
   checks.push({
     name: 'tool schemas',

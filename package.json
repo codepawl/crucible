@@ -263,6 +263,7 @@
     "check:guide-fields": "node scripts/guide-fields.mjs check",
     "check:links": "node scripts/check-links.mjs",
     "check:names": "node scripts/check-names.mjs",
+    "check:outside-names": "node scripts/check-outside-names.mjs",
     "changes": "node scripts/changelog-fragments.mjs",
     "changes:fold": "node scripts/changelog-fragments.mjs fold",
     "check:change-note": "node scripts/check-change-note.mjs",
