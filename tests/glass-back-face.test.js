@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BACK_REACH_PER_THICKNESS, backFaceExit, drawsBackFaces, glassBackFaceGlsl } from '../src/glass-back-face.js';
+import { BACK_IDENTIFIER_COUNT, BACK_REACH_PER_THICKNESS, backFaceExit, backIdentifier, drawsBackFaces, glassBackFaceGlsl } from '../src/glass-back-face.js';
 import { ballLensExit, refractDirection } from '../src/glass-ball-lens.js';
 import { liquidFragmentSource } from '../src/shaders.js';
 import '../src/liquid-shader.js';
@@ -51,7 +51,7 @@ const angleBetween = (first, second) => Math.acos(Math.min(1, first[0] * second[
 
 test('the back-face exit bends the ray where it leaves a closed non-spherical shape', () => {
   const front = frontHit(0.7, 0.2);
-  const found = backFaceExit({ ...front, viewDirection: [0, 0, 1], indexOfRefraction: 1.5, thickness: 1.2, project, backDepth, backNormal, reversed: false });
+  const found = backFaceExit({ ...front, viewDirection: [0, 0, 1], indexOfRefraction: 1.5, thickness: 1.2, project, backDepth, backNormal, shapeIdentifier: 1, backIdentifierAt: () => 1, reversed: false });
   const exact = exactExit(front.position, front.normal, 1.5);
   assert.ok(found, 'the back face is found');
   assert.ok(angleBetween(found.direction, exact.direction) < 0.02, 'exit direction within 1 degree of the exact one');
@@ -62,14 +62,14 @@ test('the back-face exit bends the ray where it leaves a closed non-spherical sh
 
 test('a ray that finds no back face returns null so the shader keeps the thickness heuristic', () => {
   const front = frontHit(0.7, 0.2);
-  const empty = backFaceExit({ ...front, viewDirection: [0, 0, 1], indexOfRefraction: 1.5, thickness: 1.2, project, backDepth: () => 1, backNormal: () => null, reversed: false });
+  const empty = backFaceExit({ ...front, viewDirection: [0, 0, 1], indexOfRefraction: 1.5, thickness: 1.2, project, backDepth: () => 1, backNormal: () => null, shapeIdentifier: 1, backIdentifierAt: () => 1, reversed: false });
   assert.equal(empty, null);
 });
 
 test('a grazing exit that is totally internally reflected returns null so the ball lens path is used', () => {
   // The inside ray meets the back face at 60 degrees, past the glass critical angle (41.8 degrees).
   const grazingNormal = [0, Math.sin(Math.PI / 3), Math.cos(Math.PI / 3)];
-  const found = backFaceExit({ position: [0, 0, 0.3], normal: [0, 0, 1], viewDirection: [0, 0, 1], indexOfRefraction: 1.5, thickness: 1.2, project, backDepth: () => project([0, 0, -0.3]).depth, backNormal: () => grazingNormal, reversed: false });
+  const found = backFaceExit({ position: [0, 0, 0.3], normal: [0, 0, 1], viewDirection: [0, 0, 1], indexOfRefraction: 1.5, thickness: 1.2, project, backDepth: () => project([0, 0, -0.3]).depth, backNormal: () => grazingNormal, shapeIdentifier: 1, backIdentifierAt: () => 1, reversed: false });
   assert.equal(found, null);
   assert.equal(refractDirection([0, 0, -1], grazingNormal.map(value => -value), 1.5), null, 'the same normal and ray are in total internal reflection');
 });
@@ -87,6 +87,8 @@ test('the shader carries the reference constants and the same exit math, in the 
   assert.ok(glassBackFaceGlsl.includes(`BACK_REACH_PER_THICKNESS = ${BACK_REACH_PER_THICKNESS.toFixed(1)}`));
   // Same steps as backFaceExit: reach of the march, hit distance along the inside ray, the inward (negated) outward normal, TIR leaves the heuristic.
   const steps = ['inside = refract(incident, normal, 1.0 / indexOfRefraction)', 'thickness * BACK_REACH_PER_THICKNESS', 'encoded.xyz * 2.0 - 1.0', 'exitPosition = position + inside * hit.w', 'refract(inside, -normalize(outward), indexOfRefraction)', 'if (dot(direction, direction) < 0.5) return false;'];
+  assert.ok(glassBackFaceGlsl.includes('abs(encoded.a * 255.0 - glassBackIdentifier()) > 0.5'), 'the shader checks the identifier like backFaceExit');
+  assert.ok(glassBackFaceGlsl.includes(`mod(glassBackFirst + instanceEmission.w, ${BACK_IDENTIFIER_COUNT}.0) + 1.0`), 'the shader numbers instances like backIdentifier');
   let cursor = -1;
   for (const step of steps) {
     const next = glassBackFaceGlsl.indexOf(step, cursor + 1);
@@ -94,4 +96,22 @@ test('the shader carries the reference constants and the same exit math, in the 
     cursor = next;
   }
   assert.ok(source.indexOf('glassBackFaceRay(worldPosition') > source.indexOf('ballLensRay(worldPosition'));
+});
+
+// Issue #3340: a back face drawn by another glass shape is not this ray's exit.
+test('a ray does not take its exit from another shape back face (nested or overlapping glass)', () => {
+  const front = frontHit(0.7, 0.2);
+  const common = { ...front, viewDirection: [0, 0, 1], indexOfRefraction: 1.5, thickness: 1.2, project, backDepth, backNormal, reversed: false };
+  assert.ok(backFaceExit({ ...common, shapeIdentifier: 1, backIdentifierAt: () => 1 }), 'its own back face is used');
+  assert.equal(backFaceExit({ ...common, shapeIdentifier: 1, backIdentifierAt: () => 2 }), null, 'a back face of shape 2 gives no exit, the ball lens estimate stays');
+});
+
+test('instances of one frame get distinct identifiers from 1 to 254 that never read as nothing drawn', () => {
+  const identifiers = new Set();
+  for (let instance = 0; instance < BACK_IDENTIFIER_COUNT; instance++) identifiers.add(backIdentifier(0, instance));
+  assert.equal(identifiers.size, BACK_IDENTIFIER_COUNT);
+  assert.equal(Math.min(...identifiers), 1);
+  assert.equal(Math.max(...identifiers), BACK_IDENTIFIER_COUNT);
+  assert.equal(backIdentifier(3, 2), backIdentifier(4, 1), 'a batch starting at 3 numbers its third instance like a batch starting at 4 its second');
+  assert.equal(backIdentifier(0, BACK_IDENTIFIER_COUNT), 1, 'past 254 the numbers wrap');
 });

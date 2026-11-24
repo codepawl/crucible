@@ -19,7 +19,7 @@ const BACK_DEPTH_UNIT = 5;
 const BACK_NORMAL_UNIT = 12;
 
 const LIQUID_UNIFORMS = [
-  'viewProjection', 'lightProjection', 'eye', 'sceneColor', 'sceneDepth', 'glassBackDepth', 'glassBackNormal', 'glassBackEnabled', 'glassBackPass', 'depthMapping', 'resolution', 'exposure', 'hdrEnabled', 'worldMode', 'daylight', 'lightDirection',
+  'viewProjection', 'lightProjection', 'eye', 'sceneColor', 'sceneDepth', 'glassBackDepth', 'glassBackNormal', 'glassBackEnabled', 'glassBackPass', 'glassBackFirst', 'depthMapping', 'resolution', 'exposure', 'hdrEnabled', 'worldMode', 'daylight', 'lightDirection',
   'keyColor', 'ambientIntensity', 'fogColor', 'fogDensity', 'glassState', 'glassTint', 'glassCoverage', 'glassMediumContinues', 'materialEmissionFresnel', 'liquidOptics', 'foamShape', 'metallicRoughnessMap', 'hasMetallicRoughnessMap',
   'environmentSpecular', 'environmentEnabled', 'environmentIntensity', 'environmentRotation', 'environmentLevelMax',
   'time', 'probeEnabled', 'probeFloor', 'waterReflection', 'waterReflectionMatrix', 'waterClip', 'waterReflectionEnabled', 'wind', 'explosionProgress', 'explosionCenter', 'assemblyAmount',
@@ -175,13 +175,25 @@ function batchDrawsBackFaces(batch) {
   return drawsBackFaces({ transmission: layers[9], thickness: layers[11] * partScale(batch.parts[0].matrix), mediumContinues: batch.parts[0].material.mediumContinues });
 }
 
+/** Numbers the closed glass instances of the frame batch by batch: each batch gets the number of its first instance (see backIdentifier). */
+function firstInstanceOfEachBatch(closedBatches) {
+  const firstInstances = new Map();
+  let next = 0;
+  for (const batch of closedBatches) {
+    firstInstances.set(batch, next);
+    next += batch.instanceCount;
+  }
+  return firstInstances;
+}
+
 /**
  * Draws the back faces (front-face culling) of every closed glass batch into the back-face target and binds it for the glass pass.
- * Returns false, and draws nothing, when no batch is closed glass. The liquid program is in use with its frame uniforms set.
+ * Returns the first-instance number of each drawn batch (a Map), or null, and draws nothing, when no batch is closed glass. The liquid program is in use with its frame uniforms set.
  */
 function drawGlassBackFaces(renderer, liquids, width, height) {
   const closedBatches = liquids.filter(batchDrawsBackFaces);
-  if (closedBatches.length === 0) return false;
+  if (closedBatches.length === 0) return null;
+  const firstInstances = firstInstanceOfEachBatch(closedBatches);
   const context = renderer.context;
   const uniforms = renderer.liquidUniforms;
   const reversed = Boolean(renderer.reversedDepth);
@@ -201,6 +213,7 @@ function drawGlassBackFaces(renderer, liquids, width, height) {
   context.cullFace(context.FRONT);
   context.uniform1f(uniforms.glassBackPass, 1);
   for (const batch of closedBatches) {
+    context.uniform1f(uniforms.glassBackFirst, firstInstances.get(batch));
     if (renderer.liquidClipLocations) bindClipPlanes(renderer, batch, renderer.liquidClipLocations);
     context.bindVertexArray(batch.vertexArray);
     context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
@@ -213,7 +226,7 @@ function drawGlassBackFaces(renderer, liquids, width, height) {
   context.bindTexture(context.TEXTURE_2D, target.normalTexture);
   context.activeTexture(context.TEXTURE0);
   context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
-  return true;
+  return firstInstances;
 }
 
 // KHR_materials_volume gives the thickness in the mesh's own units, so a placed or scaled asset thickens with its transform.
@@ -277,12 +290,14 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
     context.uniform3f(uniforms.depthMapping, mapping.scale, mapping.bias, reversed ? 1 : 0);
   }
   context.uniform1f(uniforms.glassBackPass, 0);
-  context.uniform1f(uniforms.glassBackEnabled, sceneDepthTexture && drawGlassBackFaces(renderer, liquids, width, height) ? 1 : 0);
+  const backFirstInstances = sceneDepthTexture ? drawGlassBackFaces(renderer, liquids, width, height) : null;
+  context.uniform1f(uniforms.glassBackEnabled, backFirstInstances ? 1 : 0);
   for (const batch of liquids) {
     const layers = batch.layerState;
     context.uniform4f(uniforms.glassState, layers[9], layers[10], layers[11] * partScale(batch.parts[0].matrix), Math.min(layers[12], maximumDistance));
     context.uniform3f(uniforms.glassTint, layers[13], layers[14], layers[15]);
     // Blended glass covers the refracted picture by its alpha, over the opaque scene already in the frame.
+    context.uniform1f(uniforms.glassBackFirst, backFirstInstances?.get(batch) ?? 0);
     context.uniform1f(uniforms.glassMediumContinues, batch.parts[0].material.mediumContinues === true ? 1 : 0);
     context.uniform1f(uniforms.materialEmissionFresnel, layers[24]);
     const covering = batch.opacity < 1;

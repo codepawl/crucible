@@ -220,7 +220,7 @@ A material that uses none of them costs nothing extra: the shader branches on un
 
 Limits, stated plainly:
 
-- Transmission uses one refraction through the front surface with the thickness estimate the `liquid` material uses. It does not trace the back face, and roughness blurs the reflection only, not the view behind. The scene colour comes from opaque geometry, so blended surfaces do not show through glass.
+- Transmission refracts through the front surface, and a closed glass shape bends the ray again where it leaves, found from its own back faces (a ball keeps the sphere estimate where no back face is found). The back-face target keeps only the nearest back face per pixel, so each back face carries the identifier of the glass instance that drew it and a ray takes its exit only from the instance it entered. Where another glass shape's back face is nearer (a glass inside a larger glass, two overlapping closed shapes) the outer ray keeps the sphere estimate instead of bending at the wrong place; the inner shape is exact. Instances beyond the 254th in one frame reuse identifiers. Roughness blurs the reflection only, not the view behind. The scene colour comes from opaque geometry, so blended surfaces do not show through glass.
 - A transmissive material does not take a clear coat, sheen or maps. Its base map and normal map are ignored.
 - The clear coat uses the surface normal and the key light. Point lights add no coat highlight.
 - Sheen is the Charlie distribution on the key light plus an ambient rim. It does not use a lookup table for energy loss.
