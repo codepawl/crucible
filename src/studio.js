@@ -38,6 +38,7 @@ import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, des
 import './replace-textured-parts.js';
 import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
 import { createBakeMark } from './studio-bake-mark.js';
+import { openNameEditor, splitFileName, validateFileStem } from './studio-name-editor.js';
 import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, watchContextLoss } from './studio-context-loss.js';
@@ -1337,7 +1338,7 @@ export function createStudio(container, {
   });
 
   // Top Workspace Header Bar
-  const filePill = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-filepill', textContent: activeFileName, attributes: { popovertarget: 'crucible-studio-pop-new' } });
+  const filePill = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-filepill', textContent: activeFileName, attributes: { 'aria-label': 'Rename scene' } });
   const watchPill = createElement(documentReference, 'span', {
     className: 'crucible-studio-watch-pill',
     hidden: !activeFilePath,
@@ -1539,8 +1540,10 @@ export function createStudio(container, {
       const recipe = buildTemplateRecipe(templateKey);
       await prepareRecipe(recipe);
       controller.loadRecipe(recipe);
+      cancelNameEditing();
       activeFilePath = null;
       activeFileName = `${templateKey}.scene.json`;
+      renameWaitsForSave = false;
       isDirty = false;
       discardDraft();
       syncFileBanner();
@@ -1757,14 +1760,10 @@ export function createStudio(container, {
     menuButton.addEventListener('pointerenter', () => {
       const openPair = menuPairs.find(([, otherPopover]) => otherPopover !== menuPopover && otherPopover.matches?.(':popover-open'));
       if (openPair) {
-        fileMenuAnchor = menuButton === fileMenuButton ? fileMenuButton : fileMenuAnchor;
         switchMenubarMenu(openPair[1], menuPopover, () => menuPopover.showPopover?.());
       }
     });
   }
-  let fileMenuAnchor = filePill;
-  filePill.addEventListener('click', () => { fileMenuAnchor = filePill; });
-  fileMenuButton.addEventListener('click', () => { fileMenuAnchor = fileMenuButton; });
 
   function bindPopoverAnchor(triggerButton, popoverElement, { beside = false } = {}) {
     popoverElement.addEventListener('beforetoggle', event => {
@@ -1790,7 +1789,7 @@ export function createStudio(container, {
       popoverElement.style.setProperty('--studio-popover-shift', opening.shift);
     });
   }
-  bindPopoverAnchor(() => fileMenuAnchor, newPopover);
+  bindPopoverAnchor(fileMenuButton, newPopover);
   bindPopoverAnchor(editMenuButton, editPopover);
   bindPopoverAnchor(viewMenuButton, viewPopover);
   bindPopoverAnchor(helpMenuButton, helpPopover);
@@ -2924,11 +2923,83 @@ export function createStudio(container, {
     } else {
       agentPresence.hide();
     }
+    cancelNameEditing();
     activeFilePath = filePath;
     activeFileName = fileName;
+    renameWaitsForSave = false;
     isDirty = false;
     syncFileBanner();
   }
+
+  // One name is edited at a time; opening another, or loading another file, closes the one that is open without applying it.
+  let activeNameEditor = null;
+  let renameWaitsForSave = false;
+  let renameNoticeShown = false;
+
+  function cancelNameEditing() {
+    activeNameEditor?.cancel();
+  }
+
+  function startNameEditing(options) {
+    cancelNameEditing();
+    const editor = openNameEditor({
+      documentReference,
+      createElement,
+      createIcon,
+      ...options,
+      onClose: detail => {
+        if (activeNameEditor === editor) activeNameEditor = null;
+        options.onClose?.(detail);
+      },
+    });
+    activeNameEditor = editor;
+    return editor;
+  }
+
+  // The name is not part of the recipe, so a rename does not mark the scene as changed. It goes to the next save and to the draft.
+  // A host that can rename the file on disk is asked to, and it must refuse to overwrite; without one the old file stays as it is.
+  async function applySceneRename(newFileName) {
+    if (newFileName === activeFileName) return null;
+    if (activeFilePath && desktop?.renameScene) {
+      const response = await desktop.renameScene({ filePath: activeFilePath, fileName: newFileName });
+      if (response?.exists) return { error: 'A file with this name already exists' };
+      if (response?.error) return { error: String(response.error) };
+      if (response?.canceled) return null;
+      activeFilePath = response?.filePath ?? activeFilePath;
+      activeFileName = response?.fileName ?? newFileName;
+    } else {
+      activeFileName = newFileName;
+      renameWaitsForSave = Boolean(activeFilePath);
+      if (!renameNoticeShown) {
+        renameNoticeShown = true;
+        announce('Renamed. The new name is used from the next save; the file on disk keeps its old name.');
+      }
+    }
+    if (isDirty) {
+      clearTimeout(draftTimer);
+      writeDraftNow();
+    }
+    syncFileBanner();
+    return null;
+  }
+
+  function startSceneRename() {
+    const { stem, suffix } = splitFileName(activeFileName);
+    const openedAs = { filePath: activeFilePath, fileName: activeFileName };
+    startNameEditing({
+      anchor: filePill,
+      text: stem,
+      suffix,
+      label: 'Rename scene',
+      validate: text => validateFileStem(text, suffix),
+      isStale: () => activeFilePath !== openedAs.filePath || activeFileName !== openedAs.fileName,
+      onCommit: value => applySceneRename(`${value}${suffix}`),
+      onClose: ({ trigger }) => {
+        if (trigger === 'enter' || trigger === 'escape') filePill.focus();
+      },
+    });
+  }
+  filePill.addEventListener('click', startSceneRename);
 
   async function performOpenFile() {
     if (desktop?.openFile) {
@@ -2949,12 +3020,13 @@ export function createStudio(container, {
   async function performSaveFile({ forceAs = false } = {}) {
     const recipeText = `${JSON.stringify(controller.exportRecipe(), null, 2)}\n`;
     if (desktop?.saveFile && desktop?.saveFileAs) {
-      const response = forceAs || !activeFilePath
+      const response = forceAs || !activeFilePath || renameWaitsForSave
         ? await desktop.saveFileAs({ text: recipeText, suggestedName: activeFileName })
         : await desktop.saveFile({ filePath: activeFilePath, text: recipeText });
       if (!response || response.canceled) return;
       activeFilePath = response.filePath;
       activeFileName = response.fileName;
+      renameWaitsForSave = false;
       isDirty = false;
       discardDraft();
       syncFileBanner();
@@ -4923,6 +4995,10 @@ export function createStudio(container, {
       return autoReloadWatch;
     },
     setFileContext({ filePath, fileName, dirty }) {
+      if (filePath !== undefined || fileName !== undefined) {
+        cancelNameEditing();
+        renameWaitsForSave = false;
+      }
       if (filePath !== undefined) activeFilePath = filePath;
       if (fileName !== undefined) activeFileName = fileName;
       if (dirty !== undefined) isDirty = Boolean(dirty);

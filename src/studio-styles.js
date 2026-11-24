@@ -583,6 +583,87 @@ export const STUDIO_CSS = `
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.crucible-studio button.crucible-studio-filepill { cursor: text; }
+.crucible-studio button.crucible-studio-filepill:hover,
+.crucible-studio button.crucible-studio-filepill:focus-visible {
+  background: color-mix(in srgb, var(--studio-text) 7%, transparent);
+}
+.crucible-studio [data-renaming="true"] { display: none; }
+/* The editor of a name: a field as wide as its text, then the type of the file as plain text that cannot be edited. */
+.crucible-studio-name-editor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  font-family: var(--studio-font-heading);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  line-height: 22px;
+}
+.crucible-studio-name-field {
+  display: inline-grid;
+  min-inline-size: 12ch;
+  max-inline-size: 32ch;
+}
+.crucible-studio-name-mirror,
+.crucible-studio input.crucible-studio-name-input {
+  grid-area: 1 / 1;
+  padding: var(--studio-space-4) var(--studio-space-8);
+  border: 1px solid transparent;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+}
+.crucible-studio-name-mirror {
+  visibility: hidden;
+  white-space: pre;
+  overflow: hidden;
+}
+.crucible-studio input.crucible-studio-name-input {
+  min-inline-size: 0;
+  inline-size: 100%;
+  border-color: var(--studio-accent);
+  font-variant-numeric: normal;
+}
+.crucible-studio-name-editor[data-invalid="true"] input.crucible-studio-name-input { background: color-mix(in srgb, var(--studio-accent) 14%, transparent); }
+.crucible-studio-name-suffix {
+  flex: none;
+  padding-inline-end: var(--studio-space-4);
+  color: var(--studio-muted);
+  user-select: none;
+}
+.crucible-studio-name-error {
+  position: absolute;
+  inset-block-start: calc(100% + var(--studio-space-8));
+  inset-inline-start: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  inline-size: max-content;
+  max-inline-size: 280px;
+  padding: var(--studio-space-8);
+  border: 1px solid var(--studio-border);
+  border-radius: 8px;
+  background: var(--studio-panel);
+  box-shadow: var(--studio-shadow);
+  color: var(--studio-text);
+  font-family: var(--studio-font);
+  font-weight: 500;
+  font-size: 12.5px;
+  letter-spacing: 0;
+  line-height: 16px;
+  white-space: normal;
+}
+.crucible-studio-name-error[hidden] { display: none; }
+.crucible-studio-name-error .crucible-studio-icon {
+  flex: none;
+  inline-size: 16px;
+  block-size: 16px;
+  stroke: var(--studio-accent);
+}
 .crucible-studio-filepill[data-dirty="true"]::after {
   content: "";
   display: inline-block;

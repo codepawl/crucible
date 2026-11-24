@@ -501,7 +501,7 @@ test('a scene holding a heart and a vase shows both in the Scene list and select
 
 test('popover buttons open each menu, close it again on a click inside and stay inside the window', testContext => {
   const ui = mountStudio(testContext);
-  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  const filePill = ui.root.querySelectorAll('button').find(button => button.getAttribute('popovertarget') === 'crucible-studio-pop-new');
   filePill.box = { left: 20, top: 10, width: 120, height: 24, right: 140, bottom: 34 };
   filePill.click();
   const newPopover = ui.root.querySelector('#crucible-studio-pop-new');
@@ -1329,6 +1329,154 @@ test('Save downloads the recipe in the browser and clears the unsaved mark', asy
   byText(ui.root, 'Save as\u2026').click();
   await ui.dom.settle();
   assert.equal(ui.dom.document.downloads.length, 4);
+});
+
+const sceneNameEditor = ui => ui.root.querySelector('.crucible-studio-name-editor');
+
+async function renameSceneTo(ui, typedText, key = 'Enter') {
+  ui.root.querySelector('.crucible-studio-filepill').click();
+  const input = sceneNameEditor(ui).querySelector('input');
+  input.value = typedText;
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key });
+  await ui.dom.settle();
+}
+
+test('a click on the scene name edits its name part in place and keeps the type fixed (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  assert.equal(filePill.getAttribute('aria-label'), 'Rename scene');
+  filePill.click();
+  assert.notEqual(ui.root.querySelector('#crucible-studio-pop-new').popoverOpen, true, 'the File menu belongs to the File button');
+  const editor = sceneNameEditor(ui);
+  assert.equal(filePill.dataset.renaming, 'true');
+  const input = editor.querySelector('input');
+  assert.equal(input.value, 'untitled');
+  assert.equal(input.getAttribute('aria-label'), 'Rename scene');
+  assert.equal(editor.querySelector('.crucible-studio-name-suffix').textContent, '.scene.json');
+  assert.equal(input.selected, true);
+
+  input.value = 'lounge.glb';
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key: 'Enter' });
+  await ui.dom.settle();
+  assert.equal(sceneNameEditor(ui), null);
+  assert.equal(filePill.textContent, 'lounge.scene.json', 'the typed type is dropped and the original type stays');
+  assert.equal(filePill.dataset.dirty, 'false', 'the name is not part of the recipe, so a rename is not a change of the scene');
+  assert.match(ui.status(), /new name is used from the next save/);
+  byText(ui.root, 'Save').click();
+  await ui.dom.settle();
+  assert.equal(ui.dom.document.downloads.at(-1).filename, 'lounge.scene.json');
+});
+
+test('the scene name editor refuses bad names in place and Escape restores the old name (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  for (const bad of ['', '   ', 'a|b', 'a.', '...', 'CON', 'x'.repeat(121)]) {
+    await renameSceneTo(ui, bad);
+    const editor = sceneNameEditor(ui);
+    assert.notEqual(editor, null, `${JSON.stringify(bad)} keeps the editor open`);
+    assert.equal(editor.querySelector('.crucible-studio-name-error').hidden, false);
+    assert.equal(filePill.textContent, 'untitled.scene.json');
+    dispatch(editor.querySelector('input'), 'keydown', { key: 'Escape' });
+    assert.equal(sceneNameEditor(ui), null);
+    assert.equal(filePill.textContent, 'untitled.scene.json');
+  }
+  await renameSceneTo(ui, 'changed', 'Escape');
+  assert.equal(filePill.textContent, 'untitled.scene.json', 'Escape cancels a valid name too');
+});
+
+test('a click away keeps a valid scene name and drops an invalid one (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  filePill.click();
+  let input = sceneNameEditor(ui).querySelector('input');
+  input.value = 'half|typed';
+  dispatch(input, 'input');
+  dispatch(input, 'blur');
+  await ui.dom.settle();
+  assert.equal(sceneNameEditor(ui), null);
+  assert.equal(filePill.textContent, 'untitled.scene.json');
+  filePill.click();
+  input = sceneNameEditor(ui).querySelector('input');
+  input.value = 'kept';
+  dispatch(input, 'input');
+  dispatch(input, 'blur');
+  await ui.dom.settle();
+  assert.equal(filePill.textContent, 'kept.scene.json');
+});
+
+test('studio shortcuts do not fire while a name is typed (#3344)', testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  const toolBefore = ui.controller.tool;
+  ui.root.querySelector('.crucible-studio-filepill').click();
+  const input = sceneNameEditor(ui).querySelector('input');
+  for (const key of ['g', 'r', 's', 'x', 'a', 'Delete', 'Backspace']) dispatch(input, 'keydown', { key });
+  dispatch(input, 'keydown', { key: 'a', ctrlKey: true });
+  assert.deepEqual(ui.studio.exportRecipe().nodes.map(node => node.id), ['ground', 'hero', 'orb']);
+  assert.equal(ui.controller.selectedNodeId, 'hero');
+  assert.equal(ui.controller.tool, toolBefore);
+});
+
+test('a second rename does not repeat the browser notice and a new file closes an open editor (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  await renameSceneTo(ui, 'first');
+  assert.match(ui.status(), /next save/);
+  ui.dom.runTimers();
+  await renameSceneTo(ui, 'second');
+  assert.doesNotMatch(ui.status(), /next save/);
+  ui.root.querySelector('.crucible-studio-filepill').click();
+  assert.notEqual(sceneNameEditor(ui), null);
+  ui.studio.setFileContext({ filePath: 'C:/scenes/other.scene.json', fileName: 'other.scene.json' });
+  assert.equal(sceneNameEditor(ui), null, 'the name never lands on a different file');
+  assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, 'other.scene.json');
+});
+
+test('a host that can rename is asked, never overwrites and reports a taken name in place (#3344)', async testContext => {
+  const taken = new Set(['C:/scenes/taken.scene.json']);
+  const desktop = createDesktop({
+    renameScene: async ({ filePath, fileName }) => {
+      const target = `C:/scenes/${fileName}`;
+      desktop.calls.push({ name: 'renameScene', argument: { filePath, fileName } });
+      return taken.has(target) ? { exists: true } : { filePath: target, fileName };
+    },
+  });
+  const ui = mountStudio(testContext, { desktop });
+  ui.studio.setFileContext({ filePath: 'C:/scenes/old.scene.json', fileName: 'old.scene.json', dirty: false });
+  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  await renameSceneTo(ui, 'taken');
+  const editor = sceneNameEditor(ui);
+  assert.notEqual(editor, null, 'the editor stays open');
+  assert.equal(editor.querySelector('.crucible-studio-name-error-text').textContent, 'A file with this name already exists');
+  assert.equal(filePill.textContent, 'old.scene.json');
+  const input = editor.querySelector('input');
+  input.value = 'fresh';
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key: 'Enter' });
+  await ui.dom.settle();
+  assert.equal(filePill.textContent, 'fresh.scene.json');
+  assert.equal(filePill.title, 'C:/scenes/fresh.scene.json');
+  assert.deepEqual(desktop.calls.filter(call => call.name === 'renameScene').map(call => call.argument.fileName), ['taken.scene.json', 'fresh.scene.json']);
+  byText(ui.root, 'Save').click();
+  await ui.dom.settle();
+  assert.equal(desktop.calls.at(-1).name, 'saveFile', 'the file already moved, so Save writes to its new path');
+  assert.equal(desktop.calls.at(-1).argument.filePath, 'C:/scenes/fresh.scene.json');
+});
+
+test('a host without a rename method sends the next Save through Save as with the new name (#3344)', async testContext => {
+  const desktop = createDesktop();
+  const ui = mountStudio(testContext, { desktop });
+  ui.studio.setFileContext({ filePath: 'C:/scenes/old.scene.json', fileName: 'old.scene.json', dirty: false });
+  await renameSceneTo(ui, 'newer');
+  assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, 'newer.scene.json');
+  byText(ui.root, 'Save').click();
+  await ui.dom.settle();
+  assert.equal(desktop.calls.at(-1).name, 'saveFileAs');
+  assert.equal(desktop.calls.at(-1).argument.suggestedName, 'newer.scene.json');
+  byText(ui.root, 'Save').click();
+  await ui.dom.settle();
+  assert.equal(desktop.calls.at(-1).name, 'saveFile', 'after the file exists under the new name, Save is plain again');
 });
 
 test('Save, Save as and Open go through the desktop shell when there is one', async testContext => {
