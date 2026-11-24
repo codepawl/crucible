@@ -199,6 +199,7 @@ on:
       - 'src/light-limits.js'
       - 'src/light-link-bits.js'
       - 'src/lamp-mesh.js'
+      - 'src/foliage-shading.js'
       - 'src/leaf-transmission.js'
       - 'src/light-linking.js'
       - 'src/light-parenting.js'

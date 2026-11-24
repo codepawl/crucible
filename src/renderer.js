@@ -788,10 +788,27 @@ export function configureTexture(renderer, info, { bakesNormalVariance = false }
   context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, info.minFilter);
   context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, info.magFilter);
   if (info.mipmaps) {
-    const baked = bakesNormalVariance && bakeNormalMapVariance(context, context.getParameter(context.TEXTURE_BINDING_2D), info.width, info.height);
-    if (!baked) context.generateMipmap(context.TEXTURE_2D);
+    if (info.mipLevels) {
+      uploadProvidedMipLevels(context, info);
+    } else {
+      const baked = bakesNormalVariance && bakeNormalMapVariance(context, context.getParameter(context.TEXTURE_BINDING_2D), info.width, info.height);
+      if (!baked) context.generateMipmap(context.TEXTURE_2D);
+    }
     if (filtersSmoothly(info)) renderer.applyAnisotropy(context.TEXTURE_2D);
   }
+}
+
+// A descriptor with its own mip chain (alpha-tested leaf cards, whose coverage a box filter loses) uploads levels 1 and down as given.
+function uploadProvidedMipLevels(context, { mipLevels, linear }) {
+  mipLevels.forEach((level, index) => {
+    context.texImage2D(context.TEXTURE_2D, index + 1, linear ? context.RGBA8 : context.SRGB8_ALPHA8, level.width, level.height, 0, context.RGBA, context.UNSIGNED_BYTE, level.data);
+  });
+}
+
+function validateMipLevels(mipLevels, width, height) {
+  const valid = mipLevels?.length === Math.floor(Math.log2(Math.max(width, height))) && mipLevels.every((level, index) => (
+    level.width === Math.max(1, width >> (index + 1)) && level.height === Math.max(1, height >> (index + 1)) && level.data?.length === level.width * level.height * 4));
+  if (!valid) throw new Error(`mipLevels must be every level below the ${width}x${height} image, each width x height x 4 bytes.`);
 }
 
 // Anisotropic filtering replaces both filters with its own smooth one, so it would turn a NEAREST sampler (pixel art, block
@@ -820,7 +837,12 @@ export function textureDescriptorInfo(map, maximumSize = Infinity) {
   // Precompressed mips come with the image and are never generated. The image supplies its own filter and byte count.
   if (compressed) return { width, height, wrapS, wrapT, minFilter: compressed.minFilter(minFilter), magFilter, mipmaps: false, bytes: compressed.bytes };
   const mipmaps = minFilter >= 9984;
-  return { width, height, wrapS, wrapT, minFilter, magFilter, mipmaps, bytes: estimateTextureBytes(width, height, { mipmaps }) };
+  const info = { width, height, wrapS, wrapT, minFilter, magFilter, mipmaps, bytes: estimateTextureBytes(width, height, { mipmaps }) };
+  if (mipmaps && map.mipLevels) {
+    validateMipLevels(map.mipLevels, width, height);
+    Object.assign(info, { mipLevels: map.mipLevels, linear: map.colorSpace === 'linear' });
+  }
+  return info;
 }
 
 // Light-mapped geometry uploads its two UV sets as one four-wide attribute (zeros where channel 0 is absent).

@@ -2,7 +2,7 @@
 // impostor cards from level 3, in headless Chrome (SwiftShader unless `--gpu`). It writes both pictures to
 // artifacts/forest-pair and prints, as JSON: triangles and draw calls counted at the WebGL calls, GPU frame time per
 // interleaved run (timer queries, else a pixel read), and the impostor bake time per run.
-// `--runs N` sets how many interleaved plain/cards pairs and bake repeats run (default 3). `--from L` sets the first card level.
+// `--trees N` and `--density D` (trees per square meter) size the forest (default 5000 at 0.0035). `--runs N` sets how many interleaved plain/cards pairs and bake repeats run (default 3). `--from L` sets the first card level.
 // Score the pair with: uv run --no-project --python 3.12 --with flip-evaluator --with pillow --with numpy python -I scripts/flip-pair.py
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
@@ -18,6 +18,8 @@ const runs = optionValue('--runs', 3);
 const firstCardLevel = optionValue('--from', 3);
 const bakeLevel = optionValue('--bake-level', undefined);
 const fadeBand = optionValue('--fade', undefined);
+const treeCount = optionValue('--trees', 5000);
+const treeDensity = optionValue('--density', 0.0035);
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
 let browser;
 try {
@@ -32,14 +34,14 @@ try {
     server.on('exit', (code) => reject(new Error(`The server exited ${code}.`)));
   });
   const args = useGpu ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'];
-  browser = await chromium.launch({ headless: true, args });
+  browser = await chromium.launch({ headless: true, args, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
   page.on('pageerror', error => console.error(error.message));
   await page.goto(`http://127.0.0.1:${port}/`);
   let result;
   for (let attempt = 0; attempt < 4 && !result; attempt++) {
     try {
-      result = await page.evaluate(async ({ runs, firstCardLevel, bakeLevel, fadeBand }) => {
+      result = await page.evaluate(async ({ runs, firstCardLevel, bakeLevel, fadeBand, treeCount, treeDensity }) => {
         const { scatterVegetation, selectLevels, prepareImpostors } = await import('/src/vegetation.js');
         const { createTerrain } = await import('/src/terrain.js');
         const { CrucibleRenderer } = await import('/src/renderer.js');
@@ -63,13 +65,13 @@ try {
         wrap('drawElementsInstanced', ([mode, vertices, , , instances]) => count(mode, vertices, instances));
         wrap('drawArraysInstanced', ([mode, , vertices, instances]) => count(mode, vertices, instances));
 
-        const side = Math.sqrt(5000 / 0.0035);
+        const side = Math.sqrt(treeCount / treeDensity);
         const terrain = createTerrain({
           size: 1400, resolution: 32, chunks: 16, levels: 4, seed: 7,
           height: { amplitude: 9, featureSize: 140, octaves: 4, warp: 24, mountainMask: () => 0 },
         });
         const buildForest = () => scatterVegetation({
-          area: { minX: -side / 2, maxX: side / 2, minZ: -side / 2, maxZ: side / 2 }, density: 0.0035, terrainHeight: terrain.heightAt, slopeLimit: 38,
+          area: { minX: -side / 2, maxX: side / 2, minZ: -side / 2, maxZ: side / 2 }, density: treeDensity, terrainHeight: terrain.heightAt, slopeLimit: 38,
           mix: { broadleaf: 3, birch: 1.5, conifer: 2, bush: 2, palm: 0.6 }, seed: 5,
         });
         const forest = buildForest();
@@ -159,7 +161,7 @@ try {
           selectedTriangles: { plain: views.plain.triangles, cards: views.cards.triangles }, cards: views.cards.impostors,
           measurements, pictures,
         };
-      }, { runs, firstCardLevel, bakeLevel, fadeBand });
+      }, { runs, firstCardLevel, bakeLevel, fadeBand, treeCount, treeDensity });
     } catch (error) {
       if (!/context was destroyed/.test(error.message)) throw error;
       await page.waitForLoadState('load');
