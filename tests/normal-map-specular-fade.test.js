@@ -19,8 +19,8 @@ test('a shader without a normal map carries none of the specular fade code', () 
 
 // Draws metal spheres whose normal map is a disc of sphere normals with a one-texel bevel, lit by three point lights, and returns the
 // rim pixels (a ring from 5 px inside to 1 px outside the silhouette) whose luminance is more than 25 above the median of their 5x5 neighbourhood.
-async function countRimSpeckle(page) {
-  return page.evaluate(async () => {
+async function countRimSpeckle(page, margin = 25, roughness = 0.25) {
+  return page.evaluate(async ({ brightnessMargin, roughness }) => {
     const { grid } = await import('/src/geometry.js');
     const { CrucibleRenderer } = await import('/src/renderer.js');
     const TEXELS = 256;
@@ -48,7 +48,7 @@ async function countRimSpeckle(page) {
     canvas.style.width = `${SIZE}px`;
     canvas.style.height = `${SIZE}px`;
     document.body.append(canvas);
-    const metal = { tag: 'surface', color: [0.9, 0.9, 0.95], metallic: 1, roughness: 0.25, emission: 0, normalMap: { image: map, colorSpace: 'linear', minFilter: 9987, magFilter: 9729 } };
+    const metal = { tag: 'surface', color: [0.9, 0.9, 0.95], metallic: 1, roughness, emission: 0, normalMap: { image: map, colorSpace: 'linear', minFilter: 9987, magFilter: 9729 } };
     const quad = { name: 'mapped sphere', geometry: grid(1), matrix: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]), material: metal };
     const sky = [0.05, 0.05, 0.06];
     const environment = {
@@ -78,16 +78,29 @@ async function countRimSpeckle(page) {
         const neighbours = [];
         for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) neighbours.push(luminance(Math.min(SIZE - 1, Math.max(0, x + dx)), Math.min(SIZE - 1, Math.max(0, y + dy))));
         neighbours.sort((a, b) => a - b);
-        if (luminance(x, y) - neighbours[12] > 25) speckle++;
+        if (luminance(x, y) - neighbours[12] > brightnessMargin) speckle++;
       }
     }
     return speckle;
-  });
+  }, { brightnessMargin: margin, roughness });
 }
 
 test('metal with a bevelled normal map keeps a clean rim instead of one bright pixel per light', async (context) => {
   await withDevServerPage(context, async (page) => {
     const speckle = await countRimSpeckle(page);
     assert.ok(speckle <= MAXIMUM_SPECKLE_PIXELS, `${speckle} bright rim pixels, at most ${MAXIMUM_SPECKLE_PIXELS} expected; the direct specular of a normal-mapped shader must fade where the mapped normal varies across the pixel (NORMAL_MAP_SPECULAR_CODE in src/shaders.js)`);
+  });
+});
+
+// #3142: at the narrowest highlight the material allows (roughness 0.075) the linear fade alone still left a bead wherever the normal
+// turns fast across a pixel. Measured on this scene (GPU Chrome, bright means 25 above the neighbourhood median): 97 pixels before the
+// knee of the fade, 67 after. The limit sits between the two.
+const NARROW_HIGHLIGHT_ROUGHNESS = 0.075;
+const MAXIMUM_NARROW_HIGHLIGHT_SPECKLE_PIXELS = 80;
+
+test('a narrow highlight on a normal-mapped silhouette leaves fewer beads than the linear fade alone', async (context) => {
+  await withDevServerPage(context, async (page) => {
+    const speckle = await countRimSpeckle(page, 25, NARROW_HIGHLIGHT_ROUGHNESS);
+    assert.ok(speckle <= MAXIMUM_NARROW_HIGHLIGHT_SPECKLE_PIXELS, `${speckle} bright rim pixels at roughness ${NARROW_HIGHLIGHT_ROUGHNESS}, at most ${MAXIMUM_NARROW_HIGHLIGHT_SPECKLE_PIXELS} expected; the specular fade must close where the normal variance across a pixel is large.`);
   });
 });

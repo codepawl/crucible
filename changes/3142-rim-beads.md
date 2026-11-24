@@ -1,0 +1,1 @@
+- Normal-mapped metal no longer shows single bright pixels along its silhouette: the direct specular now closes where the normal turns fast across a pixel, with the interior highlight unchanged (#3142).
