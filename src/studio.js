@@ -38,7 +38,7 @@ import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, des
 import './replace-textured-parts.js';
 import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
 import { createBakeMark } from './studio-bake-mark.js';
-import { openNameEditor, splitFileName, validateFileStem } from './studio-name-editor.js';
+import { openNameEditor, splitFileName, validateFileStem, validateNodeLabel, validateShotName } from './studio-name-editor.js';
 import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, watchContextLoss } from './studio-context-loss.js';
@@ -1429,6 +1429,7 @@ export function createStudio(container, {
     createMenuItem('Paste', 'edit.paste', () => pasteCopy(), 'duplicate'),
     createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicate'),
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
+    createMenuItem('Rename', 'edit.rename', () => renameActiveObject()),
     createMenuItem('Deselect', 'edit.deselect', () => controller.selectNode(null)),
     createMenuItem('Hide', 'edit.hide', () => hideSelection(), 'eyeOff'),
     createMenuItem('Show all', 'edit.showAll', () => showAllHidden(), 'eye'),
@@ -1442,6 +1443,7 @@ export function createStudio(container, {
   const objectPopover = createMenuPopover(
     'crucible-studio-pop-object',
     createMenuItem('Frame', 'view.frame', () => flyToSelection(), 'frame'),
+    createMenuItem('Rename', 'edit.rename', () => renameActiveObject()),
     createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicate'),
     createMenuItem('Hide', 'edit.hide', () => hideSelection(), 'eyeOff'),
     createMenuItem('Reset position', 'edit.resetPosition', () => resetSelectionTransform('translation'), 'translate'),
@@ -2115,7 +2117,14 @@ export function createStudio(container, {
   const receiveShadowToggle = createElement(documentReference, 'button', { type: 'button', textContent: 'Receives shadow', attributes: { 'aria-pressed': 'true' } });
 
   nodeLabelInput.addEventListener('change', () => {
-    if (controller.selectedNodeId) controller.updateNodeTransform(controller.selectedNodeId, { label: nodeLabelInput.value });
+    if (!controller.selectedNodeId) return;
+    const checked = validateNodeLabel(nodeLabelInput.value);
+    if (!checked.ok) {
+      announce(checked.reason);
+      nodeLabelInput.value = selectedNodeLabel();
+      return;
+    }
+    controller.updateNodeTransform(controller.selectedNodeId, { label: checked.value });
   });
   nodeParentSelect.addEventListener('change', () => {
     if (!controller.selectedNodeId) return;
@@ -3569,6 +3578,68 @@ export function createStudio(container, {
   const outlinerRows = new Map();
   let lastTreeStructureKey = '';
 
+  function selectedNodeLabel() {
+    const selectedNode = controller.exportRecipe().nodes.find(node => node.id === controller.selectedNodeId);
+    return selectedNode ? (selectedNode.label ?? selectedNode.id) : '';
+  }
+
+  // Renames one node's label from its row. The id stays, so labels may repeat; the change is one undo step like any edit.
+  function startNodeRename(nodeId) {
+    const node = controller.exportRecipe().nodes.find(candidate => candidate.id === nodeId);
+    const row = outlinerRows.get(`node:${nodeId}`);
+    if (!node || !row) return;
+    const anchor = row.element.children[0];
+    const editor = startNameEditing({
+      anchor,
+      text: node.label ?? node.id,
+      label: `Rename ${node.label ?? node.id}`,
+      validate: validateNodeLabel,
+      isStale: () => !controller.exportRecipe().nodes.some(candidate => candidate.id === nodeId),
+      onCommit: value => {
+        if (value !== (node.label ?? node.id)) controller.updateNodeTransform(nodeId, { label: value });
+        return null;
+      },
+      onClose: ({ trigger }) => {
+        if (trigger === 'enter' || trigger === 'escape') outlinerRows.get(`node:${nodeId}`)?.element.children[0]?.focus({ preventScroll: true });
+      },
+    });
+    editor.element.style.paddingLeft = anchor.style.paddingLeft;
+  }
+
+  // F2 and the Rename rows of the menus: the active object, as in Blender. The camera, the sun and the lights keep the names Studio gives them.
+  function renameActiveObject() {
+    const nodeId = controller.selectedNodeId;
+    if (!nodeId) {
+      if (controller.selectedObjectKey) announce('The camera, the sun and lights keep their names.');
+      return;
+    }
+    if (root.dataset.outlinerCollapsed === 'true') setOutlinerCollapsed(false);
+    if (!outlinerRows.has(`node:${nodeId}`)) {
+      outlinerSearch.value = '';
+      syncUi();
+    }
+    outlinerRows.get(`node:${nodeId}`)?.element.scrollIntoView?.({ block: 'nearest' });
+    startNodeRename(nodeId);
+  }
+
+  // A shot is keyed by its name, so the rename goes through the controller, which refuses a name that is taken.
+  function startShotRename(shotName, anchor) {
+    startNameEditing({
+      anchor,
+      text: shotName,
+      label: `Rename shot ${shotName}`,
+      validate: text => validateShotName(text, controller.listBookmarks().map(shot => shot.name).filter(name => name !== shotName)),
+      isStale: () => !controller.listBookmarks().some(shot => shot.name === shotName),
+      onCommit: value => {
+        if (value !== shotName) controller.renameBookmark(shotName, value);
+        return null;
+      },
+      onClose: ({ trigger }) => {
+        if (trigger === 'escape') anchor.focus();
+      },
+    });
+  }
+
   function createNodeRow(node, depth, iconName) {
     const badge = createIcon(documentReference, iconName);
     badge.setAttribute('class', 'crucible-studio-icon crucible-studio-tree-badge');
@@ -3593,9 +3664,7 @@ export function createStudio(container, {
     });
     selectButton.addEventListener('dblclick', () => {
       controller.selectNode(node.id);
-      selectInspectorTab('node');
-      nodeLabelInput.focus();
-      nodeLabelInput.select();
+      startNodeRename(node.id);
     });
     const hidden = node.visible === false;
     const eyeButton = createIconButton(documentReference, hidden ? 'eyeOff' : 'eye', `${hidden ? 'Show' : 'Hide'} ${node.label ?? node.id}`, {
@@ -4060,6 +4129,7 @@ export function createStudio(container, {
         const applyButton = createElement(documentReference, 'button', { type: 'button', textContent: shot.name });
         const removeButton = createElement(documentReference, 'button', { type: 'button', textContent: '×', attributes: { 'aria-label': `Remove bookmark ${shot.name}` } });
         applyButton.addEventListener('click', () => controller.applyBookmark(shot.name));
+        applyButton.addEventListener('dblclick', () => startShotRename(shot.name, applyButton));
         removeButton.addEventListener('click', () => controller.removeBookmark(shot.name));
         return createElement(documentReference, 'div', { className: 'crucible-studio-bookmark-row' }, applyButton, removeButton);
       }));
@@ -4666,6 +4736,10 @@ export function createStudio(container, {
       event.preventDefault();
       deleteSelection();
     },
+    'edit.rename': event => {
+      event.preventDefault();
+      renameActiveObject();
+    },
     'edit.deselect': () => {
       if (controller.selectedNodeId || controller.selectedObjectKey) controller.selectNode(null);
     },
@@ -4879,6 +4953,7 @@ export function createStudio(container, {
       meshEditor.refresh();
     }
     selectionReadoutStale = true;
+    if (activeNameEditor?.isStale()) cancelNameEditing();
     if (detail.kind === 'load') {
       sceneLoadedSinceFloorFit = true;
     }

@@ -267,9 +267,11 @@ test('the outliner selects, hides, filters and renames nodes', testContext => {
 
   ui.rows()[2].querySelector('.crucible-studio-tree-select').dispatchEvent(ui.dom.document.createEvent('dblclick'));
   assert.equal(ui.controller.selectedNodeId, 'orb');
-  assert.equal(ui.controller.activeTab, 'node');
-  assert.equal(ui.dom.document.activeElement, ui.label('Node label'));
-  assert.equal(ui.label('Node label').selected, true);
+  const rowEditorInput = ui.root.querySelector('.crucible-studio-name-editor input');
+  assert.equal(rowEditorInput.value, 'orb', 'a double click edits the name in the row itself (#3344)');
+  assert.equal(ui.dom.document.activeElement === rowEditorInput, true);
+  assert.equal(rowEditorInput.selected, true);
+  dispatch(rowEditorInput, 'keydown', { key: 'Escape' });
 
   const nameInput = ui.label('Node label');
   nameInput.value = 'Moon';
@@ -1479,6 +1481,145 @@ test('a host without a rename method sends the next Save through Save as with th
   assert.equal(desktop.calls.at(-1).name, 'saveFile', 'after the file exists under the new name, Save is plain again');
 });
 
+async function typeInRowEditor(ui, typedText, key = 'Enter') {
+  const input = ui.root.querySelector('.crucible-studio-tree .crucible-studio-name-editor input');
+  input.value = typedText;
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key });
+  await ui.dom.settle();
+}
+
+test('F2 renames the active object in its Scene row; the id stays, labels may repeat, one undo step (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  const dirtyBefore = ui.root.querySelector('.crucible-studio-filepill').dataset.dirty;
+  assert.equal(dirtyBefore, 'false');
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  const input = ui.root.querySelector('.crucible-studio-tree .crucible-studio-name-editor input');
+  assert.equal(input.value, 'hero');
+  assert.equal(input.getAttribute('aria-label'), 'Rename hero');
+  await typeInRowEditor(ui, '  Hero cube  ');
+  assert.equal(ui.node('hero').label, 'Hero cube');
+  assert.equal(ui.node('hero').id, 'hero');
+  assert.deepEqual(ui.rowLabels(), ['ground', 'Hero cube', 'orb']);
+  assert.equal(ui.root.querySelector('.crucible-studio-filepill').dataset.dirty, 'true', 'a label is part of the saved recipe');
+
+  ui.selectRow('orb');
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  await typeInRowEditor(ui, 'Hero cube');
+  assert.deepEqual(ui.rowLabels(), ['ground', 'Hero cube', 'Hero cube'], 'a second object may carry the same label');
+  ui.controller.undo();
+  assert.deepEqual(ui.rowLabels(), ['ground', 'Hero cube', 'orb'], 'one undo step takes the rename back');
+  ui.controller.undo();
+  assert.deepEqual(ui.rowLabels(), ['ground', 'hero', 'orb']);
+});
+
+test('in the Scene list a single click only selects, a double click renames, Escape and a bad name keep the old label (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  assert.equal(ui.root.querySelector('.crucible-studio-name-editor'), null, 'a single click does not edit');
+  ui.rows()[1].querySelector('.crucible-studio-tree-select').dispatchEvent(ui.dom.document.createEvent('dblclick'));
+  assert.notEqual(ui.root.querySelector('.crucible-studio-name-editor'), null);
+  await typeInRowEditor(ui, 'gone', 'Escape');
+  assert.equal(ui.node('hero').label, undefined, 'Escape restores');
+  assert.equal(ui.root.querySelector('.crucible-studio-name-editor'), null);
+
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  await typeInRowEditor(ui, '   ');
+  const editor = ui.root.querySelector('.crucible-studio-name-editor');
+  assert.notEqual(editor, null, 'an empty name keeps the editor open');
+  assert.equal(editor.querySelector('.crucible-studio-name-error').hidden, false);
+  assert.match(editor.querySelector('.crucible-studio-name-error-text').textContent, /Enter a name/);
+  dispatch(editor.querySelector('input'), 'blur');
+  await ui.dom.settle();
+  assert.equal(ui.root.querySelector('.crucible-studio-name-editor'), null);
+  assert.deepEqual(ui.rowLabels(), ['ground', 'hero', 'orb']);
+
+  const properties = ui.label('Node label');
+  properties.value = '  ';
+  dispatch(properties, 'change');
+  assert.equal(ui.node('hero').label, undefined, 'the Properties field refuses an empty name too');
+  assert.equal(properties.value, 'hero');
+});
+
+test('with several objects selected F2 renames the active one only (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  const orbSelect = ui.rows()[2].querySelector('.crucible-studio-tree-select');
+  dispatch(orbSelect, 'click', { shiftKey: true });
+  assert.deepEqual([...ui.controller.selectedNodeIds].sort(), ['hero', 'orb']);
+  const active = ui.controller.selectedNodeId;
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  await typeInRowEditor(ui, 'Only this');
+  const renamed = ['hero', 'orb'].filter(id => ui.node(id).label === 'Only this');
+  assert.deepEqual(renamed, [active]);
+});
+
+test('F2 opens a collapsed or filtered Scene list, and on the camera it says the name is fixed (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('orb');
+  ui.studio.setOutlinerCollapsed(true);
+  const search = ui.label('Filter the scene list');
+  search.value = 'ground';
+  dispatch(search, 'input');
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  assert.equal(ui.root.dataset.outlinerCollapsed, 'false');
+  assert.equal(search.value, '');
+  assert.equal(ui.root.querySelector('.crucible-studio-name-editor input').value, 'orb');
+  dispatch(ui.root.querySelector('.crucible-studio-name-editor input'), 'keydown', { key: 'Escape' });
+
+  ui.controller.selectSceneObject('camera');
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  assert.equal(ui.root.querySelector('.crucible-studio-name-editor'), null);
+  assert.match(ui.status(), /keep their names/);
+});
+
+test('the Edit menu and the right click menu have a Rename row with F2 beside it (#3344)', testContext => {
+  const ui = mountStudio(testContext);
+  for (const popoverId of ['crucible-studio-pop-edit', 'crucible-studio-pop-object']) {
+    const row = byText(ui.root.querySelector(`#${popoverId}`), 'Rename');
+    assert.ok(row, popoverId);
+    assert.match(row.dataset.shortcut ?? '', /F2/);
+  }
+});
+
+test('a shot is renamed in place by a double click; a taken name is refused in the field (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  ui.controller.saveBookmark('wide');
+  ui.controller.saveBookmark('tall');
+  ui.studio.renderNow();
+  const listButton = name => ui.root.querySelector('.crucible-studio-bookmark-list').querySelectorAll('button').find(button => button.textContent === name);
+  listButton('wide').dispatchEvent(ui.dom.document.createEvent('dblclick'));
+  const input = ui.root.querySelector('.crucible-studio-bookmark-list .crucible-studio-name-editor input');
+  assert.equal(input.getAttribute('aria-label'), 'Rename shot wide');
+  input.value = 'tall';
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key: 'Enter' });
+  await ui.dom.settle();
+  assert.match(ui.root.querySelector('.crucible-studio-name-error-text').textContent, /already exists/);
+  assert.deepEqual(ui.controller.listBookmarks().map(shot => shot.name), ['wide', 'tall']);
+  input.value = 'close up';
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key: 'Enter' });
+  await ui.dom.settle();
+  assert.deepEqual(ui.controller.listBookmarks().map(shot => shot.name), ['close-up', 'tall'], 'the shot keeps its place');
+  ui.controller.undo();
+  assert.deepEqual(ui.controller.listBookmarks().map(shot => shot.name), ['wide', 'tall'], 'one undo step');
+});
+
+test('renameBookmark keeps the camera of the shot and refuses unknown, taken and malformed names (#3344)', testContext => {
+  const ui = mountStudio(testContext);
+  const shot = ui.controller.saveBookmark('wide');
+  ui.controller.saveBookmark('tall');
+  ui.controller.renameBookmark('wide', 'wide');
+  const renamed = ui.controller.renameBookmark('wide', 'establishing');
+  assert.deepEqual(renamed.find(candidate => candidate.name === 'establishing').camera, shot.camera);
+  assert.throws(() => ui.controller.renameBookmark('establishing', 'tall'), /already exists/);
+  assert.throws(() => ui.controller.renameBookmark('missing', 'x'), /Unknown camera bookmark/);
+  assert.throws(() => ui.controller.renameBookmark('tall', 'a b'), /1 to 24 letters/);
+  assert.throws(() => ui.controller.renameBookmark('tall', 'x'.repeat(25)), /1 to 24 letters/);
+});
+
 test('Save, Save as and Open go through the desktop shell when there is one', async testContext => {
   const desktop = createDesktop();
   const changes = [];
@@ -2552,7 +2693,7 @@ test('the top bar has File, Edit, View, Agent and Help menus that do what their 
   assert.equal(byText(popover('new'), 'Save').dataset.shortcut, 'Ctrl+S');
 
   menuButton('Edit').click();
-  assert.deepEqual(rows('edit'), ['Undo', 'Redo', 'Copy', 'Paste', 'Duplicate', 'Delete', 'Deselect', 'Hide', 'Show all', 'Reset position', 'Reset rotation', 'Reset scale', 'Settings…']);
+  assert.deepEqual(rows('edit'), ['Undo', 'Redo', 'Copy', 'Paste', 'Duplicate', 'Delete', 'Rename', 'Deselect', 'Hide', 'Show all', 'Reset position', 'Reset rotation', 'Reset scale', 'Settings…']);
   ui.selectRow('hero');
   const countBefore = ui.studio.exportRecipe().nodes.length;
   byText(popover('edit'), 'Duplicate').click();
@@ -2995,7 +3136,7 @@ test('a right click on an object opens its menu; H hides, Alt+H shows all and Al
   const menu = ui.root.querySelector('#crucible-studio-pop-object');
   const heroNode = () => ui.controller.exportRecipe().nodes.find(node => node.id === 'hero');
   const press = (key, modifiers = {}) => dispatch(ui.dom.document, 'keydown', { key, ...modifiers });
-  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Duplicate', 'Hide', 'Reset position', 'Reset rotation', 'Reset scale', 'Delete']);
+  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Rename', 'Duplicate', 'Hide', 'Reset position', 'Reset rotation', 'Reset scale', 'Delete']);
 
   // In the Scene list the row is selected first, then the menu opens on it.
   const heroRow = ui.rows().find(row => row.textContent.includes(heroNode().label ?? 'hero'));

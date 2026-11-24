@@ -215,6 +215,10 @@ export function openNameEditor({ documentReference, createElement, createIcon, a
     element,
     input,
     get isOpen() { return !closed; },
-    cancel() { close(false, 'cancel'); },
+    // True when the thing being renamed is gone. A rename that is being applied is never stale: its own change may cause it.
+    isStale() { return !committing && Boolean(isStale?.()); },
+    cancel() {
+      if (!committing) close(false, 'cancel');
+    },
   };
 }

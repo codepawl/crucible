@@ -1,0 +1,1 @@
+- Studio renames in place, as Blender does: one click on the scene name in the top bar edits the name part with the type kept fixed, a double click or F2 on a Scene row or a double click on a shot edits its name, Enter keeps and Esc cancels, and a bad name stays in the field with its reason (#3344).

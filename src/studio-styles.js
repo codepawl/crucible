@@ -588,7 +588,7 @@ export const STUDIO_CSS = `
 .crucible-studio button.crucible-studio-filepill:focus-visible {
   background: color-mix(in srgb, var(--studio-text) 7%, transparent);
 }
-.crucible-studio [data-renaming="true"] { display: none; }
+.crucible-studio [data-renaming="true"] { display: none !important; }
 /* The editor of a name: a field as wide as its text, then the type of the file as plain text that cannot be edited. */
 .crucible-studio-name-editor {
   position: relative;
@@ -628,6 +628,22 @@ export const STUDIO_CSS = `
   font-variant-numeric: normal;
 }
 .crucible-studio-name-editor[data-invalid="true"] input.crucible-studio-name-input { background: color-mix(in srgb, var(--studio-accent) 14%, transparent); }
+/* In a list the editor takes the row of the name it replaces: same height, the width of the row. */
+.crucible-studio-tree-row .crucible-studio-name-editor,
+.crucible-studio-bookmark-row .crucible-studio-name-editor {
+  flex: 1 1 auto;
+  font-family: var(--studio-font);
+  font-weight: 400;
+  font-size: 12.5px;
+  letter-spacing: 0;
+  line-height: 18px;
+}
+.crucible-studio-tree-row .crucible-studio-name-field,
+.crucible-studio-bookmark-row .crucible-studio-name-field {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  max-inline-size: none;
+}
 .crucible-studio-name-suffix {
   flex: none;
   padding-inline-end: var(--studio-space-4);

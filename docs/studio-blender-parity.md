@@ -35,7 +35,7 @@ Blender 5.3 manual, read 2026-11-24. Studio at commit `71aa78ab5`. Status words:
 | [Set origin](https://docs.blender.org/manual/en/latest/scene_layout/object/origin.html) (Object menu) | Missing. `src/studio-controller.js:984` | The pivot is always the object's own origin. |
 | [Hide, show all, hide unselected](https://docs.blender.org/manual/en/latest/scene_layout/object/editing/show_hide.html) (H, Alt+H, Shift+H) | Partial. `src/studio-keymap.js:32-33`, `src/studio.js:1257` | H and Alt+H work. Hide unselected is missing. |
 | [Collections](https://docs.blender.org/manual/en/latest/scene_layout/collections/collections.html) (M, Ctrl+G) | Missing. Search finds none | The Scene list shows the parent tree instead (`src/studio.js:938`). |
-| [Rename](https://docs.blender.org/manual/en/latest/editors/outliner/editing.html) (F2) | Different. `src/studio.js:3294` | A double click on a Scene row focuses the name field. No F2. |
+| [Rename](https://docs.blender.org/manual/en/latest/editors/outliner/editing.html) (F2) | Has. `src/studio-name-editor.js`, `src/studio-keymap.js` | A double click on a Scene row or F2 edits the label in place; Enter keeps, Esc cancels. The scene name in the top bar and shot names use the same field. |
 | [Front, right, top view](https://docs.blender.org/manual/en/latest/editors/3dview/navigate/viewpoint.html) (Numpad 1, 3, 7) | Has. `src/studio-keymap.js:40-43` | Studio uses 1, 3, 7 and 5 for the projection switch. |
 
 ### Edit mode
