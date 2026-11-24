@@ -116,6 +116,7 @@ async function withFileSceneSunLight(parts, environment, floorSkyOptions) {
   if (!environmentHasSun(environment)) return { parts, environment, skyReport: null };
   const { skyOcclusion, ...traceOptions } = floorSkyOptions;
   const traced = applyDefaultFloorSky(parts, environment, traceOptions);
+  if (traced.report?.branch) console.info(`Sky trace: ${traced.report.branch}.`);
   // A scene past the trace's limits keeps the light it had; say so instead of dropping the reason (#2771).
   if (traced.report?.fallbackReason && traced.report.method !== 'proxy') console.warn(`Sky trace left out (${traced.report.reason}): ${traced.report.fallbackReason}`);
   return { parts: traced.parts, environment: withSunBounce(traced.parts, environment), skyReport: traced.report };

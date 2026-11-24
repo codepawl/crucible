@@ -1,5 +1,5 @@
 import { CLOSED_ROOM_SHARE, partMatrixLookup } from './closed-room.js';
-import { fittedClosedRoomShare, fittedRoomHasWalls } from './fitted-closed-room.js';
+import { fittedClosedRoomShare, fittedRoomHasWalls, OPEN_SIDED_ROOM_WALL_SHARE } from './fitted-closed-room.js';
 import { drainSteps } from './flush-search-runner.js';
 import { buildWorldSteps, cosineDirection, radicalInverse, sceneScale } from './light-bake.js';
 import { worldBounds } from './probe-trace.js';
@@ -81,6 +81,13 @@ function isInteriorVertex(escapedShare) {
   return escapedShare <= INTERIOR_MAXIMUM_ESCAPE;
 }
 
+// A room open on one side has a gradient of escaping rays towards its opening, so the hard cut above would draw a ragged contour across the ceiling
+// (#3389): its fill fades out over the next quarter of escaping rays instead. A room walled all round keeps the hard cut, byte for byte.
+function interiorWeight(escapedShare, softEdge) {
+  if (escapedShare <= INTERIOR_MAXIMUM_ESCAPE) return 1;
+  return softEdge ? Math.max(0, 1 - (escapedShare - INTERIOR_MAXIMUM_ESCAPE) / INTERIOR_MAXIMUM_ESCAPE) : 0;
+}
+
 /**
  * The fill for the traced parts of a closed room: `openShare` is what the room opens to the sky (1 minus the closed-room ray share); the mean albedo is taken over the points that see
  * the room from inside (the cut gives every part about the same area per point), and only those points get the fill.
@@ -88,15 +95,16 @@ function isInteriorVertex(escapedShare) {
  * colour, in proportion to the share of the point's light that is fill and not at all where the sun reaches the point.
  * Each traced part is `{ skyVisibility, escapedShares, nearShares, sunlit, colors, tracedVertices, albedo }`; their `skyVisibility` and `colors` are changed in place.
  */
-function applyInteriorFill(tracedParts, openShare) {
+function applyInteriorFill(tracedParts, openShare, softEdge = false) {
   let count = 0;
   const albedoTotal = [0, 0, 0];
   for (const { escapedShares, tracedVertices, albedo, levelOfPart = false } of tracedParts) {
     if (levelOfPart) continue;
     for (const vertex of tracedVertices) {
-      if (!isInteriorVertex(escapedShares[vertex])) continue;
-      count++;
-      for (let channel = 0; channel < 3; channel++) albedoTotal[channel] += albedo[channel];
+      const weight = interiorWeight(escapedShares[vertex], softEdge);
+      if (weight === 0) continue;
+      count += weight;
+      for (let channel = 0; channel < 3; channel++) albedoTotal[channel] += albedo[channel] * weight;
     }
   }
   if (count === 0) return 0;
@@ -105,8 +113,9 @@ function applyInteriorFill(tracedParts, openShare) {
   const tint = interiorFillTint(meanAlbedo);
   for (const { skyVisibility, escapedShares, nearShares, sunlit, colors, tracedVertices } of tracedParts) {
     for (const vertex of tracedVertices) {
-      if (!isInteriorVertex(escapedShares[vertex])) continue;
-      const pointFill = fill * interiorCornerWeight(nearShares[vertex]);
+      const weight = interiorWeight(escapedShares[vertex], softEdge);
+      if (weight === 0) continue;
+      const pointFill = fill * weight * interiorCornerWeight(nearShares[vertex]);
       const lifted = Math.min(1, skyVisibility[vertex] + pointFill);
       const fillShare = sunlit[vertex] || lifted === 0 ? 0 : (lifted - skyVisibility[vertex]) / lifted;
       skyVisibility[vertex] = lifted;
@@ -419,7 +428,7 @@ function applyProxySkyVisibility({ parts, occluders, floorIndices, everySurface,
   const nextParts = parts.slice();
   const floors = [];
   const tracedParts = [];
-  const finish = reason => ({ parts, report: { floors: [], texels: 0, rays: proxy.rays, seconds: (performance.now() - started) / 1000, method: 'proxy', fallbackReason, reason } });
+  const finish = reason => ({ parts, report: { floors: [], texels: 0, rays: proxy.rays, seconds: (performance.now() - started) / 1000, method: 'proxy', fallbackReason, reason, branch: `${reason}, skipped` } });
   for (const index of tracedIndices) {
     const part = parts[index];
     const albedo = partDiffuseAlbedo(part.material ?? {});
@@ -448,7 +457,7 @@ function applyProxySkyVisibility({ parts, occluders, floorIndices, everySurface,
   }
   const texels = floors.reduce((total, floor) => total + floor.texels, 0);
   const meanVisibility = texels ? floors.reduce((total, floor) => total + floor.meanVisibility * floor.texels, 0) / texels : 1;
-  return { parts: Object.freeze(nextParts), report: { floors, texels, meanVisibility, interiorFill, rays: proxy.rays, seconds: (performance.now() - started) / 1000, method: 'proxy', fallbackReason, cellSize: grid.cellSize, reason: null } };
+  return { parts: Object.freeze(nextParts), report: { floors, texels, meanVisibility, interiorFill, rays: proxy.rays, seconds: (performance.now() - started) / 1000, method: 'proxy', fallbackReason, cellSize: grid.cellSize, reason: null, branch: everySurface ? 'room traced through the grid' : 'open scene, traced through the grid' } };
 }
 
 /**
@@ -477,7 +486,7 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
     yield;
     started += performance.now() - pausedAt;
   }
-  const unchanged = (reason, fallbackReason = null) => ({ parts, report: { floors: [], texels: 0, rays: 0, seconds: (performance.now() - started) / 1000, method: null, fallbackReason, reason } });
+  const unchanged = (reason, fallbackReason = null) => ({ parts, report: { floors: [], texels: 0, rays: 0, seconds: (performance.now() - started) / 1000, method: null, fallbackReason, reason, branch: `${reason}, skipped` } });
   // A scene the triangle trace cannot take is left as it is ('skip', the default: the grid alone darkened the classroom against Cycles, #2771) or traced through the grid ('proxy').
   const tooLarge = (reason, detail) => (largeScenes === 'proxy' ? applyProxySkyVisibility(proxyInput, detail) : unchanged(reason, detail));
   let proxyInput = null;
@@ -501,7 +510,11 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
     return applyProxySkyVisibility({ parts, occluders, floorIndices, everySurface: false, everyPart: true, strength: requestedStrength ?? OPEN_SCENE_GRID_STRENGTH, roomShare, started }, 'open scene');
   }
   // The walls, ceiling and props are traced as well only in a room that has walls all round: a roof on columns reads as closed to the ray test above, but its floor keeps the light it had.
-  const everySurface = surfaces === 'all' && closedRoom && fittedRoomHasWalls(parts, partMatrixLookup(parts));
+  // A set open on one side (three walls and a ceiling) reads as closed to the ray test but has walls on only three quarters of the ring; it is traced as a room too (#3389).
+  const hasWalls = surfaces === 'all' && closedRoom && fittedRoomHasWalls(parts, partMatrixLookup(parts));
+  const openSided = surfaces === 'all' && closedRoom && !hasWalls && fittedRoomHasWalls(parts, partMatrixLookup(parts), OPEN_SIDED_ROOM_WALL_SHARE);
+  const everySurface = hasWalls || openSided;
+  const branch = everySurface ? (openSided ? 'open-sided room, every surface traced' : 'closed room, every surface traced') : closedRoom ? 'roof without walls, floors traced' : 'floors traced';
   yield* checkpoint();
   const strength = requestedStrength ?? (onlyClosedRooms ? (everySurface ? ROOM_SURFACE_SKY_STRENGTH : FLOOR_SKY_ROOM_STRENGTH) : FLOOR_SKY_STRENGTH);
   // With every surface, every face of every part is cut (a ceiling slab counts as a floor, so its room side needs the cut too).
@@ -594,7 +607,7 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
     yield* checkpoint();
   }
   // A closed room also gets the sky light its surfaces bounce on to each other (#1334): without it every point the window cannot see is as dark as a sealed room.
-  const interiorFill = everySurface ? applyInteriorFill(tracedParts, 1 - roomShare) : 0;
+  const interiorFill = everySurface ? applyInteriorFill(tracedParts, 1 - roomShare, openSided) : 0;
   for (const { floor, skyVisibility, tracedVertices } of tracedParts) {
     let sharedSum = 0;
     for (const vertex of tracedVertices) sharedSum += skyVisibility[vertex];
@@ -602,7 +615,7 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
   }
   const texels = floors.reduce((total, floor) => total + floor.texels, 0);
   const meanVisibility = texels ? floors.reduce((total, floor) => total + floor.meanVisibility * floor.texels, 0) / texels : 1;
-  return { parts: Object.freeze(nextParts), report: { floors, texels, meanVisibility, interiorFill, rays: totalRays, seconds: (performance.now() - started) / 1000, method: 'triangles', fallbackReason: null, reason: null } };
+  return { parts: Object.freeze(nextParts), report: { floors, texels, meanVisibility, interiorFill, rays: totalRays, seconds: (performance.now() - started) / 1000, method: 'triangles', fallbackReason: null, reason: null, branch } };
 }
 
 /** True when the environment has a sun: a key light with a colour and intensity above zero. A recipe that sets neither has the default sun. */
