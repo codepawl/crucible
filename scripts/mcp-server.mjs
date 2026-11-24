@@ -412,6 +412,7 @@ const effects = z.strictObject({
   bloom: z.strictObject({
     strength: bounded(0, 8).optional(),
     threshold: bounded(0, 10).optional(),
+    keepHue: z.boolean().optional().describe('Bloom keeps the hue of emissive parts: a coloured glow stays that colour instead of clipping to white. Default false.'),
     radius: bounded(0.1, 16).optional(),
   }).optional(),
   depthOfField: z.strictObject({ blur: unit.optional(), focusDistance: bounded(0.01, 100000).optional() }).optional().describe('Lens blur: blur 0 to 1, focusDistance metres.'),

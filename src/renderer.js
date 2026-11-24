@@ -5,8 +5,8 @@ import { mat4, mat3 } from 'gl-matrix';
 import { BLEND_FACTORS } from './blend-output.js';
 import { packNormalsWithTangents, validateGeometryTangents } from './tangent-encoding.js';
 import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, WETNESS_FEATURE, HEIGHT_MAP_FEATURE, FRAGMENT_SHADOW_POSITION_FEATURE, FADING_SHADOWS_FEATURE, VERTEX_OPACITY_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, TANGENT_FEATURE, vertexShader, liquidFragmentSource, createFragmentShader, liquidPassDrawer, createDepthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
-import { postFragment, createPostFragment, GRID_MOTION_STEP, GRID_DETAIL_STEP, NOISE_OCTAVES_STEP, localVolumeKindSteps, POST_STEPS, POST_STEPS_WITH_OPTIONAL_CODE, skyFragment, bloomFragment } from './post.js';
 import { createGlazeBackend } from './glaze-backend.js';
+import { postFragment, createPostFragment, KEEP_HUE_STEP, GRID_MOTION_STEP, GRID_DETAIL_STEP, NOISE_OCTAVES_STEP, localVolumeKindSteps, POST_STEPS, POST_STEPS_WITH_OPTIONAL_CODE, skyFragment, bloomFragment } from './post.js';
 import { fullscreenVertex, compileProgram, ProgramNotReady, isLinkComplete, setPreparing, releaseStartedPrograms } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
 import { planRenderSize, estimateTextureBytes, estimateFrameBytes, memoryBudgetError, automaticBudgetCeilingMiB } from './budget.js';
@@ -239,7 +239,7 @@ const DEFORMING_TAGS = new Set(['foliage', 'grass', 'water', 'fire', 'smoke']);
 // strength, so they can be culled and given levels like rigid parts.
 const SWAY_REACH_PER_STRENGTH = 0.56;
 
-const POST_UNIFORMS = ['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeShadowAmbient', 'volumeGridFog', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeHeightFalloff', 'volumeMaxDistance', 'volumeField', 'volumeProfile', 'volumeFlowStrength', 'volumeFlowPeriod', 'volumeLightCount', 'volumeLightPositions[0]', 'volumeLightColors[0]', 'volumeLightDirections[0]', 'volumeLightCones[0]', 'fogSkyVisibility', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel', 'autoExposureScale'];
+const POST_UNIFORMS = ['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'bloomKeepHue', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeShadowAmbient', 'volumeGridFog', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeHeightFalloff', 'volumeMaxDistance', 'volumeField', 'volumeProfile', 'volumeFlowStrength', 'volumeFlowPeriod', 'volumeLightCount', 'volumeLightPositions[0]', 'volumeLightColors[0]', 'volumeLightDirections[0]', 'volumeLightCones[0]', 'fogSkyVisibility', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel', 'autoExposureScale'];
 
 function postUniformLocations(context, program) {
   return Object.fromEntries(POST_UNIFORMS.map(name => [name, context.getUniformLocation(program, name)]));
@@ -821,10 +821,27 @@ export function configureTexture(renderer, info, { bakesNormalVariance = false }
   context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, info.minFilter);
   context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, info.magFilter);
   if (info.mipmaps) {
-    const baked = bakesNormalVariance && bakeNormalMapVariance(context, context.getParameter(context.TEXTURE_BINDING_2D), info.width, info.height);
-    if (!baked) context.generateMipmap(context.TEXTURE_2D);
+    if (info.mipLevels) {
+      uploadProvidedMipLevels(context, info);
+    } else {
+      const baked = bakesNormalVariance && bakeNormalMapVariance(context, context.getParameter(context.TEXTURE_BINDING_2D), info.width, info.height);
+      if (!baked) context.generateMipmap(context.TEXTURE_2D);
+    }
     if (filtersSmoothly(info)) renderer.applyAnisotropy(context.TEXTURE_2D);
   }
+}
+
+// A descriptor with its own mip chain (alpha-tested leaf cards, whose coverage a box filter loses) uploads levels 1 and down as given.
+function uploadProvidedMipLevels(context, { mipLevels, linear }) {
+  mipLevels.forEach((level, index) => {
+    context.texImage2D(context.TEXTURE_2D, index + 1, linear ? context.RGBA8 : context.SRGB8_ALPHA8, level.width, level.height, 0, context.RGBA, context.UNSIGNED_BYTE, level.data);
+  });
+}
+
+function validateMipLevels(mipLevels, width, height) {
+  const valid = mipLevels?.length === Math.floor(Math.log2(Math.max(width, height))) && mipLevels.every((level, index) => (
+    level.width === Math.max(1, width >> (index + 1)) && level.height === Math.max(1, height >> (index + 1)) && level.data?.length === level.width * level.height * 4));
+  if (!valid) throw new Error(`mipLevels must be every level below the ${width}x${height} image, each width x height x 4 bytes.`);
 }
 
 // Anisotropic filtering replaces both filters with its own smooth one, so it would turn a NEAREST sampler (pixel art, block
@@ -853,7 +870,12 @@ export function textureDescriptorInfo(map, maximumSize = Infinity) {
   // Precompressed mips come with the image and are never generated. The image supplies its own filter and byte count.
   if (compressed) return { width, height, wrapS, wrapT, minFilter: compressed.minFilter(minFilter), magFilter, mipmaps: false, bytes: compressed.bytes };
   const mipmaps = minFilter >= 9984;
-  return { width, height, wrapS, wrapT, minFilter, magFilter, mipmaps, bytes: estimateTextureBytes(width, height, { mipmaps }) };
+  const info = { width, height, wrapS, wrapT, minFilter, magFilter, mipmaps, bytes: estimateTextureBytes(width, height, { mipmaps }) };
+  if (mipmaps && map.mipLevels) {
+    validateMipLevels(map.mipLevels, width, height);
+    Object.assign(info, { mipLevels: map.mipLevels, linear: map.colorSpace === 'linear' });
+  }
+  return info;
 }
 
 // Light-mapped geometry uploads its two UV sets as one four-wide attribute (zeros where channel 0 is absent).
@@ -2766,6 +2788,7 @@ export class CrucibleRenderer {
     if (this.transparent) steps.push('transparent');
     if (occluded) steps.push('occlusion');
     if (isBloomActive(effects)) steps.push('bloom');
+    if (isBloomActive(effects) && effects.bloom.keepHue) steps.push(KEEP_HUE_STEP);
     if (volume.density > 0) steps.push('volume');
     if (volume.density > 0 && volume.field) steps.push('field');
     if (volume.density > 0 && requireFeatureCode('volumeFog').support.usesDetail(volume)) steps.push('detail');
@@ -2875,6 +2898,7 @@ export class CrucibleRenderer {
     context.bindTexture(context.TEXTURE_2D, isBloomActive(effects) ? this.bloomTargets[1].texture : this.whiteTexture);
     context.uniform1i(post.uniforms.bloomTexture, 2);
     context.uniform1f(post.uniforms.bloomStrength, isBloomActive(effects) ? effects.bloom.strength : 0);
+    context.uniform1f(post.uniforms.bloomKeepHue, isBloomActive(effects) && effects.bloom.keepHue ? 1 : 0);
     context.activeTexture(context.TEXTURE4);
     context.bindTexture(context.TEXTURE_2D, occluded ? this.occlusionTarget.texture : this.whiteTexture);
     context.uniform1i(post.uniforms.occlusionTexture, 4);

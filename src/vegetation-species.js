@@ -39,6 +39,9 @@ export const SPECIES = {
       sitesPerMeter: 5, start: 0.2, upBias: 0.35,
       meshLength: 0.62, meshWidth: 0.4, meshPerSite: 4, meshSpread: 0.75, profile: OVATE_LEAF, droop: 0.28, fold: 0.14,
       cardSize: [1.05, 1.1], cardsPerSite: 2,
+      // A broad crown lights like a dome: its cards take most of the crown's own normal (#2991).
+      roundedNormals: { blend: 0.7, skyLift: 0.35 },
+      crownLight: { core: 0.14, hull: 3.1, exponent: 5.5 },
     },
   },
   birch: {
@@ -62,6 +65,10 @@ export const SPECIES = {
       sitesPerMeter: 5, start: 0.15, upBias: 0.1,
       meshLength: 0.42, meshWidth: 0.26, meshPerSite: 3, meshSpread: 0.8, profile: OVATE_LEAF, droop: 0.3, fold: 0.12,
       cardSize: [0.8, 0.85], cardsPerSite: 2,
+      // Birch leaves hang, so the crown's normal tilts up less than an oak's (#2991).
+      roundedNormals: { blend: 0.65, skyLift: 0.2 },
+      // Birch leaf colour is already pale: a hull at the oak's multiple glows neon with the sun behind (measured, #2991).
+      crownLight: { core: 0.14, hull: 1.05, exponent: 4.2 },
     },
   },
   conifer: {
@@ -133,7 +140,7 @@ export const SPECIES = {
 
 /** Level of detail: sides and leaf density multipliers per level, and default switch distances in meters. */
 export const LEVEL_SETTINGS = [
-  { sideScale: 1, leafKeep: 1, leafScale: 1, maximumBranchLevel: Infinity },
+  { sideScale: 1, leafKeep: 1, leafScale: 1, maximumBranchLevel: Infinity, leafTwigs: true },
   { sideScale: 0.6, leafKeep: 0.34, leafScale: 1.7, maximumBranchLevel: -1 },
   // The far levels (#3051) keep the species' own leaf card on fewer, bigger quads. Each covers the leaf area of level 1 (keep
   // times scale squared stays near 1), and `tipScale` keeps its tip where a level 1 card's tip is, so a crown keeps its width.
