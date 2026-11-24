@@ -1984,7 +1984,7 @@ export const STUDIO_CSS = `
 .crucible-studio[data-compact="true"] button.crucible-studio-filepill { max-inline-size: 190px; }
 
 .crucible-studio dialog {
-  width: min(560px, calc(100vw - 32px));
+  width: min(600px, calc(100vw - 32px));
   padding: 16px;
   border: 1px solid var(--studio-border);
   border-radius: 14px;
@@ -2015,7 +2015,7 @@ export const STUDIO_CSS = `
 }
 /* One fixed height for every section; a section with more rows than fit scrolls its rows, never the dialog. */
 .crucible-studio dialog.crucible-studio-settings-dialog {
-  width: min(560px, calc(100vw - 32px));
+  width: min(600px, calc(100vw - 32px));
   block-size: min(456px, calc(100vh - 48px));
 }
 /* A ring is drawn inside its control, so it never leaves the dialog's inset or the rows' scroll area. */
@@ -2169,6 +2169,7 @@ export const STUDIO_CSS = `
 }
 .crucible-studio-account-email,
 .crucible-studio-account-value { color: var(--studio-muted); }
+.crucible-studio button[data-action-icon] { gap: var(--studio-space-8); }
 .crucible-studio-account-actions {
   display: flex;
   flex-wrap: wrap;

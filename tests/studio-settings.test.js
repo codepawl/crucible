@@ -5,7 +5,8 @@ import { createStudio } from '../src/studio.js';
 import { STUDIO_CSS } from '../src/studio-styles.js';
 import { STUDIO_PREFERENCE_DEFAULTS, normalizeStudioPreferences } from '../src/studio-preferences.js';
 import { STUDIO_SETTING_SECTIONS } from '../src/studio-settings.js';
-import { createAccountSection, resolveAccountHost } from '../src/studio-account.js';
+import { createAccountSection, resolveAccountHost, STUDIO_SETTINGS_ACTION_ICONS } from '../src/studio-account.js';
+import { STUDIO_ICON_PATHS } from '../src/studio-icons.js';
 import { createFakeRenderer, dispatch, installStudioDom } from './support/studio-dom.mjs';
 
 const VIEWPORT_BOX = { left: 40, top: 30, width: 800, height: 600, right: 840, bottom: 630 };
@@ -326,4 +327,54 @@ test('A Settings section with more rows than fit scrolls its rows and keeps the 
   assert.match(cssRule('.crucible-studio dialog.crucible-studio-settings-dialog[open]'), /gap: var\(--studio-space-16\)/, 'the rows end 16 px above the footer');
   assert.match(cssRule('.crucible-studio dialog.crucible-studio-settings-dialog[open]'), /padding: var\(--studio-space-24\)/, 'one inset on all four sides');
   assert.match(cssRule('.crucible-studio dialog.crucible-studio-settings-dialog h2'), /text-box: trim-both cap alphabetic/);
+});
+
+// Icons at main entries (#3310): each main action leads with its own glyph, a plain close has none, and nothing beside it repeats it.
+function leadingGlyph(button) {
+  const icon = button.querySelector('svg');
+  if (!icon) return null;
+  assert.equal(button.children[0], icon, `${button.textContent}: the icon comes before the label`);
+  assert.equal(icon.getAttribute('aria-hidden'), 'true', `${button.textContent}: the icon is hidden from assistive technology`);
+  return icon.querySelector('path').getAttribute('d');
+}
+
+function assertActionIcons(buttons, expected, where) {
+  const seen = [];
+  for (const [label, actionName] of Object.entries(expected)) {
+    const button = buttons.find(candidate => candidate.textContent === label);
+    assert.ok(button, `${where}: ${label} is there, and its text is its accessible name`);
+    const glyph = leadingGlyph(button);
+    if (actionName === null) {
+      assert.equal(glyph, null, `${where}: ${label} stays text only`);
+      continue;
+    }
+    assert.equal(glyph, STUDIO_ICON_PATHS[STUDIO_SETTINGS_ACTION_ICONS[actionName]], `${where}: ${label} leads with ${STUDIO_SETTINGS_ACTION_ICONS[actionName]}`);
+    assert.ok(!seen.includes(glyph), `${where}: ${label} repeats the icon of a button beside it`);
+    seen.push(glyph);
+  }
+  return seen;
+}
+
+test('Account actions lead with a door in, a door out, a coin and a card, and Done and the footer follow the same rule (#3310)', async testContext => {
+  withShell(testContext, { account: { get: async () => FULL_REPORT, signIn: async () => {}, signOut: async () => {}, buyCredits: () => {}, manageBilling: () => {} } });
+  const ui = mountStudio(testContext);
+  await ui.dom.settle();
+  const accountButtons = ui.settingsDialog.querySelectorAll('.crucible-studio-account button');
+  const accountGlyphs = assertActionIcons(accountButtons, { 'Sign out': 'signOut', 'Buy more': 'buyCredits', 'Manage billing': 'manageBilling' }, 'signed in');
+  const titleGlyph = ui.pane('account').querySelector('h3 svg').querySelector('path').getAttribute('d');
+  assert.ok(!accountGlyphs.includes(titleGlyph), 'no button repeats the icon of the Account title');
+  assert.notEqual(STUDIO_ICON_PATHS.signOut, STUDIO_ICON_PATHS.signIn, 'the two doors differ');
+  const footerButtons = ui.settingsDialog.querySelectorAll('.crucible-studio-dialog-actions button');
+  assertActionIcons(footerButtons, { 'Run setup again': 'runSetup', Reset: 'reset', Done: null }, 'footer');
+  assert.ok(STUDIO_CSS.includes('.crucible-studio button[data-action-icon] { gap: var(--studio-space-8); }'), 'icon and label sit 8 px apart');
+});
+
+test('the signed-out Account offers Sign in with a door-in icon, also while it waits (#3310)', async testContext => {
+  withShell(testContext, { account: { get: async () => ({ signedIn: false }), signIn: () => new Promise(() => {}) } });
+  const ui = mountStudio(testContext);
+  await ui.dom.settle();
+  assertActionIcons(ui.settingsDialog.querySelectorAll('.crucible-studio-account button'), { 'Sign in': 'signIn' }, 'signed out');
+  ui.accountButton('Sign in').click();
+  await ui.dom.settle();
+  assertActionIcons(ui.settingsDialog.querySelectorAll('.crucible-studio-account button'), { Waiting: 'signIn' }, 'waiting');
 });

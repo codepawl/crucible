@@ -3,7 +3,7 @@
 // offers an account (studio-account.js).
 import { KEYMAP_PRESETS } from './studio-keymap.js';
 import { STUDIO_PREFERENCE_CHOICES } from './studio-preferences.js';
-import { createAccountSection } from './studio-account.js';
+import { createAccountSection, leadWithActionIcon, STUDIO_SETTINGS_ACTION_ICONS } from './studio-account.js';
 
 const capitalised = value => value[0].toUpperCase() + value.slice(1);
 const MOTION_LABELS = Object.freeze({ system: 'Follow system', reduced: 'Reduced' });
@@ -122,8 +122,10 @@ export function createStudioSettings({ documentReference, createElement, createI
   showSection(sections[0].id);
 
   const resetButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Reset' });
+  leadWithActionIcon(resetButton, createIcon(documentReference, STUDIO_SETTINGS_ACTION_ICONS.reset), STUDIO_SETTINGS_ACTION_ICONS.reset);
   resetButton.addEventListener('click', onReset);
   const setupButton = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-settings-quiet', textContent: 'Run setup again' });
+  leadWithActionIcon(setupButton, createIcon(documentReference, STUDIO_SETTINGS_ACTION_ICONS.runSetup), STUDIO_SETTINGS_ACTION_ICONS.runSetup);
   setupButton.addEventListener('click', onRunSetup);
   const dialog = createElement(
     documentReference,

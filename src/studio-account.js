@@ -4,6 +4,25 @@
 
 export const ACCOUNT_CHANGED_EVENT = 'crucible-shell:account-changed';
 
+/** The icon each action of Settings leads with. Done only closes the dialog, so it has none. No two share one. */
+export const STUDIO_SETTINGS_ACTION_ICONS = Object.freeze({
+  signIn: 'signIn',
+  signOut: 'signOut',
+  buyCredits: 'buyMore',
+  manageBilling: 'card',
+  runSetup: 'play',
+  reset: 'reset',
+});
+
+/** Puts an action's icon before the label of its button and marks the button; the label stays its accessible name. */
+export function leadWithActionIcon(button, icon, iconName) {
+  const label = button.ownerDocument.createElement('span');
+  label.textContent = button.textContent;
+  button.dataset.actionIcon = iconName;
+  button.replaceChildren(icon, label);
+  return button;
+}
+
 const FALLBACK_SIGN_IN_ERROR = 'Sign in did not finish.';
 const FALLBACK_ACTION_ERROR = 'That did not work.';
 
@@ -101,8 +120,9 @@ export function createAccountSection({ documentReference, createElement, createI
     return createElement(documentReference, 'div', { className: 'crucible-studio-setting' }, text('', label), text('crucible-studio-account-value', value));
   }
 
-  function actionButton(label, run, fallbackError, { disabled = false } = {}) {
+  function actionButton(label, iconName, run, fallbackError, { disabled = false } = {}) {
     const button = createElement(documentReference, 'button', { type: 'button', textContent: label, disabled });
+    leadWithActionIcon(button, createIcon(documentReference, iconName), iconName);
     button.addEventListener('click', () => run().catch(error => {
       errorText = textOrNull(error?.message) ?? fallbackError;
       render();
@@ -131,11 +151,11 @@ export function createAccountSection({ documentReference, createElement, createI
   function actionRow() {
     const buttons = [];
     if (phase === 'signed-in') {
-      if (host.signOut) buttons.push(actionButton('Sign out', () => runThenRefresh(host.signOut), FALLBACK_ACTION_ERROR));
-      if (host.buyCredits) buttons.push(actionButton('Buy more', async () => host.buyCredits(), FALLBACK_ACTION_ERROR));
-      if (host.manageBilling) buttons.push(actionButton('Manage billing', async () => host.manageBilling(), FALLBACK_ACTION_ERROR));
+      if (host.signOut) buttons.push(actionButton('Sign out', STUDIO_SETTINGS_ACTION_ICONS.signOut, () => runThenRefresh(host.signOut), FALLBACK_ACTION_ERROR));
+      if (host.buyCredits) buttons.push(actionButton('Buy more', STUDIO_SETTINGS_ACTION_ICONS.buyCredits, async () => host.buyCredits(), FALLBACK_ACTION_ERROR));
+      if (host.manageBilling) buttons.push(actionButton('Manage billing', STUDIO_SETTINGS_ACTION_ICONS.manageBilling, async () => host.manageBilling(), FALLBACK_ACTION_ERROR));
     } else if (host.signIn && phase !== 'loading') {
-      buttons.push(actionButton(phase === 'waiting' ? 'Waiting' : 'Sign in', signIn, FALLBACK_SIGN_IN_ERROR, { disabled: phase === 'waiting' }));
+      buttons.push(actionButton(phase === 'waiting' ? 'Waiting' : 'Sign in', STUDIO_SETTINGS_ACTION_ICONS.signIn, signIn, FALLBACK_SIGN_IN_ERROR, { disabled: phase === 'waiting' }));
     }
     return buttons.length ? createElement(documentReference, 'div', { className: 'crucible-studio-account-actions' }, ...buttons) : null;
   }
