@@ -164,8 +164,17 @@ function collectBarOverlaps(besideErrorMinWidth) {
   }
   const reason = document.querySelector('.crucible-studio-name-error:not([hidden])');
   const outliner = document.querySelector('.crucible-studio-outliner');
-  if (reason && window.innerWidth >= besideErrorMinWidth && getComputedStyle(outliner).display !== 'none' && meet(box(reason), box(outliner))) problems.push('the reason covers the Scene panel');
+  if (reason && getComputedStyle(outliner).display !== 'none' && meet(box(reason), box(outliner))) problems.push('the reason covers the Scene panel');
   if (reason && box(reason).left < -0.5) problems.push('the reason leaves the window');
+  for (const other of others) {
+    if (reason && meet(box(reason), box(other))) problems.push(`the reason overlaps ${other.className.split(' ').slice(0, 2).join('.')}`);
+  }
+  const suffix = document.querySelector('.crucible-studio-name-suffix');
+  const field = document.querySelector('.crucible-studio-name-field');
+  if (suffix && field && box(suffix).left < box(field).right - 0.5) problems.push('the type of the file sits inside the ring of the name');
+  if (suffix && ownBox && box(suffix).right > ownBox.right + 0.5) problems.push('the type of the file leaves the top bar');
+  const pillSuffix = document.querySelector('.crucible-studio-filepill-suffix');
+  if (pillSuffix && pillSuffix.getBoundingClientRect().width > 0 && ownBox && box(pillSuffix).right > ownBox.right + 0.5) problems.push('the type of the file leaves the top bar');
   return problems;
 }
 
@@ -202,6 +211,9 @@ async function measureRenameScreens(page, theme) {
     await openEditor();
     const overlaps = [...closedOverlaps.map(problem => `(name shown) ${problem}`), ...await measureBarOverlaps(page)];
     screens.push({ name: `rename long ${width} (${theme})`, records: await measure(page, '.crucible-studio'), overlaps });
+    await page.fill('.crucible-studio-name-editor input', `bad|${LONG_NAME}`);
+    await page.waitForTimeout(100);
+    screens.push({ name: `rename long error ${width} (${theme})`, records: await measure(page, '.crucible-studio'), overlaps: await measureBarOverlaps(page) });
     await page.keyboard.press('Escape');
   }
   await page.setViewportSize(VIEWPORT);

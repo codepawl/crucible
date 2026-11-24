@@ -34,7 +34,7 @@ test('the top bar with the scene name editor open, with an error and with a 60 c
   const expected = [];
   for (const theme of ['dark', 'light']) {
     for (const width of [1280, 921, 919, 720]) {
-      for (const kind of ['editing', 'error', 'long']) expected.push(`rename ${kind} ${width} (${theme})`);
+      for (const kind of ['editing', 'error', 'long', 'long error']) expected.push(`rename ${kind} ${width} (${theme})`);
     }
   }
   assert.deepEqual(screens.map(screen => screen.name).sort(), expected.sort());

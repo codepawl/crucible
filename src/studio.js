@@ -78,8 +78,9 @@ export {
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
 const STATUS_DEFAULT_MILLISECONDS = 3400;
-// Below this width the reason of a bad scene name drops under the name, since the gap beside it is too small to read it in.
-const ERROR_BESIDE_NAME_MIN_WIDTH = 1180;
+// The reason of a bad scene name sits beside the name when the free gap between the workspace tabs and the name holds it (the reason
+// is at most 240 px wide, plus 8 px of air on each side); otherwise it drops under the name.
+const ERROR_BESIDE_NAME_MIN_GAP = 256;
 // Past the exit transition, in case the browser never sends its transitionend.
 const STATUS_EXIT_SLACK_MILLISECONDS = 40;
 const DEGREE_PRECISION = 100;
@@ -1341,7 +1342,7 @@ export function createStudio(container, {
   });
 
   // Top Workspace Header Bar
-  const filePill = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-filepill', textContent: activeFileName, attributes: { 'aria-label': 'Rename scene' } });
+  const filePill = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-filepill', attributes: { 'aria-label': 'Rename scene' } });
   const watchPill = createElement(documentReference, 'span', {
     className: 'crucible-studio-watch-pill',
     hidden: !activeFilePath,
@@ -2815,8 +2816,17 @@ export function createStudio(container, {
       : 'Save the scene to a file and the agent can edit it while you watch.';
   }
 
+  // The name shrinks with an ellipsis at its end; the type after it never does, so a long name still shows what kind of file it is.
+  function renderFilePillName() {
+    const { stem, suffix } = splitFileName(activeFileName, activeFileSuffix);
+    filePill.replaceChildren(
+      createElement(documentReference, 'span', { className: 'crucible-studio-filepill-name', textContent: stem }),
+      createElement(documentReference, 'span', { className: 'crucible-studio-filepill-suffix', textContent: suffix }),
+    );
+  }
+
   function syncFileBanner() {
-    filePill.textContent = activeFileName;
+    renderFilePillName();
     filePill.dataset.dirty = isDirty ? 'true' : 'false';
     filePill.title = activeFilePath ?? activeFileName;
     watchPill.hidden = !activeFilePath;
@@ -3016,6 +3026,15 @@ export function createStudio(container, {
     return null;
   }
 
+  // Under the name the reason would cover the top of the Scene panel when that panel sits below the name: it moves left, by the
+  // width of the overlap and 8 px of air, onto the viewport.
+  function reasonShiftClearOfScenePanel() {
+    const outliner = root.querySelector('.crucible-studio-outliner');
+    const outlinerBox = outliner?.getBoundingClientRect();
+    if (!outlinerBox || outlinerBox.width === 0) return 0;
+    return Math.max(0, Math.ceil(filePill.getBoundingClientRect().right - outlinerBox.left + 8));
+  }
+
   // The reason sits beside the name when the bar has room between the workspace tabs and the name, and under it otherwise.
   function startSceneRename({ byKeyboard = false } = {}) {
     const { stem, suffix } = splitFileName(activeFileName, activeFileSuffix);
@@ -3025,7 +3044,8 @@ export function createStudio(container, {
       text: stem,
       suffix,
       className: 'crucible-studio-filename-editor',
-      placement: root.clientWidth >= ERROR_BESIDE_NAME_MIN_WIDTH ? 'beside' : 'below',
+      placement: filePill.getBoundingClientRect().left - workspaceList.getBoundingClientRect().right >= ERROR_BESIDE_NAME_MIN_GAP ? 'beside' : 'below',
+      reasonShift: reasonShiftClearOfScenePanel(),
       label: 'Rename scene',
       validate: text => validateFileStem(text, suffix),
       isStale: () => activeFilePath !== openedAs.filePath || activeFileName !== openedAs.fileName,

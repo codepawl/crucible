@@ -135,7 +135,7 @@ let editorCounter = 0;
  *
  * Every key stays inside the field so Studio's own shortcuts never fire while a name is typed.
  */
-export function openNameEditor({ documentReference, createElement, createIcon, anchor, text, suffix = '', label, validate, onCommit, onClose, onOpen, isStale, className = '', placement = 'below', coverOnly = false }) {
+export function openNameEditor({ documentReference, createElement, createIcon, anchor, text, suffix = '', label, validate, onCommit, onClose, onOpen, isStale, className = '', placement = 'below', reasonShift = 0, coverOnly = false }) {
   editorCounter += 1;
   const errorIdentifier = `crucible-studio-name-error-${editorCounter}`;
   let closed = false;
@@ -160,15 +160,19 @@ export function openNameEditor({ documentReference, createElement, createIcon, a
     createIcon(documentReference, 'warning'),
     errorMessage,
   );
+  // A turning mark while a host works: it shows that the field is busy and read only, in a colour that does not read as done.
+  const busyMark = createElement(documentReference, 'span', { className: 'crucible-studio-name-busy', hidden: true, attributes: { 'aria-hidden': 'true' } }, createIcon(documentReference, 'rotate'));
   const children = [createElement(documentReference, 'span', { className: 'crucible-studio-name-field' }, mirror, input)];
   if (suffix) children.push(createElement(documentReference, 'span', { className: 'crucible-studio-name-suffix', textContent: suffix }));
-  children.push(errorElement);
+  children.push(busyMark, errorElement);
   const element = createElement(
     documentReference,
     'span',
     { className: `crucible-studio-name-editor ${className}`.trim(), dataset: { placement, busy: 'false', invalid: 'false' } },
     ...children,
   );
+
+  element.style?.setProperty?.('--studio-name-reason-shift', `${reasonShift}px`);
 
   function showError(reason) {
     errorMessage.textContent = reason;
@@ -181,6 +185,7 @@ export function openNameEditor({ documentReference, createElement, createIcon, a
     input.readOnly = busy;
     input.setAttribute('aria-busy', busy ? 'true' : 'false');
     element.dataset.busy = busy ? 'true' : 'false';
+    busyMark.hidden = !busy;
   }
 
   function close(committed, trigger) {
@@ -293,5 +298,8 @@ export function openNameEditor({ documentReference, createElement, createIcon, a
   onOpen?.(handle);
   input.focus();
   input.select();
+  // The caret goes to the start, so a long name opens showing its first letters and the field is not scrolled to the end.
+  input.setSelectionRange?.(0, input.value.length, 'backward');
+  input.scrollLeft = 0;
   return handle;
 }
