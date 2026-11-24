@@ -273,6 +273,8 @@ function checkKeyboardScrollCue() {
     if (rect.top < box.top - 1 && list.dataset.above !== 'true') problems.push(label + ' is cut at the top without a fade');
     if (rect.bottom > box.bottom + 1 && list.dataset.more !== 'true') problems.push(label + ' is cut at the bottom without a fade');
   }
+  const unnotedHeights = [...list.querySelectorAll('.crucible-studio-keyboard-row:not([data-noted])')].map(row => row.getBoundingClientRect().height);
+  if (unnotedHeights.some(height => Math.abs(height - unnotedHeights[0]) > 0.5)) problems.push('rows differ in height (' + [...new Set(unnotedHeights)].join(', ') + ' px); a changed row must be as tall as the others');
   const labelLeft = row => row.querySelector('.crucible-studio-keyboard-name > span:last-child').getBoundingClientRect().left;
   const rows = [...list.querySelectorAll('.crucible-studio-keyboard-row')];
   if (rows.some(row => Math.abs(labelLeft(row) - labelLeft(rows[0])) > 1)) problems.push('row labels do not share one left edge');
@@ -292,6 +294,16 @@ function checkKeyboardScrollCue() {
       const rightInset = block.right - lastButton.getBoundingClientRect().right;
       if (Math.abs(leftInset - rightInset) > 1) problems.push(`the tinted block has ${leftInset}px of room left of the label and ${rightInset}px right of the buttons`);
     }
+    const noteChildren = [...note.children].map(child => child.getBoundingClientRect());
+    const insets = [
+      Math.min(...noteChildren.map(child => child.top)) - block.top,
+      block.bottom - Math.max(...noteChildren.map(child => child.bottom)),
+      Math.min(...noteChildren.map(child => child.left)) - block.left,
+      block.right - Math.max(...noteChildren.map(child => child.right)),
+    ];
+    if (Math.max(...insets) - Math.min(...insets) > 1) problems.push('the tinted block has unequal room around its content (top, bottom, left, right: ' + insets.join(', ') + ' px)');
+    const trackGap = box.right - (list.offsetWidth - list.clientWidth) - block.right;
+    if (trackGap < 8) problems.push('the tinted block ends ' + trackGap + 'px from the scrollbar; it keeps at least 8px');
     const keysRight = note.querySelector('.crucible-studio-keyboard-keys').getBoundingClientRect().right;
     const buttons = [...note.querySelectorAll('.crucible-studio-keyboard-note button')];
     if (buttons.length > 0 && Math.abs(buttons.at(-1).getBoundingClientRect().right - keysRight) > 1) problems.push('the clash buttons do not end at the key column edge');

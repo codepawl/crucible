@@ -2241,6 +2241,8 @@ export const STUDIO_CSS = `
   margin-inline-start: calc(var(--studio-space-16) * -1);
   padding-inline-start: var(--studio-space-16);
 }
+/* A row with a message reaches 8 px past the keys on the right, so the list keeps 16 px of air before its scrollbar and the tint ends 8 px short of it. */
+.crucible-studio-keyboard-list.crucible-studio-fade-scroll { padding-inline-end: var(--studio-space-16); }
 .crucible-studio-keyboard-tools > input::placeholder { color: var(--studio-muted); opacity: 1; }
 .crucible-studio-keyboard-group { display: flex; flex-direction: column; gap: var(--studio-space-8); }
 .crucible-studio-keyboard-group h4 {
@@ -2308,6 +2310,8 @@ export const STUDIO_CSS = `
   place-items: center;
   inline-size: 28px;
   block-size: 28px;
+  min-inline-size: 28px;
+  min-block-size: 28px;
   padding: 0;
   background: transparent;
   color: var(--studio-muted);
@@ -2318,7 +2322,8 @@ export const STUDIO_CSS = `
 /* A row with a message to answer (a clash, a refused combination) sits on its own surface, the message on a second line, so it reads as one block. */
 .crucible-studio-keyboard-row[data-noted="true"] {
   margin-inline: calc(var(--studio-space-8) * -1);
-  padding: var(--studio-space-4) var(--studio-space-8);
+  margin-block: calc(var(--studio-space-4) * -1);
+  padding: var(--studio-space-8);
   border-radius: 8px;
   background: color-mix(in srgb, var(--studio-text) 7%, transparent);
 }
@@ -2950,7 +2955,7 @@ export const STUDIO_CSS = `
   /* The strip over the scrollbar stays solid. */
   --studio-fade-top: 0px;
   --studio-fade-bottom: 0px;
-  /* Where rows are hidden, the last 8 px at the edge are fully clear, so no hairline of a cut control shows. */
+  /* Where rows are hidden, the last 16 px at the edge are fully clear, so no hairline of a cut control shows. */
   --studio-clear-top: 0px;
   --studio-clear-bottom: 0px;
   mask-image:
@@ -2958,8 +2963,8 @@ export const STUDIO_CSS = `
     linear-gradient(to right, transparent calc(100% - var(--studio-space-16)), #000 calc(100% - var(--studio-space-16)));
   mask-composite: add;
 }
-.crucible-studio-fade-scroll[data-above="true"] { --studio-fade-top: calc(var(--studio-space-24) * 2); --studio-clear-top: var(--studio-space-8); }
-.crucible-studio-fade-scroll[data-more="true"] { --studio-fade-bottom: calc(var(--studio-space-24) * 2); --studio-clear-bottom: var(--studio-space-8); }
+.crucible-studio-fade-scroll[data-above="true"] { --studio-fade-top: calc(var(--studio-space-24) * 2); --studio-clear-top: var(--studio-space-16); }
+.crucible-studio-fade-scroll[data-more="true"] { --studio-fade-bottom: calc(var(--studio-space-24) * 2); --studio-clear-bottom: var(--studio-space-16); }
 .crucible-studio-fade-scroll::-webkit-scrollbar { width: 8px; }
 .crucible-studio-fade-scroll::-webkit-scrollbar-button { display: none; }
 .crucible-studio-fade-scroll::-webkit-scrollbar-track { background: transparent; }
