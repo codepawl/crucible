@@ -700,27 +700,82 @@ export const STUDIO_CSS = `
 .crucible-studio-popover-grid + .crucible-studio-popover-grid { margin-block-start: 10px; }
 #crucible-studio-pop-add .crucible-studio-popover-grid { grid-template-columns: minmax(0, 1fr); }
 #crucible-studio-pop-add { max-block-size: calc(100dvh - 16px); overflow-y: auto; }
-#crucible-studio-pop-history { max-block-size: calc(100dvh - 72px); overflow-y: auto; }
-.crucible-studio-popover .crucible-studio-history-title {
-  margin-block-end: var(--studio-space-4);
-  font-weight: 600;
-}
-.crucible-studio-popover > button[data-label] { gap: 0; }
-.crucible-studio-history-detail {
-  min-inline-size: 0;
-  margin-inline-start: var(--studio-space-8);
-  overflow: hidden;
-  color: var(--studio-muted);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 /* A dimmed menu row keeps its text at the muted token: the 0.35 opacity of other buttons is under 3:1 on the menu surface. */
 .crucible-studio .crucible-studio-popover button[aria-disabled="true"] {
   opacity: 1;
   color: var(--studio-muted);
 }
 .crucible-studio-popover button[aria-expanded="true"] { background: color-mix(in srgb, var(--studio-text) 8%, transparent); }
+/* The History panel: a card under Properties in the panel column. Oldest edit on top; the current row is filled and strong, the
+   edits after it are muted (the muted token is over 3:1 on the panel in both themes) and stay clickable. */
+.crucible-studio-side > .crucible-studio-dock.crucible-studio-history {
+  flex: 0 1 200px;
+  min-block-size: 0;
+  inline-size: var(--studio-properties-width, 284px);
+}
+.crucible-studio[data-history-collapsed="true"] .crucible-studio-history { display: none; }
+.crucible-studio-history-list {
+  display: grid;
+  align-content: start;
+  gap: var(--studio-space-8);
+  min-block-size: 0;
+  padding: var(--studio-space-8);
+  scroll-padding-block: var(--studio-space-8);
+  overflow-y: auto;
+}
+.crucible-studio .crucible-studio-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--studio-space-4);
+  min-inline-size: 0;
+  padding: var(--studio-space-4) var(--studio-space-8);
+  border-radius: 8px;
+  color: var(--studio-text);
+  font-size: 13px;
+  text-align: start;
+}
+.crucible-studio .crucible-studio-history-row .crucible-studio-icon { flex: none; }
+/* The mark and the icon sit a spacing step apart, while the rows keep a larger gap between them. */
+.crucible-studio-history-mark {
+  flex: none;
+  margin-inline-end: var(--studio-space-4);
+  inline-size: var(--studio-space-8);
+  block-size: var(--studio-space-8);
+  border-radius: 50%;
+}
+.crucible-studio-history-name,
+.crucible-studio-history-detail {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The last text of a row takes the rest of its width, so the row's content reaches both edges and the insets stay even. */
+.crucible-studio-history-name:last-child,
+.crucible-studio-history-detail { flex: 1 1 auto; }
+.crucible-studio-history-detail { color: var(--studio-muted); }
+.crucible-studio .crucible-studio-history-row[data-state="current"] {
+  background: color-mix(in srgb, var(--studio-accent) 10%, transparent);
+  font-weight: 600;
+}
+.crucible-studio-history-row[data-state="current"] .crucible-studio-history-mark { background: var(--studio-accent); }
+.crucible-studio .crucible-studio-history-row[data-state="undone"],
+.crucible-studio .crucible-studio-history-row[data-state="undone"] .crucible-studio-history-detail { color: var(--studio-muted); }
+@media (hover: hover) {
+  .crucible-studio .crucible-studio-history-row:not([data-state="current"]):hover {
+    background: color-mix(in srgb, var(--studio-text) 6%, transparent);
+  }
+}
+.crucible-studio[data-compact="true"] .crucible-studio-history {
+  inset-block-start: auto;
+  inset-block-end: 72px;
+  inset-inline: calc(var(--studio-edge) * 2 + var(--studio-rail)) var(--studio-edge);
+  inline-size: auto;
+  max-block-size: min(320px, calc((100% - var(--studio-top) - 72px - 6px) / 2));
+  z-index: 6;
+}
+.crucible-studio[data-compact="true"]:not([data-history-collapsed="true"]) .crucible-studio-inspector { display: none; }
 .crucible-studio-tree-section { display: grid; }
 .crucible-studio-tree-section[hidden], .crucible-studio-tree-controls[hidden] { display: none; }
 .crucible-studio-tree-controls { display: grid; gap: 12px; }
@@ -792,7 +847,6 @@ export const STUDIO_CSS = `
   font-size: 13px;
 }
 .crucible-studio button.crucible-studio-menu-button:hover,
-.crucible-studio button.crucible-studio-menu-button[data-open="true"],
 .crucible-studio button.crucible-studio-menu-button:has(+ *):focus-visible {
   background: color-mix(in srgb, var(--studio-text) 7%, transparent);
 }
@@ -925,7 +979,7 @@ export const STUDIO_CSS = `
 .crucible-studio[data-outliner-collapsed="true"] {
   --studio-gizmo-clear: calc(var(--studio-properties-width, 284px) + var(--studio-edge));
 }
-.crucible-studio[data-outliner-collapsed="true"][data-inspector-collapsed="true"] {
+.crucible-studio[data-outliner-collapsed="true"][data-inspector-collapsed="true"][data-history-collapsed="true"] {
   --studio-gizmo-clear: 0px;
 }
 .crucible-studio[data-outliner-minimized="true"] .crucible-studio-outliner > .crucible-studio-dock-head,
@@ -2644,7 +2698,7 @@ export const STUDIO_CSS = `
   --studio-dock-bar: 52px;
   --studio-dock-side: min(var(--studio-side-width, 284px), calc(100% - var(--studio-rail) - 160px));
 }
-.crucible-studio[data-floating="false"][data-outliner-collapsed="true"][data-inspector-collapsed="true"] {
+.crucible-studio[data-floating="false"][data-outliner-collapsed="true"][data-inspector-collapsed="true"][data-history-collapsed="true"] {
   --studio-dock-side: 0px;
 }
 .crucible-studio[data-floating="false"]:not([data-compact="true"]) .crucible-studio-viewport {
@@ -2697,7 +2751,7 @@ export const STUDIO_CSS = `
   inset-inline-end: var(--studio-edge);
   inset-block-start: var(--studio-edge);
 }
-.crucible-studio[data-floating="false"][data-outliner-collapsed="true"][data-inspector-collapsed="true"] .crucible-studio-side {
+.crucible-studio[data-floating="false"][data-outliner-collapsed="true"][data-inspector-collapsed="true"][data-history-collapsed="true"] .crucible-studio-side {
   display: none;
 }
 /* A docked column runs the whole window height, so the Scene list takes more of it and less is left empty under a short Properties panel. */

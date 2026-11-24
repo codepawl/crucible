@@ -94,4 +94,4 @@ Pick the form by how a person reaches the feature:
 | Timeline | panel | `src/studio.js:2452`, `src/studio-keymap.js:50` | A scrub bar in the bottom panel shows time. Play is a key, Space. |
 | Undo and redo | operator | `src/studio-keymap.js:41-42`, `src/studio-controller.js:645` | Single actions, 32 steps deep. The rail buttons and Edit menu items call the same operator. |
 | Keymap | setting | `src/studio-keymap.js:319` | A stored choice made once in Settings: the default keys or another keymap preset. |
-| History | panel | Edit menu > History | A list of past edits to read and step through; it stays open while stepping. |
+| History | panel | `src/studio.js` (the History card in the right column), View > History, Edit > History | A log of the edits that stays on screen beside Properties: a viewer of a recording follows it downward, and the person editing steps back or forward from it. A tab of Properties would be swapped out when the selection changes tabs, so it is its own card, shown and hidden by a toggle. |

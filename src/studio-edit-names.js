@@ -92,3 +92,32 @@ export function nameEditOperations(operations) {
   }
   return OPERATION_LABELS[leading.type] ?? EDIT_LABEL_FALLBACK;
 }
+
+const EDIT_ICON_BY_LABEL = Object.freeze({
+  Move: 'translate',
+  Rotate: 'rotate',
+  Scale: 'scale',
+  Transform: 'translate',
+  Delete: 'remove',
+  Hide: 'eyeOff',
+  Show: 'eye',
+  Rename: 'text',
+  'Change parent': 'group',
+  'Change material': 'material',
+  'Add material': 'material',
+  'Change environment': 'sun',
+  'Change effects': 'look',
+  'Change shadows': 'shadow',
+  'Move camera': 'camera',
+  'Edit shots': 'film',
+  'Edit animation': 'keyframe',
+  'Open scene': 'open',
+});
+
+/** The icon that stands for a kind of edit in the History panel; every "Add ..." edit shares one, an unknown edit gets the generic node icon. */
+export function editIconName(label) {
+  if (String(label).startsWith('Add ') && label !== 'Add material') {
+    return 'add';
+  }
+  return EDIT_ICON_BY_LABEL[label] ?? 'node';
+}

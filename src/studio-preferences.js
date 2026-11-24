@@ -70,6 +70,7 @@ export const STUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   propertiesHeight: STUDIO_CARD_SIZE.automatic,
   sceneMinimized: false,
   propertiesMinimized: false,
+  historyVisible: false,
   propertyGroupsOpen: Object.freeze({}),
   panelsFloating: false,
   moveSnapStep: 0.25,

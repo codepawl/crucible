@@ -40,6 +40,7 @@ import './replace-textured-parts.js';
 import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
 import { createBakeMark } from './studio-bake-mark.js';
 import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
+import { editIconName } from './studio-edit-names.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, frameFailureReason, watchContextLoss } from './studio-context-loss.js';
 import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgentEdit, diffRecipeNodes } from './studio-agent-presence.js';
@@ -1378,7 +1379,6 @@ export function createStudio(container, {
   const saveAsButton = showActionKey(createElement(documentReference, 'button', { type: 'button', textContent: 'Save as…' }), 'file.saveAs');
   const addMenuButton = createIconButton(documentReference, 'add', 'Add an object or a light', { attributes: { popovertarget: 'crucible-studio-pop-add' } });
   // The menus of the top bar, as a desktop app lays them out. Each one opens a popover of rows.
-  const HISTORY_ROW_LIMIT = 30;
   const createMenuButton = (label, popoverId, attributes = {}) => createElement(documentReference, 'button', {
     type: 'button',
     className: 'crucible-studio-menu-button',
@@ -1400,6 +1400,9 @@ export function createStudio(container, {
     item.addEventListener('click', onChoose);
     return giveMenuIcon(item, iconName);
   };
+  // Whether the History panel is shown, and the edits it last drew, so a notification that changed no edit draws nothing.
+  let historyShown = false;
+  let renderedHistoryKey = '';
   const menuToggles = [];
   const syncMenuToggles = () => menuToggles.forEach(({ item, isOn }) => item.setAttribute('aria-checked', isOn() ? 'true' : 'false'));
   const createMenuToggle = (label, actionId, onChoose, isOn, iconName) => {
@@ -1427,67 +1430,8 @@ export function createStudio(container, {
   };
   const editUndoItem = createMenuItem('Undo', 'edit.undo', () => undoButton.click(), 'undo');
   const editRedoItem = createMenuItem('Redo', 'edit.redo', () => redoButton.click(), 'redo');
-  const historyItem = createMenuItem('History', '', () => historyPopover.showPopover?.(), 'history');
-  // The recent edits by name, newest first, under a title that leads back to the Edit menu. A filled mark sits on the edit the
-  // scene shows; a row steps undo or redo to that edit and the list stays open, so a person can step several times.
-  const historyPopover = createMenuPopover('crucible-studio-pop-history');
-  const historyTitle = giveMenuIcon(createElement(documentReference, 'button', {
-    type: 'button',
-    className: 'crucible-studio-history-title',
-    textContent: 'History',
-    attributes: { title: 'Back to the Edit menu' },
-  }), 'history');
-  const createHistoryRow = (name, detail, editPosition, appliedCount) => {
-    const row = createElement(documentReference, 'button', {
-      type: 'button',
-      dataset: { label: name },
-      attributes: { role: 'menuitemcheckbox', 'aria-checked': editPosition === appliedCount ? 'true' : 'false' },
-    }, createElement(documentReference, 'span', { textContent: name }));
-    if (detail) {
-      row.append(createElement(documentReference, 'span', { className: 'crucible-studio-history-detail', textContent: detail }));
-    }
-    row.addEventListener('click', () => {
-      controller.goToHistoryPosition(editPosition);
-      renderHistoryRows();
-      focusCurrentHistoryRow();
-      announce(editPosition === 0 ? 'Back to the start' : `Went to ${name}`);
-    });
-    return row;
-  };
-  function renderHistoryRows() {
-    const { labels, details, position, reachesStart } = controller.history;
-    const oldestEdit = Math.max(1, Math.min(labels.length - HISTORY_ROW_LIMIT + 1, position));
-    const rows = [];
-    for (let editPosition = labels.length; editPosition >= oldestEdit; editPosition -= 1) {
-      rows.push(createHistoryRow(labels[editPosition - 1], details[editPosition - 1], editPosition, position));
-    }
-    if (oldestEdit === 1 && reachesStart) {
-      rows.push(createHistoryRow('Start', '', 0, position));
-    }
-    historyPopover.replaceChildren(historyTitle, ...rows);
-  }
-  // Focus starts on the edit the scene shows, so the mark and the key focus agree and Tab moves on from it.
-  function focusCurrentHistoryRow() {
-    Array.from(historyPopover.children).find(child => child.getAttribute('aria-checked') === 'true')?.focus?.();
-  }
-  historyPopover.addEventListener('beforetoggle', event => {
-    if (event.newState === 'open') renderHistoryRows();
-  });
-  historyPopover.addEventListener('toggle', event => {
-    if (event.newState === 'open') focusCurrentHistoryRow();
-  });
-  // One step back: the title, the Left key and Escape return to the Edit menu with focus on its History row.
-  const returnToEditMenu = () => {
-    historyPopover.hidePopover?.();
-    editPopover.showPopover?.();
-    historyItem.focus?.();
-  };
-  historyTitle.addEventListener('click', returnToEditMenu);
-  historyPopover.addEventListener('keydown', event => {
-    if (event.key !== 'Escape' && event.key !== 'ArrowLeft') return;
-    event.preventDefault();
-    returnToEditMenu();
-  });
+  // History is a panel in the right column; this row shows it and moves focus to the edit the scene shows.
+  const historyItem = createMenuItem('History', '', () => showHistoryPanel(), 'history');
   const editPopover = createMenuPopover(
     'crucible-studio-pop-edit',
     editUndoItem,
@@ -1505,18 +1449,6 @@ export function createStudio(container, {
     createMenuItem('Reset scale', 'edit.resetScale', () => resetSelectionTransform('scale'), 'scale'),
     createMenuItem('Settings…', 'settings.open', () => settingsDialog.showModal(), 'settings'),
   );
-  // The Edit button stays shown as open while either of its two surfaces (the menu, then History) is on screen.
-  const openEditSurfaces = new Set();
-  for (const surface of [editPopover, historyPopover]) {
-    surface.addEventListener('toggle', event => {
-      if (event.newState === 'open') {
-        openEditSurfaces.add(surface);
-      } else {
-        openEditSurfaces.delete(surface);
-      }
-      editMenuButton.dataset.open = openEditSurfaces.size > 0 ? 'true' : 'false';
-    });
-  }
   // A right click on an object, in the viewport or in the Scene list, opens the actions on that object where the
   // pointer is. The rows are the Edit menu's own, so a key learned in one place works in the other.
   const objectPopover = createMenuPopover(
@@ -1586,6 +1518,7 @@ export function createStudio(container, {
     createMenuToggle('Grid', '', () => gridButton.click(), () => gridVisible, 'grid'),
     sceneCameraToggle,
     createMenuToggle('Scene and Properties', '', () => toggleDocksButton.click(), () => root.dataset.outlinerCollapsed !== 'true' || root.dataset.inspectorCollapsed !== 'true', 'panels'),
+    createMenuToggle('History', '', () => setHistoryShown(!historyShown), () => historyShown, 'history'),
     createMenuToggle('Properties', 'view.properties', () => setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true'), () => root.dataset.inspectorCollapsed !== 'true', 'settings'),
   );
   // A row that switches something shows whether it is on each time its menu opens.
@@ -1832,7 +1765,6 @@ export function createStudio(container, {
     aiSyncPopover,
     exportPopover,
     editPopover,
-    historyPopover,
     objectPopover,
     viewPopover,
     helpPopover,
@@ -1889,7 +1821,6 @@ export function createStudio(container, {
   }
   bindPopoverAnchor(() => fileMenuAnchor, newPopover);
   bindPopoverAnchor(editMenuButton, editPopover);
-  bindPopoverAnchor(editMenuButton, historyPopover);
   bindPopoverAnchor(viewMenuButton, viewPopover);
   bindPopoverAnchor(helpMenuButton, helpPopover);
   let addMenuAnchor = addMenuButton;
@@ -2558,6 +2489,100 @@ export function createStudio(container, {
     createElement(documentReference, 'div', { className: 'crucible-studio-panels crucible-studio-scroll' }, panelsByTab.node, panelsByTab.material, panelsByTab.look, panelsByTab.camera),
   );
 
+  // The History panel: the edits in the order they were made, oldest at the top, so a recording reads downward. The row of the
+  // edit the scene shows is filled and strong; the edits after it (undone, still redoable) are dimmed and stay clickable.
+  const historyList = createElement(documentReference, 'div', { className: 'crucible-studio-history-list crucible-studio-scroll', attributes: { role: 'list', 'aria-label': 'Edits' } });
+  const historyDock = createElement(
+    documentReference,
+    'aside',
+    { className: 'crucible-studio-dock crucible-studio-history', attributes: { 'aria-label': 'History' } },
+    createElement(
+      documentReference,
+      'div',
+      { className: 'crucible-studio-dock-head' },
+      createElement(documentReference, 'span', { className: 'crucible-studio-dock-title' }, createIcon(documentReference, 'history'), createElement(documentReference, 'span', { textContent: 'History' })),
+    ),
+    historyList,
+  );
+  const historyRowButtons = () => Array.from(historyList.children);
+  const currentHistoryRow = () => historyRowButtons().find(row => row.getAttribute('aria-current') === 'step');
+
+  function createHistoryRow({ name, detail, position, state }) {
+    const row = createElement(documentReference, 'button', {
+      type: 'button',
+      className: 'crucible-studio-history-row',
+      dataset: { label: name, state, position: String(position) },
+      tabIndex: state === 'current' ? 0 : -1,
+      attributes: { role: 'listitem', ...(state === 'current' ? { 'aria-current': 'step' } : {}), ...(state === 'undone' ? { 'aria-description': 'Undone' } : {}) },
+    },
+    createElement(documentReference, 'span', { className: 'crucible-studio-history-mark', attributes: { 'aria-hidden': 'true' } }),
+    createIcon(documentReference, name === 'Start' ? 'history' : editIconName(name)),
+    createElement(documentReference, 'span', { className: 'crucible-studio-history-name', textContent: name }));
+    if (detail) {
+      row.append(createElement(documentReference, 'span', { className: 'crucible-studio-history-detail', textContent: detail }));
+    }
+    row.title = detail ? `${name}  ${detail}` : name;
+    row.addEventListener('click', () => {
+      controller.goToHistoryPosition(position);
+      syncHistoryPanel();
+      currentHistoryRow()?.focus?.();
+      announce(position === 0 ? 'Back to the start' : `Went to ${name}`);
+    });
+    return row;
+  }
+
+  function syncHistoryPanel() {
+    if (!historyShown) return;
+    const { labels, details, position, reachesStart } = controller.history;
+    const renderKey = JSON.stringify([position, labels, details, reachesStart]);
+    if (renderKey === renderedHistoryKey) return;
+    renderedHistoryKey = renderKey;
+    const stateOf = editPosition => (editPosition === position ? 'current' : editPosition < position ? 'done' : 'undone');
+    const rows = [];
+    if (reachesStart) {
+      rows.push({ name: 'Start', detail: '', position: 0, state: stateOf(0) });
+    }
+    labels.forEach((name, index) => rows.push({ name, detail: details[index], position: index + 1, state: stateOf(index + 1) }));
+    const hadFocus = historyList.contains(documentReference.activeElement);
+    historyList.replaceChildren(...rows.map(createHistoryRow));
+    const current = currentHistoryRow();
+    // The newest row first, so the undone rows after the current one are in view, then the current row, which wins when both cannot fit.
+    historyList.lastElementChild?.scrollIntoView?.({ block: 'nearest' });
+    current?.scrollIntoView?.({ block: 'nearest' });
+    if (hadFocus) current?.focus?.();
+  }
+
+  // Up and Down move between rows, Home and End go to the ends; Enter and Space press the focused row like any button.
+  historyList.addEventListener('keydown', event => {
+    const step = { ArrowUp: -1, ArrowDown: 1 }[event.key];
+    const rows = historyRowButtons();
+    const index = rows.indexOf(documentReference.activeElement);
+    let target = null;
+    if (step !== undefined && index >= 0) target = rows[Math.max(0, Math.min(rows.length - 1, index + step))];
+    if (event.key === 'Home') target = rows[0];
+    if (event.key === 'End') target = rows[rows.length - 1];
+    if (!target) return;
+    event.preventDefault();
+    for (const row of rows) row.tabIndex = row === target ? 0 : -1;
+    target.focus?.();
+    target.scrollIntoView?.({ block: 'nearest' });
+  });
+
+  // Showing is remembered with the other view preferences. In a compact window the panel starts closed like the others.
+  function setHistoryShown(shown, { remember = true } = {}) {
+    historyShown = shown;
+    root.dataset.historyCollapsed = shown ? 'false' : 'true';
+    renderedHistoryKey = '';
+    if (remember) setPreference('historyVisible', shown);
+    syncHistoryPanel();
+    syncMenuToggles();
+  }
+  function showHistoryPanel() {
+    setHistoryShown(true);
+    currentHistoryRow()?.focus?.();
+  }
+  root.dataset.historyCollapsed = 'true';
+
   // Bottom Timeline & Telemetry Bar
   const playTooltip = isPlaying => `${isPlaying ? 'Pause' : 'Play'} (${keyLabel(keymap, 'animate.play')})`;
   const playButton = createIconButton(documentReference, 'play', playTooltip(false), { attributes: { 'aria-pressed': 'false' } });
@@ -2911,6 +2936,8 @@ export function createStudio(container, {
     button.setAttribute('aria-expanded', minimized ? 'false' : 'true');
   }
 
+  sideColumn.append(historyDock);
+  setHistoryShown(preferences.historyVisible, { remember: false });
   applyPreferences();
   root.append(viewportElement, menubarElement, toolbarElement, sideColumn, bottomElement, fileInput, importInput, recipeDialog, shortcutsDialog, settingsDialog, setup.dialog);
   container.append(root);
@@ -4160,7 +4187,7 @@ export function createStudio(container, {
     redoButton.setAttribute('aria-disabled', controller.canRedo ? 'false' : 'true');
     editUndoItem.setAttribute('aria-disabled', controller.canUndo ? 'false' : 'true');
     editRedoItem.setAttribute('aria-disabled', controller.canRedo ? 'false' : 'true');
-    historyItem.setAttribute('aria-disabled', controller.canUndo || controller.canRedo ? 'false' : 'true');
+    syncHistoryPanel();
     const selectedNode = recipe.nodes.find(node => node.id === controller.selectedNodeId) ?? null;
     const hasNode = Boolean(selectedNode);
     const selectedCount = controller.selectedNodeIds.length;
@@ -5216,6 +5243,7 @@ export function createStudio(container, {
     root.dataset.compact = compact ? 'true' : 'false';
     setOutlinerCollapsed(compact);
     setInspectorCollapsed(compact);
+    setHistoryShown(compact ? false : preferences.historyVisible, { remember: false });
   }
   syncCompactLayout();
 

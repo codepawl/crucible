@@ -3,11 +3,12 @@
 // studio-layout-rules.mjs: unequal insets around the content of a padded container, a gap or padding off the spacing
 // scale, or a gap between groups smaller than the gap inside one. Every failure names the selector, the numbers and the fix.
 //
-//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|newscene|dialog|notice|notices|editmenu] [--width pixels] [--records file.json]
+//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|newscene|dialog|notice|notices|editmenu|history] [--width pixels] [--records file.json]
 //
 // Without --origin it starts a Vite dev server on a free port and stops it (by its own PID) at the end. Screens: the Studio
 // page, each of its popover menus, the five steps of the setup dialog, and the New scene chooser with its unsaved-changes
 // question, each in the dark and the light theme at 1280 by 720 (--width changes the width, for example 720).
+// The History panel is measured at 1280 and 720 after six edits with two undone, and the Edit menu with its History row beside it.
 // The notices (a draft found in storage, the paused picture after a lost context) and the recipe, settings and shortcuts
 // dialogs are measured at 1280 and at 720 pixels wide, because their buttons wrap first when the window narrows.
 import { spawn } from 'node:child_process';
@@ -37,7 +38,7 @@ const DIALOG_SELECTORS = Object.freeze({
   'shortcuts dialog': 'dialog.crucible-studio-shortcuts-dialog',
 });
 const SERVER_START_TIMEOUT_MS = 60000;
-const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|newscene|dialog|notice|notices|editmenu] [--width pixels] [--records file.json]';
+const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|popover|newscene|dialog|notice|notices|editmenu|history] [--width pixels] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
 const SOFTWARE_ARGUMENTS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'];
@@ -336,35 +337,75 @@ export async function runSelectionBehavior({ origin } = {}) {
   }
 }
 
-// What a person does in the open History list, in a real browser: focus starts on the current edit, a click on another row
-// steps there and leaves the list open, and Escape goes back to the Edit menu before a second Escape closes it.
-async function checkHistoryBehavior(page) {
-  const state = () => page.evaluate(() => ({
-    historyOpen: document.getElementById('crucible-studio-pop-history').matches(':popover-open'),
-    editOpen: document.getElementById('crucible-studio-pop-edit').matches(':popover-open'),
-    focusedChecked: document.activeElement?.getAttribute('aria-checked') ?? null,
-    focusedLabel: document.activeElement?.dataset?.label ?? null,
-    markedLabel: document.querySelector('#crucible-studio-pop-history [aria-checked="true"]')?.dataset.label ?? null,
-  }));
-  const expect = (condition, message, found) => {
-    if (!condition) throw new Error(`Edit menu behavior: ${message}: ${JSON.stringify(found)}`);
-  };
-  let found = await state();
-  expect(found.focusedChecked === 'true', 'focus starts on the current edit', found);
-  await page.locator('#crucible-studio-pop-history button[data-label="Rotate"]').click();
-  found = await state();
-  expect(found.historyOpen && found.markedLabel === 'Rotate' && found.focusedLabel === 'Rotate', 'a click steps and leaves the list open', found);
-  await page.keyboard.press('Escape');
-  found = await state();
-  expect(!found.historyOpen && found.editOpen, 'Escape returns to the Edit menu', found);
-  await page.keyboard.press('Escape');
-  found = await state();
-  expect(!found.historyOpen && !found.editOpen, 'a second Escape closes the menu', found);
+// The Edit menu open, with its History row. When STUDIO_AUDIT_STILLS names a folder, each screen is also saved there as a picture.
+async function measureEditMenu(page, theme, label) {
+  const capture = createCapture(page, theme, label);
+  await page.locator('.crucible-studio-menu-button', { hasText: 'Edit' }).click();
+  await capture('edit menu', '#crucible-studio-pop-edit');
+  return capture.screens;
 }
 
-// The Edit menu open, then its History list after five edits: the two surfaces a person reaches from the top bar. When
-// STUDIO_AUDIT_STILLS names a folder, each one is also saved there as a picture.
-async function measureEditMenu(page, theme, label) {
+function createCapture(page, theme, label) {
+  const screens = [];
+  const stillsFolder = process.env.STUDIO_AUDIT_STILLS;
+  const capture = async (name, selector, extra = {}) => {
+    // The pointer waits away from the list, so no row shows the highlight of a hover.
+    await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height - 24);
+    await page.waitForTimeout(250);
+    screens.push({ name: `${name}${label} (${theme})`, records: await measure(page, selector), ...extra });
+    if (stillsFolder) await page.screenshot({ path: `${stillsFolder}/${name.replace(/ /g, '-')}${label.replace(/ /g, '-')}-${theme}.png` });
+  };
+  capture.screens = screens;
+  return capture;
+}
+
+// What a person does in the History panel, in a real browser: Edit > History shows it with focus on the current row, a click on
+// an earlier row steps back and dims the rows after it, a click on a dimmed row steps forward, and a new edit drops the dimmed rows.
+async function checkHistoryBehavior(page) {
+  const state = () => page.evaluate(() => {
+    const rows = [...document.querySelectorAll('.crucible-studio-history-row')];
+    const colorOf = state => {
+      const row = rows.find(candidate => candidate.dataset.state === state);
+      return row ? getComputedStyle(row).color : null;
+    };
+    const list = document.querySelector('.crucible-studio-history-list');
+    const listStyle = getComputedStyle(list);
+    return {
+      states: rows.map(row => row.dataset.state),
+      focusedState: document.activeElement?.dataset?.state ?? null,
+      currentColor: colorOf('current'),
+      doneColor: colorOf('done'),
+      undoneColor: colorOf('undone'),
+      listInsets: [listStyle.paddingTop, listStyle.paddingRight, listStyle.paddingBottom, listStyle.paddingLeft],
+      currentVisible: (() => {
+        const current = rows.find(row => row.dataset.state === 'current')?.getBoundingClientRect();
+        const box = list.getBoundingClientRect();
+        return Boolean(current) && current.top >= box.top - 1 && current.bottom <= box.bottom + 1;
+      })(),
+    };
+  });
+  const expect = (condition, message, found) => {
+    if (!condition) throw new Error(`History panel behavior: ${message}: ${JSON.stringify(found)}`);
+  };
+  let found = await state();
+  expect(found.states.filter(value => value === 'undone').length === 2, 'two rows are undone', found);
+  expect(found.focusedState === 'current', 'focus starts on the current row', found);
+  expect(found.currentVisible, 'the current row is scrolled into view', found);
+  expect(found.undoneColor !== found.currentColor && found.undoneColor !== found.doneColor, 'dimmed rows differ from the current row and the done rows', found);
+  expect(new Set(found.listInsets).size === 1, 'the list has even insets', found);
+  await page.locator('.crucible-studio-history-row[data-state="undone"]').last().click();
+  found = await state();
+  expect(found.states.at(-1) === 'current' && !found.states.includes('undone'), 'a click on the last dimmed row steps forward to it', found);
+  await page.locator('.crucible-studio-history-row[data-state="done"]').nth(2).click();
+  found = await state();
+  expect(found.states.filter(value => value === 'undone').length >= 1, 'a click on an earlier row dims the rows after it', found);
+  await page.evaluate(() => window.__studioPage.controller.updateNodeTransform('cube', { translation: [2, 0.5, 0] }));
+  found = await state();
+  expect(!found.states.includes('undone') && found.states.at(-1) === 'current', 'a new edit removes the dimmed rows', found);
+}
+
+// The History panel after six edits, two of them undone, shown through Edit > History.
+async function measureHistoryPanel(page, theme, label) {
   await page.evaluate(() => {
     const controller = window.__studioPage.controller;
     controller.updateNodeTransform('cube', { translation: [1, 0.5, 0] });
@@ -372,22 +413,19 @@ async function measureEditMenu(page, theme, label) {
     controller.updateNodeTransform('cube', { scale: [1.2, 1.2, 1.2] });
     controller.addPrimitive('box');
     controller.updateNodeTransform('cube', { visible: false });
+    controller.updateNodeTransform('cube', { visible: true });
+    controller.undo();
+    controller.undo();
   });
-  const screens = [];
-  const stillsFolder = process.env.STUDIO_AUDIT_STILLS;
-  const capture = async (name, selector) => {
-    // The pointer waits away from the list, so no row shows the highlight of a hover.
-    await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height - 24);
-    await page.waitForTimeout(250);
-    screens.push({ name: `${name}${label} (${theme})`, records: await measure(page, selector) });
-    if (stillsFolder) await page.screenshot({ path: `${stillsFolder}/${name.replace(/ /g, '-')}${label.replace(/ /g, '-')}-${theme}.png` });
-  };
+  const capture = createCapture(page, theme, label);
   await page.locator('.crucible-studio-menu-button', { hasText: 'Edit' }).click();
-  await capture('edit menu', '#crucible-studio-pop-edit');
   await page.locator('#crucible-studio-pop-edit button', { hasText: 'History' }).click();
-  await capture('edit history', '#crucible-studio-pop-history');
+  await page.waitForSelector('.crucible-studio-history:not([hidden])');
+  const menuStillOpen = await page.evaluate(() => document.getElementById('crucible-studio-pop-edit').matches(':popover-open'));
+  if (menuStillOpen) throw new Error('History panel behavior: the Edit menu stays open over the scene after History is chosen');
+  await capture('history panel', '.crucible-studio-history');
   await checkHistoryBehavior(page);
-  return screens;
+  return capture.screens;
 }
 
 // Runs on a page loaded with a seeded draft, so the draft notice is there on its own and the paused notice comes from a real
@@ -427,6 +465,13 @@ export async function runAudit({ origin, only, extraCss, viewport = VIEWPORT } =
         for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
           const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport });
           screens.push(...await measureEditMenu(opened.page, theme, label));
+          await opened.context.close();
+        }
+      }
+      if (!only || only === 'history') {
+        for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
+          const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport });
+          screens.push(...await measureHistoryPanel(opened.page, theme, label));
           await opened.context.close();
         }
       }
