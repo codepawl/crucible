@@ -1,7 +1,8 @@
 // Usage: node rmse.mjs <scene> <raster.png> <pt.png> [diff-out.png]. RMSE (0..255, 3 channels) inside the union of the outer cubes' silhouettes.
 import sharp from 'sharp';
-import { camera, size, footprintCubes } from './scenes.mjs';
-const [sceneName, rasterPath, tracePath, diffOut] = process.argv.slice(2);
+import { camera, size, footprintCubes, regionCubes } from './scenes.mjs';
+const [sceneName, rasterPath, tracePath, diffOut, regionFlag] = process.argv.slice(2);
+const cubesOf = regionFlag === 'region' ? regionCubes : footprintCubes;
 const load = async path => (await sharp(path).removeAlpha().raw().toBuffer({ resolveWithObject: true })).data;
 const [raster, trace] = [await load(rasterPath), await load(tracePath)];
 const sub = (a, b) => a.map((v, i) => v - b[i]); const dot = (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
@@ -16,7 +17,7 @@ function hull(points) {
   const build = list => { const out = []; for (const p of list) { while (out.length >= 2 && cross(out.at(-2), out.at(-1), p) <= 0) out.pop(); out.push(p); } out.pop(); return out; };
   return [...build(sorted), ...build([...sorted].reverse())];
 }
-const hulls = footprintCubes(sceneName).map(cube => hull([-1,1].flatMap(x => [-1,1].flatMap(y => [-1,1].map(z => project(rotate(cube.rotation, [x*cube.scale/2, y*cube.scale/2, z*cube.scale/2]).map((v, i) => v + cube.translation[i])))))));
+const hulls = cubesOf(sceneName).map(cube => hull([-1,1].flatMap(x => [-1,1].flatMap(y => [-1,1].map(z => project(rotate(cube.rotation, [x*cube.scale/2, y*cube.scale/2, z*cube.scale/2]).map((v, i) => v + cube.translation[i])))))));
 const inside = (poly, x, y) => poly.every((p, i) => { const q = poly[(i + 1) % poly.length]; return (q[0]-p[0])*(y-p[1]) - (q[1]-p[1])*(x-p[0]) >= 0; });
 // Shrink by testing the pixel centre only; keep a 3 pixel margin off the silhouette edge so edge antialiasing does not count.
 const mask = (x, y) => hulls.some(poly => [[0,0],[3,0],[-3,0],[0,3],[0,-3]].every(([dx, dy]) => inside(poly, x + 0.5 + dx, y + 0.5 + dy)));
