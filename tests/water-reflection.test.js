@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { box, sphere } from '../src/geometry.js';
-import { applyWaterReflection, attachWaterReflection, canReuseMirrorImage, findWaterSurface, waterMirrorLevel, waterMirrorWeight, WATER_BLUR_LIMIT_ROUGHNESS, WATER_MAXIMUM_BLUR_LEVEL, WATER_MIRROR_LOD_SCALE, WATER_MIRROR_MINIMUM_PIXEL_RADIUS } from '../src/water-reflection.js';
+import { attachWetMirror, flagWetMirrorParts, WET_MIRROR_SCALE, WET_MIRROR_OPTIONS, applyWaterReflection, attachWaterReflection, canReuseMirrorImage, findWaterSurface, waterMirrorLevel, waterMirrorWeight, WATER_BLUR_LIMIT_ROUGHNESS, WATER_MAXIMUM_BLUR_LEVEL, WATER_MIRROR_LOD_SCALE, WATER_MIRROR_MINIMUM_PIXEL_RADIUS } from '../src/water-reflection.js';
 import { createTerrain } from '../src/terrain.js';
 import { createFragmentShader } from '../src/shaders.js';
 import { CrucibleRenderer } from '../src/renderer.js';
@@ -161,7 +161,7 @@ test('the mirror draw leaves out spot and area lights and the lit frame sends th
   const counts = {};
   const context = new Proxy({}, { get: (_, name) => (name === 'uniform1i' ? (location, value) => { counts[location] = value; } : () => {}) });
   const renderer = Object.create(CrucibleRenderer.prototype);
-  const lighting = { spotCount: 3, areaCount: 2, shadowCasters: [], positions: [], colors: [], radii: [], pointShadows: [], spotPositions: [], spotColors: [], spotDirections: [], spotParameters: [], areaPositions: [], areaColors: [], areaNormals: [], areaTangents: [] };
+  const lighting = { spotCount: 3, areaCount: 2, fillColors: [], shadowCasters: [], positions: [], colors: [], radii: [], pointShadows: [], spotPositions: [], spotColors: [], spotDirections: [], spotParameters: [], areaPositions: [], areaColors: [], areaNormals: [], areaTangents: [] };
   Object.assign(renderer, { context, lighting, uniforms: { spotLightCount: 'spot', areaLightCount: 'area' } });
   renderer.applyLocalLightUniforms(true);
   assert.deepEqual(counts, { spot: 0, area: 0 });
@@ -417,4 +417,41 @@ test('attachWaterReflection refuses a mirror scale or update interval that would
     assert.throws(() => attachWaterReflection(renderer, surface, { updateEvery }), /updateEvery was .*pass a number from 0 to 1000/);
   }
   attachWaterReflection(renderer, surface, { scale: 0.5, updateEvery: 2 })();
+});
+
+// A renderer double that records the size of every mirror target the addon creates.
+function mirrorSizeRecorder(canvasWidth, canvasHeight) {
+  const sizes = [];
+  const context = new Proxy({}, {
+    get: (target, name) => {
+      if (name === 'texImage2D') return (...args) => sizes.push([args[3], args[4]]);
+      if (name === 'checkFramebufferStatus') return () => 1;
+      if (name === 'FRAMEBUFFER_COMPLETE') return 1;
+      return typeof name === 'string' && /^[A-Z0-9_]+$/.test(name) ? 0 : () => ({});
+    },
+  });
+  const renderer = { context, canvas: { width: canvasWidth, height: canvasHeight }, hdr: true, viewProjection: new Float32Array(16), render() {}, dispose() {} };
+  return { renderer, sizes };
+}
+
+test('the wet-ground mirror is as large as the frame, and a lake mirror stays at three quarters', () => {
+  const ground = [placed('road', [0, -0.05, 0], [90, 0.1, 90], { color: [0.2, 0.2, 0.2], roughness: 0.9 })];
+  const wetParts = flagWetMirrorParts(ground);
+  assert.equal(WET_MIRROR_SCALE, 1);
+  const wet = mirrorSizeRecorder(640, 360);
+  attachWetMirror(wet.renderer, wetParts);
+  wet.renderer.render({ eye: [0, 1.6, 3], target: [0, 0, 0] });
+  assert.deepEqual(wet.sizes, [[640, 360]], 'a wet-ground mirror target has the canvas size');
+  const lake = mirrorSizeRecorder(640, 360);
+  const marked = applyWaterReflection(lakeScene());
+  attachWaterReflection(lake.renderer, marked.surface);
+  lake.renderer.render({ eye: [0, 5, 20], target: [0, 0, 0] });
+  assert.deepEqual(lake.sizes, [[480, 270]], 'the lake mirror target keeps its three-quarter size');
+});
+
+test('the wet mirror keeps every part the frame draws, while a lake mirror drops the small ones', () => {
+  assert.equal(WET_MIRROR_OPTIONS.minimumPixelRadius, 0);
+  assert.equal(WET_MIRROR_OPTIONS.levelOfDetailScale, 1);
+  assert.ok(WATER_MIRROR_MINIMUM_PIXEL_RADIUS > 0 && WATER_MIRROR_LOD_SCALE > 1);
+  assert.throws(() => attachWaterReflection({}, {}, { minimumPixelRadius: -1 }), /minimumPixelRadius/);
 });

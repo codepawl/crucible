@@ -104,7 +104,7 @@ export const STUDIO_TEMPLATES = Object.freeze({
   showcase: Object.freeze({ label: 'Gyro showcase', description: 'Turntable rig with key motion and 3 camera bookmarks' }),
   pedestal: Object.freeze({ label: 'Product studio', description: 'Soft ceramic hero sculpture on studio pedestal' }),
   courtyard: Object.freeze({ label: 'Block courtyard', description: 'Architectural daylight composition ready to block out' }),
-  empty: Object.freeze({ label: 'Clean stage', description: 'Single ground plane and calibrated key light' }),
+  empty: Object.freeze({ label: 'Blank', description: 'Single ground plane and calibrated key light' }),
 });
 
 export function buildTemplateRecipe(templateName = 'blockout') {
@@ -192,17 +192,14 @@ export function buildTemplateRecipe(templateName = 'blockout') {
       schemaVersion: 1,
       geometries: [
         { id: 'floor', type: 'box', bevel: 0 },
-        { id: 'starter-box', type: 'box', bevel: 0.04 },
       ],
       materials: [
         { id: 'floor-mat', tag: 'surface', color: [0.11, 0.13, 0.15], roughness: 0.88, metallic: 0.04 },
-        { id: 'clay', tag: 'surface', color: [0.68, 0.44, 0.34], roughness: 0.6, metallic: 0.02 },
       ],
       nodes: [
         { id: 'stage-floor', label: 'Stage floor', geometry: 'floor', material: 'floor-mat', translation: [0, -0.1, 0], scale: [12, 0.2, 12] },
-        { id: 'cube', label: 'Cube', geometry: 'starter-box', material: 'clay', translation: [0, 0.5, 0] },
       ],
-      camera: { eye: [3.8, 2.5, 4.2], target: [0, 0.5, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 120 },
+      camera: { eye: [3.8, 2.5, 4.2], target: [0, 0.2, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 120 },
       environment: { setup: 'studio', lightDirection: [-3, 5, 3.5], keyIntensity: 1.7, viewTransform: 'agx' },
       effects: { exposure: 0.98, bloom: { strength: 0.06, threshold: 1.1, radius: 0.8 } },
     };
