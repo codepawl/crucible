@@ -49,7 +49,7 @@ const FULL_REPORT = { signedIn: true, name: 'Sample Person', email: 'sample.pers
 test('Settings groups its rows into titled sections that each have an icon, and shows one section at a time (#3310)', testContext => {
   const ui = mountStudio(testContext);
   const titles = ui.sectionButtons().map(button => button.querySelector('span').textContent);
-  assert.deepEqual(titles, ['Interface', 'Viewport', 'Editing', 'Keys'], 'no Account section without a host');
+  assert.deepEqual(titles, ['Interface', 'Viewport', 'Editing', 'Keyboard'], 'no Account section without a host');
   for (const button of ui.sectionButtons()) {
     assert.ok(button.querySelector('svg'), `${button.dataset.section} has an icon in the list`);
     assert.ok(ui.pane(button.dataset.section).querySelector('h3 svg'), `${button.dataset.section} has an icon at its title`);

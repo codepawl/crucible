@@ -5,6 +5,7 @@ import { KEYMAP_PRESETS } from './studio-keymap.js';
 import { STUDIO_PREFERENCE_CHOICES } from './studio-preferences.js';
 import { createAccountSection, STUDIO_SETTINGS_ACTION_ICONS } from './studio-account.js';
 import { leadWithActionIcon } from './studio-icons.js';
+import { createKeyboardSection } from './studio-keyboard-settings.js';
 
 const capitalised = value => value[0].toUpperCase() + value.slice(1);
 const MOTION_LABELS = Object.freeze({ system: 'Follow system', reduced: 'Reduced' });
@@ -48,7 +49,7 @@ export const STUDIO_SETTING_SECTIONS = Object.freeze([
   },
   {
     id: 'keys',
-    title: 'Keys',
+    title: 'Keyboard',
     icon: 'keyboard',
     rows: [['keymap', 'Preset', value => KEYMAP_PRESETS[value].label]],
   },
@@ -56,10 +57,11 @@ export const STUDIO_SETTING_SECTIONS = Object.freeze([
 
 /**
  * Builds the dialog. `onChange(name, value)` writes one preference, `onReset()` returns every preference to its default,
- * `onRunSetup()` and `onOpenShortcuts()` open the dialogs of those names. Returns the dialog, a map of preference to its
- * control, `open()` and `dispose()`.
+ * `onRunSetup()` and `onOpenShortcuts()` open the dialogs of those names. `keyboard` reads and writes the key changes of the
+ * active preset (`getKeymap`, `getPresetId`, `getOverrides`, `onOverridesChange`). Returns the dialog, a map of preference to its
+ * control, `refreshKeyboard()`, `open()` and `dispose()`.
  */
-export function createStudioSettings({ documentReference, createElement, createIcon, shell, onChange, onReset, onRunSetup, onOpenShortcuts }) {
+export function createStudioSettings({ documentReference, createElement, createIcon, shell, onChange, onReset, onRunSetup, onOpenShortcuts, keyboard }) {
   const controls = new Map();
   const account = createAccountSection({ documentReference, createElement, createIcon, shell });
 
@@ -76,15 +78,18 @@ export function createStudioSettings({ documentReference, createElement, createI
     return createElement(documentReference, 'label', { className: 'crucible-studio-setting' }, createElement(documentReference, 'span', { textContent: label }), control);
   }
 
-  function createShortcutsRow() {
-    const button = createElement(documentReference, 'button', { type: 'button', textContent: 'Show', attributes: { 'aria-label': 'Show keyboard shortcuts' } });
-    button.addEventListener('click', onOpenShortcuts);
-    return createElement(documentReference, 'div', { className: 'crucible-studio-setting' }, createElement(documentReference, 'span', { textContent: 'Shortcuts' }), button);
+  function createKeyboardBody(section) {
+    const showSheetButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Show', attributes: { 'aria-label': 'Show keyboard shortcuts' } });
+    leadWithActionIcon(showSheetButton, createIcon(documentReference, 'keyboard'), 'keyboard');
+    showSheetButton.addEventListener('click', onOpenShortcuts);
+    keyboardSection = createKeyboardSection({ documentReference, createElement, createIcon, ...keyboard, presetRow: createRow(section.rows[0]), showSheetButton });
+    return [keyboardSection.element];
   }
 
+  let keyboardSection = null;
   const sections = STUDIO_SETTING_SECTIONS.map(section => ({
     ...section,
-    body: [...section.rows.map(createRow), ...(section.id === 'keys' ? [createShortcutsRow()] : [])],
+    body: section.id === 'keys' ? createKeyboardBody(section) : section.rows.map(createRow),
   }));
   if (account) {
     sections.push({ id: 'account', title: 'Account', icon: 'account', body: [account.element] });
@@ -160,10 +165,12 @@ export function createStudioSettings({ documentReference, createElement, createI
     controls,
     account,
     showSection,
+    refreshKeyboard: () => keyboardSection.refresh(),
     // Every opening looks the same: the first section, with focus on the dialog itself, so no control carries a focus ring and the
     // first Tab lands on the first section in the list (the way the setup dialog opens).
     open() {
       account?.refresh();
+      keyboardSection.stopRecording();
       showSection(sections[0].id);
       dialog.showModal();
       dialog.focus();

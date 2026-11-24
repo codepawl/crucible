@@ -50,8 +50,16 @@ const GROUP_BY_ACTION = Object.freeze({
   'mesh.circleSelect': 'Mesh selection',
 });
 
+// Actions that only hold keys back while editing a mesh: Settings gives them no row.
+const SETTINGS_HIDDEN_ACTIONS = Object.freeze(['mesh.noop']);
+
 // A keymap whose tool keys do not pick an object up names its tools by the move they start.
 const TOOL_LABELS_WITHOUT_GRAB = Object.freeze({ 'tool.translate': 'Move', 'tool.rotate': 'Rotate', 'tool.scale': 'Scale' });
+
+/** The name of an action in the sheet and in Settings: a keymap whose tool keys only select a tool names them by the move they start. */
+export function sheetLabelOf(keymap, item) {
+  return keymap.toolKeysGrab ? item.label : TOOL_LABELS_WITHOUT_GRAB[item.id] ?? item.label;
+}
 
 /** The group title an action belongs to in the sheet. */
 export function sheetGroupOf(actionId) {
@@ -72,15 +80,20 @@ function mouseRows(keymap) {
   return rows.slice(rows.length - keymap.mouse.length);
 }
 
-/** The sheet as `[{ title, icon, rows: [{ label, keys }] }]`: every action of the keymap that has a key, grouped by what a person is doing. */
-export function shortcutSheetGroups(keymap) {
+/**
+ * The sheet as `[{ title, icon, rows: [{ label, keys, actionId? }] }]`: every action of the keymap that has a key, grouped by what a
+ * person is doing. Settings reads the same groups with `includeUnbound`, so an action whose key was cleared can still be set again;
+ * the mouse rows have no `actionId`.
+ */
+export function shortcutSheetGroups(keymap, { includeUnbound = false } = {}) {
   const rowsByGroup = new Map(SHEET_GROUPS.map(group => [group.title, []]));
   for (const item of keymap.actions) {
-    if (item.bindings.length === 0) continue;
+    if (item.bindings.length === 0 && !includeUnbound) continue;
+    if (includeUnbound && SETTINGS_HIDDEN_ACTIONS.includes(item.id)) continue;
     const title = sheetGroupOf(item.id);
     if (!rowsByGroup.has(title)) throw new RangeError(`Keymap action "${item.id}" has no group in the shortcut sheet: add its id or prefix to studio-help.js.`);
-    const label = keymap.toolKeysGrab ? item.label : TOOL_LABELS_WITHOUT_GRAB[item.id] ?? item.label;
-    rowsByGroup.get(title).push({ label, keys: keysOfAction(keymap, item.id, item.bindings.length) });
+    const label = sheetLabelOf(keymap, item);
+    rowsByGroup.get(title).push({ label, keys: keysOfAction(keymap, item.id, item.bindings.length), actionId: item.id });
   }
   rowsByGroup.get('Mouse').push(
     { label: 'Add or remove from the selection', keys: 'Shift + click' },

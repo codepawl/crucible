@@ -19,6 +19,7 @@ import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGr
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
 import { createStudioSettings } from './studio-settings.js';
+import { withPresetOverrides } from './studio-key-overrides.js';
 import { detectStudioHardware, gatherStudioHardwareInputs, rendererChangeFor, resolveStudioPerformanceTier, studioViewportSettingsFor } from './studio-hardware.js';
 import { createStudioDiagnostics, describeStudioEnvironment, watchStudioDiagnostics } from './studio-diagnostics.js';
 import {
@@ -1337,8 +1338,10 @@ export function createStudio(container, {
     attributes: { role: 'img', 'aria-label': 'Reloads when the agent edits this file' },
   });
   // The keymap in force. Choosing another preset swaps it and every place that shows a key is drawn again.
-  let keymap = resolveKeymapPreset(preferences.keymap);
-  let appliedKeymap = preferences.keymap;
+  const keymapOf = () => resolveKeymapPreset(preferences.keymap, preferences.keyOverrides[preferences.keymap]);
+  const keymapSignature = () => JSON.stringify([preferences.keymap, preferences.keyOverrides[preferences.keymap] ?? {}]);
+  let keymap = keymapOf();
+  let appliedKeymap = keymapSignature();
   const menuKeyViews = [];
   const keyTooltipViews = [];
   const setShortcutLabel = (element, label) => {
@@ -2652,6 +2655,12 @@ export function createStudio(container, {
       settings.dialog.close();
       shortcutsDialog.showModal();
     },
+    keyboard: {
+      getKeymap: () => keymap,
+      getPresetId: () => preferences.keymap,
+      getOverrides: () => preferences.keyOverrides[preferences.keymap] ?? {},
+      onOverridesChange: presetOverrides => setPreference('keyOverrides', withPresetOverrides(preferences.keyOverrides, preferences.keymap, presetOverrides)),
+    },
   });
   const settingsDialog = settings.dialog;
 
@@ -2684,11 +2693,12 @@ export function createStudio(container, {
 
   // Puts the preferences into effect and shows them in the Settings dialog.
   function applyPreferences() {
-    if (preferences.keymap !== appliedKeymap) {
-      appliedKeymap = preferences.keymap;
-      keymap = resolveKeymapPreset(appliedKeymap);
+    if (keymapSignature() !== appliedKeymap) {
+      appliedKeymap = keymapSignature();
+      keymap = keymapOf();
       refreshKeyLabels();
     }
+    settings.refreshKeyboard();
     controller.setInteractionSettings({
       moveSnapStep: preferences.moveSnapStep,
       rotateSnapDegrees: preferences.rotateSnapDegrees,

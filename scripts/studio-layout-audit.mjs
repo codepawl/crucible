@@ -3,7 +3,7 @@
 // studio-layout-rules.mjs: unequal insets around the content of a padded container, a gap or padding off the spacing
 // scale, or a gap between groups smaller than the gap inside one. Every failure names the selector, the numbers and the fix.
 //
-//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|popover|newscene|dialog|notice|notices|helpmenu] [--width pixels] [--records file.json]
+//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|keyboard|studio|popover|newscene|dialog|notice|notices|helpmenu] [--width pixels] [--records file.json]
 //
 // Without --origin it starts a Vite dev server on a free port and stops it (by its own PID) at the end. Screens: the Studio
 // page, each of its popover menus, the five steps of the setup dialog, and the New scene chooser with its unsaved-changes
@@ -34,7 +34,7 @@ const DIALOG_SELECTORS = Object.freeze({
   'shortcuts dialog': 'dialog.crucible-studio-shortcuts-dialog',
 });
 const SERVER_START_TIMEOUT_MS = 60000;
-const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|popover|newscene|dialog|notice|notices|helpmenu] [--width pixels] [--records file.json]';
+const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|keyboard|studio|popover|newscene|dialog|notice|notices|helpmenu] [--width pixels] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
 // A signed-in host with every optional field, so the Account section of Settings is on screen and measured.
@@ -258,6 +258,41 @@ function openSettingsFromMenu(page) {
 const SETTINGS_FOOTER_GAP = 16;
 const EXTRA_ROWS = 3;
 
+// Settings > Keyboard in each state a person meets: the list, a key waiting for a press, a clash with Swap and Cancel and a refused
+// browser combination. Escape while recording must cancel the recording and leave Settings open. Nothing is saved: the clash is cancelled.
+async function measureKeyboard(page, theme) {
+  const dialogSelector = 'dialog.crucible-studio-settings-dialog';
+  const keysButton = actionId => page.locator(`button[data-key-action="${actionId}"]`);
+  const screens = [];
+  await openSettingsFromMenu(page);
+  await page.locator('.crucible-studio-settings-section[data-section="keys"]').click();
+  await page.waitForTimeout(200);
+  screens.push({ name: `keyboard default (${theme})`, records: await measure(page, dialogSelector) });
+  await keysButton('tool.select').click();
+  await page.waitForTimeout(150);
+  screens.push({ name: `keyboard recording (${theme})`, records: await measure(page, dialogSelector) });
+  await page.keyboard.press('Control+w');
+  await page.waitForTimeout(150);
+  screens.push({ name: `keyboard refused (${theme})`, records: await measure(page, dialogSelector) });
+  await page.keyboard.press('g');
+  await page.waitForTimeout(150);
+  screens.push({ name: `keyboard clash (${theme})`, records: await measure(page, dialogSelector) });
+  await page.locator('.crucible-studio-keyboard-note button', { hasText: 'Cancel' }).click();
+  await keysButton('tool.select').click();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  const state = await page.evaluate(() => ({
+    open: document.querySelector('dialog.crucible-studio-settings-dialog').open,
+    recording: document.querySelector('[data-recording="true"]') !== null,
+    saved: document.querySelector('.crucible-studio-keyboard-row[data-changed="true"]') !== null,
+  }));
+  if (!state.open || state.recording || state.saved) {
+    throw new Error('Escape while recording must cancel the recording, keep Settings open and save nothing: ' + JSON.stringify(state));
+  }
+  await page.evaluate(() => document.querySelector('dialog.crucible-studio-settings-dialog').close());
+  return screens;
+}
+
 // Runs in the page. Settings opened the way a person opens it, in a 600 px high window with three more rows than the longest section has:
 // the dialog keeps its height, the rows scroll inside themselves, the last row stays at least 16 px above the footer, focus rests on the
 // dialog, and Done is the one filled button.
@@ -449,6 +484,7 @@ async function measureScreens(page, theme, only) {
     await page.evaluate(() => document.querySelector('dialog.crucible-studio-settings-dialog').close());
     screens.push({ name: `settings fit (${theme})`, records: [], problems: await measureSettingsFit(page) });
   }
+  if (!only || only === 'keyboard') screens.push(...await measureKeyboard(page, theme));
   if (!only || only === 'dialog') {
     const titles = await page.evaluate(() => Array.from(document.querySelectorAll('.crucible-studio dialog:not(.crucible-studio-setup-dialog)')).map(dialog => dialog.querySelector('h2')?.id).filter(Boolean));
     for (const title of titles) {

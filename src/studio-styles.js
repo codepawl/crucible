@@ -2109,7 +2109,7 @@ export const STUDIO_CSS = `
 /* One fixed height for every section; a section with more rows than fit scrolls its rows, never the dialog. */
 .crucible-studio dialog.crucible-studio-settings-dialog {
   width: min(600px, calc(100vw - 32px));
-  block-size: min(456px, calc(100vh - 48px));
+  block-size: min(540px, calc(100vh - 48px));
 }
 /* A ring is drawn inside its control, so it never leaves the dialog's inset or the rows' scroll area. */
 .crucible-studio-settings-dialog :focus-visible { outline-offset: -2px; }
@@ -2208,6 +2208,110 @@ export const STUDIO_CSS = `
   margin: 0;
   accent-color: var(--studio-text);
 }
+/* Keyboard section: the preset and the filter stay put, the shortcuts scroll. Row gap 8 sits inside a group, group gap 16 between groups. */
+.crucible-studio-settings-pane[data-section="keys"] .crucible-studio-settings-rows { overflow: hidden; }
+.crucible-studio-keyboard {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--studio-space-16);
+  block-size: 100%;
+  min-block-size: 0;
+}
+.crucible-studio-keyboard-head { display: grid; gap: var(--studio-space-8); }
+.crucible-studio-keyboard-tools,
+.crucible-studio-keyboard-actions,
+.crucible-studio-keyboard-controls,
+.crucible-studio-keyboard-note,
+.crucible-studio-keyboard-note-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+}
+.crucible-studio-keyboard-tools > input { flex: 1 1 0; min-inline-size: 0; }
+.crucible-studio-keyboard-actions { flex: none; }
+.crucible-studio-keyboard button:disabled { opacity: 0.45; }
+.crucible-studio-keyboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--studio-space-16);
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.crucible-studio-keyboard-group { display: flex; flex-direction: column; gap: var(--studio-space-8); }
+.crucible-studio-keyboard-group h4 {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  margin: 0;
+  font-family: var(--studio-font-heading);
+  font-size: 13px;
+}
+.crucible-studio-keyboard-group h4 .crucible-studio-icon { flex: none; inline-size: 16px; block-size: 16px; color: var(--studio-muted); }
+.crucible-studio-keyboard-rows { display: flex; flex-direction: column; gap: var(--studio-space-8); }
+.crucible-studio-keyboard-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--studio-space-4) var(--studio-space-8);
+  min-block-size: 28px;
+}
+.crucible-studio-keyboard-name {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  min-inline-size: 0;
+}
+.crucible-studio-keyboard-name > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crucible-studio-keyboard-changed {
+  flex: none;
+  inline-size: var(--studio-space-8);
+  block-size: var(--studio-space-8);
+  border-radius: 50%;
+  background: var(--studio-accent);
+}
+.crucible-studio-keyboard-controls { justify-content: flex-end; }
+.crucible-studio dialog button.crucible-studio-keyboard-keys {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--studio-space-8);
+  min-inline-size: 96px;
+  min-block-size: 28px;
+  padding-inline: var(--studio-space-8);
+  border: 1px solid transparent;
+  color: var(--studio-text);
+  font: inherit;
+  white-space: nowrap;
+}
+.crucible-studio dialog button.crucible-studio-keyboard-keys[data-empty="true"] { color: var(--studio-muted); }
+.crucible-studio dialog button.crucible-studio-keyboard-keys[data-pending="true"],
+.crucible-studio dialog button.crucible-studio-keyboard-keys[data-recording="true"] { border-color: var(--studio-accent); }
+.crucible-studio-keyboard-dot {
+  flex: none;
+  inline-size: var(--studio-space-8);
+  block-size: var(--studio-space-8);
+  border-radius: 50%;
+  background: var(--studio-accent);
+}
+.crucible-studio dialog button.crucible-studio-keyboard-reset {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 28px;
+  block-size: 28px;
+  padding: 0;
+  background: transparent;
+  color: var(--studio-muted);
+}
+.crucible-studio dialog button.crucible-studio-keyboard-reset:hover { color: var(--studio-text); }
+.crucible-studio-keyboard-fixed { color: var(--studio-muted); white-space: nowrap; }
+.crucible-studio-keyboard-note { grid-column: 1 / -1; min-block-size: 28px; }
+.crucible-studio-keyboard-note .crucible-studio-icon { flex: none; color: var(--studio-accent); }
+.crucible-studio-keyboard-note-actions { margin-inline-start: auto; }
+@media (prefers-reduced-motion: no-preference) {
+  .crucible-studio-keyboard-dot { animation: crucible-studio-recording 1.2s ease-in-out infinite; }
+}
+@keyframes crucible-studio-recording { 50% { opacity: 0.35; } }
 /* New scene: a chooser of cards, each a rendered picture of its scene over its name. */
 .crucible-studio dialog.crucible-studio-new-dialog {
   width: min(720px, calc(100vw - 32px));

@@ -2301,6 +2301,7 @@ test('Settings change the snap, the handles and what the viewport shows, and are
     theme: 'system',
     performance: 'automatic',
     keymap: 'crucible',
+    keyOverrides: {},
     motion: 'system',
     zoomDirection: 'normal',
     setupDone: false,
