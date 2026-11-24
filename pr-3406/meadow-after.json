@@ -62,5 +62,6 @@
     540
   ],
   "backend": "gpu",
+  "commit": "fad96caebea043d2660a602ed462eaa8ea5eb3bc",
   "checkout": "."
 }

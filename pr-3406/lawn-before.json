@@ -62,5 +62,6 @@
     540
   ],
   "backend": "gpu",
+  "commit": "26c4298fb",
   "checkout": "w-3347-base"
 }
