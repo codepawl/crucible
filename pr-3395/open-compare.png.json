@@ -4,7 +4,7 @@
   "camera": "main",
   "panels": [
     "base origin/main",
-    "branch 3389-open-room-sky 26c4298fb"
+    "branch 3389-open-room-sky 6c48dcf63"
   ],
   "sides": [
     "base/main.png.json",
