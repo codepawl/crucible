@@ -1,0 +1,43 @@
+{
+ "opaqueBall": {
+  "median": 0.467968,
+  "min": 0.452384,
+  "max": 1.164288,
+  "count": 120
+ },
+ "glassThin": {
+  "median": 0.608256,
+  "min": 0.581632,
+  "max": 2.205696,
+  "count": 120
+ },
+ "glassBall": {
+  "median": 0.705536,
+  "min": 0.677888,
+  "max": 1.503232,
+  "count": 120
+ },
+ "batches": {
+  "opaqueBall": [
+   "glass:0"
+  ],
+  "glassThin": [
+   "glass:1"
+  ],
+  "glassBall": [
+   "glass:1"
+  ]
+ },
+ "canvas": [
+  1920,
+  1080
+ ],
+ "machine": {
+  "loadAverage": [
+   0,
+   0,
+   0
+  ],
+  "cpus": 28
+ }
+}
