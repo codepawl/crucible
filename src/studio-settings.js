@@ -128,7 +128,7 @@ export function createStudioSettings({ documentReference, createElement, createI
   const dialog = createElement(
     documentReference,
     'dialog',
-    { className: 'crucible-studio-settings-dialog', attributes: { 'aria-labelledby': 'crucible-studio-settings-title', closedby: 'any' } },
+    { className: 'crucible-studio-settings-dialog', tabIndex: -1, attributes: { 'aria-labelledby': 'crucible-studio-settings-title', closedby: 'any' } },
     createElement(documentReference, 'h2', { id: 'crucible-studio-settings-title', textContent: 'Settings' }),
     createElement(
       documentReference,
@@ -143,7 +143,7 @@ export function createStudioSettings({ documentReference, createElement, createI
       { method: 'dialog', className: 'crucible-studio-dialog-actions' },
       setupButton,
       resetButton,
-      createElement(documentReference, 'button', { type: 'submit', value: 'close', autofocus: true, textContent: 'Done' }),
+      createElement(documentReference, 'button', { type: 'submit', value: 'close', className: 'crucible-studio-dialog-primary', textContent: 'Done' }),
     ),
   );
   dialog.addEventListener('close', () => {
@@ -155,9 +155,13 @@ export function createStudioSettings({ documentReference, createElement, createI
     controls,
     account,
     showSection,
+    // Every opening looks the same: the first section, with focus on the dialog itself, so no control carries a focus ring and the
+    // first Tab lands on the first section in the list (the way the setup dialog opens).
     open() {
       account?.refresh();
+      showSection(sections[0].id);
       dialog.showModal();
+      dialog.focus();
     },
     dispose() {
       account?.dispose();

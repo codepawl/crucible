@@ -2,6 +2,7 @@ import './support/load-agent-scene-modules.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createStudio } from '../src/studio.js';
+import { STUDIO_CSS } from '../src/studio-styles.js';
 import { STUDIO_PREFERENCE_DEFAULTS, normalizeStudioPreferences } from '../src/studio-preferences.js';
 import { STUDIO_SETTING_SECTIONS } from '../src/studio-settings.js';
 import { createAccountSection, resolveAccountHost } from '../src/studio-account.js';
@@ -277,4 +278,52 @@ test('disposing Studio removes the account listener from the page (#3310)', asyn
   assert.equal(dom.document.listeners.filter(entry => entry.type === 'crucible-shell:account-changed').length, 1);
   studio.dispose();
   assert.equal(dom.document.listeners.filter(entry => entry.type === 'crucible-shell:account-changed').length, 0);
+});
+
+function openSettingsFromMenu(ui) {
+  ui.root.querySelectorAll('button').find(button => button.textContent.trim().startsWith('Settings')).click();
+}
+
+function cssRule(selector) {
+  const start = STUDIO_CSS.indexOf(`${selector} {`);
+  assert.ok(start >= 0, `a rule for ${selector}`);
+  return STUDIO_CSS.slice(start, STUDIO_CSS.indexOf('}', start));
+}
+
+test('Done is the one primary button of Settings; Reset and Run setup again stay secondary (#3310)', testContext => {
+  const ui = mountStudio(testContext);
+  const buttonNamed = label => ui.settingsDialog.querySelectorAll('.crucible-studio-dialog-actions button').find(button => button.textContent === label);
+  assert.ok(buttonNamed('Done').className.split(/\s+/).includes('crucible-studio-dialog-primary'));
+  assert.equal(buttonNamed('Reset').className.includes('primary'), false);
+  assert.equal(buttonNamed('Run setup again').className.includes('primary'), false);
+  assert.equal(ui.settingsDialog.querySelectorAll('.crucible-studio-dialog-primary').length, 1);
+  assert.match(STUDIO_CSS, /button\.crucible-studio-dialog-primary,\s*\.crucible-studio dialog button\.crucible-studio-setup-primary \{[^}]*background: var\(--studio-text\)/, 'it shares the look of the setup dialog\'s primary button');
+  assert.equal(ui.settingsDialog.querySelectorAll('[autofocus]').length, 0, 'no control grabs focus on open');
+});
+
+test('Settings opens the same way every time: first section, focus on the dialog itself, rings drawn inside (#3310)', testContext => {
+  const ui = mountStudio(testContext);
+  for (const section of ['interface', 'viewport', 'keys', 'interface']) {
+    ui.sectionButtons().find(button => button.dataset.section === section).click();
+    openSettingsFromMenu(ui);
+    assert.equal(ui.dom.document.activeElement, ui.settingsDialog, `focus after opening with ${section} chosen before`);
+    assert.equal(ui.pane('interface').dataset.current, 'true');
+    assert.equal(ui.pane(section).dataset.current, String(section === 'interface'));
+    ui.settingsDialog.close();
+  }
+  assert.equal(ui.settingsDialog.tabIndex, -1);
+  assert.match(cssRule('.crucible-studio-settings-dialog :focus-visible'), /outline-offset: -2px/);
+  assert.match(cssRule('.crucible-studio-settings-dialog:focus'), /outline: none/);
+});
+
+test('A Settings section with more rows than fit scrolls its rows and keeps the dialog one height (#3310)', () => {
+  assert.match(cssRule('.crucible-studio dialog.crucible-studio-settings-dialog'), /block-size: min\(\d+px, calc\(100vh - 48px\)\)/);
+  assert.doesNotMatch(cssRule('.crucible-studio dialog.crucible-studio-settings-dialog'), /max-block-size/);
+  const rows = cssRule('.crucible-studio-settings-rows');
+  assert.match(rows, /overflow-y: auto/);
+  assert.match(rows, /min-block-size: 0/);
+  assert.match(cssRule('.crucible-studio-settings-pane'), /grid-template-rows: auto minmax\(0, 1fr\)/);
+  assert.match(cssRule('.crucible-studio dialog.crucible-studio-settings-dialog[open]'), /gap: var\(--studio-space-16\)/, 'the rows end 16 px above the footer');
+  assert.match(cssRule('.crucible-studio dialog.crucible-studio-settings-dialog[open]'), /padding: var\(--studio-space-24\)/, 'one inset on all four sides');
+  assert.match(cssRule('.crucible-studio dialog.crucible-studio-settings-dialog h2'), /text-box: trim-both cap alphabetic/);
 });
