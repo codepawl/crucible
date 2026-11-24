@@ -1,1 +1,1 @@
-- Studio has a Help menu with Keyboard shortcuts and Documentation; the shortcut sheet lists every key of the active keymap by area and scrolls inside its dialog, and the Help button stays in the bar in a narrow window.
+- Studio has a Help menu with Keyboard shortcuts and Documentation; the shortcut sheet lists every key of the active keymap in groups by what you are doing, in balanced columns, with a close button, and scrolls inside its dialog; the Help button stays in the bar in a narrow window.

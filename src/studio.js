@@ -15,7 +15,7 @@ import { encodePackOrRefuse } from './studio-pack-refusal.js';
 import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shaders.js';
 import { STUDIO_CSS } from './studio-styles.js';
 import { findKeymapAction, findMouseNavigation, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset } from './studio-keymap.js';
-import { openStudioGuide, shortcutSheetGroups } from './studio-help.js';
+import { balanceSheetColumns, openStudioGuide, shortcutSheetGroups } from './studio-help.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
 import { detectStudioHardware, gatherStudioHardwareInputs, rendererChangeFor, resolveStudioPerformanceTier, studioViewportSettingsFor } from './studio-hardware.js';
@@ -2578,33 +2578,40 @@ export function createStudio(container, {
 
   const shortcutsHeading = createElement(documentReference, 'h2', { id: 'crucible-studio-shortcuts-title', textContent: 'Studio keyboard shortcuts' });
   shortcutsHeading.prepend(createIcon(documentReference, 'keyboard'));
+  const shortcutsCloseButton = createIconButton(documentReference, 'close', 'Close the shortcuts');
   const shortcutsGrid = createElement(documentReference, 'div', { className: 'crucible-studio-shortcuts' });
-  // One block per area, each with its icon and a row for every key of the active keymap.
-  function fillShortcutsGrid() {
-    shortcutsGrid.replaceChildren(...shortcutSheetGroups(keymap).map(group => createElement(
+  // One block per area, each with its icon and a row for every key of the active keymap, in two columns of about equal height.
+  const createShortcutGroup = group => createElement(
+    documentReference,
+    'section',
+    { className: 'crucible-studio-shortcut-group', dataset: { group: group.title } },
+    createElement(documentReference, 'h3', {}, createIcon(documentReference, group.icon), createElement(documentReference, 'span', { textContent: group.title })),
+    ...group.rows.map(({ keys, label }) => createElement(
       documentReference,
-      'section',
-      { className: 'crucible-studio-shortcut-group', dataset: { group: group.title } },
-      createElement(documentReference, 'h3', {}, createIcon(documentReference, group.icon), createElement(documentReference, 'span', { textContent: group.title })),
-      ...group.rows.map(({ keys, label }) => createElement(
-        documentReference,
-        'div',
-        { className: 'crucible-studio-shortcut-item' },
-        createElement(documentReference, 'span', { textContent: label }),
-        createElement(documentReference, 'kbd', { textContent: keys }),
-      )),
+      'div',
+      { className: 'crucible-studio-shortcut-item' },
+      createElement(documentReference, 'span', { textContent: label }),
+      createElement(documentReference, 'span', { className: 'crucible-studio-shortcut-keys', textContent: keys }),
+    )),
+  );
+  function fillShortcutsGrid() {
+    const columns = balanceSheetColumns(shortcutSheetGroups(keymap));
+    shortcutsGrid.replaceChildren(...columns.map(columnGroups => createElement(
+      documentReference,
+      'div',
+      { className: 'crucible-studio-shortcut-column' },
+      ...columnGroups.map(createShortcutGroup),
     )));
   }
   fillShortcutsGrid();
-  const shortcutsCloseButton = createElement(documentReference, 'button', { type: 'submit', value: 'close', autofocus: true, textContent: 'Done' });
   const shortcutsDialog = createElement(
     documentReference,
     'dialog',
     { className: 'crucible-studio-shortcuts-dialog', attributes: { 'aria-labelledby': 'crucible-studio-shortcuts-title', closedby: 'any' } },
-    shortcutsHeading,
+    createElement(documentReference, 'div', { className: 'crucible-studio-shortcuts-head' }, shortcutsHeading, shortcutsCloseButton),
     shortcutsGrid,
-    createElement(documentReference, 'form', { method: 'dialog', className: 'crucible-studio-dialog-actions' }, shortcutsCloseButton),
   );
+  shortcutsCloseButton.addEventListener('click', () => shortcutsDialog.close());
   // The sheet opened from the Help menu gives the focus back to that button when it closes.
   let shortcutsFocusTarget = null;
   function showShortcutsSheet(returnFocusTo = null) {

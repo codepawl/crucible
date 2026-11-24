@@ -2450,15 +2450,28 @@ export const STUDIO_CSS = `
 @media (prefers-reduced-motion: no-preference) {
   .crucible-studio-setup-card { transition: border-color var(--studio-motion-quick) var(--studio-ease-out), box-shadow var(--studio-motion-quick) var(--studio-ease-out); }
 }
+.crucible-studio-shortcuts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--studio-space-16);
+  margin-block-end: var(--studio-space-16);
+}
+.crucible-studio dialog.crucible-studio-shortcuts-dialog h2 { margin: 0; }
 .crucible-studio-shortcuts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
   gap: var(--studio-space-24);
   min-block-size: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   font-size: 12.5px;
+}
+.crucible-studio-shortcut-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--studio-space-24);
 }
 .crucible-studio-shortcut-group {
   display: flex;
@@ -2480,9 +2493,17 @@ export const STUDIO_CSS = `
 .crucible-studio-shortcut-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: baseline;
   gap: var(--studio-space-8);
-  padding: var(--studio-space-4) 0;
+}
+.crucible-studio-shortcut-keys {
+  color: var(--studio-muted);
+  flex: none;
+  text-align: end;
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  .crucible-studio-shortcuts { grid-template-columns: minmax(0, 1fr); }
 }
 .crucible-studio kbd {
   padding: 2px 8px;
@@ -2495,6 +2516,7 @@ export const STUDIO_CSS = `
 }
 .crucible-studio dialog.crucible-studio-shortcuts-dialog {
   width: min(680px, calc(100vw - 32px));
+  padding: var(--studio-space-24);
 }
 .crucible-studio dialog.crucible-studio-shortcuts-dialog[open] {
   display: flex;

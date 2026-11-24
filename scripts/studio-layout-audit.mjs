@@ -245,6 +245,81 @@ async function measureDraftNotice(browser, origin, theme, extraCss) {
   }
 }
 
+// Runs inside the page: the spacing and the key text contrast of the open shortcut sheet. Returns the problems and the numbers.
+function probeShortcutSheet() {
+  const dialog = document.querySelector('dialog.crucible-studio-shortcuts-dialog');
+  const style = getComputedStyle(dialog);
+  const problems = [];
+  const insets = ['Top', 'Right', 'Bottom', 'Left'].map(side => parseFloat(style['padding' + side]));
+  if (new Set(insets).size !== 1 || ![16, 24].includes(insets[0])) problems.push('The sheet padding is ' + insets.join('/') + ' px: use one value, 16 or 24.');
+  const head = dialog.querySelector('.crucible-studio-shortcuts-head').getBoundingClientRect();
+  const body = dialog.querySelector('.crucible-studio-shortcuts').getBoundingClientRect();
+  const headGap = Math.round(body.top - head.bottom);
+  if (headGap !== 16) problems.push('The title row to the first group gap is ' + headGap + ' px: use 16.');
+  const firstGroup = dialog.querySelector('.crucible-studio-shortcut-column');
+  const groups = Array.from(firstGroup.querySelectorAll('.crucible-studio-shortcut-group'));
+  const rows = Array.from(groups[0].querySelectorAll('.crucible-studio-shortcut-item'));
+  const rowGap = Math.round(rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().bottom);
+  const groupGap = Math.round(groups[1].getBoundingClientRect().top - groups[0].getBoundingClientRect().bottom);
+  if (groupGap <= rowGap) problems.push('The gap between groups (' + groupGap + ' px) must be larger than the gap between rows (' + rowGap + ' px).');
+  const columns = Array.from(dialog.querySelectorAll('.crucible-studio-shortcut-column')).map(column => column.getBoundingClientRect());
+  if (columns.length === 2 && columns[1].left > columns[0].left) {
+    const columnGap = Math.round(columns[1].left - columns[0].right);
+    if (columnGap <= rowGap) problems.push('The gap between columns (' + columnGap + ' px) must be larger than the gap between rows (' + rowGap + ' px).');
+  }
+  const toRgb = color => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext('2d');
+    context.fillStyle = color;
+    context.fillRect(0, 0, 1, 1);
+    return Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3);
+  };
+  const luminance = rgb => {
+    const [red, green, blue] = rgb.map(channel => {
+      const value = channel / 255;
+      return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const textLuminance = luminance(toRgb(getComputedStyle(dialog.querySelector('.crucible-studio-shortcut-keys')).color));
+  const surfaceLuminance = luminance(toRgb(style.backgroundColor));
+  const contrast = (Math.max(textLuminance, surfaceLuminance) + 0.05) / (Math.min(textLuminance, surfaceLuminance) + 0.05);
+  if (contrast < 4.5) problems.push('The key text contrast is ' + contrast.toFixed(2) + ':1: it must be 4.5:1 or more.');
+  return { problems, numbers: { padding: insets[0], headGap, rowGap, groupGap, contrast: Number(contrast.toFixed(2)) } };
+}
+
+// With a short window the sheet scrolls inside itself: the last group is reachable and the title row with the close button stays in view.
+async function probeShortWindow(page) {
+  await page.locator('button.crucible-studio-menu-button', { hasText: 'Help' }).click();
+  await page.locator('#crucible-studio-pop-help button', { hasText: 'Keyboard shortcuts' }).click();
+  await page.waitForSelector('dialog.crucible-studio-shortcuts-dialog[open]');
+  await page.mouse.move(2, 2);
+  await page.waitForTimeout(250);
+  await page.evaluate(() => {
+    const body = document.querySelector('.crucible-studio-shortcuts');
+    body.scrollTop = body.scrollHeight;
+  });
+  const state = await page.evaluate(() => {
+    const dialog = document.querySelector('dialog.crucible-studio-shortcuts-dialog');
+    const body = dialog.querySelector('.crucible-studio-shortcuts');
+    const groups = Array.from(body.querySelectorAll('.crucible-studio-shortcut-group'));
+    const lastRow = groups[groups.length - 1].querySelector('.crucible-studio-shortcut-item:last-child').getBoundingClientRect();
+    const closeBox = dialog.querySelector('.crucible-studio-shortcuts-head button').getBoundingClientRect();
+    const bodyBox = body.getBoundingClientRect();
+    return {
+      scrolls: body.scrollHeight > body.clientHeight,
+      lastRowReachable: lastRow.bottom <= bodyBox.bottom + 1 && lastRow.top >= bodyBox.top,
+      closeVisible: closeBox.top >= 0 && closeBox.bottom <= window.innerHeight && closeBox.right <= window.innerWidth,
+    };
+  });
+  if (!state.scrolls || !state.lastRowReachable || !state.closeVisible) {
+    throw new Error('In a 720 by 480 window the sheet must scroll inside itself, reach its last row and keep the close button in view: ' + JSON.stringify(state));
+  }
+  return { name: 'shortcut sheet 720x480 short window', records: await measure(page, 'dialog.crucible-studio-shortcuts-dialog') };
+}
+
 // The Help menu open, then the shortcut sheet opened from it. Escape must close the sheet and give the focus back to the Help button.
 async function measureHelpMenu(page, theme, label) {
   const screens = [];
@@ -255,6 +330,9 @@ async function measureHelpMenu(page, theme, label) {
   await page.waitForSelector('dialog.crucible-studio-shortcuts-dialog[open]');
   await page.waitForTimeout(250);
   screens.push({ name: `shortcut sheet${label} (${theme})`, records: await measure(page, 'dialog.crucible-studio-shortcuts-dialog') });
+  const probe = await page.evaluate(probeShortcutSheet);
+  console.log(`Shortcut sheet${label} (${theme}): ${JSON.stringify(probe.numbers)}`);
+  if (probe.problems.length > 0) throw new Error(probe.problems.join(' '));
   await page.keyboard.press('Escape');
   await page.waitForTimeout(100);
   const state = await page.evaluate(() => ({
@@ -358,6 +436,9 @@ export async function runAudit({ origin, only, extraCss } = {}) {
           screens.push(...await measureHelpMenu(opened.page, theme, label));
           await opened.context.close();
         }
+        const shortWindow = await openStudio(browser, server.origin, theme, extraCss, { viewport: { width: 720, height: 480 } });
+        screens.push(await probeShortWindow(shortWindow.page));
+        await shortWindow.context.close();
       }
       if (!only || only === 'notices') {
         for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {

@@ -146,10 +146,11 @@ A right click on an object, in the viewport or in the Scene list, selects it and
 
 ## Help
 
-The last menu of the top bar, **Help**, has two rows, each with an icon.
+The last menu of the top bar, **Help**, has four rows, each with an icon.
 
-- **Keyboard shortcuts** (or **?**) opens a sheet in the middle of the window. It lists every action that has a key in the keymap you chose, grouped by area (File, Edit, View, Tools, Animate, Edit mode, Holding an object, Mouse and Help), one row per action with its key. A keymap preset or a rebound key shows its new label the next time the sheet is filled. The sheet scrolls inside itself when the window is short, **Esc** or **Done** closes it, and the focus goes back to the **Help** button when it was opened from there.
-- **Documentation** opens this guide in a new tab that cannot reach back into Studio. A host page that passes `openExternal(url)` to `createStudio` gets the address instead and opens it its own way.
+- **Keyboard shortcuts** (or **?**) opens a sheet in the middle of the window. It lists every action that has a key in the keymap you chose, in groups by what you are doing (File, History, Selection, Clipboard and objects, Transform and tools, View, Animation, Mesh editing, Holding an object, Mouse, Help and settings), one row per action with its key on the right. A keymap preset or a rebound key shows its new label the next time the sheet is filled. The groups sit in two columns, or one in a narrow window, and the sheet scrolls inside itself when the window is short. **Esc** or the close button in the title row closes it, and the focus goes back to the **Help** button when it was opened from there.
+- **Documentation** opens this guide on GitHub in a new tab that cannot reach back into Studio. A host page that passes `openExternal(url)` to `createStudio` gets the address instead and opens it its own way.
+- **Set up Studio** reopens the setup. **Save diagnostics report** downloads the report described under Diagnostics.
 
 ## Keymaps
 
