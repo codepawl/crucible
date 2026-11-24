@@ -47,6 +47,20 @@ The renderer owns GPU allocation and disposal.
 The authoring session does not allocate GPU resources.
 The normal frame loop can render retained parts without calling inspection or exporting the recipe.
 
+### Lights on parts
+
+A point, spot or area light may name a `parent`: a node ID, or the label of a placed asset part (a glTF mesh node name). Its `position` and `direction` are then in that node's space (`position` defaults to the node's origin), and the light follows the node's world transform on every frame, through motion tracks, physics and glTF clips. `scene.environment` returns the lights in world space at the pose last sampled, so the rasterizer, both path tracers and the light bake read the same list. A bake traces the rest pose.
+
+```json
+{ "environment": {
+  "pointLights": [ { "parent": "lantern", "position": [0, 0.3, 0], "intensity": 6 } ],
+  "spotLights": [ { "parent": "lantern", "direction": [0, -1, 0], "angle": 0.6 } ],
+  "areaLights": [ { "parent": "screen", "face": "+z", "intensity": 5 } ]
+} }
+```
+
+An area light with `face` (`+x`, `-x`, `+y`, `-y`, `+z` or `-z`) is a surface light: the rectangle of that face of the parent's bounding box, sized by the part's scale and shining outward, `faceOffset` metres (0.002) in front of it so it does not light its own face from inside. Leave out `position`, `direction`, `up`, `width` and `height`. A parent that matches no node, or the label of several parts, is rejected with the IDs to choose from. Light counts are the same as for lights without a parent.
+
 ### On-demand code
 
 Mesh editing, `lathe`, `extrude`, `tube` and `curve` geometry, `text` geometry with its font, `terrain` and `floorPlan` geometry, material `pattern`, `motion` and node `relations` load on demand, so a recipe of
@@ -124,6 +138,8 @@ Any `opacity` below one draws the material blended after opaque geometry, which 
 `doubleSided` draws and lights both faces of thin sheets.
 Changing the tag, opacity, blending, sidedness or pattern replaces the affected parts in the renderer; color, metallic, roughness and emission edits keep them.
 Set liquid optics with `environment.liquid`: `thickness`, `ior`, `refraction`, `scattering`, `foamOpacity` and `foamSoftness`.
+
+Roblox-style lighting settings map onto the environment and the post steps ([agent-look](agent-look.md#environment) has every field): `Sky` is `environment.skybox` (six catalog image IDs), `ClockTime` and `GeographicLatitude` are `environment.sky.clockTime` (`hours`, `latitude`), `OutdoorAmbient` is `environment.ambientColor`, `EnvironmentDiffuseScale` is `environment.environmentDiffuseScale`, `ColorCorrection` is `effects.colorCorrection` (`brightness`, `contrast`, `saturation`, `tint`) and `SunRays` is `effects.sunRays` (`intensity`, `spread`). Each is absent by default and leaves the frame unchanged until named.
 Colors use linear RGB.
 
 Base color, metallic, and roughness range from zero to one.

@@ -45,7 +45,7 @@ const SPAWN_CLEARANCE = 0.75;
 const SPAWN_STEP = 1.25;
 const SPAWN_ATTEMPTS = 16;
 // These lie on the ground under everything else, so they start at the centre whatever stands there.
-const GROUND_PRIMITIVES = new Set(['plane', 'terrain']);
+const GROUND_PRIMITIVES = new Set(['plane']);
 const ROTATION_DEGREES_PER_PIXEL = 0.75;
 const ROTATION_SNAP_DEGREES = 15;
 const TRANSLATION_SNAP_STEP = 0.25;
@@ -971,7 +971,20 @@ export function createStudioController({
     return buildNodeWorldMatrices(recipe.nodes).get(selectedNodeId) ?? null;
   }
 
+  // Edit mode (src/studio-mesh-edit.js) puts a session here: its selection centre is where the handles stand, and a handle drag
+  // moves that selection instead of the node. The session gets begin() (it may refuse by throwing), move(worldDelta), finish(changed)
+  // and cancel(); the plane, axis, snap and reach limits of a move are the ones a node move uses.
+  let elementSession = null;
+
+  function setElementSession(session) {
+    elementSession = session;
+    notify({ kind: 'tool' });
+  }
+
   function selectedPivotWorld() {
+    if (elementSession) {
+      return elementSession.pivot();
+    }
     const matrix = selectedWorldMatrix();
     if (!matrix) {
       return null;
@@ -1409,6 +1422,9 @@ export function createStudioController({
         axisScreen = [deltaX / length, deltaY / length];
       }
     }
+    if (elementSession) {
+      elementSession.begin();
+    }
     const basePivot = handles?.pivot ?? Array.from(node.translation ?? [0, 0, 0]);
     const isPlanar = PLANE_AXES.includes(axis) || axis === 'screen';
     const basis = handles?.basis ?? WORLD_BASIS;
@@ -1426,7 +1442,7 @@ export function createStudioController({
       ringStartVector = ringHit ? vec3.subtract(vec3.create(), ringHit, basePivot) : null;
     }
     const worldPerPixel = worldLengthPerPixel(basePivot);
-    const toolMode = axis === 'surface' ? 'snap' : activeTool === 'select' ? 'translate' : activeTool;
+    const toolMode = elementSession ? 'translate' : axis === 'surface' ? 'snap' : activeTool === 'select' ? 'translate' : activeTool;
     // An animated node shows its sampled pose, not its authored one, so with auto-key on the drag starts from what is shown.
     const authoredPose = authoredNodePose(node);
     const startPose = autoKey ? sampledNodePose(recipe, node, motionTime) : authoredPose;
@@ -1434,6 +1450,7 @@ export function createStudioController({
       nodeId: selectedNodeId,
       tool: toolMode,
       axis,
+      elementDrag: Boolean(elementSession),
       startX: pixelX,
       startY: pixelY,
       baseRecipe: recipe,
@@ -1467,7 +1484,7 @@ export function createStudioController({
    * the pivot then (`from`) and now (`to`). Null until the drag has changed something.
    */
   function dragTrace() {
-    if (!dragState || !dragState.changed) {
+    if (!dragState || !dragState.changed || dragState.elementDrag) {
       return null;
     }
     const moves = dragState.tool === 'translate' || dragState.tool === 'snap';
@@ -1532,6 +1549,16 @@ export function createStudioController({
     applySceneOperations(operations, { recordUndo: false });
   }
 
+  // A drag in edit mode hands the world move to the session instead of writing a node pose.
+  function moveElementSelection(worldDelta, shiftKey, deltaLabel) {
+    const snapped = shiftKey ? snapVector(worldDelta, moveSnapStep) : worldDelta;
+    elementSession.move(snapped);
+    dragState.changed = true;
+    dragState.deltaLabel = deltaLabel;
+    notify({ kind: 'transform', nodeId: dragState.nodeId, live: true, deltaLabel });
+    return { elementDelta: snapped };
+  }
+
   function updateGizmoDrag(pixelX, pixelY, { shiftKey = false } = {}) {
     if (!dragState) {
       return null;
@@ -1572,6 +1599,9 @@ export function createStudioController({
         rawWorldDelta[1] *= factor;
         rawWorldDelta[2] *= factor;
       }
+      if (dragState.elementDrag) {
+        return moveElementSelection(rawWorldDelta, shiftKey, `${dragState.axis.toUpperCase()} ${deltaLength.toFixed(2)} m`);
+      }
       const localDelta = toNodeLocalDelta(rawWorldDelta, dragState.parentInverse);
       const rawTranslation = [
         dragState.baseTranslation[0] + localDelta[0],
@@ -1595,6 +1625,9 @@ export function createStudioController({
       const steppedTravel = shiftKey ? Math.round(exactTravel / moveSnapStep) * moveSnapStep : exactTravel;
       const travel = Math.max(-maxTravel, Math.min(maxTravel, steppedTravel));
       const worldDelta = [dragState.axisWorld[0] * travel, dragState.axisWorld[1] * travel, dragState.axisWorld[2] * travel];
+      if (dragState.elementDrag) {
+        return moveElementSelection(worldDelta, false, `${dragState.axis.toUpperCase()} ${travel >= 0 ? '+' : ''}${travel.toFixed(2)} m`);
+      }
       const localDelta = toNodeLocalDelta(worldDelta, dragState.parentInverse);
       const rawTranslation = [
         dragState.baseTranslation[0] + localDelta[0],
@@ -1698,8 +1731,12 @@ export function createStudioController({
     if (!dragState) {
       return false;
     }
-    const { baseRecipe, changed, nodeId, authoredPose } = dragState;
+    const { baseRecipe, changed, nodeId, authoredPose, elementDrag } = dragState;
     dragState = null;
+    if (elementDrag) {
+      elementSession?.finish(changed);
+      return changed;
+    }
     if (changed) {
       const keyed = autoKeyDraggedProperties(nodeId, authoredPose);
       pushUndoSnapshot(baseRecipe);
@@ -1715,8 +1752,13 @@ export function createStudioController({
     if (!dragState) {
       return false;
     }
-    const { nodeId, authoredPose, changed, keyedLive, baseMotion } = dragState;
+    const { nodeId, authoredPose, changed, keyedLive, baseMotion, elementDrag } = dragState;
     dragState = null;
+    if (elementDrag) {
+      elementSession?.cancel();
+      notify({ kind: 'transformCancel', deltaLabel: '' });
+      return true;
+    }
     if (changed && currentScene.exportRecipe().nodes.some(node => node.id === nodeId)) {
       const operations = [{ type: 'set-node', id: nodeId, ...authoredPose }];
       if (keyedLive) {
@@ -2706,6 +2748,8 @@ export function createStudioController({
     setTool,
     setActiveTab,
     projectWorldPoint,
+    worldPointProjector,
+    setElementSession,
     screenRay,
     pickAt,
     gizmoHandles,

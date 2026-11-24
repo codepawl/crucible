@@ -29,7 +29,7 @@ import {
 } from './studio-preferences.js';
 import { createOutlineMask } from './studio-outline-mask.js';
 import { createPanelGrips } from './studio-panel-grips.js';
-import { STUDIO_BRAND_ICON_NAMES, studioIconPath } from './studio-icons.js';
+import { STUDIO_BRAND_ICON_NAMES, STUDIO_ICON_ACCENTS, studioIconPath } from './studio-icons.js';
 import { createPropertyLine, createPropertyPanel } from './studio-property-panel.js';
 import { createKeyMarkers } from './studio-timeline-keys.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
@@ -85,8 +85,8 @@ const LENS_CHIP_TOLERANCE_MILLIMETRES = 0.5;
 // A view chip is active while the camera looks along its direction, within about two degrees; a free orbit matches none.
 const VIEW_CHIP_DIRECTIONS = Object.freeze({ front: [0, 0, 1], right: [1, 0, 0], top: [0.002, 1, 0.002], isometric: [1, 0.72, 1] });
 const VIEW_CHIP_MINIMUM_COSINE = 0.9995;
-// A tree row is 28px high with a 1px gap; the Scene list stretches its rows a little so a whole number of them fills it.
-const TREE_ROW_GAP_PIXELS = 1;
+// A tree row is 28px high with a 4px gap (--studio-space-4 in studio-styles.js); the Scene list stretches its rows a little so a whole number of them fills it.
+const TREE_ROW_GAP_PIXELS = 4;
 
 /** The view chip whose direction the camera looks along, or null when the camera is in a free orbit. */
 function matchingViewChip(camera) {
@@ -112,7 +112,7 @@ const STUDIO_WORKSPACES = Object.freeze([
   Object.freeze({ id: 'animate', label: 'Animate', icon: 'play', tabs: Object.freeze(['camera', 'node']) }),
 ]);
 const DEFAULT_CLEARCOAT_ROUGHNESS = 0.08;
-const PRIMITIVE_LABELS =Object.freeze({ icoSphere: 'Icosphere' });
+const PRIMITIVE_LABELS = Object.freeze({ icoSphere: 'Icosphere', disc: 'Circle' });
 const primitiveLabel = primitiveType => PRIMITIVE_LABELS[primitiveType] ?? primitiveType[0].toUpperCase() + primitiveType.slice(1);
 const TREE_ICON_BY_GEOMETRY = Object.freeze({
   circle: 'plane',
@@ -179,6 +179,9 @@ function createIcon(documentReference, iconName) {
     icon.dataset.brand = 'true';
   }
   icon.append(createSvgElement(documentReference, 'path', { d: studioIconPath(iconName) }));
+  for (const { kind, path } of STUDIO_ICON_ACCENTS[iconName] ?? []) {
+    icon.append(createSvgElement(documentReference, 'path', { d: path, class: `crucible-studio-icon-${kind}` }));
+  }
   return icon;
 }
 
@@ -700,15 +703,15 @@ function appendGizmoHitAreas(documentReference, gizmoSvg, handles, tool) {
   gizmoSvg.append(hitDisc(origin, GIZMO_HIT_ORIGIN_RADIUS, tool === 'scale' ? 'uniform' : tool === 'snap' ? 'surface' : 'screen'));
 }
 
-function renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask) {
+function renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask, { hideSelectionOutline = false } = {}) {
   gizmoSvg.replaceChildren();
   const width = controller.viewportWidth;
   const height = controller.viewportHeight;
   gizmoSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-  const silhouette = controller.selectionSilhouette();
+  const silhouette = hideSelectionOutline ? null : controller.selectionSilhouette();
   // A dense selection is drawn by the mask; the hull below is only for when the mask cannot draw (no WebGL2).
-  const maskDrawn = outlineMask.draw(silhouette ? null : controller.selectionMaskSource(), width, height);
-  const outline = silhouette || maskDrawn ? null : controller.selectionOutline();
+  const maskDrawn = outlineMask.draw(silhouette || hideSelectionOutline ? null : controller.selectionMaskSource(), width, height);
+  const outline = silhouette || maskDrawn || hideSelectionOutline ? null : controller.selectionOutline();
   if (silhouette) {
     appendSelectionSilhouette(documentReference, gizmoSvg, silhouette);
   } else if (outline) {
@@ -1097,6 +1100,9 @@ export function createStudio(container, {
   let awaitedProgramTimer = 0;
   let pointerState = null;
   let viewportPointer = null;
+  // Edit mode (src/studio-mesh-edit.js) is loaded on the first Tab, so the core entry carries none of it.
+  let meshEditor = null;
+  let meshEditorLoad = null;
   let modalTransform = null;
   let swallowContextMenu = false;
   let swallowClick = false;
@@ -1353,7 +1359,7 @@ export function createStudio(container, {
     });
     return addPrimitiveButton;
   };
-  // The shapes come in groups with a gap between them and no captions; a screen reader hears each group's name.
+  // The shapes come in groups (Mesh, Text, then Light) with a gap between them and no captions; a screen reader hears each group's name.
   const primitiveGrids = STUDIO_PRIMITIVE_GROUPS.map(group => createElement(
     documentReference,
     'div',
@@ -1377,7 +1383,7 @@ export function createStudio(container, {
   addPointLightButton.addEventListener('click', () => addLightFromMenu('point', 'Point lights'));
   addSpotLightButton.addEventListener('click', () => addLightFromMenu('spot', 'Spot lights'));
   addAreaLightButton.addEventListener('click', () => addLightFromMenu('area', 'Area lights'));
-  const lightGrid = createElement(documentReference, 'div', { className: 'crucible-studio-popover-grid', attributes: { role: 'group', 'aria-label': 'Lights' } }, addPointLightButton, addSpotLightButton, addAreaLightButton);
+  const lightGrid = createElement(documentReference, 'div', { className: 'crucible-studio-popover-grid', attributes: { role: 'group', 'aria-label': 'Light' } }, addPointLightButton, addSpotLightButton, addAreaLightButton);
   // The tree controls of the inspector load the first time a node that grows a tree is selected, so their code stays out of the core entry.
   let treeToolsPromise = null;
   const loadTreeTools = () => {
@@ -1717,8 +1723,34 @@ export function createStudio(container, {
     attributes: { 'aria-pressed': tool === controller.tool ? 'true' : 'false' },
   }));
   toolButtons.forEach(button => {
-    button.addEventListener('click', () => controller.setTool(button.dataset.tool));
+    button.addEventListener('click', () => {
+      if (meshEditor?.active) {
+        announce('Edit mode moves the selection; leave it with Tab to rotate or scale.');
+        return;
+      }
+      controller.setTool(button.dataset.tool);
+    });
   });
+
+  const MESH_MODE_PLURALS = Object.freeze({ vertex: 'vertices', edge: 'edges', face: 'faces' });
+  let shownMeshMode = null;
+  const MESH_MODES = Object.freeze([
+    { mode: 'vertex', icon: 'meshVertex', label: 'Vertex', action: 'mesh.vertexMode' },
+    { mode: 'edge', icon: 'meshEdge', label: 'Edge', action: 'mesh.edgeMode' },
+    { mode: 'face', icon: 'meshFace', label: 'Face', action: 'mesh.faceMode' },
+  ]);
+  const meshModeButtons = MESH_MODES.map(({ mode, icon, label, action }) => createKeyedIconButton(icon, () => `${label} ${keyLabel(keymap, action)}`, {
+    dataset: { meshMode: mode },
+    attributes: { 'aria-pressed': 'false' },
+  }));
+  meshModeButtons.forEach(button => {
+    button.addEventListener('click', () => chooseMeshMode(button.dataset.meshMode));
+  });
+  // The object item is how edit mode ends: it is never the active one while the group is on screen.
+  const meshObjectButton = createKeyedIconButton('node', () => `Object mode (${keyLabel(keymap, 'mesh.leave')})`, { dataset: { meshObject: 'true' }, attributes: { 'aria-pressed': 'false' } });
+  meshObjectButton.addEventListener('click', () => leaveMeshEdit());
+  // Shown only while edit mode is on, so the group itself says which mode the viewport is in.
+  const meshModeGroup = createElement(documentReference, 'div', { className: 'crucible-studio-group', hidden: true, dataset: { meshGroup: 'true' }, attributes: { role: 'group', 'aria-label': 'Mesh selection' } }, meshObjectButton, ...meshModeButtons);
 
   const undoButton = createKeyedIconButton('undo', () => `Undo (${keyLabel(keymap, 'edit.undo')})`, { attributes: { 'aria-disabled': 'true' } });
   const redoButton = createKeyedIconButton('redo', () => `Redo (${keyLabel(keymap, 'edit.redo')})`, { attributes: { 'aria-disabled': 'true' } });
@@ -1775,6 +1807,7 @@ export function createStudio(container, {
       attributes: { role: 'toolbar', focusgroup: 'toolbar wrap', 'aria-orientation': 'vertical', 'aria-label': 'Tools', 'aria-controls': canvas.id },
     },
     createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Transform tool' } }, ...toolButtons),
+    meshModeGroup,
     createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Edit the scene' } }, addMenuButton, undoButton, redoButton),
     // Above the line: what changes the scene. Below it: what only shows or hides parts of Studio.
     createElement(documentReference, 'div', { className: 'crucible-studio-toolbar-rule', attributes: { role: 'separator', 'aria-orientation': 'horizontal' } }),
@@ -2602,6 +2635,11 @@ export function createStudio(container, {
 
   // Measured only after a change: the bounds walk every vertex of the selection.
   function describeSelection() {
+    const described = describeSelectedObject();
+    return described !== '' && meshEditor?.active ? `Edit ${MESH_MODE_PLURALS[meshEditor.mode]}, ${described}` : described;
+  }
+
+  function describeSelectedObject() {
     const selectedId = controller.selectedNodeId;
     const bounds = selectedId ? controller.nodeBounds(selectedId) : null;
     if (!bounds) {
@@ -3082,11 +3120,12 @@ export function createStudio(container, {
     try {
       syncViewportDimensions();
       drawSceneFrame();
-      renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask);
+      renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask, { hideSelectionOutline: Boolean(meshEditor?.active) });
       if (!capturingStill) {
         renderSceneObjectMarks(documentReference, gizmoSvg, controller);
       }
       drawAgentOutline();
+      if (meshEditor?.active && !capturingStill) meshEditor.draw(documentReference, gizmoSvg);
       syncViewportAids();
     } finally {
       insideDraw = false;
@@ -3596,6 +3635,15 @@ export function createStudio(container, {
   function syncUi() {
     const recipe = controller.exportRecipe();
     toolButtons.forEach(button => button.setAttribute('aria-pressed', button.dataset.tool === controller.tool ? 'true' : 'false'));
+    const editingMesh = Boolean(meshEditor?.active);
+    root.dataset.meshEdit = editingMesh ? 'true' : 'false';
+    meshModeGroup.hidden = !editingMesh;
+    const meshMode = editingMesh ? meshEditor.mode : null;
+    if (meshMode !== shownMeshMode) {
+      shownMeshMode = meshMode;
+      selectionReadoutStale = true;
+    }
+    meshModeButtons.forEach(button => button.setAttribute('aria-pressed', editingMesh && button.dataset.meshMode === meshEditor.mode ? 'true' : 'false'));
     undoButton.setAttribute('aria-disabled', controller.canUndo ? 'false' : 'true');
     redoButton.setAttribute('aria-disabled', controller.canRedo ? 'false' : 'true');
     const selectedNode = recipe.nodes.find(node => node.id === controller.selectedNodeId) ?? null;
@@ -3949,7 +3997,14 @@ export function createStudio(container, {
     event.stopPropagation();
     const coordinates = localCoordinates(event);
     gizmoSvg.dataset.hoverAxis = axis;
-    controller.beginGizmoDrag(axis, coordinates.x, coordinates.y);
+    try {
+      controller.beginGizmoDrag(axis, coordinates.x, coordinates.y);
+    } catch (error) {
+      // Edit mode refuses a move it could not write down before the pointer moves, and says why.
+      if (!meshEditor?.active) throw error;
+      announce(error.message);
+      return;
+    }
     pointerState = { mode: 'gizmo', pointerId: event.pointerId };
     viewportElement.setPointerCapture?.(event.pointerId);
   });
@@ -4071,7 +4126,13 @@ export function createStudio(container, {
     }
     if (!finished.moved && !finished.keymapNavigation) {
       const coordinates = localCoordinates(event);
-      if (controller.tool === 'snap' && controller.selectedNodeId && event.altKey) {
+      if (meshEditor?.active) {
+        if ((event.button ?? 0) === 0) {
+          meshEditor.pick(coordinates.x, coordinates.y, { additive: event.shiftKey });
+          syncUi();
+          requestFrame();
+        }
+      } else if (controller.tool === 'snap' && controller.selectedNodeId && event.altKey) {
         controller.snapSelectedToAt(coordinates.x, coordinates.y);
       } else {
         selectNodeAndShowItsPanel(() => controller.pickAt(coordinates.x, coordinates.y));
@@ -4186,6 +4247,79 @@ export function createStudio(container, {
     return Boolean(selection && !selection.isCollapsed && selection.toString() !== '');
   }
 
+  function loadMeshEditor() {
+    meshEditorLoad ??= import('./studio-mesh-edit.js').then(({ createMeshEditor }) => {
+      meshEditor = createMeshEditor({ controller, announce, getRenderer: () => renderer });
+      return meshEditor;
+    });
+    return meshEditorLoad;
+  }
+
+  // The second Tab pressed while the editor is still loading takes the first one back.
+  let meshEnterPending = false;
+
+  async function enterMeshEdit() {
+    if (meshEnterPending) {
+      meshEnterPending = false;
+      return;
+    }
+    meshEnterPending = true;
+    const editor = await loadMeshEditor();
+    if (!meshEnterPending) return;
+    meshEnterPending = false;
+    if (editor.active) return;
+    editor.enter();
+    syncUi();
+    requestFrame();
+  }
+
+  function leaveMeshEdit() {
+    if (controller.dragging) pointerState = null;
+    meshEditor?.leave();
+    syncUi();
+    requestFrame();
+  }
+
+  // Esc puts a drag back, else clears the selection, else leaves edit mode.
+  function escapeMeshEdit() {
+    if (controller.dragging) {
+      controller.cancelGizmoDrag();
+      pointerState = null;
+    } else if (!meshEditor.clearSelection()) {
+      meshEditor.leave();
+    }
+    syncUi();
+    requestFrame();
+  }
+
+  function chooseMeshMode(mode) {
+    meshEditor.setMode(mode);
+    syncUi();
+    requestFrame();
+  }
+
+  // Tab is also how the keyboard moves between controls, so it enters edit mode only from the page or the canvas.
+  function tabBelongsToViewport(target) {
+    return !target || target === documentReference || target === documentReference.body || target === documentReference.documentElement || target === canvas;
+  }
+
+  // In edit mode these keys of the normal context still work; every other one would act on the whole object.
+  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'view.frame', 'view.top', 'view.projection', 'view.properties']);
+  const meshKeyHandlers = {
+    'mesh.leave': event => {
+      event.preventDefault();
+      leaveMeshEdit();
+    },
+    'mesh.escape': event => {
+      event.preventDefault();
+      escapeMeshEdit();
+    },
+    'mesh.vertexMode': () => chooseMeshMode('vertex'),
+    'mesh.edgeMode': () => chooseMeshMode('edge'),
+    'mesh.faceMode': () => chooseMeshMode('face'),
+    'mesh.noop': event => event.preventDefault(),
+  };
+
   // Handlers of the normal context by action id. A handler calls preventDefault for the keys the browser would
   // otherwise use itself (save, open, copy, undo and so on).
   const keyHandlers = {
@@ -4258,6 +4392,11 @@ export function createStudio(container, {
       settingsDialog.showModal();
     },
     'help.shortcuts': () => shortcutsDialog.showModal(),
+    'mesh.enter': event => {
+      if (!controller.selectedNodeId || !tabBelongsToViewport(event.target)) return;
+      event.preventDefault();
+      enterMeshEdit();
+    },
   };
   for (const [actionId, tool] of Object.entries(PICK_UP_TOOL_BY_ACTION)) {
     // Blender's keys pick the object up; Maya's and Cinema 4D's only choose the tool, whose handles then appear.
@@ -4287,13 +4426,23 @@ export function createStudio(container, {
     if (isEditableTarget(event.target, event.key)) {
       return;
     }
-    const match = findKeymapAction(keymap, event, 'normal');
+    const editingMesh = Boolean(meshEditor?.active);
+    const meshMatch = editingMesh ? findKeymapAction(keymap, event, 'mesh') : null;
+    const match = meshMatch ?? findKeymapAction(keymap, event, 'normal');
     if (!match) {
       return;
     }
     // A Ctrl key works over an open dialog; a plain key does not.
     const dialogIsOpen = recipeDialog.open || shortcutsDialog.open || settingsDialog.open;
     if (dialogIsOpen && !match.binding.ctrl) {
+      return;
+    }
+    if (meshMatch) {
+      meshKeyHandlers[match.actionId](event, match.binding);
+      return;
+    }
+    if (editingMesh && !MESH_EDIT_PASS_THROUGH.has(match.actionId)) {
+      if (match.binding.ctrl) event.preventDefault();
       return;
     }
     keyHandlers[match.actionId](event, match.binding);
@@ -4394,6 +4543,9 @@ export function createStudio(container, {
     if (detail.kind === 'flush') {
       requestFrame();
       return;
+    }
+    if (meshEditor?.active && ['undo', 'redo', 'load', 'topology', 'selection', 'pick'].includes(detail.kind)) {
+      meshEditor.refresh();
     }
     selectionReadoutStale = true;
     if (detail.kind === 'load') {

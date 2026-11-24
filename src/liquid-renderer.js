@@ -16,7 +16,7 @@ const SCENE_DEPTH_UNIT = 4;
 
 const LIQUID_UNIFORMS = [
   'viewProjection', 'lightProjection', 'eye', 'sceneColor', 'sceneDepth', 'depthMapping', 'resolution', 'exposure', 'hdrEnabled', 'worldMode', 'daylight', 'lightDirection',
-  'keyColor', 'ambientIntensity', 'fogColor', 'fogDensity', 'glassState', 'glassTint', 'glassCoverage', 'glassMediumContinues', 'liquidOptics', 'foamShape', 'metallicRoughnessMap', 'hasMetallicRoughnessMap',
+  'keyColor', 'ambientIntensity', 'fogColor', 'fogDensity', 'glassState', 'glassTint', 'glassCoverage', 'glassMediumContinues', 'materialEmissionFresnel', 'liquidOptics', 'foamShape', 'metallicRoughnessMap', 'hasMetallicRoughnessMap',
   'environmentSpecular', 'environmentEnabled', 'environmentIntensity', 'environmentRotation', 'environmentLevelMax',
   'time', 'probeEnabled', 'probeFloor', 'waterReflection', 'waterReflectionMatrix', 'waterClip', 'waterReflectionEnabled', 'wind', 'explosionProgress', 'explosionCenter', 'assemblyAmount',
   'skinEnabled', 'skinInfluences', 'jointPalette',
@@ -182,6 +182,7 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
     context.uniform3f(uniforms.glassTint, layers[13], layers[14], layers[15]);
     // Blended glass covers the refracted picture by its alpha, over the opaque scene already in the frame.
     context.uniform1f(uniforms.glassMediumContinues, batch.parts[0].material.mediumContinues === true ? 1 : 0);
+    context.uniform1f(uniforms.materialEmissionFresnel, layers[24]);
     const covering = batch.opacity < 1;
     context.uniform1f(uniforms.glassCoverage, covering ? batch.opacity : 1);
     if (covering) {

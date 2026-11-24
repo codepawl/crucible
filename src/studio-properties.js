@@ -399,9 +399,9 @@ const EFFECT_ROWS = [
   effectRow('grain', 'Grain', 'slider', 'film', { min: 0, max: 0.1, step: 0.002, read: effects => effects.grain ?? 0 }),
   effectRow('ambientOcclusion', 'Ambient occlusion', 'slider', 'effects', { min: 0, max: 1, step: 0.02, read: effects => effects.ambientOcclusion ?? 0 }),
   effectRow('ambientOcclusionRadius', 'AO radius', 'number', 'effects', { unit: 'm', min: 0.01, max: 100, step: 0.05, read: effects => effects.ambientOcclusionRadius ?? 0.5 }),
-  effectGroupRow('bloom', 'strength', 'Bloom', 'slider', { min: 0, max: 2, step: 0.02, read: effects => effects.bloom?.strength ?? 0 }),
+  effectGroupRow('bloom', 'strength', 'Bloom', 'slider', { min: 0, max: 8, step: 0.02, read: effects => effects.bloom?.strength ?? 0 }),
   effectGroupRow('bloom', 'threshold', 'Bloom threshold', 'number', { min: 0, max: 10, step: 0.05, read: effects => effects.bloom?.threshold ?? 1 }),
-  effectGroupRow('bloom', 'radius', 'Bloom radius', 'number', { min: 0.1, max: 4, step: 0.05, read: effects => effects.bloom?.radius ?? 1 }),
+  effectGroupRow('bloom', 'radius', 'Bloom radius', 'number', { min: 0.1, max: 16, step: 0.05, read: effects => effects.bloom?.radius ?? 1 }),
   effectGroupRow('depthOfField', 'blur', 'DoF blur', 'slider', { min: 0, max: 1, step: 0.02, read: effects => effects.depthOfField?.blur ?? 0 }),
   effectGroupRow('depthOfField', 'focusDistance', 'DoF focus', 'number', {
     unit: 'm', min: 0.01, max: 1e5, step: 0.1, motionProperty: 'focusDistance', read: effects => effects.depthOfField?.focusDistance ?? 5,

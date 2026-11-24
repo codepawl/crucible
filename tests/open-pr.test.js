@@ -67,7 +67,14 @@ const baseOptions = { title: 'Do it (#1805)', bodyFile: 'body.md', labels: ['enh
 describe('parseArguments', () => {
   test('reads every flag, including several evidence files', () => {
     const options = parseArguments(['--title', 'T (#1)', '--body-file', 'b.md', '--labels', 'bug, goal:ai', '--milestone', '0 Measure', '--base', 'dev', '--evidence', 'a.png', 'b.mp4', '--dry-run']);
-    assert.deepEqual(options, { title: 'T (#1)', bodyFile: 'b.md', labels: ['bug', 'goal:ai'], milestone: '0 Measure', base: 'dev', evidence: ['a.png', 'b.mp4'], dryRun: true });
+    assert.deepEqual(options, { title: 'T (#1)', bodyFile: 'b.md', labels: ['bug', 'goal:ai'], milestone: '0 Measure', base: 'dev', evidence: ['a.png', 'b.mp4'], draft: false, dryRun: true });
+  });
+
+  test('--draft opens a draft, which CI skips until it is marked ready', () => {
+    const options = parseArguments(['--title', 'T (#1)', '--body-file', 'b.md', '--draft']);
+    assert.equal(options.draft, true);
+    assert.equal(createCommandArguments(options).at(-1), '--draft');
+    assert.equal(createCommandArguments(parseArguments(['--title', 'T', '--body-file', 'b.md'])).includes('--draft'), false);
   });
 
   test('defaults the base to main and requires a title and a body file', () => {

@@ -5,6 +5,7 @@
 
 import { addFieldAcceleration } from './force-fields.js';
 import { findFirstCollision } from './particle-collision.js';
+import { colorCurveAt, curveAt, flipbookFrame, flipbookUv } from './particle-curves.js';
 
 export const PARTICLE_LIMITS = Object.freeze({
   maxSystems: 4,
@@ -180,6 +181,8 @@ export function createParticleLaunches(settings) {
     // A billboard card turns to the camera when the mesh is built (buildParticleMesh), so it has no stored orientation.
     billboard: orient === 'billboard',
     hasSpin: spin[0] !== 0 || spin[1] !== 0,
+    // Size over the life (#3240): [time, value] stops that multiply the particle's size.
+    sizeCurve: settings.sizeCurve,
     // Seconds after which no particle is born (the end of the emission window); Infinity when the system has no `stop`.
     stop: settings.stop ?? Infinity,
     // Age at which a particle stops moving: its landing, or where it came to rest.
@@ -415,7 +418,7 @@ export function particleStateAt(launches, index, forces, scaleMode, time, target
     for (let component = 0; component < 3; component++) target.position[component] = launches.origin[index * 3 + component];
     return target;
   }
-  target.scale = launches.size[index] * scaleAtLife(scaleMode, age / lifetime);
+  target.scale = launches.size[index] * scaleAtLife(scaleMode, age / lifetime) * (launches.sizeCurve ? curveAt(launches.sizeCurve, age / lifetime) : 1);
   if (launches.track) {
     trackedState(launches, index, forces, age, target);
     target.motionAge = Math.min(age, launches.landing[index]);
@@ -528,8 +531,9 @@ export function buildParticleMesh(template, launches, forces, scaleMode, time, l
   const indices = new Uint32Array(totalIndices);
   const hasUvs = templates.every(entry => entry.uvs);
   const uvs = hasUvs ? new Float32Array(totalVertices * 2) : undefined;
-  const fadesOpacity = look.fade === 'opacity' && Boolean(look.alpha);
-  const colors = look.color || look.alpha ? new Float32Array(totalVertices * 3) : undefined;
+  const alphaOverLife = look.alphaCurve ?? (look.alpha ? [[0, look.alpha[0]], [1, look.alpha[1]]] : undefined);
+  const fadesOpacity = look.fade === 'opacity' && Boolean(alphaOverLife);
+  const colors = look.color || look.colorCurve || alphaOverLife ? new Float32Array(totalVertices * 3) : undefined;
   const vertexOpacity = fadesOpacity ? new Float32Array(totalVertices) : undefined;
   const state = { position: [0, 0, 0], scale: 0 };
   const spinMatrix = new Float64Array(9);
@@ -551,13 +555,17 @@ export function buildParticleMesh(template, launches, forces, scaleMode, time, l
       if (launches.hasSpin) multiplyMatrices(spinMatrix, base, matrix);
       else matrix.set(base);
     }
-    const alpha = look.alpha ? look.alpha[0] + (look.alpha[1] - look.alpha[0]) * state.fraction : 1;
+    const alpha = alphaOverLife ? curveAt(alphaOverLife, state.fraction) : 1;
     if (colors) {
-      for (let channel = 0; channel < 3; channel++) {
-        const start = look.color ? look.color[0][channel] : 1;
-        const end = look.color ? look.color[1][channel] : 1;
-        tint[channel] = (start + (end - start) * state.fraction) * (fadesOpacity ? 1 : alpha);
+      if (look.colorCurve) colorCurveAt(look.colorCurve, state.fraction, tint);
+      else {
+        for (let channel = 0; channel < 3; channel++) {
+          const start = look.color ? look.color[0][channel] : 1;
+          const end = look.color ? look.color[1][channel] : 1;
+          tint[channel] = start + (end - start) * state.fraction;
+        }
       }
+      if (!fadesOpacity) for (let channel = 0; channel < 3; channel++) tint[channel] *= alpha;
     }
     for (let vertex = 0; vertex < vertexCount; vertex++) {
       const offset = (vertexBase + vertex) * 3;
@@ -572,7 +580,10 @@ export function buildParticleMesh(template, launches, forces, scaleMode, time, l
     }
     if (vertexOpacity) vertexOpacity.fill(alpha, vertexBase, vertexBase + vertexCount);
     if (!transformed) normals.set(picked.normals, vertexBase * 3);
-    uvs?.set(picked.uvs, vertexBase * 2);
+    if (uvs && look.flipbook) {
+      const frame = flipbookFrame(look.flipbook, state.fraction * launches.life[index], state.fraction);
+      for (let vertex = 0; vertex < vertexCount; vertex++) flipbookUv(look.flipbook, frame, picked.uvs[vertex * 2], picked.uvs[vertex * 2 + 1], uvs, (vertexBase + vertex) * 2);
+    } else uvs?.set(picked.uvs, vertexBase * 2);
     for (let corner = 0; corner < picked.indices.length; corner++) {
       indices[indexBase + corner] = picked.indices[corner] + vertexBase;
     }

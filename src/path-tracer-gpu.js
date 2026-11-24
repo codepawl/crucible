@@ -291,12 +291,97 @@ export function releaseResources(gl) {
 }
 
 /** The band size, tile width and the last turn given to the page, kept from one sample to the next. */
-export function createBandState(height, tileWidth = MAX_TILE_WIDTH) {
-  return { bandRows: Math.min(height, 32), tileWidth, lastYield: performance.now() };
+export function createBandState(height, tileWidth = MAX_TILE_WIDTH, now = () => performance.now()) {
+  return { bandRows: Math.min(height, 32), tileWidth, now, lastYield: now(), queuedPixels: 0, queuedSince: 0, pixelsPerSecond: 0 };
+}
+
+const FENCE_POLL_LIMIT_SECONDS = 10;
+// Polls that only give the page a message turn before the wait backs off to timers. On software GL the draw runs on the
+// same cores as the page, and a poll loop that never sleeps made 780 polls per small tile and slowed a bake by 20 to 80 percent.
+export const FENCE_BUSY_POLLS = 3;
+const FENCE_SLEEP_MILLISECONDS = 2;
+const sleepBriefly = () => new Promise(resolve => setTimeout(resolve, FENCE_SLEEP_MILLISECONDS));
+// A message turn, not setTimeout(0): browsers hold nested timeouts to 4 ms, which added seconds to a 1080x1920 trace.
+const yieldToPage = typeof MessageChannel === 'function'
+  ? () => new Promise(resolve => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      resolve();
+    };
+    channel.port2.postMessage(0);
+  })
+  : () => new Promise(resolve => setTimeout(resolve, 0));
+const synchronizationPixel = new Float32Array(4);
+const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software/i;
+const softwareContexts = new WeakMap();
+
+/** True for a CPU renderer (SwiftShader, llvmpipe), named in the renderer string a context reports. */
+export function isSoftwareRenderer(rendererName) {
+  return SOFTWARE_RENDERER.test(String(rendererName ?? ''));
+}
+
+function runsOnSoftware(gl) {
+  if (!softwareContexts.has(gl)) {
+    const debugInfo = typeof gl.getExtension === 'function' ? gl.getExtension('WEBGL_debug_renderer_info') : null;
+    softwareContexts.set(gl, Boolean(debugInfo) && isSoftwareRenderer(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)));
+  }
+  return softwareContexts.get(gl);
+}
+
+/**
+ * Resolves when the GPU has finished every draw sent so far. gl.finish() returns at once on some drivers (ANGLE on Vulkan
+ * inside a sandbox), which made every tile look free, so the tile size doubled to its cap and the draws queued up until the
+ * GPU watchdog fired (#2833). A fence is polled with yields to the page, because browsers allow no blocking wait on it;
+ * without fences, reading one value back waits. A software renderer keeps gl.finish(): it runs the draw on the page's own cores, so a
+ * polled wait only added idle time (a 2048 tile bake took 40 percent longer), and the lying finish is a hardware driver problem.
+ */
+export async function waitForDraw(gl, now = () => performance.now()) {
+  if (runsOnSoftware(gl)) {
+    gl.finish();
+    return;
+  }
+  if (typeof gl.fenceSync !== 'function') {
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, synchronizationPixel);
+    return;
+  }
+  const fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+  if (!fence) {
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, synchronizationPixel);
+    return;
+  }
+  gl.flush();
+  const deadline = now() + FENCE_POLL_LIMIT_SECONDS * 1000;
+  try {
+    for (let polls = 0; gl.clientWaitSync(fence, 0, 0) === gl.TIMEOUT_EXPIRED && now() < deadline; polls++) {
+      await (polls < FENCE_BUSY_POLLS ? yieldToPage() : sleepBriefly());
+    }
+  } finally {
+    gl.deleteSync(fence);
+  }
+}
+
+// Waiting for the GPU after every tile leaves it idle while the page polls, which cost a software GL bake of small tiles about
+// 40 percent against the old gl.finish() that never waited there. So tiles queue up, and the wait comes once the queue holds
+// about DRAW_SECONDS_TARGET of work at the last measured speed (or at once while the speed is still unknown).
+function shouldWaitForQueue(gl, band) {
+  if (!band.pixelsPerSecond || runsOnSoftware(gl)) return true;
+  return band.queuedPixels / band.pixelsPerSecond >= DRAW_SECONDS_TARGET;
+}
+
+async function settleQueue(gl, band, tileWidth, maxBandRows, now) {
+  await waitForDraw(gl, now);
+  const seconds = (now() - band.queuedSince) / 1000;
+  // Pace by pixels per second, so the narrow tile at the right edge of a row does not read as a cheap draw.
+  band.pixelsPerSecond = band.queuedPixels / Math.max(seconds, 1e-4);
+  band.queuedPixels = 0;
+  const wantedRows = Math.round((DRAW_SECONDS_TARGET * band.pixelsPerSecond) / tileWidth);
+  band.bandRows = Math.max(MINIMUM_BAND_ROWS, Math.min(maxBandRows, band.bandRows * 2, wantedRows));
 }
 
 /** Draws one sample of every pixel in bounded 2D tiles that take about DRAW_SECONDS_TARGET each, yielding between tiles. */
 export async function drawOneSample(gl, program, width, height, sample, band, shouldStop) {
+  const now = band.now ?? (() => performance.now());
   const tileWidth = Math.max(1, Math.min(width, band.tileWidth ?? MAX_TILE_WIDTH));
   const maxBandRows = Math.min(height, Math.max(MINIMUM_BAND_ROWS, Math.floor(MAX_TILE_PIXELS / tileWidth)));
   gl.viewport(0, 0, width, height);
@@ -312,17 +397,15 @@ export async function drawOneSample(gl, program, width, height, sample, band, sh
       rowStart += rows;
       for (let colStart = 0; colStart < width; colStart += tileWidth) {
         const cols = Math.min(tileWidth, width - colStart);
-        const started = performance.now();
+        if (band.queuedPixels === 0) band.queuedSince = now();
         gl.scissor(colStart, firstRow, cols, rows);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
-        gl.finish();
-        const seconds = (performance.now() - started) / 1000;
-        const scale = Math.min(2, DRAW_SECONDS_TARGET / Math.max(seconds, 1e-4));
-        band.bandRows = Math.max(MINIMUM_BAND_ROWS, Math.min(maxBandRows, Math.round(rows * scale)));
+        band.queuedPixels += cols * rows;
+        if (shouldWaitForQueue(gl, band)) await settleQueue(gl, band, tileWidth, maxBandRows, now);
         shouldStop();
-        if ((performance.now() - band.lastYield) / 1000 > YIELD_SECONDS) {
+        if ((now() - band.lastYield) / 1000 > YIELD_SECONDS) {
           await nextTask();
-          band.lastYield = performance.now();
+          band.lastYield = now();
         }
       }
     }

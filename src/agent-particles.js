@@ -5,12 +5,40 @@ import { PARTICLE_LIMITS, buildParticleMesh, createParticleLaunches } from './pa
 import { createCollisionSurface } from './particle-collision.js';
 import { SPARK_DEFAULTS, SPARK_LIMITS, SPARK_VERTICES, buildSparkMesh } from './particle-sparks.js';
 import { EMITTER_MESH_MODES, createMeshSource } from './particle-emitter-mesh.js';
+import { colorChannelCurves, isColorStops, normalizeColorStops, normalizeCurve, normalizeFlipbook } from './particle-curves.js';
+import { RIBBON_LIMITS, beamEndpoints, buildBeamMesh, buildTrailMesh } from './particle-ribbons.js';
+import { grid } from './geometry.js';
 import { invalidField } from './field-error.js';
 import { bakingContext, boundedArray, finiteNumber, knownKeys, rootNodeWithGeometry, vectorOfThree } from './agent-recipe-checks.js';
 
 const PARTICLES_FIELDS = ['gravity', 'wind', 'fields', 'systems'];
-const SYSTEM_TYPES = ['emitter', 'hair', 'sparks'];
-const EMITTER_SYSTEM_FIELDS = ['type', 'node', 'seed', 'count', 'rate', 'delay', 'start', 'stop', 'lifetime', 'speed', 'direction', 'spread', 'emitter', 'size', 'scale', 'drag', 'floor', 'bounce', 'friction', 'colliders', 'spin', 'color', 'alpha', 'fade', 'instances', 'orient'];
+const SYSTEM_TYPES = ['emitter', 'hair', 'sparks', 'beam', 'trail'];
+const EMITTER_SYSTEM_FIELDS = ['type', 'node', 'seed', 'count', 'rate', 'delay', 'start', 'stop', 'lifetime', 'speed', 'direction', 'spread', 'emitter', 'size', 'scale', 'drag', 'floor', 'bounce', 'friction', 'colliders', 'spin', 'color', 'alpha', 'fade', 'instances', 'orient', 'preset', 'flipbook', 'sizeOverLife', 'gravityScale', 'acceleration'];
+const BEAM_FIELDS = ['type', 'node', 'from', 'to', 'width', 'segments', 'curve', 'scroll', 'repeat', 'color', 'alpha', 'fade'];
+const TRAIL_FIELDS = ['type', 'node', 'follow', 'offset', 'lifetime', 'width', 'segments', 'repeat', 'color', 'alpha', 'fade'];
+// Presets (#3240) fill the fields of an emitter system that the recipe leaves out; a field the recipe gives wins. Smoke and fire are
+// camera-facing cards: draw them with a soft round texture (a plane node whose material has a map), smoke on an alphaMode "blend" material
+// and fire on alphaMode "add". gravityScale 0 and a gentle acceleration lift them whatever the scene gravity is.
+const PARTICLE_PRESETS = Object.freeze({
+  smoke: Object.freeze({
+    count: 480, rate: 100, lifetime: [2.5, 4], speed: [0.2, 0.6], size: [0.2, 0.4], spread: 25, drag: 0.6, orient: 'billboard', spin: [-45, 45],
+    gravityScale: 0, acceleration: [0, 0.8, 0], emitter: { shape: 'disc', radius: 0.08 },
+    sizeOverLife: [[0, 0.5], [1, 3.2]], alpha: [[0, 0], [0.1, 0.3], [0.6, 0.2], [1, 0]], color: [[0, [0.38, 0.38, 0.38]], [1, [0.12, 0.12, 0.12]]],
+  }),
+  fire: Object.freeze({
+    count: 200, rate: 45, lifetime: [0.5, 0.9], speed: [0.3, 0.9], size: [0.18, 0.3], spread: 12, drag: 1, orient: 'billboard', spin: [-40, 40],
+    gravityScale: 0, acceleration: [0, 2.5, 0], emitter: { shape: 'disc', radius: 0.1 },
+    sizeOverLife: [[0, 0.5], [0.25, 1], [1, 0.1]], alpha: [[0, 0], [0.1, 0.22], [0.7, 0.1], [1, 0]],
+    color: [[0, [1, 0.7, 0.15]], [0.35, [1, 0.3, 0.03]], [1, [0.22, 0.02, 0]]],
+  }),
+  sparkles: Object.freeze({
+    count: 240, rate: 80, lifetime: [0.8, 1.6], speed: [0.1, 0.5], size: [0.06, 0.12], spread: 180, drag: 0.5, orient: 'billboard',
+    gravityScale: 0, emitter: { shape: 'sphere', radius: 0.4 },
+    sizeOverLife: [[0, 0], [0.15, 1], [0.3, 0.4], [0.45, 1], [0.6, 0.4], [0.75, 1], [1, 0]],
+    alpha: [[0, 0], [0.15, 1], [0.3, 0.25], [0.45, 1], [0.6, 0.25], [0.75, 1], [1, 0]],
+    color: [[0, [1, 1, 0.85]], [1, [1, 0.8, 0.35]]],
+  }),
+});
 const SPARK_SYSTEM_FIELDS = ['type', 'preset', 'node', 'seed', 'count', 'delay', 'lifetime', 'speed', 'direction', 'spread', 'emitter', 'position', 'size', 'drag', 'floor', 'bounce', 'temperature', 'intensity', 'shutter'];
 const SPARK_PRESETS = Object.freeze({
   // A blast: a few hundred sparks thrown in every direction from a small ball, fast, light enough for drag to pull them in, living 0.5 to 2 s.
@@ -213,6 +241,7 @@ function normalizeSeed(input, path) {
 }
 
 function normalizeColors(value, path) {
+  if (isColorStops(value)) return normalizeColorStops(value, path);
   if (!Array.isArray(value) || value.length !== 2) {
     throw invalidField(path, value, '[start, end], each [r, g, b] from 0 to 1, such as [[1, 0.6, 0.1], [0.3, 0, 0]]', TypeError);
   }
@@ -221,6 +250,7 @@ function normalizeColors(value, path) {
 
 // [start, end] over the life, in either direction; a number holds one value.
 function normalizeAlpha(value, path) {
+  if (Array.isArray(value) && value.some(Array.isArray)) return normalizeCurve(value, path, 0, 1);
   if (typeof value === 'number') {
     return [finiteNumber(value, path, 0, 1), value];
   }
@@ -281,6 +311,11 @@ function normalizeEmitterSystem(input, context, path) {
   }
   normalizeInstances(input, system, context, path);
   if (input.floor !== undefined) system.floor = finiteNumber(input.floor, `${path}.floor`, -POSITION_LIMIT, POSITION_LIMIT);
+  if (input.sizeOverLife !== undefined) system.sizeOverLife = normalizeCurve(input.sizeOverLife, `${path}.sizeOverLife`, 0, 100);
+  if (input.gravityScale !== undefined) system.gravityScale = finiteNumber(input.gravityScale, `${path}.gravityScale`, -10, 10);
+  if (input.acceleration !== undefined) system.acceleration = vectorOfThree(input.acceleration, `${path}.acceleration`, 1000);
+  if (input.flipbook !== undefined) system.flipbook = normalizeFlipbook(input.flipbook, `${path}.flipbook`);
+  if (input.preset !== undefined) system.preset = input.preset;
   return system;
 }
 
@@ -377,12 +412,88 @@ function normalizeHairSystem(input, context, path) {
   return system;
 }
 
-function normalizeSystem(input, context, path, recipe) {
+function applyPreset(input, path) {
+  if (input?.preset === undefined || input.type === 'sparks') return input;
+  const preset = PARTICLE_PRESETS[input.preset];
+  if (!preset || (input.type ?? 'emitter') !== 'emitter') {
+    throw invalidField(`${path}.preset`, input.preset, `one of ${Object.keys(PARTICLE_PRESETS).join(', ')} on an emitter system, or left out`);
+  }
+  return { ...preset, ...input, emitter: { ...preset.emitter, ...input.emitter } };
+}
+
+function nodeIdOf(value, context, path, system) {
+  if (typeof value !== 'string' || !context.recipeNodes.has(value)) {
+    const known = [...context.recipeNodes.keys()];
+    throw invalidField(path, value, `the ID of a node in the recipe (known nodes: ${known.slice(0, 8).join(', ') || 'none'}${known.length > 8 ? ', ...' : ''})`);
+  }
+  if (value === system.node) {
+    throw invalidField(path, value, 'another node than the system node, which is replaced by the strip; use a node that marks the point');
+  }
+  return value;
+}
+
+function normalizeBeamEnd(value, context, path, system) {
+  const entry = typeof value === 'string' ? { node: value } : value;
+  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+    throw invalidField(path, value, 'a node ID or { node, offset: [x, y, z] }, such as "muzzle"', TypeError);
+  }
+  knownKeys(entry, ['node', 'offset'], path);
+  return { node: nodeIdOf(entry.node, context, `${path}.node`, system), offset: entry.offset === undefined ? [0, 0, 0] : vectorOfThree(entry.offset, `${path}.offset`, 1000) };
+}
+
+function normalizeRibbonLook(input, system, path) {
+  system.width = normalizeCurve(input.width ?? (system.type === 'trail' ? [0.2, 0] : 0.2), `${path}.width`, 0, RIBBON_LIMITS.maxWidth);
+  system.alpha = normalizeCurve(input.alpha ?? (system.type === 'trail' ? [1, 0] : 1), `${path}.alpha`, 0, 1);
+  if (input.color !== undefined) system.color = normalizeColors(input.color, `${path}.color`);
+  system.repeat = finiteNumber(input.repeat ?? 1, `${path}.repeat`, 0.01, 1000);
+  if (input.fade !== undefined) {
+    if (!FADE_MODES.includes(input.fade)) throw invalidField(`${path}.fade`, input.fade, `one of ${FADE_MODES.join(', ')}`);
+    system.fade = input.fade;
+  }
+}
+
+function normalizeSegments(input, fallback, maximum, path) {
+  const segments = input ?? fallback;
+  if (!Number.isInteger(segments) || segments < 1 || segments > maximum) {
+    throw invalidField(`${path}.segments`, segments, `a whole number from 1 to ${maximum}, such as ${fallback}`);
+  }
+  return segments;
+}
+
+function normalizeBeamSystem(input, context, path) {
+  knownKeys(input, BEAM_FIELDS, path);
+  rootNodeWithGeometry(input.node, context.recipeNodes, context.claimedNodes, context.motionNodeIds, context.physicsNodeIds, `${path}.node`, 'particles');
+  const system = { type: 'beam', node: input.node };
+  system.from = normalizeBeamEnd(input.from, context, `${path}.from`, system);
+  system.to = normalizeBeamEnd(input.to, context, `${path}.to`, system);
+  system.segments = normalizeSegments(input.segments, 8, RIBBON_LIMITS.maxBeamSegments, path);
+  system.curve = input.curve === undefined ? [0, 0, 0] : vectorOfThree(input.curve, `${path}.curve`, 1000);
+  system.scroll = finiteNumber(input.scroll ?? 0, `${path}.scroll`, -1000, 1000);
+  normalizeRibbonLook(input, system, path);
+  return system;
+}
+
+function normalizeTrailSystem(input, context, path) {
+  knownKeys(input, TRAIL_FIELDS, path);
+  rootNodeWithGeometry(input.node, context.recipeNodes, context.claimedNodes, context.motionNodeIds, context.physicsNodeIds, `${path}.node`, 'particles');
+  const system = { type: 'trail', node: input.node };
+  system.follow = nodeIdOf(input.follow, context, `${path}.follow`, system);
+  system.offset = input.offset === undefined ? [0, 0, 0] : vectorOfThree(input.offset, `${path}.offset`, 1000);
+  system.lifetime = finiteNumber(input.lifetime ?? 0.5, `${path}.lifetime`, RIBBON_LIMITS.minTrailLifetime, RIBBON_LIMITS.maxTrailLifetime);
+  system.segments = normalizeSegments(input.segments, 24, RIBBON_LIMITS.maxTrailSegments, path);
+  normalizeRibbonLook(input, system, path);
+  return system;
+}
+
+function normalizeSystem(rawInput, context, path, recipe) {
+  const input = applyPreset(rawInput, path);
   const type = input?.type ?? 'emitter';
   if (!SYSTEM_TYPES.includes(type)) {
     throw invalidField(`${path}.type`, type, `one of ${SYSTEM_TYPES.join(', ')}`);
   }
   if (type === 'sparks') return normalizeSparkSystem(input, context, path, recipe);
+  if (type === 'beam') return normalizeBeamSystem(input, context, path);
+  if (type === 'trail') return normalizeTrailSystem(input, context, path);
   return type === 'hair' ? normalizeHairSystem(input, context, path) : normalizeEmitterSystem(input, context, path);
 }
 
@@ -409,7 +520,7 @@ export function normalizeAgentParticles(input, recipe) {
   if (sparkTotal > SPARK_LIMITS.maxCount) {
     throw invalidField('particles.systems', `${sparkTotal} sparks in total`, `spark counts that add up to at most ${SPARK_LIMITS.maxCount}, such as a lower count in each system`);
   }
-  const total = result.systems.reduce((sum, system) => sum + (system.type === 'sparks' ? 0 : system.count), 0);
+  const total = result.systems.reduce((sum, system) => sum + (system.type === 'sparks' ? 0 : system.count ?? 0), 0);
   if (total > PARTICLE_LIMITS.maxParticles) {
     throw invalidField('particles.systems', `${total} particles in total`, `counts that add up to at most ${PARTICLE_LIMITS.maxParticles}, such as a lower count in each system`);
   }
@@ -509,6 +620,14 @@ function checkVertexBudget(verticesPerItem, count, totalVertices, nodeId, recipe
 }
 
 // The geometries a particle can be: the listed instance nodes, or else the system node's own.
+// A preset draws camera-facing cards, so a plane or grid node whose geometry names no `segments` is drawn as one quad (4 vertices) instead of the
+// default 17 by 17 grid: the preset counts of hundreds of cards then fit the vertex budget with no extra setting. A `segments` the recipe gives wins.
+function templateOf(system, node, recipe, geometries) {
+  const definition = recipe.geometries.find(entry => entry.id === node.geometry);
+  const isDefaultPlane = (definition?.type === 'plane' || definition?.type === 'grid') && definition.segments === undefined;
+  return system.preset && isDefaultPlane ? grid(1) : geometries.get(node.geometry);
+}
+
 function templateNodeIds(system) {
   return system.instances ?? [system.node];
 }
@@ -654,13 +773,65 @@ function checkOpacityFade(system, node, recipe, systemIndex) {
   }
 }
 
+// Colours as three channel curves: a [start, end] pair and colour stops both become stops.
+function colorCurveOf(color) {
+  if (!color) return undefined;
+  return colorChannelCurves(isColorStops(color) ? color : [[0, color[0]], [1, color[1]]]);
+}
+
+// Smoke fades by opacity when its material blends, and darkens otherwise, so the preset works on any material with nothing set.
+function withPresetFade(system, node, recipe) {
+  if (system.preset !== 'smoke' || system.fade) return system;
+  const material = recipe.materials.find(entry => entry.id === node.material);
+  return material?.alphaMode === 'blend' ? { ...system, fade: 'opacity' } : system;
+}
+
+function prepareBeam(system, node, follow) {
+  const ribbon = { ...system, colorCurve: colorCurveOf(system.color) };
+  return {
+    node,
+    report: () => ({ node: system.node, type: 'beam', from: system.from.node, to: system.to.node, segments: system.segments, vertices: (system.segments + 1) * 2 }),
+    build: (time, camera) => {
+      const [start, end] = beamEndpoints(system, follow.matrixAt, time);
+      return buildBeamMesh(ribbon, start, end, time, camera);
+    },
+  };
+}
+
+function prepareTrail(system, node, follow) {
+  const ribbon = { ...system, colorCurve: colorCurveOf(system.color) };
+  return {
+    node,
+    report: () => ({ node: system.node, type: 'trail', follow: system.follow, lifetime: system.lifetime, segments: system.segments, vertices: (system.segments + 1) * 2 }),
+    build: (time, camera) => buildTrailMesh(ribbon, follow.matrixAt, time, camera),
+  };
+}
+
+function emitterLook(system) {
+  const look = { ...system };
+  if (isColorStops(system.color)) {
+    look.colorCurve = colorChannelCurves(system.color);
+    delete look.color;
+  }
+  if (system.alpha && Array.isArray(system.alpha[0])) {
+    look.alphaCurve = system.alpha;
+    delete look.alpha;
+  }
+  return look;
+}
+
 function prepareEmitter(system, node, templates, forces, colliders, emitter) {
-  const systemForces = { ...forces, drag: system.drag, floor: system.floor, bounce: system.bounce ?? (colliders ? DEBRIS_BOUNCE : 0), friction: system.friction ?? DEBRIS_FRICTION, colliders };
-  const launches = createParticleLaunches({ ...system, emitter, instanceCount: templates.length, spreadRadians: system.spread * Math.PI / 180, forces: systemForces });
+  if (system.flipbook && !templates.every(template => template.uvs)) {
+    throw invalidField('particles.systems[].flipbook', system.node, 'a system node whose geometry has UVs, such as a plane, because each particle shows one cell of the sheet through them');
+  }
+  const gravity = forces.gravity.map((component, axis) => component * (system.gravityScale ?? 1) + (system.acceleration?.[axis] ?? 0));
+  const systemForces = { ...forces, gravity, drag: system.drag, floor: system.floor, bounce: system.bounce ?? (colliders ? DEBRIS_BOUNCE : 0), friction: system.friction ?? DEBRIS_FRICTION, colliders };
+  const launches = createParticleLaunches({ ...system, sizeCurve: system.sizeOverLife, emitter, instanceCount: templates.length, spreadRadians: system.spread * Math.PI / 180, forces: systemForces });
+  const look = emitterLook(system);
   return {
     node,
     report: () => ({ node: system.node, type: 'emitter', particles: system.count, verticesPerParticle: Math.max(...templates.map(template => template.positions.length / 3)), ...lifeSummary(launches) }),
-    build: (time, camera) => buildParticleMesh(templates, launches, systemForces, system.scale, time, system, camera),
+    build: (time, camera) => buildParticleMesh(templates, launches, systemForces, system.scale, time, look, camera),
   };
 }
 
@@ -725,7 +896,7 @@ function nodeTransformProblems(particles, recipe) {
   const problems = [];
   for (const system of particles.systems) {
     const node = nodesById.get(system.node);
-    if (!node || reported.has(node.id) || isOrigin(node.translation) || system.emitter?.shape === 'mesh' || !isOrigin(system.emitter?.position)) continue;
+    if (!node || reported.has(node.id) || system.type === 'beam' || system.type === 'trail' || isOrigin(node.translation) || system.emitter?.shape === 'mesh' || !isOrigin(system.emitter?.position)) continue;
     reported.add(node.id);
     const translation = Array.from(node.translation).map(component => Math.round(component * 1000) / 1000).join(', ');
     problems.push({
@@ -744,17 +915,22 @@ export function bakeAgentParticles(particles, recipe, geometries, sea, follow) {
   let totalVertices = 0;
   const prepared = particles.systems.map((system, systemIndex) => {
     const node = nodes.get(system.node);
-    const verticesPerItem = system.type === 'sparks' ? SPARK_VERTICES : system.type === 'hair' ? (system.segments + 1) * HAIR_LIMITS.ringSides : Math.max(...templateNodeIds(system).map(nodeId => geometries.get(nodes.get(nodeId).geometry).positions.length / 3));
-    totalVertices += verticesPerItem * system.count;
-    checkVertexBudget(verticesPerItem, system.count, totalVertices, system.node, recipe);
+    const verticesPerItem = system.type === 'beam' || system.type === 'trail' ? (system.segments + 1) * 2 : system.type === 'sparks' ? SPARK_VERTICES : system.type === 'hair' ? (system.segments + 1) * HAIR_LIMITS.ringSides : Math.max(...templateNodeIds(system).map(nodeId => templateOf(system, nodes.get(nodeId), recipe, geometries).positions.length / 3));
+    const itemCount = system.count ?? 1;
+    totalVertices += verticesPerItem * itemCount;
+    checkVertexBudget(verticesPerItem, itemCount, totalVertices, system.node, recipe);
+    if (system.type === 'beam' || system.type === 'trail') {
+      checkOpacityFade(system, node, recipe, systemIndex);
+      return system.type === 'beam' ? prepareBeam(system, node, follow) : prepareTrail(system, node, follow);
+    }
     if (system.type === 'hair') {
       const surfaceNode = nodes.get(system.surface);
       return prepareHair(system, node, surfaceNode, geometries.get(surfaceNode.geometry), forces);
     }
     if (system.type === 'sparks') return prepareSparks(system, node, forces, meshSourceOf(system, nodes, geometries, systemIndex, sea, follow));
-    const templates = templateNodeIds(system).map(nodeId => geometries.get(nodes.get(nodeId).geometry));
+    const templates = templateNodeIds(system).map(nodeId => templateOf(system, nodes.get(nodeId), recipe, geometries));
     checkOpacityFade(system, node, recipe, systemIndex);
-    return prepareEmitter(system, node, templates, forces, collisionSurfaceOf(system, nodes, geometries), meshSourceOf(system, nodes, geometries, systemIndex, sea, follow));
+    return prepareEmitter(withPresetFade(system, node, recipe), node, templates, forces, collisionSurfaceOf(system, nodes, geometries), meshSourceOf(system, nodes, geometries, systemIndex, sea, follow));
   });
   return Object.freeze({
     /** Warnings for a recipe that loads but does not do what its author likely meant. */

@@ -48,6 +48,7 @@ import { LOOK_VIEW_PASSES, resolveLookView } from '../src/look-views.js';
 import { registerCatalogEnvironment, registerCatalogLook } from '../src/look-catalog.js';
 import { registerVolumeGrid } from '../src/volume-grid.js';
 import { parseRadianceHdr } from '../src/hdri.js';
+import { registerSkyboxFace } from '../src/skybox.js';
 import { parseCube } from '../src/view-transform.js';
 import { weightTracksFromGltfAnimation } from '../src/export-skeleton.js';
 import { clipFromGltfAnimation } from '../src/skeleton-pose.js';
@@ -271,6 +272,7 @@ async function loadSequenceFrames(pool, sequenceData) {
     if (pool.has(id)) continue;
     try {
       pool.set(id, await decodeSequenceFrame(id, base64));
+      registerSkyboxFace(id, pool.get(id));
     } catch (error) {
       if (error instanceof RangeError) throw error;
       throw new Error(`Sequence frame ${id.slice(0, 12)} is not a PNG, JPEG or WebP image the browser can decode.`);
@@ -462,7 +464,7 @@ function draw(record, time = 0, camera = record.scene.camera, frameOptions = {})
   const frame = { ...camera, environment: litEnvironment(record.scene.parts, environment, Boolean(record.renderer.groundPart)), effects, exposure: effects.exposure, time, lines: environment.lines, ...windFrame(environment), ...renderOptions, effects: effectsWithFStop(renderOptions.effects ?? effects, camera) };
   // Object motion blur, a mask by parts and a user pass with `objects` all read the object ID pass.
   let needsObjectIds = Boolean(objectMotion) || postPasses.some(pass => pass.objects);
-  if (effects.colorBalance || effects.glare || effects.lensDistortion || effects.stylize || effects.composite || effects.localToneMapping) {
+  if (effects.colorBalance || effects.colorCorrection || effects.sunRays || effects.glare || effects.lensDistortion || effects.stylize || effects.composite || effects.localToneMapping) {
     const postSteps = agentSceneModule('postSteps');
     postSteps.installPostSteps(record.renderer);
     needsObjectIds ||= postSteps.usesObjectMask(postSteps.resolvePostSteps(frame.effects));

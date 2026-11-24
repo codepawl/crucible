@@ -4,6 +4,7 @@ import { drainSteps } from './flush-search-runner.js';
 import { contentFingerprint, ownedCopy, retainedBytes } from './content-fingerprint.js';
 import { runKernel } from './kernel-offload.js';
 import { motionEnvironment } from './agent-motion.js';
+import { bakeEnvironmentOf } from './light-parenting.js';
 import { normalizeProbeList, traceProbes } from './probe-trace.js';
 import { placeProbes } from './reflection-probes.js';
 import { normalizeIrradianceGrid, placeIrradianceGrid, traceIrradianceGrid, withMeanRadiance } from './irradiance-grid.js';
@@ -96,8 +97,9 @@ export function bakeGenerators(recipe) {
 
 // The bake inputs at a sampled pose: the lights, sun and part matrices as motion has set them, and the key they give.
 function sampledBakeInputs(recipe, sourceRestParts, generators, pose) {
-  const environment = pose.movedLook ? motionEnvironment(structuredClone(recipe.environment), pose.movedLook) : recipe.environment;
+  const moved = pose.movedLook ? motionEnvironment(structuredClone(recipe.environment), pose.movedLook) : recipe.environment;
   const worldMatrices = new Map(sourceRestParts.map(part => [part.name, new Float32Array(pose.graph.getNode(part.name).worldMatrix)]));
+  const environment = bakeEnvironmentOf(moved, recipe, sourceRestParts, worldMatrices, pose.graph);
   return { environment, worldMatrices, key: lightBakeKey(recipe, generators, environment, worldMatrices) };
 }
 

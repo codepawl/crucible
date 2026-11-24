@@ -497,6 +497,8 @@ uniform float localShadowTexelAngles[24];
 uniform vec3 keyColor;
 uniform float fillIntensity;
 uniform float ambientIntensity;
+// environment.ambientColor: a diffuse fill that fades where the key light reaches the surface, so it tints shadow and leaves lit ground alone.
+uniform vec3 ambientColor;
 uniform float specularAntiAliasing;
 const float MAXIMUM_SPECULAR_WIDENING = 0.25;
 uniform vec3 fogColor;
@@ -1019,6 +1021,8 @@ ${featureCode("areaRadiance")}      radiance += illuminate(normal, viewDirection
   vec3 reflected = reflect(-viewDirection, specularNormal);
 ${featureCode("probeReflection")}${featureCode("irradianceGridOcclusion")}  if (ENVIRONMENT_ENABLED) {
     radiance += environmentLighting(normal, specularNormal, baseReflectance, viewDirection, reflected, color, metallic, roughness, occlusion, ambientIntensity, skyReflection);
+    float keyReach = visibility * smoothstep(0.0, 0.12, dot(normal, normalize(lightDirection))) * step(0.003, dot(keyColor, vec3(1.0)));
+    radiance += ambientColor * color * (1.0 - metallic) * occlusion * ambientIntensity * (1.0 - keyReach);
     if (USES_ALPHA_MODE) blendSpecular += environmentLighting(normal, specularNormal, baseReflectance, viewDirection, reflected, vec3(0.0), metallic, roughness, occlusion, ambientIntensity, skyReflection);
   } else {
     // Outdoors the surroundings are sky and haze; reflecting the studio softboxes there lit grazing leaves white and cyan.

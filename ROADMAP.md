@@ -137,7 +137,11 @@ Ideas that nobody is working on live here instead of as open issues, so the issu
 - Measure moving dev tooling and CI from npm and Node to Bun (#2746)
 - Voxel helper for meshes and trained splats (sprite stacks) (#2745)
 - Studio: export a video of the timeline (#2853)
-- Studio: select and edit several objects at once (#2816)
+- Studio: a list of undo steps to jump back to
+- Studio: snap to vertices, edges and the grid while transforming
+- Studio: choose the pivot point and a global or local transform orientation
+- Studio edit mode: knife, edge slide, vertex slide and recalculate normals
+- Studio: a ruler, hide unselected and lasso select
 
 ## Package size
 

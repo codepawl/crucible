@@ -189,6 +189,32 @@ The `terrain` geometry of a recipe calls `createTerrain` with these fields. A fi
 - `holes` cut cells of the whole ground (`chunks * resolution` across).
 - `paths` carve roads: see [Paths](#paths).
 
+## Voxel terrain
+
+`createVoxelTerrain` turns a grid of cells, each with an occupancy and a material, into smooth land and water meshes. It is for terrain that arrives as voxels, such as a Roblox Studio export, and it keeps caves, overhangs and arches that a heightfield cannot hold.
+
+```js
+import { createVoxelTerrain } from 'crucible/addons/terrain';
+
+const { parts, bounds } = createVoxelTerrain({
+  grid: [256, 64, 256],   // cells along x, y (up) and z
+  cellSize: 4,            // metres per cell
+  occupancy,              // 256 * 64 * 256 numbers from 0 (empty) to 1 (full), x fastest, then y, then z
+  materials,              // one palette index per cell, in the same order
+  palette: ['grass', 'rock', 'sand', 'water'], // the default
+});
+renderer.replaceParts([...parts, ...otherParts]);
+```
+
+- **Smooth surfaces.** The occupancy is blurred over the neighbouring cells (`smoothing` passes, 1 by default, 0 to 4) into a signed field and meshed with surface nets, so a slope is a slope and not a staircase. A cell that is partly full moves the surface by less than a cell, as Roblox terrain does. Features thinner than two cells fade at `smoothing: 1`; use `0` to keep single-cell features (blocky) or fill them.
+- **A look per material.** The land is one part. Each vertex blends the colour of the materials of the cells around it, so grass meets rock without a seam, and brightness drifts a little so flat ground does not read as flat. The built-in names are `grass`, `rock`, `sand`, `dirt`, `snow` and `water`; `looks: { moss: { color: [0.1, 0.25, 0.08], variation: 0.2 } }` adds more (linear RGB, `variation` 0 to 1). `materialIds` holds the strongest material of each land vertex, for code that wants to put a splat, a sound or a prop by material.
+- **Water.** Cells with the `water` material become a second part, `Voxel water`, with the `water` material tag, at the top of each body. A cell holds one material, so a shore cell that is partly ground has no room for water; water touching it from above or from the side counts as filling it, which lets the surface run up to the bank instead of stopping on a column of cells. The surface is pressed flat per body (it would otherwise climb the bank) and sits a tenth of a cell under the land, so the shoreline is where the land crosses the water.
+- **Edges.** `edges: 'open'` (default) continues the outer cells outward, so the landscape is cut cleanly at the grid bounds with no wall; `'closed'` adds side walls and a base like a diorama; the walls hang from the boundary of the same smooth surface (never a per-cell staircase). The walls and base are one flat earth colour, cut hard from the top colours (the top surface never blends into them); `stats.wallTriangles` counts the wall triangles, which are listed last in `indices`.
+- **Output.** `{ parts, materialIds, palette, bounds, stats }`. `parts` are plain parts (`geometry` with `positions`, `normals`, `uvs`, `colors`, `indices`) in world space, with the grid minimum corner at `origin` (default `[0, 0, 0]`). The same input gives the same bytes. `stats` holds vertex and triangle counts and the meshing time.
+- **Bounds.** Each axis is 2 to 512 cells and the grid at most 16,777,216 cells; split a bigger landscape into tiles. A bad `grid`, `cellSize`, `occupancy`, `materials`, `palette`, `smoothing` or `edges` throws an error that names the field, what it got and what to pass. A grid with no surface (empty or full) throws too.
+
+Meshing a 256 x 64 x 256 landscape with a lake takes about 2 to 4 seconds on one CPU thread (`node scripts/measure-voxel-terrain.mjs`), and gives about 110,000 vertices. `node scripts/capture-voxel-terrain.mjs <folder>` writes the portrait stills of a small landscape.
+
 ## Measured
 
 Windows, RTX 3060, headless Chrome, 1600x900, 4x MSAA, HDRI, shadows, bloom, 600 m terrain with 10x10 chunks at resolution 32 and about 1,000 to 1,750 trees:
@@ -204,7 +230,7 @@ Splat textures take 68 MiB of 74 MiB texture memory at 1K per layer.
 
 - Up to four layers; one splat material per draw (chunks share one). More layers are not built: the splat shader has 16 four-wide arrays and loops, the weight texture has four channels, and eight 1K layers would take about 136 MiB against the 74 MiB of texture memory above.
 - Routes come from a grid, not a mesh of walkable polygons: no stairs or bridges over one another (the highest surface wins), and no moving obstacles.
-- Overhangs are not represented: the terrain is a heightfield.
+- Overhangs are not represented: `createTerrain` is a heightfield. [Voxel terrain](#voxel-terrain) holds them.
 - Changing `layers` or `splat` after the renderer exists needs a new renderer.
 - The weight texture follows its descriptor's filtering (mipmapped by default); 1024 square over 600 m gives 0.6 m texels.
 - Normal-map tilt is added to the geometric normal in world space, which is cheap and stable but not a full tangent-space blend.

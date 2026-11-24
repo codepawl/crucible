@@ -19,6 +19,7 @@ in vec3 worldPosition;
 in vec3 worldNormal;
 flat in vec3 baseColor;
 flat in vec4 surface;
+flat in vec4 instanceEmission;
 in vec4 shadowPosition;
 in vec2 textureUV;
 in vec3 vertexTint;
@@ -48,6 +49,8 @@ uniform vec3 glassTint;
 uniform float glassCoverage;
 // 1 for a glass cap with no back face (a cornea): the ray bends once on entry and the glass continues behind it.
 uniform float glassMediumContinues;
+// The IOR of a material graph's fresnel factor of emission (material-graph.js); 0 when the emission has none.
+uniform float materialEmissionFresnel;
 // The glTF metallic-roughness texture; a flag of 2 or more reads the second UV set, as in the opaque shader.
 uniform sampler2D metallicRoughnessMap;
 uniform float hasMetallicRoughnessMap;
@@ -108,6 +111,16 @@ ${ballLensGlsl}
 ${glassDepthMarchGlsl}
 vec3 displayed(vec3 radiance) {
   return hdrEnabled > 0.5 ? clamp(radiance * exposure, vec3(0), vec3(65504.0)) : pow(toneMap(radiance * exposure), vec3(1.0 / 2.2));
+}
+
+// The opaque shader's emission: the part's emission scaled by the material, times Schlick's Fresnel of the graph's IOR when it has one.
+vec3 surfaceEmission(vec3 normal, vec3 viewDirection) {
+  vec3 emission = instanceEmission.rgb * surface.z;
+  if (materialEmissionFresnel > 0.0) {
+    float normalIncidence = pow((materialEmissionFresnel - 1.0) / (materialEmissionFresnel + 1.0), 2.0);
+    emission *= normalIncidence + (1.0 - normalIncidence) * pow(1.0 - clamp(dot(normal, viewDirection), 0.0, 1.0), 5.0);
+  }
+  return emission;
 }
 
 void main() {
@@ -183,6 +196,8 @@ void main() {
   if (waterReflectionEnabled > 0.5) reflection = mix(reflection, waterMirrorColor(worldPosition, roughness), waterMirrorWeight(roughness));
   vec3 highlight = keyColor * specularLobe(normal, viewDirection, light, roughness);
   vec3 surfaceLight = (inScatter + diffuseShare) * (1.0 - reflectance) + reflection * reflectionTint * reflectance + highlight * reflectionTint;
+  // Emission adds to the surface light, not to the refracted picture, so glass transmits and glows at once (#3279).
+  surfaceLight += surfaceEmission(normal, viewDirection);
   surfaceLight = mix(surfaceLight, fogColor, fog);
   float transmitted = glass ? transmissionShare : 1.0;
   outputColor = vec4(behind * transmittance * transmitted * (1.0 - reflectance) * (1.0 - fog) + displayed(surfaceLight), glass ? glassOutputCoverage(glassCoverage, transmissionShare) : 1.0);

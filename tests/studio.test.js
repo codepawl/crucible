@@ -465,58 +465,38 @@ test('every Studio primitive has a starting shape that sits on the ground and bu
   }
 });
 
-test('the shapes beyond the first set build from ordinary recipe geometries, rest on the ground and keep hard edges', () => {
-  const expectedTypes = { capsule: 'lathe', dome: 'mesh', pyramid: 'mesh', prism: 'extrude', hexagon: 'extrude', wedge: 'extrude', pipe: 'mesh', gem: 'mesh', heart: 'extrude', spring: 'tube', stairs: 'extrude', bowl: 'mesh', knot: 'tube' };
-  assert.ok(STUDIO_PRIMITIVE_GROUPS.every(group => group.primitives.length % 3 === 0), 'each group fills whole rows of the three columns');
+test('the add menu offers the basic shapes in the order of Blender, and the shapes it dropped are refused', () => {
+  assert.deepEqual(
+    STUDIO_PRIMITIVE_GROUPS.map(group => [group.label, [...group.primitives]]),
+    [['Mesh', ['plane', 'box', 'disc', 'sphere', 'icoSphere', 'cylinder', 'cone', 'torus']], ['Text', ['text']]],
+  );
   assert.deepEqual(STUDIO_PRIMITIVE_GROUPS.flatMap(group => group.primitives), [...STUDIO_PRIMITIVES]);
-  assert.ok(STUDIO_PRIMITIVE_GROUPS.every(group => group.label.length > 0 && group.primitives.length > 0));
   assert.ok(STUDIO_PRIMITIVES.every(primitiveType => /^[a-z][a-zA-Z]*$/.test(primitiveType)), 'ids are one word, because node ids and labels are made from them');
-  for (const [primitiveType, geometryType] of Object.entries(expectedTypes)) {
-    assert.ok(STUDIO_PRIMITIVES.includes(primitiveType), `${primitiveType} is in the add menu`);
-    const spec = primitiveGeometrySpec(primitiveType);
-    assert.equal(spec.geometry.type, geometryType, primitiveType);
-    const controller = createStudioController({ scene: createAgentScene(buildTemplateRecipe('empty')), viewportWidth: 960, viewportHeight: 540 });
-    const created = controller.addPrimitive(primitiveType);
-    const part = controller.scene.parts.find(candidate => candidate.name === created.id);
-    const positions = part.geometry.positions;
-    const matrix = part.matrix;
-    let lowest = Infinity;
-    let widest = 0;
-    for (let offset = 0; offset < positions.length; offset += 3) {
-      const [x, y, z] = [positions[offset], positions[offset + 1], positions[offset + 2]];
-      lowest = Math.min(lowest, matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13]);
-      widest = Math.max(widest, Math.abs(matrix[0] * x + matrix[4] * y + matrix[8] * z), Math.abs(matrix[2] * x + matrix[6] * y + matrix[10] * z));
-    }
-    assert.ok(Math.abs(lowest) < 0.01, `${primitiveType} rests on the ground (lowest point ${lowest.toFixed(3)})`);
-    assert.ok(widest <= 1.01, `${primitiveType} is about a metre wide (${widest.toFixed(2)} from its middle)`);
-    assert.ok(positions.length / 3 < 8000, `${primitiveType} is light enough for the outline that follows its shape`);
+  assert.equal(primitiveGeometrySpec('disc').labelPrefix, 'Circle');
+  for (const dropped of ['heart', 'vase', 'star', 'terrain', 'gem']) {
+    assert.throws(() => primitiveGeometrySpec(dropped), new RegExp(`Unknown primitive "${dropped}"`));
   }
-  // Hard edges: on a pyramid and a pipe every corner of a triangle carries the normal of its own face.
-  for (const primitiveType of ['pyramid', 'pipe', 'prism']) {
-    const spec = primitiveGeometrySpec(primitiveType);
-    const scene = createAgentScene({
-      format: 'crucible.scene',
-      schemaVersion: 1,
-      geometries: [{ id: 'shape', ...spec.geometry }],
-      materials: [{ id: 'paint', tag: 'surface', color: [0.5, 0.5, 0.5], roughness: 0.5, metallic: 0 }],
-      nodes: [{ id: 'node', geometry: 'shape', material: 'paint' }],
-    });
-    const { positions, normals, indices } = scene.parts[0].geometry;
-    let worstAgreement = 1;
-    for (let triangle = 0; triangle < indices.length; triangle += 3) {
-      const [first, second, third] = [indices[triangle] * 3, indices[triangle + 1] * 3, indices[triangle + 2] * 3];
-      const edgeOne = [0, 1, 2].map(axis => positions[second + axis] - positions[first + axis]);
-      const edgeTwo = [0, 1, 2].map(axis => positions[third + axis] - positions[first + axis]);
-      const face = [edgeOne[1] * edgeTwo[2] - edgeOne[2] * edgeTwo[1], edgeOne[2] * edgeTwo[0] - edgeOne[0] * edgeTwo[2], edgeOne[0] * edgeTwo[1] - edgeOne[1] * edgeTwo[0]];
-      const length = Math.hypot(...face);
-      if (length < 1e-9) {
-        continue;
-      }
-      for (const corner of [first, second, third]) {
-        worstAgreement = Math.min(worstAgreement, (face[0] * normals[corner] + face[1] * normals[corner + 1] + face[2] * normals[corner + 2]) / length);
-      }
-    }
-    assert.ok(worstAgreement > 0.95, `${primitiveType} has hard edges (a normal is ${worstAgreement.toFixed(2)} of its face)`);
+});
+
+test('a recipe holding shapes the add menu no longer offers still loads, lists, selects and moves', () => {
+  const recipe = makeStudioRecipe();
+  recipe.geometries.push(
+    { id: 'heart-shape', type: 'extrude', contour: [[0, 0.5], [0.4, 0.9], [0.5, 0.4], [0, -0.5], [-0.5, 0.4], [-0.4, 0.9]], depth: 0.25, bevel: 0.03 },
+    { id: 'vase-shape', type: 'lathe', profile: [[0.3, -0.5], [0.46, -0.2], [0.42, 0.05], [0.24, 0.3], [0.34, 0.5]], segments: 48 },
+  );
+  recipe.nodes.push(
+    { id: 'heart', geometry: 'heart-shape', material: 'paint', translation: [1, 0.5, 0] },
+    { id: 'vase', geometry: 'vase-shape', material: 'paint', translation: [-1, 0.5, 0] },
+  );
+  const controller = createStudioController({ scene: createAgentScene(recipe), viewportWidth: 800, viewportHeight: 600 });
+  const nodeIds = controller.exportRecipe().nodes.map(node => node.id);
+  assert.ok(nodeIds.includes('heart') && nodeIds.includes('vase'));
+  for (const nodeId of ['heart', 'vase']) {
+    controller.selectNode(nodeId);
+    assert.equal(controller.selectedNodeId, nodeId);
+    controller.updateNodeTransform(nodeId, { translation: [2, 0.5, 3] });
+    assert.deepEqual(controller.exportRecipe().nodes.find(node => node.id === nodeId).translation, [2, 0.5, 3]);
+    assert.ok(controller.scene.parts.some(part => part.name === nodeId), `${nodeId} still builds a part`);
   }
 });
 

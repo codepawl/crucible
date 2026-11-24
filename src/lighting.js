@@ -129,6 +129,9 @@ export function createLightingState() {
     areaCount: 0,
     fillIntensity: 1,
     ambientIntensity: 1,
+    // environment.ambientColor and environment.environmentDiffuseScale: flat diffuse light added to the environment's and a scale on the environment's diffuse light.
+    ambientColor: new Float32Array(3),
+    environmentDiffuseScale: 1,
     specularAntiAliasing: DEFAULT_SPECULAR_ANTI_ALIASING,
     wetness: 0,
     wetnessState: new Float32Array(4),
@@ -232,6 +235,8 @@ export function updateLightingState(state, environment, { world = false } = {}) 
   state.areaCount = areaLights.length;
   state.fillIntensity = fillIntensity;
   state.ambientIntensity = ambientIntensity;
+  state.ambientColor.set(environment.ambientColor ?? [0, 0, 0]);
+  state.environmentDiffuseScale = numberInRange(environment.environmentDiffuseScale ?? 1, 0, 100, 'Environment diffuse scale');
   state.specularAntiAliasing = specularAntiAliasing;
   state.wetnessState.set(wetnessUniformValues(environment));
   state.wetness = state.wetnessState[0];

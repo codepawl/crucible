@@ -104,9 +104,9 @@ renderer.render({
 
 | Effect | Range | Default |
 | --- | --- | --- |
-| `bloom.strength` | 0 to 2 | 0 |
+| `bloom.strength` | 0 to 8 | 0 |
 | `bloom.threshold` | 0 to 10 | 1 |
-| `bloom.radius` | 0.1 to 4 | 1 |
+| `bloom.radius` | 0.1 to 16 | 1 |
 | `saturation`, `contrast` | 0 to 2, 0.1 to 2 | 1 |
 | `temperature` | -1 (cool) to 1 (warm) | 0 |
 | `vignette` | 0 to 1 | 0 |

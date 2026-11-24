@@ -424,7 +424,7 @@ test('toolbar buttons undo, redo, duplicate, delete and frame the selection', te
   assert.equal(ui.status(), '');
 });
 
-test('the add menu opens beside its button and adds every primitive and both lights', async testContext => {
+test('the add menu opens beside its button and adds every primitive and the three lights', async testContext => {
   const ui = mountStudio(testContext);
   const addButton = ui.label('Add an object or a light');
   addButton.click();
@@ -435,7 +435,7 @@ test('the add menu opens beside its button and adds every primitive and both lig
 
   let expectedNodes = 3;
   for (const primitive of STUDIO_PRIMITIVES) {
-    const label = primitive === 'icoSphere' ? 'Icosphere' : primitive[0].toUpperCase() + primitive.slice(1);
+    const label = { icoSphere: 'Icosphere', disc: 'Circle' }[primitive] ?? primitive[0].toUpperCase() + primitive.slice(1);
     byText(addPopover, label).click();
     await ui.dom.settle();
     expectedNodes += 1;
@@ -444,7 +444,6 @@ test('the add menu opens beside its button and adds every primitive and both lig
     assert.match(ui.status(), /^Added /, label);
     assert.equal(ui.controller.selectedNodeId, ui.studio.exportRecipe().nodes.at(-1).id);
   }
-  assert.ok(ui.studio.exportRecipe().geometries.some(geometry => geometry.type === 'terrain'));
 
   byText(addPopover, 'Point light').click();
   assert.equal(ui.status(), 'Point lights: 1');
@@ -463,9 +462,41 @@ test('the add menu opens beside its button and adds every primitive and both lig
   byText(addPopover, 'Area light').click();
   assert.match(ui.status(), /limit of 7 area lights/, 'one more than the limit says why it was not added');
   assert.equal(ui.studio.exportRecipe().environment.areaLights.length, 7);
-  for (const type of ['circle', 'lathe', 'extrude', 'text']) {
+  for (const type of ['circle', 'text']) {
     assert.ok(ui.studio.exportRecipe().geometries.some(geometry => geometry.type === type), type);
   }
+});
+
+test('the add menu lists Mesh, Text and Light in that order, with no caption or divider', testContext => {
+  const ui = mountStudio(testContext);
+  ui.label('Add an object or a light').click();
+  const addPopover = ui.root.querySelector('#crucible-studio-pop-add');
+  const groups = [...addPopover.querySelectorAll('[role="group"]')];
+  assert.deepEqual(groups.map(group => group.getAttribute('aria-label')), ['Mesh', 'Text', 'Light']);
+  const buttonLabels = group => [...group.querySelectorAll('button')].map(button => button.textContent);
+  assert.deepEqual(buttonLabels(groups[0]), ['Plane', 'Box', 'Circle', 'Sphere', 'Icosphere', 'Cylinder', 'Cone', 'Torus']);
+  assert.deepEqual(buttonLabels(groups[1]), ['Text']);
+  assert.deepEqual(buttonLabels(groups[2]), ['Point light', 'Spot light', 'Area light']);
+  assert.equal(addPopover.children.length, 3, 'only the three groups, no heading or rule between them');
+});
+
+test('a scene holding a heart and a vase shows both in the Scene list and selects them', testContext => {
+  const recipe = makeRecipe();
+  recipe.geometries.push(
+    { id: 'heart-shape', type: 'extrude', contour: [[0, 0.5], [0.4, 0.9], [0.5, 0.4], [0, -0.5], [-0.5, 0.4], [-0.4, 0.9]], depth: 0.25 },
+    { id: 'vase-shape', type: 'lathe', profile: [[0.3, -0.5], [0.46, -0.2], [0.42, 0.05], [0.24, 0.3], [0.34, 0.5]], segments: 48 },
+  );
+  recipe.nodes.push(
+    { id: 'heart', geometry: 'heart-shape', material: 'paint', translation: [1, 0.5, 0] },
+    { id: 'vase', geometry: 'vase-shape', material: 'paint', translation: [-1, 0.5, 0] },
+  );
+  const ui = mountStudio(testContext, { recipe });
+  assert.deepEqual(ui.rowLabels(), ['ground', 'hero', 'orb', 'heart', 'vase']);
+  ui.selectRow('vase');
+  assert.equal(ui.controller.selectedNodeId, 'vase');
+  assert.equal(ui.label('Position X').value, '-1');
+  ui.controller.updateNodeTransform('vase', { translation: [0, 0.5, 2] });
+  assert.deepEqual(ui.node('vase').translation, [0, 0.5, 2]);
 });
 
 test('popover buttons open each menu, close it again on a click inside and stay inside the window', testContext => {
@@ -2407,10 +2438,12 @@ test('the rail keeps scene tools above one line and the show and hide switches b
   const ui = mountStudio(testContext);
   const toolbar = ui.root.querySelector('.crucible-studio-toolbar');
   const rows = toolbar.children.map(child => child.getAttribute('role') === 'separator' ? 'line' : child.getAttribute('aria-label'));
-  assert.deepEqual(rows, ['Transform tool', 'Edit the scene', 'line', 'Show or hide']);
+  // The mesh selection modes are in the rail but hidden until edit mode starts.
+  assert.deepEqual(rows, ['Transform tool', 'Mesh selection', 'Edit the scene', 'line', 'Show or hide']);
+  assert.equal(toolbar.children[1].hidden, true);
   const below = toolbar.children.at(-1).children.map(button => button.getAttribute('aria-label'));
   assert.deepEqual(below, ['Show or hide the grid', 'Show or hide the panels']);
-  const above = toolbar.children[1].children.map(button => button.dataset.icon);
+  const above = toolbar.children[2].children.map(button => button.dataset.icon);
   assert.deepEqual(above, ['add', 'undo', 'redo']);
 });
 

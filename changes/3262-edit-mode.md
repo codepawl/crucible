@@ -1,0 +1,1 @@
+- Studio edit mode: press Tab on a mesh object to pick vertices, edges or faces on its cage and move them, one undoable entry in the mesh edit log per drag (#3262)

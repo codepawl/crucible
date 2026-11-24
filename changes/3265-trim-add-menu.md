@@ -1,0 +1,1 @@
+- The Studio add menu now follows Blender's basics: Mesh (plane, box, circle, sphere, icosphere, cylinder, cone, torus), Text and Light; the other ready-made shapes are gone from the menu, and a recipe that already holds one still opens, shows in the Scene list and edits.

@@ -89,9 +89,11 @@ void main() {
   outputColor = sum / ${MOTION_BLUR_SAMPLES}.0;
 }`;
 
-function createTarget(renderer) {
+/** A colour target of the canvas size divided by `divisor` (rounded up), for a stage that works at a lower resolution. */
+export function createTarget(renderer, divisor = 1) {
   const context = renderer.context;
-  const { width, height } = renderer.canvas;
+  const width = Math.ceil(renderer.canvas.width / divisor);
+  const height = Math.ceil(renderer.canvas.height / divisor);
   const texture = context.createTexture();
   context.bindTexture(context.TEXTURE_2D, texture);
   context.texImage2D(context.TEXTURE_2D, 0, renderer.hdr ? context.RGBA16F : context.RGBA8, width, height, 0, context.RGBA,

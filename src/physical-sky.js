@@ -1,12 +1,13 @@
 import { createEnvironmentMap } from './environment.js';
 import { applyGradientSky, createGradientSkyMap } from './gradient-sky.js';
+import { resolveClockTime, sunAnglesFromClock } from './sun-clock.js';
 
 // environment.sky { type: 'physical' }: a clear-sky model driven by the sun alone. It is an analytic single-scattering
 // approximation (Rayleigh and Henyey-Greenstein aerosol, Kasten-Young air mass), not the Nishita integration Blender uses.
 // The normalized recipe stores the resolved sun, so the key light, the sky map, the background gradient and the
 // aerial perspective of distant geometry always agree.
 
-export const PHYSICAL_SKY_FIELDS = Object.freeze(['type', 'sunElevation', 'sunRotation', 'turbidity', 'groundAlbedo', 'aerialPerspective', 'ozone', 'sunDisc']);
+export const PHYSICAL_SKY_FIELDS = Object.freeze(['type', 'sunElevation', 'sunRotation', 'turbidity', 'groundAlbedo', 'aerialPerspective', 'ozone', 'sunDisc', 'clockTime']);
 
 // Named looks an agent can ask for with environment.sky { preset }: they set the sun and nothing else, so the sky, the key colour and
 // the haze all come from the same atmosphere. Fields named beside a preset win over it.
@@ -46,9 +47,19 @@ const HORIZON_BAND_SINE = 0.15;
 const LOW_SUN_ZENITH_DIMMING = 0.4;
 const LOW_SUN_KEY_BOOST = 1.2;
 
+// clockTime fixes both sun angles, so naming them or a preset beside it is a conflict rather than a silent winner.
+function sunAnglesFromGivenClock(input, fail) {
+  const clash = ['sunElevation', 'sunRotation', 'preset'].find(field => input[field] !== undefined);
+  if (clash !== undefined) {
+    throw fail(`environment.sky.${clash}`, input[clash], 'absent while environment.sky.clockTime is set: the clock time already fixes the sun, so remove clockTime or remove this field');
+  }
+  return sunAnglesFromClock(resolveClockTime(input.clockTime, fail));
+}
+
 /** Checks and fills the sky fields; `fail` builds the error for a field, a value and what is accepted. */
 export function resolvePhysicalSky(input, fail) {
   const unknown = Object.keys(input).filter(key => key !== 'preset' && !PHYSICAL_SKY_FIELDS.includes(key));
+  const sunAngles = input.clockTime === undefined ? {} : sunAnglesFromGivenClock(input, fail);
   if (unknown.length > 0 || input.type !== 'physical') {
     throw fail('environment.sky', input.type !== 'physical' ? input.type : unknown[0], `type 'physical' or 'gradient'; physical takes fields ${[...PHYSICAL_SKY_FIELDS.slice(1), 'preset'].join(', ')}`);
   }
@@ -58,7 +69,7 @@ export function resolvePhysicalSky(input, fail) {
   const preset = PHYSICAL_SKY_PRESETS[input.preset] ?? {};
   const resolved = { type: 'physical' };
   for (const [field, [minimum, maximum, example]] of Object.entries(LIMITS)) {
-    const value = input[field] ?? preset[field] ?? DEFAULTS[field];
+    const value = sunAngles[field] ?? input[field] ?? preset[field] ?? DEFAULTS[field];
     if (!Number.isFinite(value) || value < minimum || value > maximum) {
       throw fail(`environment.sky.${field}`, value, `a number from ${minimum} to ${maximum}, ${example}`);
     }

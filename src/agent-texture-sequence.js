@@ -88,6 +88,12 @@ export function sequenceFrameIds(value) {
     for (const id of textureMapIds(node)) ids.add(id);
     // The far crown clump of a scanned leaf card (vegetation.scans) sits beside its colour and normal maps.
     if (typeof node.crownMap === 'string' && ASSET_ID.test(node.crownMap.toLowerCase())) ids.add(node.crownMap.toLowerCase());
+    // The six faces of environment.skybox are catalog images the page decodes, like sequence frames.
+    if (node.skybox && typeof node.skybox === 'object') {
+      for (const id of Object.values(node.skybox)) {
+        if (typeof id === 'string' && ASSET_ID.test(id.toLowerCase())) ids.add(id.toLowerCase());
+      }
+    }
     const frames = node.map?.sequence?.frames;
     if (Array.isArray(frames)) {
       const shippedFrames = isStreamedSequence(frames) ? frames.slice(0, 1) : frames;

@@ -495,6 +495,14 @@ It cannot increase production limits.
 Partial files count toward the store budget and remain until explicit release.
 Each submit needs room for its snapshot and an output reservation sized to that job: a single image holds a few MiB, a 72 frame 1080x1080 stills job about 93 MiB, and nothing holds more than the 128 MiB output budget. When the store is too full, the controller first releases completed jobs whose `scene_render_result` was already read, oldest first, and stops as soon as the new job fits; the files of a released job are gone, so copy outputs you keep before you submit the next job. A job whose result was never read is never released this way. If the job still does not fit, the error says how many MiB it needs and how many are free, and names the three largest finished jobs by id and size to read with `scene_render_result` and free with `scene_render_release`. A job read before a server restart counts as unread again. A job may write more than it reserved, up to the output budget, while the store has room; after each frame past its reservation the job stops with a failed state when one more frame would not fit beside the other jobs, so the store never grows past its total budget.
 
+## Linux GPU box
+
+Start the server with `--backend gpu` and a Chrome that runs on the GPU through Vulkan. A small wrapper does it: `exec google-chrome --use-angle=vulkan --enable-features=Vulkan --ignore-gpu-blocklist --no-sandbox "$@"`, passed as `--browser <wrapper>`. `scene_look` should report an `ANGLE (NVIDIA, Vulkan ...)` renderer; a `llvmpipe` or SwiftShader name means the container has no NVIDIA Vulkan driver and renders on the CPU.
+
+`node scripts/measure-linux-gpu-render.mjs --out artifacts/linux-gpu` renders a 30 frame 1080x1920 `stills` job and a path traced still at 540x960 and 1080x1920 through this server and writes `report.json` with the seconds, the frame sizes and the hash of the first frame. Run it first on a new box.
+
+The GPU path tracer draws each sample in tiles of at most 65,536 pixels and waits for each tile with a GPU fence, because a sandboxed driver can return from `gl.finish()` before the work is done, which let draws queue until the watchdog fired (Xid 109) above about 540x960 (#2833).
+
 ## CPU checks
 
 1. Run `node --test tests/agent-render-jobs.test.js`.

@@ -42,6 +42,7 @@ const MODULE_LOADERS = {
   floorPlan: () => import('./agent-floor-plan.js'),
   navigation: () => import('./agent-navigation.js'),
   lightLinking: () => import('./light-linking.js'),
+  lightParenting: () => import('./light-parenting.js'),
   cascades: () => import('./light-modules.js'),
   assets: () => import('./agent-scene-assets.js'),
   vegetation: () => import('./agent-vegetation.js'),
@@ -53,6 +54,7 @@ const MODULE_LOADERS = {
   coplanar: () => import('./coplanar-overlap.js'),
   unsupportedPart: () => import('./unsupported-part.js'),
   physicalSky: () => import('./physical-sky.js'),
+  skybox: () => import('./skybox.js'),
   floorSky: () => import('./floor-sky-visibility.js'),
   userPass: () => import('./user-pass.js'),
   pixelGrid: () => import('./pixel-grid.js'),
@@ -129,6 +131,8 @@ const MODULE_MARKERS = {
   // No recipe text asks for it, only the path option of scene_inspect does, so a host loads it with loadAllAgentSceneModules.
   navigation: [],
   lightLinking: ['"affects"', '"keyAffects"'],
+  // A light with a parent or a face, in a recipe or in a later set-environment (#3239).
+  lightParenting: [/"(?:pointLights|spotLights|areaLights)":\[(?:[^\[\]]|\[[^\]]*\])*?"(?:parent|face)"/],
   // The cascade module also loads light-shapes (soft area shadows, IES profiles), so these markers bring both.
   cascades: [/"(?:shadowCascades|sunAngularRadius|ies|hard)"|"areaLights":\[\{/],
   assets: ['"asset":{', '"sequence":{', '"faceImages":', /"(?:colorMap|normalMap|roughnessMap|metallicMap|occlusionMap|heightMap|textureSet)":"/],
@@ -147,6 +151,7 @@ const MODULE_MARKERS = {
   // A closed room a sun lights gets the floor sky trace by default. The recipe text can not say whether a room is closed, so a recipe that names its sun loads it and the module skips an open scene.
   floorSky: DEFAULT_STAGE_MARKERS.floorSky,
   physicalSky: ['"type":"physical"', '"type":"gradient"'],
+  skybox: ['"skybox":{'],
   userPass: ['"postPasses"', '"postPassesAntialias"'],
   pixelGrid: ['"pixelGrid":{'],
   game: ['"game":{', '"set-game"'],
@@ -155,7 +160,7 @@ const MODULE_MARKERS = {
   volumeRamp: ['"emissionRamp"'],
   // Only a motionBlur object that sets a non-zero `objects` loads it; the common `"shutter":0` look does not.
   objectMotionBlur: [/"motionBlur":\{[^}]*"objects":(?!0[,}])/],
-  postSteps: [/"(?:colorBalance|glare|lensDistortion|stylize|composite|localToneMapping|autoExposure)"|"(?:distortion|flash)":[\[{]|"add-explosion"/],
+  postSteps: [/"(?:colorBalance|colorCorrection|sunRays|glare|lensDistortion|stylize|composite|localToneMapping|autoExposure)"|"(?:distortion|flash)":[\[{]|"add-explosion"/],
 };
 
 /** Whether a recipe, operation list or edit list contains a boolean edit, which needs loadMeshBooleans() first. */

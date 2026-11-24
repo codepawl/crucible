@@ -1,6 +1,7 @@
 import { postStepSupport } from './shader-registry.js';
 import { resolveAutoExposure } from './auto-exposure.js';
-import { createStage, sharedFragmentHeader } from './camera-effects.js';
+import { createStage, createTarget, sharedFragmentHeader } from './camera-effects.js';
+import { compileProgram, fullscreenVertex } from './gl-program.js';
 import { numberInRange, groupOf, onlyKeys, triple } from './post-fields.js';
 import { resolveDistortion, resolveFlash, createDistortionStage, createFlashStage } from './post-air.js';
 import { resolveMask, usesObjectMask, maskShader, bindMask, unbindMask, MASK_UNIFORM_NAMES } from './post-mask.js';
@@ -42,6 +43,70 @@ function resolveColorBalance(input) {
     gain: triple(group.gain, NEUTRAL.gain, 0, 4, 'colorBalance.gain'),
     ...(group.mask === undefined ? {} : { mask: resolveMask(group.mask, 'colorBalance.mask') }),
   };
+}
+
+// effects.colorCorrection: a four-control grade with no LUT file, in the order of Roblox's ColorCorrectionEffect. It is the identity at its defaults, and a frame
+// that leaves every control there skips the stage, so the picture is the one it was without the step.
+const COLOR_CORRECTION_FIELDS = ['brightness', 'contrast', 'saturation', 'tint'];
+const COLOR_CORRECTION_RANGES = Object.freeze({
+  brightness: [-1, 1, 'stops of two: 0 leaves the frame, 0.5 doubles it, -0.5 halves it, such as 0.25'],
+  contrast: [-1, 1, '0 leaves the frame, 1 doubles the steepness around middle grey, -1 flattens it to grey, such as 0.2'],
+  saturation: [-1, 1, '0 leaves the colour, -1 is greyscale, 1 doubles the saturation, such as -0.3'],
+});
+const NEUTRAL_COLOR_CORRECTION = Object.freeze({ brightness: 0, contrast: 0, saturation: 0, tint: [1, 1, 1] });
+const COLOR_CORRECTION_MIDDLE_GREY = 0.18;
+
+function colorCorrectionError(name, value, accepted) {
+  return new RangeError(`effects.colorCorrection.${name} is ${JSON.stringify(value)}: pass ${accepted}.`);
+}
+
+function resolveColorCorrection(input) {
+  const group = groupOf(input, 'colorCorrection');
+  const unknown = Object.keys(group).find(key => !COLOR_CORRECTION_FIELDS.includes(key));
+  if (unknown !== undefined) {
+    throw colorCorrectionError(unknown, group[unknown], `one of the fields ${COLOR_CORRECTION_FIELDS.join(', ')}`);
+  }
+  const resolved = {};
+  for (const [name, [minimum, maximum, example]] of Object.entries(COLOR_CORRECTION_RANGES)) {
+    const value = group[name] ?? NEUTRAL_COLOR_CORRECTION[name];
+    if (!Number.isFinite(value) || value < minimum || value > maximum) {
+      throw colorCorrectionError(name, value, `a number from ${minimum} to ${maximum}, ${example}`);
+    }
+    resolved[name] = value;
+  }
+  const tint = group.tint ?? NEUTRAL_COLOR_CORRECTION.tint;
+  if (!Array.isArray(tint) || tint.length !== 3 || tint.some(component => !Number.isFinite(component) || component < 0 || component > 4)) {
+    throw colorCorrectionError('tint', tint, 'three numbers from 0 to 4 that multiply red, green and blue, such as [1, 0.9, 0.8] for a warm tint; [1, 1, 1] leaves the colour');
+  }
+  resolved.tint = [...tint];
+  return resolved;
+}
+
+// effects.sunRays: a screen-space radial shaft pass (#3235). Each pixel marches toward the sun's screen position and counts how many
+// samples see open sky in the depth buffer, so a tree, a mast or a wall in front of the sun breaks the glow into beams. It adds the key
+// light's colour scaled by that share, strongest near the sun. Fixed sample count and a fixed per-pixel offset: no history, so a seek repeats.
+const SUN_RAY_SAMPLES = 24;
+const SUN_RAY_FIELDS = ['intensity', 'spread'];
+const SUN_RAY_RANGES = Object.freeze({
+  intensity: [0, 4, 'how much light the rays add, 0 for none, such as 0.25', 0.25],
+  spread: [0, 1, 'how far the rays reach from the sun, 0 short and tight to 1 across the frame, such as 0.6', 1],
+});
+
+function resolveSunRays(input) {
+  const group = groupOf(input, 'sunRays');
+  const unknown = Object.keys(group).find(key => !SUN_RAY_FIELDS.includes(key));
+  if (unknown !== undefined) {
+    throw new RangeError(`effects.sunRays.${unknown} is ${JSON.stringify(group[unknown])}: pass one of the fields ${SUN_RAY_FIELDS.join(', ')}.`);
+  }
+  const resolved = {};
+  for (const [name, [minimum, maximum, example, fallback]] of Object.entries(SUN_RAY_RANGES)) {
+    const value = group[name] ?? fallback;
+    if (!Number.isFinite(value) || value < minimum || value > maximum) {
+      throw new RangeError(`effects.sunRays.${name} is ${JSON.stringify(value)}: pass a number from ${minimum} to ${maximum}, ${example}.`);
+    }
+    resolved[name] = value;
+  }
+  return resolved;
 }
 
 function wholeNumberInRange(value, minimum, maximum, name) {
@@ -166,6 +231,8 @@ export function resolvePostSteps(effects) {
   if (effects.distortion !== undefined) resolved.distortion = resolveDistortion(effects.distortion);
   if (effects.flash !== undefined) resolved.flash = resolveFlash(effects.flash);
   if (effects.colorBalance !== undefined) resolved.colorBalance = resolveColorBalance(effects.colorBalance);
+  if (effects.colorCorrection !== undefined) resolved.colorCorrection = resolveColorCorrection(effects.colorCorrection);
+  if (effects.sunRays !== undefined) resolved.sunRays = resolveSunRays(effects.sunRays);
   if (effects.glare !== undefined) resolved.glare = resolveGlare(effects.glare);
   if (effects.lensDistortion !== undefined) resolved.lensDistortion = resolveLensDistortion(effects.lensDistortion);
   if (effects.stylize !== undefined) resolved.stylize = resolveStylize(effects.stylize);
@@ -192,7 +259,7 @@ function refuseMaskWithLensDistortion(resolved) {
 }
 
 // Registers what the look needs: the field names it accepts and how to resolve them (src/shader-registry.js).
-postStepSupport.fields = ['distortion', 'flash', 'colorBalance', 'glare', 'lensDistortion', 'stylize', 'composite', 'localToneMapping', 'autoExposure'];
+postStepSupport.fields = ['distortion', 'flash', 'colorBalance', 'colorCorrection', 'sunRays', 'glare', 'lensDistortion', 'stylize', 'composite', 'localToneMapping', 'autoExposure'];
 postStepSupport.resolve = resolvePostSteps;
 
 export const colorBalanceFragment = `${sharedFragmentHeader}
@@ -207,6 +274,113 @@ void main() {
   graded = pow(max(graded, vec3(0.0)), inverseGamma);
   float mask = maskAt(textureCoordinate);
   outputColor = vec4(mask < 1.0 ? mix(source.rgb, graded, mask) : graded, source.a);
+}`;
+
+export const colorCorrectionFragment = `${sharedFragmentHeader}
+uniform vec3 tint;
+uniform vec3 gradeControls;
+// Oklab (Ottosson 2020), so saturation moves the chroma of a colour and leaves its lightness and hue alone.
+vec3 linearToOklab(vec3 color) {
+  vec3 cone = pow(max(mat3(0.4122214708, 0.2119034982, 0.0883024619, 0.5363325363, 0.6806995451, 0.2817188376, 0.0514459929, 0.1073969566, 0.6299787005) * color, vec3(1e-9)), vec3(1.0 / 3.0));
+  return mat3(0.2104542553, 1.9779984951, 0.0259040371, 0.7936177850, -2.4285922050, 0.7827717662, -0.0040720468, 0.4505937099, -0.8086757660) * cone;
+}
+vec3 oklabToLinear(vec3 lab) {
+  vec3 cone = mat3(1.0, 1.0, 1.0, 0.3963377774, -0.1055613458, -0.0894841775, 0.2158037573, -0.0638541728, -1.2914855480) * lab;
+  return mat3(4.0767416621, -1.2684380046, -0.0041960863, -3.3077115913, 2.6097574011, -0.7034186147, 0.2309699292, -0.3413193965, 1.7076147010) * (cone * cone * cone);
+}
+void main() {
+  vec4 source = texture(sourceTexture, textureCoordinate);
+  // Tint, then brightness in stops of two, then contrast about middle grey, then saturation as a chroma scale in Oklab.
+  vec3 graded = max(source.rgb, vec3(0.0)) * tint * exp2(gradeControls.x * 2.0);
+  graded = ${COLOR_CORRECTION_MIDDLE_GREY.toFixed(2)} * pow(graded / ${COLOR_CORRECTION_MIDDLE_GREY.toFixed(2)}, vec3(1.0 + gradeControls.y));
+  if (gradeControls.z != 0.0) {
+    vec3 lab = linearToOklab(graded);
+    float chroma = length(lab.yz);
+    // Vibrance: colours that are already vivid gain less, so a green does not run to the edge of the gamut.
+    float gain = gradeControls.z > 0.0 ? 1.0 + gradeControls.z * (1.0 - smoothstep(0.04, 0.22, chroma)) : 1.0 + gradeControls.z;
+    vec3 scaled = oklabToLinear(vec3(lab.x, lab.yz * gain));
+    // A channel pushed toward zero would clip and shift the hue: pull the colour back toward the grey of the same lightness until its lowest
+    // channel keeps a fifth of the grey's, so a saturated green stays a green and does not run to the edge of the gamut.
+    vec3 grey = oklabToLinear(vec3(lab.x, 0.0, 0.0));
+    float greyLowest = min(grey.r, min(grey.g, grey.b));
+    float lowest = min(scaled.r, min(scaled.g, scaled.b));
+    float keepLowest = 0.2 * greyLowest;
+    graded = lowest < keepLowest ? mix(scaled, grey, (keepLowest - lowest) / max(greyLowest - lowest, 1e-6)) : scaled;
+  }
+  outputColor = vec4(graded, source.a);
+}`;
+
+// The gather runs at half resolution (a quarter of the pixels, so a quarter of the depth reads) and a upsample puts it back, weighting sky and geometry apart.
+export const SUN_RAY_RESOLUTION_DIVISOR = 2;
+
+// Radial blur of the light the sun sends past the geometry (GPU Gems 3, ch. 13). A tap counts only where the depth buffer shows open sky,
+// weighted by how near the sun's disc it is, so a ray from a pixel is bright when its line to the sun is clear and dark behind a trunk or a crown.
+// `sunPosition` is the centre of every ray, the sun's projected direction. The result is a share from 0 to 1 in the red channel.
+export const sunRaysGatherFragment = `${sharedFragmentHeader}
+uniform vec2 sunPosition;
+uniform float spread;
+void main() {
+  float aspect = resolution.x / resolution.y;
+  vec2 toSun = sunPosition - textureCoordinate;
+  vec2 step = toSun * mix(0.35, 1.0, spread) / ${SUN_RAY_SAMPLES}.0;
+  float discScale = 1.0 / (0.06 + 0.1 * spread);
+  discScale *= discScale;
+  vec2 position = textureCoordinate + step * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  vec2 aspectScale = vec2(aspect, 1.0);
+  vec2 depthSize = vec2(textureSize(sceneDepth, 0));
+  ivec2 lastTexel = ivec2(depthSize) - 1;
+  float gathered = 0.0;
+  float weight = 1.0;
+  float totalWeight = 0.0;
+  for (int index = 0; index < ${SUN_RAY_SAMPLES}; index++) {
+    position += step;
+    float depth = texelFetch(sceneDepth, clamp(ivec2(position * depthSize), ivec2(0), lastTexel), 0).r;
+    vec2 fromSun = (position - sunPosition) * aspectScale;
+    float glow = 0.04 + 1.0 / (1.0 + dot(fromSun, fromSun) * discScale * 4.0);
+    gathered += depth >= 0.99999 ? glow * weight : 0.0;
+    totalWeight += weight;
+    weight *= 0.98;
+  }
+  vec2 fromSunPixel = (textureCoordinate - sunPosition) * aspectScale;
+  float falloff = exp(-length(fromSunPixel) / (0.35 + 0.6 * spread));
+  // A sixth of the glow is the haze around the sun, which a crown in front of it does not remove; the rest is the shafts. Without the haze a
+  // crown leaves a ring of unlit sky around it, which reads as a dark halo.
+  outputColor = vec4(0.4 * (0.15 + 0.85 * gathered / totalWeight) * falloff, 0.0, 0.0, 1.0);
+}`;
+
+// Adds the gathered rays to the frame. The four half-resolution texels around a pixel are weighted by bilinear share and by how well their
+// depth matches the pixel's (sky against geometry counts least), so a ray never bleeds across the edge of a crown or a trunk.
+export const sunRaysFragment = `${sharedFragmentHeader}
+uniform sampler2D rayTexture;
+uniform vec3 rayColor;
+uniform float intensity;
+bool isSky(float depth) {
+  return depth >= 0.99999;
+}
+void main() {
+  vec4 source = texture(sourceTexture, textureCoordinate);
+  vec2 depthSize = vec2(textureSize(sceneDepth, 0));
+  ivec2 lastDepthTexel = ivec2(depthSize) - 1;
+  vec2 coarseSize = vec2(textureSize(rayTexture, 0));
+  ivec2 lastCoarseTexel = ivec2(coarseSize) - 1;
+  vec2 coarsePosition = textureCoordinate * coarseSize - 0.5;
+  ivec2 base = ivec2(floor(coarsePosition));
+  vec2 share = fract(coarsePosition);
+  float centreDepth = texelFetch(sceneDepth, clamp(ivec2(gl_FragCoord.xy), ivec2(0), lastDepthTexel), 0).r;
+  float rays = 0.0;
+  float total = 0.0;
+  for (int corner = 0; corner < 4; corner++) {
+    ivec2 offset = ivec2(corner & 1, corner >> 1);
+    ivec2 texel = clamp(base + offset, ivec2(0), lastCoarseTexel);
+    float cornerDepth = texelFetch(sceneDepth, clamp(ivec2((vec2(texel) + 0.5) / coarseSize * depthSize), ivec2(0), lastDepthTexel), 0).r;
+    float bilinear = (offset.x == 1 ? share.x : 1.0 - share.x) * (offset.y == 1 ? share.y : 1.0 - share.y);
+    // Only sky against geometry counts: weighting by depth distance as well favoured the neighbours along a sloped floor and left vertical streaks.
+    float similarity = isSky(cornerDepth) == isSky(centreDepth) ? 1.0 : 0.02;
+    float cornerWeight = bilinear * similarity + 1e-5;
+    rays += texelFetch(rayTexture, texel, 0).r * cornerWeight;
+    total += cornerWeight;
+  }
+  outputColor = vec4(source.rgb + rayColor * intensity * rays / total, source.a);
 }`;
 
 export const stylizeFragment = `${sharedFragmentHeader}
@@ -474,6 +648,122 @@ function createColorBalanceStage() {
   }));
 }
 
+function isColorCorrectionActive(colorCorrection) {
+  return Boolean(colorCorrection) && (['brightness', 'contrast', 'saturation'].some(name => colorCorrection[name] !== 0) || colorCorrection.tint.some(component => component !== 1));
+}
+
+function createColorCorrectionStage() {
+  return createStage({
+    name: 'Color correction',
+    fragment: colorCorrectionFragment,
+    uniformNames: ['tint', 'gradeControls'],
+    isActive: (effects, frame) => isColorCorrectionActive(stepsOf(frame).colorCorrection),
+    setUniforms(context, uniforms, renderer, frame) {
+      const { colorCorrection } = stepsOf(frame);
+      context.uniform3fv(uniforms.tint, colorCorrection.tint);
+      context.uniform3f(uniforms.gradeControls, colorCorrection.brightness, colorCorrection.contrast, colorCorrection.saturation);
+    },
+  });
+}
+
+function isSunRaysActive(sunRays) {
+  return Boolean(sunRays) && sunRays.intensity > 0;
+}
+
+/**
+ * The sun's place on screen in texture coordinates, or null when it is behind the camera. The sun is far enough to treat as a direction:
+ * the projection of `renderer.activeLightDirection`, the vector that aims the key light and the cast shadows, so every ray starts at the sun.
+ */
+export function sunScreenPosition(renderer, frame) {
+  const direction = renderer.activeLightDirection;
+  const length = Math.hypot(...direction) || 1;
+  const point = [0, 1, 2].map(axis => frame.eye[axis] + direction[axis] / length * 1e4);
+  const matrix = renderer.viewProjection;
+  const clip = [0, 1, 3].map(row => matrix[row] * point[0] + matrix[row + 4] * point[1] + matrix[row + 8] * point[2] + matrix[row + 12]);
+  if (clip[2] <= 0) return null;
+  return [clip[0] / clip[2] * 0.5 + 0.5, clip[1] / clip[2] * 0.5 + 0.5];
+}
+
+// Two passes: a half-resolution gather toward the sun, then a depth-aware upsample that adds it to the frame. A sun behind the camera draws nothing.
+function createSunRaysStage() {
+  let gatherProgram = null;
+  let gatherUniforms = null;
+  let gatherTarget = null;
+  let rayTexture = null;
+  let rayColor = [1, 1, 1];
+  let intensity = 0;
+  const composite = createStage({
+    name: 'Sun rays',
+    fragment: sunRaysFragment,
+    uniformNames: ['rayTexture', 'rayColor', 'intensity'],
+    isActive: () => true,
+    setUniforms(context, uniforms) {
+      context.activeTexture(context.TEXTURE2);
+      context.bindTexture(context.TEXTURE_2D, rayTexture);
+      context.uniform1i(uniforms.rayTexture, 2);
+      context.uniform3fv(uniforms.rayColor, rayColor);
+      context.uniform1f(uniforms.intensity, intensity);
+      context.activeTexture(context.TEXTURE0);
+    },
+  });
+
+  function releaseTargets(context) {
+    if (gatherTarget) {
+      context.deleteTexture(gatherTarget.texture);
+      context.deleteFramebuffer(gatherTarget.framebuffer);
+      gatherTarget = null;
+    }
+    composite.releaseTargets(context);
+  }
+
+  function gather(renderer, sunPosition, spread) {
+    const context = renderer.context;
+    if (!gatherProgram) {
+      gatherProgram = compileProgram(context, fullscreenVertex, sunRaysGatherFragment);
+      gatherUniforms = Object.fromEntries(['sceneDepth', 'resolution', 'sunPosition', 'spread'].map(name => [name, context.getUniformLocation(gatherProgram, name)]));
+    }
+    gatherTarget ??= createTarget(renderer, SUN_RAY_RESOLUTION_DIVISOR);
+    context.bindFramebuffer(context.FRAMEBUFFER, gatherTarget.framebuffer);
+    context.viewport(0, 0, Math.ceil(renderer.canvas.width / SUN_RAY_RESOLUTION_DIVISOR), Math.ceil(renderer.canvas.height / SUN_RAY_RESOLUTION_DIVISOR));
+    context.disable(context.DEPTH_TEST);
+    context.disable(context.CULL_FACE);
+    context.bindVertexArray(null);
+    context.useProgram(gatherProgram);
+    context.activeTexture(context.TEXTURE1);
+    context.bindTexture(context.TEXTURE_2D, renderer.depthTexture);
+    context.uniform1i(gatherUniforms.sceneDepth, 1);
+    context.uniform2f(gatherUniforms.resolution, renderer.canvas.width, renderer.canvas.height);
+    context.uniform2f(gatherUniforms.sunPosition, sunPosition[0], sunPosition[1]);
+    context.uniform1f(gatherUniforms.spread, spread);
+    context.drawArrays(context.TRIANGLES, 0, 3);
+    context.activeTexture(context.TEXTURE0);
+    return gatherTarget.texture;
+  }
+
+  function apply(renderer, frame, effects, sourceTexture) {
+    const { sunRays } = stepsOf(frame);
+    if (!isSunRaysActive(sunRays)) return null;
+    if (!renderer.depthTexture) throw new Error('Sun rays requires depth:true on the renderer.');
+    const position = sunScreenPosition(renderer, frame);
+    if (!position) return null;
+    const key = renderer.lighting.keyColor;
+    const brightest = Math.max(key[0], key[1], key[2], 1e-3);
+    rayColor = [key[0] / brightest, key[1] / brightest, key[2] / brightest];
+    intensity = sunRays.intensity;
+    rayTexture = gather(renderer, position, sunRays.spread);
+    return composite.apply(renderer, frame, effects, sourceTexture);
+  }
+
+  function dispose(context) {
+    releaseTargets(context);
+    if (gatherProgram) context.deleteProgram(gatherProgram);
+    gatherProgram = null;
+    composite.dispose(context);
+  }
+
+  return { name: 'Sun rays', apply, releaseTargets, dispose };
+}
+
 function isStylizeActive(stylize) {
   return Boolean(stylize) && (stylize.sharpen > 0 || stylize.kuwahara > 0 || stylize.posterize > 0 || stylize.pixelate > 0);
 }
@@ -640,7 +930,7 @@ function createLocalToneMappingStage() {
  */
 export function installPostSteps(renderer) {
   if (!renderer.postStages.some(stage => stage.name === 'Glare')) {
-    renderer.postStages.push(createDistortionStage(stepsOf), createFlashStage(stepsOf), createGlareStage(), createLocalToneMappingStage(), createLensDistortionStage(), createColorBalanceStage(), createStylizeStage(), createCompositeStage());
+    renderer.postStages.push(createDistortionStage(stepsOf), createFlashStage(stepsOf), createGlareStage(), createLocalToneMappingStage(), createLensDistortionStage(), createColorBalanceStage(), createColorCorrectionStage(), createSunRaysStage(), createStylizeStage(), createCompositeStage());
   }
   return renderer;
 }

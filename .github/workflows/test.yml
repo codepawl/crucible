@@ -4,6 +4,8 @@ name: Test
 # fails when any of them did not succeed. A push to main runs it too, like a release run: no base to compare, so size and change-note skip and the add-on tests always run. publish.yml calls this workflow, so a release runs the same checks as its pull request.
 on:
   pull_request:
+    # A draft runs nothing: workers push several rounds to a draft, and only marking it ready starts the 21 jobs (#3267).
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   workflow_call:
@@ -17,6 +19,7 @@ concurrency:
 
 jobs:
   audit:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -32,7 +35,7 @@ jobs:
   # The cheap gates of `npm run preflight` that need no tests: protected files and the change note. The pre-push hook runs them
   # too, but `git push --no-verify` skips the hook, so CI is where they cannot be skipped. A release run has no base to compare.
   change-note:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -47,7 +50,7 @@ jobs:
 
   # Size and tool cost compare against the pull request base, which only a merge commit has, so a release run skips them.
   size:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -73,6 +76,7 @@ jobs:
   # `node --test` already runs every file in its own process (Node 24 default, --test-isolation=process), so one pass over
   # the files is also the isolation check. Twelve shards dealt by measured file time (scripts/shard-test-files.mjs, config/test-timings.json). The slowest file (about 150 s) is the floor that more shards approach. Change the matrix and the count in the test command together; tests/shard-test-files.test.js checks they agree.
   unit:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -117,6 +121,7 @@ jobs:
           path: coverage/lcov.info
 
   package:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -137,6 +142,7 @@ jobs:
 
   # Users may start the MCP server with bunx, so the packed server also runs the package smoke under bun.
   bun:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -155,6 +161,7 @@ jobs:
   # The tests that load Cook through tests/support/cook.js must skip, not fail, when the package is absent. COOK_DISABLE=1
   # also makes the library build use the stub packer, so this leg checks the build without Cook too.
   unit-without-cook:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -171,6 +178,7 @@ jobs:
   # packages/blender-addon/ or bench/cycles-parity/, or changes this workflow. The tested tree is the merge commit, so its first parent is the base. A release run has no base to
   # compare and runs the tests.
   addon-python:
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -199,7 +207,7 @@ jobs:
         run: '"$RUNNER_TEMP/addon-venv/bin/python" -m unittest -v test_cycles_switches test_edge_width test_compare_depth test_run_classroom_parity'
 
   test:
-    if: always()
+    if: always() && !github.event.pull_request.draft
     needs: [audit, change-note, size, addon-python, unit, unit-without-cook, coverage, package, bun]
     runs-on: ubuntu-latest
     steps:

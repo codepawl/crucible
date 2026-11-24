@@ -40,17 +40,35 @@ Each tool has its own handle shape, so the shape says what a drag will do: arrow
 
 One drag is one undo step, and undo leaves the viewport camera where you put it. Undo and redo of an edit, of adding or duplicating an object, and of deleting one change the scene already built instead of building it again, so a large scene stays responsive. That holds for putting a deleted object back into the middle of the list and for undoing a lens change too.
 
+## Edit a mesh
+
+What Studio can and cannot do yet next to Blender is listed in [Studio and Blender](https://github.com/codepawl/crucible/blob/main/docs/studio-blender-parity.md).
+
+Select an object whose geometry is a `mesh` and press **Tab**. Its cage appears over the picture: the polygon edges in pale lines, quieter on the far side of the mesh, with the vertices as dots in vertex mode. A group of three buttons joins the rail in the accent colour while you edit: vertex, edge or face, on **1**, **2** and **3**, with a button below them that leaves edit mode. The readout line at the bottom names the mode, and what you picked is drawn in the accent colour over the handles. Click picks the nearest vertex or edge or the face under the pointer; **Shift + click** adds or removes one; a click on nothing clears the selection. The move handles stand at the centre of the selection and work as they do for an object: drag an arrow or a square to move what you picked. **Esc** during a drag puts it back; with nothing selected, **Esc** or **Tab** leaves edit mode.
+
+A mesh is the shape of the edit log in the recipe (`type: "mesh"`, a `base` shape and `edits`), so what you do is written there, and undo, redo, save and agents all see it. One drag is one entry of the log: a `translate` of faces when what you moved is exactly some faces, else a `set_position` of the picked vertices. Moves are in the object's own space, so a turned or stretched object moves the way its mesh does. While you drag, the surface follows the pointer for a mesh that Studio can rewrite in place (no skin, shape keys or level-of-detail set); the edit is written when you let go.
+
+Not there yet, and said so on screen when you reach it:
+
+- Edit mode needs a mesh geometry. A box, sphere or any other shape cannot be entered yet.
+- A mesh holds at most 64 edits, and a move needs one. At the limit Studio refuses the drag before it starts.
+- A move of more than 19 vertices that are not whole faces cannot be written yet; pick whole faces, or fewer vertices.
+- A mesh with a modifier stack is refused. A mesh of more than 8,000 triangles draws only the picked elements, with a notice.
+- Rotate, scale, box select, extrude and the other tools come next.
+
+If another object uses the same geometry, entering edit mode first gives this object a geometry of its own, so the other one does not move with it. That is one undo step.
+
 ## Add an object or a light
 
-The add button on the rail and the one in the Scene head (or Shift+A) open the same menu. The shapes come in three groups, then the lights (point, spot and area):
+The add button on the rail and the one in the Scene head (or Shift+A) open the same menu, which follows the basics of Blender's Add menu in three groups:
 
-| Group | Shapes |
+| Group | Entries |
 | --- | --- |
-| Solids | box, sphere, icosphere, cylinder, cone, torus, capsule, dome, pyramid, prism, hexagon, wedge, pipe, arch, gem |
-| Flat shapes | plane, disc, ring, star, heart, 3D text |
-| Swept and grown shapes | vase, bowl, spring, knot, stairs, terrain |
+| Mesh | plane, box, circle, sphere, icosphere, cylinder, cone, torus |
+| Text | 3D text |
+| Light | point, spot and area |
 
-Each shape is an ordinary recipe geometry, so an agent can keep editing it: a ring is a `circle` with `innerRadius`, a vase and a capsule are a `lathe`, a star, a heart, a prism, a wedge and stairs are an `extrude`, a spring and a knot are a `tube` along a path, and a pyramid, a dome, a pipe, a bowl and a gem are a `mesh` around a `lathe` with a `smoothAngle` that keeps their edges hard. A new shape is about a metre wide and rests on the ground. A menu that opens low on the screen grows upward, so it stays inside the window.
+Each shape is an ordinary recipe geometry, so an agent can keep editing it: a circle is a `circle` geometry, and the rest are `plane`, `box`, `sphere`, `icoSphere`, `cylinder`, `cone`, `torus` and `text`. A new shape is about a metre wide and rests on the ground. A menu that opens low on the screen grows upward, so it stays inside the window. People build everything else from these, and an agent can still write any other geometry (`extrude`, `lathe`, `tube`, `terrain` and the rest) into the recipe: a scene that holds one opens, shows in the Scene list, selects and moves like any other object.
 
 ## Camera and lights in the Scene list
 
@@ -91,6 +109,8 @@ The keys follow Blender where Studio has the same action. **Help ▸ Keyboard sh
 | Shift+D or Ctrl+D | Duplicate |
 | X, Delete or Backspace | Delete |
 | Esc | Deselect |
+| Tab | Edit the mesh of the selected object; Tab again leaves |
+| 1, 2, 3 | In edit mode: select vertices, edges or faces |
 | H, Alt+H | Hide the selection, show everything that is hidden |
 | Alt+G, Alt+R, Alt+S | Reset the position, rotation or scale of the selection |
 | Right click | Menu of the object under the pointer |
@@ -150,6 +170,12 @@ Maya and Cinema 4D also take **Alt** with a mouse button on the viewport: Alt an
 
 **Performance** sets what the viewport draws with, by the tier. Light draws at 0.75 of the screen's pixel ratio (never above 1) with 2x anti-aliasing, Balanced at the screen's ratio up to 1.5 with 2x, and Sharp at the screen's ratio up to 2 with 4x, which is what Studio always drew. Automatic picks a tier from the graphics card the browser reports and the cores: software renderers and small integrated chips go Light, other integrated chips Balanced, dedicated cards and Apple M-series Sharp, and a card the browser hides Balanced. A new pixel ratio is set on the live renderer; a new anti-aliasing count makes Studio build a new renderer. The tier changes only the viewport; it is never written into the scene recipe, so renders and exports look the same on every machine. A `pixelRatio` or `samples` passed in `rendererOptions` stays as given.
 
+## Spacing
+
+Studio spaces everything on one scale: 4, 8, 12, 16 and 24 px, as `--studio-space-4` to `--studio-space-24` on the Studio root, and 0. A 2 px step is allowed only between touching controls of one group (the buttons of a tool row); 6, 10, 14 and 18 px are not, because every use turned out to be a 4, 8, 12 or 16. Inside a group the gap is small (4 or 8), between groups it is larger (16 in a card), and the gap between groups is never smaller than the gap inside one. A card has the same inset on all four sides, measured from its real children.
+
+`node scripts/studio-layout-audit.mjs [--json] [--only setup|studio|popover]` checks this on the real DOM in headless Chrome: the Studio page, each of its menus and the five steps of the setup dialog, in the dark and the light theme at 1280 by 720. It fails with the selector, the measured numbers and the token to use when a container with a visible edge shows unequal insets (more than 2 px apart), when a gap or padding is off the scale, or when the gap between groups is smaller than the gap inside them. A container with no gap is not held to the last rule, since it keeps its parts apart with padding or is one surface. The few insets that are meant to differ (the tool rail, the end of an outliner row, a menu row) are declared with a reason in `ALLOWLIST` of `scripts/studio-layout-audit.mjs`; fix a real finding in the CSS instead of listing it. The rules are plain functions in `scripts/studio-layout-rules.mjs`, tested without a browser in `tests/studio-layout-rules.test.js`; `tests/studio-layout-audit.test.js` runs the audit in Chrome with the unit tests and seeds a mistake it must catch.
+
 ## Set up Studio
 
 The setup is five steps, one page each, named in a row at the top with an icon apiece (each is a button that jumps to it; the step you are on shows its text and icon at full strength, the others muted): **Theme**, **Performance**, **Modelling**, **Keys** and **AI agent**. Every choice carries an icon that shows what it does.
@@ -162,7 +188,7 @@ The setup is five steps, one page each, named in a row at the top with an icon a
 
 Finishing, skipping or pressing Esc marks it done. Choices are the Settings preferences, so nothing is stored twice. All five steps share one grid cell, so the dialog is as tall as the tallest step (capped at the window height minus 48 pixels, then it scrolls inside) and never changes size between steps; a step with one block fills the cell.
 
-Studio never opens the setup by itself, so tests, capture scripts and embedders get no modal. A host calls `studio.openSetup()`, usually when `studio.setupDone` is false. **Help ▸ Set up Studio…** opens it again. The development page opens it on a first visit, and `?setup=off` turns that off.
+Studio never opens the setup by itself, so tests, capture scripts and embedders get no modal. A host calls `studio.openSetup()`, usually when `studio.setupDone` is false. **Help ▸ Set up Studio…** opens it again. The development page opens it on a first visit, and `?setup=off` turns that off. The development page paints its theme background and a loading state (the Crucible mark over a short progress bar) from the first frame, before any script has loaded; a saved Light or Dark theme is applied before that paint, and the bar stands still when the system asks for reduced motion. The setup opens only after Studio is ready and its first frame has painted, so it appears over the drawn app. When the page fails to start, the loading state turns into the error message with an icon.
 
 ## Mount the Studio in an app
 

@@ -1,0 +1,1 @@
+- The GPU path tracer waits for each tile with a GPU fence instead of `gl.finish()`, and sizes tiles by pixels per second, so a 1080x1920 trace no longer queues oversized draws on drivers where `finish` returns at once (#2833).
