@@ -42,7 +42,7 @@ export function resolveEffects(effects = {}) {
   const motionBlur = effects.motionBlur ?? {};
   if (typeof depthOfField !== 'object' || Array.isArray(depthOfField)) throw new Error('Depth of field must be an object.');
   if (typeof motionBlur !== 'object' || Array.isArray(motionBlur)) throw new Error('Motion blur must be an object.');
-  if (effects.dither !== undefined && typeof effects.dither !== 'boolean') throw new Error('Dither must be true or false: true adds a one-step noise so smooth gradients do not band, false (the default) keeps flat colour.');
+  if (effects.dither !== undefined && typeof effects.dither !== 'boolean') throw new Error('Dither must be true or false: true stops gradient banding, false (default) keeps flat colour.');
   return {
     // `dither` appears only when it is on, so a scene that leaves it alone resolves and exports as before.
     ...(effects.dither === true ? { dither: true } : {}),
