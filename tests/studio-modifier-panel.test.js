@@ -209,7 +209,7 @@ test('applying a modifier bakes it into the mesh as one undo step, and the ones 
   assert.equal(sections(ui).length, 1);
 });
 
-test('applying a modifier that is not first bakes that one alone, as Blender does', t => {
+test('applying a modifier that is not first bakes that one alone', t => {
   const ui = mount(t);
   add(ui, 'subdivide');
   add(ui, 'mirror');

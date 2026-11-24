@@ -747,7 +747,7 @@ export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 
 
 /**
  * Validate a modifier stack: nodes restricted to STACK_OPERATIONS, at most 16. A node may carry `enabled: false`, the
- * switch Blender shows as the viewport toggle of a modifier: it stays in the stack and is skipped when the stack runs.
+ * switch that hides a modifier without deleting it: it stays in the stack and is skipped when the stack runs.
  * `enabled: true` is the default and is not kept.
  */
 export function normalizeMeshStack(stack) {

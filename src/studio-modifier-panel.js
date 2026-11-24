@@ -2,9 +2,9 @@ import { createPropertyLine } from './studio-property-panel.js';
 import { CONVERTIBLE_PRIMITIVES, planOwnMesh } from './studio-own-mesh.js';
 import { MAX_ARRAY_COUNT, MAX_STACK_NODES } from './mesh-operations.js';
 
-// The Modifiers tab of the Properties editor. Blender keeps modifiers in a Properties tab as a stack of collapsible panels, each
-// with a header (name, show in viewport, apply, delete, move) and its main fields, and an Add Modifier menu above them. This panel
-// is the same list for the five modifiers people use every day, written to the stack of the selected mesh (`set-mesh-stack`).
+// The Modifiers tab of the Properties editor: the stack of modifiers as collapsible panels, each
+// with a header (name, show in viewport, apply, delete, move) and its main fields, and an Add Modifier menu above them.
+// It lists the five modifiers people use every day, written to the stack of the selected mesh (`set-mesh-stack`).
 // Every change is one scene operation batch, so it is one undo step; a shape of the Add menu becomes a mesh in the same step.
 
 // The bounds of the recipe (mesh-subdivide.js, mesh-bevel.js, mesh-recipe.js), kept here because those modules are large and the
@@ -98,7 +98,7 @@ function stackTargetOf(recipe, nodeId) {
 export function createModifierPanel({ documentReference, controller, announce, builders }) {
   const { createElement, createIcon, createIconButton, createVectorRow } = builders;
   const element = createElement(documentReference, 'div', { className: 'crucible-studio-modifiers' });
-  // Add Modifier is a menu, as in Blender: a button that opens a list of the five, drawn in the panel so it shows in a recording.
+  // Add Modifier is a menu: a button that opens a list of the five, drawn in the panel so it shows in a recording.
   const addButton = createElement(documentReference, 'button', {
     type: 'button',
     className: 'crucible-studio-modifier-add',
@@ -269,7 +269,7 @@ export function createModifierPanel({ documentReference, controller, announce, b
     };
     up.addEventListener('click', () => index > 0 && swap(index - 1));
     down.addEventListener('click', () => index < target.stack.length - 1 && swap(index + 1));
-    // As in Blender, Apply bakes this modifier into the mesh as if it were first; the ones around it stay in the stack.
+    // Apply bakes this modifier into the mesh as if it were first; the ones around it stay in the stack.
     apply.addEventListener('click', () => (target.stack[index].enabled === false ? announce(`Switch ${title} on to apply it, or delete it.`) : writeStack([target.stack[index], ...target.stack.filter((_, position) => position !== index)], { apply: 1 })));
     grip.addEventListener('dragstart', event => {
       draggedIndex = index;
