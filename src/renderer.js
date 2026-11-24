@@ -359,8 +359,8 @@ const ENVIRONMENT_LOOKUP_UNIFORMS = ['environmentSpecular', 'environmentEnabled'
 const ENVIRONMENT_UNIFORMS = [...ENVIRONMENT_LOOKUP_UNIFORMS, 'environmentBrdf', 'environmentIrradiance[0]', 'environmentBounce', 'environmentDiffuseFrame'];
 // Shares a unit with the skin influence texture, which no light-mapped (rigid) batch binds.
 const LIGHT_MAP_UNIT = 6;
-// Where the parallax state starts in a batch's mapState: [heightMap, depth, fade, steps].
-const HEIGHT_STATE_OFFSET = 30;
+// Where the parallax state starts in a batch's mapState: [heightMap, depth, fade, steps]. It is the last four entries of materialMapState, so a field added before it moves this offset.
+const HEIGHT_STATE_OFFSET = 31;
 const ENVIRONMENT_SPECULAR_UNIT = 9;
 const ENVIRONMENT_BRDF_UNIT = 10;
 const LOCAL_SHADOW_UNIT = 15;
