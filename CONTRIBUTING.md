@@ -180,7 +180,7 @@ A change to shaders, lighting, materials, the default render or a post step chan
 
 ### Studio changes
 
-A Studio feature that Blender also has takes the form Blender uses: a tool, a toggle, a mode, an operator, a modifier, a setting or a panel. Name the form Blender uses and the form Studio uses in the feature's row of [docs/studio-blender-parity.md](docs/studio-blender-parity.md) (the page defines the seven forms), and in the pull request. They match, or the row's Note starts with `Reason:` and says why. `tests/studio-blender-parity.test.js` fails when a tool of the Studio rail has no matching row.
+State the interaction form of a Studio feature (tool, toggle, mode, operator, modifier, setting or panel) and the reason it fits, in the pull request, and add or update the feature's row in [docs/studio-interaction-forms.md](docs/studio-interaction-forms.md), which defines the seven forms. `tests/studio-interaction-forms.test.js` fails when a tool of the Studio rail has no row with the form `tool`, when a row uses a word outside the list, or when a reason is empty.
 
 ### Who runs the GPU and person checks
 
