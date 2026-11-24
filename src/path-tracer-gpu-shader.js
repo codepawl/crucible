@@ -512,6 +512,8 @@ float fillHit(vec3 origin, vec3 direction, float distance) {
 ${vertexAlpha ? "  alpha *= vertexAlphaAtNearestHit();" : ""}
   vec4 emissiveRectangle = fetchData(uMaterials, material + 9);
   if (emissiveRectangle.z > 0.0) hitEmission *= sampleAtlas(emissiveRectangle, flagsTwo.x, mapReadsSecondUvSet(flagsTwo.z, 8) ? secondUv : uv).rgb;
+  float fresnelFraction = fract(flagsTwo.x);
+  if (fresnelFraction > 0.0) hitEmission *= 2.0 * fresnelFraction - 1.0 + (2.0 - 2.0 * fresnelFraction) * pow(1.0 - clamp(abs(dot(direction, hitNormal)), 0.0, 1.0), 5.0);
   vec4 surfaceRectangle = fetchData(uMaterials, material + 8);
   if (surfaceRectangle.z > 0.0) {
     vec4 texel = sampleAtlas(surfaceRectangle, flagsOne.w, mapReadsSecondUvSet(flagsTwo.z, 4) ? secondUv : uv);

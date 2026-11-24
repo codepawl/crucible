@@ -65,7 +65,7 @@ export function createPropertyPanel({ documentReference, controller, announce, b
   }
 
   function reportRefusal(error) {
-    announce(error.message);
+    announce(error);
     sync();
   }
 

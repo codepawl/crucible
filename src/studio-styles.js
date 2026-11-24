@@ -55,8 +55,13 @@ export const STUDIO_CSS = `
 .crucible-studio[data-theme="light"] { color-scheme: light; }
 .crucible-studio[data-theme="dark"] { color-scheme: dark; }
 .crucible-studio * { box-sizing: border-box; }
+/* Nothing in Studio is selectable by click or drag. This is the whole list of what is: text fields, and a block that a person
+   copies from, which opts in with the class crucible-studio-selectable. A dialog is named because the browser's own stylesheet
+   makes a modal dialog selectable, which the root's none does not override. */
+.crucible-studio dialog { user-select: none; }
 .crucible-studio input,
-.crucible-studio textarea { user-select: text; }
+.crucible-studio textarea,
+.crucible-studio-selectable { user-select: text; }
 
 .crucible-studio button,
 .crucible-studio select,
@@ -295,10 +300,12 @@ export const STUDIO_CSS = `
   stroke: none;
 }
 .crucible-studio-scene-mark-ray {
-  stroke: var(--studio-text);
+  /* Drawn over the dark viewport in both themes, so it takes the trace colour, not the theme's text. */
+  stroke: var(--studio-trace);
   stroke-width: 1.6;
   stroke-linecap: round;
   pointer-events: none;
+  filter: drop-shadow(0 0 1px var(--studio-trace-edge));
 }
 .crucible-studio-scene-mark-ray[data-selected="true"] { stroke: var(--studio-accent); }
 .crucible-studio-gizmo [data-scene-object] {
@@ -605,6 +612,8 @@ export const STUDIO_CSS = `
   margin-inline: 2px 8px;
   border-radius: 999px;
   background: var(--studio-ok);
+  /* The green alone is 2.15:1 on the light panel, so the dot is edged in the muted text colour. */
+  box-shadow: 0 0 0 1px var(--studio-muted);
   flex-shrink: 0;
 }
 .crucible-studio-watch-pill[hidden] { display: none; }
@@ -1077,12 +1086,14 @@ export const STUDIO_CSS = `
   padding: 0 2px 0 var(--studio-space-8);
   border-radius: 8px;
 }
-/* Every selected row is tinted; the active one, which the panels follow, more strongly. */
+/* Every selected row is tinted in the accent, with its icon in the accent too (3:1 against the panel in both themes, which a tint alone cannot reach; the active tint stays at 16% so the icon keeps 3:1 on it); the active one, which the panels follow, more strongly. No border. */
 .crucible-studio-tree-row[data-selected="true"] {
-  background: color-mix(in srgb, var(--studio-text) 10%, transparent);
+  background: color-mix(in srgb, var(--studio-accent) 10%, transparent);
 }
+.crucible-studio-tree-row[data-selected="true"] .crucible-studio-tree-select .crucible-studio-icon { color: var(--studio-accent); }
+.crucible-studio-tree-row[data-selected="true"] .crucible-studio-tree-badge { stroke: var(--studio-accent); }
 .crucible-studio-tree-row[data-active="true"] {
-  background: color-mix(in srgb, var(--studio-text) 18%, transparent);
+  background: color-mix(in srgb, var(--studio-accent) 16%, transparent);
 }
 @media (hover: hover) {
   .crucible-studio-tree-row:not([data-selected="true"]):hover {
@@ -1263,9 +1274,11 @@ export const STUDIO_CSS = `
   z-index: 7;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--studio-space-8);
 }
 .crucible-studio-status:empty { display: none; }
+/* The toast lets clicks through, except on an error message, which a person may want to copy. */
+.crucible-studio-status .crucible-studio-selectable { pointer-events: auto; }
 /* The mark leads each outcome in its own shape and weight: done in green, a warning as an accent outline, a failure as a solid accent disc, the rest quiet. */
 .crucible-studio-status .crucible-studio-icon { color: var(--studio-icon); }
 .crucible-studio-status[data-outcome="success"] .crucible-studio-icon { color: var(--studio-ok); }
@@ -1696,7 +1709,8 @@ export const STUDIO_CSS = `
   flex: none;
   inline-size: 44px;
   margin-inline-start: auto;
-  border: 0;
+  /* An edge in the muted text colour, so a near-white colour still shows on the soft field (3:1 in both themes). */
+  border: 1px solid var(--studio-muted);
   border-radius: 5px;
 }
 /* A row whose condition fails (the f-stop while depth of field is off) stays readable but dimmed. */
@@ -2420,7 +2434,6 @@ export const STUDIO_CSS = `
   line-height: 1.5;
   overflow: auto;
   resize: none;
-  user-select: text;
 }
 .crucible-studio-setup-actions { align-items: center; margin-top: 10px; }
 .crucible-studio dialog button.crucible-studio-setup-skip {
