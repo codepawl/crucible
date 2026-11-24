@@ -1,0 +1,2 @@
+- entry:vegetation: crown depth on the fitted ellipsoid, rounded crown normals, tip tint, seeded clump colours and the stronger back-light term add 640 bytes gzip (build-time maths in `src/foliage-shading.js` plus the shader term); the render cost is unchanged because occlusion and tint are baked into the vertex colours.
+- scene:agent-scene+lazy: the same 635 bytes gzip in the agent scene with its lazy chunks; core stays at +0.

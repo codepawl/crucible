@@ -11,9 +11,9 @@ Closes #
 
 - [ ]
 
-## Studio form
+## Interaction form
 
-<!-- Only for a Studio feature that Blender also has. Name the form Blender uses and the form Studio uses (tool, toggle, mode, operator, modifier, setting or panel). They match, or the row in docs/studio-blender-parity.md says why. CONTRIBUTING.md#studio-changes. Delete this section otherwise. -->
+<!-- Only for a Studio feature. State its form (tool, toggle, mode, operator, modifier, setting or panel) and the reason it fits, and add or update its row in docs/studio-interaction-forms.md. CONTRIBUTING.md#studio-changes. Delete this section otherwise. -->
 
 ## Evidence
 

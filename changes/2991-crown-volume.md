@@ -1,0 +1,1 @@
+- Tree crowns light as a volume: leaves glow yellow-green with the sun behind the tree and not beside it, the sunlit flank no longer shadows itself, the inner crown is darker and cooler than its hull, clump colours follow the seed and vary less, birch glows less than oak, and every card takes a rounded crown normal tuned per species (#2991)

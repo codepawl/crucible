@@ -646,7 +646,7 @@ function initializeRenderer(scene, { memoryBudgetMiB, backend, transparent = fal
   // Wet ground with puddles mirrors the scene in them: the parts the scene flagged get the mirror picture (src/water-reflection.js).
   if (agentSceneModuleLoaded('waterReflection')) {
     const water = agentSceneModule('waterReflection');
-    water.attachWaterReflection(renderer, water.wetMirrorSurface(scene.parts));
+    water.attachWetMirror(renderer, scene.parts);
   }
   // Outlines, toon light and polylines draw only for a frame that carries environment.lines; user passes run last, on the finished frame.
   // Mesh blend installs before line art, so its stage runs first and the lines draw over the blended colour; it blends only the

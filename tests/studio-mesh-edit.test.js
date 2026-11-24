@@ -787,7 +787,7 @@ test('the edit mode hint goes away with the first pick that selects something', 
   assert.equal(messages.length, countAfterFirstPick, 'later picks say nothing');
 });
 
-// The move handles leave the middle of a small pick clear, so a person can see what is picked (Blender does the same).
+// The move handles leave the middle of a small pick clear, so a person can see what is picked.
 function mountStudioOnShape(testContext, base) {
   const dom = installStudioDom();
   const recipe = recipeOf({ base });

@@ -61,6 +61,9 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('mesh.faceMode', 'Select faces', 'Edit mode', 'mesh', binding('3')),
   action('mesh.deleteMenu', 'Delete menu: dissolve the selection', 'Edit mode', 'mesh', binding('x'), binding('Delete'), binding('Backspace')),
   action('mesh.mergeMenu', 'Merge menu: join the picked vertices', 'Edit mode', 'mesh', binding('m')),
+  action('mesh.selectNone', 'Select none', 'Edit mode', 'mesh', { code: 'KeyA', alt: true }),
+  action('mesh.invertSelection', 'Invert the selection', 'Edit mode', 'mesh', binding('i', { ctrl: true })),
+  action('mesh.circleSelect', 'Circle select', 'Edit mode', 'mesh', binding('c')),
   action('modal.place', 'Place', 'Holding an object', 'modal', binding('Enter'), binding(' ')),
   action('modal.cancel', 'Put back', 'Holding an object', 'modal', binding('Escape')),
   action('modal.axisX', 'Keep to the X axis', 'Holding an object', 'modal', binding('x')),
@@ -103,6 +106,7 @@ export const SHORTCUT_ROWS = Object.freeze([
   Object.freeze({ keys: '{mesh.enter}', label: 'Edit the mesh / leave edit mode' }),
   Object.freeze({ keys: '{mesh.vertexMode} / {mesh.edgeMode} / {mesh.faceMode}', label: 'In edit mode: select vertices / edges / faces' }),
   Object.freeze({ keys: '{mesh.deleteMenu} / {mesh.mergeMenu}', label: 'In edit mode: dissolve menu / merge menu' }),
+  Object.freeze({ keys: '{mesh.selectNone} / {mesh.invertSelection} / {mesh.circleSelect}', label: 'In edit mode: select none / invert / circle select' }),
   Object.freeze({ keys: '{help.shortcuts}', label: 'This list' }),
 ]);
 
