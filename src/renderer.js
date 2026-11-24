@@ -1,9 +1,10 @@
+import { LIGHT_DATA_BLOCK, uniformBlockOf, disposeUniformBlocks } from './light-uniform-block.js';
 import { resolveBackground, clearColourFor } from './clear-colour.js';
 import { materialTags, registeredFeatureCode } from './shader-registry.js';
 import { mat4, mat3 } from 'gl-matrix';
 import { BLEND_FACTORS } from './blend-output.js';
 import { packNormalsWithTangents, validateGeometryTangents } from './tangent-encoding.js';
-import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, WETNESS_FEATURE, FRAGMENT_SHADOW_POSITION_FEATURE, VERTEX_OPACITY_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, TANGENT_FEATURE, vertexShader, liquidFragmentSource, createFragmentShader, liquidPassDrawer, createDepthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
+import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, WETNESS_FEATURE, FRAGMENT_SHADOW_POSITION_FEATURE, FADING_SHADOWS_FEATURE, VERTEX_OPACITY_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, TANGENT_FEATURE, vertexShader, liquidFragmentSource, createFragmentShader, liquidPassDrawer, createDepthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
 import { postFragment, createPostFragment, GRID_MOTION_STEP, GRID_DETAIL_STEP, NOISE_OCTAVES_STEP, localVolumeKindSteps, POST_STEPS, POST_STEPS_WITH_OPTIONAL_CODE, skyFragment, bloomFragment } from './post.js';
 import { createGlazeBackend } from './glaze-backend.js';
 import { fullscreenVertex, compileProgram, ProgramNotReady, isLinkComplete, setPreparing, releaseStartedPrograms } from './gl-program.js';
@@ -29,6 +30,7 @@ import { canUseCompactColor, respecifyColorTargets } from './compact-color.js';
 import { TranslucentOrder } from './translucent-order.js';
 import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
 import { countDraws } from './draw-counter.js';
+import { glassFaceTransmittance } from './glass-shadow.js';
 import { fitWorldShadowView, resolveShadowLight, shadowBiasPerSlope, sunShadowMapSize } from './shadow-light.js';
 import { CLIP_PLANES_FEATURE, MAX_CLIP_PLANES, packClipPlanes, clipPlaneLocations, bindClipPlanes, clipPlanesChanged } from './clip-planes.js';
 import { MAX_MORPH_TARGETS, requireFeatureCode, deformationSupport, requireDeformationSupport, texturedReplaceSupport, textureUpdateSupport } from './shader-registry.js';
@@ -259,6 +261,7 @@ export function shaderFeaturesOfParts(parts) {
       if (material[field]) features.add(MAP_SHADER_FEATURES[index]);
     });
     if (castsTintedShadow(part)) features.add('tintedShadows');
+    if (part.opacityScale && castsTintedShadow(part)) features.add(FADING_SHADOWS_FEATURE);
     if (material.environmentProbe) features.add('probe');
     if (material.irradianceGrid) features.add('irradianceGrid');
     if (material.normalMap?.uvTransform) features.add('normalMapTransform');
@@ -312,7 +315,7 @@ function batchPass(batch) {
 
 const SKIN_UNIFORMS = ['skinEnabled', 'skinInfluences', 'jointPalette', 'crowdEnabled'];
 const ALPHA_UNIFORMS = ['alphaMode', 'alphaCutoff', 'materialOpacity', 'alphaToCoverage', 'doubleSided'];
-const DEPTH_ALPHA_UNIFORMS = ['alphaMasked', 'alphaCutoff', 'materialOpacity', 'hasBaseMap', 'baseMap', 'tintPass', 'tintTransmission', 'tintMapSize', 'tintBias', 'opaqueShadow'];
+const DEPTH_ALPHA_UNIFORMS = ['alphaMasked', 'alphaCutoff', 'materialOpacity', 'hasBaseMap', 'baseMap', 'tintPass', 'tintTransmission', 'tintFaceTransmittance', 'tintMapSize', 'tintBias', 'opaqueShadow', 'shadowDither'];
 const MORPH_UNIFORMS = ['morphEnabled', 'morphVertexCount', 'morphTargetCount', 'morphWeights[0]', 'morphSlotTargets[0]', 'morphTargets'];
 const ENVIRONMENT_LOOKUP_UNIFORMS = ['environmentSpecular', 'environmentEnabled', 'environmentIntensity', 'environmentRotation', 'environmentLevelMax'];
 const ENVIRONMENT_UNIFORMS = [...ENVIRONMENT_LOOKUP_UNIFORMS, 'environmentBrdf', 'environmentIrradiance[0]', 'environmentBounce', 'environmentDiffuseFrame'];
@@ -329,10 +332,8 @@ const TINT_MAP_SIZE = 1024;
 // The shadow program's opaqueShadow sampler reads the sun map on this unit in the tint draw. Unit 0 would read the map while
 // the opaque pass renders into it, a feedback loop that drops every opaque shadow caster.
 const OPAQUE_SHADOW_UNIT = 2;
-const LIGHT_UNIFORMS = ['pointLightCount', 'pointLightPositions[0]', 'pointLightColors[0]', 'pointLightRadii[0]', 'pointLightShadowTiles[0]',
-  'spotLightCount', 'spotLightPositions[0]', 'spotLightColors[0]', 'spotLightDirections[0]', 'spotLightParameters[0]',
-  'areaLightCount', 'areaLightPositions[0]', 'areaLightColors[0]', 'areaLightNormals[0]', 'areaLightTangents[0]',
-  'localShadowAtlas', 'localShadowMatrices[0]', 'localShadowTexelAngles[0]', 'keyColor', 'fillIntensity', 'ambientIntensity', 'ambientColor', 'specularAntiAliasing'];
+// The light arrays are not here: they live in the LightData uniform block (light-uniform-block.js).
+const LIGHT_UNIFORMS = ['pointLightCount', 'spotLightCount', 'areaLightCount', 'localShadowAtlas', 'keyColor', 'fillIntensity', 'ambientIntensity', 'ambientColor', 'specularAntiAliasing'];
 const SPLAT_UNIFORMS = ['splatEnabled', 'splatColor', 'splatNormal', 'splatPacked', 'splatMask', 'splatLayer[0]', 'splatTint[0]', 'splatSlope[0]', 'splatHeightRange[0]', 'splatMaskChannel[0]', 'splatMaskInvert[0]', 'splatBlend', 'splatOptions', 'splatMaskBounds', 'splatVariation'];
 
 function validateMaterialMaps(material) {
@@ -678,7 +679,7 @@ function createPartGrouper(batching) {
     }
     let materialTail = materialKeyTails.get(part.material);
     if (!materialTail) {
-      materialTail = [renderPass(part.material), ...materialAlphaState(part.material), part.material.aovMap ?? null, part.material.transmissionMap ?? null, ...(part.material.aov ?? ZERO_VECTOR)];
+      materialTail = [renderPass(part.material), part.material.windScale ?? null, ...materialAlphaState(part.material), part.material.aovMap ?? null, part.material.transmissionMap ?? null, ...(part.material.aov ?? ZERO_VECTOR)];
       materialKeyTails.set(part.material, materialTail);
     }
     const values = [batching ? part.geometry : part, ...materialValues, part.skin ?? null, part.material.snippet, part.crowd ?? null, part.morph ?? null, castsShadow(part), receivesShadow(part), compositeModeOf(part), part.shadowOnly === true, depthLayerOf(part), flushOrderOf(part), part.lods ?? null, part.shadowLods ?? null, isMirroredMatrix(part.matrix), part.clipPlanes ?? null, ...materialTail];
@@ -2188,6 +2189,7 @@ export class CrucibleRenderer {
     for (const batch of tinting) {
       this.applyAlphaState(batch, false);
       context.uniform1f(uniforms.tintTransmission, batch.layerState[9]);
+      context.uniform3fv(uniforms.tintFaceTransmittance, glassFaceTransmittance(batch.parts[0].material));
       this.drawBatch(batch, false, this.selectShadowInstances(batch, batch, this.lightProjection, TINT_MAP_SIZE), batch);
     }
     context.disable(context.POLYGON_OFFSET_FILL);
@@ -2257,13 +2259,16 @@ export class CrucibleRenderer {
     context.polygonOffset(1, 1);
     for (const batch of this.batches) {
       if (batch.floor || !batch.castShadow) continue;
-      if (batch.tintedShadow && (mainMap && this.tintedShadowsActive || batch.alphaMode === 'blend' && batch.parts[0].castShadow !== true)) continue;
+      const fades = batch.tintedShadow && Boolean(batch.parts?.some(part => part.opacityScale));
+      if (batch.tintedShadow && (mainMap && this.tintedShadowsActive || batch.alphaMode === 'blend' && batch.parts[0].castShadow !== true && !fades)) continue;
+      if (this.depthShaderFeatures?.has(FADING_SHADOWS_FEATURE)) context.uniform1f(this.depthAlphaUniforms.shadowDither, fades ? 1 : 0);
       const levelSet = batch.shadowLevels ?? batch;
       const selection = this.selectShadowInstances(batch, levelSet, lightMatrix, resolution);
       if (selection?.visibleCount === 0) continue;
       this.applyAlphaState(batch, false);
       this.drawBatch(batch, false, selection, levelSet);
     }
+    if (this.depthShaderFeatures?.has(FADING_SHADOWS_FEATURE)) context.uniform1f(this.depthAlphaUniforms.shadowDither, 0);
     context.disable(context.POLYGON_OFFSET_FILL);
     context.enable(context.CULL_FACE);
   }
@@ -3006,6 +3011,15 @@ export class CrucibleRenderer {
     if (this.shaderFeatures.has('boxMapScale')) context.uniformMatrix3fv(this.uniforms.boxNormalMatrix, false, data.subarray(16, 25));
   }
 
+  // A batch whose material has `windScale` feels a share of the frame wind (ground-cover grass); the batch after it gets the frame wind back.
+  // Batches without a scale never write the uniform, so a scene without one draws exactly as before.
+  bindBatchWind(batch) {
+    const scale = batch.parts?.[0]?.material.windScale;
+    if (scale === undefined && !this.windScaledBatch) return;
+    this.windScaledBatch = scale !== undefined;
+    this.context.uniform1f(this.uniforms.wind, this.frameWind * (scale ?? 1));
+  }
+
   drawBatch(batch, textured = false, selection = null, levelSet = batch) {
     if (this.hasMorphs) {
       const uniforms = textured ? this.uniforms : this.depthMorphUniforms;
@@ -3067,6 +3081,7 @@ export class CrucibleRenderer {
       this.context.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
       if (this.shaderFeatures?.has('splat')) requireSplatSupport().bind(this, batch.splat);
       layerTextureSupport.bind?.(this, batch.mapState, layers, batch);
+      this.bindBatchWind(batch);
       this.context.uniform1f(this.uniforms.hasLightMap, batch.lightMapTexture ? 1 : 0);
       if (batch.lightMapTexture) {
         this.context.activeTexture(this.context.TEXTURE0 + LIGHT_MAP_UNIT);
@@ -3222,9 +3237,6 @@ export class CrucibleRenderer {
     context.uniform1f(this.uniforms.inspection, inspection ? 1 : 0);
     context.uniform1f(this.uniforms.hdrEnabled, this.hdr ? 1 : 0);
     context.uniform1i(this.uniforms.pointLightCount, frame.reflectionTarget ? 0 : this.lighting.pointCount);
-    context.uniform4fv(this.uniforms['pointLightPositions[0]'], this.lighting.positions);
-    context.uniform4fv(this.uniforms['pointLightColors[0]'], this.lighting.colors);
-    context.uniform1fv(this.uniforms['pointLightRadii[0]'], this.lighting.radii);
     this.applyLocalLightUniforms(Boolean(frame.reflectionTarget));
     this.lighting.bind?.(this);
     context.uniform3fv(this.uniforms.keyColor, this.lighting.keyColor);
@@ -3234,7 +3246,9 @@ export class CrucibleRenderer {
     context.uniform1f(this.uniforms.specularAntiAliasing, this.lighting.specularAntiAliasing);
     if (this.lighting.wetness > 0) this.bindWetness();
     context.uniform1f(this.uniforms.time, frame.time ?? 0);
-    context.uniform1f(this.uniforms.wind, frame.wind ?? 0.3);
+    this.frameWind = frame.wind ?? 0.3;
+    this.windScaledBatch = false;
+    context.uniform1f(this.uniforms.wind, this.frameWind);
     context.uniform1f(this.uniforms.worldMode, this.world ? 1 : 0);
     context.uniform1f(this.uniforms.daylight, environment.daylight);
     context.uniform3fv(this.uniforms.lightDirection, environment.lightDirection);
@@ -3308,20 +3322,28 @@ export class CrucibleRenderer {
     const context = this.context;
     const lighting = this.lighting;
     const uniforms = this.uniforms;
-    context.uniform1fv(uniforms['pointLightShadowTiles[0]'], lighting.pointShadows);
     context.uniform1i(uniforms.spotLightCount, withoutLights ? 0 : lighting.spotCount);
-    context.uniform4fv(uniforms['spotLightPositions[0]'], lighting.spotPositions);
-    context.uniform4fv(uniforms['spotLightColors[0]'], lighting.spotColors);
-    context.uniform4fv(uniforms['spotLightDirections[0]'], lighting.spotDirections);
-    context.uniform4fv(uniforms['spotLightParameters[0]'], lighting.spotParameters);
     context.uniform1i(uniforms.areaLightCount, withoutLights ? 0 : lighting.areaCount);
-    context.uniform4fv(uniforms['areaLightPositions[0]'], lighting.areaPositions);
-    context.uniform4fv(uniforms['areaLightColors[0]'], lighting.areaColors);
-    context.uniform4fv(uniforms['areaLightNormals[0]'], lighting.areaNormals);
-    context.uniform4fv(uniforms['areaLightTangents[0]'], lighting.areaTangents);
-    if (lighting.shadowCasters.length === 0 || !this.localShadowTexture) return;
-    context.uniformMatrix4fv(uniforms['localShadowMatrices[0]'], false, this.localShadowMatrices);
-    context.uniform1fv(uniforms['localShadowTexelAngles[0]'], this.localShadowTexelAngles);
+    const block = uniformBlockOf(this, LIGHT_DATA_BLOCK);
+    block.write('pointLightPositions', lighting.positions);
+    block.write('pointLightColors', lighting.colors);
+    block.write('pointLightRadii', lighting.radii);
+    block.write('pointLightShadowTiles', lighting.pointShadows);
+    block.write('spotLightPositions', lighting.spotPositions);
+    block.write('spotLightColors', lighting.spotColors);
+    block.write('spotLightDirections', lighting.spotDirections);
+    block.write('spotLightParameters', lighting.spotParameters);
+    block.write('areaLightPositions', lighting.areaPositions);
+    block.write('areaLightColors', lighting.areaColors);
+    block.write('areaLightNormals', lighting.areaNormals);
+    block.write('areaLightTangents', lighting.areaTangents);
+    const drawsLocalShadows = lighting.shadowCasters.length > 0 && this.localShadowTexture;
+    if (drawsLocalShadows) {
+      block.write('localShadowMatrices', this.localShadowMatrices);
+      block.write('localShadowTexelAngles', this.localShadowTexelAngles);
+    }
+    block.upload(this.program);
+    if (!drawsLocalShadows) return;
     context.activeTexture(context.TEXTURE0 + LOCAL_SHADOW_UNIT);
     context.bindTexture(context.TEXTURE_2D, this.localShadowTexture);
     context.uniform1i(uniforms.localShadowAtlas, LOCAL_SHADOW_UNIT);
@@ -3345,6 +3367,7 @@ export class CrucibleRenderer {
 
   dispose() {
     this.disposed = true;
+    disposeUniformBlocks(this);
     this.releasePendingConstruction();
     releaseStartedPrograms(this.context);
     this.fogFieldTexture?.dispose();

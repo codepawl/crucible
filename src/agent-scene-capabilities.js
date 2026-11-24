@@ -89,7 +89,7 @@ export const MATERIAL_GRAPH_NODES = Object.freeze({
     checker: '{"checker":{"count":8}} (even)',
     gradient: '{"gradient":{"type":"u"|"v"|"radial"}}',
     whiteNoise: '{"whiteNoise":{"scale":16,"seed":1,"output":"value"|"color"}} one random value per cell, tiles.',
-    image: '{"image":{"asset":"<64 hex catalog image asset ID>","output":"color"|"alpha"}} bilinear, repeats; color is linear RGB, decoded from sRGB. The host decodes catalog images (scene_asset_catalog); no URLs.',
+    image: '{"image":{"asset":"<64 hex catalog image asset ID>","output":"color"|"alpha"|"r"|"g"|"b"|"luminance"}} bilinear, repeats; color is linear RGB, decoded from sRGB; alpha, r, g, b and luminance are numbers read as stored (0 to 1), so a greyscale roughness, metallic or AO map feeds roughness directly. The host decodes catalog images (scene_asset_catalog); no URLs.',
     brick: '{"brick":{"columns":8,"rows":4,"mortar":0.05,"offset":0.5,"seed":1,"output":"mortar"|"edge"|"cell"}} running bond; rows even.',
     note: 'Each takes "at", a vector such as {"uv":"both"}, and "warp": {"node":n,"strength":0-4}, which moves the lookup by (n - 0.5) * strength tiles: a number moves u and v together, a vector (such as {"vec":[noiseA,noiseB,0]}) moves u by its first part and v by its second. Warp a wave or a noise by a noise for marble and flowing rock. Scales are whole numbers 1-64 (noise and voronoi up to 1024 when the bake resolution is at least 4 times the scale).',
   }),

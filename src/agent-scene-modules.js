@@ -217,10 +217,16 @@ export async function loadAgentSceneModules(value) {
   await Promise.all(agentSceneModulesNeeded(value).map(loadModule));
 }
 
-/** Load every on-demand module, for hosts that run any recipe an agent writes. */
-export async function loadAllAgentSceneModules() {
+/** Load every on-demand module, for hosts that run any recipe an agent writes. `onModuleLoaded(loaded, total)` runs as each one arrives. */
+export async function loadAllAgentSceneModules({ onModuleLoaded } = {}) {
   hostLoadedEveryModule = true;
-  await Promise.all(Object.keys(MODULE_LOADERS).map(loadModule));
+  const names = Object.keys(MODULE_LOADERS);
+  let loaded = 0;
+  await Promise.all(names.map(async name => {
+    await loadModule(name);
+    loaded += 1;
+    onModuleLoaded?.(loaded, names.length);
+  }));
 }
 
 /** Entries that import a module statically register it here, so createAgentScene finds it without a load call. */

@@ -27,7 +27,7 @@ try {
   await page.goto(`${serverUrl}/bench/lighting/soft-lights.html`, { timeout: PAGE_LOAD_TIMEOUT });
   await page.waitForFunction(() => window.drawCase, null, { timeout: PAGE_LOAD_TIMEOUT });
   const hasLightShapes = await page.evaluate(() => window.hasLightShapes);
-  const names = (await page.evaluate(() => window.caseNames)).filter(name => hasLightShapes || !/area-shadow|spot-ies|sun-soft/.test(name));
+  const names = (await page.evaluate(() => window.caseNames)).filter(name => hasLightShapes || !/area-shadow|spot-ies|sun-soft|all-lights/.test(name));
   await mkdir(outputFolder, { recursive: true });
   const medians = new Map(names.map(name => [name, []]));
   const hashes = {};

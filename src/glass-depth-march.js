@@ -106,23 +106,25 @@ bool marchProject(vec3 point, out vec2 screenPosition, out float bufferDepth) {
   return screenPosition.x >= 0.0 && screenPosition.x <= 1.0 && screenPosition.y >= 0.0 && screenPosition.y <= 1.0;
 }
 
-bool marchIsBehind(vec3 point, out vec2 screenPosition, out bool onScreen) {
+bool marchIsBehind(highp sampler2D depthTexture, vec3 point, out vec2 screenPosition, out bool onScreen) {
   float bufferDepth;
   onScreen = marchProject(point, screenPosition, bufferDepth);
   if (!onScreen) return false;
-  float stored = texelFetch(sceneDepth, ivec2(screenPosition * resolution), 0).r;
+  float stored = texelFetch(depthTexture, ivec2(screenPosition * resolution), 0).r;
   return depthMapping.z > 0.5 ? bufferDepth < stored : bufferDepth > stored;
 }
 
-vec3 marchSceneDepth(vec3 origin, vec3 direction, float maximumDistance) {
+// Marches against any depth texture in the buffer's convention. Returns (hit position xy, 1 for a hit or 0.5 for a miss, the distance of the
+// hit along the ray); z = 0 when not even the first step is on the screen.
+vec4 marchDepthTexture(highp sampler2D depthTexture, vec3 origin, vec3 direction, float maximumDistance) {
   float previousDistance = 0.0;
-  vec3 lastOnScreen = vec3(0.0);
+  vec4 lastOnScreen = vec4(0.0);
   for (int stepIndex = 1; stepIndex <= MARCH_STEPS; stepIndex++) {
     float fraction = float(stepIndex) / float(MARCH_STEPS);
     float rayDistance = maximumDistance * fraction * fraction;
     vec2 position;
     bool onScreen;
-    bool behind = marchIsBehind(origin + direction * rayDistance, position, onScreen);
+    bool behind = marchIsBehind(depthTexture, origin + direction * rayDistance, position, onScreen);
     if (!onScreen) return lastOnScreen;
     if (behind) {
       float nearDistance = previousDistance;
@@ -132,18 +134,22 @@ vec3 marchSceneDepth(vec3 origin, vec3 direction, float maximumDistance) {
         float middleDistance = (nearDistance + farDistance) * 0.5;
         vec2 middle;
         bool middleOnScreen;
-        if (marchIsBehind(origin + direction * middleDistance, middle, middleOnScreen)) {
+        if (marchIsBehind(depthTexture, origin + direction * middleDistance, middle, middleOnScreen)) {
           farDistance = middleDistance;
           hit = middle;
         } else {
           nearDistance = middleDistance;
         }
       }
-      return vec3(hit, 1.0);
+      return vec4(hit, 1.0, farDistance);
     }
     previousDistance = rayDistance;
-    lastOnScreen = vec3(position, 0.5);
+    lastOnScreen = vec4(position, 0.5, rayDistance);
   }
   return lastOnScreen;
+}
+
+vec3 marchSceneDepth(vec3 origin, vec3 direction, float maximumDistance) {
+  return marchDepthTexture(sceneDepth, origin, direction, maximumDistance).xyz;
 }
 `;

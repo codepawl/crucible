@@ -242,6 +242,7 @@ export class FakeNode {
     event.target ??= this;
     const path = [];
     for (let node = this; node; node = node.parentNode) path.push(node);
+    event.composedPath ??= () => path;
     const run = (node, capturePhase) => {
       event.currentTarget = node;
       for (const entry of [...node.listeners]) {
@@ -451,6 +452,8 @@ const REPLACED_GLOBALS = [
  * Installs the fake browser on globalThis and returns a handle. Call `uninstall()` when the test ends.
  * `document` is the fake document, `container` an empty element in its body, and `clipboard` the text copied so far.
  */
+const SETTLE_DEADLINE_MILLISECONDS = 10000;
+
 export function installStudioDom({ clipboardFails = false } = {}) {
   const originals = new Map(REPLACED_GLOBALS.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
   const document = new FakeDocument();
@@ -548,6 +551,14 @@ export function installStudioDom({ clipboardFails = false } = {}) {
       return new Promise(resolve => {
         realSetImmediate(resolve);
       });
+    },
+    /**
+     * Settles until isDone() holds or the time runs out. A deadline, not a turn count: an import hashes the file with
+     * crypto.subtle on the thread pool, which can take more than a few hundred event-loop turns on a loaded runner (#3330).
+     */
+    async settleUntil(isDone, milliseconds = SETTLE_DEADLINE_MILLISECONDS) {
+      const deadline = performance.now() + milliseconds;
+      while (!isDone() && performance.now() < deadline) await this.settle();
     },
     uninstall() {
       for (const [name, descriptor] of originals) {

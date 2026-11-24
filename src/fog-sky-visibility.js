@@ -68,7 +68,7 @@ export function fogSkyVisibility(parts, volume, context, environment = {}) {
     const grid = skyVisibilityGrid(parts, volume.minimum, volume.maximum);
     // The sun is left out of the bounce: see docs/volumetric.md. A scene with an irradiance grid already holds the sun's
     // bounce, the lights and the emission over several bounces, so the fog reads the grid instead of tracing its own.
-    const irradianceGrid = parts.find(part => part.material?.irradianceGrid)?.material.irradianceGrid;
+    const irradianceGrid = parts.find(part => part.material?.irradianceGrid && !part.material.irradianceGrid.skyOnly)?.material.irradianceGrid;
     const bounce = !grid ? null
       : irradianceGrid ? gridBounce(irradianceGrid, grid.size, volume.minimum, volume.maximum)
         : fogBounceGrid(parts, grid.size, volume.minimum, volume.maximum, { pointLights: environment.pointLights });

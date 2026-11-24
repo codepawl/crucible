@@ -195,12 +195,25 @@ export function packAtlas(materials) {
 
 // The float of a material record that holds the shadow-only flag: texel 5, second channel (its first channel is the emission map flag).
 export const SHADOW_ONLY_SLOT = 21;
+/** Slot of the emissive map flags, whose fraction carries the emission Fresnel factor (see emissionFresnelFraction). */
+export const EMISSION_FRESNEL_SLOT = 20;
 /** Slot of the material table that holds the point light bits whose own lamp mesh the part is (src/lamp-mesh.js); shadow rays of those lights pass through it. */
 export const LAMP_LIGHTS_SLOT = 23;
 
 // Bit 0 (value 1) is set when both axes repeat and the value 2 marks sRGB texels: Cook's reduceV1MaterialTable reads only those two bits
 // (`flags & 1`, `flags & 2`), so they keep their meaning. Values 4 to 12 hold the wrap code of U and 16 to 48 the wrap code of V
 // (0 repeat, 1 clamp, 2 mirror), which the shaders read on their own; the colour test is no longer `flags >= 2`.
+/**
+ * The emission Fresnel factor of a material as the fraction added to the emissive map flags (float 20 of the record, the first
+ * float of texel 5): 0 for no factor, else 0.5 + 0.5 * the reflectance at normal incidence, so a factor whose reflectance is 0
+ * still reads as set. The whole part stays the map flags, which the kernels read with floor() and Cook reads as an integer.
+ */
+export function emissionFresnelFraction(emissionFresnel) {
+  if (!(emissionFresnel > 0)) return 0;
+  const normalIncidence = ((emissionFresnel - 1) / (emissionFresnel + 1)) ** 2;
+  return 0.5 + 0.5 * Math.min(normalIncidence, 0.999);
+}
+
 export function textureFlags(texture) {
   const wrapU = texture.wrapU ?? (texture.repeat ? 0 : 1);
   const wrapV = texture.wrapV ?? (texture.repeat ? 0 : 1);
@@ -231,6 +244,7 @@ export function packMaterials(materials, atlas, shadowOnlyParts = null, lampLigh
       data[base + 17 + fieldIndex] = textureFlags(texture);
       data.set([place.x, place.y, texture.width, texture.height], base + (6 + fieldIndex) * 4);
     });
+    data[base + EMISSION_FRESNEL_SLOT] += emissionFresnelFraction(material.emissionFresnel);
     data[base + UV_SET_SLOT] = materialUvSetMask(material);
     if (shadowOnlyParts?.[index] === 1) data[base + SHADOW_ONLY_SLOT] = 1;
     if (lampLightMasks) data[base + LAMP_LIGHTS_SLOT] = lampLightMasks[index];

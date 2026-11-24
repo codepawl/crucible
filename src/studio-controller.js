@@ -37,6 +37,9 @@ const AXIS_PARALLEL_LIMIT = 0.002;
 const OUTLINE_VERTEX_BUDGET = 4000;
 // Above this many triangles the selection is outlined from a mask the graphics card draws: an SVG path of that many triangles costs seconds a frame.
 const SILHOUETTE_TRIANGLE_BUDGET = 8000;
+// The hull fallback (no WebGL2, or part of the selection behind the camera) projects every vertex of a node each frame, about
+// 0.7 ms a node. Past this many selected nodes besides the active one, the rest are left without an outline: 11 nodes cost about 8 ms.
+const SELECTION_HULL_LIMIT = 11;
 const RING_EDGE_ON_LIMIT = 0.12;
 const RING_RADIUS_FACTOR = 0.92;
 const MINIMUM_AXIS_SCREEN_SHARE = 0.8;
@@ -298,7 +301,12 @@ function convexHull(points) {
 }
 
 function descendantIdsOf(nodes, rootId) {
-  const descendants = new Set([rootId]);
+  return descendantIdsOfMany(nodes, [rootId]);
+}
+
+// Every id in `rootIds` with all the nodes below them, from one walk of the node list however many roots there are.
+function descendantIdsOfMany(nodes, rootIds) {
+  const descendants = new Set(rootIds);
   let added = true;
   while (added) {
     added = false;
@@ -660,9 +668,15 @@ export function createStudioController({
     throw new TypeError('onChange must be a function when provided.');
   }
 
-  let selectedNodeId = currentScene.exportRecipe().nodes.find(node => node.geometry !== undefined)?.id
+  // The selection is an ordered set of node ids plus the active one (the last added or clicked). `selectedNodeId` is the
+  // active id, so everything that acts on one object acts on the active one. Every write goes through commitNodeSelection.
+  let selectedNodeId = null;
+  let selectedNodeIds = [];
+  let selectionVersion = 0;
+  const firstNodeId = currentScene.exportRecipe().nodes.find(node => node.geometry !== undefined)?.id
     ?? currentScene.exportRecipe().nodes[0]?.id
     ?? null;
+  commitNodeSelection(firstNodeId === null ? [] : [firstNodeId], firstNodeId);
   let selectedObjectKey = null;
   let copiedNode = null;
   let pasteCount = 0;
@@ -682,6 +696,7 @@ export function createStudioController({
       onChange({
         revision: currentScene.revision,
         selectedNodeId,
+        selectedNodeIds: [...selectedNodeIds],
         tool: activeTool,
         activeTab,
         motionTime,
@@ -761,7 +776,18 @@ export function createStudioController({
   }
 
   function currentSelection() {
-    return { nodeId: selectedNodeId, objectKey: selectedObjectKey };
+    return { nodeId: selectedNodeId, nodeIds: [...selectedNodeIds], objectKey: selectedObjectKey };
+  }
+
+  function commitNodeSelection(nodeIds, activeId) {
+    const unchanged = activeId === selectedNodeId
+      && nodeIds.length === selectedNodeIds.length
+      && nodeIds.every((nodeId, index) => nodeId === selectedNodeIds[index]);
+    if (!unchanged) {
+      selectedNodeIds = nodeIds;
+      selectedNodeId = activeId;
+      selectionVersion += 1;
+    }
   }
 
   function beginUndoGroup() {
@@ -805,7 +831,7 @@ export function createStudioController({
     targetStack.push({ recipe: currentRecipe, restoresCamera: entry.restoresCamera, selection: currentSelection() });
     // The step brings back what was selected with it, so an object that returns is the one in hand again;
     // settleSelectionAndMotion drops a selection the restored recipe no longer holds.
-    selectedNodeId = entry.selection.nodeId;
+    commitNodeSelection([...(entry.selection.nodeIds ?? (entry.selection.nodeId ? [entry.selection.nodeId] : []))], entry.selection.nodeId);
     selectedObjectKey = entry.selection.objectKey;
     const nextRecipe = entry.restoresCamera || currentRecipe.camera === undefined
       ? entry.recipe
@@ -941,8 +967,11 @@ export function createStudioController({
   function settleSelectionAndMotion() {
     const recipe = currentScene.exportRecipe();
     // A node that is gone leaves nothing selected: falling back to another node would aim the next Delete at an object nobody picked.
-    if (selectedNodeId && !recipe.nodes.some(node => node.id === selectedNodeId)) {
-      selectedNodeId = null;
+    // The same holds for the whole set: a node that is gone falls out, and a gone active node leaves the last one still selected.
+    const existingIds = new Set(recipe.nodes.map(node => node.id));
+    const keptIds = selectedNodeIds.filter(nodeId => existingIds.has(nodeId));
+    if (keptIds.length !== selectedNodeIds.length || (selectedNodeId !== null && !existingIds.has(selectedNodeId))) {
+      commitNodeSelection(keptIds, keptIds.includes(selectedNodeId) ? selectedNodeId : (keptIds.at(-1) ?? null));
     }
     if (selectedObjectKey && !lightKeysOf(recipe.environment).concat('camera', 'sun').includes(selectedObjectKey)) {
       selectedObjectKey = null;
@@ -1043,10 +1072,106 @@ export function createStudioController({
         throw new RangeError(`Unknown node "${nodeId}". Select an existing node ID from scene.exportRecipe().nodes.`);
       }
     }
-    selectedNodeId = nodeId;
+    commitNodeSelection(nodeId === null ? [] : [nodeId], nodeId);
     selectedObjectKey = null;
     notify({ kind: 'selection' });
     return selectedNodeId;
+  }
+
+  const SELECTION_MODES = Object.freeze(['replace', 'add', 'toggle', 'remove']);
+
+  // Ids a person can select with a click or a key: hidden nodes stay out of Select all and Invert, as in Blender.
+  function selectableNodeIds(recipe) {
+    return recipe.nodes.filter(node => node.visible !== false).map(node => node.id);
+  }
+
+  /**
+   * Changes the set of selected nodes. `mode` is 'replace' (the default: exactly these ids), 'add', 'toggle' (each id that is
+   * selected leaves, each other joins) or 'remove'. The active node is `active` when given (it must end up selected);
+   * otherwise the last id that joined; when the active node left, the last one still selected. Returns the selected ids.
+   */
+  function selectNodes(nodeIds, options) {
+    if (options !== undefined && options !== null && (typeof options !== 'object' || Array.isArray(options))) {
+      throw new TypeError('selectNodes options must be an object, for example selectNodes(["box-1"], { mode: "add" }), or left out.');
+    }
+    const { mode = 'replace', active } = options ?? {};
+    if (!Array.isArray(nodeIds) || nodeIds.some(nodeId => typeof nodeId !== 'string' || nodeId === '')) {
+      throw new TypeError('selectNodes expects an array of node ID strings, for example selectNodes(["box-1", "box-2"]).');
+    }
+    if (!SELECTION_MODES.includes(mode)) {
+      throw new RangeError(`Unknown selection mode "${String(mode)}". Use one of ${SELECTION_MODES.join(', ')}.`);
+    }
+    if (active !== undefined && (typeof active !== 'string' || active === '')) {
+      throw new TypeError('selectNodes active must be a node ID string when given.');
+    }
+    const known = new Set(currentScene.exportRecipe().nodes.map(node => node.id));
+    for (const nodeId of [...nodeIds, ...(active === undefined ? [] : [active])]) {
+      if (!known.has(nodeId)) {
+        throw new RangeError(`Unknown node "${nodeId}". Select existing node IDs from scene.exportRecipe().nodes.`);
+      }
+    }
+    const requested = [...new Set(nodeIds)];
+    let next = [...selectedNodeIds];
+    let joined = [];
+    if (mode === 'replace') {
+      next = requested;
+      joined = requested;
+    } else if (mode === 'add') {
+      joined = requested;
+      next = [...next.filter(nodeId => !requested.includes(nodeId)), ...requested];
+    } else if (mode === 'toggle') {
+      joined = requested.filter(nodeId => !next.includes(nodeId));
+      next = [...next.filter(nodeId => !requested.includes(nodeId)), ...joined];
+    } else {
+      next = next.filter(nodeId => !requested.includes(nodeId));
+    }
+    let nextActive = selectedNodeId;
+    if (active !== undefined) {
+      if (!next.includes(active)) {
+        throw new RangeError(`Active node "${active}" is not in the selection. Pass one of the selected ids as active, or select it too.`);
+      }
+      nextActive = active;
+    } else if (joined.length > 0) {
+      nextActive = joined.at(-1);
+    } else if (!next.includes(nextActive)) {
+      nextActive = next.at(-1) ?? null;
+    }
+    commitNodeSelection(next, nextActive);
+    if (mode === 'replace' || next.length > 0) {
+      selectedObjectKey = null;
+    }
+    notify({ kind: 'selection' });
+    return [...selectedNodeIds];
+  }
+
+  function selectAll() {
+    const everyId = selectableNodeIds(currentScene.exportRecipe());
+    return selectNodes(everyId, { active: everyId.includes(selectedNodeId) ? selectedNodeId : undefined });
+  }
+
+  function invertSelection() {
+    const chosen = new Set(selectedNodeIds);
+    return selectNodes(selectableNodeIds(currentScene.exportRecipe()).filter(nodeId => !chosen.has(nodeId)));
+  }
+
+  /** The selected nodes that have no selected ancestor: what a move, copy or delete has to act on so a child is not handled twice. */
+  function selectionRoots() {
+    return selectionRootsIn(currentScene.exportRecipe().nodes);
+  }
+
+  function selectionRootsIn(recipeNodes) {
+    const parentOf = new Map(recipeNodes.map(node => [node.id, node.parent]));
+    const chosen = new Set(selectedNodeIds);
+    return selectedNodeIds.filter(nodeId => {
+      const visited = new Set([nodeId]);
+      for (let ancestor = parentOf.get(nodeId); ancestor !== undefined && !visited.has(ancestor); ancestor = parentOf.get(ancestor)) {
+        if (chosen.has(ancestor)) {
+          return false;
+        }
+        visited.add(ancestor);
+      }
+      return true;
+    });
   }
 
   /**
@@ -1092,19 +1217,30 @@ export function createStudioController({
     return activeTab;
   }
 
-  function pickAt(pixelX, pixelY) {
+  // A click on an object replaces the selection, or with mode 'add', 'toggle' or 'remove' changes it by that object.
+  // A click on empty space clears a replacing selection and leaves the others alone.
+  function pickAt(pixelX, pixelY, { mode = 'replace' } = {}) {
+    if (!SELECTION_MODES.includes(mode)) {
+      throw new RangeError(`Unknown selection mode "${String(mode)}". Use one of ${SELECTION_MODES.join(', ')}.`);
+    }
     const ray = screenRay(pixelX, pixelY);
     const hit = ensureQuery().raycast(ray);
     if (!hit) {
-      selectedNodeId = null;
-      selectedObjectKey = null;
+      if (mode === 'replace') {
+        commitNodeSelection([], null);
+        selectedObjectKey = null;
+      }
       notify({ kind: 'pick', hit: null });
       return null;
     }
     const recipe = currentScene.exportRecipe();
     const resolvedId = resolveRecipeNodeId(hit.id, recipe);
-    selectedNodeId = resolvedId;
-    selectedObjectKey = null;
+    if (mode === 'replace') {
+      commitNodeSelection(resolvedId === null ? [] : [resolvedId], resolvedId);
+      selectedObjectKey = null;
+    } else if (resolvedId !== null) {
+      selectNodes([resolvedId], { mode });
+    }
     const result = {
       id: resolvedId ?? hit.id,
       partId: hit.id,
@@ -1189,6 +1325,20 @@ export function createStudioController({
     return selectedNodeId ? nodeOutline(selectedNodeId) : null;
   }
 
+  // The same hull for the selected objects, the active one marked, for the fallback that cannot draw the real shape.
+  // The active node always has its hull; the others only up to SELECTION_HULL_LIMIT of them, as each costs a pass over its vertices.
+  function selectionOutlineLayers() {
+    if (selectedNodeIds.length === 0) {
+      return [];
+    }
+    const recipeNodes = currentScene.exportRecipe().nodes;
+    const otherIds = selectionRootsIn(recipeNodes).filter(nodeId => nodeId !== selectedNodeId).slice(-SELECTION_HULL_LIMIT);
+    const outlinedIds = selectedNodeId ? [...otherIds, selectedNodeId] : otherIds;
+    return outlinedIds
+      .map(nodeId => ({ points: hullOutlineOf(nodeId, recipeNodes), active: nodeId === selectedNodeId }))
+      .filter(layer => layer.points);
+  }
+
   // World-space box around a node and its children: { min, max, size }, or null when it draws nothing.
   function nodeBounds(nodeId) {
     if (typeof nodeId !== 'string' || nodeId === '') {
@@ -1223,7 +1373,12 @@ export function createStudioController({
     if (typeof nodeId !== 'string' || nodeId === '') {
       throw new TypeError('nodeOutline requires a node id string.');
     }
-    const memberIds = descendantIdsOf(currentScene.exportRecipe().nodes, nodeId);
+    return hullOutlineOf(nodeId, currentScene.exportRecipe().nodes);
+  }
+
+  // The hull of one node over the recipe's nodes, which a caller outlining several nodes reads once.
+  function hullOutlineOf(nodeId, recipeNodes) {
+    const memberIds = descendantIdsOf(recipeNodes, nodeId);
     const memberParts = currentScene.parts.filter(part => ownsPart(memberIds, part) && part.matrix && part.geometry?.positions);
     const totalVertices = memberParts.reduce((count, part) => count + part.geometry.positions.length / 3, 0);
     if (totalVertices === 0) {
@@ -1249,17 +1404,24 @@ export function createStudioController({
     return hull.length >= 3 ? hull : null;
   }
 
-  let silhouetteCache = { scene: null, key: '', triangles: null };
-  let selectionMembersCache = { scene: null, key: '', parts: [], triangleCount: 0 };
+  let silhouetteCache = { scene: null, key: '', layers: null };
+  let selectionMembersCache = { scene: null, key: '', parts: [], activeParts: [], otherParts: [], triangleCount: 0, activeTriangleCount: 0 };
 
-  // The parts of the selected node and their triangle count, kept until the scene changes or the selection moves.
+  // The parts of every selected node (all of them, the active node's, the rest) and their triangle count, kept until the
+  // scene changes or the selection moves. The member ids come from one walk of the recipe, not one per selected node.
   function selectionMembers() {
-    const key = `${currentScene.revision}|${selectedNodeId}`;
+    const key = `${currentScene.revision}|${selectionVersion}`;
     if (selectionMembersCache.scene !== currentScene || selectionMembersCache.key !== key) {
-      const memberIds = descendantIdsOf(currentScene.exportRecipe().nodes, selectedNodeId);
+      const nodes = currentScene.exportRecipe().nodes;
+      const memberIds = descendantIdsOfMany(nodes, selectedNodeIds);
+      const activeIds = descendantIdsOfMany(nodes, selectedNodeId === null ? [] : [selectedNodeId]);
       const parts = currentScene.parts.filter(part => ownsPart(memberIds, part) && part.matrix && part.geometry?.positions && part.geometry.indices?.length);
-      const triangleCount = parts.reduce((count, part) => count + part.geometry.indices.length / 3, 0);
-      selectionMembersCache = { scene: currentScene, key, parts, triangleCount };
+      const activeParts = parts.filter(part => ownsPart(activeIds, part));
+      const otherParts = parts.filter(part => !ownsPart(activeIds, part));
+      const countTriangles = memberParts => memberParts.reduce((count, part) => count + part.geometry.indices.length / 3, 0);
+      const triangleCount = countTriangles(parts);
+      const activeTriangleCount = countTriangles(activeParts);
+      selectionMembersCache = { scene: currentScene, key, parts, activeParts, otherParts, triangleCount, activeTriangleCount };
     }
     return selectionMembersCache;
   }
@@ -1270,17 +1432,34 @@ export function createStudioController({
     if (!selectedNodeId) {
       return null;
     }
-    const { parts, triangleCount } = selectionMembers();
+    // The mask draws the whole selection in one strength; with others selected the viewport draws the active object over it
+    // at its own strength (its shape from selectionSilhouetteLayers(), or its hull), so no second card pass is needed.
+    const { parts, otherParts, triangleCount } = selectionMembers();
     if (triangleCount <= SILHOUETTE_TRIANGLE_BUDGET) {
       return null;
     }
+    return { othersExist: otherParts.length > 0, parts: maskPartsOf(parts) };
+  }
+
+  // The active object alone for a second mask at its own width: only when others are selected and the active object is
+  // over the triangle budget by itself, so it has no path and would otherwise be marked by its hull. Null otherwise.
+  function selectionActiveMaskSource() {
+    if (!selectedNodeId) {
+      return null;
+    }
+    const { activeParts, otherParts, activeTriangleCount } = selectionMembers();
+    if (otherParts.length === 0 || activeTriangleCount <= SILHOUETTE_TRIANGLE_BUDGET) {
+      return null;
+    }
+    return { othersExist: false, parts: maskPartsOf(activeParts) };
+  }
+
+  function maskPartsOf(memberParts) {
     const { viewProjection } = cameraMatrices(viewCamera(), width / height, Boolean(currentScene.environment?.world));
-    return {
-      parts: parts.map(part => ({
-        geometry: part.geometry,
-        modelViewProjection: mat4.multiply(new Float32Array(16), viewProjection, part.matrix),
-      })),
-    };
+    return memberParts.map(part => ({
+      geometry: part.geometry,
+      modelViewProjection: mat4.multiply(new Float32Array(16), viewProjection, part.matrix),
+    }));
   }
 
   // The selected object's triangles on screen, as a flat list of x, y pairs (six numbers a triangle), all wound the same
@@ -1288,21 +1467,43 @@ export function createStudioController({
   // that shape, which follows a star or a letter where the hull would cut across. Null when there is nothing to draw,
   // or part of the object is behind the camera. An object with more triangles than the budget has none: the viewport
   // draws it from selectionMaskSource() instead, because a path of that many triangles costs seconds a frame.
-  function selectionSilhouette() {
+  function selectionSilhouetteLayers() {
     if (!selectedNodeId) {
-      return null;
+      return { active: null, others: null, activeExists: false, othersExist: false };
     }
     const camera = viewCamera();
-    const key = [currentScene.revision, selectedNodeId, width, height, camera.eye, camera.target, camera.fov, camera.focalLength, camera.orthoScale, camera.projection].join('|');
+    const key = [currentScene.revision, selectionVersion, width, height, camera.eye, camera.target, camera.fov, camera.focalLength, camera.orthoScale, camera.projection].join('|');
     if (silhouetteCache.scene !== currentScene || silhouetteCache.key !== key) {
-      silhouetteCache = { scene: currentScene, key, triangles: computeSelectionSilhouette() };
+      const { activeParts, otherParts, triangleCount, activeTriangleCount } = selectionMembers();
+      const withinBudget = triangleCount > 0 && triangleCount <= SILHOUETTE_TRIANGLE_BUDGET;
+      // The active object alone may fit the budget when the whole selection does not: the mask draws the selection, this goes over it.
+      const activeWithinBudget = activeTriangleCount > 0 && activeTriangleCount <= SILHOUETTE_TRIANGLE_BUDGET;
+      silhouetteCache = {
+        scene: currentScene,
+        key,
+        layers: {
+          active: activeWithinBudget ? computeSilhouetteOf(activeParts) : null,
+          others: withinBudget ? computeSilhouetteOf(otherParts) : null,
+          activeExists: activeParts.length > 0,
+          othersExist: otherParts.length > 0,
+        },
+      };
     }
-    return silhouetteCache.triangles;
+    return silhouetteCache.layers;
   }
 
-  function computeSelectionSilhouette() {
-    const { parts: memberParts, triangleCount } = selectionMembers();
-    if (triangleCount === 0 || triangleCount > SILHOUETTE_TRIANGLE_BUDGET) {
+  // The union of the whole selection, or null when any part of it has no silhouette. A single selection has no other layer.
+  function selectionSilhouette() {
+    const { active, others, activeExists, othersExist } = selectionSilhouetteLayers();
+    if (!activeExists && !othersExist) {
+      return null;
+    }
+    const needed = [activeExists ? active : [], othersExist ? others : []];
+    return needed.some(layer => layer === null || layer === undefined) ? null : needed[0].concat(needed[1]);
+  }
+
+  function computeSilhouetteOf(memberParts) {
+    if (memberParts.length === 0) {
       return null;
     }
     const point = vec3.create();
@@ -1888,7 +2089,7 @@ export function createStudioController({
     }
     operations.push({ type: 'add-node', node: nodeRecord });
     applySceneOperations(operations);
-    selectedNodeId = nodeId;
+    commitNodeSelection([nodeId], nodeId);
     selectedObjectKey = null;
     notify({ kind: 'topology', nodeId });
     return nodeRecord;
@@ -1901,7 +2102,7 @@ export function createStudioController({
   function applyImportOperations(operations, { selectNodeId = null, detail = { kind: 'look' } } = {}) {
     applySceneOperations(operations);
     if (selectNodeId !== null) {
-      selectedNodeId = selectNodeId;
+      commitNodeSelection([selectNodeId], selectNodeId);
       selectedObjectKey = null;
     }
     notify(selectNodeId === null ? detail : { ...detail, nodeId: selectNodeId });
@@ -1910,7 +2111,7 @@ export function createStudioController({
   // A new light becomes the selection, as a new mesh does, so its panel and its handle are there to edit at once.
   function selectAddedLight(lightType, count) {
     selectedObjectKey = `${lightType}:${count - 1}`;
-    selectedNodeId = null;
+    commitNodeSelection([], null);
     notify({ kind: 'selection' });
     return count;
   }
@@ -2054,7 +2255,7 @@ export function createStudioController({
   function selectSceneObject(key) {
     assertSceneObjectKey(key);
     selectedObjectKey = key;
-    selectedNodeId = null;
+    commitNodeSelection([], null);
     notify({ kind: 'selection' });
     return selectedObjectKey;
   }
@@ -2182,7 +2383,7 @@ export function createStudioController({
       delete cloned.parent;
     }
     applySceneOperations([{ type: 'add-node', node: cloned }]);
-    selectedNodeId = copyId;
+    commitNodeSelection([copyId], copyId);
     selectedObjectKey = null;
     notify({ kind: 'topology', nodeId: copyId });
     return cloned;
@@ -2230,7 +2431,7 @@ export function createStudioController({
     operations.push({ type: 'remove-node', id: selectedNodeId, recursive: true });
     applySceneOperations(operations);
     // Nothing is selected afterwards, so a second Delete cannot remove an object nobody picked.
-    selectedNodeId = null;
+    commitNodeSelection([], null);
     notify({ kind: 'topology', nodeId: null });
     return null;
   }
@@ -2725,6 +2926,11 @@ export function createStudioController({
     get freeView() { return Boolean(freeViewPose) && cameraIsDriven(); },
     lookThroughSceneCamera,
     get selectedNodeId() { return selectedNodeId; },
+    get selectedNodeIds() { return [...selectedNodeIds]; },
+    selectNodes,
+    selectAll,
+    invertSelection,
+    selectionRoots,
     get tool() { return activeTool; },
     get activeTab() { return activeTab; },
     get motionTime() { return motionTime; },
@@ -2758,8 +2964,11 @@ export function createStudioController({
     setInteractionSettings,
     get interactionSettings() { return { moveSnapStep, rotateSnapDegrees, gizmoPixels }; },
     selectionOutline,
+    selectionOutlineLayers,
     selectionSilhouette,
+    selectionSilhouetteLayers,
     selectionMaskSource,
+    selectionActiveMaskSource,
     nodeOutline,
     nodeBounds,
     beginGizmoDrag,
@@ -2825,6 +3034,7 @@ export function createStudioController({
 
 export {
   freeSpawnTranslation,
+  SELECTION_HULL_LIMIT,
   STUDIO_MATERIAL_PRESETS,
   STUDIO_PRIMITIVE_GROUPS,
   STUDIO_PRIMITIVES,

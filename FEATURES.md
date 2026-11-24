@@ -13,6 +13,8 @@ optional `Ready` expression the driver waits for, and `Drive`.
 
 ## Site pages
 
+An id is the name in the `###` heading of its block, not a file name: `drive.mjs` takes the id as written there. The page the driver opens is the block's `Reach` route, and the files behind it are on its `Source` line. For a page under `site/` the id is usually the file name without `.html` (`site/recipes.html` is `recipes`; `site/recipe-dolly-zoom.html` is `recipe-dolly-zoom`), except `home`, which is `site/index.html`. A new page needs its own block before `list` or `shot` can find it.
+
 ### `home`
 - Name: Home (pour-to-cast scroll story, install, showcase, agent and tier sections)
 - Surface: Site

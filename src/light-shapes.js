@@ -5,6 +5,7 @@ const NO_SHADOW_TILE = -1;
 const SPOT_FACE = -1;
 const SHADOW_ATLAS_TILES = 24;
 import { PROFILE_SAMPLE_COUNT, resolveIesProfile, profileSamples } from './light-profile.js';
+import { uniformBlockDeclaration, uniformBlockOf } from './light-uniform-block.js';
 
 export { PROFILE_SAMPLE_COUNT, IES_PROFILE_NAMES, resolveIesProfile, profileSamples, profileGain } from './light-profile.js';
 
@@ -89,8 +90,11 @@ float softLocalShadow(float tile, vec3 position, vec3 normal, float lightDistanc
 }
 `;
 
+// The table is a uniform block of its own, so a scene without profiles never carries its 3.8 KiB (see light-uniform-block.js).
+const PROFILE_BLOCK = Object.freeze({ name: 'LightProfiles', binding: 1, entries: [{ name: 'lightProfileTable', type: 'float', count: PROFILE_LIGHT_COUNT * PROFILE_SAMPLE_COUNT }] });
+
 const PROFILE_DECLARATIONS = `
-uniform float lightProfileTable[${PROFILE_LIGHT_COUNT * PROFILE_SAMPLE_COUNT}];
+${uniformBlockDeclaration(PROFILE_BLOCK)}
 float lightProfileGain(int light, vec3 fromLight, vec3 axis) {
   float cosine = dot(fromLight, axis);
   if (cosine <= 0.0) return 0.0;
@@ -113,7 +117,6 @@ registerShaderFeatureCode('lightProfiles', {
 });
 
 const profileTable = new Float32Array(PROFILE_LIGHT_COUNT * PROFILE_SAMPLE_COUNT);
-const tableLocations = new WeakMap();
 
 // Spot lights fill the first rows of the table and area lights the rows after them; a light with no profile has a row of ones.
 function fillProfileTable(environment) {
@@ -125,10 +128,10 @@ function fillProfileTable(environment) {
 }
 
 function uploadProfileTable(renderer) {
-  const context = renderer.context;
-  if (!tableLocations.has(renderer.program)) tableLocations.set(renderer.program, context.getUniformLocation(renderer.program, 'lightProfileTable[0]'));
   fillProfileTable(renderer.environment);
-  context.uniform1fv(tableLocations.get(renderer.program), profileTable);
+  const block = uniformBlockOf(renderer, PROFILE_BLOCK);
+  block.write('lightProfileTable', profileTable);
+  block.upload(renderer.program);
 }
 
 // The shadowed lights of each kind that ask for a tile, for the atlas error. The point lights' tiles are what the spot and area lights leave of the casters taken so far.

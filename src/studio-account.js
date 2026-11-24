@@ -2,6 +2,8 @@
 // hands over `globalThis.crucibleShell.account`, and this file only shows what that object reports and calls the
 // functions it gives. The contract is written in docs/studio.md ("Account").
 
+import { leadWithActionIcon } from './studio-icons.js';
+
 export const ACCOUNT_CHANGED_EVENT = 'crucible-shell:account-changed';
 
 /** The icon each action of Settings leads with. Done only closes the dialog, so it has none. No two share one. */
@@ -13,15 +15,6 @@ export const STUDIO_SETTINGS_ACTION_ICONS = Object.freeze({
   runSetup: 'play',
   reset: 'reset',
 });
-
-/** Puts an action's icon before the label of its button and marks the button; the label stays its accessible name. */
-export function leadWithActionIcon(button, icon, iconName) {
-  const label = button.ownerDocument.createElement('span');
-  label.textContent = button.textContent;
-  button.dataset.actionIcon = iconName;
-  button.replaceChildren(icon, label);
-  return button;
-}
 
 const FALLBACK_SIGN_IN_ERROR = 'Sign in did not finish.';
 const FALLBACK_ACTION_ERROR = 'That did not work.';

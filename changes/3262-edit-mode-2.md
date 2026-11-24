@@ -1,0 +1,1 @@
+- Studio: Tab on a plane, box, circle, sphere, icosphere, cylinder, cone or torus turns it into an editable mesh and enters edit mode in one undo step; a box and a cylinder drop their bevel so the cage is the plain shape, and a shared geometry becomes the object's own first (#3262).

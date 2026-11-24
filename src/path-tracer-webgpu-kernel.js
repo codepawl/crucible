@@ -334,6 +334,8 @@ fn fillHit(origin: vec3<f32>, direction: vec3<f32>, distance: f32) -> f32 {
   }
   let emissiveRectangle = materials[material + 9];
   if (emissiveRectangle.z > 0.0) { hitEmission *= sampleAtlas(emissiveRectangle, flagsTwo.x, select(uv, secondUv, mapReadsSecondUvSet(flagsTwo.z, 8))).rgb; }
+  let fresnelFraction = fract(flagsTwo.x);
+  if (fresnelFraction > 0.0) { hitEmission *= 2.0 * fresnelFraction - 1.0 + (2.0 - 2.0 * fresnelFraction) * pow(1.0 - clamp(abs(dot(direction, hitNormal)), 0.0, 1.0), 5.0); }
   let surfaceRectangle = materials[material + 8];
   if (surfaceRectangle.z > 0.0) {
     let texel = sampleAtlas(surfaceRectangle, flagsOne.w, select(uv, secondUv, mapReadsSecondUvSet(flagsTwo.z, 4)));

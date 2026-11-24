@@ -17,6 +17,11 @@ export const STUDIO_CSS = `
   --studio-border: var(--site-border, #fefefd1f);
   --studio-accent: var(--site-focus, #fc9132);
   --studio-ok: #5fc48a;
+  /* A label's icon: the text colour one step toward the panel, clearly visible in both themes. */
+  --studio-icon: color-mix(in srgb, var(--studio-text) 78%, var(--studio-panel));
+  /* Drawn over the viewport, which is dark in both themes: these two do not follow the theme. */
+  --studio-trace: #f1f0ec;
+  --studio-trace-edge: #17161a;
   --studio-font: Inter, system-ui, sans-serif;
   --studio-font-heading: 'Plus Jakarta Sans', Inter, system-ui, sans-serif;
   --studio-font-mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -50,8 +55,13 @@ export const STUDIO_CSS = `
 .crucible-studio[data-theme="light"] { color-scheme: light; }
 .crucible-studio[data-theme="dark"] { color-scheme: dark; }
 .crucible-studio * { box-sizing: border-box; }
+/* Nothing in Studio is selectable by click or drag. This is the whole list of what is: text fields, and a block that a person
+   copies from, which opts in with the class crucible-studio-selectable. A dialog is named because the browser's own stylesheet
+   makes a modal dialog selectable, which the root's none does not override. */
+.crucible-studio dialog { user-select: none; }
 .crucible-studio input,
-.crucible-studio textarea { user-select: text; }
+.crucible-studio textarea,
+.crucible-studio-selectable { user-select: text; }
 
 .crucible-studio button,
 .crucible-studio select,
@@ -80,10 +90,14 @@ export const STUDIO_CSS = `
   padding: 0;
   flex-shrink: 0;
 }
-.crucible-studio-icon[data-brand] {
+.crucible-studio button[data-action-icon] { gap: 8px; }
+.crucible-studio button[data-action-icon] > .crucible-studio-icon { color: inherit; }
+.crucible-studio-icon[data-brand],
+.crucible-studio-icon[data-filled] {
   fill: currentColor;
   stroke: none;
 }
+.crucible-studio-icon[data-filled] { fill-rule: evenodd; }
 .crucible-studio-icon {
   inline-size: 17px;
   block-size: 17px;
@@ -240,6 +254,8 @@ export const STUDIO_CSS = `
 }
 .crucible-studio-gizmo [data-gizmo-hit="line"] { stroke-width: 22px !important; }
 .crucible-studio-gizmo [data-gizmo-hit="disc"] { stroke-width: 0 !important; }
+.crucible-studio-gizmo [data-gizmo-hit="ring"] { pointer-events: stroke; }
+.crucible-studio-gizmo [data-gizmo-ring] { pointer-events: none; }
 .crucible-studio-gizmo[data-hover-axis="x"] [data-gizmo-axis="x"],
 .crucible-studio-gizmo[data-hover-axis="y"] [data-gizmo-axis="y"],
 .crucible-studio-gizmo[data-hover-axis="z"] [data-gizmo-axis="z"],
@@ -280,10 +296,7 @@ export const STUDIO_CSS = `
 .crucible-studio-gizmo[data-hover-axis="yz"] [data-gizmo-axis="yz"] {
   fill-opacity: 0.6;
 }
-.crucible-studio-gizmo {
-  --studio-trace: #f1f0ec;
-  --studio-trace-edge: #17161a;
-}
+
 .crucible-studio-scene-mark {
   color: var(--studio-text);
   fill: none;
@@ -328,12 +341,32 @@ export const STUDIO_CSS = `
 .crucible-studio-silhouette-colour {
   flood-color: var(--studio-accent);
 }
+/* Both layers use the full accent with a ring of the viewport's own dark outside it, so the outline reads on light and
+   dark surfaces alike. The viewport is dark in both themes, so the ring takes the trace-edge dark and never the UI
+   theme's --studio-bg, which would glow pale on the floor in the light theme. The active object's outline is the
+   wider one (4 px against 2 px: the filters round the thin ring to 2 px, so 3 against 1.5 drew as 3 against 2). */
+.crucible-studio-silhouette-casing {
+  flood-color: var(--studio-trace-edge);
+}
 .crucible-studio-selection-outline {
   fill: none;
   stroke: var(--studio-accent);
-  stroke-width: 1.5;
+  stroke-width: 4;
   stroke-linejoin: round;
   pointer-events: none;
+}
+.crucible-studio-selection-outline[data-layer="others"] {
+  stroke-width: 2;
+}
+.crucible-studio-selection-outline-casing {
+  fill: none;
+  stroke: var(--studio-trace-edge);
+  stroke-width: 6;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.crucible-studio-selection-outline-casing[data-layer="others"] {
+  stroke-width: 4;
 }
 /* The axis widget stands at the top right of the viewport, beside the panel column. Floating, that is left of the
    Scene card, level with its top and one edge gap from it; --studio-gizmo-clear is the room the cards take. */
@@ -437,7 +470,7 @@ export const STUDIO_CSS = `
   inset-block-start: var(--studio-top);
   inset-inline: calc(var(--studio-rail) + 2 * var(--studio-edge)) calc(var(--studio-side-width, 284px) + 2 * var(--studio-edge));
   inline-size: fit-content;
-  max-inline-size: 520px;
+  max-inline-size: 600px;
   margin-inline: auto;
   gap: 8px;
   padding: 12px 12px;
@@ -666,8 +699,8 @@ export const STUDIO_CSS = `
   gap: 2px;
 }
 .crucible-studio-popover-grid + .crucible-studio-popover-grid { margin-block-start: 10px; }
-#crucible-studio-pop-add { max-width: 348px; max-block-size: calc(100dvh - 16px); overflow-y: auto; }
-#crucible-studio-pop-add .crucible-studio-popover-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#crucible-studio-pop-add .crucible-studio-popover-grid { grid-template-columns: minmax(0, 1fr); }
+#crucible-studio-pop-add { max-block-size: calc(100dvh - 16px); overflow-y: auto; }
 .crucible-studio-popover button[aria-expanded="true"] { background: color-mix(in srgb, var(--studio-text) 8%, transparent); }
 .crucible-studio-tree-section { display: grid; }
 .crucible-studio-tree-section[hidden], .crucible-studio-tree-controls[hidden] { display: none; }
@@ -686,9 +719,13 @@ export const STUDIO_CSS = `
   padding: 8px 12px;
   text-align: left;
 }
-.crucible-studio-popover > button > .crucible-studio-icon { color: var(--studio-muted); }
+.crucible-studio-popover > button > .crucible-studio-icon,
+.crucible-studio-popover-grid > button > .crucible-studio-icon { color: var(--studio-muted); }
 .crucible-studio-popover > button:hover > .crucible-studio-icon,
-.crucible-studio-popover > button:focus-visible > .crucible-studio-icon { color: inherit; }
+.crucible-studio-popover > button:focus-visible > .crucible-studio-icon,
+.crucible-studio-popover-grid > button:hover > .crucible-studio-icon,
+.crucible-studio-popover-grid > button:focus-visible > .crucible-studio-icon { color: inherit; }
+.crucible-studio-popover-grid > button { gap: 8px; white-space: nowrap; }
 .crucible-studio-menu-gap {
   flex: none;
   inline-size: 17px;
@@ -987,10 +1024,21 @@ export const STUDIO_CSS = `
   align-items: center;
   gap: 4px;
 }
-.crucible-studio-dock-title .crucible-studio-icon {
+.crucible-studio-dock-title .crucible-studio-icon,
+.crucible-studio-selection-count .crucible-studio-icon {
   inline-size: 15px;
   block-size: 15px;
 }
+.crucible-studio-selection-count {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--studio-font);
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--studio-muted);
+}
+.crucible-studio-selection-count[hidden] { display: none; }
 .crucible-studio-filter {
   position: relative;
   flex: none;
@@ -1045,8 +1093,12 @@ export const STUDIO_CSS = `
   padding: 0 2px 0 var(--studio-space-8);
   border-radius: 8px;
 }
+/* Every selected row is tinted; the active one, which the panels follow, more strongly. */
 .crucible-studio-tree-row[data-selected="true"] {
-  background: color-mix(in srgb, var(--studio-text) 11%, transparent);
+  background: color-mix(in srgb, var(--studio-text) 10%, transparent);
+}
+.crucible-studio-tree-row[data-active="true"] {
+  background: color-mix(in srgb, var(--studio-text) 18%, transparent);
 }
 @media (hover: hover) {
   .crucible-studio-tree-row:not([data-selected="true"]):hover {
@@ -1225,8 +1277,18 @@ export const STUDIO_CSS = `
   text-wrap: balance;
   pointer-events: none;
   z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
 }
 .crucible-studio-status:empty { display: none; }
+/* The toast lets clicks through, except on an error message, which a person may want to copy. */
+.crucible-studio-status .crucible-studio-selectable { pointer-events: auto; }
+/* The mark leads each outcome in its own shape and weight: done in green, a warning as an accent outline, a failure as a solid accent disc, the rest quiet. */
+.crucible-studio-status .crucible-studio-icon { color: var(--studio-icon); }
+.crucible-studio-status[data-outcome="success"] .crucible-studio-icon { color: var(--studio-ok); }
+.crucible-studio-status[data-outcome="warning"] .crucible-studio-icon,
+.crucible-studio-status[data-outcome="error"] .crucible-studio-icon { color: var(--studio-accent); }
 /* The box stays mounted and the script sets data-state: in while a message shows, out while it leaves. The individual
    translate property leaves the centring transform alone. */
 @supports (transition-behavior: allow-discrete) {
@@ -1505,7 +1567,7 @@ export const STUDIO_CSS = `
   inset-block-start: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr);
+  grid-template-columns: 14px 14px minmax(0, 1fr);
   justify-content: stretch;
   justify-items: start;
   align-items: center;
@@ -1549,12 +1611,15 @@ export const STUDIO_CSS = `
 .crucible-studio-property-title .crucible-studio-icon {
   inline-size: 14px;
   block-size: 14px;
+}
+.crucible-studio-property-title .crucible-studio-section-icon { color: var(--studio-icon); stroke-width: 2; }
+.crucible-studio-property-title .crucible-studio-chevron {
   transition: transform var(--studio-motion-quick) var(--studio-ease-out);
 }
 @media (prefers-reduced-motion: reduce) {
-  .crucible-studio-property-title .crucible-studio-icon { transition: none; }
+  .crucible-studio-property-title .crucible-studio-chevron { transition: none; }
 }
-.crucible-studio-property-section[data-open="true"] .crucible-studio-property-title .crucible-studio-icon { transform: rotate(90deg); }
+.crucible-studio-property-section[data-open="true"] .crucible-studio-property-title .crucible-studio-chevron { transform: rotate(90deg); }
 .crucible-studio-property-rows {
   display: grid;
   gap: 4px;
@@ -1991,7 +2056,16 @@ export const STUDIO_CSS = `
   background: var(--studio-panel);
   color: var(--studio-text);
 }
+.crucible-studio dialog h2 .crucible-studio-icon {
+  inline-size: 18px;
+  block-size: 18px;
+  stroke-width: 1.9;
+  translate: 0 1px;
+}
 .crucible-studio dialog h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 0 10px;
   font-family: var(--studio-font-heading);
   font-size: 15px;
@@ -2507,7 +2581,6 @@ export const STUDIO_CSS = `
   line-height: 1.5;
   overflow: auto;
   resize: none;
-  user-select: text;
 }
 .crucible-studio-setup-actions { align-items: center; margin-top: 10px; }
 .crucible-studio dialog button.crucible-studio-setup-skip {

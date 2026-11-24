@@ -4655,3 +4655,94 @@ test('Maya and Cinema 4D navigate with Alt and a mouse button, and the Blender k
   drag(2, { x: 420, y: 300 });
   assert.notDeepEqual(ui.controller.scene.camera.target, targetBefore, 'the default right drag still pans, whatever the keymap');
 });
+
+test('select all belongs to Studio only when the event comes from Studio (#3328)', testContext => {
+  const ui = mountStudio(testContext);
+  const hostText = ui.dom.document.createElement('p');
+  ui.dom.document.body.append(hostText);
+  const outside = dispatch(hostText, 'keydown', { key: 'a', ctrlKey: true });
+  assert.equal(outside.defaultPrevented, false, 'text of the host page outside Studio selects as usual');
+
+  const shadowTextarea = ui.dom.document.createElement('textarea');
+  const shadowHost = ui.dom.document.createElement('div');
+  ui.dom.document.body.append(shadowHost);
+  const retargeted = dispatch(shadowHost, 'keydown', { key: 'a', ctrlKey: true, composedPath: () => [shadowTextarea, {}, shadowHost, ui.dom.document.body, ui.dom.document] });
+  assert.equal(retargeted.defaultPrevented, false, 'a field inside a host shadow root selects its own text');
+
+  const insideStudioShadow = dispatch(shadowHost, 'keydown', { key: 'a', ctrlKey: true, composedPath: () => [shadowTextarea, ui.root, ui.dom.document.body] });
+  assert.equal(insideStudioShadow.defaultPrevented, false, 'a field anywhere on the path wins over the Studio root');
+
+  const layoutKey = dispatch(ui.tool('select'), 'keydown', { key: 'ф', code: 'KeyA', ctrlKey: true });
+  assert.equal(layoutKey.defaultPrevented, true, 'another keyboard layout is matched by its key code');
+
+  dispatch(ui.tool('select'), 'pointerdown');
+  const fellToBody = dispatch(ui.dom.document.body, 'keydown', { key: 'a', ctrlKey: true });
+  assert.equal(fellToBody.defaultPrevented, true, 'a click on Studio chrome leaves the focus on the body, and select all still goes to Studio');
+  dispatch(hostText, 'pointerdown');
+  const afterHostClick = dispatch(ui.dom.document.body, 'keydown', { key: 'a', ctrlKey: true });
+  assert.equal(afterHostClick.defaultPrevented, false, 'after a click on the host page the host page keeps select all');
+});
+
+test('an error message is selectable text in the status toast, an ordinary notice is not (#3328)', async testContext => {
+  const ui = mountStudio(testContext);
+  const selectableIn = element => element.querySelectorAll('.crucible-studio-selectable').map(part => part.textContent);
+  const statusRegion = ui.root.querySelector('.crucible-studio-status');
+  const [recipeDialog] = ui.root.querySelectorAll('dialog');
+  ui.button('Recipe JSON').click();
+  recipeDialog.querySelector('textarea').value = '{ not json';
+  byText(recipeDialog, 'Apply JSON').click();
+  await ui.dom.settle();
+  assert.deepEqual(selectableIn(statusRegion), [ui.status()], 'the whole toast is the error message, so only that text is marked');
+  assert.match(ui.status(), /JSON/);
+  ui.selectRow('hero');
+  ui.root.querySelectorAll('button').find(button => button.getAttribute('aria-label')?.startsWith('Duplicate')).click();
+  assert.match(ui.status(), /Duplicated/);
+  assert.deepEqual(selectableIn(statusRegion), [], 'an ordinary notice replaces it and is not selectable');
+
+});
+
+test('the driver message in the paused notice is selectable, the sentence around it is not (#3328)', testContext => {
+  const ui = mountStudio(testContext);
+  const selectableIn = element => element.querySelectorAll('.crucible-studio-selectable').map(part => part.textContent);
+  ui.renderer.updateFailure = new Error('WebGL replacement allocation failed with error 37442');
+  ui.selectRow('hero');
+  ui.dom.runAnimationFrames(100);
+  const notice = pausedNotice(ui);
+  assert.deepEqual(selectableIn(notice), ['WebGL replacement allocation failed with error 37442'], 'the driver message can be copied, the sentence around it cannot');
+  dispatch(ui.canvas, 'webglcontextlost');
+  assert.deepEqual(selectableIn(notice), [], 'the fixed lost-context sentence is not selectable');
+});
+
+test('select all is kept from the page outside a text field, in any mode, and left to a text field (#3328)', testContext => {
+  const ui = mountStudio(testContext);
+  const onButton = dispatch(ui.tool('select'), 'keydown', { key: 'a', ctrlKey: true });
+  assert.equal(onButton.defaultPrevented, true, 'the browser would highlight the page');
+  const withCommand = dispatch(ui.tool('select'), 'keydown', { key: 'A', metaKey: true });
+  assert.equal(withCommand.defaultPrevented, true);
+  const inField = dispatch(ui.label('Filter the scene list'), 'keydown', { key: 'a', ctrlKey: true });
+  assert.equal(inField.defaultPrevented, false, 'a field selects its own text');
+  const plain = dispatch(ui.tool('select'), 'keydown', { key: 'a' });
+  assert.equal(plain.defaultPrevented, false);
+});
+
+test('settleUntil keeps waiting past a few hundred event-loop turns, as a thread-pool hash on a loaded runner needs (#3330)', async testContext => {
+  const dom = installStudioDom();
+  testContext.after(() => dom.uninstall());
+  let turns = 0;
+  const countTurns = () => {
+    turns += 1;
+    if (turns < 1500) setImmediate(countTurns);
+  };
+  setImmediate(countTurns);
+  await dom.settleUntil(() => turns >= 1500);
+  assert.equal(turns, 1500, 'the wait lasted until the work was done, not a fixed 400 turns');
+});
+
+test('settleUntil gives up at its deadline when the work never finishes', async testContext => {
+  const dom = installStudioDom();
+  testContext.after(() => dom.uninstall());
+  const started = performance.now();
+  await dom.settleUntil(() => false, 50);
+  const waited = performance.now() - started;
+  assert.ok(waited >= 50 && waited < 5000, `waited ${waited} ms for a 50 ms deadline`);
+});

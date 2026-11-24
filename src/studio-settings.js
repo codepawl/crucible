@@ -3,7 +3,8 @@
 // offers an account (studio-account.js).
 import { KEYMAP_PRESETS } from './studio-keymap.js';
 import { STUDIO_PREFERENCE_CHOICES } from './studio-preferences.js';
-import { createAccountSection, leadWithActionIcon, STUDIO_SETTINGS_ACTION_ICONS } from './studio-account.js';
+import { createAccountSection, STUDIO_SETTINGS_ACTION_ICONS } from './studio-account.js';
+import { leadWithActionIcon } from './studio-icons.js';
 
 const capitalised = value => value[0].toUpperCase() + value.slice(1);
 const MOTION_LABELS = Object.freeze({ system: 'Follow system', reduced: 'Reduced' });
@@ -121,6 +122,8 @@ export function createStudioSettings({ documentReference, createElement, createI
   }
   showSection(sections[0].id);
 
+  const settingsHeading = createElement(documentReference, 'h2', { id: 'crucible-studio-settings-title', textContent: 'Settings' });
+  settingsHeading.prepend(createIcon(documentReference, 'settings'));
   const resetButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Reset' });
   leadWithActionIcon(resetButton, createIcon(documentReference, STUDIO_SETTINGS_ACTION_ICONS.reset), STUDIO_SETTINGS_ACTION_ICONS.reset);
   resetButton.addEventListener('click', onReset);
@@ -131,7 +134,7 @@ export function createStudioSettings({ documentReference, createElement, createI
     documentReference,
     'dialog',
     { className: 'crucible-studio-settings-dialog', tabIndex: -1, attributes: { 'aria-labelledby': 'crucible-studio-settings-title', closedby: 'any' } },
-    createElement(documentReference, 'h2', { id: 'crucible-studio-settings-title', textContent: 'Settings' }),
+    settingsHeading,
     createElement(
       documentReference,
       'div',

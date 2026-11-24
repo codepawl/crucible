@@ -161,7 +161,7 @@ test('the mirror draw leaves out spot and area lights and the lit frame sends th
   const counts = {};
   const context = new Proxy({}, { get: (_, name) => (name === 'uniform1i' ? (location, value) => { counts[location] = value; } : () => {}) });
   const renderer = Object.create(CrucibleRenderer.prototype);
-  const lighting = { spotCount: 3, areaCount: 2, shadowCasters: [], pointShadows: [], spotPositions: [], spotColors: [], spotDirections: [], spotParameters: [], areaPositions: [], areaColors: [], areaNormals: [], areaTangents: [] };
+  const lighting = { spotCount: 3, areaCount: 2, shadowCasters: [], positions: [], colors: [], radii: [], pointShadows: [], spotPositions: [], spotColors: [], spotDirections: [], spotParameters: [], areaPositions: [], areaColors: [], areaNormals: [], areaTangents: [] };
   Object.assign(renderer, { context, lighting, uniforms: { spotLightCount: 'spot', areaLightCount: 'area' } });
   renderer.applyLocalLightUniforms(true);
   assert.deepEqual(counts, { spot: 0, area: 0 });

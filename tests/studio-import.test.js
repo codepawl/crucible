@@ -252,9 +252,7 @@ test('the status line keeps an import message up in proportion to its length, be
   const dropAndRead = async (name, bytes) => {
     dom.runTimers();
     dispatch(viewport, 'drop', { dataTransfer: { files: [{ name, size: bytes.length, arrayBuffer: async () => bytes.buffer }] } });
-    for (let attempt = 0; attempt < 400 && statusText() === ''; attempt += 1) {
-      await dom.settle();
-    }
+    await dom.settleUntil(() => statusText() !== '');
     return { text: statusText(), delays: [dom.pendingTimerDelays.at(-1)] };
   };
   const short = await dropAndRead('rock.glb', triangleGlb());
@@ -280,9 +278,7 @@ test('an imported HDR sky travels into the web pack as its sky image, and the pa
   const withoutSky = decodePack((await studio.buildWebPackPayload()).packBytes);
   const softbox = new Uint8Array(await readFile(SOFTBOX_URL));
   dispatch(root.querySelector('.crucible-studio-viewport'), 'drop', { dataTransfer: { files: [{ name: 'softbox.hdr', size: softbox.length, arrayBuffer: async () => softbox.buffer }] } });
-  for (let attempt = 0; attempt < 400 && root.querySelector('.crucible-studio-status').textContent === ''; attempt += 1) {
-    await dom.settle();
-  }
+  await dom.settleUntil(() => root.querySelector('.crucible-studio-status').textContent !== '');
   assert.equal(root.querySelector('.crucible-studio-status').textContent, 'Sky set to softbox.hdr');
   const payload = await studio.buildWebPackPayload();
   const withSky = decodePack(payload.packBytes);
@@ -326,9 +322,7 @@ test('the Import row shows only with a store, and a dropped GLB or scene.json ta
   const viewport = root.querySelector('.crucible-studio-viewport');
   const glb = triangleGlb();
   dispatch(viewport, 'drop', { dataTransfer: { files: [{ name: 'rock.glb', size: glb.length, arrayBuffer: async () => glb.buffer, text: async () => assert.fail('a binary file is never read as text') }] } });
-  for (let attempt = 0; attempt < 400 && statusText() === ''; attempt += 1) {
-    await dom.settle();
-  }
+  await dom.settleUntil(() => statusText() !== '');
   assert.equal(statusText(), 'Placed rock.glb');
   assert.equal(studio.exportRecipe().nodes.filter(node => node.asset).length, 1);
   assert.equal(studio.controller.selectedNodeId, 'rock');
@@ -340,17 +334,13 @@ test('the Import row shows only with a store, and a dropped GLB or scene.json ta
 
   dom.runTimers();
   dispatch(viewport, 'drop', { dataTransfer: { files: [{ name: 'again.scene.json', text: async () => JSON.stringify(baseRecipe()) }] } });
-  for (let attempt = 0; attempt < 400 && statusText() === ''; attempt += 1) {
-    await dom.settle();
-  }
+  await dom.settleUntil(() => statusText() !== '');
   assert.equal(statusText(), 'Loaded again.scene.json');
 
   const { root: plainRoot } = mountStudio({ catalog: { ...host.hooks, store: undefined } });
   assert.equal(plainRoot.querySelectorAll('button').some(button => button.textContent === 'Import…'), false);
   assert.match(plainRoot.querySelector('.crucible-studio-drop-overlay').textContent, /^Drop a scene\.json to open it$/);
   dispatch(plainRoot.querySelector('.crucible-studio-viewport'), 'drop', { dataTransfer: { files: [{ name: 'rock.glb', size: glb.length, arrayBuffer: async () => glb.buffer }] } });
-  for (let attempt = 0; attempt < 50 && plainRoot.querySelector('.crucible-studio-status').textContent === ''; attempt += 1) {
-    await dom.settle();
-  }
+  await dom.settleUntil(() => plainRoot.querySelector('.crucible-studio-status').textContent !== '');
   assert.equal(plainRoot.querySelector('.crucible-studio-status').textContent, NO_STORE_MESSAGE);
 });

@@ -20,8 +20,8 @@ const VERTEX_PICK_RADIUS_PIXELS = 14;
 const EDGE_PICK_RADIUS_PIXELS = 10;
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
-const NEEDS_A_MESH = 'Edit mode needs a mesh geometry for now; turning a shape into a mesh comes next.';
-const NEEDS_NO_MODIFIERS = 'Edit mode does not work on a mesh with modifiers yet.';
+const NEEDS_A_MESH = 'Edit mode needs a mesh geometry or a shape of the Add menu.';
+const NEEDS_NO_MODIFIERS = 'Edit mode does not work on a mesh with modifiers yet. Add a plain shape from the Mesh group and edit that, or have the modifiers applied first.';
 const LOG_IS_FULL = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take another move.`;
 const TOO_MANY_VERTICES = `Moving more than ${MAX_MASK_VERTICES} vertices that are not whole faces is not possible yet; select whole faces or fewer vertices.`;
 const MESH_CHANGED = 'Edit mode ended because this object uses a different mesh now.';
@@ -172,6 +172,21 @@ function logsShareTheirPrefix(first, second) {
   return true;
 }
 
+// The shapes of the Add menu's Mesh group turn into a mesh on the first Tab. A box and a cylinder lose their bevel on the way:
+// as a mesh the bevel is hundreds of tiny faces (a box of 6 faces becomes 1,482), which nobody can pick one by one. A written 0 is
+// needed: without a bevel field the shape builds with its default one.
+// A plane is written back by the recipe as a grid.
+const CONVERTIBLE_PRIMITIVES = new Set(['plane', 'grid', 'box', 'circle', 'sphere', 'icoSphere', 'cylinder', 'cone', 'torus']);
+const PRIMITIVES_WITHOUT_BEVEL = new Set(['box', 'cylinder']);
+
+/** The mesh geometry a shape becomes in edit mode: its own description as the base, or null for a geometry that is no such shape. */
+export function meshGeometryOfPrimitive(geometrySpec) {
+  if (!geometrySpec || !CONVERTIBLE_PRIMITIVES.has(geometrySpec.type)) return null;
+  const { id, ...base } = structuredClone(geometrySpec);
+  if (PRIMITIVES_WITHOUT_BEVEL.has(base.type)) base.bevel = 0;
+  return { type: 'mesh', base };
+}
+
 function uniqueGeometryId(recipe, wanted) {
   const taken = new Set((recipe.geometries ?? []).map(geometry => geometry.id));
   let candidate = wanted;
@@ -202,16 +217,28 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return recipe.geometries?.find(candidate => candidate.id === node?.geometry) ?? null;
   }
 
-  function refusalFor(geometrySpec) {
-    if (!geometrySpec || geometrySpec.type !== 'mesh') return NEEDS_A_MESH;
+  // What a person can do instead is in each sentence: edit mode runs on a mesh, or on a shape of the Add menu that turns into one.
+  function kindOfObjectWithoutGeometry(recipe, nodeId) {
+    const node = recipe.nodes.find(candidate => candidate.id === nodeId);
+    if (!node) return recipe.lights?.some(light => light.id === nodeId) ? 'a light' : 'not an object of the scene';
+    if (node.asset) return 'an imported file';
+    if (recipe.nodes.some(candidate => candidate.parent === nodeId)) return 'a group';
+    return 'an empty object';
+  }
+
+  function refusalFor(geometrySpec, recipe, nodeId) {
+    if (!geometrySpec) return `This object is ${kindOfObjectWithoutGeometry(recipe, nodeId)}, which has no mesh to edit. Select a shape or a mesh.`;
     if ((geometrySpec.stack ?? []).length > 0) return NEEDS_NO_MODIFIERS;
+    if (geometrySpec.type === 'text') return 'Text cannot be edited as a mesh yet. Change its words in the properties panel, or add a shape from the Mesh group.';
+    if (geometrySpec.type !== 'mesh' && !CONVERTIBLE_PRIMITIVES.has(geometrySpec.type)) return NEEDS_A_MESH;
     return null;
   }
 
   function loadCage(nodeId, selectedBefore) {
     const geometrySpec = geometrySpecOf(controller.exportRecipe(), nodeId);
-    const refusal = refusalFor(geometrySpec);
+    const refusal = refusalFor(geometrySpec, controller.exportRecipe(), nodeId);
     if (refusal) return refusal;
+    if (geometrySpec.type !== 'mesh') return NEEDS_A_MESH;
     const part = controller.scene.parts.find(candidate => candidate.name === nodeId);
     const source = part ? meshEditSourceOf(part.geometry) : null;
     if (!source) return NEEDS_A_MESH;
@@ -240,28 +267,36 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return null;
   }
 
-  // A geometry another node uses is copied for this node first: the preview writes into the geometry's buffers, and the edit
-  // log belongs to the geometry, so the twin would move too.
-  function giveNodeItsOwnGeometry(nodeId) {
+  // The geometry of the node becomes a mesh of its own before the first edit, in one scene change (one undo step). A geometry
+  // another node uses is copied: the preview writes into the geometry's buffers and the edit log belongs to the geometry, so the
+  // twin would move too. A shape becomes the mesh of its own description; the shape itself goes when nothing else uses it.
+  function giveNodeItsOwnMesh(nodeId) {
     const recipe = controller.exportRecipe();
     const node = recipe.nodes.find(candidate => candidate.id === nodeId);
-    const sharing = recipe.nodes.filter(candidate => candidate.geometry === node.geometry).length > 1;
-    if (!sharing) return;
     const spec = recipe.geometries.find(candidate => candidate.id === node.geometry);
-    const ownId = uniqueGeometryId(recipe, `${spec.id}-${nodeId}`);
-    controller.applyImportOperations(
-      [{ type: 'add-geometry', geometry: { ...structuredClone(spec), id: ownId } }, { type: 'set-node', id: nodeId, geometry: ownId }],
-      { detail: { kind: 'topology', nodeId } },
-    );
+    const sharing = recipe.nodes.filter(candidate => candidate.geometry === node.geometry).length > 1;
+    const converted = meshGeometryOfPrimitive(spec);
+    if (!sharing && !converted) return;
+    const ownId = uniqueGeometryId(recipe, converted ? `${spec.id}-mesh` : `${spec.id}-${nodeId}`);
+    const ownGeometry = converted ?? structuredClone(spec);
+    const operations = [{ type: 'add-geometry', geometry: { ...ownGeometry, id: ownId } }, { type: 'set-node', id: nodeId, geometry: ownId }];
+    if (converted && !sharing) operations.push({ type: 'remove-geometry', id: spec.id });
+    controller.applyImportOperations(operations, { detail: { kind: 'topology', nodeId } });
+  }
+
+  // The mesh the node would become on Tab, or null: Studio loads the code that builds it before it calls enter().
+  function conversionOf(nodeId) {
+    return meshGeometryOfPrimitive(geometrySpecOf(controller.exportRecipe(), nodeId));
   }
 
   function enter() {
     if (state) return { ok: true };
     const nodeId = controller.selectedNodeId;
     if (!nodeId) return refuse('Select a mesh to edit it.');
-    const refusal = refusalFor(geometrySpecOf(controller.exportRecipe(), nodeId));
+    const recipe = controller.exportRecipe();
+    const refusal = refusalFor(geometrySpecOf(recipe, nodeId), recipe, nodeId);
     if (refusal) return refuse(refusal);
-    giveNodeItsOwnGeometry(nodeId);
+    giveNodeItsOwnMesh(nodeId);
     const loadFailure = loadCage(nodeId, []);
     if (loadFailure) return refuse(loadFailure);
     controller.setTool('translate');
@@ -576,7 +611,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       const edit = planMeshMove(state.mesh, vertices, localDelta);
       controller.applyImportOperations([{ type: 'edit-mesh', geometry: geometryId, edits: [edit] }], { detail: { kind: 'topology', nodeId } });
     } catch (error) {
-      announce(error.message);
+      announce(error);
     }
     refresh();
     writingOwnEntry = false;
@@ -590,9 +625,27 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     cancel: cancelDrag,
   };
 
+  function sceneStillHoldsDraggedPart() {
+    return controller.selectedNodeId === state.nodeId && controller.scene.parts.find(candidate => candidate.name === state.nodeId) === state.part;
+  }
+
+  function cancelRunningDrag() {
+    if (controller.dragging) {
+      controller.cancelGizmoDrag();
+    } else {
+      cancelDrag();
+    }
+  }
+
   /** Reads the cage again after the scene changed under it (undo, redo, a load); the selection stays while its indices still fit. */
   function refresh() {
-    if (!state || drag) return;
+    if (!state) return;
+    if (drag) {
+      // A drag keeps its cage while the scene under it is the same one it began on. An undo, a redo or a load that replaced or
+      // removed the edited geometry puts the drag away first, then the cage is read again (or edit mode ends) below.
+      if (!sceneStillHoldsDraggedPart()) cancelRunningDrag();
+      if (drag) return;
+    }
     if (controller.selectedNodeId !== state.nodeId) {
       leave();
       return;
@@ -607,6 +660,25 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       announce(loadFailure);
       leave();
     }
+  }
+
+  /**
+   * How far the picked element reaches from the move handles' centre on screen, in pixels (0 for one vertex or nothing picked).
+   * The handles read it to leave that much of the middle clear, so the picked element stays in view.
+   */
+  function selectionScreenRadius() {
+    const vertices = selectedVertices();
+    const centre = selectionCentreWorld();
+    if (!centre || vertices.size === 0) return 0;
+    const project = controller.worldPointProjector();
+    const middle = project(centre);
+    let reach = 0;
+    for (const vertex of vertices) {
+      const world = transformPoint(state.part.matrix, state.positions[vertex * 3], state.positions[vertex * 3 + 1], state.positions[vertex * 3 + 2]);
+      const point = project(world);
+      if (point.visible) reach = Math.max(reach, Math.hypot(point.x - middle.x, point.y - middle.y));
+    }
+    return reach;
   }
 
   // The stroke and fill of these paths come from the stylesheet (`--studio-*` tokens), so the cage follows the theme. `layer` says
@@ -687,6 +759,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     get nodeId() { return state?.nodeId ?? null; },
     get selection() { return state ? { mode: state.mode, indices: [...state.selected].sort((first, second) => first - second) } : null; },
     get cage() { return state ? { positions: state.positions, mesh: state.mesh, tooLarge: state.tooLarge, editCount: state.editCount } : null; },
+    conversionOf,
     enter,
     leave,
     setMode,
@@ -694,6 +767,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     pick,
     refresh,
     cagePaths,
+    selectionScreenRadius,
     draw,
   });
 }
