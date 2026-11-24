@@ -1,0 +1,61 @@
+{
+  "file": "classroom-single-map-before-095fac785.png",
+  "sha": "095fac785",
+  "base": "origin/main 095fac785",
+  "size": [
+    960,
+    540
+  ],
+  "backend": "Crucible WebGL2 headless Chrome, render-media --scene file, samples per recipe",
+  "seed": "none (deterministic raster)",
+  "recipe": {
+    "id": "classroom",
+    "glb": "scene-before.glb",
+    "hdri": "sky.hdr",
+    "hdriOptions": {
+      "intensity": 1,
+      "showBackground": true,
+      "backgroundBlur": 0
+    },
+    "gltfOptions": {
+      "maxTexturePixels": 33554432
+    },
+    "exposure": 1,
+    "eye": [
+      2.5764,
+      1.0945,
+      4.4658
+    ],
+    "target": [
+      0.962,
+      1.1662,
+      -1.7321
+    ],
+    "renderer": {
+      "ground": false,
+      "world": false,
+      "hdr": true,
+      "samples": 8,
+      "pixelRatio": 1,
+      "memoryBudgetMiB": 3072
+    },
+    "frame": {
+      "fov": 39.6,
+      "near": 0.05,
+      "far": 2000,
+      "exposure": 1,
+      "effects": {
+        "saturation": 1.05,
+        "contrast": 1.05,
+        "vignette": 0.15
+      }
+    }
+  },
+  "sun": "lightDirection [0.874, 0.479, 0.082] from the GLB sun",
+  "singleShadowMap": true,
+  "rmseVsReference": 49.56,
+  "rightWallLuma": {
+    "rightWallPatch": 204,
+    "wide620to790": 175
+  }
+}

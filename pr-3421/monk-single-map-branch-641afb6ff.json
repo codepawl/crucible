@@ -1,0 +1,60 @@
+{
+  "file": "monk-single-map-branch-641afb6ff.png",
+  "sha": "641afb6ff",
+  "base": "origin/main 095fac785",
+  "size": [
+    960,
+    540
+  ],
+  "backend": "Crucible WebGL2 headless Chrome, render-media --scene file, samples per recipe",
+  "seed": "none (deterministic raster)",
+  "recipe": {
+    "id": "monk",
+    "glb": "scene.glb",
+    "hdri": "sky.hdr",
+    "hdriOptions": {
+      "intensity": 1,
+      "showBackground": true,
+      "backgroundBlur": 0
+    },
+    "gltfOptions": {
+      "maxTexturePixels": 33554432
+    },
+    "exposure": 0.25,
+    "eye": [
+      14,
+      1.6,
+      -14
+    ],
+    "target": [
+      20,
+      1.8,
+      -19.5
+    ],
+    "renderer": {
+      "ground": false,
+      "world": false,
+      "hdr": true,
+      "samples": 4,
+      "pixelRatio": 1,
+      "memoryBudgetMiB": 3072,
+      "environment": {
+        "sunAngularRadius": 0.008726646192371845
+      },
+      "shadowCascades": 0
+    },
+    "frame": {
+      "fov": 55.79454206189527,
+      "near": 0.05,
+      "far": 2000,
+      "exposure": 0.25,
+      "effects": {
+        "saturation": 1.05,
+        "contrast": 1.05,
+        "vignette": 0.15
+      }
+    }
+  },
+  "sun": "written by the scene (extent 45.25)",
+  "singleShadowMap": true
+}
