@@ -15,7 +15,7 @@ The scene fills the window and the controls float on top of it.
 | Top left | The menus. **File**: open, save, the recipe JSON, the three exports and the starting scenes. **Edit**: undo, redo, copy, paste, duplicate, delete, deselect and Settings. **View**: front, right and top view, perspective or orthographic, frame the selection, the grid and the panels. **Agent**: copy a prompt for an AI agent and reload when it edits the file. **Help**: the keyboard shortcuts. Each row shows its key. |
 | Top centre | The workspaces, in the order the work runs: **Build** (objects and their place), **Look** (materials, lighting, sun, exposure, fog) and **Animate** (camera, lens, shots and the timeline). Each one shows only the panels its step needs. Opening a panel from anywhere, or adding a keyframe, brings its workspace forward. A workspace is a way of looking at the scene: it is not saved in the recipe and undo does not touch it. |
 | Top right | The file name, which opens the File menu, and **Export** (PNG image, GLB model, web pack). A green dot beside the name means Studio reloads the file when an agent edits it. |
-| Left rail | The tools that change the scene come first: select, move, rotate, scale, snap to a surface, then add an object or a light, undo and redo. Under one line sit the switches that only change what you see: show or hide the grid, show or hide the panels. |
+| Left rail | The tools that change the scene come first: select, move, rotate, scale, then the snapping magnet and its target menu, then add an object or a light, undo and redo. Under one line sit the switches that only change what you see: show or hide the grid, show or hide the panels. |
 | Scene card | At the top of the right column, across from the rail. The list shows whole rows only: it scrolls a row at a time and the rows stretch by a pixel or two so a whole number of them fills it. The materials are one row of swatches that scrolls sideways, with the add button fixed beside it. Its head has a search button, which opens a box that filters the list as you type (Esc closes it and clears the filter), and an add button with the same menu as the rail. Every object in the scene, drawn as the shape of its geometry (cube, sphere, cylinder, cone, torus, plane, or a stack for a group) in the colour of its material, an eye to hide each one, and the scene materials as swatches. |
 | Properties | Under the Scene card, in the same column. The panels of the open workspace: the object in Build, material and look in Look, the camera (views, lens, shots) in Animate, with the object one tab away: picking an object there opens its panel and stays in Animate. |
 | Bottom, in Animate | Play, add a keyframe, switch Auto-key, scrub the time, jump to a saved shot. The selected object's keys are diamonds on the scrub track: click one to select it and move the playhead there, drag it or press Left and Right (Shift for finer) to retime it, Delete to remove that key. The readout moves up to make room for it, and floating panels stop above it. |
@@ -34,9 +34,21 @@ When the browser drops the WebGL context, Studio pauses the picture, shows a not
 
 Each tool has its own handle shape, so the shape says what a drag will do: arrows move, rings turn, squares scale. A handle does not have to be hit exactly: a press within about 11 pixels of an axis or ring, or 16 pixels of its tip, takes it. The handles follow the object, not the camera: the three axes are the object's own X, Y and Z, so a turned object moves along the way it faces. The handles have no border at rest; the one under the pointer grows thicker and brighter and gets a pale border, so you see what a press will grab. An axis that points almost at the camera is drawn longer, so it never shrinks to a stub you cannot catch.
 
-- **Move** drags the object exactly as far as the pointer travels along the axis. Hold Shift to move in steps (0.25 m unless you change it in Settings). While you drag, a dashed outline stays where the object was and a dashed line runs from there to where it is now; scale and rotate drags keep the outline too. The dashed lines are pale with a dark border, so they show over a pale object and over the dark ground. A new object lands on the ground beside the ones already there, not inside them.
-- **Rotate** turns the object by the angle the pointer sweeps on the ring. Hold Shift to turn in steps (15 degrees unless you change it in Settings). While you drag, the other two rings leave, a dashed spoke stays where the drag began, a solid spoke follows the object, and a faint wedge between them fills the angle turned so far. A turn can go past half a circle and keeps counting.
-- **Scale** on an axis handle scales by how far you pull it: twice the distance doubles that axis. The centre handle scales all three.
+- **Move** drags the object exactly as far as the pointer travels along the axis. Turn snapping on to move in steps (0.25 m unless you change it in Settings). While you drag, a dashed outline stays where the object was and a dashed line runs from there to where it is now; scale and rotate drags keep the outline too. The dashed lines are pale with a dark border, so they show over a pale object and over the dark ground. A new object lands on the ground beside the ones already there, not inside them.
+- **Rotate** turns the object by the angle the pointer sweeps on the ring. With snapping on it turns in steps (15 degrees unless you change it in Settings). While you drag, the other two rings leave, a dashed spoke stays where the drag began, a solid spoke follows the object, and a faint wedge between them fills the angle turned so far. A turn can go past half a circle and keeps counting.
+- **Scale** on an axis handle scales by how far you pull it: twice the distance doubles that axis. The centre handle scales all three. With snapping on the factor moves in steps of 0.1.
+
+### Snapping
+
+Snapping is a state, as in Blender, not a tool. The **magnet** on the left rail, under the tools, turns it on and off; it is filled and tinted while snapping is on. The button under it names what snapping snaps to and opens a menu of the targets: **Increment**, **Vertex** and **Face**. One target is active at a time. Picking a target also turns snapping on. Shift+Tab does the same as the magnet (only while the page or the canvas has the keyboard, so Tab still moves between controls everywhere else), and holding **Ctrl** during a drag or a G, R or S move flips snapping for that move, live, in both directions: snapping on and Ctrl held moves freely, snapping off and Ctrl held snaps. The switch and the target are kept between visits like the other preferences, and **Settings ▸ Reset** puts them back to off and Increment. Move, rotate and scale obey the one state, by handle and by key.
+
+- **Increment** puts a move on the step of Settings (0.25 m by default). A move along an axis steps the distance travelled from where it began; a move in a plane or the free move of the centre handle puts the position itself on the grid. A turn lands on the angle of Settings (15 degrees by default) and a scale on steps of 0.1 times the size it began at. Rotate and scale use these steps whatever the target is.
+- **Vertex** lands the moved object on a vertex of another object. Move the pointer within 12 pixels of one and a ring marks it; the vertex of the moved object nearest to it lands there. It works on the free move (the centre handle, or G with no axis key). At most 48 parts nearest the pointer on screen are searched and at most 20,000 of their vertices are projected (taken evenly when there are more), and up to 512 vertices of the moved object are tried, so a heavy scene stays responsive.
+- **Face** drops the moved object on the surface under the pointer, resting on it along the surface normal. It works on the free move too. This is what the old Snap tool did: Move with the Face target on is that tool.
+
+When nothing is in reach (no vertex within 12 pixels, no surface under the pointer) the move stays free. With several objects selected they move together: the active object is the one that snaps, and the rest keep their offsets. Rotate and scale act on the active object. In edit mode a move of vertices, edges or faces obeys Increment; the Vertex and Face targets leave it free for now (see [Studio and Blender](https://github.com/codepawl/crucible/blob/main/docs/studio-blender-parity.md)).
+
+Shift no longer does anything during a drag: it used to snap to a step, which is now what the magnet does.
 
 One drag is one undo step, and undo leaves the viewport camera where you put it. Undo and redo of an edit, of adding or duplicating an object, and of deleting one change the scene already built instead of building it again, so a large scene stays responsive. That holds for putting a deleted object back into the middle of the list and for undoing a lens change too.
 
@@ -108,7 +120,8 @@ The keys follow Blender where Studio has the same action. **Help ▸ Keyboard sh
 
 | Key | Action |
 | --- | --- |
-| Q, T | Select, snap to a surface |
+| Q | Select |
+| Shift+Tab | Snapping on or off. Ctrl held during a drag flips it for that drag |
 | G, R, S | Pick the selected object up to move, rotate or scale it |
 | X, Y, Z | While holding an object: keep it to that axis; the same key again frees it |
 | Click or Enter, Esc or right click | While holding an object: place it, put it back |
@@ -154,7 +167,7 @@ A right click on an object, in the viewport or in the Scene list, selects it and
 | Move | G | W | E |
 | Rotate | R | E | R |
 | Scale | S | R | T |
-| Snap to a surface | T | J | Shift+S |
+| Snapping on or off | Shift+Tab | J | Shift+S |
 | Duplicate | Shift+D, Ctrl+D | Ctrl+D | Shift+D, Ctrl+D |
 | Delete | X, Delete, Backspace | Delete, Backspace | Backspace, Delete |
 | Undo | Ctrl+Z | Ctrl+Z | Ctrl+Z |
@@ -176,7 +189,7 @@ Maya and Cinema 4D also take **Alt** with a mouse button on the viewport: Alt an
 
 ## Settings
 
-**Edit ▸ Settings** (Ctrl+,) opens Settings: the step and the angle a Shift drag snaps to, the size of the handles, the workspace Studio opens in, the theme (System, Light or Dark), the performance tier, the keys (Blender, Maya or Cinema 4D), and whether the grid, the readout, the axis widget and the agent cursor show. They are kept in the browser (`localStorage`, key `crucible-studio-preferences`), not in the scene recipe, so a scene looks the same for everyone and each person keeps their own setup. **Reset** brings back the defaults. An app can pass `preferences` to `createStudio` to start from other values, `preferenceStorage: null` to keep nothing, and call `studio.setPreference(name, value)`.
+**Edit ▸ Settings** (Ctrl+,) opens Settings: the step and the angle a snapping move or turn lands on, the size of the handles, the workspace Studio opens in, the theme (System, Light or Dark), the performance tier, the keys (Blender, Maya or Cinema 4D), and whether the grid, the readout, the axis widget and the agent cursor show. They are kept in the browser (`localStorage`, key `crucible-studio-preferences`), not in the scene recipe, so a scene looks the same for everyone and each person keeps their own setup. **Reset** brings back the defaults. An app can pass `preferences` to `createStudio` to start from other values, `preferenceStorage: null` to keep nothing, and call `studio.setPreference(name, value)`.
 
 **Theme** forces the Studio light or dark whatever the system says; System follows the system. The dialogs and menus follow it too. An app that wants to theme its own frame passes `onThemeChange(theme)` to `createStudio`; it is called with `'light'` or `'dark'` at the start and on each change.
 
@@ -382,7 +395,7 @@ Entries are recorded only while the Studio exists: `dispose()` removes every lis
 
 ## Headless controller for tools and tests
 
-Import `createStudioController` to drive picking, gizmo drags, surface snapping, look edits and camera bookmarks without DOM rendering.
+Import `createStudioController` to drive picking, gizmo drags, snapping, look edits and camera bookmarks without DOM rendering.
 
 ```js
 import { createAgentScene } from 'crucible/addons/agent-scene';
@@ -406,7 +419,7 @@ The object `createStudio` returns has the same calls for a host page: `studio.se
 ## What Studio edits in the recipe
 
 1. Viewport clicks and gizmo drags emit deterministic `set-node` updates on `translation`, `rotation` and `scale`, measured along the object's own axes.
-2. Surface snap (`Snap` mode or Alt-click) raycasts against other scene parts and offsets the node along the surface normal.
+2. The Face snap target raycasts against other scene parts and offsets the node along the surface normal; `setInteractionSettings({ snapEnabled, snapTarget })` turns snapping on and picks the target, and `updateGizmoDrag(x, y, { ctrlKey })` flips it for one move.
 3. Material and look controls update the active material, `environment` and `effects` sections directly. The Material tab has colour, roughness, metallic, clearcoat, clearcoat roughness, opacity, emission, glow colour and a Double sided switch.
 4. Saved camera bookmarks read and write named shots in `recipe.timeline.shots`.
 5. Every change exports cleanly with `exportRecipe()` so AI agents can continue from the same scene revision.
