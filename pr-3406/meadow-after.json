@@ -1,0 +1,66 @@
+{
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "ground",
+        "type": "terrain",
+        "size": 30,
+        "resolution": 48,
+        "seed": 3,
+        "amplitude": 0.15
+      }
+    ],
+    "materials": [
+      {
+        "id": "soil",
+        "color": [
+          0.2,
+          0.15,
+          0.1
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "id": "hills",
+        "geometry": "ground",
+        "material": "soil"
+      },
+      {
+        "id": "field",
+        "grass": {
+          "ground": "hills",
+          "preset": "meadow",
+          "height": [
+            0.25,
+            0.6
+          ],
+          "density": 200,
+          "seed": 4,
+          "cullDistance": 30
+        }
+      }
+    ],
+    "camera": {
+      "eye": [
+        0,
+        0.9,
+        5
+      ],
+      "target": [
+        0,
+        0.2,
+        0
+      ],
+      "fov": 45
+    }
+  },
+  "size": [
+    960,
+    540
+  ],
+  "backend": "gpu",
+  "checkout": "."
+}
