@@ -1,0 +1,59 @@
+{
+ "region_px": 2148,
+ "glaze_total": {
+  "lum": 0.0441,
+  "chroma": [
+   0.944,
+   0.984,
+   1.072
+  ],
+  "px": 2148
+ },
+ "tracer_total": {
+  "lum": 0.0601,
+  "chroma": [
+   0.968,
+   0.981,
+   1.051
+  ],
+  "px": 2148
+ },
+ "glaze_reflection": {
+  "lum": 0.0077,
+  "chroma": [
+   0.97,
+   0.94,
+   1.09
+  ],
+  "px": 2148
+ },
+ "tracer_reflection": {
+  "lum": 0.0136,
+  "chroma": [
+   1.044,
+   0.949,
+   1.008
+  ],
+  "px": 2148
+ },
+ "road_pixels_in_crop_reflection_only": {
+  "glaze": {
+   "lum": 0.0614,
+   "chroma": [
+    0.905,
+    0.903,
+    1.192
+   ],
+   "px": 531
+  },
+  "tracer": {
+   "lum": 0.1674,
+   "chroma": [
+    1.065,
+    0.957,
+    0.978
+   ],
+   "px": 531
+  }
+ }
+}

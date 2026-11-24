@@ -1,0 +1,16 @@
+{
+ "frames": {
+  "rim lower right": {
+   "mean": 0.982,
+   "p99": 5.0
+  },
+  "rim far left": {
+   "mean": 0.829,
+   "p99": 6.0
+  },
+  "rim whole puddle": {
+   "mean": 0.696,
+   "p99": 5.0
+  }
+ }
+}
