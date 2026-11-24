@@ -517,6 +517,9 @@ uniform float fillIntensity;
 uniform float ambientIntensity;
 // environment.ambientColor: a diffuse fill that fades where the key light reaches the surface, so it tints shadow and leaves lit ground alone.
 uniform vec3 ambientColor;
+// environment.ambientColor's ground colour minus its sky colour (zero for one colour), and environment.ambientMix: how much of the environment's diffuse light the flat colour replaces.
+uniform vec3 ambientGroundDelta;
+uniform float ambientMix;
 uniform float specularAntiAliasing;
 const float MAXIMUM_SPECULAR_WIDENING = 0.25;
 uniform vec3 fogColor;
@@ -964,8 +967,8 @@ ${featureCode("mainSetup")}  if (ENVIRONMENT_ENABLED && !LIGHT_SHADING) {
   vec3 shadowTint = (USES_TINTED_SHADOWS && shadowBlind < 0.5 && tintBlind < 0.5) ? tintedShadowTransmittance(normal) : vec3(1.0);
 ${featureCode("worldVisibility")}  vec3 radiance = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility * shadowTint${featureCode("linkSun")}, color, metallic, roughness);
   if (FILL_ON) {
-  radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), mix(vec3(0.8, 2.0, 1.8), vec3(0.12, 0.17, 0.20) * daylight, worldMode) * fillIntensity * mix(1.0, vertexSkyVisibility, worldMode), color, metallic, roughness);
-  radiance += illuminate(normal, viewDirection, normalize(vec3(1.0, 2.0, 5.0)), vec3(0.6, 0.7, 0.8) * mix(1.0, 0.25 * daylight, worldMode) * fillIntensity * mix(1.0, vertexSkyVisibility, worldMode), color, metallic, roughness);
+  radiance += illuminate(normal, viewDirection, normalize(vec3(4.0, 2.0, -3.0)), mix(fillLightColors[0].rgb, vec3(0.12, 0.17, 0.20) * daylight, worldMode) * fillIntensity * mix(1.0, vertexSkyVisibility, worldMode), color, metallic, roughness);
+  radiance += illuminate(normal, viewDirection, normalize(vec3(1.0, 2.0, 5.0)), fillLightColors[1].rgb * mix(1.0, 0.25 * daylight, worldMode) * fillIntensity * mix(1.0, vertexSkyVisibility, worldMode), color, metallic, roughness);
   }
   for (int index = 0; index < ${MAX_POINT_LIGHTS}; index++) {
     if (index >= pointLightCount) break;
@@ -1038,9 +1041,12 @@ ${featureCode("areaRadiance")}      radiance += illuminate(normal, viewDirection
   float skyReflection = canopyShaded ? 0.3 : 1.0;
   vec3 reflected = reflect(-viewDirection, specularNormal);
 ${featureCode("probeReflection")}${featureCode("irradianceGridOcclusion")}  if (ENVIRONMENT_ENABLED) {
-    radiance += environmentLighting(normal, specularNormal, baseReflectance, viewDirection, reflected, color, metallic, roughness, occlusion, ambientIntensity, skyReflection);
+    // color * (1 - ambientMix) leaves the reflections alone and takes that share off the environment's diffuse light.
+    radiance += environmentLighting(normal, specularNormal, baseReflectance, viewDirection, reflected, color * (1.0 - ambientMix), metallic, roughness, occlusion, ambientIntensity, skyReflection);
     float keyReach = visibility * smoothstep(0.0, 0.12, dot(normal, normalize(lightDirection))) * step(0.003, dot(keyColor, vec3(1.0)));
-    radiance += ambientColor * color * (1.0 - metallic) * occlusion * ambientIntensity * (1.0 - keyReach);
+    vec3 flatAmbient = ambientColor + ambientGroundDelta * (0.5 - 0.5 * normal.y);
+    // ambientMix 0 fades the flat light where the key reaches; above 0 it also stands in for the environment's diffuse light, sunlit or not.
+    radiance += flatAmbient * color * (1.0 - metallic) * occlusion * ambientIntensity * mix(1.0 - keyReach, 1.0, ambientMix);
     if (USES_ALPHA_MODE) blendSpecular += environmentLighting(normal, specularNormal, baseReflectance, viewDirection, reflected, vec3(0.0), metallic, roughness, occlusion, ambientIntensity, skyReflection);
   } else {
     // Outdoors the surroundings are sky and haze; reflecting the studio softboxes there lit grazing leaves white and cyan.
