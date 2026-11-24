@@ -74,13 +74,13 @@ Under **Evidence**, show what changed from old to new. This applies to every pul
 - For a change that can be measured, give the numbers before and after: frame time, load time, bundle bytes, memory, a quality score or the bench table.
 - If nothing can be seen or measured, write one line that says so, such as "Nothing to see or measure: an internal rename."
 
-Drag pictures and clips into the description box on GitHub. A coding agent that cannot upload pushes them to a branch named `evidence-pr-<number>` and links the raw file URLs. One command does it without touching your working tree, index or branch, and prints the Markdown image lines to paste:
+Drag pictures and clips into the description box on GitHub. A coding agent that cannot upload pushes them to the one branch named `evidence` and links the raw file URLs (`https://raw.githubusercontent.com/codepawl/crucible/evidence/pr-<number>/<name>`). One command does it without touching your working tree, index or branch, and prints the Markdown image lines to paste:
 
 ```sh
 node scripts/push-evidence.mjs 1234 artifacts/before.png artifacts/after.png
 ```
 
-Files land at `pr-1234/<name>` on `evidence-pr-1234`; files already there stay. Pictures and clips (png, jpg, gif, webp, mp4, webm) up to 20 MB, from inside the repository or the temp folder. Add `--dry-run` to see the links first. Put the same picture or clip in the change note when the change is visible.
+Files land at `pr-1234/<name>` on `evidence`; the first push creates the branch, later pushes add on top of its tip (a push that loses a race is rebuilt and retried), and other pull requests' folders and files already there stay. The old `evidence-pr-<number>` branches stay as they are. Pictures and clips (png, jpg, gif, webp, mp4, webm) up to 20 MB, from inside the repository or the temp folder. Add `--dry-run` to see the links first. Put the same picture or clip in the change note when the change is visible.
 
 For a look or feature change, one command renders the scene on the branch (and on `origin/main` with `--base`), writes labelled side-by-side stills and a clip with a JSON sidecar per file under `artifacts/<issue>/`, measures every frame and prints a PASS or FAIL checklist (also in `checks.json`): subject fully in frame with a margin, no blown highlights or crushed shadows, and no single-frame jump over 5 levels in luma or saturation over every frame of a clip (a smaller step above 3 times the median is printed as a note, not a failure). Paste the checklist into the pull request and push the pictures with the command above:
 
@@ -177,6 +177,10 @@ Name the task ids you ran in the pull request (`--dry-run` lists them). Skipped 
 ### Look changes
 
 A change to shaders, lighting, materials, the default render or a post step changes how every scene looks. Add a before and an after picture to the pull request. Run every picture and clip through `node scripts/check-preview.mjs <file> [--reference <Cook or Cycles still>]` before you send it for review, and fix what it fails ([docs/check-preview.md](docs/check-preview.md)). A bot adds the label `hold:look-approval`. Only the owner removes it, and nothing with that label merges. Once the owner removes it, the check counts the look as approved and stops asking for pictures. A file named like a look file that only gains a thrown message or an input check (every changed line is a throw, its guard, a comment or a plain `const`) is not counted as a look change. A maintainer (owner, member or collaborator) whose change touches a look file without changing a pixel, such as a compile fix, a refactor or a test, writes "The look is unchanged." in the description, and the bot adds no hold and asks for no picture. Outside pull requests keep the hold.
+
+### Studio changes
+
+State the interaction form of a Studio feature (tool, toggle, mode, operator, modifier, setting or panel) and the reason it fits, in the pull request, and add or update the feature's row in [docs/studio-interaction-forms.md](docs/studio-interaction-forms.md), which defines the seven forms. `tests/studio-interaction-forms.test.js` fails when a tool of the Studio rail has no row with the form `tool`, when a row uses a word outside the list, or when a reason is empty.
 
 ### Who runs the GPU and person checks
 

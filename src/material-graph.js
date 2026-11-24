@@ -642,7 +642,9 @@ function compileWhiteNoise(node, state, depth) {
   return output === 'color' ? vectorValue(channel(1), channel(2), channel(3)) : scalarValue(channel(0));
 }
 
-const IMAGE_OUTPUTS = ['color', 'alpha'];
+const IMAGE_OUTPUTS = ['color', 'alpha', 'r', 'g', 'b', 'luminance'];
+const IMAGE_DATA_CHANNELS = { r: 0, g: 1, b: 2, alpha: 3 };
+const LUMINANCE_WEIGHTS = [0.2126, 0.7152, 0.0722];
 const IMAGE_COST = 1000;
 const IMAGE_ASSET_PATTERN = /^[a-f0-9]{64}$/;
 
@@ -689,13 +691,19 @@ function compileImage(node, state, depth) {
   const asset = typeof settings.asset === 'string' ? settings.asset.toLowerCase() : settings.asset;
   if (typeof asset !== 'string' || !IMAGE_ASSET_PATTERN.test(asset)) throw graphError('image asset must be the 64 hexadecimal characters of a catalog image asset ID; scene_asset_catalog lists them. Remote URLs are not accepted.');
   const output = oneOf(settings.output ?? 'color', IMAGE_OUTPUTS, 'image output');
+  const isNumberOutput = output !== 'color';
   state.cost += IMAGE_COST;
   const [positionU, positionV] = compilePosition(settings, state, depth);
   const image = state.images ? state.images.get(asset) : null;
   if (state.images && !image) throw graphError(`image ${asset.slice(0, 12)} was not loaded. The host decodes catalog images before the scene is created.`);
-  if (!image) return output === 'alpha' ? scalarValue(() => 0) : vectorValue(() => 0, () => 0, () => 0);
+  if (!image) return isNumberOutput ? scalarValue(() => 0) : vectorValue(() => 0, () => 0, () => 0);
   const at = (channel, decode) => (u, v) => sampleImageChannel(image, positionU(u, v), positionV(u, v), channel, decode);
-  if (output === 'alpha') return scalarValue(at(3, byte => byte / 255));
+  const dataValue = byte => byte / 255;
+  if (output === 'luminance') {
+    const channels = LUMINANCE_WEIGHTS.map((weight, channel) => ({ weight, read: at(channel, dataValue) }));
+    return scalarValue((u, v) => channels.reduce((sum, { weight, read }) => sum + weight * read(u, v), 0));
+  }
+  if (isNumberOutput) return scalarValue(at(IMAGE_DATA_CHANNELS[output], dataValue));
   return vectorValue(at(0, srgbToLinear), at(1, srgbToLinear), at(2, srgbToLinear));
 }
 

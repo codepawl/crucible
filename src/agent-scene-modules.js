@@ -39,6 +39,7 @@ const MODULE_LOADERS = {
   volumeEmissionMask: () => import('./volume-emission-mask.js'),
   retroShader: () => import('./retro-shader.js'),
   glitterShader: () => import('./glitter-shader.js'),
+  surfaceCover: () => import('./surface-cover.js'),
   worldMaterials: () => import('./world-material-shader.js'),
   terrain: () => import('./agent-terrain.js'),
   floorPlan: () => import('./agent-floor-plan.js'),
@@ -125,6 +126,7 @@ const MODULE_MARKERS = {
   subsurfaceShader: ['"subsurface"'],
   retroShader: ['"retro"'],
   glitterShader: ['"waterGlint"'],
+  surfaceCover: ['"surfaceCover"'],
   // Any mention loads it, because an edit can set the density through a path or the environment of an operation.
   fogShader: ['volumeFog', 'localVolumes', '"add-explosion"'],
   // A volume that casts a shadow draws the emission of the parts it covers apart from the dimmed light (#1360); loaded up front, the first frame already has it.
@@ -164,7 +166,7 @@ const MODULE_MARKERS = {
   volumeRamp: ['"emissionRamp"'],
   // Only a motionBlur object that sets a non-zero `objects` loads it; the common `"shutter":0` look does not.
   objectMotionBlur: [/"motionBlur":\{[^}]*"objects":(?!0[,}])/],
-  postSteps: [/"(?:colorBalance|colorCorrection|sunRays|glare|lensDistortion|stylize|composite|localToneMapping|autoExposure)"|"(?:distortion|flash)":[\[{]|"add-explosion"/],
+  postSteps: [/"(?:colorBalance|colorCorrection|sunRays|glare|lensDistortion|stylize|composite|localToneMapping|autoExposure)"|"keepHue":|"(?:distortion|flash)":[\[{]|"add-explosion"/],
 };
 
 /** Whether a recipe, operation list or edit list contains a boolean edit, which needs loadMeshBooleans() first. */
@@ -220,10 +222,16 @@ export async function loadAgentSceneModules(value) {
   await Promise.all(agentSceneModulesNeeded(value).map(loadModule));
 }
 
-/** Load every on-demand module, for hosts that run any recipe an agent writes. */
-export async function loadAllAgentSceneModules() {
+/** Load every on-demand module, for hosts that run any recipe an agent writes. `onModuleLoaded(loaded, total)` runs as each one arrives. */
+export async function loadAllAgentSceneModules({ onModuleLoaded } = {}) {
   hostLoadedEveryModule = true;
-  await Promise.all(Object.keys(MODULE_LOADERS).map(loadModule));
+  const names = Object.keys(MODULE_LOADERS);
+  let loaded = 0;
+  await Promise.all(names.map(async name => {
+    await loadModule(name);
+    loaded += 1;
+    onModuleLoaded?.(loaded, names.length);
+  }));
 }
 
 /** Entries that import a module statically register it here, so createAgentScene finds it without a load call. */

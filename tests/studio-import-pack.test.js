@@ -33,9 +33,7 @@ async function dropFile(mounted, name, bytes) {
   const statusElement = mounted.root.querySelector('.crucible-studio-status');
   mounted.dom.runTimers();
   dispatch(mounted.root.querySelector('.crucible-studio-viewport'), 'drop', { dataTransfer: { files: [{ name, size: bytes.length, arrayBuffer: async () => bytes.buffer }] } });
-  for (let attempt = 0; attempt < 400 && statusElement.textContent === ''; attempt += 1) {
-    await mounted.dom.settle();
-  }
+  await mounted.dom.settleUntil(() => statusElement.textContent !== '');
   return statusElement.textContent;
 }
 

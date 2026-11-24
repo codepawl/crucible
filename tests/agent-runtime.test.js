@@ -121,7 +121,7 @@ function hitNearestLamp(ray) {
 }
 
 async function reviewRuntimeHarness({ failShot, blockShot = false, oversize = false, deadlineMs,
-  failDispose = false, heapSize = 1024, stallPrivatePage = false, blockPrivateCreate = false, resumeDelayMs = 0, suspendDelayMs = 0, failResume = false, hangMethod, failPrivateCreate = false, failPrivateCreateMessage, failSourceCreateMessage, disposeGate, disposeLostBridge = false, disposeWithoutScene = false, hangBrowserClose = false, closeTimeoutMs, failFirstGoto = false, jobRender, sceneBake, exportedRecipe, runtimeOptions = {}, contextOverrides = {}, lookBytesPerPixel = 0, inspection } = {}) {
+  failDispose = false, heapSize = 1024, stallPrivatePage = false, blockPrivateCreate = false, resumeDelayMs = 0, suspendDelayMs = 0, failResume = false, hangMethod, failPrivateCreate = false, failPrivateCreateMessage, failSourceCreateMessage, disposeGate, disposeLostBridge = false, disposeWithoutScene = false, hangBrowserClose = false, closeTimeoutMs, failFirstGoto = false, jobRender, sceneBake, exportedRecipe, runtimeOptions = {}, contextOverrides = {}, lookBytesPerPixel = 0, inspection, snapshotRecipe } = {}) {
   const events = [];
   let sourceCreates = 0;
   const sourceCalls = [];
@@ -136,7 +136,7 @@ async function reviewRuntimeHarness({ failShot, blockShot = false, oversize = fa
   const acquisitionStarted = new Promise(resolve => { resolveAcquisitionStarted = resolve; });
   let resolvePrivatePage;
   const acquiredPage = new Promise(resolve => { resolvePrivatePage = () => resolve(privatePage = new FakePage(true)); });
-  const recipe = { format: 'crucible.scene', schemaVersion: 1, geometries: [], materials: [], nodes: [], ...(sceneBake ? { bake: sceneBake } : {}) };
+  const recipe = snapshotRecipe ?? { format: 'crucible.scene', schemaVersion: 1, geometries: [], materials: [], nodes: [], ...(sceneBake ? { bake: sceneBake } : {}) };
   class FakePage {
     constructor(privateTarget) { this.privateTarget = privateTarget; this.closed = false; }
     route() {}
@@ -1164,6 +1164,28 @@ runTest('scene_create places a catalog GLB by file name and keeps only its hash 
   const createCall = sourceCalls.filter(call => call.method === 'create').at(-1);
   assert.deepEqual(createCall.input.recipe.nodes[0].asset, { id: sheepId });
   assert.deepEqual(readIds, [sheepId]);
+});
+
+runTest('the render estimate counts the triangles and images of a placed catalog GLB (#3321)', async context => {
+  const directory = await mkdtemp(join(tmpdir(), 'crucible-estimate-assets-'));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  await cp(new URL('./fixtures/kenney-boat/', import.meta.url), directory, { recursive: true });
+  const catalog = await createAgentAssetCatalog(directory);
+  const boat = catalog.list().assets.find(asset => asset.name === 'boat-fishing-small.glb');
+  assert.ok(boat.triangles > 0 && boat.images > 0, 'the fixture must carry geometry and an image');
+  const placed = { format: 'crucible.scene', schemaVersion: 1, geometries: [], materials: [], nodes: [{ id: 'boat', asset: { id: boat.assetId } }] };
+  const inspection = { counts: { nodes: 1, parts: 1, vertices: 0, materials: 1 }, nodes: [{ id: 'boat', triangles: 0 }], look: {}, assets: [{ assetId: boat.assetId, parts: 1 }] };
+  const submitted = [];
+  const controller = { list: () => [], close: async () => {}, submit: async request => { submitted.push(request); return { jobId: 'job' }; } };
+  const { runtime, sessionId } = await reviewRuntimeHarness({ inspection, snapshotRecipe: placed,
+    runtimeOptions: { assets: directory, jobs: join(tmpdir(), 'crucible-job-root-test') },
+    contextOverrides: { createAgentRenderJobs: async () => controller } });
+  try {
+    const { estimate } = await runtime.submitJob({ sessionId, expectedRevision: 0, settings: { kind: 'image', width: 64, height: 64 } });
+    assert.equal(estimate.scene.triangles, boat.triangles);
+    assert.equal(estimate.scene.textures, boat.images);
+    assert.ok(estimate.scene.assetTextureMiB > 0);
+  } finally { await runtime.close(); }
 });
 
 runTest('scene_apply add-node places a catalog GLB by file name (#1843)', async context => {

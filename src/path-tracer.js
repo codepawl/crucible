@@ -1200,7 +1200,7 @@ export function describeIgnoredFeatures(parts, environment, backend = 'cpu', { k
     else if (material.alphaMode === 'blend' && !kernelMaterials) notes.add('Blended transparency is traced as opaque.');
     if (!kernelMaterials && (material.layerMaps?.clearcoatTexture || material.transmissionMap)) notes.add('Graph clearcoat and transmission masks are read by the CPU tracer; the GPU tracers use the factors.');
     if (kernelMaterials && hasSplitLayerMap(material)) notes.add('A clearcoat or sheen colour map is ignored when the layer has a roughness above 0 kept in another map.');
-    if (material.emissionFresnel > 0 && backend !== 'cpu') notes.add('emission fresnel is ignored by the GPU path tracers; the cpu backend applies it.');
+    if (material.emissionFresnel > 0 && kernelMaterials) notes.add('emission fresnel is ignored by the native cycles kernel: its material record has no slot for it. The cpu, "gpu" and "webgpu" tracers apply it.');
     if (material.emissionMask) notes.add('emissionMask is ignored by the path tracers; the rasterizer applies it.');
     for (const [name, isUsed, kernelShades] of IGNORED_LAYERS) if (!(kernelMaterials && kernelShades) && isUsed(material, kernelMaterials)) notes.add(`${name} is ignored.`);
   }

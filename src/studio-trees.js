@@ -92,7 +92,7 @@ export function createTreeInspector({ documentReference, createElement, createSl
     try {
       changeSelectedTree(controller, nodeId, change);
     } catch (error) {
-      announce(error.message);
+      announce(error);
     }
   };
   const heightField = createSliderField(documentReference, 'Height m', { ...TREE_HEIGHT_RANGE, value: 10 }, height => write({ height }));

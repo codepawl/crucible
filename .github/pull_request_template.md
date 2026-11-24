@@ -11,6 +11,10 @@ Closes #
 
 - [ ]
 
+## Interaction form
+
+<!-- Only for a Studio feature. State its form (tool, toggle, mode, operator, modifier, setting or panel) and the reason it fits, and add or update its row in docs/studio-interaction-forms.md. CONTRIBUTING.md#studio-changes. Delete this section otherwise. -->
+
 ## Evidence
 
 <!-- Show what changed from old to new. For what can be seen: a before and an after picture or clip, rendered by Crucible. For what can be measured: the numbers before and after (speed, size, memory, a score, a bench table). Drag pictures and clips into this box. If nothing can be seen or measured, write one line that says so. CONTRIBUTING.md#show-the-evidence -->

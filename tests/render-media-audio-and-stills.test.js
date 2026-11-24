@@ -5,6 +5,7 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { audioTrimArguments, createFrameEncoder, frameEncoderArguments } from '../scripts/frame-encoder.mjs';
+import { DEFAULT_PAGE_ENCODER_QUANTIZER } from '../scripts/gpu-frame-reader.mjs';
 import { audioInputArguments, measureStreamSeconds } from '../scripts/job-audio.mjs';
 import { assertOutputHasAudio, parseRenderOptions, renderEncoderOptions, stillPath, stillPaths } from '../scripts/render-media.mjs';
 
@@ -136,4 +137,36 @@ test('a derived video dimension is rounded to even and a passed odd one is still
   assert.deepEqual([portrait.width, portrait.height], [1000, 1778]);
   assert.throws(() => parseRenderOptions(['--kind', 'video', '--width', '1001', '--height', '564']), /even/);
   assert.equal(parseRenderOptions(['--kind', 'image', '--width', '1000']).height, 563);
+});
+
+test('the in-page encoder keeps the sharp quantizer 16 chosen from PSNR against lossless frames (#3366)', () => {
+  assert.equal(DEFAULT_PAGE_ENCODER_QUANTIZER, 16);
+});
+
+test('the page-encoded H.264 copy path marks its full-range BT.709 picture, and no other path does (#3366)', () => {
+  const common = { output: 'o.mp4', fps: 24, audioArguments: [], audioCodec: 'aac', frameCount: 12, width: 64, height: 64, backend: 'cpu' };
+  const copied = frameEncoderArguments({ ...common, format: 'h264' });
+  const filter = copied[copied.indexOf('-bsf:v') + 1];
+  assert.match(filter, /^h264_metadata=video_full_range_flag=1:colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1,setts=/);
+  assert.equal(copied[copied.indexOf('-color_range') + 1], 'pc');
+  for (const format of ['jpeg', 'png', 'rawvideo']) {
+    const encoded = frameEncoderArguments({ ...common, format });
+    assert.ok(!encoded.includes('-color_range'), `${format} frames are converted by ffmpeg and keep its own range`);
+    assert.ok(!encoded.join(' ').includes('h264_metadata'));
+  }
+});
+
+test('a page-encoded clip reads back as full range, so players do not stretch its contrast (#3366)', { skip: !ffmpegAvailable }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'crucible-3366-'));
+  try {
+    const output = join(directory, 'range.mp4');
+    const encoder = createFrameEncoder({ output, fps: 24, format: 'h264', frameCount: 72 });
+    encoder.writeChunk(await readFile(new URL('./fixtures/page-encoder-72-frames-24fps.h264', import.meta.url)));
+    await encoder.finish();
+    await encoder.close();
+    const probe = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=color_range,color_space', '-of', 'csv=p=0', output]);
+    assert.equal(String(probe.stdout).trim(), 'pc,bt709');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

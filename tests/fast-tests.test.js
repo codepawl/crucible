@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { FAST_TESTS_PATH, GUARD_TEST_PATTERN, readFastTests, selectFastTests, usesNativeAddon } from '../scripts/fast-tests.mjs';
+import { createBrowserDetector } from '../scripts/browser-tests.mjs';
 import * as recorder from '../scripts/record-fast-tests.mjs';
 import { planChecks } from '../scripts/preflight.mjs';
 
@@ -119,6 +120,36 @@ test('the reason names the browser launcher and the import chain that leads to i
   const reason = browserTests.find(entry => entry.file === 'tests/through-helper.test.js').reason;
   assert.match(reason, /starts Chrome/);
   assert.match(reason, /tests\/through-helper\.test\.js -> tests\/support\/browser-helper\.js -> scripts\/page-launcher\.mjs/);
+});
+
+test('a browser word that only appears in a comment does not make a test a browser test', () => {
+  const sources = {
+    'tests/line-comment.test.js': "// playwright is not used here\nconst answer = 1; // chromium and --headless are only named\n",
+    'tests/block-comment.test.js': "/*\n * Starts no browser: puppeteer, crucible-mcp.mjs and CHROME_PATH are only mentioned.\n */\nconst answer = 2;",
+    'tests/string-with-slashes.test.js': "const address = 'https://example.test/a'; const { chromium } = await import('playwright');",
+    'tests/real-import.test.js': "// note\nimport { chromium } from 'playwright';",
+  };
+  const browserReason = createBrowserDetector(path => sources[path] ?? null);
+  assert.equal(browserReason('tests/line-comment.test.js'), null);
+  assert.equal(browserReason('tests/block-comment.test.js'), null);
+  assert.match(browserReason('tests/string-with-slashes.test.js'), /launches a browser through playwright/);
+  assert.match(browserReason('tests/real-import.test.js'), /launches a browser through playwright/);
+});
+
+test('a regular expression with slashes is not read as a comment, so a real launch after it is still found', () => {
+  const sources = {
+    'tests/escaped-slashes.test.js': "const r = /a\\/\\/b/; import { chromium } from 'playwright';",
+    'tests/url-pattern.test.js': "const pattern = /https?:\\/\\//; const page = await import('playwright');",
+    'tests/class-slashes.test.js': "const pattern = /[//]/;\nimport { chromium } from 'playwright';",
+    'tests/division.test.js': "const half = total / 2; // playwright is not used\n",
+    'tests/regex-after-paren.test.js': "if (ready) /a\\/\\//.test(url); import('playwright');",
+  };
+  const browserReason = createBrowserDetector(path => sources[path] ?? null);
+  assert.match(browserReason('tests/escaped-slashes.test.js'), /launches a browser through playwright/);
+  assert.match(browserReason('tests/url-pattern.test.js'), /launches a browser through playwright/);
+  assert.match(browserReason('tests/class-slashes.test.js'), /launches a browser through playwright/);
+  assert.equal(browserReason('tests/division.test.js'), null);
+  assert.match(browserReason('tests/regex-after-paren.test.js'), /launches a browser through playwright/);
 });
 
 test('without a source reader nothing is dropped, so the browser check is opt in per caller', () => {

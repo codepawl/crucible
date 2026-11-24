@@ -23,7 +23,12 @@ export const KINDS = Object.freeze({
   uneven: 'uneven-inset',
   offScale: 'off-scale',
   groupGap: 'group-gap',
+  selectableChrome: 'selectable-chrome',
 });
+
+// The elements whose text a person may select: text fields, and a block that opts in with the class. It is the same list as the
+// one rule in studio-styles.js that sets user-select: text, and tests/studio-text-selection.test.js keeps the two in step.
+export const SELECTABLE_SELECTOR = 'input, textarea, .crucible-studio-selectable, .crucible-studio-selectable *';
 
 const SIDES = Object.freeze(['top', 'right', 'bottom', 'left']);
 
@@ -107,6 +112,35 @@ function checkGroupGap(record) {
     message: `${record.selector}: the gap between its groups is ${rounded(outer)} px but a group inside has a gap of ${rounded(record.childGap)} px, so the groups read as one run. `
       + `The gap between groups must be at least the gap inside them: raise this gap to var(--studio-space-${nearestStep(record.childGap + 4)}) or tighten the inner one.`,
   }];
+}
+
+// A record that carries `userSelect`, `selectable`, `ownText` and `path` is also read for selection: chrome with text of its own
+// computes to none, and an element of the allowed list computes to text or auto. Records without them are spacing-only.
+export function findSelectionProblems(records) {
+  const findings = [];
+  for (const record of records) {
+    if (record.userSelect === undefined) continue;
+    const where = record.path ?? record.selector;
+    if (!record.selectable && record.ownText && record.userSelect !== 'none') {
+      findings.push({
+        kind: KINDS.selectableChrome,
+        selector: where,
+        detail: record.userSelect,
+        message: `${where}: the text "${record.ownText}" computes to user-select: ${record.userSelect}, so a click or drag can select it. `
+          + 'Studio chrome is never selectable: remove the user-select rule that turns it on. Add the class crucible-studio-selectable only if a person copies this text.',
+      });
+    }
+    if (record.selectable && record.userSelect !== 'text' && record.userSelect !== 'auto') {
+      findings.push({
+        kind: KINDS.selectableChrome,
+        selector: where,
+        detail: record.userSelect,
+        message: `${where}: it is on the allowed list but computes to user-select: ${record.userSelect}, so a person cannot select or copy from it. `
+          + 'Let the rule for .crucible-studio-selectable, input and textarea reach it, and remove the none that overrides it.',
+      });
+    }
+  }
+  return findings;
 }
 
 /**
