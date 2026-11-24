@@ -631,7 +631,7 @@ export const STUDIO_CSS = `
   overflow: hidden;
   white-space: pre;
 }
-.crucible-studio input.crucible-studio-name-input {
+.crucible-studio .crucible-studio-name-editor input.crucible-studio-name-input {
   position: absolute;
   inset: 0;
   inline-size: 100%;
@@ -649,7 +649,8 @@ export const STUDIO_CSS = `
 }
 .crucible-studio-name-suffix {
   flex: none;
-  color: var(--studio-muted);
+  /* Dimmer than the name, and still above 4.5:1 on the field in both themes (the plain muted colour is 4.4:1 in the light one). */
+  color: color-mix(in srgb, var(--studio-muted) 65%, var(--studio-text));
   user-select: none;
 }
 .crucible-studio-name-error {
@@ -694,10 +695,12 @@ export const STUDIO_CSS = `
 .crucible-studio-tree-row { position: relative; }
 .crucible-studio-tree-select[data-renaming="label"] .crucible-studio-tree-label { visibility: hidden; }
 .crucible-studio-tree-row .crucible-studio-name-editor {
+  /* The room between the field's edge and its text: small, so the ring stops short of the icon before the label. */
+  --studio-name-row-inset: 2px;
   position: absolute;
   inset-block: 0;
-  margin-inline-start: calc(-1 * (1px + var(--studio-space-4)));
-  padding: 0 var(--studio-space-4);
+  margin-inline-start: calc(-1 * (1px + var(--studio-name-row-inset)));
+  padding: 0 var(--studio-name-row-inset);
   font-family: var(--studio-font);
   font-weight: 400;
   font-size: 12.5px;
@@ -714,11 +717,15 @@ export const STUDIO_CSS = `
   line-height: 18px;
 }
 .crucible-studio-bookmark-row .crucible-studio-name-field { flex: 1 1 auto; }
+.crucible-studio-status[data-icon="true"] {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+}
 .crucible-studio-status .crucible-studio-icon {
+  flex: none;
   inline-size: 14px;
   block-size: 14px;
-  margin-inline-end: var(--studio-space-8);
-  vertical-align: -2px;
   stroke: var(--studio-ok);
 }
 .crucible-studio[data-theme="dark"] { --studio-warning: #ff7b72; }

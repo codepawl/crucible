@@ -136,25 +136,85 @@ export async function startDevServer() {
   throw new Error(`The Vite dev server did not answer on ${origin} within ${SERVER_START_TIMEOUT_MS / 1000} s.`);
 }
 
-const RENAME_WIDTHS = [1280, 720];
+// The widths of the rename screens: the standard one, the narrow one, and the two sides of the width (920) where the
+// top bar changes layout. The long name is the 60 characters of a name that fills the bar.
+const RENAME_WIDTHS = [1280, 921, 919, 720];
+const LONG_NAME = 'a-scene-name-that-is-as-long-as-sixty-characters-in-all-ok-1234';
+const BESIDE_ERROR_MIN_WIDTH = 1180;
 
-// The top bar with the scene name editor open, then with an error under it, at both widths. The name is a button until it is clicked.
+// Runs inside the page: what the name (or its editor) and its reason do to the rest of the top bar. Returns sentences, empty when fine.
+function collectBarOverlaps(besideErrorMinWidth) {
+  const problems = [];
+  const box = element => (element ? element.getBoundingClientRect() : null);
+  const meet = (first, second) => first && second && first.left < second.right - 0.5 && second.left < first.right - 0.5 && first.top < second.bottom - 0.5 && second.top < first.bottom - 0.5;
+  const islands = Array.from(document.querySelectorAll('.crucible-studio-menubar > .crucible-studio-island'));
+  const own = islands.find(island => island.querySelector('.crucible-studio-filepill'));
+  const others = islands.filter(island => island !== own);
+  const ownBox = box(own);
+  const nameElement = [...document.querySelectorAll('.crucible-studio-name-editor, .crucible-studio-filepill')].find(candidate => candidate.getBoundingClientRect().width > 0);
+  const nameBox = box(nameElement);
+  if (!nameBox) problems.push('the scene name is not on screen');
+  for (const other of others) {
+    if (meet(ownBox, box(other))) problems.push(`the island of the name overlaps ${other.className.split(' ').slice(0, 2).join('.')}`);
+  }
+  if (ownBox && nameBox && (nameBox.left < ownBox.left - 0.5 || nameBox.right > ownBox.right + 0.5)) problems.push('the name leaves its island');
+  if (ownBox && ownBox.right > window.innerWidth + 0.5) problems.push('the island of the name leaves the window');
+  for (const control of document.querySelectorAll('.crucible-studio-menubar .crucible-studio-menu-button')) {
+    if (meet(nameBox, box(control)) && getComputedStyle(control).display !== 'none') problems.push(`the name overlaps the ${control.textContent.trim()} menu`);
+  }
+  const reason = document.querySelector('.crucible-studio-name-error:not([hidden])');
+  const outliner = document.querySelector('.crucible-studio-outliner');
+  if (reason && window.innerWidth >= besideErrorMinWidth && getComputedStyle(outliner).display !== 'none' && meet(box(reason), box(outliner))) problems.push('the reason covers the Scene panel');
+  if (reason && box(reason).left < -0.5) problems.push('the reason leaves the window');
+  return problems;
+}
+
+function measureBarOverlaps(page) {
+  return page.evaluate(`(${collectBarOverlaps.toString()})(${BESIDE_ERROR_MIN_WIDTH})`);
+}
+
+// The top bar with the scene name editor open, then with a reason under or beside it, at each width; then with a name of
+// 60 characters. The name is a button until it is clicked. Each screen also reports what the name does to the rest of the bar.
 async function measureRenameScreens(page, theme) {
   const screens = [];
+  const openEditor = async () => {
+    await page.click('.crucible-studio-filepill');
+    await page.waitForSelector('.crucible-studio-name-editor input');
+    await page.waitForTimeout(100);
+  };
   for (const width of RENAME_WIDTHS) {
     await page.setViewportSize({ width, height: VIEWPORT.height });
     await page.waitForTimeout(400);
-    await page.click('.crucible-studio-filepill');
-    await page.waitForSelector('.crucible-studio-name-editor input');
-    screens.push({ name: `rename editing ${width} (${theme})`, records: await measure(page, '.crucible-studio') });
+    await openEditor();
+    screens.push({ name: `rename editing ${width} (${theme})`, records: await measure(page, '.crucible-studio'), overlaps: await measureBarOverlaps(page) });
     await page.fill('.crucible-studio-name-editor input', 'bad|name');
     await page.waitForTimeout(100);
-    screens.push({ name: `rename error ${width} (${theme})`, records: await measure(page, '.crucible-studio') });
+    screens.push({ name: `rename error ${width} (${theme})`, records: await measure(page, '.crucible-studio'), overlaps: await measureBarOverlaps(page) });
+    await page.keyboard.press('Escape');
+  }
+  await page.setViewportSize({ width: RENAME_WIDTHS[0], height: VIEWPORT.height });
+  await page.waitForTimeout(300);
+  await openEditorWithName(page, LONG_NAME);
+  for (const width of RENAME_WIDTHS) {
+    await page.setViewportSize({ width, height: VIEWPORT.height });
+    await page.waitForTimeout(400);
+    const closedOverlaps = await measureBarOverlaps(page);
+    await openEditor();
+    const overlaps = [...closedOverlaps.map(problem => `(name shown) ${problem}`), ...await measureBarOverlaps(page)];
+    screens.push({ name: `rename long ${width} (${theme})`, records: await measure(page, '.crucible-studio'), overlaps });
     await page.keyboard.press('Escape');
   }
   await page.setViewportSize(VIEWPORT);
   await page.waitForTimeout(300);
   return screens;
+}
+
+async function openEditorWithName(page, name) {
+  await page.click('.crucible-studio-filepill');
+  await page.waitForSelector('.crucible-studio-name-editor input');
+  await page.fill('.crucible-studio-name-editor input', name);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
 }
 
 // A real pointer lock would grab the desktop cursor of whoever runs this.
@@ -278,16 +338,18 @@ async function main() {
   const screens = await runAudit({ origin: flags.origin, only: flags.only });
   if (flags.records) writeFileSync(flags.records, JSON.stringify(screens));
   const { findings, allowed } = summarize(screens);
+  const overlaps = screens.flatMap(screen => (screen.overlaps ?? []).map(problem => `${screen.name}: ${problem}`));
   const bySurface = countBySurface(findings);
   if (flags.json) {
-    console.log(JSON.stringify({ screens: screens.length, failures: findings.length, bySurface, findings, allowlist: ALLOWLIST, allowlistUsed: allowed }, null, 2));
+    console.log(JSON.stringify({ screens: screens.length, failures: findings.length, overlaps, bySurface, findings, allowlist: ALLOWLIST, allowlistUsed: allowed }, null, 2));
   } else {
     for (const finding of findings) console.log(`[${finding.kind}] ${finding.message}\n    seen on: ${finding.surfaces.join(', ')}`);
-    console.log(`\nStudio layout audit: ${screens.length} screens, ${findings.length} failures (${Object.entries(bySurface).map(([surface, count]) => `${surface} ${count}`).join(', ') || 'none'}).`);
+    for (const overlap of overlaps) console.log(`[top-bar-overlap] ${overlap}`);
+    console.log(`\nStudio layout audit: ${screens.length} screens, ${findings.length} spacing failures, ${overlaps.length} top bar overlaps (${Object.entries(bySurface).map(([surface, count]) => `${surface} ${count}`).join(', ') || 'none'}).`);
     console.log(`Allowlist: ${ALLOWLIST.length} declared, ${allowed.length} used.`);
     for (const entry of ALLOWLIST) console.log(`  ${entry.kind} ${entry.selector}: ${entry.reason}`);
   }
-  process.exitCode = findings.length ? 1 : 0;
+  process.exitCode = findings.length || overlaps.length ? 1 : 0;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

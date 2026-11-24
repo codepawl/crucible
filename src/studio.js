@@ -1932,8 +1932,13 @@ export function createStudio(container, {
       clearStatus();
       return;
     }
-    statusRegion.textContent = message;
-    if (iconName) statusRegion.prepend(createIcon(documentReference, iconName));
+    if (iconName) {
+      statusRegion.replaceChildren(createIcon(documentReference, iconName), createElement(documentReference, 'span', { textContent: message }));
+    } else {
+      statusRegion.textContent = message;
+    }
+    if (iconName) statusRegion.dataset.icon = 'true';
+    else delete statusRegion.dataset.icon;
     statusRegion.dataset.state = 'in';
     statusTimer = setTimeout(hideStatus, durationMilliseconds);
   }
@@ -3614,6 +3619,7 @@ export function createStudio(container, {
     const row = outlinerRows.get(`node:${nodeId}`);
     if (!node || !row) return;
     const anchor = row.element.children[0];
+    const eyeButton = row.element.children[1];
     const editor = startNameEditing({
       anchor,
       coverOnly: true,
@@ -3621,7 +3627,7 @@ export function createStudio(container, {
       onOpen: opened => {
         const rowBox = row.element.getBoundingClientRect();
         const labelBox = anchor.querySelector('.crucible-studio-tree-label').getBoundingClientRect();
-        const eyeBox = row.element.children[1].getBoundingClientRect();
+        const eyeBox = eyeButton.getBoundingClientRect();
         opened.element.style.insetInlineStart = `${labelBox.left - rowBox.left}px`;
         opened.element.style.insetInlineEnd = `${Math.max(0, rowBox.right - eyeBox.left)}px`;
       },
