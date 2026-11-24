@@ -144,10 +144,10 @@ Image textures come from catalog images (a colour map sequence, and scanned text
 | Preset | What it fills |
 | --- | --- |
 | `smoothPlastic` | roughness 0.28, no pattern |
-| `wood` | `wood` pattern, 0.6 m per repeat, roughness 0.8 |
-| `grass` | mottled `noise` pattern, 0.5 m per repeat, roughness 1 (a solid turf block; the `grass` tag is for swaying blades) |
-| `neon` | emission 1.5 in the part colour, which passes the bloom threshold; the halo comes from `effects.bloom` |
-| `glass` | opacity 0.3, roughness 0.04, blended |
+| `wood` | dark-ringed `wood` pattern, 0.8 m per repeat, roughness 0.8 |
+| `grass` | soft streaks like blades (stretched `metal` pattern), 0.5 m per repeat, roughness 1; a solid turf block, the `grass` tag is for swaying blades |
+| `neon` | emission 1.5 in a saturated version of the part colour (`emissiveColor`, so the face keeps its hue instead of going white); the halo comes from `effects.bloom` |
+| `glass` | opacity 0.5, roughness 0.04, clear coat, blended |
 | `brick` | `bricks` pattern, 1 m per repeat, roughness 0.9 |
 
 `color` is the part colour and tints the base: the patterns are grey ramps, so a red `wood` part is red wood. Without `color`, each preset uses its own tint. Pattern `size` is in metres after node scale, so a 4 m part and a 40 m part show the same grain size. An unknown name fails with the list of valid ones. `scene_capabilities` topic `materialPresets` lists the values.

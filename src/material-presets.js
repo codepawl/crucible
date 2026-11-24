@@ -13,21 +13,21 @@ const MATERIAL_PRESETS = Object.freeze({
   }),
   wood: Object.freeze({
     color: Object.freeze([0.75, 0.48, 0.25]), roughness: 0.8, metallic: 0,
-    pattern: Object.freeze({ type: 'wood', size: 0.6, count: 12, bump: 0.35, colors: Object.freeze([[0.5, 0.5, 0.5], [1, 1, 1]]) }),
-    note: 'Wood grain, one repeat per 0.6 m, tinted by color.',
+    pattern: Object.freeze({ type: 'wood', size: 0.8, count: 10, bump: 0.6, colors: Object.freeze([[0.25, 0.25, 0.25], [1, 1, 1]]) }),
+    note: 'Wood grain, one repeat per 0.8 m, dark rings against light wood, tinted by color.',
   }),
   grass: Object.freeze({
     color: Object.freeze([0.3, 0.6, 0.18]), roughness: 1, metallic: 0,
-    pattern: Object.freeze({ type: 'noise', size: 0.5, count: 12, bump: 0.5, colors: Object.freeze([[0.55, 0.55, 0.55], [1, 1, 1]]) }),
-    note: 'Mottled turf for a solid block, one repeat per 0.5 m; it does not sway (the grass tag is for blades).',
+    pattern: Object.freeze({ type: 'metal', size: 0.5, count: 2, bump: 1, colors: Object.freeze([[0.3, 0.3, 0.3], [1, 1, 1]]) }),
+    note: 'Soft turf with fine streaks like blades running along the part, one repeat per 0.5 m, tinted by color.',
   }),
   neon: Object.freeze({
-    color: Object.freeze([0.2, 1, 0.9]), roughness: 0.4, metallic: 0, emission: 1.5,
-    note: 'Glows in color (emission 1.5, bright enough to pass the bloom threshold). The glow halo comes from effects.bloom (on by default, strength 0.12): raise it for a stronger halo.',
+    tag: 'unlit', color: Object.freeze([0.2, 1, 0.9]), emission: 1.5, glowsInColor: true,
+    note: 'Glows in the part colour (emission 1.5, emissiveColor = color, so the face stays saturated); the halo comes from effects.bloom (on by default, strength 0.12).',
   }),
   glass: Object.freeze({
-    color: Object.freeze([0.85, 0.95, 1]), roughness: 0.04, metallic: 0, opacity: 0.3,
-    note: 'Clear blended pane, opacity 0.3 and roughness 0.04, tinted by color.',
+    color: Object.freeze([0.85, 0.95, 1]), roughness: 0.04, metallic: 0, opacity: 0.5, clearcoat: 1,
+    note: 'Blended pane, opacity 0.5, roughness 0.04 and a clear coat that mirrors the sky, tinted by color.',
   }),
   brick: Object.freeze({
     color: Object.freeze([0.75, 0.35, 0.25]), roughness: 0.9, metallic: 0,
@@ -37,10 +37,7 @@ const MATERIAL_PRESETS = Object.freeze({
 });
 
 export function materialPresetSummary() {
-  return Object.fromEntries(MATERIAL_PRESET_NAMES.map(name => {
-    const { note, ...fields } = MATERIAL_PRESETS[name];
-    return [name, { ...fields, note }];
-  }));
+  return Object.fromEntries(MATERIAL_PRESET_NAMES.map(name => [name, structuredClone(MATERIAL_PRESETS[name])]));
 }
 
 /**
@@ -48,16 +45,20 @@ export function materialPresetSummary() {
  * `fail` builds the error, so the message style stays the one of the scene contract.
  */
 export function applyMaterialPreset(value, fail) {
-  if (value.preset === undefined) return value;
   if (typeof value.preset !== 'string' || !Object.hasOwn(MATERIAL_PRESETS, value.preset)) {
     throw fail(value.preset, `one of ${MATERIAL_PRESET_NAMES.join(', ')}, or remove preset`);
   }
-  const { note, ...fields } = MATERIAL_PRESETS[value.preset];
+  const { note, glowsInColor, ...fields } = MATERIAL_PRESETS[value.preset];
   const { preset, ...own } = value;
   const expanded = { ...own };
   for (const [field, fallback] of Object.entries(fields)) {
-    if (expanded[field] !== undefined) continue;
-    expanded[field] = structuredClone(fallback);
+    if (expanded[field] === undefined) expanded[field] = structuredClone(fallback);
+  }
+  // Emission defaults to white light, which washes a coloured part out to near white, and tone mapping pales a bright face further:
+  // glow in the part colour pushed toward its pure hue (largest channel 1, the others squared down), so the face stays coloured.
+  if (glowsInColor && expanded.emissiveColor === undefined) {
+    const brightest = Math.max(...expanded.color, 1e-6);
+    expanded.emissiveColor = expanded.color.map(channel => (channel / brightest) ** 3);
   }
   return expanded;
 }
