@@ -1,0 +1,384 @@
+{
+  "size": [
+    1280,
+    980
+  ],
+  "page": "/bench/studio/index.html?setup=off",
+  "camera": {
+    "eye": [
+      4.2,
+      2.9,
+      4.9
+    ],
+    "target": [
+      0,
+      0.5,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ],
+    "fov": 42,
+    "near": 0.1,
+    "far": 120
+  },
+  "backend": "headless Chrome, WebGL on the GPU",
+  "seed": "none (no random scene)",
+  "steps": [
+    {
+      "label": "stretched",
+      "translation": [
+        0,
+        0.3,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        2.2,
+        0.6,
+        1.2
+      ],
+      "geometry": "block"
+    },
+    {
+      "label": "apply menu open",
+      "open": true
+    },
+    {
+      "label": "scale applied",
+      "translation": [
+        0,
+        0.3,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "geometry": "block"
+    },
+    {
+      "label": "origin at the bottom",
+      "translation": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "geometry": "block"
+    },
+    {
+      "label": "turned 60 degrees about the bottom",
+      "translation": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0.5000110003630133,
+        0.866019052628739
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "geometry": "block"
+    }
+  ],
+  "recipe": {
+    "format": "crucible.scene",
+    "schemaVersion": 1,
+    "geometries": [
+      {
+        "id": "block",
+        "type": "mesh",
+        "base": {
+          "type": "box",
+          "bevel": 0.03
+        },
+        "edits": [
+          {
+            "op": "transform_selection",
+            "select": {
+              "all": true
+            },
+            "pivot": [
+              0,
+              0,
+              0
+            ],
+            "scale": [
+              2.200000047683716,
+              0.6000000238418579,
+              1.2000000476837158
+            ]
+          },
+          {
+            "op": "translate",
+            "select": {
+              "all": true
+            },
+            "offset": [
+              0,
+              0.30000001192092896,
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "id": "ball",
+        "type": "sphere",
+        "segments": 48,
+        "rings": 24
+      },
+      {
+        "id": "spike",
+        "type": "cone",
+        "radiusTop": 0,
+        "radiusBottom": 0.5,
+        "segments": 48
+      }
+    ],
+    "materials": [
+      {
+        "id": "clay",
+        "tag": "surface",
+        "color": [
+          0.62,
+          0.62,
+          0.64
+        ],
+        "metallic": 0,
+        "roughness": 0.7,
+        "emission": 0,
+        "opacity": 1,
+        "alphaMode": "opaque",
+        "doubleSided": false
+      }
+    ],
+    "nodes": [
+      {
+        "id": "cube",
+        "label": "Cube",
+        "geometry": "block",
+        "material": "clay",
+        "translation": [
+          0,
+          0,
+          0
+        ],
+        "parent": null,
+        "rotation": [
+          0,
+          0,
+          0.5000110003630133,
+          0.866019052628739
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "id": "sphere",
+        "label": "Sphere",
+        "geometry": "ball",
+        "material": "clay",
+        "translation": [
+          -1.6,
+          0.5,
+          0.4
+        ],
+        "scale": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "parent": null,
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      {
+        "id": "cone",
+        "label": "Cone",
+        "geometry": "spike",
+        "material": "clay",
+        "translation": [
+          1.5,
+          0.5,
+          -0.6
+        ],
+        "parent": null,
+        "rotation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    ],
+    "camera": {
+      "eye": [
+        4.2,
+        2.9,
+        4.9
+      ],
+      "target": [
+        0,
+        0.5,
+        0
+      ],
+      "up": [
+        0,
+        1,
+        0
+      ],
+      "fov": 42,
+      "near": 0.1,
+      "far": 120
+    },
+    "environment": {
+      "world": false,
+      "setup": "studio",
+      "environmentIntensity": 1,
+      "environmentRotation": 0,
+      "lightDirection": [
+        -3.2,
+        5.2,
+        3.8
+      ],
+      "keyColor": [
+        2.4,
+        2.3,
+        2.2
+      ],
+      "keyIntensity": 1.65,
+      "fillIntensity": 0,
+      "ambientIntensity": 1,
+      "daylight": 1,
+      "pointLights": [],
+      "skyTop": [
+        0.45,
+        0.45,
+        0.46
+      ],
+      "skyBottom": [
+        0.3,
+        0.3,
+        0.32
+      ],
+      "fogColor": [
+        0.35,
+        0.43,
+        0.43
+      ],
+      "fogDensity": null,
+      "volumeFog": {
+        "density": 0,
+        "minimum": [
+          -100,
+          0,
+          -100
+        ],
+        "maximum": [
+          100,
+          20,
+          100
+        ],
+        "color": [
+          0.8,
+          0.85,
+          0.9
+        ],
+        "ambient": [
+          0.03,
+          0.035,
+          0.04
+        ],
+        "drift": [
+          0.03,
+          0,
+          0
+        ],
+        "steps": 16,
+        "anisotropy": 0.3,
+        "noiseAmount": 0.5,
+        "noiseScale": 0.3,
+        "maxDistance": 100,
+        "heightFalloff": 0
+      },
+      "viewTransform": "agx"
+    },
+    "effects": {
+      "depthOfField": {
+        "blur": 0,
+        "focusDistance": 5
+      },
+      "motionBlur": {
+        "shutter": 0
+      },
+      "saturation": 1,
+      "contrast": 1,
+      "temperature": 0,
+      "vignette": 0,
+      "grain": 0,
+      "ambientOcclusion": 0,
+      "ambientOcclusionRadius": 0.5,
+      "bloom": {
+        "strength": 0.12,
+        "threshold": 1,
+        "radius": 1
+      },
+      "exposure": 0.96
+    },
+    "shadow": {
+      "target": [
+        0,
+        1,
+        0
+      ],
+      "extent": 3.5,
+      "distance": 8,
+      "near": 0.1,
+      "far": 15
+    }
+  }
+}
