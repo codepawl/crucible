@@ -68,7 +68,7 @@ test('the water shader draws the ramp over the sky reflection only when a ramp i
 
 function recordingRenderer() {
   const calls = [];
-  const names = ['uniform4f', 'uniform3f', 'uniform2f', 'uniform3fv', 'uniform1i', 'uniform1f'];
+  const names = ['uniform4f', 'uniform3f', 'uniform2f', 'uniform3fv', 'uniform4fv', 'uniform1i', 'uniform1f'];
   const context = { getUniformLocation: (program, name) => name, isEnabled: () => false, BLEND: 3042 };
   for (const name of names) {
     context[name] = (location, ...values) => calls.push([name, location, values.flatMap(value => (value?.length === undefined ? [value] : [...value]))]);

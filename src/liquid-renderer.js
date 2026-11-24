@@ -3,6 +3,7 @@ import { CLIP_PLANES_FEATURE, addClipPlanesToLiquidShader, bindClipPlanes, clipP
 import { resolveLiquidOptics } from './liquid-optics.js';
 import { batchesNeedRefractionMips, mipLevelCount } from './transmission-blur.js';
 import { depthMapping } from './glass-depth-march.js';
+import { drawsBackFaces } from './glass-back-face.js';
 import { liquidProbeSupport, liquidWaterSupport } from './shader-registry.js';
 
 // The renderer's liquid and foam pass, kept apart from renderer.js so a scene without liquid or foam does not carry it.
@@ -13,9 +14,12 @@ const METALLIC_ROUGHNESS_UNIT = 3;
 const METALLIC_ROUGHNESS_MAP_INDEX = 2;
 // Glass reads the opaque pass's depth from this unit.
 const SCENE_DEPTH_UNIT = 4;
+// Closed glass reads the depth and outward normal of its own back faces from these units.
+const BACK_DEPTH_UNIT = 5;
+const BACK_NORMAL_UNIT = 12;
 
 const LIQUID_UNIFORMS = [
-  'viewProjection', 'lightProjection', 'eye', 'sceneColor', 'sceneDepth', 'depthMapping', 'resolution', 'exposure', 'hdrEnabled', 'worldMode', 'daylight', 'lightDirection',
+  'viewProjection', 'lightProjection', 'eye', 'sceneColor', 'sceneDepth', 'glassBackDepth', 'glassBackNormal', 'glassBackEnabled', 'glassBackPass', 'depthMapping', 'resolution', 'exposure', 'hdrEnabled', 'worldMode', 'daylight', 'lightDirection',
   'keyColor', 'ambientIntensity', 'fogColor', 'fogDensity', 'glassState', 'glassTint', 'glassCoverage', 'glassMediumContinues', 'materialEmissionFresnel', 'liquidOptics', 'foamShape', 'metallicRoughnessMap', 'hasMetallicRoughnessMap',
   'environmentSpecular', 'environmentEnabled', 'environmentIntensity', 'environmentRotation', 'environmentLevelMax',
   'time', 'probeEnabled', 'probeFloor', 'waterReflection', 'waterReflectionMatrix', 'waterClip', 'waterReflectionEnabled', 'wind', 'explosionProgress', 'explosionCenter', 'assemblyAmount',
@@ -34,6 +38,8 @@ function ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fr
   context.useProgram(renderer.liquidProgram);
   context.uniform1i(renderer.liquidUniforms.metallicRoughnessMap, METALLIC_ROUGHNESS_UNIT);
   context.uniform1i(renderer.liquidUniforms.sceneDepth, SCENE_DEPTH_UNIT);
+  context.uniform1i(renderer.liquidUniforms.glassBackDepth, BACK_DEPTH_UNIT);
+  context.uniform1i(renderer.liquidUniforms.glassBackNormal, BACK_NORMAL_UNIT);
   context.uniform1i(renderer.liquidUniforms.skinInfluences, 6);
   context.uniform1i(renderer.liquidUniforms.jointPalette, 7);
   context.uniform1i(renderer.liquidUniforms.morphTargets, 8);
@@ -106,6 +112,8 @@ export function resolveSceneDepth(renderer, width, height) {
       context.deleteFramebuffer(framebuffer);
       renderer.renderTargets?.release('refractionDepth');
       renderer.refractionDepth = null;
+      // The back-face target is only built on top of this one, so it goes with it.
+      renderer.glassBackFaces?.release();
     };
     target = { texture, framebuffer, width, height, reversed, release };
     renderer.refractionDepth = target;
@@ -114,6 +122,98 @@ export function resolveSceneDepth(renderer, width, height) {
   context.bindFramebuffer(context.DRAW_FRAMEBUFFER, target.framebuffer);
   context.blitFramebuffer(0, 0, width, height, 0, 0, width, height, context.DEPTH_BUFFER_BIT, context.NEAREST);
   return target.texture;
+}
+
+/**
+ * The target the back faces of closed glass are drawn into: the outward normal (RGBA8 encoded as n * 0.5 + 0.5, alpha 0 where nothing was drawn; RGBA16F is not renderable without HDR) and the depth in the
+ * buffer's convention. Built on the first frame that draws closed glass (8 bytes a pixel) and freed with the frame targets; a frame with no
+ * closed glass never allocates it.
+ */
+function ensureGlassBackTarget(renderer, width, height) {
+  const context = renderer.context;
+  const reversed = Boolean(renderer.reversedDepth);
+  let target = renderer.glassBackFaces;
+  if (target && target.width === width && target.height === height && target.reversed === reversed) return target;
+  target?.release();
+  // Built on a spare unit, so the scene texture bound to unit 0 stays bound.
+  context.activeTexture(context.TEXTURE0 + BACK_DEPTH_UNIT);
+  const makeTexture = () => {
+    const texture = context.createTexture();
+    context.bindTexture(context.TEXTURE_2D, texture);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+    return texture;
+  };
+  const normalTexture = makeTexture();
+  context.texStorage2D(context.TEXTURE_2D, 1, context.RGBA8, width, height);
+  const depthTexture = makeTexture();
+  context.texStorage2D(context.TEXTURE_2D, 1, reversed ? context.DEPTH_COMPONENT32F : context.DEPTH_COMPONENT24, width, height);
+  const framebuffer = context.createFramebuffer();
+  context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
+  context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, normalTexture, 0);
+  context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, depthTexture, 0);
+  renderer.renderTargets?.record('glassBackFaces', { width, height, format: 'RGBA8' });
+  renderer.renderTargets?.record('glassBackFacesDepth', { width, height, format: reversed ? 'DEPTH_COMPONENT32F' : 'DEPTH_COMPONENT24' });
+  const release = () => {
+    context.deleteTexture(normalTexture);
+    context.deleteTexture(depthTexture);
+    context.deleteFramebuffer(framebuffer);
+    renderer.renderTargets?.release('glassBackFaces');
+    renderer.renderTargets?.release('glassBackFacesDepth');
+    renderer.glassBackFaces = null;
+  };
+  target = { normalTexture, depthTexture, framebuffer, width, height, reversed, release };
+  renderer.glassBackFaces = target;
+  context.activeTexture(context.TEXTURE0);
+  return target;
+}
+
+function batchDrawsBackFaces(batch) {
+  const layers = batch.layerState;
+  return drawsBackFaces({ transmission: layers[9], thickness: layers[11] * partScale(batch.parts[0].matrix), mediumContinues: batch.parts[0].material.mediumContinues });
+}
+
+/**
+ * Draws the back faces (front-face culling) of every closed glass batch into the back-face target and binds it for the glass pass.
+ * Returns false, and draws nothing, when no batch is closed glass. The liquid program is in use with its frame uniforms set.
+ */
+function drawGlassBackFaces(renderer, liquids, width, height) {
+  const closedBatches = liquids.filter(batchDrawsBackFaces);
+  if (closedBatches.length === 0) return false;
+  const context = renderer.context;
+  const uniforms = renderer.liquidUniforms;
+  const reversed = Boolean(renderer.reversedDepth);
+  const target = ensureGlassBackTarget(renderer, width, height);
+  // The previous frame left these two bound to the attachments; drawing into them while the program samples them is a feedback loop.
+  for (const unit of [BACK_DEPTH_UNIT, BACK_NORMAL_UNIT]) {
+    context.activeTexture(context.TEXTURE0 + unit);
+    context.bindTexture(context.TEXTURE_2D, null);
+  }
+  context.activeTexture(context.TEXTURE0);
+  context.bindFramebuffer(context.FRAMEBUFFER, target.framebuffer);
+  context.viewport(0, 0, width, height);
+  context.clearColor(0, 0, 0, 0);
+  context.clearDepth(reversed ? 0 : 1);
+  context.clear(context.COLOR_BUFFER_BIT | context.DEPTH_BUFFER_BIT);
+  context.clearDepth(1);
+  context.cullFace(context.FRONT);
+  context.uniform1f(uniforms.glassBackPass, 1);
+  for (const batch of closedBatches) {
+    if (renderer.liquidClipLocations) bindClipPlanes(renderer, batch, renderer.liquidClipLocations);
+    context.bindVertexArray(batch.vertexArray);
+    context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
+  }
+  context.uniform1f(uniforms.glassBackPass, 0);
+  context.cullFace(context.BACK);
+  context.activeTexture(context.TEXTURE0 + BACK_DEPTH_UNIT);
+  context.bindTexture(context.TEXTURE_2D, target.depthTexture);
+  context.activeTexture(context.TEXTURE0 + BACK_NORMAL_UNIT);
+  context.bindTexture(context.TEXTURE_2D, target.normalTexture);
+  context.activeTexture(context.TEXTURE0);
+  context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
+  return true;
 }
 
 // KHR_materials_volume gives the thickness in the mesh's own units, so a placed or scaled asset thickens with its transform.
@@ -176,6 +276,8 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
     context.activeTexture(context.TEXTURE0);
     context.uniform3f(uniforms.depthMapping, mapping.scale, mapping.bias, reversed ? 1 : 0);
   }
+  context.uniform1f(uniforms.glassBackPass, 0);
+  context.uniform1f(uniforms.glassBackEnabled, sceneDepthTexture && drawGlassBackFaces(renderer, liquids, width, height) ? 1 : 0);
   for (const batch of liquids) {
     const layers = batch.layerState;
     context.uniform4f(uniforms.glassState, layers[9], layers[10], layers[11] * partScale(batch.parts[0].matrix), Math.min(layers[12], maximumDistance));

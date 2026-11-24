@@ -1,3 +1,5 @@
+import { leadWithActionIcon, STUDIO_ACTION_ICONS } from './studio-icons.js';
+
 // Studio keeps the scene being edited in the browser's storage, so a closed tab or a crash does not lose it. On the next
 // start the person chooses between the draft and the scene that opened. The draft is one entry: the latest unsaved state.
 
@@ -79,10 +81,12 @@ export function createDraftNotice({ documentReference, createIcon, onRestore, on
   const restoreButton = documentReference.createElement('button');
   restoreButton.type = 'button';
   restoreButton.textContent = 'Restore';
+  leadWithActionIcon(restoreButton, createIcon(STUDIO_ACTION_ICONS.restoreDraft), STUDIO_ACTION_ICONS.restoreDraft);
   restoreButton.addEventListener('click', onRestore);
   const discardButton = documentReference.createElement('button');
   discardButton.type = 'button';
   discardButton.textContent = 'Discard';
+  leadWithActionIcon(discardButton, createIcon(STUDIO_ACTION_ICONS.discardDraft), STUDIO_ACTION_ICONS.discardDraft);
   discardButton.addEventListener('click', onDiscard);
 
   const element = documentReference.createElement('div');

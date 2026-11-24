@@ -17,6 +17,8 @@ export const STUDIO_CSS = `
   --studio-border: var(--site-border, #fefefd1f);
   --studio-accent: var(--site-focus, #fc9132);
   --studio-ok: #5fc48a;
+  /* A label's icon: the text colour one step toward the panel, clearly visible in both themes. */
+  --studio-icon: color-mix(in srgb, var(--studio-text) 78%, var(--studio-panel));
   /* Drawn over the viewport, which is dark in both themes: these two do not follow the theme. */
   --studio-trace: #f1f0ec;
   --studio-trace-edge: #17161a;
@@ -53,8 +55,13 @@ export const STUDIO_CSS = `
 .crucible-studio[data-theme="light"] { color-scheme: light; }
 .crucible-studio[data-theme="dark"] { color-scheme: dark; }
 .crucible-studio * { box-sizing: border-box; }
+/* Nothing in Studio is selectable by click or drag. This is the whole list of what is: text fields, and a block that a person
+   copies from, which opts in with the class crucible-studio-selectable. A dialog is named because the browser's own stylesheet
+   makes a modal dialog selectable, which the root's none does not override. */
+.crucible-studio dialog { user-select: none; }
 .crucible-studio input,
-.crucible-studio textarea { user-select: text; }
+.crucible-studio textarea,
+.crucible-studio-selectable { user-select: text; }
 
 .crucible-studio button,
 .crucible-studio select,
@@ -83,10 +90,14 @@ export const STUDIO_CSS = `
   padding: 0;
   flex-shrink: 0;
 }
-.crucible-studio-icon[data-brand] {
+.crucible-studio button[data-action-icon] { gap: 8px; }
+.crucible-studio button[data-action-icon] > .crucible-studio-icon { color: inherit; }
+.crucible-studio-icon[data-brand],
+.crucible-studio-icon[data-filled] {
   fill: currentColor;
   stroke: none;
 }
+.crucible-studio-icon[data-filled] { fill-rule: evenodd; }
 .crucible-studio-icon {
   inline-size: 17px;
   block-size: 17px;
@@ -448,7 +459,7 @@ export const STUDIO_CSS = `
   inset-block-start: var(--studio-top);
   inset-inline: calc(var(--studio-rail) + 2 * var(--studio-edge)) calc(var(--studio-side-width, 284px) + 2 * var(--studio-edge));
   inline-size: fit-content;
-  max-inline-size: 520px;
+  max-inline-size: 600px;
   margin-inline: auto;
   gap: 8px;
   padding: 12px 12px;
@@ -677,8 +688,8 @@ export const STUDIO_CSS = `
   gap: 2px;
 }
 .crucible-studio-popover-grid + .crucible-studio-popover-grid { margin-block-start: 10px; }
-#crucible-studio-pop-add { max-width: 348px; max-block-size: calc(100dvh - 16px); overflow-y: auto; }
-#crucible-studio-pop-add .crucible-studio-popover-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#crucible-studio-pop-add .crucible-studio-popover-grid { grid-template-columns: minmax(0, 1fr); }
+#crucible-studio-pop-add { max-block-size: calc(100dvh - 16px); overflow-y: auto; }
 .crucible-studio-popover button[aria-expanded="true"] { background: color-mix(in srgb, var(--studio-text) 8%, transparent); }
 .crucible-studio-tree-section { display: grid; }
 .crucible-studio-tree-section[hidden], .crucible-studio-tree-controls[hidden] { display: none; }
@@ -697,9 +708,13 @@ export const STUDIO_CSS = `
   padding: 8px 12px;
   text-align: left;
 }
-.crucible-studio-popover > button > .crucible-studio-icon { color: var(--studio-muted); }
+.crucible-studio-popover > button > .crucible-studio-icon,
+.crucible-studio-popover-grid > button > .crucible-studio-icon { color: var(--studio-muted); }
 .crucible-studio-popover > button:hover > .crucible-studio-icon,
-.crucible-studio-popover > button:focus-visible > .crucible-studio-icon { color: inherit; }
+.crucible-studio-popover > button:focus-visible > .crucible-studio-icon,
+.crucible-studio-popover-grid > button:hover > .crucible-studio-icon,
+.crucible-studio-popover-grid > button:focus-visible > .crucible-studio-icon { color: inherit; }
+.crucible-studio-popover-grid > button { gap: 8px; white-space: nowrap; }
 .crucible-studio-menu-gap {
   flex: none;
   inline-size: 17px;
@@ -1252,8 +1267,18 @@ export const STUDIO_CSS = `
   text-wrap: balance;
   pointer-events: none;
   z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
 }
 .crucible-studio-status:empty { display: none; }
+/* The toast lets clicks through, except on an error message, which a person may want to copy. */
+.crucible-studio-status .crucible-studio-selectable { pointer-events: auto; }
+/* The mark leads each outcome in its own shape and weight: done in green, a warning as an accent outline, a failure as a solid accent disc, the rest quiet. */
+.crucible-studio-status .crucible-studio-icon { color: var(--studio-icon); }
+.crucible-studio-status[data-outcome="success"] .crucible-studio-icon { color: var(--studio-ok); }
+.crucible-studio-status[data-outcome="warning"] .crucible-studio-icon,
+.crucible-studio-status[data-outcome="error"] .crucible-studio-icon { color: var(--studio-accent); }
 /* The box stays mounted and the script sets data-state: in while a message shows, out while it leaves. The individual
    translate property leaves the centring transform alone. */
 @supports (transition-behavior: allow-discrete) {
@@ -1532,7 +1557,7 @@ export const STUDIO_CSS = `
   inset-block-start: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr);
+  grid-template-columns: 14px 14px minmax(0, 1fr);
   justify-content: stretch;
   justify-items: start;
   align-items: center;
@@ -1576,12 +1601,15 @@ export const STUDIO_CSS = `
 .crucible-studio-property-title .crucible-studio-icon {
   inline-size: 14px;
   block-size: 14px;
+}
+.crucible-studio-property-title .crucible-studio-section-icon { color: var(--studio-icon); stroke-width: 2; }
+.crucible-studio-property-title .crucible-studio-chevron {
   transition: transform var(--studio-motion-quick) var(--studio-ease-out);
 }
 @media (prefers-reduced-motion: reduce) {
-  .crucible-studio-property-title .crucible-studio-icon { transition: none; }
+  .crucible-studio-property-title .crucible-studio-chevron { transition: none; }
 }
-.crucible-studio-property-section[data-open="true"] .crucible-studio-property-title .crucible-studio-icon { transform: rotate(90deg); }
+.crucible-studio-property-section[data-open="true"] .crucible-studio-property-title .crucible-studio-chevron { transform: rotate(90deg); }
 .crucible-studio-property-rows {
   display: grid;
   gap: 4px;
@@ -2018,7 +2046,16 @@ export const STUDIO_CSS = `
   background: var(--studio-panel);
   color: var(--studio-text);
 }
+.crucible-studio dialog h2 .crucible-studio-icon {
+  inline-size: 18px;
+  block-size: 18px;
+  stroke-width: 1.9;
+  translate: 0 1px;
+}
 .crucible-studio dialog h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 0 10px;
   font-family: var(--studio-font-heading);
   font-size: 15px;
@@ -2045,14 +2082,14 @@ export const STUDIO_CSS = `
 }
 .crucible-studio-settings {
   display: grid;
-  gap: 2px;
+  gap: var(--studio-space-4);
   font-size: 12.5px;
 }
 .crucible-studio-setting {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--studio-space-4);
   min-block-size: 34px;
 }
 .crucible-studio-setting select {
@@ -2391,7 +2428,6 @@ export const STUDIO_CSS = `
   line-height: 1.5;
   overflow: auto;
   resize: none;
-  user-select: text;
 }
 .crucible-studio-setup-actions { align-items: center; margin-top: 10px; }
 .crucible-studio dialog button.crucible-studio-setup-skip {

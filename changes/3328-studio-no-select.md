@@ -1,0 +1,1 @@
+- Studio selects no text by click or drag outside text fields and blocks marked `crucible-studio-selectable` (an error's own message in the status toast and the paused notice is one): the modal dialogs no longer select, and Ctrl+A no longer highlights the page, but a page that embeds Studio keeps it for its own text (#3328)
