@@ -4,8 +4,10 @@
 // no paths at all, runs "full". The workflow runs this on the merge commit (needs fetch-depth 2) and needs no npm install.
 // Prints mode=, reason= and tests= lines, ready to append to $GITHUB_OUTPUT.
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { findAffectedTests } from './test-affected.mjs';
-import { isMainModule } from './test-run.mjs';
+import { isMainModule, listTestFiles, repositoryRoot } from './test-run.mjs';
 
 export const LIGHT_MODE = 'light';
 export const FULL_MODE = 'full';
@@ -42,6 +44,30 @@ export function classifyChangedFiles(paths) {
   return { mode: LIGHT_MODE, reason: `only ${groups.join(', ')} changed` };
 }
 
+const DOCUMENT_PATH = /^(docs|changes|site)\/|\.md$/;
+const STUDIO_SOURCE_PATH = /^src\/studio(-[^/]*)?\.(js|css)$/;
+// Tests that read documents, change notes or site pages by pattern never name the one file that changed.
+const DOCUMENT_MENTION = /docs\/|\.md\b|changes\/|site\//;
+const STUDIO_IMPORT = /src\/studio/;
+const STUDIO_TEST_FILE = /^tests\/studio(-[^/]*)?\.test\.js$/;
+
+function testsWhere(folder, keep) {
+  return listTestFiles(folder).filter(testFile => keep(testFile, readFileSync(join(folder, testFile), 'utf8')));
+}
+
+// Every test the light run needs: those that mention a changed file, plus the wide nets for documents and the Studio.
+export function selectLightTests(paths, folder = repositoryRoot) {
+  const normalized = paths.map(toPosix);
+  const selected = new Set(findAffectedTests(normalized, folder));
+  if (normalized.some(path => DOCUMENT_PATH.test(path))) {
+    testsWhere(folder, (_testFile, source) => DOCUMENT_MENTION.test(source)).forEach(testFile => selected.add(testFile));
+  }
+  if (normalized.some(path => STUDIO_SOURCE_PATH.test(path))) {
+    testsWhere(folder, (testFile, source) => STUDIO_TEST_FILE.test(testFile) || STUDIO_IMPORT.test(source)).forEach(testFile => selected.add(testFile));
+  }
+  return [...selected].sort();
+}
+
 function changedPathsOfMergeCommit() {
   const result = spawnSync('git', ['diff', '--name-only', '--no-renames', 'HEAD^1', 'HEAD'], { encoding: 'utf8' });
   if (result.status !== 0) return [];
@@ -52,7 +78,7 @@ function main(arguments_) {
   const requested = arguments_.filter(argument => !argument.startsWith('--'));
   const changedPaths = requested.length > 0 ? requested : changedPathsOfMergeCommit();
   const { mode, reason } = classifyChangedFiles(changedPaths);
-  const tests = mode === LIGHT_MODE ? findAffectedTests(changedPaths) : [];
+  const tests = mode === LIGHT_MODE ? selectLightTests(changedPaths) : [];
   console.log(`mode=${mode}`);
   console.log(`reason=${reason}`);
   console.log(`tests=${tests.join(' ')}`);

@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { FULL_MODE, LIGHT_MODE, classifyChangedFiles } from '../scripts/ci-plan.mjs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { FULL_MODE, LIGHT_MODE, classifyChangedFiles, selectLightTests } from '../scripts/ci-plan.mjs';
 
 const LIGHT_EXAMPLES = [
   ['docs/studio.md'],
@@ -76,4 +79,37 @@ test('the command line prints no tests in full mode', () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /^mode=full$/m);
   assert.match(result.stdout, /^tests=$/m);
+});
+
+function makeFixtureRepository(testFiles) {
+  const folder = mkdtempSync(join(tmpdir(), 'ci-plan-'));
+  mkdirSync(join(folder, 'tests'));
+  for (const [name, source] of Object.entries(testFiles)) writeFileSync(join(folder, 'tests', name), source);
+  return folder;
+}
+
+const FIXTURE_TESTS = {
+  'reads-docs.test.js': "readdirSync('docs/');",
+  'reads-notes.test.js': "readFileSync('changes/README.md');",
+  'reads-site.test.js': "readFileSync('site/index.html');",
+  'imports-studio.test.js': "import '../src/studio-trees.js';",
+  'studio-keymap.test.js': 'nothing to see',
+  'renderer.test.js': "import '../src/renderer.js';",
+};
+
+test('a document change also selects every test that mentions docs, notes, markdown or site pages', () => {
+  const folder = makeFixtureRepository(FIXTURE_TESTS);
+  for (const changed of ['docs/guide.md', 'changes/12.md', 'site/index.html', 'README.md']) {
+    assert.deepEqual(selectLightTests([changed], folder), ['tests/reads-docs.test.js', 'tests/reads-notes.test.js', 'tests/reads-site.test.js'], changed);
+  }
+});
+
+test('a Studio change also selects every studio test and every test that imports a Studio module', () => {
+  const folder = makeFixtureRepository(FIXTURE_TESTS);
+  assert.deepEqual(selectLightTests(['src/studio-icons.js'], folder), ['tests/imports-studio.test.js', 'tests/studio-keymap.test.js']);
+});
+
+test('a change that is neither a document nor Studio selects only the tests that mention it', () => {
+  const folder = makeFixtureRepository(FIXTURE_TESTS);
+  assert.deepEqual(selectLightTests(['src/renderer.js'], folder), ['tests/renderer.test.js']);
 });
