@@ -100,11 +100,12 @@ async function readJson(url) {
 // The field is built once for the first frame's eye, so every frame and every rerender draws the same blades.
 async function addGroundCover(asset, description, camera) {
   if (description.environment?.groundCover === undefined) return;
-  const { normalizeGroundCover, groundCoverParts } = await import('./ground-cover.js');
+  const { normalizeGroundCover } = await import('./ground-cover.js');
+  const { growGroundCover } = await import('./ground-cover-offload.js');
   const entries = normalizeGroundCover(description.environment.groundCover);
   if (!entries.length) return;
   const firstEye = camera ? camera.sample(0).eye : description.eye;
-  asset.parts = [...asset.parts, ...groundCoverParts(asset.parts, entries, firstEye)];
+  asset.parts = [...asset.parts, ...await growGroundCover(asset.parts, entries, firstEye)];
 }
 
 async function start() {
