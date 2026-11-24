@@ -1,0 +1,29 @@
+{
+ "still": "weakness-ribbon.png",
+ "before": {
+  "label": "Before (main cc00c85)",
+  "sha": "cc00c85ecb69cfe6fd658fc232079d8c1ff2fe22",
+  "image": "before.png",
+  "recipe": "before.recipe.json"
+ },
+ "after": {
+  "label": "After (head be2ebe4)",
+  "sha": "be2ebe4f750a10fdf1bda9e0e4e30cf2d5264ba7",
+  "image": "after.png",
+  "recipe": "after.recipe.json"
+ },
+ "crop": {
+  "x": 0,
+  "y": 430,
+  "width": 300,
+  "height": 80,
+  "scale": 3
+ },
+ "render": {
+  "width": 960,
+  "height": 540,
+  "backend": "raster",
+  "cook": false,
+  "scene": "snow mountain tiles at 1024, wobble 0, camera and sun inside the recipe files"
+ }
+}

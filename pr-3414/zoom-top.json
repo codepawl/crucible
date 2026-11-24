@@ -7,8 +7,8 @@
   "recipe": "before.recipe.json"
  },
  "after": {
-  "label": "After (head 7aa685a)",
-  "sha": "7aa685a856309c3596817bcd12cc7257053e4a2f",
+  "label": "After (head be2ebe4)",
+  "sha": "be2ebe4f750a10fdf1bda9e0e4e30cf2d5264ba7",
   "image": "after.png",
   "recipe": "after.recipe.json"
  },
