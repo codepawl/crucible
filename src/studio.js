@@ -4693,7 +4693,7 @@ export function createStudio(container, {
   const keyHandlers = {
     'tool.select': () => controller.setTool('select'),
     // Tab is also how the keyboard moves between controls, so Shift+Tab snaps only from the page or the canvas.
-    // With the canvas focused, the keys go to the area under the pointer, as in Blender: Shift+Tab with the pointer elsewhere
+    // With the canvas focused, the keys go to the area under the pointer: Shift+Tab with the pointer elsewhere
     // is the browser's way back out of the canvas.
     'snap.toggle': event => {
       const canvasHasFocus = event.target === canvas;

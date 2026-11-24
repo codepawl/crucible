@@ -1,4 +1,4 @@
-// Snapping in Studio is a state, as in Blender: a magnet toggle, a target (what to snap to) and Ctrl to flip it for one
+// Snapping in Studio is a state: a magnet toggle, a target (what to snap to) and Ctrl to flip it for one
 // transform. This file holds the pure parts. The controller feeds it world-space numbers, so a node move, a key-driven
 // move and an edit-mode element move all snap the same way.
 
