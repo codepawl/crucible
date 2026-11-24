@@ -94,13 +94,14 @@ test('metal with a bevelled normal map keeps a clean rim instead of one bright p
 
 // #3142: at the narrowest highlight the material allows (roughness 0.075) the linear fade alone still left a bead wherever the normal
 // turns fast across a pixel. Measured on this scene (GPU Chrome, bright means 25 above the neighbourhood median): 97 pixels before the
-// knee of the fade, 67 after. The limit sits between the two.
+// knee of the fade, 67 after. The limit sits between the two. The linear fade cannot be rendered beside the cubic one in the same run
+// (no switch in the shader, and a test-only one would add code to every normal-mapped shader), so the limit stays fixed.
 const NARROW_HIGHLIGHT_ROUGHNESS = 0.075;
 const MAXIMUM_NARROW_HIGHLIGHT_SPECKLE_PIXELS = 80;
 
 test('a narrow highlight on a normal-mapped silhouette leaves fewer beads than the linear fade alone', async (context) => {
   await withDevServerPage(context, async (page) => {
     const speckle = await countRimSpeckle(page, 25, NARROW_HIGHLIGHT_ROUGHNESS);
-    assert.ok(speckle <= MAXIMUM_NARROW_HIGHLIGHT_SPECKLE_PIXELS, `${speckle} bright rim pixels at roughness ${NARROW_HIGHLIGHT_ROUGHNESS}, at most ${MAXIMUM_NARROW_HIGHLIGHT_SPECKLE_PIXELS} expected; the specular fade must close where the normal variance across a pixel is large.`);
+    assert.ok(speckle <= MAXIMUM_NARROW_HIGHLIGHT_SPECKLE_PIXELS, `measured ${speckle} bright rim pixels at roughness ${NARROW_HIGHLIGHT_ROUGHNESS}, at most ${MAXIMUM_NARROW_HIGHLIGHT_SPECKLE_PIXELS} expected (on the GPU that set the limit: 97 with the linear fade alone, 67 with the knee); the specular fade must close where the normal variance across a pixel is large.`);
   });
 });

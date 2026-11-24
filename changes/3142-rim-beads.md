@@ -1,1 +1,2 @@
 - Normal-mapped metal no longer shows single bright pixels along its silhouette: the direct specular now closes where the normal turns fast across a pixel, with the interior highlight unchanged (#3142).
+  media: https://raw.githubusercontent.com/codepawl/crucible/evidence/pr-3420/before-after-reference-8x.png Rim of a normal-mapped sphere at 8x: main with a dotted rim, this change clean, and the path-traced reference
