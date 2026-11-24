@@ -83,7 +83,7 @@ function isInteriorVertex(escapedShare) {
 
 // A room open on one side has a gradient of escaping rays towards its opening, so the hard cut above would draw a ragged contour across the ceiling
 // (#3389): its fill fades out over the next quarter of escaping rays instead. A room walled all round keeps the hard cut, byte for byte.
-function interiorWeight(escapedShare, softEdge) {
+export function interiorWeight(escapedShare, softEdge) {
   if (escapedShare <= INTERIOR_MAXIMUM_ESCAPE) return 1;
   return softEdge ? Math.max(0, 1 - (escapedShare - INTERIOR_MAXIMUM_ESCAPE) / INTERIOR_MAXIMUM_ESCAPE) : 0;
 }
@@ -572,6 +572,8 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
       worldNormal[2] /= length;
       if (centres && isBuriedInside(tracer, world, point, worldNormal, offset, centres, vertex, matrix)) {
         skyVisibility[vertex] = 1 - strength;
+        // A point inside a slab is as near a surface as a point can be: left at 0 it took the fill at full weight, and its traced neighbours at the edge of a wall took less, a scalloped line along every edge (#3389).
+        if (openSided) nearShares[vertex] = 1;
         continue;
       }
       let escaped = 0;

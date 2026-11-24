@@ -4,7 +4,7 @@ import './support/load-agent-scene-modules.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAgentScene } from '../src/agent-scene.js';
-import { applyDefaultFloorSky } from '../src/floor-sky-visibility.js';
+import { applyDefaultFloorSky, interiorWeight } from '../src/floor-sky-visibility.js';
 import { fittedRoomHasWalls, OPEN_SIDED_ROOM_WALL_SHARE } from '../src/fitted-closed-room.js';
 import { partMatrixLookup } from '../src/closed-room.js';
 
@@ -59,4 +59,48 @@ test('open ground says it was skipped', () => {
   const result = applyDefaultFloorSky(ground, SUN, SMALL_TRACE);
   assert.equal(result.parts, ground);
   assert.match(result.report.branch, /skipped$/);
+});
+
+test('the fill of an open-sided room fades out between a quarter and a half of escaping rays', () => {
+  assert.equal(interiorWeight(0, true), 1);
+  assert.equal(interiorWeight(0.25, true), 1);
+  const justPast = interiorWeight(0.2501, true);
+  assert.ok(justPast < 1 && justPast > 0.99, `just past a quarter: ${justPast}`);
+  assert.ok(Math.abs(interiorWeight(0.375, true) - 0.5) < 1e-9);
+  const justBefore = interiorWeight(0.4999, true);
+  assert.ok(justBefore > 0 && justBefore < 0.01, `just before a half: ${justBefore}`);
+  assert.equal(interiorWeight(0.5, true), 0);
+  assert.equal(interiorWeight(0.9, true), 0);
+});
+
+test('a room walled all round keeps the hard cut at a quarter of escaping rays', () => {
+  assert.equal(interiorWeight(0.25, false), 1);
+  assert.equal(interiorWeight(0.2501, false), 0);
+  assert.equal(interiorWeight(0.375, false), 0);
+});
+
+// The rounded edge of the back wall runs along its top and bottom: points inside the slab used to take the fill at full weight and their
+// traced neighbours less, which drew a scalloped line there. Points on one ring of the rounded edge share a height.
+test('the rounded edge of a wall of an open-sided set has no alternating sky values', () => {
+  const result = applyDefaultFloorSky(setParts(), SUN, { maximumTexels: 3000 });
+  const { positions, normals, skyVisibility } = result.parts.find(part => part.name === 'wall-back').geometry;
+  const rings = new Map();
+  for (let vertex = 0; vertex < positions.length / 3; vertex++) {
+    const sideways = Math.abs(normals[vertex * 3]);
+    if (normals[vertex * 3 + 2] < 0.1 || normals[vertex * 3 + 2] > 0.99 || sideways > 0.05) continue;
+    const ring = positions[vertex * 3 + 1].toFixed(3);
+    if (!rings.has(ring)) rings.set(ring, []);
+    rings.get(ring).push({ across: positions[vertex * 3], sky: skyVisibility[vertex] });
+  }
+  let largestStep = 0;
+  let pointsCompared = 0;
+  for (const ring of rings.values()) {
+    ring.sort((first, second) => first.across - second.across);
+    for (let index = 1; index < ring.length; index++) {
+      largestStep = Math.max(largestStep, Math.abs(ring[index].sky - ring[index - 1].sky));
+      pointsCompared++;
+    }
+  }
+  assert.ok(pointsCompared > 20, `the rounded edge has points (${pointsCompared})`);
+  assert.ok(largestStep < 0.06, `neighbouring points of one ring differ by ${largestStep}`);
 });
