@@ -14,7 +14,6 @@ import { LIQUID_OPTICS, resolveLiquidOptics } from './liquid-optics.js';
 import { createLightingSetupMap, createCatalogEnvironmentMap, lightingSetupFields, setupMapShowsBackground } from './lighting-setups.js';
 import { agentSceneModule } from './agent-scene-modules.js';
 import { splitHdriSun } from './hdri.js';
-import { withReflectionEnvironment } from './environment.js';
 import { lightShapeSupport, postStepSupport } from './shader-registry.js';
 import { VIEW_TRANSFORM_NAMES, LOOK_NAMES } from './view-transform-names.js';
 import { BUNDLED_ENVIRONMENT_NAMES, BUNDLED_CUBE_LOOK_NAMES, isEnvironmentReference, isCubeLookReference } from './look-catalog.js';
@@ -435,12 +434,9 @@ function environmentFrom(input = {}) {
     }
     environment.hdri = input.hdri;
   }
-  // A second HDRI that only the reflections read (withReflectionEnvironment in src/environment.js); the diffuse light stays the lighting map's.
+  // A second HDRI that only the reflections read (src/reflection-environment.js, loaded on demand); the diffuse light stays the lighting map's.
   if (input.reflectionHdri !== undefined && input.reflectionHdri !== null) {
-    if (typeof input.reflectionHdri !== 'string' || !isEnvironmentReference(input.reflectionHdri)) {
-      throw invalidField('environment.reflectionHdri', input.reflectionHdri, `one of ${BUNDLED_ENVIRONMENT_NAMES.join(', ')} or the 64-character ID of a .hdr file in the asset catalog`);
-    }
-    environment.reflectionHdri = input.reflectionHdri;
+    environment.reflectionHdri = agentSceneModule('reflectionEnvironment').resolveReflectionHdri(input.reflectionHdri, invalidField);
   }
   // The key light takes the HDRI's sun when the scene is built (agentEnvironmentKey), since the HDRI data loads after the recipe is checked.
   if (input.keyFromHdri !== undefined) {
@@ -535,8 +531,7 @@ export function agentEnvironmentMap(environment, { withReflection = true } = {})
   if (!withReflection || !environment.reflectionHdri) {
     return lightingMap;
   }
-  const reflectionMap = createCatalogEnvironmentMap(environment.reflectionHdri, { intensity: environment.environmentIntensity, rotation: environment.environmentRotation, showBackground: environment.world });
-  return withReflectionEnvironment(lightingMap, reflectionMap);
+  return agentSceneModule('reflectionEnvironment').withReflectionHdri(lightingMap, environment);
 }
 
 function agentLightingMap(environment) {

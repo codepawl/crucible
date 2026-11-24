@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createEnvironmentMap, withReflectionEnvironment } from '../src/environment.js';
+import { createEnvironmentMap } from '../src/environment.js';
+import { withReflectionEnvironment } from '../src/reflection-environment.js';
+import { agentSceneModulesNeeded, loadAgentSceneModules } from '../src/agent-scene-modules.js';
 import { agentEnvironmentMap, normalizeAgentLook } from '../src/agent-look.js';
 import { registerCatalogEnvironment, catalogLookReferences } from '../src/look-catalog.js';
 import { pathTraceEnvironment } from '../src/path-trace-terms.js';
@@ -11,6 +13,9 @@ import { prepareFileScene } from '../scripts/file-scene.mjs';
 
 const PALE_ID = 'a'.repeat(64);
 const SUNSET_ID = 'b'.repeat(64);
+
+// A recipe that names reflectionHdri loads its module first, as one that names a skybox does.
+await loadAgentSceneModules({ environment: { reflectionHdri: SUNSET_ID } });
 
 function flatMap(color, options = {}) {
   const data = new Float32Array(8 * 4 * 3);
@@ -105,4 +110,10 @@ test('a scene file routes reflectionHdri like hdri and rejects anything else', a
   assert.throws(() => prepareFileScene({ configPath }), /"reflectionHdri" must be the path of a local Radiance \.hdr file/);
   await writeFile(configPath, JSON.stringify({ glb: 'scene.glb', hdri: 'pale.hdr', reflectionHdri: 'https://example.com/sky.hdr' }));
   assert.throws(() => prepareFileScene({ configPath }), /Remote asset URLs are not allowed/);
+});
+
+test('only a recipe or edit that names reflectionHdri loads the reflection module', () => {
+  assert.deepEqual(agentSceneModulesNeeded({ environment: { hdri: PALE_ID } }).filter(name => name === 'reflectionEnvironment'), []);
+  assert.deepEqual(agentSceneModulesNeeded({ environment: { hdri: PALE_ID, reflectionHdri: SUNSET_ID } }).filter(name => name === 'reflectionEnvironment'), ['reflectionEnvironment']);
+  assert.deepEqual(agentSceneModulesNeeded([{ type: 'set-environment', environment: { reflectionHdri: null } }]).filter(name => name === 'reflectionEnvironment'), ['reflectionEnvironment']);
 });

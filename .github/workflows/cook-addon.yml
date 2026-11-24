@@ -376,6 +376,7 @@ on:
       - 'src/ray-visibility.js'
       - 'src/realism-checks.js'
       - 'src/recipe-ground-field.js'
+      - 'src/reflection-environment.js'
       - 'src/reflection-probes.js'
       - 'src/render-culling.js'
       - 'src/render-passes.js'

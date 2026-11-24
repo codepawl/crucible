@@ -1,7 +1,7 @@
 import { CrucibleRenderer } from './renderer.js';
 import { createSharedTextures, loadGltf } from './gltf.js';
 import { loadHdri } from './hdri.js';
-import { withReflectionEnvironment } from './environment.js';
+import { withReflectionEnvironment } from './reflection-environment.js';
 import { loadViewTransformForRendererOptions } from './view-transform-loading.js';
 import { createCascadedShadows } from './cascaded-shadows.js';
 import { applyWaterReflection, attachWaterReflection } from './water-reflection.js';
