@@ -1,0 +1,2899 @@
+{
+ "recipe": {
+  "format": "crucible.scene",
+  "schemaVersion": 1,
+  "geometries": [
+   {
+    "id": "m0",
+    "type": "mesh",
+    "base": {
+     "type": "sphere",
+     "segments": 112,
+     "rings": 72
+    },
+    "edits": [
+     {
+      "op": "uv_project",
+      "mode": "sphere",
+      "axis": "x"
+     },
+     {
+      "op": "displace",
+      "field": {
+       "add": [
+        {
+         "mul": [
+          {
+           "floor": {
+            "mul": [
+             {
+              "noise": {
+               "scale": 3,
+               "seed": 5,
+               "octaves": 2
+              }
+             },
+             4
+            ]
+           }
+          },
+          0.15
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 3,
+            "seed": 5,
+            "octaves": 2
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      },
+      "strength": 0.26,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "sub": [
+        1,
+        {
+         "mul": [
+          2,
+          {
+           "abs": {
+            "sub": [
+             {
+              "noise": {
+               "scale": 7,
+               "seed": 17,
+               "octaves": 3
+              }
+             },
+             0.5
+            ]
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "strength": 0.078,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "noise": {
+        "scale": 22,
+        "seed": 31,
+        "octaves": 2
+       }
+      },
+      "strength": 0.013000000000000001,
+      "midlevel": 0.5
+     }
+    ]
+   },
+   {
+    "id": "m1",
+    "type": "mesh",
+    "base": {
+     "type": "sphere",
+     "segments": 112,
+     "rings": 72
+    },
+    "edits": [
+     {
+      "op": "uv_project",
+      "mode": "sphere",
+      "axis": "x"
+     },
+     {
+      "op": "displace",
+      "field": {
+       "add": [
+        {
+         "mul": [
+          {
+           "floor": {
+            "mul": [
+             {
+              "noise": {
+               "scale": 3,
+               "seed": 15,
+               "octaves": 2
+              }
+             },
+             4
+            ]
+           }
+          },
+          0.15
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 3,
+            "seed": 15,
+            "octaves": 2
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      },
+      "strength": 0.26,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "sub": [
+        1,
+        {
+         "mul": [
+          2,
+          {
+           "abs": {
+            "sub": [
+             {
+              "noise": {
+               "scale": 7,
+               "seed": 27,
+               "octaves": 3
+              }
+             },
+             0.5
+            ]
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "strength": 0.078,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "noise": {
+        "scale": 22,
+        "seed": 41,
+        "octaves": 2
+       }
+      },
+      "strength": 0.013000000000000001,
+      "midlevel": 0.5
+     }
+    ]
+   },
+   {
+    "id": "m2",
+    "type": "mesh",
+    "base": {
+     "type": "sphere",
+     "segments": 112,
+     "rings": 72
+    },
+    "edits": [
+     {
+      "op": "uv_project",
+      "mode": "sphere",
+      "axis": "x"
+     },
+     {
+      "op": "displace",
+      "field": {
+       "add": [
+        {
+         "mul": [
+          {
+           "floor": {
+            "mul": [
+             {
+              "noise": {
+               "scale": 3,
+               "seed": 25,
+               "octaves": 2
+              }
+             },
+             4
+            ]
+           }
+          },
+          0.15
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 3,
+            "seed": 25,
+            "octaves": 2
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      },
+      "strength": 0.26,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "sub": [
+        1,
+        {
+         "mul": [
+          2,
+          {
+           "abs": {
+            "sub": [
+             {
+              "noise": {
+               "scale": 7,
+               "seed": 37,
+               "octaves": 3
+              }
+             },
+             0.5
+            ]
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "strength": 0.078,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "noise": {
+        "scale": 22,
+        "seed": 51,
+        "octaves": 2
+       }
+      },
+      "strength": 0.013000000000000001,
+      "midlevel": 0.5
+     }
+    ]
+   },
+   {
+    "id": "m3",
+    "type": "mesh",
+    "base": {
+     "type": "sphere",
+     "segments": 112,
+     "rings": 72
+    },
+    "edits": [
+     {
+      "op": "uv_project",
+      "mode": "sphere",
+      "axis": "x"
+     },
+     {
+      "op": "displace",
+      "field": {
+       "add": [
+        {
+         "mul": [
+          {
+           "floor": {
+            "mul": [
+             {
+              "noise": {
+               "scale": 3,
+               "seed": 35,
+               "octaves": 2
+              }
+             },
+             4
+            ]
+           }
+          },
+          0.15
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 3,
+            "seed": 35,
+            "octaves": 2
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      },
+      "strength": 0.26,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "sub": [
+        1,
+        {
+         "mul": [
+          2,
+          {
+           "abs": {
+            "sub": [
+             {
+              "noise": {
+               "scale": 7,
+               "seed": 47,
+               "octaves": 3
+              }
+             },
+             0.5
+            ]
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "strength": 0.078,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "noise": {
+        "scale": 22,
+        "seed": 61,
+        "octaves": 2
+       }
+      },
+      "strength": 0.013000000000000001,
+      "midlevel": 0.5
+     }
+    ]
+   },
+   {
+    "id": "m4",
+    "type": "mesh",
+    "base": {
+     "type": "sphere",
+     "segments": 112,
+     "rings": 72
+    },
+    "edits": [
+     {
+      "op": "uv_project",
+      "mode": "sphere",
+      "axis": "x"
+     },
+     {
+      "op": "displace",
+      "field": {
+       "add": [
+        {
+         "mul": [
+          {
+           "floor": {
+            "mul": [
+             {
+              "noise": {
+               "scale": 3,
+               "seed": 45,
+               "octaves": 2
+              }
+             },
+             4
+            ]
+           }
+          },
+          0.15
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 3,
+            "seed": 45,
+            "octaves": 2
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      },
+      "strength": 0.26,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "sub": [
+        1,
+        {
+         "mul": [
+          2,
+          {
+           "abs": {
+            "sub": [
+             {
+              "noise": {
+               "scale": 7,
+               "seed": 57,
+               "octaves": 3
+              }
+             },
+             0.5
+            ]
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "strength": 0.078,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "noise": {
+        "scale": 22,
+        "seed": 71,
+        "octaves": 2
+       }
+      },
+      "strength": 0.013000000000000001,
+      "midlevel": 0.5
+     }
+    ]
+   },
+   {
+    "id": "m5",
+    "type": "mesh",
+    "base": {
+     "type": "sphere",
+     "segments": 112,
+     "rings": 72
+    },
+    "edits": [
+     {
+      "op": "uv_project",
+      "mode": "sphere",
+      "axis": "x"
+     },
+     {
+      "op": "displace",
+      "field": {
+       "add": [
+        {
+         "mul": [
+          {
+           "floor": {
+            "mul": [
+             {
+              "noise": {
+               "scale": 3,
+               "seed": 55,
+               "octaves": 2
+              }
+             },
+             4
+            ]
+           }
+          },
+          0.15
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 3,
+            "seed": 55,
+            "octaves": 2
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      },
+      "strength": 0.26,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "sub": [
+        1,
+        {
+         "mul": [
+          2,
+          {
+           "abs": {
+            "sub": [
+             {
+              "noise": {
+               "scale": 7,
+               "seed": 67,
+               "octaves": 3
+              }
+             },
+             0.5
+            ]
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "strength": 0.078,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "noise": {
+        "scale": 22,
+        "seed": 81,
+        "octaves": 2
+       }
+      },
+      "strength": 0.013000000000000001,
+      "midlevel": 0.5
+     }
+    ]
+   },
+   {
+    "id": "b2",
+    "type": "mesh",
+    "base": {
+     "type": "sphere",
+     "segments": 80,
+     "rings": 56
+    },
+    "edits": [
+     {
+      "op": "uv_project",
+      "mode": "sphere",
+      "axis": "x"
+     },
+     {
+      "op": "displace",
+      "field": {
+       "add": [
+        {
+         "mul": [
+          {
+           "floor": {
+            "mul": [
+             {
+              "noise": {
+               "scale": 3,
+               "seed": 31,
+               "octaves": 2
+              }
+             },
+             4
+            ]
+           }
+          },
+          0.15
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 3,
+            "seed": 31,
+            "octaves": 2
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      },
+      "strength": 0.36,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "sub": [
+        1,
+        {
+         "mul": [
+          2,
+          {
+           "abs": {
+            "sub": [
+             {
+              "noise": {
+               "scale": 7,
+               "seed": 43,
+               "octaves": 3
+              }
+             },
+             0.5
+            ]
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "strength": 0.108,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "noise": {
+        "scale": 22,
+        "seed": 57,
+        "octaves": 2
+       }
+      },
+      "strength": 0.018,
+      "midlevel": 0.5
+     }
+    ]
+   },
+   {
+    "id": "b4",
+    "type": "mesh",
+    "base": {
+     "type": "sphere",
+     "segments": 80,
+     "rings": 56
+    },
+    "edits": [
+     {
+      "op": "uv_project",
+      "mode": "sphere",
+      "axis": "x"
+     },
+     {
+      "op": "displace",
+      "field": {
+       "add": [
+        {
+         "mul": [
+          {
+           "floor": {
+            "mul": [
+             {
+              "noise": {
+               "scale": 3,
+               "seed": 71,
+               "octaves": 2
+              }
+             },
+             4
+            ]
+           }
+          },
+          0.15
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 3,
+            "seed": 71,
+            "octaves": 2
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      },
+      "strength": 0.36,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "sub": [
+        1,
+        {
+         "mul": [
+          2,
+          {
+           "abs": {
+            "sub": [
+             {
+              "noise": {
+               "scale": 7,
+               "seed": 83,
+               "octaves": 3
+              }
+             },
+             0.5
+            ]
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "strength": 0.108,
+      "midlevel": 0.5
+     },
+     {
+      "op": "displace",
+      "field": {
+       "noise": {
+        "scale": 22,
+        "seed": 97,
+        "octaves": 2
+       }
+      },
+      "strength": 0.018,
+      "midlevel": 0.5
+     }
+    ]
+   },
+   {
+    "id": "capShape",
+    "type": "mesh",
+    "base": {
+     "type": "sphere",
+     "segments": 40,
+     "rings": 24
+    },
+    "edits": [
+     {
+      "op": "displace",
+      "field": {
+       "noise": {
+        "scale": 3,
+        "seed": 9,
+        "octaves": 3
+       }
+      },
+      "strength": 0.25,
+      "midlevel": 0.5
+     }
+    ]
+   },
+   {
+    "id": "walls",
+    "type": "mesh",
+    "base": {
+     "type": "box"
+    },
+    "edits": [
+     {
+      "op": "uv_project",
+      "mode": "cube"
+     }
+    ]
+   },
+   {
+    "id": "roofSlab",
+    "type": "mesh",
+    "base": {
+     "type": "box"
+    },
+    "edits": [
+     {
+      "op": "uv_project",
+      "mode": "cube"
+     }
+    ]
+   },
+   {
+    "id": "ground",
+    "type": "box"
+   },
+   {
+    "id": "drift",
+    "type": "mesh",
+    "base": {
+     "type": "sphere",
+     "segments": 48,
+     "rings": 28
+    },
+    "edits": [
+     {
+      "op": "displace",
+      "field": {
+       "noise": {
+        "scale": 4,
+        "seed": 77,
+        "octaves": 3
+       }
+      },
+      "strength": 0.2,
+      "midlevel": 0.5
+     }
+    ]
+   }
+  ],
+  "materials": [
+   {
+    "id": "m0",
+    "pattern": {
+     "type": "graph",
+     "mapping": "uv",
+     "resolution": 1024,
+     "bump": 3,
+     "graph": {
+      "color": {
+       "layer": {
+        "base": {
+         "mix": [
+          [
+           0.011,
+           0.011,
+           0.012
+          ],
+          [
+           0.045,
+           0.04,
+           0.026
+          ],
+          {
+           "smoothstep": [
+            0.6,
+            0.85,
+            {
+             "noise": {
+              "scale": 18,
+              "seed": 5,
+              "octaves": 1
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "top": {
+         "mix": [
+          [
+           0.58,
+           0.73,
+           0.97
+          ],
+          [
+           0.93,
+           0.96,
+           1
+          ],
+          {
+           "smoothstep": [
+            0.5,
+            0.95,
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "mask": {
+         "smoothstep": [
+          0.2,
+          0.46,
+          {
+           "add": [
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            },
+            {
+             "mul": [
+              {
+               "sub": [
+                {
+                 "noise": {
+                  "scale": 13,
+                  "seed": 5,
+                  "octaves": 3
+                 }
+                },
+                0.5
+               ]
+              },
+              0
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        "edge": 0.5,
+        "softness": 0.08
+       }
+      },
+      "roughness": 0.93,
+      "height": {
+       "add": [
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 9,
+            "seed": 18,
+            "octaves": 1
+           }
+          },
+          0.6
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 64,
+            "seed": 22,
+            "octaves": 1
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      }
+     }
+    }
+   },
+   {
+    "id": "m1",
+    "pattern": {
+     "type": "graph",
+     "mapping": "uv",
+     "resolution": 1024,
+     "bump": 3,
+     "graph": {
+      "color": {
+       "layer": {
+        "base": {
+         "mix": [
+          [
+           0.011,
+           0.011,
+           0.012
+          ],
+          [
+           0.045,
+           0.04,
+           0.026
+          ],
+          {
+           "smoothstep": [
+            0.6,
+            0.85,
+            {
+             "noise": {
+              "scale": 18,
+              "seed": 15,
+              "octaves": 1
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "top": {
+         "mix": [
+          [
+           0.58,
+           0.73,
+           0.97
+          ],
+          [
+           0.93,
+           0.96,
+           1
+          ],
+          {
+           "smoothstep": [
+            0.5,
+            0.95,
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "mask": {
+         "smoothstep": [
+          0.2,
+          0.46,
+          {
+           "add": [
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            },
+            {
+             "mul": [
+              {
+               "sub": [
+                {
+                 "noise": {
+                  "scale": 13,
+                  "seed": 15,
+                  "octaves": 3
+                 }
+                },
+                0.5
+               ]
+              },
+              0
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        "edge": 0.5,
+        "softness": 0.08
+       }
+      },
+      "roughness": 0.93,
+      "height": {
+       "add": [
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 9,
+            "seed": 28,
+            "octaves": 1
+           }
+          },
+          0.6
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 64,
+            "seed": 32,
+            "octaves": 1
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      }
+     }
+    }
+   },
+   {
+    "id": "m2",
+    "pattern": {
+     "type": "graph",
+     "mapping": "uv",
+     "resolution": 1024,
+     "bump": 3,
+     "graph": {
+      "color": {
+       "layer": {
+        "base": {
+         "mix": [
+          [
+           0.011,
+           0.011,
+           0.012
+          ],
+          [
+           0.045,
+           0.04,
+           0.026
+          ],
+          {
+           "smoothstep": [
+            0.6,
+            0.85,
+            {
+             "noise": {
+              "scale": 18,
+              "seed": 25,
+              "octaves": 1
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "top": {
+         "mix": [
+          [
+           0.58,
+           0.73,
+           0.97
+          ],
+          [
+           0.93,
+           0.96,
+           1
+          ],
+          {
+           "smoothstep": [
+            0.5,
+            0.95,
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "mask": {
+         "smoothstep": [
+          0.2,
+          0.46,
+          {
+           "add": [
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            },
+            {
+             "mul": [
+              {
+               "sub": [
+                {
+                 "noise": {
+                  "scale": 13,
+                  "seed": 25,
+                  "octaves": 3
+                 }
+                },
+                0.5
+               ]
+              },
+              0
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        "edge": 0.5,
+        "softness": 0.08
+       }
+      },
+      "roughness": 0.93,
+      "height": {
+       "add": [
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 9,
+            "seed": 38,
+            "octaves": 1
+           }
+          },
+          0.6
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 64,
+            "seed": 42,
+            "octaves": 1
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      }
+     }
+    }
+   },
+   {
+    "id": "m3",
+    "pattern": {
+     "type": "graph",
+     "mapping": "uv",
+     "resolution": 1024,
+     "bump": 3,
+     "graph": {
+      "color": {
+       "layer": {
+        "base": {
+         "mix": [
+          [
+           0.011,
+           0.011,
+           0.012
+          ],
+          [
+           0.045,
+           0.04,
+           0.026
+          ],
+          {
+           "smoothstep": [
+            0.6,
+            0.85,
+            {
+             "noise": {
+              "scale": 18,
+              "seed": 35,
+              "octaves": 1
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "top": {
+         "mix": [
+          [
+           0.58,
+           0.73,
+           0.97
+          ],
+          [
+           0.93,
+           0.96,
+           1
+          ],
+          {
+           "smoothstep": [
+            0.5,
+            0.95,
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "mask": {
+         "smoothstep": [
+          0.2,
+          0.46,
+          {
+           "add": [
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            },
+            {
+             "mul": [
+              {
+               "sub": [
+                {
+                 "noise": {
+                  "scale": 13,
+                  "seed": 35,
+                  "octaves": 3
+                 }
+                },
+                0.5
+               ]
+              },
+              0
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        "edge": 0.5,
+        "softness": 0.08
+       }
+      },
+      "roughness": 0.93,
+      "height": {
+       "add": [
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 9,
+            "seed": 48,
+            "octaves": 1
+           }
+          },
+          0.6
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 64,
+            "seed": 52,
+            "octaves": 1
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      }
+     }
+    }
+   },
+   {
+    "id": "m4",
+    "pattern": {
+     "type": "graph",
+     "mapping": "uv",
+     "resolution": 1024,
+     "bump": 3,
+     "graph": {
+      "color": {
+       "layer": {
+        "base": {
+         "mix": [
+          [
+           0.011,
+           0.011,
+           0.012
+          ],
+          [
+           0.045,
+           0.04,
+           0.026
+          ],
+          {
+           "smoothstep": [
+            0.6,
+            0.85,
+            {
+             "noise": {
+              "scale": 18,
+              "seed": 45,
+              "octaves": 1
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "top": {
+         "mix": [
+          [
+           0.58,
+           0.73,
+           0.97
+          ],
+          [
+           0.93,
+           0.96,
+           1
+          ],
+          {
+           "smoothstep": [
+            0.5,
+            0.95,
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "mask": {
+         "smoothstep": [
+          0.2,
+          0.46,
+          {
+           "add": [
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            },
+            {
+             "mul": [
+              {
+               "sub": [
+                {
+                 "noise": {
+                  "scale": 13,
+                  "seed": 45,
+                  "octaves": 3
+                 }
+                },
+                0.5
+               ]
+              },
+              0
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        "edge": 0.5,
+        "softness": 0.08
+       }
+      },
+      "roughness": 0.93,
+      "height": {
+       "add": [
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 9,
+            "seed": 58,
+            "octaves": 1
+           }
+          },
+          0.6
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 64,
+            "seed": 62,
+            "octaves": 1
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      }
+     }
+    }
+   },
+   {
+    "id": "m5",
+    "pattern": {
+     "type": "graph",
+     "mapping": "uv",
+     "resolution": 1024,
+     "bump": 3,
+     "graph": {
+      "color": {
+       "layer": {
+        "base": {
+         "mix": [
+          [
+           0.011,
+           0.011,
+           0.012
+          ],
+          [
+           0.045,
+           0.04,
+           0.026
+          ],
+          {
+           "smoothstep": [
+            0.6,
+            0.85,
+            {
+             "noise": {
+              "scale": 18,
+              "seed": 55,
+              "octaves": 1
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "top": {
+         "mix": [
+          [
+           0.58,
+           0.73,
+           0.97
+          ],
+          [
+           0.93,
+           0.96,
+           1
+          ],
+          {
+           "smoothstep": [
+            0.5,
+            0.95,
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "mask": {
+         "smoothstep": [
+          0.2,
+          0.46,
+          {
+           "add": [
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            },
+            {
+             "mul": [
+              {
+               "sub": [
+                {
+                 "noise": {
+                  "scale": 13,
+                  "seed": 55,
+                  "octaves": 3
+                 }
+                },
+                0.5
+               ]
+              },
+              0
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        "edge": 0.5,
+        "softness": 0.08
+       }
+      },
+      "roughness": 0.93,
+      "height": {
+       "add": [
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 9,
+            "seed": 68,
+            "octaves": 1
+           }
+          },
+          0.6
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 64,
+            "seed": 72,
+            "octaves": 1
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      }
+     }
+    }
+   },
+   {
+    "id": "b2",
+    "pattern": {
+     "type": "graph",
+     "mapping": "uv",
+     "resolution": 1024,
+     "bump": 3,
+     "graph": {
+      "color": {
+       "layer": {
+        "base": {
+         "mix": [
+          [
+           0.011,
+           0.011,
+           0.012
+          ],
+          [
+           0.045,
+           0.04,
+           0.026
+          ],
+          {
+           "smoothstep": [
+            0.6,
+            0.85,
+            {
+             "noise": {
+              "scale": 18,
+              "seed": 31,
+              "octaves": 1
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "top": {
+         "mix": [
+          [
+           0.58,
+           0.73,
+           0.97
+          ],
+          [
+           0.93,
+           0.96,
+           1
+          ],
+          {
+           "smoothstep": [
+            0.5,
+            0.95,
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "mask": {
+         "smoothstep": [
+          0.2,
+          0.46,
+          {
+           "add": [
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            },
+            {
+             "mul": [
+              {
+               "sub": [
+                {
+                 "noise": {
+                  "scale": 13,
+                  "seed": 31,
+                  "octaves": 3
+                 }
+                },
+                0.5
+               ]
+              },
+              0
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        "edge": 0.5,
+        "softness": 0.08
+       }
+      },
+      "roughness": 0.93,
+      "height": {
+       "add": [
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 9,
+            "seed": 44,
+            "octaves": 1
+           }
+          },
+          0.6
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 64,
+            "seed": 48,
+            "octaves": 1
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      }
+     }
+    }
+   },
+   {
+    "id": "b4",
+    "pattern": {
+     "type": "graph",
+     "mapping": "uv",
+     "resolution": 1024,
+     "bump": 3,
+     "graph": {
+      "color": {
+       "layer": {
+        "base": {
+         "mix": [
+          [
+           0.011,
+           0.011,
+           0.012
+          ],
+          [
+           0.045,
+           0.04,
+           0.026
+          ],
+          {
+           "smoothstep": [
+            0.6,
+            0.85,
+            {
+             "noise": {
+              "scale": 18,
+              "seed": 71,
+              "octaves": 1
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "top": {
+         "mix": [
+          [
+           0.58,
+           0.73,
+           0.97
+          ],
+          [
+           0.93,
+           0.96,
+           1
+          ],
+          {
+           "smoothstep": [
+            0.5,
+            0.95,
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "mask": {
+         "smoothstep": [
+          0.2,
+          0.46,
+          {
+           "add": [
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            },
+            {
+             "mul": [
+              {
+               "sub": [
+                {
+                 "noise": {
+                  "scale": 13,
+                  "seed": 71,
+                  "octaves": 3
+                 }
+                },
+                0.5
+               ]
+              },
+              0
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        "edge": 0.5,
+        "softness": 0.08
+       }
+      },
+      "roughness": 0.93,
+      "height": {
+       "add": [
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 9,
+            "seed": 84,
+            "octaves": 1
+           }
+          },
+          0.6
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 64,
+            "seed": 88,
+            "octaves": 1
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      }
+     }
+    }
+   },
+   {
+    "id": "cap",
+    "pattern": {
+     "type": "graph",
+     "size": 3,
+     "resolution": 512,
+     "bump": 0.8,
+     "graph": {
+      "color": {
+       "mix": [
+        [
+         0.62,
+         0.76,
+         0.98
+        ],
+        [
+         0.94,
+         0.97,
+         1
+        ],
+        {
+         "smoothstep": [
+          0.35,
+          0.75,
+          {
+           "noise": {
+            "scale": 5,
+            "seed": 41,
+            "octaves": 1
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "roughness": 0.93,
+      "height": {
+       "add": [
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 6,
+            "seed": 42,
+            "octaves": 1
+           }
+          },
+          0.6
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 64,
+            "seed": 43,
+            "octaves": 1
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      }
+     }
+    }
+   },
+   {
+    "id": "walls",
+    "pattern": {
+     "type": "graph",
+     "mapping": "uv",
+     "resolution": 256,
+     "bump": 3,
+     "graph": {
+      "color": {
+       "layer": {
+        "base": {
+         "mix": [
+          [
+           0.1,
+           0.055,
+           0.03
+          ],
+          [
+           0.05,
+           0.03,
+           0.02
+          ],
+          {
+           "noise": {
+            "scale": 40,
+            "seed": 4,
+            "octaves": 1
+           }
+          }
+         ]
+        },
+        "top": {
+         "mix": [
+          [
+           0.58,
+           0.73,
+           0.97
+          ],
+          [
+           0.93,
+           0.96,
+           1
+          ],
+          {
+           "smoothstep": [
+            0.5,
+            0.95,
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "mask": {
+         "smoothstep": [
+          0.2,
+          0.46,
+          {
+           "add": [
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            },
+            {
+             "mul": [
+              {
+               "sub": [
+                {
+                 "noise": {
+                  "scale": 13,
+                  "seed": 3,
+                  "octaves": 3
+                 }
+                },
+                0.5
+               ]
+              },
+              0
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        "edge": 0.5,
+        "softness": 0.08
+       }
+      },
+      "roughness": 0.93,
+      "height": {
+       "add": [
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 9,
+            "seed": 16,
+            "octaves": 1
+           }
+          },
+          0.6
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 64,
+            "seed": 20,
+            "octaves": 1
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      }
+     }
+    }
+   },
+   {
+    "id": "roof",
+    "pattern": {
+     "type": "graph",
+     "mapping": "uv",
+     "resolution": 256,
+     "bump": 3,
+     "graph": {
+      "color": {
+       "layer": {
+        "base": {
+         "mix": [
+          [
+           0.14,
+           0.05,
+           0.04
+          ],
+          [
+           0.08,
+           0.035,
+           0.03
+          ],
+          {
+           "noise": {
+            "scale": 60,
+            "seed": 6,
+            "octaves": 1
+           }
+          }
+         ]
+        },
+        "top": {
+         "mix": [
+          [
+           0.58,
+           0.73,
+           0.97
+          ],
+          [
+           0.93,
+           0.96,
+           1
+          ],
+          {
+           "smoothstep": [
+            0.5,
+            0.95,
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            }
+           ]
+          }
+         ]
+        },
+        "mask": {
+         "smoothstep": [
+          0.2,
+          0.46,
+          {
+           "add": [
+            {
+             "invert": {
+              "surface": {
+               "output": "slope"
+              }
+             }
+            },
+            {
+             "mul": [
+              {
+               "sub": [
+                {
+                 "noise": {
+                  "scale": 13,
+                  "seed": 4,
+                  "octaves": 3
+                 }
+                },
+                0.5
+               ]
+              },
+              0
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        "edge": 0.5,
+        "softness": 0.08
+       }
+      },
+      "roughness": 0.93,
+      "height": {
+       "add": [
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 9,
+            "seed": 17,
+            "octaves": 1
+           }
+          },
+          0.6
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 64,
+            "seed": 21,
+            "octaves": 1
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      }
+     }
+    }
+   },
+   {
+    "id": "ground",
+    "pattern": {
+     "type": "graph",
+     "size": 9,
+     "resolution": 1024,
+     "bump": 3,
+     "graph": {
+      "color": {
+       "mix": [
+        [
+         0.62,
+         0.76,
+         0.98
+        ],
+        [
+         0.94,
+         0.97,
+         1
+        ],
+        {
+         "smoothstep": [
+          0.35,
+          0.75,
+          {
+           "noise": {
+            "scale": 5,
+            "seed": 21,
+            "octaves": 1
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "roughness": 0.93,
+      "height": {
+       "add": [
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 6,
+            "seed": 22,
+            "octaves": 1
+           }
+          },
+          0.6
+         ]
+        },
+        {
+         "mul": [
+          {
+           "noise": {
+            "scale": 64,
+            "seed": 23,
+            "octaves": 1
+           }
+          },
+          0.4
+         ]
+        }
+       ]
+      }
+     }
+    }
+   }
+  ],
+  "nodes": [
+   {
+    "id": "m0",
+    "geometry": "m0",
+    "material": "m0",
+    "translation": [
+     0,
+     -3.5,
+     0
+    ],
+    "scale": [
+     8,
+     9,
+     7
+    ]
+   },
+   {
+    "id": "m1",
+    "geometry": "m1",
+    "material": "m1",
+    "translation": [
+     -8,
+     -3.5,
+     1
+    ],
+    "scale": [
+     7,
+     6.5,
+     7
+    ]
+   },
+   {
+    "id": "m2",
+    "geometry": "m2",
+    "material": "m2",
+    "translation": [
+     8,
+     -3.5,
+     0
+    ],
+    "scale": [
+     7,
+     6,
+     7
+    ]
+   },
+   {
+    "id": "m3",
+    "geometry": "m3",
+    "material": "m3",
+    "translation": [
+     -2,
+     -3.5,
+     -6
+    ],
+    "scale": [
+     9,
+     6,
+     5
+    ]
+   },
+   {
+    "id": "m4",
+    "geometry": "m4",
+    "material": "m4",
+    "translation": [
+     3,
+     -3.5,
+     5
+    ],
+    "scale": [
+     8,
+     5,
+     5
+    ]
+   },
+   {
+    "id": "m5",
+    "geometry": "m5",
+    "material": "m5",
+    "translation": [
+     -4.5,
+     -3.5,
+     5
+    ],
+    "scale": [
+     6,
+     4.5,
+     4
+    ]
+   },
+   {
+    "id": "b2",
+    "geometry": "b2",
+    "material": "b2",
+    "translation": [
+     3.6,
+     1.439356878759821,
+     6.2
+    ],
+    "scale": [
+     1.3,
+     1,
+     1.1
+    ]
+   },
+   {
+    "id": "b4",
+    "geometry": "b4",
+    "material": "b4",
+    "translation": [
+     -2,
+     -0.35195272940781513,
+     7.4
+    ],
+    "scale": [
+     0.9,
+     0.7,
+     0.8
+    ]
+   },
+   {
+    "id": "s1",
+    "translation": [
+     -5.2,
+     0.6945576573344912,
+     5.4
+    ],
+    "rotation": [
+     0,
+     0.29552020666133955,
+     0,
+     0.955336489125606
+    ],
+    "scale": [
+     2.1,
+     2.1,
+     2.1
+    ],
+    "asset": {
+     "id": "794d886289c2e2ba4b6df0f2dff596ad1cb2a35fda8684a22a7b399f6b7a384e",
+     "materials": [
+      {
+       "name": "boulder_01",
+       "color": [
+        0.2,
+        0.26,
+        0.32
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "id": "s1-cap",
+    "geometry": "capShape",
+    "material": "cap",
+    "translation": [
+     -5.443557050781126,
+     2.2155576573344917,
+     5.4902937595562396
+    ],
+    "scale": [
+     0.882,
+     0.5760000000000001,
+     0.7497
+    ]
+   },
+   {
+    "id": "s2",
+    "translation": [
+     6.4,
+     1.4531230707970255,
+     3.2
+    ],
+    "rotation": [
+     0,
+     -0.19866933079506122,
+     0,
+     0.9800665778412416
+    ],
+    "scale": [
+     1.7,
+     1.7,
+     1.7
+    ],
+    "asset": {
+     "id": "723cb64eb7d5e0b4032476cd0f0bf92fdab1a4f5d230001f045c6cc9b7f38b22",
+     "materials": [
+      {
+       "name": "boulder_02",
+       "color": [
+        0.2,
+        0.26,
+        0.32
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "id": "s2-cap",
+    "geometry": "capShape",
+    "material": "cap",
+    "translation": [
+     6.533093313633417,
+     2.4931230707970253,
+     3.2562709504636
+    ],
+    "scale": [
+     1.02,
+     0.472,
+     0.867
+    ]
+   },
+   {
+    "id": "s3",
+    "translation": [
+     -8.6,
+     1.8842566023715257,
+     2.4
+    ],
+    "rotation": [
+     0,
+     0.867423225594017,
+     0,
+     0.49757104789172696
+    ],
+    "scale": [
+     8,
+     8,
+     8
+    ],
+    "asset": {
+     "id": "d2707013e91bef7d19cf64afcf207ee818eb02e23793e094a11fe899ec0d6bd3",
+     "materials": [
+      {
+       "name": "rock_07",
+       "color": [
+        0.2,
+        0.26,
+        0.32
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "id": "s4",
+    "translation": [
+     1.2,
+     -1.2665309311224626,
+     8.2
+    ],
+    "rotation": [
+     0,
+     0.479425538604203,
+     0,
+     0.8775825618903728
+    ],
+    "scale": [
+     12,
+     12,
+     12
+    ],
+    "asset": {
+     "id": "2c42ae93c8a72a0c240dcfd39cfa0498b0968ae1fa13c5ce35b0acd73462c1e6",
+     "materials": [
+      {
+       "name": "rock_09",
+       "color": [
+        0.2,
+        0.26,
+        0.32
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "id": "walls",
+    "geometry": "walls",
+    "material": "walls",
+    "translation": [
+     -1,
+     5.836363153215819,
+     -1
+    ],
+    "scale": [
+     3.2,
+     1.8,
+     2.6
+    ]
+   },
+   {
+    "id": "roofFront",
+    "geometry": "roofSlab",
+    "material": "roof",
+    "translation": [
+     -1,
+     7.2363631532158195,
+     -0.22
+    ],
+    "rotation": [
+     0.24740395925452294,
+     0,
+     0,
+     0.9689124217106447
+    ],
+    "scale": [
+     3.7,
+     0.14,
+     1.75
+    ]
+   },
+   {
+    "id": "roofBack",
+    "geometry": "roofSlab",
+    "material": "roof",
+    "translation": [
+     -1,
+     7.2363631532158195,
+     -1.78
+    ],
+    "rotation": [
+     -0.24740395925452294,
+     0,
+     0,
+     0.9689124217106447
+    ],
+    "scale": [
+     3.7,
+     0.14,
+     1.75
+    ]
+   },
+   {
+    "id": "ground",
+    "geometry": "ground",
+    "material": "ground",
+    "translation": [
+     0,
+     -3.4,
+     0
+    ],
+    "scale": [
+     6000,
+     0.8,
+     6000
+    ]
+   },
+   {
+    "id": "drift0",
+    "geometry": "drift",
+    "material": "ground",
+    "translation": [
+     -14,
+     -3,
+     6
+    ],
+    "rotation": [
+     0,
+     0.5984721441039564,
+     0,
+     -0.8011436155469337
+    ],
+    "scale": [
+     9,
+     1.1,
+     5.3999999999999995
+    ]
+   },
+   {
+    "id": "drift1",
+    "geometry": "drift",
+    "material": "ground",
+    "translation": [
+     13,
+     -3,
+     8
+    ],
+    "rotation": [
+     0,
+     -0.35078322768961984,
+     0,
+     -0.9364566872907963
+    ],
+    "scale": [
+     10,
+     1.3,
+     6
+    ]
+   },
+   {
+    "id": "drift2",
+    "geometry": "drift",
+    "material": "ground",
+    "translation": [
+     0,
+     -3,
+     13
+    ],
+    "rotation": [
+     0,
+     0.5984721441039564,
+     0,
+     -0.8011436155469337
+    ],
+    "scale": [
+     12,
+     0.9,
+     7.199999999999999
+    ]
+   },
+   {
+    "id": "drift3",
+    "geometry": "drift",
+    "material": "ground",
+    "translation": [
+     -22,
+     -3,
+     -4
+    ],
+    "rotation": [
+     0,
+     -0.977530117665097,
+     0,
+     -0.2107957994307797
+    ],
+    "scale": [
+     12,
+     1.4,
+     7.199999999999999
+    ]
+   },
+   {
+    "id": "drift4",
+    "geometry": "drift",
+    "material": "ground",
+    "translation": [
+     24,
+     -3,
+     -2
+    ],
+    "rotation": [
+     0,
+     -0.7568024953079282,
+     0,
+     -0.6536436208636119
+    ],
+    "scale": [
+     11,
+     1.2,
+     6.6
+    ]
+   },
+   {
+    "id": "drift5",
+    "geometry": "drift",
+    "material": "ground",
+    "translation": [
+     6,
+     -3,
+     -12
+    ],
+    "rotation": [
+     0,
+     -0.977530117665097,
+     0,
+     -0.2107957994307797
+    ],
+    "scale": [
+     14,
+     1.5,
+     8.4
+    ]
+   },
+   {
+    "id": "drift6",
+    "geometry": "drift",
+    "material": "ground",
+    "translation": [
+     -9,
+     -3,
+     -13
+    ],
+    "rotation": [
+     0,
+     -0.35078322768961984,
+     0,
+     -0.9364566872907963
+    ],
+    "scale": [
+     12,
+     1.3,
+     7.199999999999999
+    ]
+   },
+   {
+    "id": "drift7",
+    "geometry": "drift",
+    "material": "ground",
+    "translation": [
+     30,
+     -3,
+     14
+    ],
+    "rotation": [
+     0,
+     0.1411200080598672,
+     0,
+     -0.9899924966004454
+    ],
+    "scale": [
+     14,
+     1,
+     8.4
+    ]
+   },
+   {
+    "id": "drift8",
+    "geometry": "drift",
+    "material": "ground",
+    "translation": [
+     -30,
+     -3,
+     12
+    ],
+    "rotation": [
+     0,
+     0.1411200080598672,
+     0,
+     -0.9899924966004454
+    ],
+    "scale": [
+     13,
+     1.1,
+     7.8
+    ]
+   }
+  ],
+  "camera": {
+   "eye": [
+    0,
+    3.6,
+    22
+   ],
+   "target": [
+    0,
+    4.6,
+    0
+   ],
+   "fov": 50
+  },
+  "environment": {
+   "world": true,
+   "hdri": "sky-clouds",
+   "lightDirection": [
+    -0.5,
+    0.75,
+    0.6
+   ],
+   "keyIntensity": 2,
+   "ambientIntensity": 0.45,
+   "fogColor": [
+    0.74,
+    0.82,
+    0.93
+   ],
+   "fogDensity": 0.011
+  }
+ },
+ "width": 960,
+ "height": 540,
+ "backend": "raster",
+ "cook": false
+}

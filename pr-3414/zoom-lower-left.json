@@ -1,0 +1,29 @@
+{
+ "still": "zoom-lower-left.png",
+ "before": {
+  "label": "Before (main cc00c85)",
+  "sha": "cc00c85ecb69cfe6fd658fc232079d8c1ff2fe22",
+  "image": "before.png",
+  "recipe": "before.recipe.json"
+ },
+ "after": {
+  "label": "After (head 7aa685a)",
+  "sha": "7aa685a856309c3596817bcd12cc7257053e4a2f",
+  "image": "after.png",
+  "recipe": "after.recipe.json"
+ },
+ "crop": {
+  "x": 0,
+  "y": 330,
+  "width": 300,
+  "height": 200,
+  "scale": 3
+ },
+ "render": {
+  "width": 960,
+  "height": 540,
+  "backend": "raster",
+  "cook": false,
+  "scene": "snow mountain tiles at 1024, wobble 0, camera and sun inside the recipe files"
+ }
+}
