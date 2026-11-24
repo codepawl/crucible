@@ -1365,7 +1365,8 @@ test('a click on the scene name edits its name part in place and keeps the type 
   assert.equal(sceneNameEditor(ui), null);
   assert.equal(filePill.textContent, 'lounge.scene.json', 'the typed type is dropped and the original type stays');
   assert.equal(filePill.dataset.dirty, 'false', 'the name is not part of the recipe, so a rename is not a change of the scene');
-  assert.match(ui.status(), /new name is used from the next save/);
+  assert.equal(ui.status(), 'Renamed. Saved under this name next time.');
+  assert.notEqual(ui.root.querySelector('.crucible-studio-status svg'), null, 'the toast starts with a mark');
   byText(ui.root, 'Save').click();
   await ui.dom.settle();
   assert.equal(ui.dom.document.downloads.at(-1).filename, 'lounge.scene.json');
@@ -1424,10 +1425,10 @@ test('studio shortcuts do not fire while a name is typed (#3344)', testContext =
 test('a second rename does not repeat the browser notice and a new file closes an open editor (#3344)', async testContext => {
   const ui = mountStudio(testContext);
   await renameSceneTo(ui, 'first');
-  assert.match(ui.status(), /next save/);
+  assert.match(ui.status(), /Saved under this name next time/);
   ui.dom.runTimers();
   await renameSceneTo(ui, 'second');
-  assert.doesNotMatch(ui.status(), /next save/);
+  assert.doesNotMatch(ui.status(), /Saved under this name/);
   ui.root.querySelector('.crucible-studio-filepill').click();
   assert.notEqual(sceneNameEditor(ui), null);
   ui.studio.setFileContext({ filePath: 'C:/scenes/other.scene.json', fileName: 'other.scene.json' });
@@ -1618,6 +1619,167 @@ test('renameBookmark keeps the camera of the shot and refuses unknown, taken and
   assert.throws(() => ui.controller.renameBookmark('missing', 'x'), /Unknown camera bookmark/);
   assert.throws(() => ui.controller.renameBookmark('tall', 'a b'), /1 to 24 letters/);
   assert.throws(() => ui.controller.renameBookmark('tall', 'x'.repeat(25)), /1 to 24 letters/);
+});
+
+test('only a known type or the extension the host gave is the fixed type: "Scene 1.5" keeps its dot (#3344)', async testContext => {
+  const named = mountStudio(testContext, { fileName: 'Scene 1.5' });
+  named.root.querySelector('.crucible-studio-filepill').click();
+  assert.equal(sceneNameEditor(named).querySelector('input').value, 'Scene 1.5', 'no file behind the name: the dot belongs to it');
+  assert.equal(sceneNameEditor(named).querySelector('.crucible-studio-name-suffix').textContent, '.scene.json');
+  dispatch(sceneNameEditor(named).querySelector('input'), 'keydown', { key: 'Escape' });
+  const ui = mountStudio(testContext);
+  ui.studio.setFileContext({ fileName: 'notes.txt' });
+  ui.root.querySelector('.crucible-studio-filepill').click();
+  assert.equal(sceneNameEditor(ui).querySelector('input').value, 'notes');
+  assert.equal(sceneNameEditor(ui).querySelector('.crucible-studio-name-suffix').textContent, '.txt');
+  dispatch(sceneNameEditor(ui).querySelector('input'), 'keydown', { key: 'Escape' });
+  await renameSceneTo(ui, 'my.scene');
+  assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, 'my.scene.txt');
+});
+
+test('a pending host rename keeps the field, blocks a second rename and is applied when it settles (#3344)', async testContext => {
+  let settle;
+  const pending = new Promise(resolve => { settle = resolve; });
+  const desktop = createDesktop({ renameScene: () => pending });
+  const ui = mountStudio(testContext, { desktop });
+  ui.studio.setFileContext({ filePath: 'C:/scenes/old.scene.json', fileName: 'old.scene.json', dirty: false });
+  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  filePill.click();
+  const input = sceneNameEditor(ui).querySelector('input');
+  input.value = 'fresh';
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key: 'Enter' });
+  assert.equal(input.readOnly, true);
+  assert.equal(sceneNameEditor(ui).dataset.busy, 'true');
+  dispatch(input, 'keydown', { key: 'Escape' });
+  dispatch(input, 'blur');
+  ui.selectRow('hero');
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  assert.equal(ui.root.querySelector('.crucible-studio-tree .crucible-studio-name-editor'), null, 'no second rename while one is pending');
+  assert.notEqual(sceneNameEditor(ui), null, 'Escape and a click away did not close it');
+  settle({ filePath: 'C:/scenes/fresh.scene.json', fileName: 'fresh.scene.json' });
+  await ui.dom.settle();
+  assert.equal(sceneNameEditor(ui), null);
+  assert.equal(filePill.textContent, 'fresh.scene.json');
+  assert.equal(filePill.title, 'C:/scenes/fresh.scene.json');
+  assert.equal(ui.status(), 'Renamed', 'a host that renamed the file says only that');
+});
+
+test('a host that rejects shows a readable error and leaves the old name (#3344)', async testContext => {
+  for (const rejection of [null, 'The folder is read-only', new Error('Access denied')]) {
+    const desktop = createDesktop({ renameScene: () => Promise.reject(rejection) });
+    const ui = mountStudio(testContext, { desktop });
+    ui.studio.setFileContext({ filePath: 'C:/scenes/old.scene.json', fileName: 'old.scene.json', dirty: false });
+    await renameSceneTo(ui, 'fresh');
+    const shown = sceneNameEditor(ui).querySelector('.crucible-studio-name-error-text').textContent;
+    assert.ok(shown.length > 0 && shown !== 'null');
+    assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, 'old.scene.json');
+    assert.equal(sceneNameEditor(ui).dataset.busy, 'false');
+  }
+});
+
+test('a rename finished after another file was opened does not touch that file (#3344)', async testContext => {
+  let settle;
+  const pending = new Promise(resolve => { settle = resolve; });
+  const desktop = createDesktop({ renameScene: () => pending });
+  const ui = mountStudio(testContext, { desktop });
+  ui.studio.setFileContext({ filePath: 'C:/scenes/old.scene.json', fileName: 'old.scene.json', dirty: false });
+  ui.root.querySelector('.crucible-studio-filepill').click();
+  const input = sceneNameEditor(ui).querySelector('input');
+  input.value = 'fresh';
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key: 'Enter' });
+  ui.studio.setFileContext({ filePath: 'C:/scenes/other.scene.json', fileName: 'other.scene.json' });
+  settle({ filePath: 'C:/scenes/fresh.scene.json', fileName: 'fresh.scene.json' });
+  await ui.dom.settle();
+  assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, 'other.scene.json');
+  assert.equal(ui.root.querySelector('.crucible-studio-filepill').title, 'C:/scenes/other.scene.json');
+});
+
+test('focus returns to the name only after a rename started from the keyboard (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  await renameSceneTo(ui, 'by-mouse');
+  assert.equal(ui.dom.document.activeElement === filePill, false, 'a click start leaves no ring on the name');
+  dispatch(filePill, 'click', { detail: 0 });
+  const input = sceneNameEditor(ui).querySelector('input');
+  input.value = 'by-key';
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key: 'Enter' });
+  await ui.dom.settle();
+  assert.equal(ui.dom.document.activeElement === filePill, true, 'a keyboard start puts focus back on the name');
+});
+
+test('a Rename row of the Edit or the right click menu opens the field once the menu has closed (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  for (const popoverId of ['crucible-studio-pop-edit', 'crucible-studio-pop-object']) {
+    ui.selectRow('hero');
+    const popover = ui.root.querySelector(`#${popoverId}`);
+    byText(popover, 'Rename').dispatchEvent(ui.dom.document.createEvent('click', { bubbles: true }));
+    assert.equal(ui.root.querySelector('.crucible-studio-name-editor'), null, 'not while the menu is still closing');
+    ui.dom.runTimers();
+    await ui.dom.settle();
+    const input = ui.root.querySelector('.crucible-studio-tree .crucible-studio-name-editor input');
+    assert.notEqual(input, null, popoverId);
+    assert.equal(ui.dom.document.activeElement === input, true);
+    dispatch(input, 'keydown', { key: 'Escape' });
+  }
+});
+
+test('a Scene row rebuilt under an open field answers it like a click away (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  let input = ui.root.querySelector('.crucible-studio-tree .crucible-studio-name-editor input');
+  input.value = 'Typed';
+  dispatch(input, 'input');
+  ui.controller.updateNodeTransform('hero', { visible: false });
+  await ui.dom.settle();
+  assert.equal(ui.root.querySelector('.crucible-studio-name-editor'), null, 'no orphan field');
+  assert.equal(ui.node('hero').label, 'Typed', 'a valid name is kept');
+
+  ui.selectRow('orb');
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  input = ui.root.querySelector('.crucible-studio-tree .crucible-studio-name-editor input');
+  input.value = '   ';
+  dispatch(input, 'input');
+  ui.controller.updateNodeTransform('orb', { visible: false });
+  await ui.dom.settle();
+  assert.equal(ui.root.querySelector('.crucible-studio-name-editor'), null);
+  assert.equal(ui.node('orb').label, undefined, 'an invalid name is dropped');
+});
+
+test('saving, renaming and removing a shot mark the scene as changed, and a double click applies it once (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  assert.equal(filePill.dataset.dirty, 'false');
+  ui.controller.saveBookmark('wide');
+  assert.equal(filePill.dataset.dirty, 'true', 'a saved shot is part of the recipe');
+  ui.studio.setFileContext({ dirty: false });
+  ui.controller.renameBookmark('wide', 'tall');
+  assert.equal(filePill.dataset.dirty, 'true', 'a renamed shot too');
+  ui.studio.setFileContext({ dirty: false });
+  ui.controller.removeBookmark('tall');
+  assert.equal(filePill.dataset.dirty, 'true', 'and a removed one');
+
+  ui.controller.saveBookmark('wide');
+  ui.studio.renderNow();
+  const button = ui.root.querySelector('.crucible-studio-bookmark-list').querySelectorAll('button').find(candidate => candidate.textContent === 'wide');
+  const shotEye = ui.controller.listBookmarks()[0].camera.eye.slice();
+  ui.controller.updateCamera({ eye: [1, 2, 3] });
+  dispatch(button, 'click', { detail: 1 });
+  assert.deepEqual(ui.controller.scene.camera.eye, shotEye, 'the first click applies the shot');
+  ui.controller.updateCamera({ eye: [1, 2, 3] });
+  dispatch(button, 'click', { detail: 2 });
+  button.dispatchEvent(ui.dom.document.createEvent('dblclick'));
+  assert.deepEqual(ui.controller.scene.camera.eye, [1, 2, 3], 'the second click of a double click does not apply it again');
+  assert.notEqual(ui.root.querySelector('.crucible-studio-bookmark-list .crucible-studio-name-editor'), null);
+});
+
+test('no element reads a data-tight attribute any more (#3344)', testContext => {
+  const ui = mountStudio(testContext);
+  assert.equal(ui.root.dataset.tight, undefined);
+  assert.doesNotMatch(STUDIO_CSS, /data-tight/);
 });
 
 test('Save, Save as and Open go through the desktop shell when there is one', async testContext => {

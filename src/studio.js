@@ -38,7 +38,7 @@ import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, des
 import './replace-textured-parts.js';
 import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
 import { createBakeMark } from './studio-bake-mark.js';
-import { openNameEditor, splitFileName, validateFileStem, validateNodeLabel, validateShotName } from './studio-name-editor.js';
+import { extensionOf, openNameEditor, splitFileName, validateFileStem, validateNodeLabel, validateShotName } from './studio-name-editor.js';
 import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, watchContextLoss } from './studio-context-loss.js';
@@ -78,6 +78,8 @@ export {
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
 const STATUS_DEFAULT_MILLISECONDS = 3400;
+// Below this width the reason of a bad scene name drops under the name, since the gap beside it is too small to read it in.
+const ERROR_BESIDE_NAME_MIN_WIDTH = 1180;
 // Past the exit transition, in case the browser never sends its transitionend.
 const STATUS_EXIT_SLACK_MILLISECONDS = 40;
 const DEGREE_PRECISION = 100;
@@ -104,7 +106,6 @@ function matchingViewChip(camera) {
 }
 const STUDIO_STYLE_ID = 'crucible-studio-styles';
 const COMPACT_WIDTH = 820;
-const TIGHT_WIDTH = 920;
 // The work runs left to right: build the scene, give it its look, then set it in motion. Each workspace shows only the
 // panels its step needs.
 const STUDIO_WORKSPACES = Object.freeze([
@@ -1278,6 +1279,8 @@ export function createStudio(container, {
 
   let activeFilePath = initialWatchedPath;
   let activeFileName = initialFileName;
+  // The extension of the file a host opened or saved, when it is not one Studio knows: it stays the type of the name on a rename.
+  let activeFileSuffix = '';
   let isDirty = false;
   let autoReloadWatch = true;
   let renderer = suppliedRenderer ?? null;
@@ -1429,7 +1432,7 @@ export function createStudio(container, {
     createMenuItem('Paste', 'edit.paste', () => pasteCopy(), 'duplicate'),
     createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicate'),
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
-    createMenuItem('Rename', 'edit.rename', () => renameActiveObject()),
+    createMenuItem('Rename', 'edit.rename', () => renameActiveObjectFromMenu()),
     createMenuItem('Deselect', 'edit.deselect', () => controller.selectNode(null)),
     createMenuItem('Hide', 'edit.hide', () => hideSelection(), 'eyeOff'),
     createMenuItem('Show all', 'edit.showAll', () => showAllHidden(), 'eye'),
@@ -1443,7 +1446,7 @@ export function createStudio(container, {
   const objectPopover = createMenuPopover(
     'crucible-studio-pop-object',
     createMenuItem('Frame', 'view.frame', () => flyToSelection(), 'frame'),
-    createMenuItem('Rename', 'edit.rename', () => renameActiveObject()),
+    createMenuItem('Rename', 'edit.rename', () => renameActiveObjectFromMenu()),
     createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicate'),
     createMenuItem('Hide', 'edit.hide', () => hideSelection(), 'eyeOff'),
     createMenuItem('Reset position', 'edit.resetPosition', () => resetSelectionTransform('translation'), 'translate'),
@@ -1546,6 +1549,7 @@ export function createStudio(container, {
       activeFilePath = null;
       activeFileName = `${templateKey}.scene.json`;
       renameWaitsForSave = false;
+      activeFileSuffix = '';
       isDirty = false;
       discardDraft();
       syncFileBanner();
@@ -1920,7 +1924,8 @@ export function createStudio(container, {
     }
   });
 
-  function announce(message, durationMilliseconds = STATUS_DEFAULT_MILLISECONDS) {
+  // `iconName` puts a mark before the words, so a result reads at a glance.
+  function announce(message, durationMilliseconds = STATUS_DEFAULT_MILLISECONDS, iconName = '') {
     clearTimeout(statusTimer);
     clearTimeout(statusExitTimer);
     if (!message) {
@@ -1928,6 +1933,7 @@ export function createStudio(container, {
       return;
     }
     statusRegion.textContent = message;
+    if (iconName) statusRegion.prepend(createIcon(documentReference, iconName));
     statusRegion.dataset.state = 'in';
     statusTimer = setTimeout(hideStatus, durationMilliseconds);
   }
@@ -2935,6 +2941,7 @@ export function createStudio(container, {
     cancelNameEditing();
     activeFilePath = filePath;
     activeFileName = fileName;
+    activeFileSuffix = extensionOf(fileName);
     renameWaitsForSave = false;
     isDirty = false;
     syncFileBanner();
@@ -2949,7 +2956,14 @@ export function createStudio(container, {
     activeNameEditor?.cancel();
   }
 
+  // A list that rebuilt the row of an open field answers the field as a click away would. Not inside the rebuild itself:
+  // the answer may change the scene, which syncs the list again.
+  function closeDetachedNameEditor() {
+    queueMicrotask(() => activeNameEditor?.closeIfDetached());
+  }
+
   function startNameEditing(options) {
+    if (activeNameEditor?.isBusy) return null;
     cancelNameEditing();
     const editor = openNameEditor({
       documentReference,
@@ -2969,21 +2983,26 @@ export function createStudio(container, {
   // A host that can rename the file on disk is asked to, and it must refuse to overwrite; without one the old file stays as it is.
   async function applySceneRename(newFileName) {
     if (newFileName === activeFileName) return null;
+    const pathAtStart = activeFilePath;
     if (activeFilePath && desktop?.renameScene) {
       const response = await desktop.renameScene({ filePath: activeFilePath, fileName: newFileName });
+      // Another file was opened while the host worked: its answer is about the old one.
+      if (activeFilePath !== pathAtStart) return null;
       if (response?.exists) return { error: 'A file with this name already exists' };
       if (response?.error) return { error: String(response.error) };
       if (response?.canceled) return null;
       activeFilePath = response?.filePath ?? activeFilePath;
       activeFileName = response?.fileName ?? newFileName;
+      announce('Renamed', STATUS_DEFAULT_MILLISECONDS, 'check');
     } else {
       activeFileName = newFileName;
       renameWaitsForSave = Boolean(activeFilePath);
       if (!renameNoticeShown) {
         renameNoticeShown = true;
-        announce('Renamed. The new name is used from the next save; the file on disk keeps its old name.');
+        announce('Renamed. Saved under this name next time.', STATUS_DEFAULT_MILLISECONDS, 'check');
       }
     }
+    activeFileSuffix = splitFileName(activeFileName, activeFileSuffix).suffix;
     if (isDirty) {
       clearTimeout(draftTimer);
       writeDraftNow();
@@ -2992,23 +3011,28 @@ export function createStudio(container, {
     return null;
   }
 
-  function startSceneRename() {
-    const { stem, suffix } = splitFileName(activeFileName);
+  // The reason sits beside the name when the bar has room between the workspace tabs and the name, and under it otherwise.
+  function startSceneRename({ byKeyboard = false } = {}) {
+    const { stem, suffix } = splitFileName(activeFileName, activeFileSuffix);
     const openedAs = { filePath: activeFilePath, fileName: activeFileName };
     startNameEditing({
       anchor: filePill,
       text: stem,
       suffix,
+      className: 'crucible-studio-filename-editor',
+      placement: root.clientWidth >= ERROR_BESIDE_NAME_MIN_WIDTH ? 'beside' : 'below',
       label: 'Rename scene',
       validate: text => validateFileStem(text, suffix),
       isStale: () => activeFilePath !== openedAs.filePath || activeFileName !== openedAs.fileName,
       onCommit: value => applySceneRename(`${value}${suffix}`),
+      // Focus goes back to the name for a person on the keyboard; after a click it would only draw a ring.
       onClose: ({ trigger }) => {
-        if (trigger === 'enter' || trigger === 'escape') filePill.focus();
+        if (byKeyboard && (trigger === 'enter' || trigger === 'escape')) filePill.focus();
       },
     });
   }
-  filePill.addEventListener('click', startSceneRename);
+  // A click made by Enter or Space on the focused name has no detail; a mouse click has one.
+  filePill.addEventListener('click', event => startSceneRename({ byKeyboard: event.detail === 0 }));
 
   async function performOpenFile() {
     if (desktop?.openFile) {
@@ -3035,6 +3059,7 @@ export function createStudio(container, {
       if (!response || response.canceled) return;
       activeFilePath = response.filePath;
       activeFileName = response.fileName;
+      activeFileSuffix = extensionOf(response.fileName);
       renameWaitsForSave = false;
       isDirty = false;
       discardDraft();
@@ -3584,13 +3609,22 @@ export function createStudio(container, {
   }
 
   // Renames one node's label from its row. The id stays, so labels may repeat; the change is one undo step like any edit.
-  function startNodeRename(nodeId) {
+  function startNodeRename(nodeId, { byKeyboard = false } = {}) {
     const node = controller.exportRecipe().nodes.find(candidate => candidate.id === nodeId);
     const row = outlinerRows.get(`node:${nodeId}`);
     if (!node || !row) return;
     const anchor = row.element.children[0];
     const editor = startNameEditing({
       anchor,
+      coverOnly: true,
+      // The field is laid over the label alone, from the label's own start to the eye button, so the icon and the eye stay.
+      onOpen: opened => {
+        const rowBox = row.element.getBoundingClientRect();
+        const labelBox = anchor.querySelector('.crucible-studio-tree-label').getBoundingClientRect();
+        const eyeBox = row.element.children[1].getBoundingClientRect();
+        opened.element.style.insetInlineStart = `${labelBox.left - rowBox.left}px`;
+        opened.element.style.insetInlineEnd = `${Math.max(0, rowBox.right - eyeBox.left)}px`;
+      },
       text: node.label ?? node.id,
       label: `Rename ${node.label ?? node.id}`,
       validate: validateNodeLabel,
@@ -3600,14 +3634,14 @@ export function createStudio(container, {
         return null;
       },
       onClose: ({ trigger }) => {
-        if (trigger === 'enter' || trigger === 'escape') outlinerRows.get(`node:${nodeId}`)?.element.children[0]?.focus({ preventScroll: true });
+        if (byKeyboard && (trigger === 'enter' || trigger === 'escape')) outlinerRows.get(`node:${nodeId}`)?.element.children[0]?.focus({ preventScroll: true });
       },
     });
-    editor.element.style.paddingLeft = anchor.style.paddingLeft;
+    if (!editor) return;
   }
 
   // F2 and the Rename rows of the menus: the active object, as in Blender. The camera, the sun and the lights keep the names Studio gives them.
-  function renameActiveObject() {
+  function renameActiveObject({ byKeyboard = false } = {}) {
     const nodeId = controller.selectedNodeId;
     if (!nodeId) {
       if (controller.selectedObjectKey) announce('The camera, the sun and lights keep their names.');
@@ -3619,7 +3653,13 @@ export function createStudio(container, {
       syncUi();
     }
     outlinerRows.get(`node:${nodeId}`)?.element.scrollIntoView?.({ block: 'nearest' });
-    startNodeRename(nodeId);
+    startNodeRename(nodeId, { byKeyboard });
+  }
+
+  // A menu row closes its menu after its own handler, and closing gives focus back to the menu button, which would end a field
+  // opened by then. The field opens once the menu is closed and the focus has settled.
+  function renameActiveObjectFromMenu() {
+    setTimeout(() => renameActiveObject(), 0);
   }
 
   // A shot is keyed by its name, so the rename goes through the controller, which refuses a name that is taken.
@@ -3829,6 +3869,7 @@ export function createStudio(container, {
     }
     lastTreeStructureKey = structureKey;
     placeOutlinerRows([...outlinerRows.values()].map(row => row.element));
+    closeDetachedNameEditor();
     restoreOutlinerFocus(focused);
     fitTreeToWholeRows();
     // Rows added or removed above the one the browser snapped to would move the list; it stays where the person left it.
@@ -4128,11 +4169,16 @@ export function createStudio(container, {
       bookmarkListElement.replaceChildren(...bookmarks.map(shot => {
         const applyButton = createElement(documentReference, 'button', { type: 'button', textContent: shot.name });
         const removeButton = createElement(documentReference, 'button', { type: 'button', textContent: '×', attributes: { 'aria-label': `Remove bookmark ${shot.name}` } });
-        applyButton.addEventListener('click', () => controller.applyBookmark(shot.name));
+        // The second click of a double click only starts the rename: the shot is applied once.
+        applyButton.addEventListener('click', event => {
+          if (event.detail > 1) return;
+          controller.applyBookmark(shot.name);
+        });
         applyButton.addEventListener('dblclick', () => startShotRename(shot.name, applyButton));
         removeButton.addEventListener('click', () => controller.removeBookmark(shot.name));
         return createElement(documentReference, 'div', { className: 'crucible-studio-bookmark-row' }, applyButton, removeButton);
       }));
+      closeDetachedNameEditor();
       quickBookmarksRow.replaceChildren(...bookmarks.slice(0, 5).map(shot => {
         const pill = createElement(documentReference, 'button', { type: 'button', textContent: shot.name, title: `Jump to shot ${shot.name}` });
         pill.addEventListener('click', () => controller.applyBookmark(shot.name));
@@ -4738,7 +4784,7 @@ export function createStudio(container, {
     },
     'edit.rename': event => {
       event.preventDefault();
-      renameActiveObject();
+      renameActiveObject({ byKeyboard: true });
     },
     'edit.deselect': () => {
       if (controller.selectedNodeId || controller.selectedObjectKey) controller.selectNode(null);
@@ -4964,7 +5010,7 @@ export function createStudio(container, {
     if (detail.deltaLabel !== undefined) {
       liveDeltaLabel = detail.deltaLabel;
     }
-    if (['topology', 'transform', 'transformCommit', 'motion', 'material', 'look', 'undo', 'redo'].includes(detail.kind) || (detail.kind === 'camera' && detail.edited)) {
+    if (['topology', 'transform', 'transformCommit', 'motion', 'material', 'look', 'bookmark', 'undo', 'redo'].includes(detail.kind) || (detail.kind === 'camera' && detail.edited)) {
       isDirty = true;
       scheduleDraftSave();
     }
@@ -4975,9 +5021,6 @@ export function createStudio(container, {
 
   // Below the compact width the panels start closed, so the scene keeps the screen.
   function syncCompactLayout() {
-    // Between the compact width and this one the menus, the tabs and the file name do not fit on one row, so the file
-    // name leaves: it is also the title of the File menu's own rows.
-    root.dataset.tight = root.clientWidth > 0 && root.clientWidth < TIGHT_WIDTH ? 'true' : 'false';
     const compact = root.clientWidth > 0 && root.clientWidth < COMPACT_WIDTH;
     if ((root.dataset.compact === 'true') === compact) {
       return;
@@ -5075,7 +5118,10 @@ export function createStudio(container, {
         renameWaitsForSave = false;
       }
       if (filePath !== undefined) activeFilePath = filePath;
-      if (fileName !== undefined) activeFileName = fileName;
+      if (fileName !== undefined) {
+        activeFileName = fileName;
+        activeFileSuffix = extensionOf(fileName);
+      }
       if (dirty !== undefined) isDirty = Boolean(dirty);
       syncFileBanner();
     },
