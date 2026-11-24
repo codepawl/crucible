@@ -391,6 +391,12 @@ function lightMapState(material) {
   return [material.lightMap, scale];
 }
 
+/** Whether a material's parallax differs from the state a batch kept; a state without the parallax entries means a material with none. */
+function heightParallaxChanged(material, mapState) {
+  const kept = mapState.length > HEIGHT_STATE_OFFSET ? mapState.slice(HEIGHT_STATE_OFFSET) : heightParallaxState({});
+  return heightParallaxState(material).some((value, index) => (value ?? null) !== (kept[index] ?? null));
+}
+
 /** Whether a material draws its heightMap: a map and a heightScale above zero. A zero scale leaves the map unread and the shader unchanged. */
 function usesHeightParallax(material) {
   return material.heightScale > 0 && Boolean(material.heightMap);
@@ -2035,7 +2041,7 @@ export class CrucibleRenderer {
         if ((part.material[MATERIAL_MAPS[index]] ?? null) !== mapState[index]) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
       }
       const [lightMapDescriptor, lightMapScale] = lightMapState(part.material);
-      if (heightParallaxState(part.material).some((value, index) => value !== mapState[HEIGHT_STATE_OFFSET + index])) throw new Error(`Height map and parallax changes require a new renderer: ${part.name}`);
+      if (heightParallaxChanged(part.material, mapState)) throw new Error(`Height map and parallax changes require a new renderer: ${part.name}`);
       if (lightMapDescriptor !== (mapState[14] ?? null) || lightMapScale !== (mapState[15] ?? 0) || (part.material.layerMaps ?? null) !== (mapState[18] ?? null)) throw new Error(`Light map and layer texture changes require a new renderer: ${part.name}`);
       if (normalScale[0] !== mapState[5] || normalScale[1] !== mapState[6] || (part.material.occlusionStrength ?? 1) !== mapState[7] || mossState(part.material).some((value, index) => value !== mapState[8 + index]) || materialLayerState(part.material).some((value, index) => value !== location.layerState[index])) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
       validateTransform(part, location.normalMatrix, hidden);

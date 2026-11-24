@@ -188,6 +188,7 @@ on:
       - 'src/hard-shadows.js'
       - 'src/hair.js'
       - 'src/hdri.js'
+      - 'src/height-parallax-shader.js'
       - 'src/impostor-shader.js'
       - 'src/irradiance-grid.js'
       - 'src/kernel-offload.js'
