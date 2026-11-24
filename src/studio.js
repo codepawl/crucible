@@ -4615,13 +4615,17 @@ export function createStudio(container, {
       requestFrame();
       return;
     }
-    // While a move is held with proportional editing on, the wheel sets how far it reaches instead of zooming.
-    if (meshEditor?.holdingMove && meshEditor.proportional?.enabled) {
-      meshEditor.proportional.resize(event.deltaY < 0 ? 1 : -1);
-      return;
-    }
+    if (proportionalHoldsWheel()) return;
     stopFlight();
     controller.orbitCamera({ zoomScale: 1 + Math.max(-0.35, Math.min(0.35, event.deltaY * 0.0012)) });
+  }, { passive: false });
+
+  // While a move is held with proportional editing on, the wheel sets how far it reaches instead of zooming. It listens on the
+  // viewport, not the canvas, because the pointer of a held move often sits on a move handle drawn over the canvas.
+  viewportElement.addEventListener('wheel', event => {
+    if (!proportionalHoldsWheel()) return;
+    event.preventDefault();
+    meshEditor.proportional.resize(event.deltaY < 0 ? 1 : -1);
   }, { passive: false });
 
   viewportElement.addEventListener('dragover', event => {
@@ -4701,6 +4705,10 @@ export function createStudio(container, {
   function pageTextIsSelected() {
     const selection = documentReference.defaultView?.getSelection?.();
     return Boolean(selection && !selection.isCollapsed && selection.toString() !== '');
+  }
+
+  function proportionalHoldsWheel() {
+    return Boolean(meshEditor?.holdingMove && meshEditor.proportional?.enabled);
   }
 
   function toggleProportional() {

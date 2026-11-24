@@ -711,10 +711,12 @@ export const STUDIO_CSS = `
 .crucible-studio-proportional-popover { gap: var(--studio-space-12); min-width: 240px; }
 .crucible-studio-curve-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px;
+  grid-template-columns: repeat(2, max-content);
+  justify-content: space-between;
+  justify-items: start;
+  gap: var(--studio-space-8);
 }
-.crucible-studio-curve-list > button { gap: var(--studio-space-8); }
+.crucible-studio-popover .crucible-studio-curve-list > button { inline-size: auto; padding: var(--studio-space-8); gap: var(--studio-space-8); }
 .crucible-studio-curve-list > button[aria-pressed="true"] { background: color-mix(in srgb, var(--studio-accent) 16%, transparent); }
 .crucible-studio-curve-glyph {
   flex: none;

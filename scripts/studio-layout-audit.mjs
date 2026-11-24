@@ -246,10 +246,20 @@ async function measureDraftNotice(browser, origin, theme, extraCss) {
   }
 }
 
+// Edit mode builds its own popover on the first Tab (the proportional editing settings), so enter it once and leave: the
+// popover stays in the page and the loop below measures it with the others.
+async function createEditModePopovers(page) {
+  await page.keyboard.press('Tab');
+  await page.waitForSelector('.crucible-studio[data-mesh-edit="true"]');
+  await page.keyboard.press('Tab');
+  await page.waitForSelector('.crucible-studio[data-mesh-edit="false"]');
+}
+
 async function measureScreens(page, theme, only) {
   const screens = [];
   if (!only || only === 'studio') screens.push({ name: `studio (${theme})`, records: await measure(page, '.crucible-studio') });
   if (!only || only === 'popover') {
+    await createEditModePopovers(page);
     const identifiers = await page.evaluate(() => Array.from(document.querySelectorAll('.crucible-studio [popover]')).map(element => element.id).filter(Boolean));
     for (const identifier of identifiers) {
       await page.evaluate(id => document.getElementById(id).showPopover(), identifier);
