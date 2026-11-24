@@ -19,6 +19,7 @@ Crucible makes 3D easy to understand and easy to do. The agent carries the heavy
 - `tests/` holds the Node tests, one `*.test.js` per area. `scripts/` holds the build, smoke and gate scripts.
 - `docs/` holds one guide per feature. `skills/` holds the agent skills that ship with the package.
 - `changes/` holds one changelog note per pull request. `artifacts/` is ignored output for screenshots and logs.
+- `.claude/rules/` holds the Studio, look and agent tool surface rules. Each loads only when you touch a file its `paths:` filter matches.
 
 ## Set up
 
