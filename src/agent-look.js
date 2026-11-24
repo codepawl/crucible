@@ -379,13 +379,14 @@ function environmentFrom(input = {}) {
   if (input.environmentDiffuseScale !== undefined) {
     environment.environmentDiffuseScale = numberInRange(input.environmentDiffuseScale, 0, 100, 'environment.environmentDiffuseScale');
   }
+  // A second HDRI that only the reflections read (src/reflection-environment.js, loaded on demand); the diffuse light stays the lighting map's.
+  if (input.reflectionHdri !== undefined && input.reflectionHdri !== null) {
+    environment.reflectionHdri = agentSceneModule('reflectionEnvironment').resolveReflectionHdri(input.reflectionHdri, input.skybox, invalidField, { isReference: isEnvironmentReference, names: BUNDLED_ENVIRONMENT_NAMES });
+  }
   // Six face images as the sky (src/skybox.js); the module checks the faces and loads on demand. null clears it.
   if (input.skybox !== undefined && input.skybox !== null) {
     if (input.hdri || input.sky) {
       throw invalidField('environment.skybox', 'set beside hdri or sky', 'a skybox alone: it is the sky, so remove "hdri" or "sky", or remove "skybox"');
-    }
-    if (input.reflectionHdri) {
-      throw invalidField('environment.skybox', 'set beside reflectionHdri', 'a skybox alone (it is already the sky that is reflected): remove "reflectionHdri", or remove "skybox"');
     }
     environment.skybox = copiedJson(agentSceneModule('skybox').resolveSkybox(input.skybox, invalidField));
   }
@@ -433,10 +434,6 @@ function environmentFrom(input = {}) {
       throw invalidField('environment.hdri', input.hdri, `one of ${BUNDLED_ENVIRONMENT_NAMES.join(', ')} or the 64-character ID of a .hdr file in the asset catalog`);
     }
     environment.hdri = input.hdri;
-  }
-  // A second HDRI that only the reflections read (src/reflection-environment.js, loaded on demand); the diffuse light stays the lighting map's.
-  if (input.reflectionHdri !== undefined && input.reflectionHdri !== null) {
-    environment.reflectionHdri = agentSceneModule('reflectionEnvironment').resolveReflectionHdri(input.reflectionHdri, invalidField);
   }
   // The key light takes the HDRI's sun when the scene is built (agentEnvironmentKey), since the HDRI data loads after the recipe is checked.
   if (input.keyFromHdri !== undefined) {
@@ -531,7 +528,8 @@ export function agentEnvironmentMap(environment, { withReflection = true } = {})
   if (!withReflection || !environment.reflectionHdri) {
     return lightingMap;
   }
-  return agentSceneModule('reflectionEnvironment').withReflectionHdri(lightingMap, environment);
+  const reflectionMap = createCatalogEnvironmentMap(environment.reflectionHdri, { intensity: environment.environmentIntensity, rotation: environment.environmentRotation, showBackground: environment.world });
+  return agentSceneModule('reflectionEnvironment').withReflectionEnvironment(lightingMap, reflectionMap);
 }
 
 function agentLightingMap(environment) {

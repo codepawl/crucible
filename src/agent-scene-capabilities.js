@@ -344,7 +344,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   fixedResources: false, dynamicTopology: true, checkpoints: true, positiveScaleOnly: true,
   gltfImport: 'Optional extensions and line primitives load with a warning; unlit and punctual lights are read.',
   authoredLook: true, maxPointLights: MAX_POINT_LIGHTS,
-  catalogLooks: Object.freeze({ hdri: 'environment.hdri', hdris: BUNDLED_ENVIRONMENT_NAMES, cubeLooks: BUNDLED_CUBE_LOOK_NAMES, look: 'environment.look', catalogId: '64-hex ID of a .hdr or .cube in scene_asset_catalog', reflectionHdri: 'environment.reflectionHdri', note: 'environmentIntensity and environmentRotation apply; keyIntensity 0 if the HDRI has a sun; reflectionHdri is an HDRI that only reflections (glass, water) read, the diffuse light stays hdri or setup' }),
+  catalogLooks: Object.freeze({ hdri: 'environment.hdri', hdris: BUNDLED_ENVIRONMENT_NAMES, cubeLooks: BUNDLED_CUBE_LOOK_NAMES, look: 'environment.look', catalogId: '64-hex ID of a .hdr or .cube in scene_asset_catalog', note: 'environmentIntensity and environmentRotation apply; keyIntensity 0 if the HDRI has a sun' }),
   bvhMotion: Object.freeze({
     catalog: 'A .bvh file in --assets is listed by scene_asset_catalog as a skeleton-only GLB (meshes 0, skins 1, one clip named after the file; End Sites become joints named <parent>_End).',
     use: 'Pass its assetId as motion.layers[].from.asset with clip 0 on a rigged humanoid asset: the clip is retargeted by the humanoid bone map (see motion.layers from, and retargets in scene_inspect hierarchy). layer.scale multiplies the hips travel; rootMotion false keeps the walk in place.',
