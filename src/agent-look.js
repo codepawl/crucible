@@ -1,3 +1,4 @@
+import { fillColorsFrom, ambientColorsFrom, ambientMixFrom } from './ambient-light.js';
 import { lightLimitAdvice } from './light-limit-advice.js';
 import { invalidField, withFieldPrefix } from './field-error.js';
 import { MINIMUM_SPOT_ANGLE, MAXIMUM_SPOT_ANGLE, spotAngleExpectation } from './spot-angle-advice.js';
@@ -32,7 +33,7 @@ function resolveEmissionRampOnDemand(input, shape, label) {
 const MAX_LOOK_ARRAY_ENTRIES = Math.max(MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS);
 
 const ENVIRONMENT_FIELDS = [
-  'world', 'ground', 'setup', 'hdri', 'keyFromHdri', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity', 'ambientColor', 'environmentDiffuseScale', 'skybox',
+  'world', 'ground', 'setup', 'hdri', 'keyFromHdri', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity', 'ambientColor', 'ambientMix', 'fillColor', 'environmentDiffuseScale', 'skybox',
   'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'localVolumes', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'wind', 'sky', 'wetness', 'puddles',
 ];
 const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'dither', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom', 'depthOfField', 'motionBlur'];
@@ -364,7 +365,16 @@ function environmentFrom(input = {}) {
   }
   // Flat diffuse light added to the environment's (a Roblox OutdoorAmbient) and a scale on all of the environment's diffuse light (EnvironmentDiffuseScale); both absent keeps the exported shape and the picture.
   if (input.ambientColor !== undefined) {
-    environment.ambientColor = vectorInRange(input.ambientColor, 0, 10, 'environment.ambientColor');
+    const ambient = ambientColorsFrom(input.ambientColor, 'environment.ambientColor', vectorInRange);
+    environment.ambientColor = ambient.ground ? { sky: ambient.sky, ground: ambient.ground } : ambient.sky;
+  }
+  // ambientMix 0..1 swaps that share of the HDRI's diffuse light for ambientColor; fillColor recolours the two fill lights. Absent keeps the picture.
+  if (input.ambientMix !== undefined) {
+    environment.ambientMix = ambientMixFrom(input.ambientMix, 'environment.ambientMix', input.ambientColor !== undefined);
+  }
+  if (input.fillColor !== undefined) {
+    const fills = fillColorsFrom(input.fillColor, 'environment.fillColor', vectorInRange);
+    environment.fillColor = Array.isArray(input.fillColor[0]) ? fills : fills[0];
   }
   if (input.environmentDiffuseScale !== undefined) {
     environment.environmentDiffuseScale = numberInRange(input.environmentDiffuseScale, 0, 100, 'environment.environmentDiffuseScale');
