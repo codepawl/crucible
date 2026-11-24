@@ -340,17 +340,17 @@ async function measureKeyboard(page, theme) {
   if (!state.open || state.recording || state.saved) {
     throw new Error('Escape while recording must cancel the recording, keep Settings open and save nothing: ' + JSON.stringify(state));
   }
-  // A changed row shows its dot in the gutter, so its label keeps the left edge of the others. The dot is drawn here without saving a key
-  // change, which would carry into the screens measured after this one.
-  await page.evaluate(() => {
-    const name = document.querySelector('.crucible-studio-keyboard-row[data-action] .crucible-studio-keyboard-name');
-    const dot = document.createElement('span');
-    dot.className = 'crucible-studio-keyboard-changed';
-    dot.dataset.auditDot = 'true';
-    name.prepend(dot);
-  });
+  // A changed row shows its dot in the gutter, so its label keeps the left edge of the others. The key is really changed here and put back
+  // with the row's own reset, so the screens measured after this one start from the preset.
+  await keysButton('tool.select').click();
+  await page.keyboard.press('j');
+  await page.waitForTimeout(150);
+  const changedRows = () => page.evaluate(() => document.querySelectorAll('.crucible-studio-keyboard-row[data-changed="true"]').length);
+  if (await changedRows() !== 1) throw new Error('Pressing a free key while recording must change exactly that row.');
   await assertKeyboardScrollCue(page, 'changed row');
-  await page.evaluate(() => document.querySelector('[data-audit-dot]').remove());
+  await page.locator('button.crucible-studio-keyboard-reset').first().click();
+  await page.waitForTimeout(150);
+  if (await changedRows() !== 0) throw new Error('The reset of a changed row must put the preset key back and leave no changed row.');
   await page.evaluate(() => document.querySelector('dialog.crucible-studio-settings-dialog').close());
   return screens;
 }
