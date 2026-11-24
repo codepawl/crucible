@@ -1,4 +1,5 @@
 {
+  "note": "Classroom demo GLB (606,026 triangles), HDRI sky, hero camera 960x540, GPU, COOK_DISABLE=1; before = floorSkyTrace false and sunBounce 0 (what main does past the bake limit)",
   "scene": {
     "id": "classroom",
     "glb": "scene.glb",
@@ -100,6 +101,5 @@
     },
     "output": "classroom-before.png",
     "errors": []
-  },
-  "sceneFile": "classroom demo GLB (606,026 triangles), HDRI sky, hero camera"
+  }
 }

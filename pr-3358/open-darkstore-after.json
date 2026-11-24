@@ -1,0 +1,60 @@
+{
+  "scene": "public/showcase/darkstore/scene.json",
+  "side": "after",
+  "build": "this branch",
+  "render": {
+    "scene": "file",
+    "kind": "image",
+    "backend": "gpu",
+    "preset": "balanced",
+    "aspect": "landscape",
+    "start": 0,
+    "frames": null,
+    "encoder": null,
+    "requestedEncoder": null,
+    "captureFormat": "png",
+    "jpegQuality": null,
+    "capturedFrames": 1,
+    "stageTimings": {
+      "renderSeconds": 0.16676290000000019,
+      "captureSeconds": 0.02233840000000009,
+      "readPixelsSeconds": 0,
+      "encoderBackpressureSeconds": 0,
+      "encoderFinishSeconds": 0
+    },
+    "effectiveFPS": 0.4275062113446212,
+    "speedRatio": null,
+    "assembly": null,
+    "width": 640,
+    "height": 360,
+    "actualRenderSize": {
+      "width": 640,
+      "height": 360,
+      "reduced": false
+    },
+    "fps": 24,
+    "duration": null,
+    "memoryBudgetMiB": 384,
+    "peakEstimatedRenderBytes": 219256944,
+    "peakNodeBytes": 152563712,
+    "peakBrowserHeap": 0,
+    "maximumPendingFrames": 0,
+    "firstFrameBytes": 411869,
+    "elapsedSeconds": 2.3391473,
+    "graphics": {
+      "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "samples": 4,
+      "capabilities": {
+        "hdr": true,
+        "hdrRequested": true,
+        "hdrFallbackReason": null,
+        "samples": 4,
+        "maximumTextureSize": 16384,
+        "reversedDepth": true
+      },
+      "glError": 0
+    },
+    "output": "darkstore-after.png",
+    "errors": []
+  }
+}

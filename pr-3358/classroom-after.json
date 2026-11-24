@@ -1,4 +1,5 @@
 {
+  "note": "Classroom demo GLB (606,026 triangles), HDRI sky, hero camera 960x540, GPU, COOK_DISABLE=1; before = floorSkyTrace false and sunBounce 0 (what main does past the bake limit)",
   "scene": {
     "id": "classroom",
     "glb": "scene.glb",
@@ -56,13 +57,13 @@
     "jpegQuality": null,
     "capturedFrames": 1,
     "stageTimings": {
-      "renderSeconds": 0.05908089999999993,
-      "captureSeconds": 0.03225360000000001,
+      "renderSeconds": 0.11194779999999992,
+      "captureSeconds": 0.04462079999999969,
       "readPixelsSeconds": 0,
       "encoderBackpressureSeconds": 0,
       "encoderFinishSeconds": 0
     },
-    "effectiveFPS": 0.1893062597616956,
+    "effectiveFPS": 0.17097260312781043,
     "speedRatio": null,
     "assembly": null,
     "width": 960,
@@ -76,11 +77,11 @@
     "duration": null,
     "memoryBudgetMiB": 3072,
     "peakEstimatedRenderBytes": 384706484,
-    "peakNodeBytes": 186413056,
+    "peakNodeBytes": 188112896,
     "peakBrowserHeap": 0,
     "maximumPendingFrames": 0,
-    "firstFrameBytes": 859771,
-    "elapsedSeconds": 5.2824455,
+    "firstFrameBytes": 858033,
+    "elapsedSeconds": 5.8488903,
     "graphics": {
       "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
       "samples": 8,
@@ -94,8 +95,7 @@
       },
       "glError": 0
     },
-    "output": "classroom-after.png",
+    "output": "classroom-final.png",
     "errors": []
-  },
-  "sceneFile": "classroom demo GLB (606,026 triangles), HDRI sky, hero camera"
+  }
 }
