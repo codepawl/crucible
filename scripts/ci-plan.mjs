@@ -44,12 +44,23 @@ export function classifyChangedFiles(paths) {
   return { mode: LIGHT_MODE, reason: `only ${groups.join(', ')} changed` };
 }
 
-const DOCUMENT_PATH = /^(docs|changes|site)\/|\.md$/;
+const DOCUMENT_FOLDERS = ['docs/', 'changes/', 'site/'];
 const STUDIO_SOURCE_PATH = /^src\/studio(-[^/]*)?\.(js|css)$/;
-// Tests that read documents, change notes or site pages by pattern never name the one file that changed.
-const DOCUMENT_MENTION = /docs\/|\.md\b|changes\/|site\//;
-const STUDIO_IMPORT = /src\/studio/;
 const STUDIO_TEST_FILE = /^tests\/studio(-[^/]*)?\.test\.js$/;
+
+function isDocumentPath(path) {
+  return DOCUMENT_FOLDERS.some(folder => path.startsWith(folder)) || path.endsWith('.md');
+}
+
+// Tests that read documents, change notes or site pages by pattern never name the one file that changed.
+// These search test source text, not paths, so plain substring checks are what is meant.
+function mentionsDocuments(source) {
+  return DOCUMENT_FOLDERS.some(folder => source.includes(folder)) || /\.md\b/.test(source);
+}
+
+function mentionsStudioSource(source) {
+  return source.includes('src/studio');
+}
 
 function testsWhere(folder, keep) {
   return listTestFiles(folder).filter(testFile => keep(testFile, readFileSync(join(folder, testFile), 'utf8')));
@@ -59,11 +70,11 @@ function testsWhere(folder, keep) {
 export function selectLightTests(paths, folder = repositoryRoot) {
   const normalized = paths.map(toPosix);
   const selected = new Set(findAffectedTests(normalized, folder));
-  if (normalized.some(path => DOCUMENT_PATH.test(path))) {
-    testsWhere(folder, (_testFile, source) => DOCUMENT_MENTION.test(source)).forEach(testFile => selected.add(testFile));
+  if (normalized.some(isDocumentPath)) {
+    testsWhere(folder, (_testFile, source) => mentionsDocuments(source)).forEach(testFile => selected.add(testFile));
   }
   if (normalized.some(path => STUDIO_SOURCE_PATH.test(path))) {
-    testsWhere(folder, (testFile, source) => STUDIO_TEST_FILE.test(testFile) || STUDIO_IMPORT.test(source)).forEach(testFile => selected.add(testFile));
+    testsWhere(folder, (testFile, source) => STUDIO_TEST_FILE.test(testFile) || mentionsStudioSource(source)).forEach(testFile => selected.add(testFile));
   }
   return [...selected].sort();
 }
