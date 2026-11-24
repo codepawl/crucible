@@ -2,15 +2,15 @@
   "asset": "sphere-16x8",
   "source": "generated: 16 x 8 UV sphere baked from a 192 x 96 sphere with a ridged surface (6 ridges around, 4 along, height 0.06)",
   "commit": {
-    "head": "9c1bcc46198b775cd72441699dd591333cd55d4a",
+    "head": "bca553133486f44bcee72fb2cd5548fa06c6b814",
     "base": "e0405ecdeb77fe511dd5bec46643764eca40b3b9",
-    "dirty": false
+    "dirty": true
   },
   "recipe": {
     "imageSize": 640,
     "fieldOfViewDegrees": 35,
     "edgeBandPixels": 4,
-    "gateMeanDegrees": 3,
+    "borderTexels": 2,
     "material": {
       "tag": "surface",
       "color": [
@@ -52,6 +52,55 @@
     "coveredTexels": 262144,
     "hitTexels": 262091
   },
+  "gateMeanDegrees": 0.5,
+  "gapToSpec": [
+    {
+      "step": "generated, linear filter, whole object",
+      "statistics": {
+        "pixels": 264461,
+        "meanDegrees": 0.5677102957181114,
+        "p95Degrees": 0.7395479083061218
+      },
+      "isGate": false
+    },
+    {
+      "step": "generated, nearest texel, whole object",
+      "statistics": {
+        "pixels": 264461,
+        "meanDegrees": 0.39050808439338297,
+        "p95Degrees": 0.42946192622184753
+      },
+      "isGate": false
+    },
+    {
+      "step": "generated, linear filter, fair pixels",
+      "statistics": {
+        "pixels": 248043,
+        "meanDegrees": 0.22034982828952315,
+        "p95Degrees": 0.4970855712890625
+      },
+      "isGate": false
+    },
+    {
+      "step": "generated, nearest texel, fair pixels",
+      "statistics": {
+        "pixels": 248043,
+        "meanDegrees": 0.02960747443035333,
+        "p95Degrees": 0.051055919378995895
+      },
+      "isGate": true
+    },
+    {
+      "step": "derivative, linear filter, fair pixels",
+      "statistics": {
+        "pixels": 248043,
+        "meanDegrees": 8.984519829433765,
+        "p95Degrees": 23.062110900878906
+      },
+      "isGate": false
+    }
+  ],
+  "gatePassed": true,
   "results": {
     "noMap": {
       "insideMask": {

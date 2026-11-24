@@ -2,15 +2,15 @@
   "asset": "scan-10pct",
   "source": "Boulder 01 (Poly Haven), CC0 1.0, https://polyhaven.com/a/boulder_01",
   "commit": {
-    "head": "9c1bcc46198b775cd72441699dd591333cd55d4a",
+    "head": "bca553133486f44bcee72fb2cd5548fa06c6b814",
     "base": "e0405ecdeb77fe511dd5bec46643764eca40b3b9",
-    "dirty": false
+    "dirty": true
   },
   "recipe": {
     "imageSize": 640,
     "fieldOfViewDegrees": 35,
     "edgeBandPixels": 4,
-    "gateMeanDegrees": 3,
+    "borderTexels": 2,
     "material": {
       "tag": "surface",
       "color": [
@@ -61,6 +61,55 @@
     "flipped": 0,
     "areaDistortion": 0.03053164165341151
   },
+  "gateMeanDegrees": 0.5,
+  "gapToSpec": [
+    {
+      "step": "generated, linear filter, whole object",
+      "statistics": {
+        "pixels": 56105,
+        "meanDegrees": 4.013582303965098,
+        "p95Degrees": 13.736541748046875
+      },
+      "isGate": false
+    },
+    {
+      "step": "generated, nearest texel, whole object",
+      "statistics": {
+        "pixels": 56105,
+        "meanDegrees": 1.2412354801428422,
+        "p95Degrees": 7.0759735107421875
+      },
+      "isGate": false
+    },
+    {
+      "step": "generated, linear filter, fair pixels",
+      "statistics": {
+        "pixels": 24135,
+        "meanDegrees": 2.1668297703562738,
+        "p95Degrees": 6.821673393249512
+      },
+      "isGate": false
+    },
+    {
+      "step": "generated, nearest texel, fair pixels",
+      "statistics": {
+        "pixels": 24135,
+        "meanDegrees": 0.058188366152051224,
+        "p95Degrees": 0.05512520298361778
+      },
+      "isGate": true
+    },
+    {
+      "step": "derivative, linear filter, fair pixels",
+      "statistics": {
+        "pixels": 24135,
+        "meanDegrees": 23.95897781863625,
+        "p95Degrees": 65.80382537841797
+      },
+      "isGate": false
+    }
+  ],
+  "gatePassed": true,
   "scanFiles": [
     {
       "name": "boulder_01_8k.gltf",
