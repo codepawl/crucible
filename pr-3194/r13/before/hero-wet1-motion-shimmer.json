@@ -1,0 +1,17 @@
+{
+ "frames": {
+  "mean_second_difference_255": 5.595563757183908,
+  "p99_second_difference_255": 33.0,
+  "mean_luminance_255": 66.45844947916666
+ },
+ "frames-main": {
+  "mean_second_difference_255": 5.922494073275862,
+  "p99_second_difference_255": 39.0,
+  "mean_luminance_255": 66.84821875
+ },
+ "frames-wet0.0001": {
+  "mean_second_difference_255": 4.421557471264368,
+  "p99_second_difference_255": 18.0,
+  "mean_luminance_255": 83.29704947916666
+ }
+}
