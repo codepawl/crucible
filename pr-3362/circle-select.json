@@ -1,0 +1,32 @@
+{
+  "clip": "circle-select.mp4",
+  "page": "/bench/studio/index.html?setup=off (default scene, node cube)",
+  "size": {
+    "width": 1280,
+    "height": 720
+  },
+  "backend": "headless Chrome, d3d11 ANGLE, GPU",
+  "seed": null,
+  "steps": "Tab; for 1, 2, 3: C, wheel up 3 notches, left drag, Shift drag, Esc; then Alt+A, Ctrl+I, Alt+A",
+  "camera": {
+    "eye": [
+      4.2,
+      2.9,
+      4.9
+    ],
+    "target": [
+      0,
+      0.5,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ],
+    "fov": 42,
+    "near": 0.1,
+    "far": 120
+  },
+  "renderer": "CrucibleRenderer"
+}
