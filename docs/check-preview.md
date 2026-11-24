@@ -24,6 +24,7 @@ node scripts/check-preview.mjs clip.mp4 --reference cook.png --at 1.5
 - `--reference` is a Cook or Cycles still of the same scene and camera. Without one, exposure is judged on its own.
 - `--at` is the time in seconds of the clip frame to compare with the reference; `--from` skips the start of a clip.
 - `--frames` (240, ten seconds at 24 fps) caps how many consecutive frames of a clip are read; a shorter clip is read whole, and `--width` (640) is the size they are measured at.
+- `--lossless <folder>` measures the numbered PNG frames in a folder (`render-media --kind stills --frames 0-71` on the same camera path) instead of the clip's decoded frames, so loss from the video encoder is not blamed on the renderer. The clip argument is still needed to name the result. On the classroom truck clip the shimmer check reads 1.0% on the clip as encoded before #3366 and 0.6% on both the lossless frames and the new clip.
 - `--json` prints the measurements for a script.
 
 PNG files are read directly. JPEG, WebP and clips need `ffmpeg` and `ffprobe` on the path.
