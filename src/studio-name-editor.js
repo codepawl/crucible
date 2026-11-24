@@ -1,4 +1,4 @@
-// Rename in place, as Blender does: a name becomes a small text field where it is shown. Enter keeps the new name, Escape
+// Rename in place: a name becomes a small text field where it is shown. Enter keeps the new name, Escape
 // cancels, and a clicked-away or tabbed-away field keeps a valid name and drops an invalid one. The rules for each kind of
 // name are plain functions at the top; the field itself is `openNameEditor` below.
 

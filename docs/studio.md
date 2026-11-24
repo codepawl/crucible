@@ -104,7 +104,7 @@ Every selected object has an outline in the accent colour with a thin ring of th
 
 ## Rename in place
 
-A name you own is renamed where it is shown, as in Blender: the field replaces the name, Enter keeps the new one and Esc cancels. Clicking or tabbing away keeps a valid name and drops an invalid one, so a half-typed name is never applied. While the field is open no Studio key acts, so G, R, S, Delete and Ctrl+A type or edit text.
+A name you own is renamed where it is shown: the field replaces the name, Enter keeps the new one and Esc cancels. Clicking or tabbing away keeps a valid name and drops an invalid one, so a half-typed name is never applied. While the field is open no Studio key acts, so G, R, S, Delete and Ctrl+A type or edit text.
 
 | Name | How | What changes |
 | --- | --- | --- |

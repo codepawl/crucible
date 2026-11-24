@@ -3693,7 +3693,7 @@ export function createStudio(container, {
     if (!editor) return;
   }
 
-  // F2 and the Rename rows of the menus: the active object, as in Blender. The camera, the sun and the lights keep the names Studio gives them.
+  // F2 and the Rename rows of the menus: the active object. The camera, the sun and the lights keep the names Studio gives them.
   function renameActiveObject({ byKeyboard = false } = {}) {
     const nodeId = controller.selectedNodeId;
     if (!nodeId) {
