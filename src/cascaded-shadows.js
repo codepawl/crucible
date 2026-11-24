@@ -12,7 +12,10 @@ import { resolveShadowLight } from './shadow-light.js';
 //   cascadeFrame the camera forward axis with the slice count.
 // - The receiver is pushed off its surface by 1.5 texels and the depth bias is one texel, as the local shadows do.
 // - The last tenth of each slice blends into the next, so no seam shows.
-// - The final #define makes the main shader's shadowVisibility(normal) call read the cascades; the classic map is not read.
+// - cascadeTintTransmittance reads the sun's tint map (blended and transmissive casters, src/renderer.js) with the same blocker search
+//   and disc filter, so the tinted shadow of glass has the penumbra of the sun angle: it widens with the gap to the caster, in
+//   metres, which cascadeTintView turns into tint map coordinates (depth range of the sun view, map units per metre, bias of a tint texel).
+// - The final #defines make the main shader's shadowVisibility(normal) call read the cascades; the classic map is not read.
 
 export const MAXIMUM_CASCADES = 4;
 const AUTOMATIC_CASCADE_EXTENT = 40;
@@ -33,6 +36,7 @@ uniform vec4 cascadeTexels;
 uniform vec4 cascadeRanges;
 uniform vec4 cascadeFrame;
 uniform float sunSoftness;
+uniform vec3 cascadeTintView;
 vec2 cascadeVogel(int index, int count, float rotation) {
   float angle = float(index) * 2.399963 + rotation;
   return sqrt((float(index) + 0.5) / float(count)) * vec2(cos(angle), sin(angle));
@@ -103,7 +107,38 @@ float cascadeVisibility(vec3 normal) {
   }
   return 1.0;
 }
+vec3 cascadeTintTransmittance(vec3 normal) {
+  if (sunSoftness <= 0.0) return tintedShadowTransmittance(normal);
+  vec3 projected = shadowPosition.xyz / shadowPosition.w * 0.5 + 0.5;
+  if (projected.z > 1.0 || projected.z < 0.0 || any(lessThan(projected.xy, vec2(0.0))) || any(greaterThan(projected.xy, vec2(1.0)))) return vec3(1.0);
+  float cosine = max(dot(normal, normalize(lightDirection)), 0.05);
+  float receiver = projected.z - cascadeTintView.z * clamp(sqrt(1.0 - cosine * cosine) / cosine, 0.25, 4.0);
+  ivec2 dimensions = textureSize(tintShadowMap, 0);
+  float rotation = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  float minimumRadius = 1.5 / float(dimensions.x);
+  float searchRadius = max(sunSoftness * 12.0 * cascadeTintView.y, minimumRadius);
+  float gapSum = 0.0;
+  float blockers = 0.0;
+  for (int tap = 0; tap < 12; tap++) {
+    vec2 coordinates = projected.xy + cascadeVogel(tap, 12, rotation) * searchRadius;
+    float stored = texelFetch(tintShadowMap, clamp(ivec2(coordinates * vec2(dimensions)), ivec2(0), dimensions - 1), 0).a;
+    if (receiver > stored) {
+      gapSum += receiver - stored;
+      blockers += 1.0;
+    }
+  }
+  if (blockers == 0.0) return vec3(1.0);
+  float radius = clamp(sunSoftness * (gapSum / blockers) * cascadeTintView.x * cascadeTintView.y, minimumRadius, searchRadius);
+  vec3 passed = vec3(0.0);
+  for (int tap = 0; tap < 16; tap++) {
+    vec2 coordinates = projected.xy + cascadeVogel(tap, 16, rotation) * radius;
+    vec4 stored = texelFetch(tintShadowMap, clamp(ivec2(coordinates * vec2(dimensions)), ivec2(0), dimensions - 1), 0);
+    passed += receiver > stored.a ? stored.rgb : vec3(1.0);
+  }
+  return passed / 16.0;
+}
 #define shadowVisibility(normal) cascadeVisibility(normal)
+#define tintedShadowTransmittance(normal) cascadeTintTransmittance(normal)
 `;
 
 registerShaderFeatureCode('cascadedShadows', { declarations: CASCADE_DECLARATIONS });
@@ -348,7 +383,7 @@ export class CascadedShadows {
       drawnMatrix.set(layerMatrix);
       context.framebufferTextureLayer(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, this.texture, 0, layer);
       context.clear(context.DEPTH_BUFFER_BIT);
-      renderer.drawShadowCasters(layerMatrix, this.resolution);
+      renderer.drawShadowCasters(layerMatrix, this.resolution, true);
     }
     context.bindFramebuffer(context.FRAMEBUFFER, null);
   }
@@ -357,7 +392,7 @@ export class CascadedShadows {
   bindUniforms(renderer) {
     const context = renderer.context;
     if (this.locationProgram !== renderer.program) {
-      const names = ['cascadeShadowMap', 'cascadeMatrices[0]', 'cascadeSplits', 'cascadeTexels', 'cascadeRanges', 'cascadeFrame', 'sunSoftness'];
+      const names = ['cascadeShadowMap', 'cascadeMatrices[0]', 'cascadeSplits', 'cascadeTexels', 'cascadeRanges', 'cascadeFrame', 'sunSoftness', 'cascadeTintView'];
       this.locations = Object.fromEntries(names.map(name => [name, context.getUniformLocation(renderer.program, name)]));
       this.locationProgram = renderer.program;
       for (const [name, unit] of Object.entries(MAIN_SAMPLER_UNITS)) context.uniform1i(context.getUniformLocation(renderer.program, name), unit);
@@ -372,6 +407,7 @@ export class CascadedShadows {
     context.uniform4fv(this.locations.cascadeFrame, this.forward);
     const sunAngularRadius = renderer.environment?.sunAngularRadius;
     context.uniform1f(this.locations.sunSoftness, sunAngularRadius > 0 ? Math.tan(sunAngularRadius) : 0);
+    context.uniform3f(this.locations.cascadeTintView, renderer.tintView?.depthRange ?? 1, renderer.tintView?.uvPerMetre ?? 1, renderer.tintView?.biasPerSlope ?? 0);
   }
 
   dispose(context, renderTargets = null) {
