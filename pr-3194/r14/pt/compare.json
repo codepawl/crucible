@@ -1,0 +1,41 @@
+[
+ {
+  "view": "hero-clouds",
+  "puddle_px": 13218,
+  "road_px": 1916,
+  "glaze_puddle": 0.06301308498538355,
+  "glaze_road": 0.05490829435569991,
+  "pt_puddle-glaze_on_puddle": 0.026645490012935282,
+  "pt_puddle-glaze_on_road": 0.06138113553589335,
+  "pt_puddle-plain_on_puddle": 0.05879581317407593,
+  "pt_puddle-plain_on_road": 0.0955849747816836,
+  "pt_road_on_puddle": 0.06761045404100403,
+  "pt_road_on_road": 0.0773625266736278
+ },
+ {
+  "view": "hero-tree",
+  "puddle_px": 7915,
+  "road_px": 3465,
+  "glaze_puddle": 0.04733467316613768,
+  "glaze_road": 0.058684023166426215,
+  "pt_puddle-glaze_on_puddle": 0.01442709974900425,
+  "pt_puddle-glaze_on_road": 0.071398703714155,
+  "pt_puddle-plain_on_puddle": 0.04053769216660466,
+  "pt_puddle-plain_on_road": 0.09268569011108317,
+  "pt_road_on_puddle": 0.056149807113651216,
+  "pt_road_on_road": 0.05240143495967366
+ },
+ {
+  "view": "hero-sky",
+  "puddle_px": 0,
+  "road_px": 0,
+  "glaze_puddle": null,
+  "glaze_road": NaN,
+  "pt_puddle-glaze_on_puddle": null,
+  "pt_puddle-glaze_on_road": NaN,
+  "pt_puddle-plain_on_puddle": null,
+  "pt_puddle-plain_on_road": NaN,
+  "pt_road_on_puddle": null,
+  "pt_road_on_road": NaN
+ }
+]

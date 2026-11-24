@@ -1,0 +1,61 @@
+{
+ "view": {
+  "eye": [
+   -8.900000000000022,
+   1.6,
+   -18.499999999999954
+  ],
+  "target": [
+   -8.900000000000022,
+   2.4574374157795926,
+   -21.699999999999953
+  ],
+  "fov": 40
+ },
+ "ground": {
+  "id": "asphalt",
+  "color": [
+   0.3,
+   0.3,
+   0.3
+  ],
+  "roughness": 1,
+  "ior": 1.5
+ },
+ "environment": {
+  "setup": "daylight",
+  "world": true,
+  "hdri": "sky-clouds",
+  "environmentIntensity": 1,
+  "keyIntensity": 0
+ },
+ "samples": 32,
+ "bounces": 4,
+ "size": [
+  480,
+  270
+ ],
+ "seed": 7,
+ "backend": "cpu path tracer",
+ "seconds": 20.9937682,
+ "report": {
+  "width": 480,
+  "height": 270,
+  "samples": 32,
+  "bounces": 4,
+  "seed": 7,
+  "denoised": true,
+  "denoiser": "wavelet",
+  "threads": 1,
+  "backend": "cpu",
+  "averageSamples": 32,
+  "noiseThreshold": 0,
+  "estimatedNoise": 0.07358950663641918,
+  "triangles": 9508,
+  "tracedSeconds": 20.1104224,
+  "seconds": 20.989334300000003,
+  "ignored": [
+   "world: true is ignored: the outdoor haze shading is rasterizer only, and a trace draws the environment map behind the picture and lights with it."
+  ]
+ }
+}
