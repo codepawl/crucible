@@ -112,6 +112,7 @@ Ideas that nobody is working on live here instead of as open issues, so the issu
 - Sun shafts through volume fog or as a post pass (#2831)
 - Toon vegetation: toonColors on recipe vegetation, scatter without terrain ground (#2840)
 - Water: ripples and glint alias into pixels at a distance (#853)
+- Measure the normal-map linear filter against a CPU bilinear spec, with mips on and off, to settle whether the 2.2 to 2.5° left on decimated scans is only filtering (#2988)
 
 ### Modeling
 

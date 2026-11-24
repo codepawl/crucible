@@ -23,7 +23,7 @@ import { createMeshData } from '../src/mesh-data.js';
 import { extractRender } from '../src/mesh-render.js';
 import { unwrapUv } from '../src/mesh-uv.js';
 import { bakeTangentSpaceNormalMap } from './normal-map-bake.mjs';
-import { erodeMask, pixelAngles, angleStatistics, sharedCoverage, meetsTangentGate, TANGENT_GATE_MEAN_DEGREES } from './normal-map-angle.mjs';
+import { erodeMask, pixelAngles, angleStatistics, sharedCoverage, meetsTangentGate, TANGENT_GATE_MEAN_DEGREES, TANGENT_GATE_P99_DEGREES } from './normal-map-angle.mjs';
 import { oraclePass, pixelsAwayFromIslandBorders } from './normal-map-oracle.mjs';
 
 const SCAN_SOURCE = Object.freeze({
@@ -183,12 +183,52 @@ function normalizedVector(vector) {
   return vector.map(value => value / length);
 }
 
-function sphereAsset(columns, rows, resolution) {
-  const low = uvSphere(columns, rows);
+/**
+ * The same sphere with the second half of its UVs mirrored in place: those triangles get their own vertices with
+ * u = 1.5 - u, so the island stays where it was but runs backwards and the tangent handedness of those triangles
+ * flips to the other sign than the first half's.
+ */
+function mirroredSecondHalf(sphere, columns) {
+  const positions = Array.from(sphere.positions);
+  const normals = Array.from(sphere.normals);
+  const uvs = Array.from(sphere.uvs);
+  const indices = Array.from(sphere.indices);
+  const copyOfVertex = new Map();
+  for (let triangle = 0; triangle < indices.length / 3; triangle++) {
+    const quadColumn = Math.floor(triangle / 2) % columns;
+    if (quadColumn < columns / 2) continue;
+    for (let corner = 0; corner < 3; corner++) {
+      const vertex = indices[triangle * 3 + corner];
+      if (!copyOfVertex.has(vertex)) {
+        copyOfVertex.set(vertex, positions.length / 3);
+        positions.push(...sphere.positions.subarray(vertex * 3, vertex * 3 + 3));
+        normals.push(...sphere.normals.subarray(vertex * 3, vertex * 3 + 3));
+        uvs.push(1.5 - sphere.uvs[vertex * 2], sphere.uvs[vertex * 2 + 1]);
+      }
+      indices[triangle * 3 + corner] = copyOfVertex.get(vertex);
+    }
+  }
+  return { positions: new Float32Array(positions), normals: new Float32Array(normals), uvs: new Float32Array(uvs), indices: new Uint32Array(indices) };
+}
+
+function handednessCounts(tangents) {
+  const counts = { positive: 0, negative: 0 };
+  for (let vertex = 0; vertex < tangents.length / 4; vertex++) {
+    if (tangents[vertex * 4 + 3] > 0) counts.positive++;
+    else if (tangents[vertex * 4 + 3] < 0) counts.negative++;
+  }
+  return counts;
+}
+
+function sphereAsset(columns, rows, resolution, { mirrored = false } = {}) {
+  const plain = uvSphere(columns, rows);
+  const low = mirrored ? mirroredSecondHalf(plain, columns) : plain;
   low.tangents = generateTangents(low.positions, low.normals, low.uvs, low.indices);
   const high = bumpedSphere(192, 96);
   const bake = bakeTangentSpaceNormalMap(low, high, { resolution: Math.min(resolution, 512), cage: 0.3 });
-  return { name: `sphere-${columns}x${rows}`, low, high, bake, camera: { eye: [2.2, 1.1, 2.6], target: [0, 0, 0], fov: RECIPE.fieldOfViewDegrees, up: [0, 1, 0] }, source: `generated: ${columns} x ${rows} UV sphere baked from a 192 x 96 sphere with a ridged surface (6 ridges around, 4 along, height 0.06)` };
+  const handedness = handednessCounts(low.tangents);
+  if (mirrored && (handedness.positive === 0 || handedness.negative === 0)) throw new Error('The mirrored sphere must have tangents of both handedness signs.');
+  return { name: `sphere-${columns}x${rows}${mirrored ? '-mirrored' : ''}`, handedness, low, high, bake, camera: { eye: [2.2, 1.1, 2.6], target: [0, 0, 0], fov: RECIPE.fieldOfViewDegrees, up: [0, 1, 0] }, source: `generated: ${columns} x ${rows} UV sphere${mirrored ? ' with the second half of its UVs mirrored' : ''} baked from a 192 x 96 sphere with a ridged surface (6 ridges around, 4 along, height 0.06)` };
 }
 
 function scanAsset(gltfPath, resolution, keptShare) {
@@ -313,22 +353,26 @@ function measureVariant(variant, reference, restrictTo = null) {
 }
 
 /**
- * How far the generated-tangent path is from the spec pass, one change at a time: the map's default linear filter on the
- * whole object, nearest texel (what the spec pass reads) on the whole object, then both on the pixels where the
- * comparison is fair. Fair means the renderer leaves the mapped normal alone (it bends one whose reflection would dip
- * below the surface, which the spec decode does not do) and the texel sits RECIPE.borderTexels from any island border,
- * padding or seam. The last step is the gate; the derivative path is measured under the same mask for comparison.
+ * How far the generated-tangent path is from the spec pass, one change at a time. The map's default linear filter and
+ * nearest texel (what the spec pass reads) are compared first. Then two masks, alone and together, both applied to every
+ * pass alike: the renderer bends a mapped normal whose reflection would dip below the surface (the spec decode does not),
+ * so those pixels are left out; and the texel sits RECIPE.borderTexels from any island border, padding or seam. The
+ * gate is the nearest-texel generated path with both masks and, so that the border mask cannot hide a seam, with the
+ * reflection mask alone. The derivative path is measured under both masks for comparison.
  */
 function gapToSpecSteps(passes, spec, bake) {
-  const fair = pixelsAwayFromIslandBorders(spec.texelOfPixel, bake.coverage, bake.width, RECIPE.borderTexels);
-  for (let pixel = 0; pixel < fair.length; pixel++) fair[pixel] &= spec.reflectsAboveSurface[pixel];
-  const step = (name, pass, restrictTo, isGate = false) => ({ step: name, statistics: measureVariant(passes[pass], passes.oracle, restrictTo).inside, isGate });
+  const reflection = Uint8Array.from(spec.reflectsAboveSurface);
+  const border = pixelsAwayFromIslandBorders(spec.texelOfPixel, bake.coverage, bake.width, RECIPE.borderTexels);
+  const both = reflection.map((value, pixel) => value & border[pixel]);
+  const step = (name, pass, restrictTo, gates = false) => ({ step: name, statistics: measureVariant(passes[pass], passes.oracle, restrictTo).inside, gates });
   return [
     step('generated, linear filter, whole object', 'generated', null),
     step('generated, nearest texel, whole object', 'generatedNearest', null),
-    step('generated, linear filter, fair pixels', 'generated', fair),
-    step('generated, nearest texel, fair pixels', 'generatedNearest', fair, true),
-    step('derivative, linear filter, fair pixels', 'derivative', fair),
+    step('generated, nearest texel, reflection mask only (border mask off)', 'generatedNearest', reflection, true),
+    step('generated, nearest texel, border mask only', 'generatedNearest', border),
+    step('generated, nearest texel, both masks', 'generatedNearest', both, true),
+    step('generated, linear filter, both masks', 'generated', both),
+    step('derivative, linear filter, both masks', 'derivative', both),
   ];
 }
 
@@ -410,7 +454,7 @@ function commitLabel() {
 const options = readOptions(process.argv.slice(2));
 mkdirSync(options.out, { recursive: true });
 const gltfPath = await fetchScan(options.scanFolder);
-const assets = [sphereAsset(16, 8, options.resolution), sphereAsset(32, 16, options.resolution), scanAsset(gltfPath, options.resolution, 0.02), scanAsset(gltfPath, options.resolution, 0.1)];
+const assets = [sphereAsset(16, 8, options.resolution), sphereAsset(32, 16, options.resolution), sphereAsset(32, 16, options.resolution, { mirrored: true }), scanAsset(gltfPath, options.resolution, 0.02), scanAsset(gltfPath, options.resolution, 0.1)];
 const port = await freePort();
 const server = await startServer(port);
 const { chromium } = await import('playwright');
@@ -432,19 +476,19 @@ try {
     const measured = Object.fromEntries(['noMap', 'derivative', 'generated', 'oracle'].map(name => [name, measureVariant(passes[name], passes.reference)]));
     const againstOracle = Object.fromEntries(['noMap', 'derivative', 'generated'].map(name => [name, measureVariant(passes[name], passes.oracle)]));
     const gapToSpec = gapToSpecSteps(passes, spec, asset.bake);
-    const gate = gapToSpec.find(step => step.isGate);
-    if (!meetsTangentGate(gate.statistics)) gateFailures.push(asset.name);
+    const gatePassed = gapToSpec.filter(step => step.gates).every(step => meetsTangentGate(step.statistics));
+    if (!gatePassed) gateFailures.push(asset.name);
     writeStills(options.out, asset, passes, measured);
     const summary = Object.fromEntries(Object.entries(measured).map(([name, value]) => [name, { insideMask: value.inside, interior: value.interior, shaderFeatures: value.shaderFeatures, tangentsReachedGeometry: value.tangentsReachedGeometry, againstOracle: againstOracle[name]?.inside }]));
-    writeFileSync(join(options.out, `${asset.name}.json`), JSON.stringify({ asset: asset.name, source: asset.source, commit: commitLabel(), recipe: RECIPE, camera: asset.camera, mapResolution: asset.bake.width, bake: { coveredTexels: asset.bake.coveredTexels, hitTexels: asset.bake.hitTexels }, triangles: asset.triangles, unwrapReport: asset.unwrapReport, gateMeanDegrees: TANGENT_GATE_MEAN_DEGREES, gapToSpec, gatePassed: meetsTangentGate(gate.statistics), scanFiles: asset.name.startsWith('scan') ? SCAN_SOURCE.files.map(({ name, sha256, url }) => ({ name, sha256, url })) : undefined, results: summary }, null, 2));
+    writeFileSync(join(options.out, `${asset.name}.json`), JSON.stringify({ asset: asset.name, source: asset.source, commit: commitLabel(), recipe: RECIPE, camera: asset.camera, mapResolution: asset.bake.width, bake: { coveredTexels: asset.bake.coveredTexels, hitTexels: asset.bake.hitTexels }, triangles: asset.triangles, unwrapReport: asset.unwrapReport, gateMeanDegrees: TANGENT_GATE_MEAN_DEGREES, gateP99Degrees: TANGENT_GATE_P99_DEGREES, handedness: asset.handedness, gapToSpec, gatePassed, scanFiles: asset.name.startsWith('scan') ? SCAN_SOURCE.files.map(({ name, sha256, url }) => ({ name, sha256, url })) : undefined, results: summary }, null, 2));
     gateRows.push({ asset: asset.name, gapToSpec });
     for (const [name, value] of Object.entries(summary)) table.push({ asset: asset.name, path: name, mean: value.insideMask.meanDegrees.toFixed(2), p95: value.insideMask.p95Degrees.toFixed(2), interiorMean: value.interior.meanDegrees.toFixed(2), interiorP95: value.interior.p95Degrees.toFixed(2), pixels: value.insideMask.pixels, oracleMean: value.againstOracle?.meanDegrees.toFixed(2), oracleP95: value.againstOracle?.p95Degrees.toFixed(2) });
   }
   console.table(table);
-  console.table(gateRows.flatMap(({ asset, gapToSpec }) => gapToSpec.map(step => ({ asset, step: step.step, mean: step.statistics.meanDegrees.toFixed(3), p95: step.statistics.p95Degrees.toFixed(3), pixels: step.statistics.pixels, gate: step.isGate ? (meetsTangentGate(step.statistics) ? `PASS (<= ${TANGENT_GATE_MEAN_DEGREES})` : `FAIL (> ${TANGENT_GATE_MEAN_DEGREES})`) : '' }))));
+  console.table(gateRows.flatMap(({ asset, gapToSpec }) => gapToSpec.map(step => ({ asset, step: step.step, mean: step.statistics.meanDegrees.toFixed(3), p95: step.statistics.p95Degrees.toFixed(3), p99: step.statistics.p99Degrees.toFixed(3), max: step.statistics.maxDegrees.toFixed(3), pixels: step.statistics.pixels, gate: step.gates ? (meetsTangentGate(step.statistics) ? `PASS (mean <= ${TANGENT_GATE_MEAN_DEGREES}, p99 <= ${TANGENT_GATE_P99_DEGREES})` : 'FAIL') : '' }))));
   console.log(JSON.stringify(table));
   if (gateFailures.length) {
-    console.error(`Tangent gate failed for ${gateFailures.join(', ')}: the generated path differs from the spec pass by more than ${TANGENT_GATE_MEAN_DEGREES} degrees.`);
+    console.error(`Tangent gate failed for ${gateFailures.join(', ')}: the generated path differs from the spec pass by more than ${TANGENT_GATE_MEAN_DEGREES} degrees mean or ${TANGENT_GATE_P99_DEGREES} degrees at the 99th percentile.`);
     process.exitCode = 1;
   }
 } finally {

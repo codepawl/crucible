@@ -3,6 +3,7 @@
 // (see "normal" in render-passes.js). Both functions here are pure: pass in RGBA float arrays, get numbers back.
 
 const PERCENTILE_NINETY_FIVE = 0.95;
+const PERCENTILE_NINETY_NINE = 0.99;
 
 /** The unit normal stored in pixel `pixel` of a normal pass, or null where the pass is empty (all three channels zero). */
 export function decodePassNormal(pixels, pixel) {
@@ -64,15 +65,15 @@ export function pixelAngles(passA, passB, mask) {
   return angles;
 }
 
-/** Mean and 95th percentile (nearest rank) of the angles inside `mask`, with how many pixels that is. Throws on an empty mask. */
+/** Mean, 95th and 99th percentile (nearest rank) and maximum of the angles inside `mask`, with how many pixels that is. Throws on an empty mask. */
 export function angleStatistics(angles, mask) {
   const inside = [];
   for (let pixel = 0; pixel < mask.length; pixel++) if (mask[pixel]) inside.push(angles[pixel]);
   if (inside.length === 0) throw new RangeError('The mask covers no pixel, so there is no angle to measure. Pass two passes that draw the same object.');
   inside.sort((left, right) => left - right);
   const total = inside.reduce((sum, value) => sum + value, 0);
-  const rank = Math.max(1, Math.ceil(inside.length * PERCENTILE_NINETY_FIVE));
-  return { pixels: inside.length, meanDegrees: total / inside.length, p95Degrees: inside[rank - 1] };
+  const nearestRank = share => inside[Math.max(1, Math.ceil(inside.length * share)) - 1];
+  return { pixels: inside.length, meanDegrees: total / inside.length, p95Degrees: nearestRank(PERCENTILE_NINETY_FIVE), p99Degrees: nearestRank(PERCENTILE_NINETY_NINE), maxDegrees: inside[inside.length - 1] };
 }
 
 /** Angle statistics of `passA` against `passB` over the pixels both draw. */
@@ -84,7 +85,10 @@ export function measureNormalPassAngle(passA, passB, pixelCount) {
 /** The most the generated-tangent path may differ from the spec pass, in mean degrees: it must draw what the glTF definition says. */
 export const TANGENT_GATE_MEAN_DEGREES = 0.5;
 
-/** Whether `statistics` (from angleStatistics) is within the tangent gate. */
+/** The most the 99th percentile of that difference may be: a few pixels off by a lot is a tangent bug the mean hides. */
+export const TANGENT_GATE_P99_DEGREES = 2;
+
+/** Whether `statistics` (from angleStatistics) is within the tangent gate: mean and 99th percentile. */
 export function meetsTangentGate(statistics) {
-  return statistics.meanDegrees <= TANGENT_GATE_MEAN_DEGREES;
+  return statistics.meanDegrees <= TANGENT_GATE_MEAN_DEGREES && statistics.p99Degrees <= TANGENT_GATE_P99_DEGREES;
 }

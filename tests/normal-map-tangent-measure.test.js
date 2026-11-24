@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { angleStatistics, erodeMask, measureNormalPassAngle, meetsTangentGate, pixelAngles, sharedCoverage, TANGENT_GATE_MEAN_DEGREES } from '../scripts/normal-map-angle.mjs';
+import { angleStatistics, erodeMask, measureNormalPassAngle, meetsTangentGate, pixelAngles, sharedCoverage, TANGENT_GATE_MEAN_DEGREES, TANGENT_GATE_P99_DEGREES } from '../scripts/normal-map-angle.mjs';
 import { normalReflectsAboveSurface, oraclePass, pixelsAwayFromIslandBorders } from '../scripts/normal-map-oracle.mjs';
 import { bakeTangentSpaceNormalMap, barycentricWeights } from '../scripts/normal-map-bake.mjs';
 
@@ -21,7 +21,7 @@ function turned(degrees) {
 
 test('identical passes are 0 degrees apart and a turned normal reads its exact angle', () => {
   const same = passOf([[0, 0, 1], [0, 1, 0]]);
-  assert.deepEqual(measureNormalPassAngle(same, same, 2), { pixels: 2, meanDegrees: 0, p95Degrees: 0 });
+  assert.deepEqual(measureNormalPassAngle(same, same, 2), { pixels: 2, meanDegrees: 0, p95Degrees: 0, p99Degrees: 0, maxDegrees: 0 });
   const measured = measureNormalPassAngle(passOf([[0, 0, 1]]), passOf([turned(12)]), 1);
   assert.ok(Math.abs(measured.meanDegrees - 12) < 1e-4, `mean ${measured.meanDegrees}`);
 });
@@ -40,6 +40,8 @@ test('p95 is the nearest rank over the covered pixels, not the mean or the maxim
   const angles = Float32Array.from({ length: 100 }, (_, pixel) => pixel + 1);
   const statistics = angleStatistics(angles, new Uint8Array(100).fill(1));
   assert.equal(statistics.p95Degrees, 95);
+  assert.equal(statistics.p99Degrees, 99);
+  assert.equal(statistics.maxDegrees, 100);
   assert.equal(statistics.meanDegrees, 50.5);
 });
 
@@ -107,10 +109,12 @@ test('the baker names what to pass for a bad resolution, cage or tangent array',
 // What CI can pin is everything the gate stands on: the threshold, the spec pass reading back the baked normal in the
 // glTF basis for both handedness signs, and the masks that make the comparison fair.
 
-test('the tangent gate is 0.5 mean degrees and counts equal as a pass', () => {
+test('the tangent gate is 0.5 mean degrees and 2 degrees at p99, and counts equal as a pass', () => {
   assert.equal(TANGENT_GATE_MEAN_DEGREES, 0.5);
-  assert.equal(meetsTangentGate({ meanDegrees: 0.5 }), true);
-  assert.equal(meetsTangentGate({ meanDegrees: 0.57 }), false);
+  assert.equal(TANGENT_GATE_P99_DEGREES, 2);
+  assert.equal(meetsTangentGate({ meanDegrees: 0.5, p99Degrees: 2 }), true);
+  assert.equal(meetsTangentGate({ meanDegrees: 0.57, p99Degrees: 1 }), false);
+  assert.equal(meetsTangentGate({ meanDegrees: 0.1, p99Degrees: 2.5 }), false, 'a thin tail fails even when the mean is small');
 });
 
 test('the spec pass reads a baked normal back as the high-poly normal, within the gate, for both handedness signs', () => {
@@ -125,7 +129,7 @@ test('the spec pass reads a baked normal back as the high-poly normal, within th
     const covered = Uint8Array.from(texelOfPixel, texel => (texel >= 0 ? 1 : 0));
     assert.ok(covered.reduce((total, value) => total + value, 0) > 100, 'the quad covers most of the frame');
     const statistics = angleStatistics(pixelAngles(pixels, expected, covered), covered);
-    assert.ok(statistics.meanDegrees <= TANGENT_GATE_MEAN_DEGREES, `handedness ${handedness}: ${statistics.meanDegrees}`);
+    assert.ok(meetsTangentGate(statistics), `handedness ${handedness}: mean ${statistics.meanDegrees}, p99 ${statistics.p99Degrees}`);
   }
 });
 
