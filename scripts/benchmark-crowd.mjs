@@ -29,7 +29,7 @@ const pictureDirectory = pictureDirFlag >= 0 ? flags[pictureDirFlag + 1] : null;
 const width = skinnedUrl ? 480 : 1280;
 const height = skinnedUrl ? 270 : 720;
 
-const browserArguments = ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-renderer-backgrounding'];
+const browserArguments = ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-renderer-backgrounding', '--disable-audio-output'];
 if (useCpu) browserArguments.push('--use-angle=swiftshader', '--enable-unsafe-swiftshader');
 const server = await createServer({ server: { port: 0, strictPort: false }, logLevel: 'error' });
 await server.listen();

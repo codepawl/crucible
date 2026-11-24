@@ -4,7 +4,7 @@ import { constants, setPriority } from 'node:os';
 import { chromium } from 'playwright';
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
-const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'] });
 try {
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
   await page.route('**/volume-benchmark.html', route => route.fulfill({ contentType: 'text/html', body: '<canvas style="width:960px;height:540px;display:block"></canvas>' }));

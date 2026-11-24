@@ -127,13 +127,18 @@ async function start() {
     ground: false, hdr: true, samples: 4, memoryBudgetMiB: 384,
     shadowBounds: drawn.sunSplit ? sunShadowBounds(reflection.parts, drawn.environment.lightDirection) : {},
     ...rendererOptions,
+    ...(Number(description.frame?.effects?.motionBlur?.shutter) > 0 ? { depth: true } : {}),
     shadowCascades,
     environment: { ...environmentForRenderer(interior.environment), map: drawn.map },
   });
   attachWaterReflection(renderer, reflection.surface, { updateEvery: 1 });
   const frame = { exposure: description.exposure ?? 1, ...(description.frame ?? {}) };
   // A GLB with an animation clip plays its first clip on a loop, as the showcase page does; one without a clip is drawn as before.
-  const renderAt = createFileSceneRenderAt({ asset, posedParts: assetOwnParts, sceneParts: asset.parts, rendererParts, renderer, camera, description, frame });
+  // A scene file that asks for motion blur ("frame.effects.motionBlur") loads the blur stages; one that does not loads nothing.
+  const blurModule = description.frame?.effects?.motionBlur ? await import('./file-scene-motion-blur.js') : null;
+  const requestedBlur = blurModule?.requestedMotionBlur(frame);
+  if (requestedBlur?.shutter > 0) blurModule.installFileSceneMotionBlur(renderer, requestedBlur);
+  const renderAt = createFileSceneRenderAt({ asset, posedParts: assetOwnParts, sceneParts: asset.parts, rendererParts, renderer, camera, description, frame, motionBlur: requestedBlur?.shutter > 0 ? blurModule : null });
   // `parts` and `environment` let scripts/render-file-native.mjs pack the same scene for the native path tracer.
   const sky = interior.skyReport ? { ...(await import('./floor-sky-visibility.js')), environment: drawn.environment } : null;
   const lodsReady = plan?.geometries.length ? deferLevels({ plan, sourceParts: reflection.parts, rendererParts, renderer, sky }) : Promise.resolve();

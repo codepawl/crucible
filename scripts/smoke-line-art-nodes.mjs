@@ -29,7 +29,7 @@ async function drawAll() {
   const server = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
   await server.listen();
   const url = `http://127.0.0.1:${server.httpServer.address().port}/bench/reference/line-art-harness.html`;
-  const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', '--use-angle=d3d11', '--enable-gpu'] });
+  const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', '--use-angle=d3d11', '--enable-gpu', '--disable-audio-output'] });
   const frames = {};
   try {
     const page = await browser.newPage({ viewport: SIZE });

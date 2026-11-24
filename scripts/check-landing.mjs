@@ -26,7 +26,7 @@ const SIZES = [{ name: 'desktop', width: 1440, height: 900 }, { name: 'laptop', 
 const STORY_POSITIONS = 14;
 const SECTION_POSITIONS = 6;
 const MAXIMUM_SPOUT_DISTANCE_PIXELS = 3;
-const browser = await chromium.launch({ args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'] });
 
 async function openPage(options) {
   const context = await browser.newContext({

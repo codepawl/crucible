@@ -38,6 +38,7 @@ import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, des
 import './replace-textured-parts.js';
 import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
 import { createBakeMark } from './studio-bake-mark.js';
+import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, watchContextLoss } from './studio-context-loss.js';
 import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgentEdit, diffRecipeNodes } from './studio-agent-presence.js';
@@ -55,7 +56,6 @@ import {
 } from './studio-templates.js';
 import {
   createStudioController,
-  freeSpawnTranslation,
   hasAnimatedData,
   linearRgbToHex,
   quaternionToEulerDegrees,
@@ -77,6 +77,8 @@ export {
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
 const STATUS_DEFAULT_MILLISECONDS = 3400;
+// Past the exit transition, in case the browser never sends its transitionend.
+const STATUS_EXIT_SLACK_MILLISECONDS = 40;
 const DEGREE_PRECISION = 100;
 const ROUND_PRECISION = 10000;
 const LENS_CHIP_TOLERANCE_MILLIMETRES = 0.5;
@@ -1099,6 +1101,7 @@ export function createStudio(container, {
   let swallowContextMenu = false;
   let swallowClick = false;
   let statusTimer = 0;
+  let statusExitTimer = 0;
   let liveDeltaLabel = '';
 
   const root = createElement(documentReference, 'div', {
@@ -1240,6 +1243,9 @@ export function createStudio(container, {
     const opensUpward = clientY > windowHeight / 2;
     objectPopover.style.top = opensUpward ? 'auto' : `${Math.round(clientY)}px`;
     objectPopover.style.bottom = opensUpward ? `${Math.round(Math.max(8, windowHeight - clientY))}px` : 'auto';
+    const opening = popoverOpeningStyle({ opensUpward });
+    objectPopover.style.setProperty('--studio-popover-origin', opening.origin);
+    objectPopover.style.setProperty('--studio-popover-shift', opening.shift);
     objectPopover.showPopover?.();
   }
   function hideSelection() {
@@ -1372,84 +1378,13 @@ export function createStudio(container, {
   addSpotLightButton.addEventListener('click', () => addLightFromMenu('spot', 'Spot lights'));
   addAreaLightButton.addEventListener('click', () => addLightFromMenu('area', 'Area lights'));
   const lightGrid = createElement(documentReference, 'div', { className: 'crucible-studio-popover-grid', attributes: { role: 'group', 'aria-label': 'Lights' } }, addPointLightButton, addSpotLightButton, addAreaLightButton);
-  // The trees load on first use: their picker draws one picture of each preset, and their code stays out of the core entry.
+  // The tree controls of the inspector load the first time a node that grows a tree is selected, so their code stays out of the core entry.
   let treeToolsPromise = null;
-  let treePickerLoad = null;
   const loadTreeTools = () => {
     treeToolsPromise ??= import('./studio-trees.js');
     return treeToolsPromise;
   };
-  // The preset tiles open in a flyout of their own beside the Tree entry, so the add menu keeps its size and place.
-  const treePicker = createElement(documentReference, 'div', { className: 'crucible-studio-popover crucible-studio-tree-picker', attributes: { popover: 'manual' } });
-  const addTreeButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Tree', dataset: { keepPopover: '' }, attributes: { 'aria-expanded': 'false' } });
-  const closeTreePicker = () => {
-    if (treePicker.matches?.(':popover-open')) {
-      treePicker.hidePopover?.();
-    }
-    addTreeButton.setAttribute('aria-expanded', 'false');
-  };
-  // Beside the add menu with its top level with the menu's top, else its bottom level with the menu's bottom, and inside the window either way.
-  const placeTreePicker = () => {
-    const view = documentReference.defaultView;
-    if (!view) return;
-    const menuRectangle = addPopover.getBoundingClientRect();
-    const pickerRectangle = treePicker.getBoundingClientRect();
-    const margin = 8;
-    const rightLeft = menuRectangle.right + margin;
-    const fitsRight = rightLeft + pickerRectangle.width <= view.innerWidth - margin;
-    const left = fitsRight ? rightLeft : Math.max(margin, menuRectangle.left - margin - pickerRectangle.width);
-    const alignedTop = menuRectangle.top;
-    const alignedBottom = menuRectangle.bottom - pickerRectangle.height;
-    const fitsAtTop = alignedTop + pickerRectangle.height <= view.innerHeight - margin;
-    const wantedTop = fitsAtTop ? alignedTop : alignedBottom;
-    const top = Math.max(margin, Math.min(wantedTop, view.innerHeight - margin - pickerRectangle.height));
-    treePicker.style.left = `${Math.round(left)}px`;
-    treePicker.style.top = `${Math.round(top)}px`;
-  };
-  addPopover.addEventListener('toggle', event => {
-    if (event.newState === 'closed') {
-      closeTreePicker();
-    }
-  });
-  const pickTree = async presetName => {
-    addPopover.hidePopover?.();
-    closeTreePicker();
-    try {
-      const treeTools = await loadTreeTools();
-      const created = await treeTools.addTree({ controller, loadAgentSceneModules, findFreeSpot: freeSpawnTranslation }, presetName);
-      announce(`Added ${created.label}`);
-    } catch (error) {
-      announce(error.message);
-    }
-  };
-  addTreeButton.addEventListener('click', async () => {
-    if (treePicker.matches?.(':popover-open')) {
-      closeTreePicker();
-      return;
-    }
-    addTreeButton.setAttribute('aria-expanded', 'true');
-    try {
-      const treeTools = await loadTreeTools();
-      if (treePicker.childElementCount === 0) {
-        const picker = treeTools.createTreePicker({
-          documentReference,
-          createElement,
-          onPick: pickTree,
-          loadPictures: () => treeTools.renderPresetPictures({ documentReference, createAgentScene, loadAgentSceneModules, createRenderer, agentEnvironmentMap, fitAgentShadow, resolveAgentShadow }),
-        });
-        treePicker.append(picker.element);
-        treePickerLoad = picker.load;
-      }
-      treePicker.showPopover?.();
-      placeTreePicker();
-      await treePickerLoad();
-      placeTreePicker();
-    } catch (error) {
-      announce(error.message);
-    }
-  });
-  const natureGrid = createElement(documentReference, 'div', { className: 'crucible-studio-popover-grid', attributes: { role: 'group', 'aria-label': 'Nature' } }, addTreeButton);
-  addPopover.append(...primitiveGrids, lightGrid, natureGrid, treePicker);
+  addPopover.append(...primitiveGrids, lightGrid);
 
   const syncStatusNote = createElement(documentReference, 'p', {
     className: 'crucible-studio-popover-note',
@@ -1526,7 +1461,7 @@ export function createStudio(container, {
   );
   for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, viewPopover, helpPopover]) {
     popoverElement.addEventListener('click', event => {
-      if (event.target.closest?.('button') && !event.target.closest?.('[data-keep-popover]')) popoverElement.hidePopover?.();
+      if (event.target.closest?.('button')) popoverElement.hidePopover?.();
     });
   }
 
@@ -1591,15 +1526,24 @@ export function createStudio(container, {
     helpPopover,
   );
 
+  // A hover switch is instant: the bar says so while one menu hides and the next shows, a style read makes the browser
+  // settle both in that state, and the mark is gone in the same task, so no frame or throttled tab can leave it set.
+  const flushStyle = element => documentReference.defaultView?.getComputedStyle?.(element)?.opacity;
+  const switchMenubarMenu = (outgoingPopover, incomingPopover, showIncoming) => {
+    menubarElement.dataset.switching = 'true';
+    outgoingPopover.hidePopover?.();
+    showIncoming();
+    flushStyle(incomingPopover);
+    delete menubarElement.dataset.switching;
+  };
   // With one menu open, moving over the next one opens it, as a desktop menu bar does.
   const menuPairs = [[fileMenuButton, newPopover], [editMenuButton, editPopover], [viewMenuButton, viewPopover], [aiSyncMenuButton, aiSyncPopover], [helpMenuButton, helpPopover]];
   for (const [menuButton, menuPopover] of menuPairs) {
     menuButton.addEventListener('pointerenter', () => {
       const openPair = menuPairs.find(([, otherPopover]) => otherPopover !== menuPopover && otherPopover.matches?.(':popover-open'));
       if (openPair) {
-        openPair[1].hidePopover?.();
         fileMenuAnchor = menuButton === fileMenuButton ? fileMenuButton : fileMenuAnchor;
-        menuPopover.showPopover?.();
+        switchMenubarMenu(openPair[1], menuPopover, () => menuPopover.showPopover?.());
       }
     });
   }
@@ -1626,6 +1570,9 @@ export function createStudio(container, {
       const opensUpward = beside && rectangle.top > viewportHeight / 2;
       popoverElement.style.top = opensUpward ? 'auto' : `${Math.round(clampedTop)}px`;
       popoverElement.style.bottom = opensUpward ? `${Math.round(Math.max(8, viewportHeight - rectangle.bottom - 8))}px` : 'auto';
+      const opening = popoverOpeningStyle({ beside, opensLeftward, opensUpward });
+      popoverElement.style.setProperty('--studio-popover-origin', opening.origin);
+      popoverElement.style.setProperty('--studio-popover-shift', opening.shift);
     });
   }
   bindPopoverAnchor(() => fileMenuAnchor, newPopover);
@@ -1727,12 +1674,40 @@ export function createStudio(container, {
   const hintBar = createElement(documentReference, 'div', { className: 'crucible-studio-hintbar' });
   const dropOverlay = createElement(documentReference, 'div', { className: 'crucible-studio-drop-overlay', textContent: canImport ? 'Drop a scene.json, GLB, HDR or image' : 'Drop a scene.json to open it' });
 
+  // The box keeps its text through its exit so the fade has something to show; screen readers get the text at once.
+  function clearStatus() {
+    clearTimeout(statusExitTimer);
+    statusRegion.textContent = '';
+    delete statusRegion.dataset.state;
+  }
+
+  function hideStatus() {
+    statusRegion.dataset.state = 'out';
+    const computedStyle = documentReference.defaultView?.getComputedStyle?.(statusRegion);
+    const exitMilliseconds = longestTransitionMilliseconds(computedStyle?.transitionDuration);
+    if (exitMilliseconds === 0) {
+      clearStatus();
+      return;
+    }
+    statusExitTimer = setTimeout(clearStatus, exitMilliseconds + STATUS_EXIT_SLACK_MILLISECONDS);
+  }
+
+  statusRegion.addEventListener('transitionend', event => {
+    if (event.propertyName === 'opacity' && statusRegion.dataset.state === 'out') {
+      clearStatus();
+    }
+  });
+
   function announce(message, durationMilliseconds = STATUS_DEFAULT_MILLISECONDS) {
-    statusRegion.textContent = message;
     clearTimeout(statusTimer);
-    statusTimer = setTimeout(() => {
-      statusRegion.textContent = '';
-    }, durationMilliseconds);
+    clearTimeout(statusExitTimer);
+    if (!message) {
+      clearStatus();
+      return;
+    }
+    statusRegion.textContent = message;
+    statusRegion.dataset.state = 'in';
+    statusTimer = setTimeout(hideStatus, durationMilliseconds);
   }
 
   // Viewport Top-Left Toolbar (Modern Web Guidance: toolbar pattern)
@@ -3211,6 +3186,7 @@ export function createStudio(container, {
   // UI Synchronization
   let lastTreeKey = '';
   let lastSwatchesKey = '';
+  let lastPressedMaterialId;
   let lastBookmarksKey = '';
   let lastParentOptionsKey = '';
 
@@ -3254,101 +3230,245 @@ export function createStudio(container, {
     selectInspectorTab(key === 'camera' ? 'camera' : 'look');
   }
 
+  // One Scene list row per node or scene object, kept between syncs: an edit builds only the rows whose content changed.
+  const outlinerRows = new Map();
+  let lastTreeStructureKey = '';
+
+  function createNodeRow(node, depth, iconName) {
+    const badge = createIcon(documentReference, iconName);
+    badge.setAttribute('class', 'crucible-studio-icon crucible-studio-tree-badge');
+    badge.setAttribute('data-shape', iconName);
+    const selectButton = createElement(
+      documentReference,
+      'button',
+      { type: 'button', className: 'crucible-studio-tree-select', dataset: { hidden: node.visible === false ? 'true' : 'false' } },
+      badge,
+      createElement(documentReference, 'span', { className: 'crucible-studio-tree-label', textContent: node.label ?? node.id }),
+    );
+    selectButton.style.paddingLeft = `${4 + depth * 12}px`;
+    selectButton.addEventListener('click', () => selectNodeAndShowItsPanel(() => controller.selectNode(node.id)));
+    selectButton.addEventListener('contextmenu', event => {
+      event.preventDefault();
+      selectNodeAndShowItsPanel(() => controller.selectNode(node.id));
+      openObjectMenu(event.clientX, event.clientY);
+    });
+    selectButton.addEventListener('dblclick', () => {
+      controller.selectNode(node.id);
+      selectInspectorTab('node');
+      nodeLabelInput.focus();
+      nodeLabelInput.select();
+    });
+    const hidden = node.visible === false;
+    const eyeButton = createIconButton(documentReference, hidden ? 'eyeOff' : 'eye', `${hidden ? 'Show' : 'Hide'} ${node.label ?? node.id}`, {
+      className: 'crucible-studio-tree-eye',
+      dataset: { hidden: hidden ? 'true' : 'false' },
+    });
+    eyeButton.addEventListener('click', () => controller.updateNodeTransform(node.id, { visible: !(node.visible ?? true) }));
+    const element = createElement(
+      documentReference,
+      'div',
+      { className: 'crucible-studio-tree-row', dataset: { selected: 'false' }, attributes: { role: 'treeitem', 'aria-selected': 'false' } },
+      selectButton,
+      eyeButton,
+    );
+    return { element, badge, appliedFill: '' };
+  }
+
+  function setOutlinerRowSelected(row, selected) {
+    const selectedText = selected ? 'true' : 'false';
+    if (row.element.dataset.selected !== selectedText) {
+      row.element.dataset.selected = selectedText;
+      row.element.setAttribute('aria-selected', selectedText);
+    }
+  }
+
+  function setOutlinerRowFill(row, fill) {
+    if (row.appliedFill === fill) {
+      return;
+    }
+    row.appliedFill = fill;
+    row.badge.style.fill = fill;
+  }
+
+  // Indexes of the longest run of values that keeps rising: the rows of that run are already in the right order.
+  function longestRisingRun(values) {
+    const tails = [];
+    const tailIndexAtLength = [];
+    const previousIndex = new Array(values.length).fill(-1);
+    values.forEach((value, index) => {
+      let low = 0;
+      let high = tails.length;
+      while (low < high) {
+        const middle = (low + high) >> 1;
+        if (tails[middle] < value) low = middle + 1;
+        else high = middle;
+      }
+      tails[low] = value;
+      tailIndexAtLength[low] = index;
+      previousIndex[index] = low > 0 ? tailIndexAtLength[low - 1] : -1;
+    });
+    const run = new Set();
+    for (let index = tails.length ? tailIndexAtLength[tails.length - 1] : -1; index >= 0; index = previousIndex[index]) {
+      run.add(index);
+    }
+    return run;
+  }
+
+  // Puts the wanted rows in the list in order. Stale rows leave first. The rows already in the list that keep their relative
+  // order stay where they are; every other row is inserted before the row that follows it. A row that stays is never
+  // detached, since that would drop its keyboard focus and hover.
+  function placeOutlinerRows(rowElements) {
+    const wanted = new Set(rowElements);
+    for (const child of [...outlinerTree.children]) {
+      if (!wanted.has(child)) {
+        child.remove();
+      }
+    }
+    const positions = new Map([...outlinerTree.children].map((child, index) => [child, index]));
+    const inList = rowElements.filter(element => positions.has(element));
+    const stays = new Set([...longestRisingRun(inList.map(element => positions.get(element)))].map(index => inList[index]));
+    let following = null;
+    for (let index = rowElements.length - 1; index >= 0; index -= 1) {
+      const element = rowElements[index];
+      if (!stays.has(element)) {
+        outlinerTree.insertBefore(element, following);
+      }
+      following = element;
+    }
+  }
+
+  // A rebuilt row is a new element: the button that had focus is found again by node id, so the keyboard stays where it was.
+  function focusedOutlinerButton() {
+    const active = documentReference.activeElement;
+    if (!active) {
+      return null;
+    }
+    for (const [rowKey, row] of outlinerRows) {
+      const buttonIndex = [...row.element.children].indexOf(active);
+      if (buttonIndex >= 0) {
+        return { rowKey, buttonIndex, element: active };
+      }
+    }
+    return null;
+  }
+
+  function restoreOutlinerFocus(focused) {
+    if (!focused || documentReference.activeElement === focused.element) {
+      return;
+    }
+    outlinerRows.get(focused.rowKey)?.element.children[focused.buttonIndex]?.focus({ preventScroll: true });
+  }
+
   function renderOutliner(recipe) {
     const queryText = outlinerSearch.value.trim().toLowerCase();
-    const materialsById = new Map(recipe.materials.map(material => [material.id, material]));
+    const materialColors = new Map(recipe.materials.map(material => [material.id, linearRgbToHex(material.color)]));
     const geometriesById = new Map(recipe.geometries.map(geometry => [geometry.id, geometry]));
     const ordered = depthSortedNodes(recipe.nodes).filter(({ node }) => {
       if (!queryText) return true;
       return (node.label ?? node.id).toLowerCase().includes(queryText) || node.id.toLowerCase().includes(queryText);
     });
     const sceneObjects = controller.listSceneObjects().filter(object => !queryText || object.label.toLowerCase().includes(queryText) || object.key.includes(queryText));
-    const objectKey = sceneObjects.map(object => `${object.key}:${object.label}`).join(',');
-    const treeKey = `${controller.selectedNodeId ?? ''}|${controller.selectedObjectKey ?? ''}|${objectKey}|${queryText}|${ordered.map(({ node, depth }) => `${depth}:${node.id}:${node.label ?? ''}:${node.visible ?? true}:${node.material ?? ''}:${treeIconName(node, geometriesById)}`).join('|')}`;
+    const wantedRows = [
+      ...sceneObjects.map(object => ({
+        rowKey: `object:${object.key}`,
+        contentKey: `${object.kind}:${object.label}`,
+        selected: object.key === controller.selectedObjectKey,
+        fill: '',
+        build: () => ({ element: createSceneObjectRow(object), badge: null, appliedFill: '' }),
+      })),
+      ...ordered.map(({ node, depth }) => {
+        const iconName = treeIconName(node, geometriesById);
+        return {
+          rowKey: `node:${node.id}`,
+          contentKey: `${depth}:${node.label ?? ''}:${node.visible ?? true}:${iconName}`,
+          selected: node.id === controller.selectedNodeId,
+          fill: node.material && materialColors.has(node.material) ? materialColors.get(node.material) : '',
+          build: () => createNodeRow(node, depth, iconName),
+        };
+      }),
+    ];
+    const treeKey = `${queryText}|${wantedRows.map(wanted => `${wanted.rowKey}:${wanted.contentKey}:${wanted.selected}:${wanted.fill}`).join('|')}`;
     if (treeKey === lastTreeKey) {
       return;
     }
     lastTreeKey = treeKey;
-    outlinerTree.replaceChildren(...sceneObjects.map(createSceneObjectRow), ...ordered.map(({ node, depth }) => {
-      const material = node.material ? materialsById.get(node.material) : null;
-      const selected = node.id === controller.selectedNodeId;
-      const iconName = treeIconName(node, geometriesById);
-      const badge = createIcon(documentReference, iconName);
-      badge.setAttribute('class', 'crucible-studio-icon crucible-studio-tree-badge');
-      badge.setAttribute('data-shape', iconName);
-      if (material) {
-        badge.style.fill = linearRgbToHex(material.color);
-      }
-      const selectButton = createElement(
-        documentReference,
-        'button',
-        { type: 'button', className: 'crucible-studio-tree-select', dataset: { hidden: node.visible === false ? 'true' : 'false' } },
-        badge,
-        createElement(documentReference, 'span', { className: 'crucible-studio-tree-label', textContent: node.label ?? node.id }),
-      );
-      selectButton.style.paddingLeft = `${4 + depth * 12}px`;
-      selectButton.addEventListener('click', () => selectNodeAndShowItsPanel(() => controller.selectNode(node.id)));
-      selectButton.addEventListener('contextmenu', event => {
-        event.preventDefault();
-        selectNodeAndShowItsPanel(() => controller.selectNode(node.id));
-        openObjectMenu(event.clientX, event.clientY);
-      });
-      selectButton.addEventListener('dblclick', () => {
-        controller.selectNode(node.id);
-        selectInspectorTab('node');
-        nodeLabelInput.focus();
-        nodeLabelInput.select();
-      });
-      const hidden = node.visible === false;
-      const eyeButton = createIconButton(documentReference, hidden ? 'eyeOff' : 'eye', `${hidden ? 'Show' : 'Hide'} ${node.label ?? node.id}`, {
-        className: 'crucible-studio-tree-eye',
-        dataset: { hidden: hidden ? 'true' : 'false' },
-      });
-      eyeButton.addEventListener('click', () => controller.updateNodeTransform(node.id, { visible: !(node.visible ?? true) }));
-      return createElement(
-        documentReference,
-        'div',
-        { className: 'crucible-studio-tree-row', dataset: { selected: selected ? 'true' : 'false' }, attributes: { role: 'treeitem', 'aria-selected': selected ? 'true' : 'false' } },
-        selectButton,
-        eyeButton,
-      );
-    }));
-    fitTreeToWholeRows();
-  }
-
-  function renderPaletteSwatches(recipe, boundMaterialId) {
-    const swatchesKey = `${boundMaterialId ?? ''}|${recipe.materials.map(material => `${material.id}:${linearRgbToHex(material.color)}`).join('|')}`;
-    if (swatchesKey === lastSwatchesKey) {
+    const focused = focusedOutlinerButton();
+    const savedScrollTop = outlinerTree.scrollTop;
+    const previousRows = new Map(outlinerRows);
+    outlinerRows.clear();
+    for (const wanted of wantedRows) {
+      const previous = previousRows.get(wanted.rowKey);
+      const row = previous?.contentKey === wanted.contentKey ? previous : { ...wanted.build(), contentKey: wanted.contentKey };
+      setOutlinerRowSelected(row, wanted.selected);
+      if (row.badge) setOutlinerRowFill(row, wanted.fill);
+      outlinerRows.set(wanted.rowKey, row);
+    }
+    const structureKey = wantedRows.map(wanted => `${wanted.rowKey}:${wanted.contentKey}`).join('|');
+    if (structureKey === lastTreeStructureKey) {
       return;
     }
-    lastSwatchesKey = swatchesKey;
-    swatchContainer.replaceChildren(...recipe.materials.map(material => {
-      const hex = linearRgbToHex(material.color);
-      const swatch = createElement(documentReference, 'button', {
-        type: 'button',
-        className: 'crucible-studio-swatch-btn',
-        title: material.id,
-        attributes: { 'aria-pressed': material.id === boundMaterialId ? 'true' : 'false', 'aria-label': `Material ${material.id}` },
-      });
-      swatch.style.background = hex;
-      swatch.addEventListener('click', () => {
-        if (controller.selectedNodeId) {
-          try {
-            controller.assignNodeMaterial(controller.selectedNodeId, material.id);
-          } catch {
-            // group node has no geometry; still open material tab
-          }
-        }
-        selectInspectorTab('material');
-      });
-      return swatch;
-    }));
-    scrollPressedSwatchIntoView();
+    lastTreeStructureKey = structureKey;
+    placeOutlinerRows([...outlinerRows.values()].map(row => row.element));
+    restoreOutlinerFocus(focused);
     fitTreeToWholeRows();
+    // Rows added or removed above the one the browser snapped to would move the list; it stays where the person left it.
+    if (outlinerTree.scrollTop !== savedScrollTop) {
+      outlinerTree.scrollTop = savedScrollTop;
+    }
+  }
+
+  // The swatches are rebuilt only when a material was added, removed or recoloured; moving the pressed state to another
+  // swatch touches two buttons. The strip scrolls to the pressed swatch at the end of the sync, only when it moved.
+  let swatchScrollWanted = false;
+
+  function renderPaletteSwatches(recipe, boundMaterialId) {
+    const swatchesKey = recipe.materials.map(material => `${material.id}:${linearRgbToHex(material.color)}`).join('|');
+    if (swatchesKey !== lastSwatchesKey) {
+      lastSwatchesKey = swatchesKey;
+      swatchScrollWanted = true;
+      swatchContainer.replaceChildren(...recipe.materials.map(material => {
+        const hex = linearRgbToHex(material.color);
+        const swatch = createElement(documentReference, 'button', {
+          type: 'button',
+          className: 'crucible-studio-swatch-btn',
+          title: material.id,
+          attributes: { 'aria-pressed': 'false', 'aria-label': `Material ${material.id}` },
+        });
+        swatch.style.background = hex;
+        swatch.addEventListener('click', () => {
+          if (controller.selectedNodeId) {
+            try {
+              controller.assignNodeMaterial(controller.selectedNodeId, material.id);
+            } catch {
+              // group node has no geometry; still open material tab
+            }
+          }
+          selectInspectorTab('material');
+        });
+        return swatch;
+      }));
+      lastPressedMaterialId = undefined;
+    }
+    if (boundMaterialId === lastPressedMaterialId) {
+      return;
+    }
+    lastPressedMaterialId = boundMaterialId;
+    swatchScrollWanted = true;
+    recipe.materials.forEach((material, index) => {
+      const pressed = material.id === boundMaterialId ? 'true' : 'false';
+      const swatch = swatchContainer.children[index];
+      if (swatch.getAttribute('aria-pressed') !== pressed) {
+        swatch.setAttribute('aria-pressed', pressed);
+      }
+    });
   }
 
   // The strip is one row that scrolls sideways; the swatch of the selected node stays inside it.
   function scrollPressedSwatchIntoView() {
+    if (!swatchScrollWanted) {
+      return;
+    }
+    swatchScrollWanted = false;
     const pressedSwatch = [...swatchContainer.children].find(swatch => swatch.getAttribute('aria-pressed') === 'true');
     if (!pressedSwatch || !Number.isFinite(pressedSwatch.offsetLeft)) {
       return;
@@ -3363,22 +3483,91 @@ export function createStudio(container, {
   }
 
   // The Scene list shows whole rows only: when it scrolls, its rows grow by a pixel or two until a whole number of them fills it.
-  function fitTreeToWholeRows() {
+  // The natural row height comes from one measurement that holds until something that sets it changes: the list's own height
+  // (read live), the kind of the first row (a camera row or a node row), the fonts, the window size, or the first row's own
+  // size (watched). An edit that changes the rows then costs one read of the list's scroll height, taken after the rows are
+  // placed, which the next frame needs anyway.
+  let treeFitMeasure = null;
+  let appliedTreeRowSize = '';
+  let watchedFirstRow = null;
+
+  function isSceneObjectRow(row) {
+    return row.dataset.sceneObject !== undefined;
+  }
+
+  function measureTreeFit() {
+    const view = documentReference.defaultView;
+    outlinerTree.style.removeProperty('--studio-tree-row-size');
+    appliedTreeRowSize = '';
+    const firstRow = outlinerTree.firstElementChild;
+    if (!firstRow || !(outlinerTree.clientHeight > 0)) {
+      return null;
+    }
+    const treeStyle = view.getComputedStyle(outlinerTree);
+    return {
+      clientHeight: outlinerTree.clientHeight,
+      paddingTop: parseFloat(treeStyle.paddingTop),
+      paddingBottom: parseFloat(treeStyle.paddingBottom),
+      rowPitch: firstRow.offsetHeight + TREE_ROW_GAP_PIXELS,
+      firstRowIsSceneObject: isSceneObjectRow(firstRow),
+    };
+  }
+
+  function setTreeRowSize(rowSize) {
+    if (rowSize === appliedTreeRowSize) {
+      return;
+    }
+    appliedTreeRowSize = rowSize;
+    if (rowSize) {
+      outlinerTree.style.setProperty('--studio-tree-row-size', rowSize);
+    } else {
+      outlinerTree.style.removeProperty('--studio-tree-row-size');
+    }
+  }
+
+  // The first row's own size changes with the root font size even when the list's box does not.
+  function watchFirstTreeRow() {
+    const firstRow = outlinerTree.firstElementChild;
+    if (!resizeObserver || firstRow === watchedFirstRow) {
+      return;
+    }
+    if (watchedFirstRow) resizeObserver.unobserve?.(watchedFirstRow);
+    watchedFirstRow = firstRow;
+    if (firstRow) resizeObserver.observe(firstRow);
+  }
+
+  function treeFitMeasureIsCurrent() {
+    const firstRow = outlinerTree.firstElementChild;
+    return Boolean(treeFitMeasure)
+      && outlinerTree.clientHeight === treeFitMeasure.clientHeight
+      && isSceneObjectRow(firstRow) === treeFitMeasure.firstRowIsSceneObject;
+  }
+
+  function fitTreeToWholeRows({ remeasure = false } = {}) {
     const view = documentReference.defaultView;
     if (!view?.getComputedStyle || !outlinerTree.style?.removeProperty) {
       return;
     }
-    outlinerTree.style.removeProperty('--studio-tree-row-size');
-    const firstRow = outlinerTree.firstElementChild;
-    if (!firstRow || !(outlinerTree.clientHeight > 0) || outlinerTree.scrollHeight <= outlinerTree.clientHeight) {
+    watchFirstTreeRow();
+    if (remeasure || !outlinerTree.firstElementChild || !treeFitMeasureIsCurrent()) {
+      treeFitMeasure = measureTreeFit();
+    }
+    if (!treeFitMeasure) {
       return;
     }
-    const treeStyle = view.getComputedStyle(outlinerTree);
-    const rowSpace = outlinerTree.clientHeight - parseFloat(treeStyle.paddingTop) - parseFloat(treeStyle.paddingBottom);
-    const rowPitch = firstRow.offsetHeight + TREE_ROW_GAP_PIXELS;
+    if (outlinerTree.scrollHeight <= outlinerTree.clientHeight) {
+      setTreeRowSize('');
+      return;
+    }
+    const { clientHeight, paddingTop, paddingBottom, rowPitch } = treeFitMeasure;
+    const rowSpace = clientHeight - paddingTop - paddingBottom;
     const wholeRows = Math.max(1, Math.floor((rowSpace + TREE_ROW_GAP_PIXELS) / rowPitch));
     const stretchedRowSize = (rowSpace + TREE_ROW_GAP_PIXELS) / wholeRows - TREE_ROW_GAP_PIXELS;
-    outlinerTree.style.setProperty('--studio-tree-row-size', `${stretchedRowSize}px`);
+    setTreeRowSize(`${stretchedRowSize}px`);
+  }
+
+  function refitTreeToWholeRows() {
+    fitTreeToWholeRows({ remeasure: true });
   }
 
   // A locked row says so with the keyframe mark beside its title, the mark the property panel puts on a driven field.
@@ -3532,6 +3721,7 @@ export function createStudio(container, {
     syncPropertyPanels();
     syncHintBar();
     syncFileBanner();
+    scrollPressedSwatchIntoView();
   }
 
   // Only the panel in view is redrawn: orbiting the viewport notifies a change many times a second.
@@ -4108,7 +4298,17 @@ export function createStudio(container, {
     }
     keyHandlers[match.actionId](event, match.binding);
   };
-  documentReference.addEventListener('keydown', onWindowKeyDown);
+  // The last kind of input decides whether a menu animates: a menu opened from the keyboard is a shortcut and appears at once.
+  // One keydown listener serves both, so the page keeps the single listener it always had.
+  const onKeyDown = event => {
+    if (!isModifierKey(event.key)) root.dataset.input = 'keyboard';
+    onWindowKeyDown(event);
+  };
+  const onPointerInput = () => {
+    root.dataset.input = 'pointer';
+  };
+  documentReference.addEventListener('keydown', onKeyDown);
+  documentReference.addEventListener('pointerdown', onPointerInput, true);
 
   const onVisibilityChange = () => {
     if (!documentReference.hidden && isVisible) requestFrame();
@@ -4233,12 +4433,14 @@ export function createStudio(container, {
   if (typeof ResizeObserver === 'function') {
     resizeObserver = new ResizeObserver(() => {
       syncCompactLayout();
-      fitTreeToWholeRows();
+      refitTreeToWholeRows();
       requestFrame();
     });
     resizeObserver.observe(viewportElement);
     resizeObserver.observe(outlinerTree);
   }
+  documentReference.fonts?.addEventListener?.('loadingdone', refitTreeToWholeRows);
+  documentReference.defaultView?.addEventListener?.('resize', refitTreeToWholeRows);
   if (typeof IntersectionObserver === 'function') {
     intersectionObserver = new IntersectionObserver(entries => {
       isVisible = entries.some(entry => entry.isIntersecting);
@@ -4317,6 +4519,7 @@ export function createStudio(container, {
     dispose() {
       clearTimeout(draftTimer);
       clearTimeout(statusTimer);
+      clearTimeout(statusExitTimer);
       clearTimeout(awaitedProgramTimer);
       agentPresence.dispose();
       systemSchemeQuery?.removeEventListener?.('change', onSystemSchemeChange);
@@ -4326,13 +4529,16 @@ export function createStudio(container, {
       documentReference.removeEventListener('contextmenu', onModalContextMenu, true);
       documentReference.removeEventListener('click', onModalClick, true);
       documentReference.removeEventListener('pointerdown', onAnyPointerDown, true);
-      documentReference.removeEventListener('keydown', onWindowKeyDown);
+      documentReference.removeEventListener('keydown', onKeyDown);
+      documentReference.removeEventListener('pointerdown', onPointerInput, true);
       documentReference.removeEventListener('visibilitychange', onVisibilityChange);
       documentReference.removeEventListener('visibilitychange', flushDraftWhenHidden);
       documentReference.defaultView?.removeEventListener?.('pagehide', flushDraftSave);
       stopWatchingContextLoss();
       stopWatchingDiagnostics();
       pausedNotice.hide();
+      documentReference.fonts?.removeEventListener?.('loadingdone', refitTreeToWholeRows);
+      documentReference.defaultView?.removeEventListener?.('resize', refitTreeToWholeRows);
       resizeObserver?.disconnect();
       intersectionObserver?.disconnect();
       controller.dispose();

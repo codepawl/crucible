@@ -90,7 +90,7 @@ function fixture() {
 }
 
 await writeFile('artifacts/textured-animation.glb', fixture());
-const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'] });
 const errors = [];
 const report = {};
 try {

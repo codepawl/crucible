@@ -29,7 +29,7 @@ await new Promise(done => server.listen(0, '127.0.0.1', done));
 const origin = `http://localhost:${server.address().port}`;
 
 await mkdir(outputDirectory, { recursive: true });
-const GPU_FLAGS = ['--no-sandbox', '--ignore-gpu-blocklist', '--enable-unsafe-webgpu', '--enable-features=Vulkan,WebGPU,UnsafeWebGPU', '--disable-vulkan-surface', '--enable-webgl'];
+const GPU_FLAGS = ['--no-sandbox', '--ignore-gpu-blocklist', '--enable-unsafe-webgpu', '--enable-features=Vulkan,WebGPU,UnsafeWebGPU', '--disable-vulkan-surface', '--enable-webgl', '--disable-audio-output'];
 // WebGL2 is tried on each ANGLE backend in turn until the tracer's float render targets exist; the first that draws decides.
 const LAUNCHES = [
   { label: 'angle-vulkan', args: ['--use-angle=vulkan'], backends: ['gpu', 'webgpu-megakernel', 'webgpu-wavefront', 'webgpu-realtime'] },

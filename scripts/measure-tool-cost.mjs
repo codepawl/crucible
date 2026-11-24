@@ -13,7 +13,7 @@ import { GAME_CAPABILITIES } from '../src/game-setup-notes.js';
 import { MESH_BLEND_CAPABILITIES } from '../src/mesh-blend.js';
 import { MATERIAL_SNIPPET_CAPABILITIES } from '../src/material-snippet.js';
 import { createAgentScene, AGENT_SCENE_CAPABILITIES } from '../src/agent-scene.js';
-import { TEXTURE_SEQUENCE_CAPABILITIES } from '../src/texture-sequence-limits.js';
+import { FACE_IMAGE_CAPABILITIES, TEXTURE_SEQUENCE_CAPABILITIES } from '../src/texture-sequence-limits.js';
 import { TEXTURE_SET_CAPABILITIES } from '../src/texture-set-names.js';
 import { loadAgentSceneModules } from '../src/agent-scene-modules.js';
 
@@ -79,7 +79,7 @@ export async function listTools() {
 
 /** What an agent receives from scene_capabilities with no topic: the index on this branch, the whole list on an older one. */
 async function defaultCapabilitiesResult() {
-  const scene = { ...AGENT_SCENE_CAPABILITIES, game: GAME_CAPABILITIES, postPasses: USER_PASS_CAPABILITIES, meshBlend: MESH_BLEND_CAPABILITIES, materialSnippet: MATERIAL_SNIPPET_CAPABILITIES, vegetation: VEGETATION_CAPABILITY_NOTE, treeGrowth: TREE_GROWTH_CAPABILITIES, clutter: CLUTTER_CAPABILITY_NOTE, grass: GRASS_CAPABILITY_NOTE, crowd: CROWD_CAPABILITY_NOTE, settle: SETTLE_CAPABILITY_NOTE, textureSequence: TEXTURE_SEQUENCE_CAPABILITIES, textureSet: TEXTURE_SET_CAPABILITIES };
+  const scene = { ...AGENT_SCENE_CAPABILITIES, game: GAME_CAPABILITIES, postPasses: USER_PASS_CAPABILITIES, meshBlend: MESH_BLEND_CAPABILITIES, materialSnippet: MATERIAL_SNIPPET_CAPABILITIES, vegetation: VEGETATION_CAPABILITY_NOTE, treeGrowth: TREE_GROWTH_CAPABILITIES, clutter: CLUTTER_CAPABILITY_NOTE, grass: GRASS_CAPABILITY_NOTE, crowd: CROWD_CAPABILITY_NOTE, settle: SETTLE_CAPABILITY_NOTE, textureSequence: TEXTURE_SEQUENCE_CAPABILITIES, faceImages: FACE_IMAGE_CAPABILITIES, textureSet: TEXTURE_SET_CAPABILITIES };
   const runtime = { async close() {}, async capabilities() { return { scene, phase: 'idle', availableIn: '0.0.0' }; } };
   return withClient(runtime, async client => (await client.callTool({ name: 'scene_capabilities', arguments: {} })).structuredContent);
 }

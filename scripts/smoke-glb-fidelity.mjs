@@ -11,7 +11,7 @@ const label = process.argv[4] ?? 'current';
 const browser = await chromium.launch({
   executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
   headless: true,
-  args: ['--enable-webgl', '--ignore-gpu-blocklist'],
+  args: ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'],
 });
 try {
   const page = await browser.newPage({ viewport: { width, height } });

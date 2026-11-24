@@ -14,7 +14,7 @@ const CELL = { width: 213, height: 120 };
 export async function openPage(root) {
   const server = await createServer({ root, server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
   await server.listen();
-  const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', ...(process.env.SOFTWARE_GL === '1' ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : ['--use-angle=d3d11'])] });
+  const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', ...(process.env.SOFTWARE_GL === '1' ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : ['--use-angle=d3d11']), '--disable-audio-output'] });
   const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
   await page.route('**/water-shadow-page.html', route => route.fulfill({ contentType: 'text/html', body: '<body style="margin:0;background:#222"></body>' }));
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/water-shadow-page.html`);

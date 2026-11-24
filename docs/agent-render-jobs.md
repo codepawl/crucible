@@ -106,6 +106,22 @@ Videos are capped at 60 s and 900 frames, so a 60 s video needs 15 fps or less. 
 A job whose file is shorter than the video after its offset fails before rendering. After encoding, the job decodes both streams of the MP4 and reports `metrics.sync`
 (`videoSeconds`, `audioSeconds`, `differenceSeconds`); a difference over 50 ms fails the job.
 The `render-media` script applies the same rule to `--audio`: a sound shorter than the video after its start fails before the first frame instead of cutting the video (the error names the file and what to change; the check allows 10 ms, the precision ffmpeg prints). An offset is sent to ffmpeg as a plain decimal with six places, so `1e-7` counts as `0`. The encoder pads the sound with silence and cuts the file at exactly `frameCount / fps`, so AAC and PCM parts both end with the picture, and `render-media` fails when the finished video has no audio stream or its audio differs from the picture by more than 50 ms. With `--kind stills`, the 8 stills are `frame-0` to `frame-7` (`.png`, or `.jpg` with `--capture jpeg`) in the folder that holds `--output`; the file name part of `--output` is used only for the report, `<output>.json`. For `--kind video`, a height or width derived from the other one is rounded to an even number (`--width 1000` renders 1000x562).
+
+### A scene file as a numbered frame range (#3233)
+
+```sh
+npm run render -- --scene file --config scene.json --camera camera.json --kind stills --fps 30 --frames 0-89 --width 1080 --height 1920 --output out/shot.png
+```
+
+`--frames FIRST-LAST` (both included, or one number) writes one PNG per frame into the folder that holds `--output`: `frame-0000.png` to `frame-0089.png`, padded to four digits or to the width of the last number, `.jpg` with `--capture jpeg`. Frame `n` is drawn at exactly `n / fps` seconds, so a range split over several runs matches one long run. It needs `--kind stills`, refuses `--start`, `--time` and `--duration` (the range sets the times), takes at most 3600 frames per run, and fails before the first frame when the last frame lies past the end of the camera track. Without `--frames`, `--kind stills` still writes the 8 stills. The report `<output>.json` lists `frames: { first, last, count, millisecondsPerFrame }`.
+
+Motion blur comes from the scene file's `frame`, the same fields as the recipe look:
+
+```json
+{ "frame": { "effects": { "motionBlur": { "shutter": 0.1, "objects": 1 } } } }
+```
+
+`shutter` (0 to 0.5 seconds) smears camera motion from the `--camera` track, sampled at `time - shutter`. `objects` (0 to 1) also smears each moving part of the GLB's first animation clip, posed at `time - shutter` and at `time`; parts move rigidly, so a skinned part blurs only by its node transform. Frame 0 has nothing before it and is sharp. A scene file without `motionBlur` loads none of this. Two runs of the same range on the same machine give identical PNG hashes (`tests/render-media-frame-range-chrome.test.js`).
 ffmpeg only receives the resolved path with `-protocol_whitelist file`; no URL, argument or output path comes from the agent.
 
 **Joining parts.** A film longer than one job (60 s, 900 frames) is rendered as several video jobs. Do not join AAC parts: each carries encoder priming and padding, which leaves a dropout of about 5 ms at every join (issue #389).

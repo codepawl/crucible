@@ -17,7 +17,7 @@ try {
     server.on('exit', (code) => { clearTimeout(timeout); reject(new Error(`Scene server exited ${code}.`)); });
   });
   const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-  browser = await chromium.launch({ headless: true, ...(existsSync(chrome) ? { executablePath: chrome } : {}), args: ['--enable-webgl', '--ignore-gpu-blocklist'] });
+  browser = await chromium.launch({ headless: true, ...(existsSync(chrome) ? { executablePath: chrome } : {}), args: ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));

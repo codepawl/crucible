@@ -98,7 +98,7 @@ const origin = server.resolvedUrls.local[0].replace(/\/$/, '');
 const browser = await chromium.launch({
   channel: 'chrome',
   // Without a backend for macOS, Chrome falls back to SwiftShader there (issue #507).
-  args: [process.platform === 'darwin' ? '--use-angle=metal' : '--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--enable-unsafe-swiftshader'],
+  args: [process.platform === 'darwin' ? '--use-angle=metal' : '--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--enable-unsafe-swiftshader', '--disable-audio-output'],
 });
 try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 2, reducedMotion: 'reduce' });

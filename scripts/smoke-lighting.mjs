@@ -8,7 +8,7 @@ setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
 const browser = await chromium.launch({
   executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
   headless: true,
-  args: ['--enable-webgl', '--ignore-gpu-blocklist'],
+  args: ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'],
 });
 const reports = {};
 try {

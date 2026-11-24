@@ -7,7 +7,7 @@ setPriority(constants.priority.PRIORITY_BELOW_NORMAL);
 await mkdir('artifacts', { recursive: true });
 const browser = await chromium.launch({
   executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist'],
+  headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'],
 });
 try {
   const page = await browser.newPage({ viewport: { width: 1700, height: 900 } });

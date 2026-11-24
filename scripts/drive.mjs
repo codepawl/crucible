@@ -20,7 +20,7 @@ import { formatFeatureList, findFeature, parseCommandLine, parseFeatures, requir
 const projectRoot = fileURLToPath(new URL('..', import.meta.url));
 const DEFAULT_ORIGIN = 'http://127.0.0.1:5173';
 const CHROME_PATH = process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'];
+const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
 const GIT_BASH_PATH = 'C:/Program Files/Git/bin/bash.exe';
 // Forward slashes: gpu-lock.sh finds its Rust binary by splitting its own path on /.
 // Optional GPU job queue on the maintainer's machine; set GPU_LOCK_SCRIPT to use another one. Skipped when absent.

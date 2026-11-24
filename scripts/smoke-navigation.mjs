@@ -5,6 +5,7 @@ const origin = process.argv[2] ?? 'http://127.0.0.1:5173';
 const browser = await chromium.launch({
   executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
   headless: true,
+  args: ['--disable-audio-output'],
 });
 let checks = 0;
 

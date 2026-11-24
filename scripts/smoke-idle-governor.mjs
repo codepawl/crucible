@@ -36,7 +36,7 @@ await new Promise(done => server.listen(0, '127.0.0.1', done));
 const browser = await chromium.launch({
   headless: true,
   executablePath: CHROME_PATH,
-  args: ['--no-sandbox', '--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--enable-webgl'],
+  args: ['--no-sandbox', '--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-audio-output'],
 });
 const failures = [];
 const check = (condition, message) => { if (!condition) failures.push(message); };

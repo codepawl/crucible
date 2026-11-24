@@ -29,7 +29,7 @@ try {
     });
     server.on('exit', (code) => { clearTimeout(timeout); reject(new Error(`The smoke server exited ${code}.`)); });
   });
-  const args = useGpu ? ['--enable-webgl', '--ignore-gpu-blocklist'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'];
+  const args = useGpu ? ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'];
   browser = await chromium.launch({ headless: true, args });
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
   const errors = [];

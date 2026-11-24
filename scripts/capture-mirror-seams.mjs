@@ -13,7 +13,7 @@ const folder = process.argv[2];
 if (!folder) throw new Error('Give the output folder.');
 const server = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
 await server.listen();
-const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-webgl', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-webgl', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-audio-output'] });
 try {
   const serverUrl = `http://127.0.0.1:${server.httpServer.address().port}`;
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });

@@ -1,9 +1,12 @@
 import { invalidField } from './field-error.js';
+import { weldedMaskNormals } from './mesh-weld-normals.js';
 import { rasterizeUvTriangles } from './material-vertex-group-map.js';
 
 // The surface of one mesh drawn into UV space, so a material graph can read its slope or height at each texel with
 // {"surface":{"output":"slope"}}. The normal and the position of every texel are the barycentric blend of the corner
-// values (the face normal when the mesh has no normals), so a cube keeps hard edges and a sphere stays smooth.
+// values (the face normal when the mesh has no normals), so a cube keeps hard edges and a sphere stays smooth. The normals
+// are welded by position first (mesh-weld-normals.js), so a gentle crease where the mesh splits vertices does not
+// show up in the mask as stair steps; shading keeps the split normals.
 //
 //   slope    the angle between the normal and straight up, as a share of a right angle: 0 on a flat surface facing up,
 //            1 on a vertical wall and on everything facing down (snow does not settle under an overhang).
@@ -48,10 +51,9 @@ function placedPositions(positions, matrix) {
   return placed;
 }
 
-function placedNormals(geometry, positions, normalMatrix) {
+function placedNormals(source, positions, normalMatrix) {
   const count = positions.length / 3;
   const normals = new Float32Array(count * 3);
-  const source = geometry.normals;
   if (source) {
     for (let offset = 0; offset < normals.length; offset += 3) {
       for (let axis = 0; axis < 3; axis++) {
@@ -115,7 +117,7 @@ export function surfaceMap(geometry, settings, resolution, nodeId, worldMatrix) 
   const remembered = maps.get(key);
   if (remembered) return remembered;
   const positions = placedPositions(geometry.positions, matrix);
-  const normals = placedNormals(geometry, geometry.positions, matrix ? normalMatrixOf(matrix) : undefined);
+  const normals = placedNormals(weldedMaskNormals(geometry), geometry.positions, matrix ? normalMatrixOf(matrix) : undefined);
   const bounds = settings.output === 'height' ? heightBounds(positions, settings.range) : undefined;
   const hasNormals = Boolean(geometry.normals);
   const map = rasterizeUvTriangles(geometry, resolution, positions.length / 3, (corners, weightA, weightB, weightC) => {

@@ -21,7 +21,7 @@ await new Promise((resolve, reject) => {
   server.on('error', reject);
 });
 const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const browser = await chromium.launch({ ...(existsSync(chrome) ? { executablePath: chrome } : {}), headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ ...(existsSync(chrome) ? { executablePath: chrome } : {}), headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'] });
 const report = {};
 try {
   for (const [name, width, height] of [['wide', 960, 540], ['portrait', 540, 960]]) {

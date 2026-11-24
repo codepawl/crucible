@@ -1,21 +1,14 @@
-// Studio trees: the preset picker and the tree controls of the inspector. Both write the recipe field `vegetation`
-// that agents write, so a tree made here opens the same over MCP. Studio loads this file on first use, so the core
+// Studio trees: the tree controls of the inspector. They write the recipe field `vegetation` that agents write, so a
+// tree edited here opens the same over MCP. Studio loads this file the first time a tree node is selected, so the core
 // entry carries none of it.
 import { TREE_PRESETS } from './vegetation-presets.js';
 import { SPECIES } from './vegetation-species.js';
-
-export const TREE_PRESET_NAMES = Object.freeze(Object.keys(TREE_PRESETS));
 
 export const TREE_HEIGHT_RANGE = Object.freeze({ min: 0.5, max: 30, step: 0.1 });
 export const TREE_SEASON_RANGE = Object.freeze({ min: 0, max: 1, step: 0.01 });
 export const TREE_LEAF_DENSITY_RANGE = Object.freeze({ min: 0.5, max: 20, step: 0.5 });
 
 const SEED_CEILING = 100000;
-const THUMBNAIL_SIZE = 168;
-const THUMBNAIL_VIEW_DIRECTION = Object.freeze([0.38, 0.16, 1]);
-const THUMBNAIL_FIELD_OF_VIEW = 38;
-const THUMBNAIL_PADDING = 1.1;
-const THUMBNAIL_VERTEX_BUDGET = 40000;
 
 /** The vegetation field of a node that grows exactly one tree, or null for any other node. */
 export function singleTreeOf(node) {
@@ -79,65 +72,6 @@ export function nextTreeSeed(currentSeed, random = Math.random) {
   return seed;
 }
 
-function uniqueNodeId(recipe, baseName) {
-  const taken = new Set(recipe.nodes.map(node => node.id));
-  let count = 1;
-  while (taken.has(`${baseName}-${count}`)) {
-    count += 1;
-  }
-  return `${baseName}-${count}`;
-}
-
-/** The add-node operation that plants a preset tree at `translation`, and the ID the new node gets. */
-export function addTreeOperation(recipe, presetName, translation) {
-  if (!TREE_PRESETS[presetName]) {
-    throw new RangeError(`Unknown tree preset "${String(presetName)}"; expected one of ${TREE_PRESET_NAMES.join(', ')}.`);
-  }
-  const nodeId = uniqueNodeId(recipe, presetName);
-  const labelNumber = nodeId.split('-').pop();
-  const node = {
-    id: nodeId,
-    label: `${TREE_PRESETS[presetName].label} ${labelNumber}`,
-    translation,
-    vegetation: { preset: presetName, seed: 1 },
-  };
-  return { operation: { type: 'add-node', node }, nodeId };
-}
-
-/** The crown of a tree spreads about half its height each side, and objects already in the scene keep this much room too. */
-const SPAWN_OBJECT_ALLOWANCE = 1.5;
-const SPAWN_STEP = 1;
-const SPAWN_ATTEMPTS = 200;
-
-/** The first spot along X, from where new objects start, that the whole crown of the tree clears every top level node. */
-export function treeSpawnTranslation(nodes, presetName, findFreeSpot) {
-  const footprint = defaultTreeHeight({ preset: presetName }) * 0.5 + SPAWN_OBJECT_ALLOWANCE;
-  const isClear = spot => nodes.every(node => {
-    if (node.parent) {
-      return true;
-    }
-    const distance = Math.hypot((node.translation?.[0] ?? 0) - spot[0], (node.translation?.[2] ?? 0) - spot[2]);
-    return distance >= footprint;
-  });
-  let spot = findFreeSpot([0, 0, 0], nodes);
-  for (let attempt = 0; attempt < SPAWN_ATTEMPTS && !isClear(spot); attempt += 1) {
-    spot = findFreeSpot([spot[0] + SPAWN_STEP, spot[1], spot[2]], nodes);
-  }
-  return spot;
-}
-
-/**
- * Plants a preset tree where Studio puts new objects and selects it, as one undo step.
- * `findFreeSpot(translation, nodes)` is the controller's free spawn point finder; the vegetation code loads before the edit.
- */
-export async function addTree({ controller, loadAgentSceneModules, findFreeSpot }, presetName) {
-  const recipe = controller.exportRecipe();
-  const { operation, nodeId } = addTreeOperation(recipe, presetName, treeSpawnTranslation(recipe.nodes, presetName, findFreeSpot));
-  await loadAgentSceneModules({ nodes: [operation.node] });
-  controller.applyImportOperations([operation], { selectNodeId: nodeId });
-  return operation.node;
-}
-
 /** Writes one control change into a tree node through the same edit path as the other inspector fields. */
 export function changeSelectedTree(controller, nodeId, change) {
   const node = controller.exportRecipe().nodes.find(candidate => candidate.id === nodeId);
@@ -146,170 +80,6 @@ export function changeSelectedTree(controller, nodeId, change) {
     throw new RangeError(`Node "${nodeId}" does not grow a single tree.`);
   }
   controller.updateNodeTransform(nodeId, { vegetation: vegetationAfterChange(vegetation, change) });
-}
-
-function thumbnailRecipe(presetName) {
-  return {
-    format: 'crucible.scene',
-    schemaVersion: 1,
-    nodes: [{ id: 'tree', vegetation: { preset: presetName, seed: 1 } }],
-    camera: { eye: [0, 5, 20], target: [0, 5, 0], up: [0, 1, 0], fov: THUMBNAIL_FIELD_OF_VIEW, near: 0.1, far: 1000 },
-  };
-}
-
-function normalized(vector) {
-  const length = Math.hypot(...vector);
-  return vector.map(component => component / length);
-}
-
-function crossProduct(first, second) {
-  return [
-    first[1] * second[2] - first[2] * second[1],
-    first[2] * second[0] - first[0] * second[2],
-    first[0] * second[1] - first[1] * second[0],
-  ];
-}
-
-function dotProduct(first, second) {
-  return first[0] * second[0] + first[1] * second[1] + first[2] * second[2];
-}
-
-/**
- * The camera that fills a square picture with the drawn parts: it looks from `THUMBNAIL_VIEW_DIRECTION` and stands back
- * until the widest and tallest extent seen from there fit with the same padding, so every preset fills a similar share.
- */
-export function thumbnailCamera(parts) {
-  const backward = normalized(THUMBNAIL_VIEW_DIRECTION);
-  const right = normalized(crossProduct([0, 1, 0], backward));
-  const up = crossProduct(backward, right);
-  const axes = [right, up, backward];
-  const low = [Infinity, Infinity, Infinity];
-  const high = [-Infinity, -Infinity, -Infinity];
-  const totalVertices = parts.reduce((count, part) => count + (part.geometry?.positions?.length ?? 0) / 3, 0);
-  const stride = Math.max(1, Math.ceil(totalVertices / THUMBNAIL_VERTEX_BUDGET));
-  for (const part of parts) {
-    const positions = part.geometry?.positions;
-    const matrix = part.matrix;
-    if (!positions || !matrix) {
-      continue;
-    }
-    for (let offset = 0; offset < positions.length; offset += 3 * stride) {
-      const x = positions[offset];
-      const y = positions[offset + 1];
-      const z = positions[offset + 2];
-      const world = [
-        matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12],
-        matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13],
-        matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14],
-      ];
-      axes.forEach((axis, index) => {
-        const coordinate = dotProduct(world, axis);
-        low[index] = Math.min(low[index], coordinate);
-        high[index] = Math.max(high[index], coordinate);
-      });
-    }
-  }
-  const center = low.map((value, index) => (value + high[index]) / 2);
-  const halfExtent = Math.max(high[0] - low[0], high[1] - low[1]) / 2;
-  const halfDepth = (high[2] - low[2]) / 2;
-  const distance = (halfExtent / Math.tan((THUMBNAIL_FIELD_OF_VIEW * Math.PI) / 360)) * THUMBNAIL_PADDING + halfDepth;
-  const target = [0, 1, 2].map(component => right[component] * center[0] + up[component] * center[1] + backward[component] * center[2]);
-  const eye = target.map((value, component) => value + backward[component] * distance);
-  return { eye, target, far: Math.max(1000, distance * 4) };
-}
-
-/**
- * One picture of each preset, drawn by Crucible's own renderer into a canvas that sits off screen only while it draws.
- * The sky is left out and the pixels around the tree stay transparent, so the tile's own `--studio-surface` shows through.
- * Resolves a map from preset name to an image data URL; a preset that fails to draw is left out.
- */
-export async function renderPresetPictures({
-  documentReference,
-  createAgentScene,
-  loadAgentSceneModules,
-  createRenderer,
-  agentEnvironmentMap,
-  fitAgentShadow,
-  resolveAgentShadow,
-  presetNames = TREE_PRESET_NAMES,
-}) {
-  const pictures = new Map();
-  const canvas = documentReference.createElement('canvas');
-  Object.assign(canvas.style, { position: 'fixed', left: '-10000px', top: '0', width: `${THUMBNAIL_SIZE}px`, height: `${THUMBNAIL_SIZE}px` });
-  documentReference.body.append(canvas);
-  try {
-    for (const presetName of presetNames) {
-      const recipe = thumbnailRecipe(presetName);
-      await loadAgentSceneModules(recipe);
-      const scene = createAgentScene(recipe);
-      const { environment, effects } = scene;
-      const lighting = { ...environment, map: { ...agentEnvironmentMap(environment), showBackground: false } };
-      const renderer = createRenderer(canvas, scene.parts, {
-        hdr: true,
-        ground: false,
-        world: environment.world,
-        environment: lighting,
-        shadowBounds: resolveAgentShadow(fitAgentShadow(scene.shadow, scene.parts), environment.lightDirection),
-        pixelRatio: 1,
-        samples: 4,
-        transparent: true,
-      });
-      try {
-        renderer.resize();
-        renderer.render({ ...scene.camera, ...thumbnailCamera(scene.parts), environment: lighting, effects, exposure: effects.exposure, time: 0, lines: environment.lines });
-        pictures.set(presetName, canvas.toDataURL('image/png'));
-      } catch {
-        // A preset that cannot draw here still gets its tile, with the name only.
-      } finally {
-        renderer.dispose?.();
-      }
-    }
-  } finally {
-    canvas.remove();
-  }
-  return pictures;
-}
-
-function createTreeTile(documentReference, createElement, presetName, onPick) {
-  const picture = createElement(documentReference, 'img', { alt: '', draggable: false, className: 'crucible-studio-tree-picture' });
-  picture.hidden = true;
-  const tile = createElement(
-    documentReference,
-    'button',
-    { type: 'button', className: 'crucible-studio-tree-tile', attributes: { 'aria-label': `Add ${TREE_PRESETS[presetName].label}` } },
-    picture,
-    createElement(documentReference, 'span', { textContent: TREE_PRESETS[presetName].label }),
-  );
-  tile.addEventListener('click', () => onPick(presetName));
-  return { tile, picture };
-}
-
-/** The tiles of the picker: one button per preset, each filled with its picture when `load` has drawn them. */
-export function createTreePicker({ documentReference, createElement, loadPictures, onPick }) {
-  const tiles = TREE_PRESET_NAMES.map(presetName => ({ presetName, ...createTreeTile(documentReference, createElement, presetName, onPick) }));
-  const element = createElement(
-    documentReference,
-    'div',
-    { className: 'crucible-studio-popover-grid crucible-studio-tree-grid', attributes: { role: 'group', 'aria-label': 'Trees' } },
-    ...tiles.map(entry => entry.tile),
-  );
-  let pending = null;
-  return {
-    element,
-    /** Draws the pictures the first time it is called and keeps them for the session. */
-    load() {
-      pending ??= loadPictures().then(pictures => {
-        for (const { presetName, picture } of tiles) {
-          const source = pictures.get(presetName);
-          if (source) {
-            picture.src = source;
-            picture.hidden = false;
-          }
-        }
-      });
-      return pending;
-    },
-  };
 }
 
 /** The tree rows of the node panel: height, leaf density, season and a seed with a new seed button. */

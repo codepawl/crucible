@@ -35,7 +35,7 @@ function linearLuminance([red, green, blue]) {
 }
 
 function drawsItsOwnColour(material) {
-  return material.pattern !== undefined || material.map !== undefined || material.transmission > 0 || material.emission > 0;
+  return material.pattern !== undefined || material.map !== undefined || material.colorMap !== undefined || material.transmission > 0 || material.emission > 0;
 }
 
 function isAlbedoChecked(material) {

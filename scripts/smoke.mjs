@@ -20,7 +20,7 @@ try {
     server.on('exit', (code) => { clearTimeout(timeout); reject(new Error(`Vite exited ${code}`)); });
   });
   const chromePath = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-  browser = await chromium.launch({ headless: true, ...(existsSync(chromePath) ? { executablePath: chromePath } : {}), args: ['--enable-webgl', '--ignore-gpu-blocklist'] });
+  browser = await chromium.launch({ headless: true, ...(existsSync(chromePath) ? { executablePath: chromePath } : {}), args: ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));

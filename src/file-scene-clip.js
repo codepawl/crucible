@@ -42,12 +42,21 @@ export function createFileSceneClipPlayer({ asset, posedParts, sceneParts, rende
 // The frame function of a scene-file page: it poses the clip (when the GLB has one) and then renders at the camera's pose for the
 // time. `camera` is a camera sampler or null; without one the scene file's own eye and target are used. The returned function
 // carries its clip player as `clipPlayer` (null without a clip), so the native path tracer can pose the same clip.
-export function createFileSceneRenderAt({ asset, posedParts, sceneParts, rendererParts, renderer, camera, description, frame }) {
+export function createFileSceneRenderAt({ asset, posedParts, sceneParts, rendererParts, renderer, camera, description, frame, motionBlur = null }) {
   const clipPlayer = createFileSceneClipPlayer({ asset, posedParts, sceneParts, rendererParts });
   const renderAt = seconds => {
     clipPlayer?.poseAt(renderer, seconds);
     const pose = camera ? camera.sample(seconds) : { eye: description.eye, target: description.target };
-    renderer.render({ ...frame, ...pose });
+    if (!motionBlur) {
+      renderer.render({ ...frame, ...pose });
+      return;
+    }
+    // Motion blur (#3233): the blur module poses the shutter's start and end itself, then the frame is posed again at its own time.
+    motionBlur.drawWithMotionBlur({
+      renderer, rendererParts, frame, seconds, camera, pose,
+      poseClip: clipPlayer ? time => clipPlayer.poseAt(renderer, time) : null,
+      draw: drawn => renderer.render(drawn),
+    });
   };
   renderAt.clipPlayer = clipPlayer;
   return renderAt;

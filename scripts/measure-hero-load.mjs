@@ -26,7 +26,7 @@ import sharp from 'sharp';
 
 // CHROME_PATH and HERO_CHROME_ARGUMENTS (space separated) override these, for a container with Vulkan instead of Direct3D.
 const CHROME_PATH = process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const GPU_ARGUMENTS = process.env.HERO_CHROME_ARGUMENTS ? process.env.HERO_CHROME_ARGUMENTS.split(' ') : ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'];
+const GPU_ARGUMENTS = process.env.HERO_CHROME_ARGUMENTS ? process.env.HERO_CHROME_ARGUMENTS.split(' ') : ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
 const FIRST_FRAME_MARKER = 'hero-first-world-draw';
 const CONDITIONS = {
   fast4g: { label: 'Fast 4G', downloadBitsPerSecond: 9e6, uploadBitsPerSecond: 1.5e6, latency: 60 },

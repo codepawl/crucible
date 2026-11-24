@@ -25,7 +25,7 @@ const stillsFolder =process.argv.includes('--stills') ? process.argv[process.arg
 
 const server = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
 await server.listen();
-const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: countsOnly ? ['--enable-webgl', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : ['--enable-webgl', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: countsOnly ? ['--enable-webgl', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-audio-output'] : ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'] });
 try {
   const serverUrl = `http://127.0.0.1:${server.httpServer.address().port}`;
   const page = await browser.newPage({ viewport: { width, height } });

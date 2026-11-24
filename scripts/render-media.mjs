@@ -16,7 +16,7 @@ import { DEFAULT_PAGE_ENCODER_QUANTIZER, createFrameReceiver, installFrameReader
 
 function argumentsFrom(values) {
   const result = {};
-  const allowed = new Set(['kind', 'backend', 'scene', 'preset', 'width', 'height', 'fps', 'duration', 'time', 'memory', 'assembly', 'output', 'audio', 'encoder', 'start', 'aspect', 'asset', 'config', 'camera', 'root', 'capture', 'jpeg-quality']);
+  const allowed = new Set(['kind', 'backend', 'scene', 'preset', 'width', 'height', 'fps', 'duration', 'time', 'memory', 'assembly', 'output', 'audio', 'encoder', 'start', 'aspect', 'asset', 'config', 'camera', 'root', 'capture', 'jpeg-quality', 'frames']);
   for (let index = 0; index < values.length; index += 2) {
     if (!values[index].startsWith('--') || values[index + 1] === undefined) throw new Error('Every option needs a value.');
     const name = values[index].slice(2);
@@ -39,6 +39,28 @@ export function stillPath(output, index, captureFormat) {
 }
 
 /** The paths of `count` stills, one distinct file per still, however short the duration. */
+/** The most frames one --frames range may write; a longer film is rendered as several ranges. */
+export const MAXIMUM_FRAME_RANGE_COUNT = 3600;
+
+/** Reads "--frames 0-89" (first and last frame, both included) or a single frame number "12". */
+export function parseFrameRange(text) {
+  const match = /^(\d+)(?:-(\d+))?$/.exec(String(text));
+  if (!match) throw new Error(`--frames must be a first and last frame such as 0-89 (or one frame such as 12), got "${text}".`);
+  const first = Number(match[1]);
+  const last = match[2] === undefined ? first : Number(match[2]);
+  if (last < first) throw new Error(`--frames must end at or after its first frame, got ${first}-${last}. Pass the smaller number first.`);
+  const count = last - first + 1;
+  if (count > MAXIMUM_FRAME_RANGE_COUNT) throw new Error(`--frames asks for ${count} frames; at most ${MAXIMUM_FRAME_RANGE_COUNT} per run. Render a longer film as several ranges.`);
+  return { first, last, count };
+}
+
+/** The path of frame `frame` of a range ending at `last`: frame-0000.png, padded to at least 4 digits and to the width of the last frame. */
+export function framePath(output, frame, last, captureFormat) {
+  const extension = captureFormat === 'jpeg' ? 'jpg' : 'png';
+  const digits = Math.max(4, String(last).length);
+  return resolve(dirname(output), `frame-${String(frame).padStart(digits, '0')}.${extension}`);
+}
+
 export function stillPaths(output, count, captureFormat) {
   return Array.from({ length: count }, (_, index) => stillPath(output, index, captureFormat));
 }
@@ -99,6 +121,9 @@ export function parseRenderOptions(values) {
   const duration = numberOption('duration', scene === 'film' ? FILM_DURATION : ['motion', 'modeling'].includes(scene) ? 12 : 32, 0.1, 240);
   const time = numberOption('time', scene === 'assets' ? 0 : 3, 0, 3600);
   const start = numberOption('start', 0, 0, 3600);
+  const frameRange = options.frames === undefined ? null : parseFrameRange(options.frames);
+  if (frameRange && kind !== 'stills') throw new Error('--frames writes a numbered PNG sequence and needs --kind stills.');
+  if (frameRange && (options.start !== undefined || options.time !== undefined || options.duration !== undefined)) throw new Error('--frames sets the times itself (frame / fps); drop --start, --time and --duration.');
   // A scene file carries its own budget (the Bistro needs about 1.4 GiB for textures), so it is the default and the cap is higher.
   const sceneFileBudget = scene === 'file' ? JSON.parse(readFileSync(resolve(options.config), 'utf8')).renderer?.memoryBudgetMiB : undefined;
   const memory = numberOption('memory', sceneFileBudget ?? preset.memoryBudgetMiB, 32, scene === 'file' ? 8192 : 1024);
@@ -112,7 +137,7 @@ export function parseRenderOptions(values) {
   const encoderBackend = options.encoder ?? (backend === 'cpu' ? 'cpu' : 'auto');
   if (!['auto', 'cpu', 'gpu'].includes(encoderBackend)) throw new Error('Encoder must be auto, cpu or gpu.');
   const audio = options.audio ?? (scene === 'film' ? 'artifacts/critical-score.wav' : null);
-  return { cameraKeys, options, kind, backend, scene, presetName, preset, aspect, width, height, fps, duration, time, start, memory, assembly, output, encoderBackend, audio, captureFormat, jpegQuality };
+  return { cameraKeys, options, kind, backend, scene, presetName, preset, aspect, width, height, fps, duration, time, start, frameRange, memory, assembly, output, encoderBackend, audio, captureFormat, jpegQuality };
 }
 
 export async function selectEncoderBackend(requested, probe) {
@@ -164,6 +189,7 @@ export async function renderMedia(values = process.argv.slice(2)) {
   const { options, kind, backend, scene, presetName, preset, aspect, width, height, fps, time, start, memory, assembly, output, jpegQuality } = plan;
   let captureFormat = plan.captureFormat;
   let duration = plan.duration;
+  let frameRangeSeconds = 0;
   if (options.asset) {
     const details = await stat(resolve(options.asset));
     if (!details.isFile() || details.size > 32 * 1024 ** 2) throw new Error('Asset capture requires a GLB file of at most 32 MiB.');
@@ -201,7 +227,7 @@ export async function renderMedia(values = process.argv.slice(2)) {
       server.on('error', reject);
       server.on('exit', (code) => { clearTimeout(timeout); reject(new Error(`Render server exited ${code}.`)); });
     });
-    const args = ['--enable-webgl', '--ignore-gpu-blocklist'];
+    const args = ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'];
     if (backend === 'cpu') args.push('--use-angle=swiftshader', '--enable-unsafe-swiftshader');
     else if (process.platform === 'darwin') args.push('--use-angle=metal', '--enable-gpu');
     browser = await chromium.launch({ headless: true, ...(existsSync(chrome) ? { executablePath: chrome } : {}), args });
@@ -238,6 +264,7 @@ export async function renderMedia(values = process.argv.slice(2)) {
     const sceneDuration = await page.evaluate(() => window.__scene?.duration ?? window.__film?.duration);
     if (Number.isFinite(sceneDuration) && sceneDuration > 0) {
       if (start >= sceneDuration) throw new Error('Start time must precede the end of the scene.');
+      if (plan.frameRange && plan.frameRange.last / fps > sceneDuration + 1e-8) throw new Error(`Frame ${plan.frameRange.last} at ${fps} fps is at ${(plan.frameRange.last / fps).toFixed(3)} s, past the scene's ${sceneDuration.toFixed(3)} s. Pass a smaller last frame or a higher --fps.`);
       if (options.duration === undefined) duration = Math.min(240, sceneDuration - start);
       else if (kind === 'video' && start + duration > sceneDuration + 1e-8) throw new Error('The requested video extends beyond the scene duration.');
       if (kind === 'image' && time > sceneDuration) throw new Error('Image time exceeds the scene duration.');
@@ -370,6 +397,15 @@ export async function renderMedia(values = process.argv.slice(2)) {
       stageTimings.encoderFinishSeconds = encoding.finishSeconds;
       // A silent film must not pass for a finished one: the encoder reports success even when the sound was dropped.
       if (audioArguments.length) await assertOutputHasAudio(ffmpeg, output, frameCount / fps);
+    } else if (plan.frameRange) {
+      // One numbered file per frame, each at exactly frame / fps, so a range split over several runs matches one long run.
+      const { first, last } = plan.frameRange;
+      const rangeStarted = performance.now();
+      for (let frame = first; frame <= last; frame++) {
+        await writeFile(framePath(output, frame, last, captureFormat), await capture(frame / fps));
+        if ((frame - first) % 30 === 29) console.log(`Rendered ${frame - first + 1}/${plan.frameRange.count} frames`);
+      }
+      frameRangeSeconds = (performance.now() - rangeStarted) / 1000;
     } else if (kind === 'stills') {
       const stillTimes = scene === 'film' && start === 0 && options.duration === undefined
         ? [23, 49, 59, 101, 114, 149, 158, 182]
@@ -391,7 +427,8 @@ export async function renderMedia(values = process.argv.slice(2)) {
     if (graphics.glError !== 0) throw new Error(`WebGL render error ${graphics.glError}.`);
     if (backend === 'cpu' && !graphics.gpu.toLowerCase().includes('swiftshader')) throw new Error('CPU backend did not select SwiftShader.');
     const elapsedSeconds = (performance.now() - started) / 1000;
-    const report = { scene, kind, backend, preset: presetName, aspect, start, encoder: captureFormat === 'webcodecs' ? 'browser-h264' : encoderBackend, requestedEncoder: kind === 'video' ? plan.encoderBackend : null, captureFormat, jpegQuality: captureFormat === 'jpeg' ? jpegQuality : null, capturedFrames, stageTimings, effectiveFPS: capturedFrames / elapsedSeconds, speedRatio: kind === 'video' ? capturedFrames / fps / elapsedSeconds : null, assembly: scene === 'object' ? assembly : null, width, height, actualRenderSize, fps, duration: kind === 'video' ? duration : null, memoryBudgetMiB: memory, peakEstimatedRenderBytes, peakNodeBytes, peakBrowserHeap, maximumPendingFrames, firstFrameBytes, elapsedSeconds, graphics, output: basename(output), errors };
+    const framesReport = plan.frameRange ? { ...plan.frameRange, millisecondsPerFrame: (frameRangeSeconds * 1000) / plan.frameRange.count } : null;
+    const report = { scene, kind, backend, preset: presetName, aspect, start, frames: framesReport, encoder: captureFormat === 'webcodecs' ? 'browser-h264' : encoderBackend, requestedEncoder: kind === 'video' ? plan.encoderBackend : null, captureFormat, jpegQuality: captureFormat === 'jpeg' ? jpegQuality : null, capturedFrames, stageTimings, effectiveFPS: capturedFrames / elapsedSeconds, speedRatio: kind === 'video' ? capturedFrames / fps / elapsedSeconds : null, assembly: scene === 'object' ? assembly : null, width, height, actualRenderSize, fps, duration: kind === 'video' ? duration : null, memoryBudgetMiB: memory, peakEstimatedRenderBytes, peakNodeBytes, peakBrowserHeap, maximumPendingFrames, firstFrameBytes, elapsedSeconds, graphics, output: basename(output), errors };
     await writeFile(`${output}.json`, JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));
   } finally {

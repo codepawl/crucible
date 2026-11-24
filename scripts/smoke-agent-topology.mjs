@@ -61,7 +61,7 @@ let browser;
 try {
   await server.listen();
   const port = server.httpServer.address().port;
-  const args = ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-renderer-backgrounding'];
+  const args = ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-renderer-backgrounding', '--disable-audio-output'];
   if (backend === 'cpu') args.push('--use-angle=swiftshader', '--enable-unsafe-swiftshader');
   browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args });
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });

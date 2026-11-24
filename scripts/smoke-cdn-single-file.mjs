@@ -60,7 +60,7 @@ const chromePath = process.env.CHROME_PATH;
 const browser = await chromium.launch({
   headless: true,
   ...(chromePath ? { executablePath: chromePath } : {}),
-  args: ['--enable-webgl', '--ignore-gpu-blocklist', '--no-sandbox', '--use-angle=vulkan', '--enable-features=Vulkan'],
+  args: ['--enable-webgl', '--ignore-gpu-blocklist', '--no-sandbox', '--use-angle=vulkan', '--enable-features=Vulkan', '--disable-audio-output'],
 });
 try {
   const tab = await browser.newPage();

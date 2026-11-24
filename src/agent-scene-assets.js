@@ -12,6 +12,7 @@ import { normalizeDrive } from './agent-drive-schema.js';
 // The `assets` module also serves map sequences, so a recipe with one loads no extra module entry in the scene.
 export * from './agent-texture-sequence.js';
 export * from './agent-texture-set.js';
+export * from './agent-face-images.js';
 export * from './primitive-uvs.js';
 
 export const ASSET_PLACEMENT_LIMITS = Object.freeze({ maxPlacements: 512, maxAssets: 32, maxAnimatedPlacements: 16, maxOverrides: 32 });

@@ -7,7 +7,7 @@ const LAYOUT_PROPERTIES = ['left', 'top', 'right', 'bottom', 'width', 'height', 
 const LAYOUT_PROPERTY_PREFIXES = ['margin-', 'padding-', 'inset-', 'grid-template-'];
 const MOTION_PROPERTIES = ['transition', 'transition-property', 'transition-duration', 'transition-timing-function', 'animation', 'animation-duration', 'animation-timing-function'];
 const UNRESOLVED = '<unresolved>';
-const AT_RULES_WITH_RULES = ['@media', '@container', '@supports', '@keyframes', '@layer'];
+const AT_RULES_WITH_RULES = ['@media', '@container', '@supports', '@keyframes', '@layer', '@starting-style'];
 
 function isLayoutProperty(name) {
   return LAYOUT_PROPERTIES.includes(name) || LAYOUT_PROPERTY_PREFIXES.some(prefix => name.startsWith(prefix));
@@ -99,6 +99,9 @@ function findMotionProblems(stylesheet) {
       if (insideKeyframes && isLayoutProperty(property)) {
         problems.push(`${rule.selector}: a keyframe sets "${property}", which lays out on every frame`);
       }
+      if (rule.conditions.some(condition => condition?.startsWith('@starting-style')) && isLayoutProperty(property)) {
+        problems.push(`${rule.selector}: a starting style sets "${property}", which lays out while it plays`);
+      }
       if (!MOTION_PROPERTIES.includes(property)) {
         continue;
       }
@@ -156,7 +159,9 @@ test('every Studio transition is off for reduced motion (#3223)', () => {
     const switchedOff = reducedRules.some(reduced => reduced.selector === rule.selector && /transition:\s*none|animation:\s*none/.test(reduced.body));
     const durations = rule.declarations.flatMap(declaration => [...declaration.value.matchAll(/var\((--studio-motion-[a-z]+)\)/g)].map(match => match[1]));
     const onlyZeroedTokens = durations.length > 0 && durations.every(token => zeroedTokens.includes(token));
-    assert.ok(gated || switchedOff || onlyZeroedTokens, `${rule.selector} moves under reduced motion: wrap it in prefers-reduced-motion: no-preference or add a reduce rule that switches it off`);
+    const insideReduce = rule.conditions.some(condition => condition?.includes('prefers-reduced-motion: reduce'));
+    const fadeOnly = insideReduce && rule.declarations.filter(declaration => declaration.value !== 'none').every(declaration => splitList(declaration.value).every(segment => /^(opacity|display|overlay) /.test(segment) && segment.includes('var(--studio-motion-fade)')));
+    assert.ok(gated || switchedOff || onlyZeroedTokens || fadeOnly || rule.declarations.every(declaration => declaration.value === 'none'), `${rule.selector} moves under reduced motion: wrap it in prefers-reduced-motion: no-preference or add a reduce rule that switches it off`);
   }
 });
 
@@ -164,7 +169,7 @@ test('every Studio transition takes its duration and easing from the motion toke
   for (const rule of motionRules) {
     for (const declaration of rule.declarations.filter(candidate => candidate.property === 'transition' && candidate.value !== 'none')) {
       for (const segment of splitList(declaration.value)) {
-        assert.match(segment, /var\(--studio-motion-(quick|base|travel|fade)\)/, `${rule.selector}: "${segment}" has a hard-coded duration`);
+        assert.match(segment, /var\(--studio-motion-(quick|base|travel|fade|exit)\)/, `${rule.selector}: "${segment}" has a hard-coded duration`);
         assert.match(segment, /var\(--studio-ease-(out|in)\)/, `${rule.selector}: "${segment}" has a hard-coded easing`);
       }
     }
@@ -176,6 +181,7 @@ test('the motion tokens fall back to the site tokens, reduced motion zeroes the 
   assert.match(STUDIO_CSS, /--studio-motion-base: var\(--site-motion-base, 170ms\);/);
   assert.match(STUDIO_CSS, /--studio-motion-travel: 360ms;/);
   assert.match(STUDIO_CSS, /--studio-motion-fade: 100ms;/);
+  assert.match(STUDIO_CSS, /--studio-motion-exit: 80ms;/);
   assert.match(STUDIO_CSS, /--studio-ease-out: var\(--site-ease-out, cubic-bezier\(0\.2, 0, 0, 1\)\);/);
   assert.ok(!STUDIO_CSS.includes('--studio-motion-press'), 'the press token waits for the group that uses it');
   const reduced = parseRules(STUDIO_CSS).filter(rule => rule.selector === '.crucible-studio' && rule.conditions.some(condition => condition?.includes('reduce')));
@@ -184,6 +190,64 @@ test('the motion tokens fall back to the site tokens, reduced motion zeroes the 
     assert.match(reduced[0].body, new RegExp(`--studio-motion-${token}: 0ms`));
   }
   assert.ok(!reduced[0].body.includes('--studio-motion-fade'), 'a fade has no movement, so reduced motion keeps it');
+  assert.ok(!reduced[0].body.includes('--studio-motion-exit'), 'an opacity-only exit has no movement, so reduced motion keeps it');
+});
+
+test('the motion check reads @starting-style blocks and holds them to the layout rule (#3223)', () => {
+  assert.match(findMotionProblems('@media (prefers-reduced-motion: no-preference) { @starting-style { .a:popover-open { width: 0; } } }')[0], /starting style sets "width"/);
+  assert.deepEqual(findMotionProblems('@starting-style { .a:popover-open { opacity: 0; scale: 0.97; translate: 0 -4px; } }'), []);
+  const startingRules = parseRules(STUDIO_CSS).filter(rule => rule.conditions.some(condition => condition?.startsWith('@starting-style')));
+  assert.ok(startingRules.length >= 4, 'the menu and the notice both start from a starting style');
+  for (const rule of startingRules) {
+    assert.ok(!/(^|[;\s])(left|top|right|bottom|width|height|margin|padding)/.test(rule.body), `${rule.selector}: a starting style only sets opacity, scale and translate`);
+  }
+});
+
+test('menus fade and grow, and reduced motion keeps the fade alone (#3223)', () => {
+  const rules = parseRules(STUDIO_CSS);
+  const inside = (rule, text) => rule.conditions.some(condition => condition?.includes(text));
+  const growing = rules.filter(rule => inside(rule, 'no-preference') && inside(rule, 'allow-discrete'));
+  const opening = growing.find(rule => rule.selector === '.crucible-studio-popover:popover-open' && /transition:/.test(rule.body));
+  assert.match(opening.body, /opacity var\(--studio-motion-quick\) var\(--studio-ease-out\)/);
+  assert.match(opening.body, /scale var\(--studio-motion-quick\)/);
+  const leaving = growing.find(rule => rule.selector === '.crucible-studio-popover' && /transition:/.test(rule.body));
+  assert.match(leaving.body, /opacity var\(--studio-motion-exit\) var\(--studio-ease-out\)/);
+  assert.match(leaving.body, /display var\(--studio-motion-exit\) var\(--studio-ease-out\) allow-discrete/);
+  assert.match(leaving.body, /overlay var\(--studio-motion-exit\)/);
+  assert.ok(!/scale|translate/.test(leaving.body), 'the closed style sets no scale or translate, so nothing jumps while it fades');
+  const reducedPopover = rules.filter(rule => inside(rule, 'motion: reduce') && inside(rule, 'allow-discrete') && rule.selector.startsWith('.crucible-studio-popover'));
+  assert.ok(reducedPopover.length >= 3);
+  for (const rule of reducedPopover) {
+    assert.ok(!/scale|translate/.test(rule.body), `${rule.selector}: reduced motion moves nothing`);
+  }
+  const instant = rules.filter(rule => rule.selector === '.crucible-studio-menubar[data-switching] .crucible-studio-popover');
+  assert.equal(instant.length, 2, 'a hover switch has no transition in either motion mode');
+  assert.ok(instant.every(rule => /transition:\s*none/.test(rule.body)));
+});
+
+test('a menu opened from the keyboard has no transition in either motion mode, and the ease-in token is gone (#3223)', () => {
+  const keyboardRules = parseRules(STUDIO_CSS).filter(rule => rule.selector === '.crucible-studio[data-input="keyboard"] .crucible-studio-popover');
+  assert.equal(keyboardRules.length, 2);
+  assert.ok(keyboardRules.some(rule => rule.conditions.some(condition => condition?.includes('no-preference'))));
+  assert.ok(keyboardRules.some(rule => rule.conditions.some(condition => condition?.includes('motion: reduce'))));
+  assert.ok(keyboardRules.every(rule => /transition:\s*none/.test(rule.body)));
+  assert.ok(!STUDIO_CSS.includes('--studio-ease-in'), 'nothing eases in on UI; the token waits for a use that needs it');
+});
+
+test('the notice fades and drops in with the individual translate, leaves faster, and keeps its centring transform (#3223)', () => {
+  const rules = parseRules(STUDIO_CSS).filter(rule => rule.selector.startsWith('.crucible-studio-status') && rule.conditions.length > 0);
+  const motion = rules.filter(rule => rule.conditions.some(condition => condition?.includes('no-preference')));
+  const resting = motion.find(rule => rule.selector === '.crucible-studio-status');
+  const shown = motion.find(rule => rule.selector === '.crucible-studio-status[data-state="in"]' && /transition/.test(rule.body));
+  assert.match(resting.body, /translate: 0 -4px;/);
+  assert.match(resting.body, /opacity var\(--studio-motion-quick\) var\(--studio-ease-out\)/);
+  assert.match(shown.body, /opacity var\(--studio-motion-base\) var\(--studio-ease-out\)/);
+  assert.ok(motion.some(rule => /translate: 0 -6px;/.test(rule.body)), 'it enters from 6px up');
+  const reduced = rules.filter(rule => rule.conditions.some(condition => condition?.includes('motion: reduce')));
+  assert.ok(reduced.length >= 3);
+  assert.ok(reduced.every(rule => !/translate/.test(rule.body)), 'reduced motion fades only');
+  const base = parseRules(STUDIO_CSS).find(rule => rule.selector === '.crucible-studio-status' && rule.conditions.length === 0);
+  assert.match(base.body, /transform: translateX\(-50%\);/);
 });
 
 test('the agent pointer is glued by translate and has no CSS motion; its glide is a transform animation from the script (#3223)', () => {

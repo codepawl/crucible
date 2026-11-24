@@ -347,7 +347,7 @@ try {
 
   server = await serveFolder(folder);
   // GAME_SMOKE_CHROME_ARGS replaces the Chrome flags (a Linux GPU box needs Vulkan ones); GAME_SMOKE_VIDEO_DIR records the page as a 640x360 clip.
-  const chromeArgs = process.env.GAME_SMOKE_CHROME_ARGS ? process.env.GAME_SMOKE_CHROME_ARGS.split(' ') : ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--enable-unsafe-swiftshader'];
+  const chromeArgs = process.env.GAME_SMOKE_CHROME_ARGS ? process.env.GAME_SMOKE_CHROME_ARGS.split(' ') : ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--enable-unsafe-swiftshader', '--disable-audio-output'];
   browser = await chromium.launch({ executablePath: CHROME_PATH, headless: true, args: chromeArgs });
   const videoDirectory = process.env.GAME_SMOKE_VIDEO_DIR;
   const viewport = touch ? { width: 390, height: 664 } : videoDirectory ? { width: 640, height: 360 } : { width: 640, height: 400 };

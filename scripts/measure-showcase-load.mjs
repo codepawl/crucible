@@ -158,7 +158,7 @@ if (options.compare) {
   const browser = await chromium.launch({
     executablePath: CHROME_PATH,
     headless: true,
-    args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--enable-webgl'],
+    args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--enable-webgl', '--disable-audio-output'],
   });
   try {
     for (const sceneId of options.scenes) {

@@ -171,7 +171,7 @@ async function main() {
     world = await prepareServedFileScene({ configPath: options.config, pageOrigin: `http://127.0.0.1:${port}` });
     const { description } = world;
     const camera = options.camera ?? { eye: description.eye, target: description.target, fov: description.frame?.fov ?? 45 };
-    const launchArguments = ['--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox'];
+    const launchArguments = ['--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox', '--disable-audio-output'];
     if (options.softwareGl) launchArguments.push('--use-angle=swiftshader');
     browser = await chromium.launch({ headless: true, ...(options.chrome ? { executablePath: options.chrome } : {}), args: launchArguments });
     const page = await browser.newPage({ viewport: { width: 800, height: 450 }, deviceScaleFactor: 1 });

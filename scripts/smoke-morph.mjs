@@ -5,7 +5,7 @@ import { chromium } from 'playwright';
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
 await mkdir('artifacts', { recursive: true });
-const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'] });
 try {
   const page = await browser.newPage({ viewport: { width: 640, height: 480 } });
   const errors = [];

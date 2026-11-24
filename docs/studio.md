@@ -367,3 +367,5 @@ controller.setSunAngles({ azimuthDegrees: -40, elevationDegrees: 52 });
 3. Material and look controls update the active material, `environment` and `effects` sections directly. The Material tab has colour, roughness, metallic, clearcoat, clearcoat roughness, opacity, emission, glow colour and a Double sided switch.
 4. Saved camera bookmarks read and write named shots in `recipe.timeline.shots`.
 5. Every change exports cleanly with `exportRecipe()` so AI agents can continue from the same scene revision.
+
+A menu opens with a short fade and a small grow from the corner nearest its trigger, about a tenth of a second, and leaves with an 80 ms fade; sliding the pointer from one top bar menu to the next switches at once. The notice under the top bar drops in a few pixels and leaves a little faster than it came, and a second message while one shows only swaps the text. All of it uses opacity, scale and translate, so it stays on the compositor, and with reduced motion only the fade remains.

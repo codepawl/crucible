@@ -88,6 +88,7 @@ const nodeFields = {
   grass: placedGrass.optional(),
   skin: listed('skin', skinSpec, 'Bind this mesh node to an armature with automatic weights: { armature, maxInfluences, maxDistance }.', coreOf(skinSpec.shape, ['armature'])).optional(),
   decal: z.boolean().optional(),
+  faceImages: z.array(z.record(z.string(), z.unknown())).max(6).nullable().optional().describe('scene_capabilities faceImages.'),
   depthLayer: z.number().int().min(0).max(4).optional(),
   visible: z.boolean().optional().describe('false hides the node and children; keyable in motion. Flags: scene_capabilities renderFlags.'),
   castShadow: z.boolean().optional(),
@@ -209,6 +210,7 @@ const subsurface = z.strictObject({
 const catalogImageId = z.string().regex(/^[a-f0-9]{64}$/i).describe('Catalog image asset ID from scene_asset_catalog.');
 
 const uvScaleNumber = z.number().min(UV_TRANSFORM_LIMITS.scale[0]).max(UV_TRANSFORM_LIMITS.scale[1]);
+const worldScaleNumber = z.number().min(UV_TRANSFORM_LIMITS.worldScale[0]).max(UV_TRANSFORM_LIMITS.worldScale[1]);
 const uvOffsetNumber = z.number().min(UV_TRANSFORM_LIMITS.offset[0]).max(UV_TRANSFORM_LIMITS.offset[1]);
 const materialFields = {
   ...waterFields,
@@ -230,7 +232,7 @@ const materialFields = {
   uvScale: z.union([uvScaleNumber, z.tuple([uvScaleNumber, uvScaleNumber])]).optional().describe('Tiles of every catalog map: one number or [u, v]; with the other UV fields it follows glTF KHR_texture_transform.'),
   uvOffset: z.tuple([uvOffsetNumber, uvOffsetNumber]).optional().describe('[u, v] shift of every catalog map, in tiles.'),
   uvRotation: z.number().min(UV_TRANSFORM_LIMITS.rotation[0]).max(UV_TRANSFORM_LIMITS.rotation[1]).optional().describe('Degrees every catalog map turns.'),
-  worldScale: z.number().min(UV_TRANSFORM_LIMITS.worldScale[0]).max(UV_TRANSFORM_LIMITS.worldScale[1]).optional().describe('Metres one texture tile covers, so the tile size does not depend on the mesh size; not with uvScale.'),
+  worldScale: z.union([worldScaleNumber, z.tuple([worldScaleNumber, worldScaleNumber])]).optional().describe('Metres one tile covers, number or [u, v]; not with uvScale.'),
   color: color.optional().describe('Linear RGB base color, each component between zero and one.'),
   metallic: unit.optional(),
   roughness: unit.optional(),

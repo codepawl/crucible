@@ -17,7 +17,7 @@ try {
     server.on('error', reject);
   });
   const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-  browser = await chromium.launch({ headless:true, ...(existsSync(chrome) ? { executablePath:chrome } : {}) });
+  browser = await chromium.launch({ headless:true, ...(existsSync(chrome) ? { executablePath:chrome } : {}), args:['--disable-audio-output'] });
   const page = await browser.newPage();
   // Isolate transport races from GPU cost and intentionally delay media seeks.
   await page.route('**/src/renderer.js', route => route.fulfill({ contentType:'text/javascript', body:'export class CrucibleRenderer { render(){} dispose(){} resize(){} }' }));

@@ -131,7 +131,7 @@ const MODULE_MARKERS = {
   lightLinking: ['"affects"', '"keyAffects"'],
   // The cascade module also loads light-shapes (soft area shadows, IES profiles), so these markers bring both.
   cascades: [/"(?:shadowCascades|sunAngularRadius|ies|hard)"|"areaLights":\[\{/],
-  assets: ['"asset":{', '"sequence":{', /"(?:colorMap|normalMap|roughnessMap|metallicMap|occlusionMap|heightMap|textureSet)":"/],
+  assets: ['"asset":{', '"sequence":{', '"faceImages":', /"(?:colorMap|normalMap|roughnessMap|metallicMap|occlusionMap|heightMap|textureSet)":"/],
   vegetation: ['"vegetation":{', '"wind":{'],
   clutter: ['"clutter":['],
   grass: ['"grass":{'],
