@@ -1,0 +1,93 @@
+{
+  "mainSha": "095fac785",
+  "headSha": "e5536216c",
+  "regions": {
+    "water": [
+      200,
+      250,
+      440,
+      340
+    ],
+    "sphere": [
+      300,
+      150,
+      340,
+      190
+    ]
+  },
+  "before": {
+    "water": [
+      137,
+      174,
+      183
+    ],
+    "sphere": [
+      201,
+      210,
+      210
+    ]
+  },
+  "after": {
+    "water": [
+      163,
+      160,
+      185
+    ],
+    "sphere": [
+      201,
+      208,
+      210
+    ]
+  },
+  "unsetIdentical": true,
+  "size": [
+    640,
+    360
+  ],
+  "backend": "gpu",
+  "camera": {
+    "eye": [
+      0,
+      1.1,
+      8
+    ],
+    "target": [
+      0,
+      0.5,
+      0
+    ]
+  },
+  "fov": 45,
+  "seed": 1,
+  "sceneJson": {
+    "glb": "scene.glb",
+    "hdri": "pale-sky.hdr",
+    "hdriOptions": {
+      "showBackground": true
+    },
+    "eye": [
+      0,
+      1.1,
+      8
+    ],
+    "target": [
+      0,
+      0.5,
+      0
+    ],
+    "seed": 1,
+    "renderer": {
+      "ground": false,
+      "hdr": true,
+      "samples": 1,
+      "pixelRatio": 1,
+      "memoryBudgetMiB": 512
+    },
+    "frame": {
+      "exposure": 1,
+      "fov": 45
+    },
+    "reflectionHdri": "sunset-sky.hdr"
+  },
+  "note": "Before renders the same scene.json on main, which ignores reflectionHdri; hdri is the pale lighting sky and reflectionHdri the sunset sky. The sphere is matte and lit by the lighting sky."
+}
