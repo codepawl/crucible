@@ -25,6 +25,12 @@ const NEEDS_NO_MODIFIERS = 'Edit mode does not work on a mesh with modifiers yet
 const LOG_IS_FULL = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take another move.`;
 const TOO_MANY_VERTICES = `Moving more than ${MAX_MASK_VERTICES} vertices that are not whole faces is not possible yet; select whole faces or fewer vertices.`;
 const MESH_CHANGED = 'Edit mode ended because this object uses a different mesh now.';
+// Circle select (C): the brush is in screen pixels, the wheel changes it by a factor per notch, and it stays between sessions.
+export const CIRCLE_BRUSH_DEFAULT_PIXELS = 25;
+export const CIRCLE_BRUSH_MIN_PIXELS = 4;
+export const CIRCLE_BRUSH_MAX_PIXELS = 400;
+const CIRCLE_BRUSH_STEP_FACTOR = 1.15;
+const CIRCLE_SELECT_HINT = 'Circle select: drag to select, middle drag or Shift to deselect, wheel to resize, right click or Esc to leave.';
 const EDIT_MODE_HINT = 'Edit mode: pick a vertex, edge or face.';
 const TOO_LARGE_TO_DRAW = `This mesh has more than ${CAGE_TRIANGLE_BUDGET.toLocaleString('en-US')} triangles, so only the selection is drawn.`;
 
@@ -206,6 +212,9 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   let writingOwnEntry = false;
   // True from entering edit mode until the first pick selects something: the hint goes away with that pick.
   let hintShowing = false;
+  // Circle select: null when off, else where the brush circle is drawn (centre is null until the pointer is over the viewport).
+  let circle = null;
+  let brushRadius = CIRCLE_BRUSH_DEFAULT_PIXELS;
 
   function refuse(message) {
     announce(message);
@@ -313,6 +322,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   function leave() {
     if (!state) return;
     hintShowing = false;
+    circle = null;
     // The controller drag goes first, through the session, so the cage, the buffers and the pointer state are put back.
     if (controller.dragging) controller.cancelGizmoDrag();
     cancelDrag();
@@ -367,6 +377,129 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return true;
   }
 
+  function noteSelectionChanged() {
+    controller.setTool('translate');
+    if (hintShowing && state.selected.size > 0) {
+      hintShowing = false;
+      announce('');
+    }
+  }
+
+  /** Alt+A: nothing selected, in any mode. True when something was selected. */
+  function selectNone() {
+    return clearSelection();
+  }
+
+  /** Ctrl+I: every element of the current mode that was not selected becomes selected, and the selected ones are not. */
+  function invertSelection() {
+    if (!state || drag) return false;
+    const { mesh } = state;
+    const count = state.mode === 'vertex' ? mesh.vertexCount : state.mode === 'edge' ? mesh.edgeCount : mesh.faceCount;
+    const inverted = new Set();
+    for (let element = 0; element < count; element += 1) {
+      if (!state.selected.has(element)) inverted.add(element);
+    }
+    state.selected = inverted;
+    noteSelectionChanged();
+    return true;
+  }
+
+  /** C: the brush. Returns false outside edit mode or in the middle of a drag. */
+  function beginCircleSelect() {
+    if (!state || drag) return false;
+    if (circle) return true;
+    circle = { centre: null };
+    hintShowing = false;
+    announce(CIRCLE_SELECT_HINT);
+    return true;
+  }
+
+  function endCircleSelect() {
+    if (!circle) return false;
+    circle = null;
+    announce('');
+    return true;
+  }
+
+  /** The wheel: one notch up (steps > 0) makes the brush bigger, one down smaller; the result stays inside the brush limits. */
+  function resizeCircleBrush(steps) {
+    if (!Number.isFinite(steps)) {
+      throw new RangeError(`Resize the brush by a finite number of wheel steps, not ${String(steps)}.`);
+    }
+    const resized = brushRadius * CIRCLE_BRUSH_STEP_FACTOR ** steps;
+    brushRadius = Math.min(CIRCLE_BRUSH_MAX_PIXELS, Math.max(CIRCLE_BRUSH_MIN_PIXELS, Math.round(resized)));
+    return brushRadius;
+  }
+
+  function moveCircle(pixelX, pixelY) {
+    if (circle) circle.centre = { x: pixelX, y: pixelY };
+  }
+
+  // The brush reaches only what faces the camera.
+  function circleHits(pixelX, pixelY) {
+    const projected = projectCage();
+    const { mesh } = state;
+    const radiusSquared = brushRadius ** 2;
+    const hits = [];
+    if (state.mode === 'vertex') {
+      for (let vertex = 0; vertex < mesh.vertexCount; vertex += 1) {
+        if (!projected.visible[vertex] || !projected.nearVertex[vertex]) continue;
+        if ((projected.screenX[vertex] - pixelX) ** 2 + (projected.screenY[vertex] - pixelY) ** 2 <= radiusSquared) hits.push(vertex);
+      }
+    } else if (state.mode === 'edge') {
+      for (let edge = 0; edge < mesh.edgeCount; edge += 1) {
+        const start = mesh.edgeVertices[edge * 2];
+        const end = mesh.edgeVertices[edge * 2 + 1];
+        if (!projected.nearEdge[edge] || !projected.visible[start] || !projected.visible[end]) continue;
+        const distance = distanceToSegmentSquared(pixelX, pixelY, projected.screenX[start], projected.screenY[start], projected.screenX[end], projected.screenY[end]);
+        if (distance <= radiusSquared) hits.push(edge);
+      }
+    } else {
+      for (let face = 0; face < mesh.faceCount; face += 1) {
+        if (projected.nearFace[face] && faceTouchesCircle(face, projected, pixelX, pixelY, radiusSquared)) hits.push(face);
+      }
+    }
+    return hits;
+  }
+
+  // A face is under the brush when the circle overlaps its drawn polygon: an edge within reach, or the circle centre inside it.
+  function faceTouchesCircle(face, projected, pixelX, pixelY, radiusSquared) {
+    const { mesh } = state;
+    const first = mesh.faceOffsets[face];
+    const end = mesh.faceOffsets[face + 1];
+    let inside = false;
+    for (let corner = first; corner < end; corner += 1) {
+      const current = mesh.cornerVertices[corner];
+      const following = mesh.cornerVertices[corner + 1 < end ? corner + 1 : first];
+      if (!projected.visible[current] || !projected.visible[following]) return false;
+      const currentX = projected.screenX[current];
+      const currentY = projected.screenY[current];
+      const followingX = projected.screenX[following];
+      const followingY = projected.screenY[following];
+      if (distanceToSegmentSquared(pixelX, pixelY, currentX, currentY, followingX, followingY) <= radiusSquared) return true;
+      const crossesRay = (currentY > pixelY) !== (followingY > pixelY);
+      if (crossesRay && pixelX < ((followingX - currentX) * (pixelY - currentY)) / (followingY - currentY) + currentX) inside = !inside;
+    }
+    return inside;
+  }
+
+  /** One dab of the brush at a pixel: every element of the mode under it joins the selection, or leaves it with `deselect`. Returns how many changed. */
+  function paintCircle(pixelX, pixelY, { deselect = false } = {}) {
+    if (!state || !circle || drag) return 0;
+    circle.centre = { x: pixelX, y: pixelY };
+    let changed = 0;
+    for (const element of circleHits(pixelX, pixelY)) {
+      if (deselect) {
+        if (state.selected.delete(element)) changed += 1;
+      } else if (!state.selected.has(element)) {
+        state.selected.add(element);
+        changed += 1;
+      }
+    }
+    if (changed > 0) noteSelectionChanged();
+    return changed;
+  }
+
   function projectCage() {
     const project = controller.worldPointProjector();
     const matrix = state.part.matrix;
@@ -374,7 +507,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     const screenX = new Float32Array(vertexCount);
     const screenY = new Float32Array(vertexCount);
     const visible = new Uint8Array(vertexCount);
-    const { nearVertex, nearEdge } = nearSideOf();
+    const { nearVertex, nearEdge, nearFace } = nearSideOf();
     for (let vertex = 0; vertex < vertexCount; vertex += 1) {
       const world = transformPoint(matrix, state.positions[vertex * 3], state.positions[vertex * 3 + 1], state.positions[vertex * 3 + 2]);
       const point = project(world);
@@ -382,7 +515,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       screenY[vertex] = point.y;
       visible[vertex] = point.visible ? 1 : 0;
     }
-    return { screenX, screenY, visible, nearVertex, nearEdge };
+    return { screenX, screenY, visible, nearVertex, nearEdge, nearFace };
   }
 
   // A vertex or an edge is on the far side when every face that uses it faces away from the camera.
@@ -390,11 +523,13 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     const { mesh, positions } = state;
     const nearVertex = new Uint8Array(mesh.vertexCount);
     const nearEdge = new Uint8Array(mesh.edgeCount);
+    const nearFace = new Uint8Array(mesh.faceCount);
     const inverse = mat4.invert(mat4.create(), state.part.matrix);
     if (!inverse) {
       nearVertex.fill(1);
       nearEdge.fill(1);
-      return { nearVertex, nearEdge };
+      nearFace.fill(1);
+      return { nearVertex, nearEdge, nearFace };
     }
     const camera = controller.viewCamera;
     const eye = transformPoint(inverse, ...camera.eye);
@@ -420,12 +555,13 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       const towardZ = orthographic ? -forward[2] : eye[2] - positions[anchor + 2];
       const facing = normalX * towardX + normalY * towardY + normalZ * towardZ;
       if (mirrored ? facing >= 0 : facing <= 0) continue;
+      nearFace[face] = 1;
       for (let corner = first; corner < end; corner += 1) {
         nearVertex[mesh.cornerVertices[corner]] = 1;
         nearEdge[mesh.cornerEdges[corner]] = 1;
       }
     }
-    return { nearVertex, nearEdge };
+    return { nearVertex, nearEdge, nearFace };
   }
 
   function nearestVertex(pixelX, pixelY, projected) {
@@ -735,6 +871,12 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       paths.push({ className: `crucible-studio-cage-selected-halo crucible-studio-cage-selected-halo-${state.mode}`, pathData: selectedShape, layer: 'over' });
       paths.push({ className: `crucible-studio-cage-selected crucible-studio-cage-selected-${state.mode}`, pathData: selectedShape, layer: 'over' });
     }
+    if (circle?.centre) {
+      const { x, y } = circle.centre;
+      const diameter = brushRadius * 2;
+      const outline = `M${(x - brushRadius).toFixed(1)} ${y.toFixed(1)}a${brushRadius} ${brushRadius} 0 1 0 ${diameter} 0a${brushRadius} ${brushRadius} 0 1 0 ${-diameter} 0`;
+      paths.push({ className: 'crucible-studio-cage-brush', pathData: outline, layer: 'over' });
+    }
     return paths;
   }
 
@@ -800,6 +942,15 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     setMode,
     clearSelection,
     separateSelection,
+    selectNone,
+    invertSelection,
+    beginCircleSelect,
+    endCircleSelect,
+    resizeCircleBrush,
+    moveCircle,
+    paintCircle,
+    get circleSelecting() { return circle !== null; },
+    get brushRadius() { return brushRadius; },
     pick,
     refresh,
     cagePaths,

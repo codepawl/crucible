@@ -1,0 +1,1 @@
+- The Studio documentation lists the interaction form of each feature and the reason for it in one page (#3365)

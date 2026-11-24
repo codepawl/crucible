@@ -1,0 +1,1 @@
+- The Studio setup's AI agent step is now a Built-in AI card (only when the host offers it, with Sign in and a Signed in check that names the account when the host says who) and a Your own agent card whose prompt box carries its Copy prompt button, with new sign-in and copy icons (#3311).

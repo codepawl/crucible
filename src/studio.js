@@ -31,6 +31,7 @@ import { createOutlineMask } from './studio-outline-mask.js';
 import { createPanelGrips } from './studio-panel-grips.js';
 import { leadWithActionIcon, STUDIO_ACTION_ICONS, STUDIO_BRAND_ICON_NAMES, STUDIO_FILLED_ICON_NAMES, STUDIO_ICON_ACCENTS, STUDIO_LIGHT_ICONS, STUDIO_NOTICE_ICONS, STUDIO_PRIMITIVE_ICONS, studioIconPath } from './studio-icons.js';
 import { createPropertyLine, createPropertyPanel } from './studio-property-panel.js';
+import { createShapeSettings } from './studio-shape-settings.js';
 import { createKeyMarkers } from './studio-timeline-keys.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
 import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, describeBounds, describeCamera, describeGridStep, gridLayout, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart } from './studio-viewport-aids.js';
@@ -1629,11 +1630,13 @@ export function createStudio(container, {
   }
 
   /** Copies the prompt; when the browser refuses, shows it in the recipe dialog instead. Resolves true only when it was copied. */
-  async function copyAgentPrompt() {
+  async function copyAgentPrompt({ announceResult = true } = {}) {
     const promptText = agentPromptText();
     try {
       await navigator.clipboard.writeText(promptText);
-      announceSuccess('Copied AI prompt to clipboard');
+      if (announceResult) {
+        announceSuccess('Copied AI prompt to clipboard');
+      }
       return true;
     } catch {
       openImportDialog(promptText);
@@ -2217,12 +2220,15 @@ export function createStudio(container, {
     });
   }
 
+  const shapeSettings = createShapeSettings({ documentReference, createElement, createPropertyLine, controller, announce: announceError });
+
   const nodePanelBody = createElement(
     documentReference,
     'div',
     { className: 'crucible-studio-panel-body' },
     createElement(documentReference, 'div', { className: 'crucible-studio-name-row' }, nodeLabelInput, visibleToggle, frameButton, duplicateButton, deleteButton),
     treeSection,
+    shapeSettings.element,
     createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'span', { className: 'crucible-studio-field-head', textContent: 'Parent' }), nodeParentSelect),
     positionRow.container,
     rotationRow.container,
@@ -2669,6 +2675,7 @@ export function createStudio(container, {
     copyAgentPrompt,
     // A host page (the desktop app) may offer its own built-in agent; the setup's AI agent step then offers its sign-in.
     builtInAgent: globalThis.crucibleShell?.builtInAgent,
+    account: globalThis.crucibleShell?.account,
     onClose: () => {
       if (!preferences.setupDone) setPreference('setupDone', true);
     },
@@ -4136,6 +4143,7 @@ export function createStudio(container, {
     setRowLockedByTrack(rotationRow, !controller.autoKey && animatedProperties.includes('rotation'));
     setRowLockedByTrack(scaleRow, !controller.autoKey && animatedProperties.includes('scale'));
     syncTreeInspector(selectedNode);
+    shapeSettings.sync();
 
     const boundMaterial = selectedNode?.material ? recipe.materials.find(material => material.id === selectedNode.material) : null;
     renderPaletteSwatches(recipe, boundMaterial?.id ?? null);
@@ -4603,6 +4611,11 @@ export function createStudio(container, {
   canvas.addEventListener('contextmenu', event => event.preventDefault());
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
+    if (meshEditor?.circleSelecting) {
+      meshEditor.resizeCircleBrush(event.deltaY < 0 ? 1 : -1);
+      requestFrame();
+      return;
+    }
     stopFlight();
     controller.orbitCamera({ zoomScale: 1 + Math.max(-0.35, Math.min(0.35, event.deltaY * 0.0012)) });
   }, { passive: false });
@@ -4765,17 +4778,80 @@ export function createStudio(container, {
     requestFrame();
   }
 
-  // Esc puts a drag back, else clears the selection, else leaves edit mode.
+  // Esc puts a drag back, else ends circle select, else clears the selection, else leaves edit mode.
   function escapeMeshEdit() {
     if (controller.dragging) {
       controller.cancelGizmoDrag();
       pointerState = null;
+    } else if (meshEditor.circleSelecting) {
+      endCircleSelect();
     } else if (!meshEditor.clearSelection()) {
       meshEditor.leave();
     }
     syncUi();
     requestFrame();
   }
+
+  // Circle select (C): left drag paints the selection, middle drag or Shift paints the deselection, the wheel
+  // resizes the brush, right click or Esc ends it. The brush owns the viewport pointer until then, so the camera keys it.
+  let circlePaint = null;
+
+  function endCircleSelect() {
+    circlePaint = null;
+    meshEditor.endCircleSelect();
+    syncUi();
+    requestFrame();
+  }
+
+  function circleSelectOwnsPointer(event) {
+    if (!meshEditor?.circleSelecting || controller.dragging) return false;
+    return event.target === canvas || gizmoSvg.contains(event.target);
+  }
+
+  function paintCircleAt(event, deselect) {
+    const coordinates = localCoordinates(event);
+    meshEditor.paintCircle(coordinates.x, coordinates.y, { deselect });
+    syncUi();
+    requestFrame();
+  }
+
+  viewportElement.addEventListener('pointerdown', event => {
+    if (!circleSelectOwnsPointer(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const button = event.button ?? 0;
+    if (button === 2) return;
+    circlePaint = { pointerId: event.pointerId, deselect: button === 1 || event.shiftKey };
+    viewportElement.setPointerCapture?.(event.pointerId);
+    paintCircleAt(event, circlePaint.deselect);
+  }, true);
+
+  viewportElement.addEventListener('pointermove', event => {
+    if (!meshEditor?.circleSelecting) return;
+    if (circlePaint) {
+      paintCircleAt(event, circlePaint.deselect);
+      return;
+    }
+    const coordinates = localCoordinates(event);
+    meshEditor.moveCircle(coordinates.x, coordinates.y);
+    requestFrame();
+  });
+
+  const finishCirclePaint = event => {
+    if (circlePaint?.pointerId !== event.pointerId) return;
+    circlePaint = null;
+    viewportElement.releasePointerCapture?.(event.pointerId);
+  };
+  viewportElement.addEventListener('pointerup', finishCirclePaint);
+  viewportElement.addEventListener('pointercancel', finishCirclePaint);
+
+  // Right click leaves circle select instead of opening a menu.
+  viewportElement.addEventListener('contextmenu', event => {
+    if (!meshEditor?.circleSelecting) return;
+    event.preventDefault();
+    event.stopPropagation();
+    endCircleSelect();
+  }, true);
 
   function chooseMeshMode(mode) {
     meshEditor.setMode(mode);
@@ -4802,6 +4878,28 @@ export function createStudio(container, {
     'mesh.vertexMode': () => chooseMeshMode('vertex'),
     'mesh.edgeMode': () => chooseMeshMode('edge'),
     'mesh.faceMode': () => chooseMeshMode('face'),
+    // Alt+A and Ctrl+I have browser actions of their own (the menu bar, page info).
+    'mesh.selectNone': event => {
+      event.preventDefault();
+      meshEditor.selectNone();
+      syncUi();
+      requestFrame();
+    },
+    'mesh.invertSelection': event => {
+      event.preventDefault();
+      meshEditor.invertSelection();
+      syncUi();
+      requestFrame();
+    },
+    'mesh.circleSelect': () => {
+      if (meshEditor.circleSelecting) {
+        endCircleSelect();
+        return;
+      }
+      meshEditor.beginCircleSelect();
+      syncUi();
+      requestFrame();
+    },
     'mesh.noop': event => event.preventDefault(),
     'mesh.separate': event => {
       event.preventDefault();

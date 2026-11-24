@@ -43,7 +43,9 @@ const AREA_LIGHT_FIELDS = ['position', 'direction', 'up', 'width', 'height', 'co
 const VOLUME_VECTOR_FIELDS = ['minimum', 'maximum', 'color', 'ambient', 'drift'];
 const VOLUME_NUMBER_FIELDS = ['density', 'steps', 'anisotropy', 'noiseAmount', 'noiseScale', 'maxDistance', 'shadowAmbient', 'heightFalloff', 'detailOctaves', 'detailAmount', 'warp', 'contrast', 'profileSoftness', 'keyScattering', 'scatterOctaves', 'multiScatter', 'multiExtinction', 'multiAnisotropy', 'keyTransmittance', 'surfaceTransmittance', 'beamRadius'];
 export const VOLUME_FOG_FIELDS = Object.freeze([...VOLUME_VECTOR_FIELDS, ...VOLUME_NUMBER_FIELDS]);
-const BLOOM_FIELDS = ['strength', 'threshold', 'radius'];
+const BLOOM_FIELDS = ['strength', 'threshold', 'radius', 'keepHue'];
+// Effect group fields that take true or false instead of a number.
+const FLAG_GROUP_FIELDS = new Set(['keepHue']);
 const DEPTH_OF_FIELD_FIELDS = ['blur', 'focusDistance'];
 const MOTION_BLUR_FIELDS = ['shutter', 'objects'];
 /** The nested effect groups set-effects merges field by field, with the fields each accepts. */
@@ -536,7 +538,10 @@ function effectsFrom(input = {}) {
     groups[group] = fallback(input[group], {});
     knownKeys(groups[group], fields, group);
     for (const field of fields) {
-      if (Object.hasOwn(groups[group], field)) {
+      if (!Object.hasOwn(groups[group], field)) continue;
+      if (FLAG_GROUP_FIELDS.has(field)) {
+        if (typeof groups[group][field] !== 'boolean') throw new TypeError(`${group}.${field} must be true or false, got ${JSON.stringify(groups[group][field])}.`);
+      } else {
         numberInRange(groups[group][field], -Number.MAX_VALUE, Number.MAX_VALUE, `${group}.${field}`);
       }
     }
