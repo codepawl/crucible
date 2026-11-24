@@ -32,7 +32,7 @@ const MATERIAL_LAYER_NOTES = Object.freeze({
   toonEdge: 'Toon step edge: 0 soft, 1 hard, 2 hard with Bayer 4x4 dither; needs toon.',
   clearcoat: 'Lacquer lobe over the base, surface tag.',
   clearcoatRoughness: 'Coat roughness.',
-  transmission: 'Refracts the opaque scene behind it, surface or liquid tag, blurred by roughness; a blended glass keeps its alpha as coverage; no anisotropy, iridescence, sheen or coat.',
+  transmission: 'Refracts the opaque scene behind it, surface or liquid tag, blurred by roughness; a blended glass keeps its alpha as coverage; an additive part wholly behind the glass is drawn first, so the glass refracts it and dims it only by its own transmittance; no anisotropy, iridescence, sheen or coat.',
   thickness: 'Metres crossed; 0 does not bend the view.',
   ior: 'Glass 1.5, water 1.33, diamond 2.42; sets the base reflectance.',
   dispersion: 'Colour fringes through glass, 20 over the Abbe number; diamond 0.36; path traced only.',
