@@ -232,6 +232,13 @@ export const STUDIO_CSS = `
   stroke-width: 1.5;
   pointer-events: none;
 }
+.crucible-studio-gizmo .crucible-studio-proportional-reach {
+  fill: color-mix(in srgb, var(--studio-accent) 8%, transparent);
+  stroke: var(--studio-accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
 .crucible-studio-gizmo .crucible-studio-cage-selected-vertex { stroke-width: 12; }
 .crucible-studio-gizmo .crucible-studio-cage-selected-edge { stroke-width: 4; }
 .crucible-studio-gizmo .crucible-studio-cage-selected-face {
@@ -701,6 +708,33 @@ export const STUDIO_CSS = `
 #crucible-studio-pop-add .crucible-studio-popover-grid { grid-template-columns: minmax(0, 1fr); }
 #crucible-studio-pop-add { max-block-size: calc(100dvh - 16px); overflow-y: auto; }
 .crucible-studio-popover button[aria-expanded="true"] { background: color-mix(in srgb, var(--studio-text) 8%, transparent); }
+.crucible-studio-proportional-popover { gap: var(--studio-space-12); min-width: 240px; }
+.crucible-studio-curve-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+}
+.crucible-studio-curve-list > button { gap: var(--studio-space-8); }
+.crucible-studio-curve-list > button[aria-pressed="true"] { background: color-mix(in srgb, var(--studio-accent) 16%, transparent); }
+.crucible-studio-curve-glyph {
+  flex: none;
+  inline-size: 24px;
+  block-size: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.crucible-studio-proportional-size {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 4ch;
+  align-items: center;
+  gap: var(--studio-space-8);
+  padding: var(--studio-space-4) var(--studio-space-12);
+}
+.crucible-studio-proportional-size input { inline-size: 100%; accent-color: var(--studio-accent); }
+.crucible-studio-proportional-size output { text-align: end; font-family: var(--studio-font-mono); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--studio-muted); }
 .crucible-studio-tree-section { display: grid; }
 .crucible-studio-tree-section[hidden], .crucible-studio-tree-controls[hidden] { display: none; }
 .crucible-studio-tree-controls { display: grid; gap: 12px; }

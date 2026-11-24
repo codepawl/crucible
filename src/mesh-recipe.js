@@ -3,7 +3,7 @@ import { invalidField } from './field-error.js';
 import { editField, editBoolean } from './mesh-edit-field.js';
 import { countSelected, selectFaces } from './mesh-select.js';
 import {
-  extrudeFaceRegion, extrudeIndividual, insetRegion, insetIndividual, deleteFaces, flipFaces, translateFaces, transformFaces, mergeByDistance, tagFaces,
+  extrudeFaceRegion, extrudeIndividual, insetRegion, insetIndividual, deleteFaces, flipFaces, translateFaces, translateVertices, transformFaces, mergeByDistance, tagFaces,
   FALLOFF_CURVES,
 } from './mesh-ops.js';
 import { meshBoolean, BOOLEAN_OPERATIONS } from './mesh-boolean.js';
@@ -652,6 +652,7 @@ function runEdit(current, edit, index, { resolveCutter, resolveHeight, limits })
     result.tags = tagSummary(generated, edit.name);
     return { mesh: generated, result };
   }
+  if (edit.op === 'translate' && isVertexSelection(edit.select)) return translateSelectedVertices(current, edit, index, result);
   let mask;
   try {
     mask = selectFaces(current, edit.select);
@@ -701,6 +702,28 @@ function runEdit(current, edit, index, { resolveCutter, resolveHeight, limits })
     tagFaces(editable, created.sideFaces, sideTag);
     result.tags = { [`${edit.name}.cap`]: created.capFaces.length, [sideTag]: created.sideFaces.length };
   }
+  return { mesh: meshData(editable), result };
+}
+
+// A `translate` may name vertices instead of faces: { "vertices": [3, 8] }. A vertex that is not a whole face (one corner of a
+// grid) has no face to select, and its falloff is what Studio's proportional editing writes.
+function isVertexSelection(select) {
+  return Boolean(select) && typeof select === 'object' && Object.hasOwn(select, 'vertices');
+}
+
+function translateSelectedVertices(current, edit, index, result) {
+  const { vertices } = edit.select;
+  if (Object.keys(edit.select).length !== 1 || !Array.isArray(vertices) || vertices.length === 0 || vertices.length > current.vertexCount) {
+    throw editField(index, 'select', edit.select, 'a rule such as { "vertices": [3, 8] }: a nonempty list of vertex indices, each once, with no other key', RangeError);
+  }
+  for (const vertex of vertices) {
+    if (!Number.isInteger(vertex) || vertex < 0 || vertex >= current.vertexCount) {
+      throw editField(index, 'select.vertices', vertex, `a vertex index from 0 to ${current.vertexCount - 1}`, RangeError);
+    }
+  }
+  const editable = editMesh(current);
+  result.selected = vertices.length;
+  result.movedVertices = translateVertices(editable, new Set(vertices), edit).movedVertices;
   return { mesh: meshData(editable), result };
 }
 

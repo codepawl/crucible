@@ -10,6 +10,8 @@ import { meshEditSourceOf } from './agent-mesh.js';
 import { roundVector } from './studio-controller.js';
 import { isLiveGeometry, unmarkLiveGeometry } from './live-geometry.js';
 import { updatePartVertices } from './update-part-vertices.js';
+import { spatialFalloffWeights } from './mesh-ops.js';
+import { MAX_PROPORTIONAL_SEEDS, proportionalCirclePath } from './studio-proportional.js';
 
 export const MESH_SELECTION_MODES = Object.freeze(['vertex', 'edge', 'face']);
 export const MAX_MASK_VERTICES = 19;
@@ -22,6 +24,7 @@ const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
 const NEEDS_A_MESH = 'Edit mode needs a mesh geometry or a shape of the Add menu.';
 const NEEDS_NO_MODIFIERS = 'Edit mode does not work on a mesh with modifiers yet. Add a plain shape from the Mesh group and edit that, or have the modifiers applied first.';
+const TOO_MANY_SEEDS = `Proportional editing moves at most ${MAX_PROPORTIONAL_SEEDS} vertices that are not whole faces; select fewer, or whole faces.`;
 const LOG_IS_FULL = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take another move.`;
 const TOO_MANY_VERTICES = `Moving more than ${MAX_MASK_VERTICES} vertices that are not whole faces is not possible yet; select whole faces or fewer vertices.`;
 const MESH_CHANGED = 'Edit mode ended because this object uses a different mesh now.';
@@ -66,14 +69,22 @@ function facesInsideVertexSet(mesh, vertexSet) {
 
 /**
  * The log entry that moves `vertices` of `mesh` by `localDelta`: a face `translate` when the vertices are exactly those of
- * some faces, else a `set_position` over an index mask. Throws a sentence that says why when the move cannot be written.
+ * some faces, else a `set_position` over an index mask. With a `falloff` ({ radius, curve }, proportional editing) the move is
+ * a `translate` either way, naming the vertices when they are not whole faces. Throws a sentence that says why when the move cannot be written.
  */
-export function planMeshMove(mesh, vertices, localDelta) {
+export function planMeshMove(mesh, vertices, localDelta, falloff = null) {
   const offset = roundVector(localDelta);
   const vertexSet = new Set(vertices);
   const { faces, covered } = facesInsideVertexSet(mesh, vertexSet);
+  const falloffField = falloff ? { falloff: { radius: falloff.radius, curve: falloff.curve } } : {};
   if (faces.length > 0 && covered.size === vertexSet.size) {
-    return { op: 'translate', select: { faces }, offset };
+    return { op: 'translate', select: { faces }, offset, ...falloffField };
+  }
+  if (falloff) {
+    // The recipe's falloff moves the vertices around a selection, so a vertex that is no whole face is named in the edit.
+    if (vertexSet.size > MAX_PROPORTIONAL_SEEDS) throw new RangeError(TOO_MANY_SEEDS);
+    const sortedSeeds = [...vertexSet].sort((first, second) => first - second);
+    return { op: 'translate', select: { vertices: sortedSeeds }, offset, ...falloffField };
   }
   if (vertexSet.size > MAX_MASK_VERTICES) throw new RangeError(TOO_MANY_VERTICES);
   const sorted = [...vertexSet].sort((first, second) => first - second);
@@ -205,7 +216,7 @@ function uniqueGeometryId(recipe, wanted) {
  * controller (this editor installs an element session on it), `leave()`. `updatePart` writes a drag preview into the GPU
  * buffers of the part; `getRenderer` returns the renderer it needs, or null for a headless Studio (the cage still moves).
  */
-export function createMeshEditor({ controller, announce = () => {}, getRenderer = () => null, updatePart = updatePartVertices } = {}) {
+export function createMeshEditor({ controller, announce = () => {}, getRenderer = () => null, updatePart = updatePartVertices, proportional = null } = {}) {
   let state = null;
   let drag = null;
   // True while this editor writes its own entry: the mesh it reads back has the same topology, so the pick stays.
@@ -695,22 +706,38 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     drag = null;
   }
 
+  // The vertices a move changes with their weights (1 for the picked ones, the falloff curve for the ones around them), and where
+  // each of them stands before the move.
+  function dragTargets(seeds, falloff) {
+    let vertices = seeds;
+    let weights = null;
+    if (falloff) {
+      const weightOf = spatialFalloffWeights(state.positions, state.mesh.vertexCount, new Set(seeds), falloff);
+      vertices = [...weightOf.keys()];
+      weights = Float32Array.from(weightOf.values());
+    }
+    const basePositions = new Float32Array(vertices.length * 3);
+    vertices.forEach((vertex, slot) => {
+      for (let axis = 0; axis < 3; axis += 1) basePositions[slot * 3 + axis] = state.positions[vertex * 3 + axis];
+    });
+    return { vertices, weights, basePositions };
+  }
+
   function beginDrag() {
     if (!state) throw new RangeError('Enter edit mode before moving the selection.');
     const vertices = [...selectedVertices()];
     if (vertices.length === 0) throw new RangeError('Pick a vertex, edge or face to move first.');
     if (state.editCount >= MAX_LOG_ENTRIES) throw new RangeError(LOG_IS_FULL);
+    const falloff = proportional?.falloff() ?? null;
     // Refused here, before the pointer moves: a finished drag is never thrown away.
-    planMeshMove(state.mesh, vertices, [0, 0, 0]);
-    const basePositions = new Float32Array(vertices.length * 3);
-    vertices.forEach((vertex, slot) => {
-      for (let axis = 0; axis < 3; axis += 1) basePositions[slot * 3 + axis] = state.positions[vertex * 3 + axis];
-    });
+    planMeshMove(state.mesh, vertices, [0, 0, 0], falloff);
     const previewing = state.previewable && getRenderer() !== null;
     drag = {
-      vertices,
-      basePositions,
+      seeds: vertices,
+      falloff,
+      ...dragTargets(vertices, falloff),
       localDelta: [0, 0, 0],
+      worldDelta: [0, 0, 0],
       previewing,
       wasLive: isLiveGeometry(state.part.geometry),
       renderPositions: previewing ? new Float32Array(state.part.geometry.positions.length) : null,
@@ -728,15 +755,17 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     if (!inverse) return;
     const localDelta = transformDirection(inverse, worldDelta[0], worldDelta[1], worldDelta[2]);
     drag.localDelta = localDelta;
+    drag.worldDelta = worldDelta;
     drag.vertices.forEach((vertex, slot) => {
-      for (let axis = 0; axis < 3; axis += 1) state.positions[vertex * 3 + axis] = drag.basePositions[slot * 3 + axis] + localDelta[axis];
+      const weight = drag.weights ? drag.weights[slot] : 1;
+      for (let axis = 0; axis < 3; axis += 1) state.positions[vertex * 3 + axis] = drag.basePositions[slot * 3 + axis] + localDelta[axis] * weight;
     });
     writePreview();
   }
 
   function finishDrag(changed) {
     if (!drag) return;
-    const { vertices, localDelta } = drag;
+    const { seeds, falloff, localDelta } = drag;
     restoreDraggedPositions();
     drag = null;
     // A move below the rounding step would be an entry that moves nothing and takes one of the 64 slots.
@@ -744,13 +773,28 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     const { nodeId, geometryId } = state;
     writingOwnEntry = true;
     try {
-      const edit = planMeshMove(state.mesh, vertices, localDelta);
+      const edit = planMeshMove(state.mesh, seeds, localDelta, falloff);
       controller.applyImportOperations([{ type: 'edit-mesh', geometry: geometryId, edits: [edit] }], { detail: { kind: 'topology', nodeId } });
     } catch (error) {
       announce(error);
     }
     refresh();
     writingOwnEntry = false;
+  }
+
+  /**
+   * The radius or the curve changed while a move is held: the vertices it reaches are chosen again from where they stood before
+   * the move, and the move already made is applied to them, so the hill widens under the pointer.
+   */
+  function reweighDrag() {
+    if (!drag || !drag.falloff) return;
+    const { vertices, basePositions } = drag;
+    vertices.forEach((vertex, slot) => {
+      for (let axis = 0; axis < 3; axis += 1) state.positions[vertex * 3 + axis] = basePositions[slot * 3 + axis];
+    });
+    drag.falloff = proportional.falloff() ?? drag.falloff;
+    Object.assign(drag, dragTargets(drag.seeds, drag.falloff));
+    moveDrag(drag.worldDelta);
   }
 
   const session = {
@@ -819,6 +863,20 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
 
   // The stroke and fill of these paths come from the stylesheet (`--studio-*` tokens), so the cage follows the theme. `layer` says
   // whether a path goes under the move handles or over them: picked vertices and edges go over, or the handles' centre dot hides them.
+  // The circle of the proportional radius around the picked elements, facing the camera. The radius is in the mesh's own units,
+  // so the node's scale turns it into a world length.
+  function proportionalReachPath() {
+    const falloff = proportional?.falloff();
+    const centre = falloff ? selectionCentreWorld() : null;
+    if (!centre) return '';
+    const matrix = state.part.matrix;
+    const scale = (Math.hypot(matrix[0], matrix[1], matrix[2]) + Math.hypot(matrix[4], matrix[5], matrix[6]) + Math.hypot(matrix[8], matrix[9], matrix[10])) / 3;
+    const project = controller.worldPointProjector();
+    const middle = project(centre);
+    if (!middle.visible) return '';
+    return proportionalCirclePath(centre, falloff.radius * scale, controller.screenRay(middle.x, middle.y).direction, project);
+  }
+
   function cagePaths() {
     if (!state) return [];
     const { screenX, screenY, visible, nearVertex, nearEdge } = projectCage();
@@ -871,6 +929,8 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       paths.push({ className: `crucible-studio-cage-selected-halo crucible-studio-cage-selected-halo-${state.mode}`, pathData: selectedShape, layer: 'over' });
       paths.push({ className: `crucible-studio-cage-selected crucible-studio-cage-selected-${state.mode}`, pathData: selectedShape, layer: 'over' });
     }
+    const reach = proportionalReachPath();
+    if (reach) paths.push({ className: 'crucible-studio-proportional-reach', pathData: reach, layer: 'over' });
     if (circle?.centre) {
       const { x, y } = circle.centre;
       const diameter = brushRadius * 2;
@@ -919,6 +979,9 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     refresh,
     cagePaths,
     selectionScreenRadius,
+    reweighDrag,
+    get holdingMove() { return drag !== null; },
+    proportional,
     draw,
   });
 }

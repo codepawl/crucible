@@ -139,7 +139,7 @@ Edits (names follow Blender's `bmesh.ops` where they match):
 | `inset_individual` | same | same, per face |
 | `delete` | `select` (required) | |
 | `flip_normals` | `select` | |
-| `translate` | `select`, `offset` [x, y, z], optional `falloff` `{ radius, curve, connected }` | |
+| `translate` | `select`, `offset` [x, y, z], optional `falloff` `{ radius, curve, connected }` | `select` may also be `{ "vertices": [3, 8] }`, a nonempty list of vertex indices, for a vertex that is no whole face; with a `falloff` the vertices around them follow (this is what Studio writes with proportional editing on). |
 | `transform_selection` | `select`, optional `pivot` [x, y, z] (default: mean of the selected vertices), `rotation` `{ axis, angle }` (angle in radians), `scale` (above 0, up to 1000; one number or [x, y, z]), the same `falloff` as `translate` | Needs `rotation` or `scale`. Scales, then rotates about the pivot. With `falloff`, a vertex follows by its curve weight: it turns by weight times the angle and scales by 1 + weight times (scale - 1). |
 | `merge_by_distance` | `distance` (default 1e-4) | |
 | `tag` | `select`, `name` (required) | `<name>` |

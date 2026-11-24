@@ -543,16 +543,10 @@ function connectedDistances(edit, seeds, radius) {
   return distances;
 }
 
-/** Straight-line distance from the nearest seed vertex, up to `radius`, for every live vertex. */
-function spatialDistances(edit, seeds, radius, maxVisits) {
-  const seedList = [...seeds];
-  const liveCount = edit.vertexCount;
-  if (seedList.length * liveCount > maxVisits) {
-    throw new RangeError('Proportional falloff exceeds its distance budget. Use connected: true or a smaller selection.');
-  }
+/** Straight-line distance from the nearest seed vertex, up to `radius`, for each candidate vertex. */
+function nearestSeedDistances(position, candidates, seedList, radius) {
   const distances = new Map();
-  const position = edit.vertices.arrays.position;
-  for (const vertex of edit.liveIndices('point')) {
+  for (const vertex of candidates) {
     let best = Infinity;
     for (const seed of seedList) {
       const distance = Math.hypot(
@@ -567,12 +561,43 @@ function spatialDistances(edit, seeds, radius, maxVisits) {
   return distances;
 }
 
+function spatialDistances(edit, seeds, radius, maxVisits) {
+  const seedList = [...seeds];
+  const liveCount = edit.vertexCount;
+  if (seedList.length * liveCount > maxVisits) {
+    throw new RangeError('Proportional falloff exceeds its distance budget. Use connected: true or a smaller selection.');
+  }
+  return nearestSeedDistances(edit.vertices.arrays.position, edit.liveIndices('point'), seedList, radius);
+}
+
+/**
+ * The weight of every vertex a straight-line falloff moves: 1 on the seeds, then `curve` of distance over `radius` out to
+ * the radius. Studio previews a held move with this, and `translate` applies the same numbers when the log replays.
+ */
+export function spatialFalloffWeights(positions, vertexCount, seeds, { radius, curve = 'smooth' }) {
+  const candidates = Array.from({ length: vertexCount }, (_, vertex) => vertex);
+  const distances = nearestSeedDistances(positions, candidates, [...seeds], radius);
+  return weightsFromDistances(distances, seeds, radius, curve);
+}
+
+function weightsFromDistances(distances, seeds, radius, curveName) {
+  const curve = FALLOFF_CURVES[curveName ?? 'smooth'];
+  const weights = new Map();
+  for (const [vertex, distance] of distances) weights.set(vertex, seeds.has(vertex) ? 1 : curve(distance / radius));
+  return weights;
+}
+
 /**
  * Move the vertices of the selected faces by `offset`. With `falloff: { radius, curve, connected }`, nearby
  * vertices follow with a weight from Blender's proportional-editing curves (distance along edges when connected).
  */
 export function translateFaces(edit, mask, { offset, falloff }, { maxFalloffVisits = 50_000_000 } = {}) {
-  const weights = selectionWeights(edit, mask, falloff, maxFalloffVisits);
+  return translateVertices(edit, faceVertexSet(edit, maskedFaces(edit, mask)), { offset, falloff }, { maxFalloffVisits });
+}
+
+/** Move the given vertices by `offset`; with `falloff` the vertices around them follow, as translateFaces does for a face selection. */
+export function translateVertices(edit, seeds, { offset, falloff }, { maxFalloffVisits = 50_000_000 } = {}) {
+  const weights = seedWeights(edit, seeds, falloff, maxFalloffVisits);
   const position = edit.vertices.arrays.position;
   for (const [vertex, weight] of weights) {
     position[vertex * 3] += offset[0] * weight;
@@ -584,15 +609,15 @@ export function translateFaces(edit, mask, { offset, falloff }, { maxFalloffVisi
 
 /** Weight of every vertex a selection moves: 1 on the selected vertices, then the falloff curve out to its radius. */
 function selectionWeights(edit, mask, falloff, maxFalloffVisits) {
-  const seeds = faceVertexSet(edit, maskedFaces(edit, mask));
+  return seedWeights(edit, faceVertexSet(edit, maskedFaces(edit, mask)), falloff, maxFalloffVisits);
+}
+
+function seedWeights(edit, seeds, falloff, maxFalloffVisits) {
   if (!falloff) return new Map([...seeds].map(vertex => [vertex, 1]));
-  const curve = FALLOFF_CURVES[falloff.curve ?? 'smooth'];
   const distances = falloff.connected
     ? connectedDistances(edit, seeds, falloff.radius)
     : spatialDistances(edit, seeds, falloff.radius, maxFalloffVisits);
-  const weights = new Map();
-  for (const [vertex, distance] of distances) weights.set(vertex, seeds.has(vertex) ? 1 : curve(distance / falloff.radius));
-  return weights;
+  return weightsFromDistances(distances, seeds, falloff.radius, falloff.curve);
 }
 
 /** Mean position of the vertices of the selected faces: the default pivot of transformFaces. */
