@@ -139,13 +139,26 @@ Edits (names follow Blender's `bmesh.ops` where they match):
 | `inset_individual` | same | same, per face |
 | `delete` | `select` (required) | |
 | `flip_normals` | `select` | |
-| `translate` | `select`, `offset` [x, y, z], optional `falloff` `{ radius, curve, connected }` | |
-| `transform_selection` | `select`, optional `pivot` [x, y, z] (default: mean of the selected vertices), `rotation` `{ axis, angle }` (angle in radians), `scale` (above 0, up to 1000; one number or [x, y, z]), the same `falloff` as `translate` | Needs `rotation` or `scale`. Scales, then rotates about the pivot. With `falloff`, a vertex follows by its curve weight: it turns by weight times the angle and scales by 1 + weight times (scale - 1). |
+| `translate` | one of `select`, `verts` or `edges` (below), `offset` [x, y, z], optional `falloff` `{ radius, curve, connected }` | |
+| `transform_selection` | one of `select`, `verts` or `edges`, optional `pivot` [x, y, z] (default: mean of the selected vertices), `rotation` `{ axis, angle }` (angle in radians), `scale` (above 0, up to 1000; one number or [x, y, z]), the same `falloff` as `translate` | Needs `rotation` or `scale`. Scales, then rotates about the pivot. With `falloff`, a vertex follows by its curve weight: it turns by weight times the angle and scales by 1 + weight times (scale - 1). |
 | `merge_by_distance` | `distance` (default 1e-4) | |
 | `tag` | `select`, `name` (required) | `<name>` |
 | `boolean` | `operation` (`union`, `difference`, `intersect`), `cutter`, optional `translation`, `rotation` (XYZW), `scale`, `name` | `<name>.cut` |
 
 - `select` defaults to every face, except for `delete` and `tag`.
+- `translate` and `transform_selection` move vertices as well as faces. Give exactly one of `select` (the vertices of the
+  faces), `verts` (a vertex rule: `{ "vertices": [0, 5] }`, `{ "all": true }`, `{ "valence": 4 }` or `{ "inside": { min, max } }`)
+  or `edges` (an edge rule; both ends of each selected edge move). A vertex that belongs to several selected edges moves
+  once, in the mesh's local space, and `falloff` works the same way as for faces. `{ "op": "translate", "verts": { "vertices": [3] },
+  "offset": [0, 0.2, 0] }` lifts one corner; `{ "op": "translate", "edges": { "edges": [[3, 7]] }, "offset": [0, 0.2, 0] }`
+  lifts one edge. The result reports `selectedVertices` instead of `selected`.
+- An edge rule also takes `{ "edges": [[a, b], ...] }`: an edge named by the two vertices it joins, as the vertex indices of
+  the mesh before the edit, in either order, boundary edges too. Pairs are used rather than
+  edge numbers because edge numbers change when an edit adds or removes faces, and a pair is what a person picking two
+  corners, or an agent reading positions, already has. A pair that is not an edge throws and says so. Every op that takes an
+  edge rule accepts it: `bevel`, `loop_cut`, `dissolve_edges`, `dissolve_limited`, `subdivide_edges`, `extrude_edges`,
+  `split_edges`, `bridge_edge_loops`, `grid_fill`, `subdivide` `crease`, `uv_unwrap` `seams` and the two moves.
+- A vertex or edge selection lists at most 4096 indices or pairs; use `inside`, `angle` or a tag for more.
 - `name` defaults to `<op>-<index>`, for example `extrude-1`.
 - With `alongNormals: true`, each vertex of the region moves along its own normal instead, so a ring of faces around
   a cylinder grows outward as one joined hoop (Blender's Extrude Faces Along Normals).
@@ -367,7 +380,7 @@ in those cases use only arithmetic and position.
 
 | Field | Meaning |
 | --- | --- |
-| `edges` | `{ "between": [faceRule, faceRule] }` (the rim between two regions, for example top and side), `{ "angle": 30 }` (edges bending at least this many degrees; the default), `{ "boundaryOf": faceRule }`, or `{ "all": true }` |
+| `edges` | `{ "between": [faceRule, faceRule] }` (the rim between two regions, for example top and side), `{ "angle": 30 }` (edges bending at least this many degrees; the default), `{ "boundaryOf": faceRule }`, or `{ "all": true }`; `{ "edges": [[a, b], ...] }` bevels the edges between those vertex pairs |
 | `width` | Distance from the edge into each neighbouring face |
 | `segments` | 1 to 16; 1 is a flat chamfer, 3 or more reads as round |
 | `profile` | As in Blender: 0.5 is a circular arc (default), 0.25 is flat, 1 is square, and below 0.25 is concave. Values above 0.99 are capped at 0.99, because at 1 every ring point lands on the corner and the faces have no area; the result reports `profile` and `profileClamped`, also in the edit result. At many segments (8 or more) `geometry: true` lint may still warn about thin or folded slivers in the near-square ring; default lint stays clean |
@@ -389,7 +402,7 @@ these corners. Edges between strip segments render smooth when the bend per segm
 
 | Field | Meaning |
 | --- | --- |
-| `edges` | Edge rule picking the ring to cut across: `{ "along": [x, y, z], "maxAngle": 10 }` picks edges parallel to a direction (`along: [0, 1, 0]` cuts around a box horizontally), or `between`, `angle`, `boundaryOf`, `all` as for bevel |
+| `edges` | Edge rule picking the ring to cut across: `{ "along": [x, y, z], "maxAngle": 10 }` picks edges parallel to a direction (`along: [0, 1, 0]` cuts around a box horizontally), or `between`, `angle`, `boundaryOf`, `all`, `edges` (vertex pairs) as for bevel |
 | `cuts` | 1 to 16 loops per ring, evenly spaced |
 | `factor` | With one cut, its position from each ring's low side, strictly between 0 and 1 (default 0.5) |
 

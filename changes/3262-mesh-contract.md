@@ -1,0 +1,1 @@
+- `translate` and `transform_selection` can move any set of vertices (`verts`) or edges (`edges`), and every edge rule takes `{ "edges": [[a, b], ...] }` vertex pairs, so a person or an agent can edit one vertex or edge in the recipe (#3262)

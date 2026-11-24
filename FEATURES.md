@@ -353,7 +353,7 @@ optional `Ready` expression the driver waits for, and `Drive`.
 - Drive: none: needs an MCP client (`npm run mcp`)
 
 ### `mesh_edit`
-- Name: Append edits to a recipe mesh geometry or an imported asset part such as mesh-0 (or replace its edit log), atomically like scene_apply: extrude, inset, delete, flip, translate with falloff, tag, loop cut, bevel, mirror, array, solidify, UV unwrap, set_position and displace with field expressions (math, noise, attributes), booleans with a primitive cutter, sculpt brush strokes and shrinkwrap onto a primitive
+- Name: Append edits to a recipe mesh geometry or an imported asset part such as mesh-0 (or replace its edit log), atomically like scene_apply: extrude, inset, delete, flip, translate of faces, vertices or edges with falloff (edges also by vertex pair), tag, loop cut, bevel, mirror, array, solidify, UV unwrap, set_position and displace with field expressions (math, noise, attributes), booleans with a primitive cutter, sculpt brush strokes and shrinkwrap onto a primitive
 - Surface: MCP
 - Reach: MCP tool `mesh_edit`
 - Source: `scripts/mcp-server.mjs:966`

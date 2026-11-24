@@ -3,6 +3,7 @@ import { faceNormals } from './mesh-normals.js';
 import { selectFaces } from './mesh-select.js';
 import { MeshBuilder } from './mesh-stack.js';
 import { requireFiniteInRange } from './modeling-limits.js';
+import { MAX_SELECTED_ELEMENTS } from './mesh-operations.js';
 
 export const MAX_BEVEL_SEGMENTS = 16;
 export const MAX_BEVEL_WIDTH = 1e6;
@@ -24,6 +25,7 @@ export const MAX_BEVEL_WIDTH = 1e6;
  *   { "along": [x, y, z], "maxAngle": 10 } edges parallel to a direction (either way) within maxAngle degrees
  *   { "all": true }                      every edge with two faces
  *   { "open": true }                     every boundary edge (one face); { "open": { "inside": { min, max } } } limits it to a box
+ *   { "edges": [[a, b], ...] }           the edges between these vertex pairs (MeshData vertex indices, either order), boundary edges too
  * Returns a Uint8Array over MeshData edges.
  */
 export function selectEdges(mesh, rule, table) {
@@ -32,8 +34,9 @@ export function selectEdges(mesh, rule, table) {
   const mask = new Uint8Array(mesh.edgeCount);
   const facesOf = edge => table.faces[edge];
   if (rule.open !== undefined && keys.length > 1) throw new TypeError(`Edge rule open does not take ${keys.filter(key => key !== 'open').join(', ')}.`);
-  if (keys.length !== 1 && rule.along === undefined) throw new TypeError('Edge rule takes exactly one of between, angle, boundaryOf, along, open, all.');
+  if (keys.length !== 1 && rule.along === undefined) throw new TypeError('Edge rule takes exactly one of between, angle, boundaryOf, along, open, all, edges.');
   if (rule.open !== undefined) return selectOpenEdges(mesh, rule, table);
+  if (rule.edges !== undefined) return selectEdgesByVertexPairs(mesh, rule.edges);
   if (rule.all === true) {
     for (let edge = 0; edge < mesh.edgeCount; edge++) mask[edge] = facesOf(edge).length === 2 ? 1 : 0;
     return mask;
@@ -92,7 +95,43 @@ export function selectEdges(mesh, rule, table) {
     }
     return mask;
   }
-  throw new TypeError('Edge rule takes exactly one of between, angle, boundaryOf, along, open, all.');
+  throw new TypeError('Edge rule takes exactly one of between, angle, boundaryOf, along, open, all, edges.');
+}
+
+/**
+ * Why a list of vertex pairs is not a valid { "edges": [[a, b], ...] } selection, or null when its shape is fine.
+ * An edge is named by the two vertices it joins, which survives edits that renumber edges and reads the same to a person
+ * and an agent. Whether each pair is an edge of the mesh is checked against the mesh, when the rule runs.
+ */
+export function edgePairProblem(pairs) {
+  const expected = `an array of 1 to ${MAX_SELECTED_ELEMENTS} vertex pairs, such as [[0, 1], [1, 2]]`;
+  if (!Array.isArray(pairs) || pairs.length < 1 || pairs.length > MAX_SELECTED_ELEMENTS) return expected;
+  const valid = pairs.every(pair => Array.isArray(pair) && pair.length === 2 && pair.every(vertex => Number.isInteger(vertex) && vertex >= 0) && pair[0] !== pair[1]);
+  return valid ? null : `${expected}, each two different whole vertex indices`;
+}
+
+function selectEdgesByVertexPairs(mesh, pairs) {
+  const problem = edgePairProblem(pairs);
+  if (problem) throw new TypeError(`Edge rule edges got ${JSON.stringify(pairs)?.slice(0, 80)}; pass ${problem}.`);
+  const wanted = new Map();
+  for (const [first, second] of pairs) {
+    if (first >= mesh.vertexCount || second >= mesh.vertexCount) {
+      throw new RangeError(`Edge rule edges names vertex ${Math.max(first, second)}, but the mesh has ${mesh.vertexCount} vertices (0 to ${mesh.vertexCount - 1}).`);
+    }
+    wanted.set(Math.min(first, second) * mesh.vertexCount + Math.max(first, second), [first, second]);
+  }
+  const mask = new Uint8Array(mesh.edgeCount);
+  for (let edge = 0; edge < mesh.edgeCount; edge++) {
+    const first = mesh.edgeVertices[edge * 2];
+    const second = mesh.edgeVertices[edge * 2 + 1];
+    const key = Math.min(first, second) * mesh.vertexCount + Math.max(first, second);
+    if (wanted.delete(key)) mask[edge] = 1;
+  }
+  if (wanted.size) {
+    const [first, second] = wanted.values().next().value;
+    throw new RangeError(`Edge rule edges names [${first}, ${second}], which is not an edge of this mesh: no face joins those two vertices. Pass vertices that share a face edge.`);
+  }
+  return mask;
 }
 
 // { "open": true } picks the boundary edges, those with one face; { "open": { "inside": { min, max } } } keeps the
