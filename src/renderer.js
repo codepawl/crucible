@@ -5,7 +5,7 @@ import { mat4, mat3 } from 'gl-matrix';
 import { BLEND_FACTORS } from './blend-output.js';
 import { packNormalsWithTangents, validateGeometryTangents } from './tangent-encoding.js';
 import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, WETNESS_FEATURE, FRAGMENT_SHADOW_POSITION_FEATURE, FADING_SHADOWS_FEATURE, VERTEX_OPACITY_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, TANGENT_FEATURE, vertexShader, liquidFragmentSource, createFragmentShader, liquidPassDrawer, createDepthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
-import { postFragment, createPostFragment, GRID_MOTION_STEP, GRID_DETAIL_STEP, NOISE_OCTAVES_STEP, localVolumeKindSteps, POST_STEPS, POST_STEPS_WITH_OPTIONAL_CODE, skyFragment, bloomFragment } from './post.js';
+import { postFragment, createPostFragment, KEEP_HUE_STEP, GRID_MOTION_STEP, GRID_DETAIL_STEP, NOISE_OCTAVES_STEP, localVolumeKindSteps, POST_STEPS, POST_STEPS_WITH_OPTIONAL_CODE, skyFragment, bloomFragment } from './post.js';
 import { createGlazeBackend } from './glaze-backend.js';
 import { fullscreenVertex, compileProgram, ProgramNotReady, isLinkComplete, setPreparing, releaseStartedPrograms } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
@@ -93,6 +93,40 @@ function drawBlendedBatchesInOrder(renderer, batches) {
     start = end;
   }
   restoreInstanceOrder(renderer, sortable);
+}
+
+/**
+ * Additive batches that lie wholly behind every transmissive shell (#3206). The shell reads a copy of the opaque scene,
+ * so a beam drawn after it would be hidden by the shell's depth; drawing the beam first puts it in that copy, and the
+ * shell attenuates it by its own transmittance only. A beam in front of, or between, shells keeps the order it had.
+ * "Behind" compares the view depth of each instance's bounds centre, as the blended order does.
+ */
+export function additiveBatchesBehindShells(renderer, additiveBatches, shells) {
+  if (additiveBatches.length === 0 || shells.length === 0) return [];
+  const order = renderer.translucentOrder ??= new TranslucentOrder(INSTANCE_STRIDE);
+  const range = renderer.translucentRange ??= [0, 0];
+  const view = renderer.view ?? IDENTITY_VIEW;
+  let farthestShellDepth = Infinity;
+  for (const shell of shells) {
+    shell.sortCenter ??= boundsCenterOf(shell.parts[0].geometry);
+    farthestShellDepth = Math.min(farthestShellDepth, order.depthRange(shell, view, range)[0]);
+  }
+  return additiveBatches.filter(batch => {
+    batch.sortCenter ??= boundsCenterOf(batch.parts[0].geometry);
+    return order.depthRange(batch, view, range)[1] < farthestShellDepth;
+  });
+}
+
+/** The liquid and foam pass may have switched program, texture unit 0 and the viewport; blend and add draws restore them. */
+function bindAlphaPassState(renderer) {
+  const context = renderer.context;
+  context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
+  context.viewport(0, 0, renderer.canvas.width, renderer.canvas.height);
+  context.enable(context.DEPTH_TEST);
+  context.useProgram(renderer.program);
+  context.activeTexture(context.TEXTURE0);
+  context.bindTexture(context.TEXTURE_2D, renderer.shadowTexture);
+  context.uniform1i(renderer.uniforms.shadowMap, 0);
 }
 
 /** Draws one group of blended batches in back to front order, interleaving instances only when the group has several batches. */
@@ -203,7 +237,7 @@ const DEFORMING_TAGS = new Set(['foliage', 'grass', 'water', 'fire', 'smoke']);
 // strength, so they can be culled and given levels like rigid parts.
 const SWAY_REACH_PER_STRENGTH = 0.56;
 
-const POST_UNIFORMS = ['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeShadowAmbient', 'volumeGridFog', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeHeightFalloff', 'volumeMaxDistance', 'volumeField', 'volumeProfile', 'volumeFlowStrength', 'volumeFlowPeriod', 'volumeLightCount', 'volumeLightPositions[0]', 'volumeLightColors[0]', 'volumeLightDirections[0]', 'volumeLightCones[0]', 'fogSkyVisibility', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel', 'autoExposureScale'];
+const POST_UNIFORMS = ['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'bloomKeepHue', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeShadowAmbient', 'volumeGridFog', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeHeightFalloff', 'volumeMaxDistance', 'volumeField', 'volumeProfile', 'volumeFlowStrength', 'volumeFlowPeriod', 'volumeLightCount', 'volumeLightPositions[0]', 'volumeLightColors[0]', 'volumeLightDirections[0]', 'volumeLightCones[0]', 'fogSkyVisibility', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel', 'autoExposureScale'];
 
 function postUniformLocations(context, program) {
   return Object.fromEntries(POST_UNIFORMS.map(name => [name, context.getUniformLocation(program, name)]));
@@ -1083,8 +1117,8 @@ export class CrucibleRenderer {
     this.shaderFeatures.add(FRAGMENT_SHADOW_POSITION_FEATURE);
     if (shadowCascades) this.shaderFeatures.add(shadowCascades.shaderFeature);
     if (shadowBounds?.hard) this.addHardShadowFeature(shadowCascades);
-    // Cascades replace the single map the tint is cut against, and the tint map is a half float render target.
-    if (this.shaderFeatures.has('tintedShadows') && (shadowCascades || !this.context.getExtension('EXT_color_buffer_float'))) this.shaderFeatures.delete('tintedShadows');
+    // The tint map is a half float render target. It is drawn from the sun and read beside the cascades too (#3259).
+    if (this.shaderFeatures.has('tintedShadows') && !this.context.getExtension('EXT_color_buffer_float')) this.shaderFeatures.delete('tintedShadows');
     this.tintedShadowsActive = this.shaderFeatures.has('tintedShadows');
     // The camera-relative vertex line is part of the first compile, so reversed depth does not compile the main program twice.
     if (reversedDepthWanted) prepareCameraRelativeProgram(this);
@@ -2113,6 +2147,8 @@ export class CrucibleRenderer {
     context.clear(context.DEPTH_BUFFER_BIT);
     this.shadowBiasPerSlope = shadowBiasPerSlope(light, mapSize);
     this.drawShadowCasters(this.lightProjection, mapSize, true);
+    // The soft cascade filter widens the tint penumbra with the gap to the caster, in metres, so it needs the view's size and the bias of a tint texel.
+    this.tintView = { depthRange: light.far - light.near, uvPerMetre: 1 / (2 * light.extent), biasPerSlope: shadowBiasPerSlope(light, TINT_MAP_SIZE) };
     this.drawTintedShadows();
     context.bindFramebuffer(context.FRAMEBUFFER, null);
     this.shadowsDirty = false;
@@ -2230,7 +2266,7 @@ export class CrucibleRenderer {
     });
   }
 
-  // `mainMap` is true for the sun's map, where blended and transmissive casters draw into the tint map instead. Elsewhere
+  // `sunMap` is true for the sun's maps (the single map and each cascade), where blended and transmissive casters draw into the tint map instead. Elsewhere
   // (cascades, point and spot tiles) they draw as opaque casters, except a blended part that did not ask to cast.
   // A world scene that sets neither shadowBounds.target nor extent gets a sun view fitted to its casters (issue #1695).
   // Skinned, morphed or crowd casters can leave any box, so they keep the fixed view.
@@ -2241,7 +2277,7 @@ export class CrucibleRenderer {
     return fitWorldShadowView(sceneBoundsOfParts(casters));
   }
 
-  drawShadowCasters(lightMatrix = this.lightProjection, resolution = null, mainMap = false) {
+  drawShadowCasters(lightMatrix = this.lightProjection, resolution = null, sunMap = false) {
     const context = this.context;
     context.useProgram(this.depthProgram);
     context.uniformMatrix4fv(this.depthUniform, false, lightMatrix);
@@ -2257,10 +2293,11 @@ export class CrucibleRenderer {
     }
     context.enable(context.POLYGON_OFFSET_FILL);
     context.polygonOffset(1, 1);
-    for (const batch of this.batches) {
+    // A one texel sun map (the cascades draw the opaque casters) stays cleared: one texel would cut the tint pass against whatever sits at its centre.
+    for (const batch of resolution === 1 ? [] : this.batches) {
       if (batch.floor || !batch.castShadow) continue;
       const fades = batch.tintedShadow && Boolean(batch.parts?.some(part => part.opacityScale));
-      if (batch.tintedShadow && (mainMap && this.tintedShadowsActive || batch.alphaMode === 'blend' && batch.parts[0].castShadow !== true && !fades)) continue;
+      if (batch.tintedShadow && (sunMap && this.tintedShadowsActive || batch.alphaMode === 'blend' && batch.parts[0].castShadow !== true && !fades)) continue;
       if (this.depthShaderFeatures?.has(FADING_SHADOWS_FEATURE)) context.uniform1f(this.depthAlphaUniforms.shadowDither, fades ? 1 : 0);
       const levelSet = batch.shadowLevels ?? batch;
       const selection = this.selectShadowInstances(batch, levelSet, lightMatrix, resolution);
@@ -2680,6 +2717,7 @@ export class CrucibleRenderer {
     if (this.transparent) steps.push('transparent');
     if (occluded) steps.push('occlusion');
     if (isBloomActive(effects)) steps.push('bloom');
+    if (isBloomActive(effects) && effects.bloom.keepHue) steps.push(KEEP_HUE_STEP);
     if (volume.density > 0) steps.push('volume');
     if (volume.density > 0 && volume.field) steps.push('field');
     if (volume.density > 0 && requireFeatureCode('volumeFog').support.usesDetail(volume)) steps.push('detail');
@@ -2789,6 +2827,7 @@ export class CrucibleRenderer {
     context.bindTexture(context.TEXTURE_2D, isBloomActive(effects) ? this.bloomTargets[1].texture : this.whiteTexture);
     context.uniform1i(post.uniforms.bloomTexture, 2);
     context.uniform1f(post.uniforms.bloomStrength, isBloomActive(effects) ? effects.bloom.strength : 0);
+    context.uniform1f(post.uniforms.bloomKeepHue, isBloomActive(effects) && effects.bloom.keepHue ? 1 : 0);
     context.activeTexture(context.TEXTURE4);
     context.bindTexture(context.TEXTURE_2D, occluded ? this.occlusionTarget.texture : this.whiteTexture);
     context.uniform1i(post.uniforms.occlusionTexture, 4);
@@ -2816,7 +2855,9 @@ export class CrucibleRenderer {
     this.activateEnvironment(environmentMap);
     const liquids = this.batches.filter(batch => batchPass(batch) === 'liquid');
     const foams = this.batches.filter(batch => batchPass(batch) === 'foam');
+    this.additiveBehindShells = null;
     if (liquids.length === 0 && foams.length === 0) return;
+    this.drawAdditiveBehindShells(liquids);
     liquidPassDrawer()(this, { frame, environment, assemblyAmount, environmentMap, liquids, foams, environmentSpecularUnit: ENVIRONMENT_SPECULAR_UNIT, maximumDistance: MAX_FINITE_DISTANCE, vertexSource: vertexShader, fragmentSource: liquidFragmentSource() });
   }
 
@@ -2935,6 +2976,26 @@ export class CrucibleRenderer {
     this.context.uniform4fv(this.uniforms.clipPerMetre, clipPerMetreScratch);
   }
 
+  /** Draws additive batches that lie behind every shell into the opaque scene the shell reads; drawBlendBatches skips them. */
+  drawAdditiveBehindShells(liquids) {
+    const shells = liquids.filter(batch => batch.layerState[9] > 0);
+    const additive = this.batches.filter(batch => batch.alphaMode === 'add' && batchPass(batch) === 'opaque' && batch.depthTest !== false);
+    const behind = additiveBatchesBehindShells(this, additive, shells);
+    if (behind.length === 0) return;
+    this.additiveBehindShells = new Set(behind);
+    const context = this.context;
+    bindAlphaPassState(this);
+    context.enable(context.BLEND);
+    context.blendFuncSeparate(context.SRC_ALPHA, context.ONE, context.ZERO, context.ONE);
+    context.depthMask(false);
+    for (const batch of behind) this.drawAlphaBatch(batch, true);
+    context.depthMask(true);
+    this.applyDepthRank(0);
+    context.disable(context.BLEND);
+    context.enable(context.CULL_FACE);
+    context.bindVertexArray(null);
+  }
+
   /** Draws blended batches back to front as one set; see drawBlendedBatchesInOrder. */
   drawBlendedInOrder(batches) {
     drawBlendedBatchesInOrder(this, batches);
@@ -2945,16 +3006,10 @@ export class CrucibleRenderer {
     const context = this.context;
     const blendBatches = this.batches.filter(batch => batch.alphaMode === 'blend' && batchPass(batch) === 'opaque');
     // Light adds in any order, so additive batches need no sort.
-    const addBatches = this.batches.filter(batch => batch.alphaMode === 'add' && batchPass(batch) === 'opaque');
+    const addBatches = this.batches.filter(batch => batch.alphaMode === 'add' && batchPass(batch) === 'opaque' && !this.additiveBehindShells?.has(batch));
     if (blendBatches.length === 0 && addBatches.length === 0) return;
     // The liquid and foam pass may have switched program, texture unit 0 and the viewport.
-    context.bindFramebuffer(context.FRAMEBUFFER, this.multisampleFramebuffer);
-    context.viewport(0, 0, this.canvas.width, this.canvas.height);
-    context.enable(context.DEPTH_TEST);
-    context.useProgram(this.program);
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
-    context.uniform1i(this.uniforms.shadowMap, 0);
+    bindAlphaPassState(this);
     const depthOrdered = blendBatches.filter(batch => batch.depthTest !== false);
     const overlayOrdered = blendBatches.filter(batch => batch.depthTest === false);
     const depthAddBatches = addBatches.filter(batch => batch.depthTest !== false);
