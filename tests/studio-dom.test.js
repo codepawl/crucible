@@ -2371,7 +2371,7 @@ test('a scene with no parts cannot be saved as a model or a pack, and Studio ref
   const group = kind => ui.root.querySelectorAll('.crucible-studio-export-group').find(candidate => candidate.dataset.kind === kind);
   for (const kind of ['model', 'pack']) {
     assert.equal(group(kind).querySelector('button').getAttribute('aria-disabled'), 'true', `${kind} is disabled`);
-    assert.equal(group(kind).querySelector('.crucible-studio-export-fact').textContent, 'The scene has no parts to save');
+    assert.equal(group(kind).querySelector('.crucible-studio-export-fact').textContent, 'No parts to save');
     assert.ok(group(kind).querySelector('.crucible-studio-export-fact svg'), 'the reason has a warning mark');
   }
   assert.notEqual(group('image').querySelector('button').getAttribute('aria-disabled'), 'true', 'an empty scene still has a picture');

@@ -4143,7 +4143,7 @@ export function createStudio(container, {
     exportPanel.setBlocked('model', noParts);
     exportPanel.setBlocked('pack', noParts);
     if (noParts) {
-      const reason = [{ icon: 'warning', text: 'The scene has no parts to save' }];
+      const reason = [{ icon: 'warning', text: 'No parts to save' }];
       exportPanel.showFacts('model', reason);
       exportPanel.showFacts('pack', reason);
       return;
