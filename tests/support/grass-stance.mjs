@@ -4,8 +4,9 @@ const WIND_REFERENCE_LENGTH = 0.6;
 
 // A CPU port of grassWind in src/world-material-shader.js, for the tip vertex of a blade (the heading is the default, 0).
 // The tip moves bladeLength / 0.6 of the metre offset the shader works out; uv.x carries the length in millimetres, 2 per millimetre.
-function windTipOffset(x, z, seconds, strength, bladeLength) {
-  const lengthShare = bladeLength / WIND_REFERENCE_LENGTH;
+// uv.x below 2 has no length code (an ordinary 0..1 uv) and keeps the full offset, as in the shader.
+function windTipOffset(x, z, seconds, strength, uvX) {
+  const lengthShare = uvX < 2 ? 1 : Math.floor(uvX / 2) * 0.001 / WIND_REFERENCE_LENGTH;
   const direction = [0.94, 0.34];
   const along = x * direction[0] + z * direction[1];
   const gust = 0.5 + 0.5 * Math.sin(along * 0.32 - seconds * 1.7 + 2.0 * Math.sin(x * 0.05 - z * 0.04 + seconds * 0.23));
@@ -30,8 +31,7 @@ export function bladeAnglesToUp(parts, { strength = 0, seconds = 3 } = {}) {
       const world = (vertexOffset, axis) => positions[vertexOffset + axis] + part.matrix[12 + axis];
       const base = [0, 1, 2].map(axis => (world(firstVertex, axis) + world(firstVertex + 3, axis)) / 2);
       const tip = [0, 1, 2].map(axis => world(tipVertex, axis));
-      const bladeLength = Math.floor(uvs[tipVertex / 3 * 2] / 2) * 0.001;
-      const offset = windTipOffset(tip[0], tip[2], seconds, strength, bladeLength);
+      const offset = windTipOffset(tip[0], tip[2], seconds, strength, uvs[tipVertex / 3 * 2]);
       const vector = tip.map((value, axis) => value + offset[axis] - base[axis]);
       angles.push(Math.acos(vector[1] / Math.hypot(...vector)) * 180 / Math.PI);
     }

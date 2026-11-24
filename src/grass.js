@@ -274,7 +274,7 @@ export function createGrass(options = {}) {
     }
     if (builder.vertexCount === 0) return [];
     // `level` and `bladeCount` let a host report the field per level of detail.
-    return [{ name: `Grass tile ${tile.column},${tile.row}`, geometry: builder.build(), matrix: tileMatrix(tile), material, castShadow: settings.castShadow, level: levelIndex, bladeCount }];
+    return [{ name: `Grass tile ${tile.column},${tile.row}`, geometry: { ...builder.build(), grassLengthUvs: true }, matrix: tileMatrix(tile), material, castShadow: settings.castShadow, level: levelIndex, bladeCount }];
   }
 
   const field = createTileField({ ...settings, buildParts });
