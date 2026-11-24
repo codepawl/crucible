@@ -486,9 +486,9 @@ const meshEdit = z.discriminatedUnion('op', [
   }).describe('Loop cut across quads. Bands between cuts get <name>.band-0 (low side) to <name>.band-<cuts>.'),
   z.strictObject({ op: z.literal('fill_holes'), name: editName, sides: z.number().int().min(3).max(4096).optional().describe('Skip boundary loops with more edges than this.') }).describe('Cap each closed boundary loop with one polygon, tagged <name>.fill. Fixes the lint boundary-edge warning.'),
   z.strictObject({ op: z.literal('dissolve_faces'), name: editName, select: selectRule }).describe('Merge connected selected faces into one polygon each, tagged <name>.merged.'),
-  z.strictObject({ op: z.literal('dissolve_edges'), name: editName, edges: edgeRule, removeStraight: z.boolean().optional() }).describe('Merge the two faces beside each selected edge, tagged <name>.merged.'),
+  z.strictObject({ op: z.literal('dissolve_edges'), name: editName, edges: edgeRule, removeStraight: z.boolean().optional().describe('Also remove two-edge vertices left.') }).describe('Merge the two faces beside each selected edge, tagged <name>.merged.'),
   z.strictObject({ op: z.literal('dissolve_verts'), name: editName, verts: z.record(z.string(), z.unknown()).describe('Vertex rule: {"all":true}, {"vertices":[indices]}, {"valence":2} or {"inside":{"min":[x,y,z],"max":[x,y,z]}}.') }).describe('Remove vertices. Two-edge vertices leave their faces; others merge the faces around them.'),
-  z.strictObject({ op: z.literal('dissolve_limited'), name: editName, edges: edgeRule.optional().describe('Defaults to all edges.'), angle: bounded(0, 180).optional().describe('Degrees of bend still counted as flat. Defaults to 5.') }).describe('Dissolve flat edges and the straight vertices left behind.'),
+  z.strictObject({ op: z.literal('dissolve_limited'), name: editName, edges: edgeRule.optional().describe('Defaults to all edges.'), angle: bounded(0, 180).optional().describe('Degrees of bend still counted as flat. Defaults to 5.') }).describe('Dissolve flat edges and straight vertices.'),
   z.strictObject({
     op: z.literal('bisect_plane'), name: editName,
     point: vector3.describe('A point on the plane, in the mesh\'s local space.'), normal: vector3.describe('Plane normal. The inner side is behind it, the outer side in front.'),
@@ -505,7 +505,7 @@ const meshEdit = z.discriminatedUnion('op', [
   z.strictObject({
     op: z.literal('knife_project'), name: editName,
     path: z.array(vector3).min(2).max(256).describe('Polyline in the mesh\'s local space.'), direction: vector3.describe('Direction the line is projected along, for example [0,0,-1].'),
-  }).describe('Cut along a polyline projected along a direction. Split faces get <name>.cut.'),
+  }).describe('Cut along a polyline projected along a direction, front and back faces alike. Split faces get <name>.cut.'),
   z.strictObject({ op: z.literal('poke'), select: selectRule.optional(), name: editName, offset: finite.optional().describe('Move each new centre along the face normal. Defaults to 0.'), relative: z.boolean().optional().describe('Scale offset by the face\'s average corner distance.') }).describe('Triangle fan around a centre vertex per selected face, tagged <name>.poke.'),
   z.strictObject({ op: z.literal('dual'), name: editName }).describe('Dual mesh, tagged <name>.dual. Needs a closed, consistently wound mesh.'),
   z.strictObject({ op: z.literal('tris_to_quads'), select: selectRule.optional(), name: editName, angle: bounded(0, 180).optional().describe('Largest angle in degrees between the two triangle normals. Defaults to 40.') }).describe('Join adjacent triangles into convex quads, tagged <name>.merged.'),

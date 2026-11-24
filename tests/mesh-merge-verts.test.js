@@ -3,6 +3,7 @@ import test from 'node:test';
 import { box } from '../src/geometry.js';
 import { editMesh, validateTopology, meshFromGeometry, lintMesh, applyMeshEdits } from '../src/mesh.js';
 import { normalizeMeshEdits, MESH_EDIT_OPERATIONS } from '../src/mesh-recipe.js';
+import { mergeVertices } from '../src/mesh-merge.js';
 
 const cube = () => meshFromGeometry(box(0, 1));
 
@@ -153,4 +154,24 @@ test('dissolve_edges removeStraight removes the two ends of a single cube edge, 
   assert.equal(outcome.results[0].removedStraight, 2);
   assert.equal(outcome.mesh.vertexCount, mesh.vertexCount - 2);
   assert.throws(() => normalizeMeshEdits([{ op: 'dissolve_edges', edges: { all: true }, removeStraight: 'yes' }]), /removeStraight/);
+});
+
+test('merge_verts refuses more than 4096 picked vertices at the recipe and at the merge itself', () => {
+  const tooMany = Array.from({ length: 4097 }, (unused, vertex) => vertex);
+  assert.throws(() => normalizeMeshEdits([{ op: 'merge_verts', vertices: tooMany }]), /2 to 4096 different whole vertex indices/);
+  assert.throws(() => mergeVertices(cube(), tooMany), /2 to 4096 different vertex indices/);
+  const atTheCap = Array.from({ length: 4096 }, (unused, vertex) => vertex);
+  assert.doesNotThrow(() => normalizeMeshEdits([{ op: 'merge_verts', vertices: atTheCap }]));
+});
+
+test('merge_verts drops a face that becomes a copy of another face', () => {
+  const geometry = {
+    positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]),
+    indices: new Uint32Array([0, 1, 2, 0, 1, 3, 1, 2, 3]),
+  };
+  const mesh = meshFromGeometry(geometry, { quads: false, tags: 'none' });
+  assert.equal(mesh.faceCount, 3);
+  const { mesh: merged, results } = applyMeshEdits(mesh, [{ op: 'merge_verts', vertices: [2, 3], at: 'first' }]);
+  assert.equal(merged.faceCount, 1, 'the face (0, 1, 3) became a second (0, 1, 2) and the face (1, 2, 3) collapsed');
+  assert.equal(results[0].removedFaces, 2);
 });
