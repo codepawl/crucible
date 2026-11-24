@@ -1,0 +1,34 @@
+{
+ "close-baked": {
+  "runsMs": [
+   0.235,
+   0.24,
+   0.24
+  ],
+  "medianMs": 0.24
+ },
+ "close-pixel": {
+  "runsMs": [
+   0.34,
+   0.337,
+   0.314
+  ],
+  "medianMs": 0.337
+ },
+ "heavy-baked": {
+  "runsMs": [
+   0.212,
+   0.215,
+   0.213
+  ],
+  "medianMs": 0.213
+ },
+ "heavy-pixel": {
+  "runsMs": [
+   0.296,
+   0.317,
+   0.298
+  ],
+  "medianMs": 0.298
+ }
+}

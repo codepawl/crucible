@@ -1,0 +1,6 @@
+{"width":640,"height":640,"recipe":{"format":"crucible.scene","schemaVersion":1,
+"geometries":[{"id":"ball","type":"mesh","base":{"type":"sphere","segments":64,"rings":40}}],
+"materials":[{"id":"stone","color":[0.1,0.1,0.1],"roughness":0.9,"surfaceCover":{"output":"slope","edge":0.5,"softness":0.02,"color":[1,0,0],"roughness":0.85}}],
+"nodes":[{"id":"ball","geometry":"ball","material":"stone","scale":[1,2,1]}],
+"camera":{"eye":[0,0,12],"target":[0,0,0],"fov":30},
+"environment":{"world":true,"lightDirection":[0,0.3,1],"keyIntensity":2,"ambientIntensity":0.6}}}

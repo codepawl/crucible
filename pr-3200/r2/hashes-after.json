@@ -1,0 +1,21 @@
+{
+ "allFragment": "64ac101088bb90cf",
+ "empty": {
+  "fragment": "cd665f80c1612d05",
+  "vertex": "b1633059764c45f7"
+ },
+ "baseMap": {
+  "fragment": "bf1200d7b53cf794",
+  "vertex": "b1633059764c45f7"
+ },
+ "wear": {
+  "fragment": "de06fcfed8de6c03",
+  "vertex": "736ecd6afc54c7d8"
+ },
+ "emissionMask": {
+  "fragment": "17c7737d55d70305",
+  "vertex": "c4d25246f6048f19"
+ },
+ "defaultFragment": "64ac101088bb90cf",
+ "defaultVertex": "c181ec6f2451bf48"
+}
