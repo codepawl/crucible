@@ -1,0 +1,74 @@
+{
+  "glb": "set.glb",
+  "hdri": "sky.hdr",
+  "hdriOptions": {
+    "intensity": 1,
+    "showBackground": true
+  },
+  "hdriSun": true,
+  "exposure": 1,
+  "frame": {
+    "fov": 80
+  },
+  "eye": [
+    0,
+    1.6,
+    3.6
+  ],
+  "target": [
+    0,
+    2,
+    -1
+  ],
+  "renderer": {
+    "ground": false,
+    "hdr": true,
+    "samples": 4,
+    "environment": {
+      "pointLights": [
+        {
+          "position": [
+            -3,
+            3,
+            -1
+          ],
+          "color": [
+            1,
+            0.75,
+            0.45
+          ],
+          "intensity": 14,
+          "range": 12
+        },
+        {
+          "position": [
+            3,
+            3,
+            -1
+          ],
+          "color": [
+            1,
+            0.75,
+            0.45
+          ],
+          "intensity": 14,
+          "range": 12
+        },
+        {
+          "position": [
+            0,
+            3,
+            2
+          ],
+          "color": [
+            1,
+            0.75,
+            0.45
+          ],
+          "intensity": 14,
+          "range": 12
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "file": "main.png",
+  "kind": "side-by-side still",
+  "camera": "main",
+  "panels": [
+    "base origin/main",
+    "branch 3389-open-room-sky 26c4298fb"
+  ],
+  "sides": [
+    "base/main.png.json",
+    "branch/main.png.json"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "glb": "street.glb",
+  "hdri": "sky.hdr",
+  "hdriOptions": {
+    "intensity": 1,
+    "showBackground": true
+  },
+  "hdriSun": true,
+  "exposure": 1,
+  "frame": {
+    "fov": 45
+  },
+  "eye": [
+    0,
+    1.8,
+    24
+  ],
+  "target": [
+    0,
+    3,
+    0
+  ],
+  "renderer": {
+    "ground": false,
+    "hdr": true,
+    "samples": 4,
+    "environment": {}
+  }
+}
