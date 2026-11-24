@@ -118,13 +118,13 @@ function surfaceValue(output, upNormal, upPosition, bounds) {
 // Two neighbouring texels further apart than this (of 255) belong to a jump the mesh means: the blur does not cross it.
 // A gentle terrain triangle changes by a few units per texel.
 const JUMP_BETWEEN_TEXELS = 100;
-// One box pass reaches this many texels each way at a 1024 map (three passes act like a Gaussian of about 4 texels), scaled with the map.
-const BOX_RADIUS_AT_1024 = 4;
+// One box pass reaches this many texels each way at a 1024 map (three passes act like a Gaussian of about 5 texels), scaled with the map.
+const BOX_RADIUS_AT_1024 = 5;
 const BOX_PASSES = 3;
 // The steep marks are only a ramp, so one pass of twice the reach does.
 const STEEP_SHARE_PASSES = 1;
 // The blurred steep marks reach their full share at one over this, so a steep texel near the border of its face is already held.
-const STEEP_SHARE_GAIN = 5;
+const STEEP_SHARE_GAIN = 6;
 
 // A face steeper than this (0 flat, 1 vertical; 72 degrees) is never lightened by the smoothing: no snow stays on it, so the
 // blur must not give it any.
@@ -194,11 +194,12 @@ function blurMap(values, covered, resolution, radius, passes, jumpLimit) {
 /**
  * Blur the covered texels of a mask map in place (`texels` is a Uint8Array, one value per texel). `steepFaces` (optional,
  * one byte per texel) marks texels on a steep face. The marks are blurred too, into a share from 0 to 1 that grows
- * smoothly toward a steep face, and a texel keeps that share of the lightening it would lose, so a steep face keeps its
- * value and the texels around it fade from kept to blurred without a step at a triangle edge. Uncovered texels are
- * neither read nor written.
+ * smoothly toward a steep face, and a texel gives back that share of what the blur moved it toward snow, so a steep face
+ * keeps its value and the texels around it fade from kept to blurred without a step at a triangle edge. Snow is a low
+ * value in a slope mask and a high value in a normalY mask: `snowIsHigh` says which, so the side that means snow never
+ * spreads onto a steep face. Uncovered texels are neither read nor written.
  */
-export function smoothMaskTexels(texels, covered, resolution, steepFaces) {
+export function smoothMaskTexels(texels, covered, resolution, steepFaces, snowIsHigh = false) {
   const radius = Math.max(1, Math.round(BOX_RADIUS_AT_1024 * Math.min(1, resolution / 1024)));
   const blurred = Float32Array.from(texels);
   blurMap(blurred, covered, resolution, radius, BOX_PASSES, JUMP_BETWEEN_TEXELS);
@@ -209,8 +210,9 @@ export function smoothMaskTexels(texels, covered, resolution, steepFaces) {
   }
   for (let texel = 0; texel < texels.length; texel++) {
     if (!covered[texel]) continue;
-    const lost = keptShare ? Math.min(1, STEEP_SHARE_GAIN * keptShare[texel]) * Math.max(0, texels[texel] - blurred[texel]) : 0;
-    texels[texel] = Math.round(blurred[texel] + lost);
+    const towardSnow = snowIsHigh ? blurred[texel] - texels[texel] : texels[texel] - blurred[texel];
+    const given = keptShare ? Math.min(1, STEEP_SHARE_GAIN * keptShare[texel]) * Math.max(0, towardSnow) : 0;
+    texels[texel] = Math.round(snowIsHigh ? blurred[texel] - given : blurred[texel] + given);
   }
 }
 
@@ -256,7 +258,7 @@ export function surfaceMap(geometry, settings, resolution, nodeId, worldMatrix) 
     const upNormal = length > 0 ? normalY / length : 0;
     if (bounds) upPosition = weightA * positions[corners[0] * 3 + 1] + weightB * positions[corners[1] * 3 + 1] + weightC * positions[corners[2] * 3 + 1];
     return surfaceValue(settings.output, upNormal, upPosition, bounds);
-  }, settings.output === 'height' ? undefined : { flagOfTriangle: corners => (hasNormals && faceIsSteep(positions, normals, corners) ? 1 : 0), afterFill: smoothMaskTexels });
+  }, settings.output === 'height' ? undefined : { flagOfTriangle: corners => (hasNormals && faceIsSteep(positions, normals, corners) ? 1 : 0), afterFill: (texels, covered, size, steepFaces) => smoothMaskTexels(texels, covered, size, steepFaces, settings.output === 'normalY') });
   maps.set(key, map);
   return map;
 }
