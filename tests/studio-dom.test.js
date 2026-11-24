@@ -509,7 +509,7 @@ test('popover buttons open each menu, close it again on a click inside and stay 
   assert.equal(newPopover.style.left, '15px');
   assert.equal(newPopover.style.right, 'auto');
   assert.equal(newPopover.style.top, '48px');
-  byText(newPopover, 'New scene').dispatchEvent(ui.dom.document.createEvent('click', { bubbles: true }));
+  newPopover.querySelector('#crucible-studio-recent-list').dispatchEvent(ui.dom.document.createEvent('click', { bubbles: true }));
   assert.equal(newPopover.popoverOpen, true);
 
   const exportButton = byText(ui.root, 'Export').parentNode;
@@ -1494,9 +1494,13 @@ test('the New scene menu replaces the scene with a template and resets the file'
   const spec = STUDIO_TEMPLATES[templateKey];
   filePill.click();
   const newPopover = ui.root.querySelector('#crucible-studio-pop-new');
-  byText(newPopover, spec.label).click();
+  byText(newPopover, 'New scene…').click();
   await ui.dom.settle();
   assert.equal(newPopover.popoverOpen, false);
+  byText(ui.root, spec.label).parentNode.click();
+  await ui.dom.settle();
+  byText(ui.root.querySelector('.crucible-studio-confirm-dialog'), 'Discard').click();
+  await ui.dom.settle();
   assert.equal(filePill.textContent, `${templateKey}.scene.json`);
   assert.equal(filePill.dataset.dirty, 'false');
   assert.equal(ui.status(), `New ${spec.label}`);
@@ -2401,7 +2405,7 @@ test('the top bar has File, Edit, View, Agent and Help menus that do what their 
 
   menuButton('File').click();
   assert.equal(popover('new').popoverOpen, true);
-  assert.deepEqual(rows('new').slice(0, 7), ['Open…', 'Save', 'Save as…', 'Recipe JSON', 'Export PNG image', 'Export GLB model', 'Export web pack']);
+  assert.deepEqual(rows('new'), ['New scene…', 'Open…', 'Open recent', 'Save', 'Save as…', 'Export PNG image', 'Export GLB model', 'Export web pack', 'Recipe JSON']);
   assert.equal(byText(popover('new'), 'Save').dataset.shortcut, 'Ctrl+S');
 
   menuButton('Edit').click();
@@ -4004,7 +4008,9 @@ test('choosing a new scene on purpose clears the draft and its notice', async te
   const ui = mountStudio(testContext, { preferenceStorage: storage });
   await ui.studio.ready;
   assert.equal(ui.root.querySelector('.crucible-studio-draft').hidden, false);
-  byText(ui.root, 'Clean stage').click();
+  ui.studio.openNewScene();
+  await ui.dom.settle();
+  byDataset(ui.root, 'template', 'empty').click();
   await ui.dom.settle();
   assert.equal(storage.entries.has(DRAFT_KEY), false);
   assert.equal(ui.root.querySelector('.crucible-studio-draft').hidden, true);
@@ -4292,14 +4298,14 @@ test('the Help menu reopens the setup and the Agent group copies the same prompt
   const ui = mountStudio(testContext);
   byText(ui.root.querySelector('#crucible-studio-pop-help'), 'Set up Studio…').click();
   assert.equal(ui.root.querySelector('.crucible-studio-setup-dialog').open, true);
-  setupButton(ui, 'Copy an agent prompt').click();
+  setupButton(ui, 'Copy prompt').click();
   await ui.dom.settle();
   assert.equal(ui.dom.clipboardTexts.length, 1);
   assert.match(ui.dom.clipboardTexts[0], /Edit Crucible scene/);
 });
 
 /** A host page that offers a built-in agent, as the desktop app does through window.crucibleShell. */
-function withHostAgent(testContext, { signedIn = false, signInAnswer = { signedIn: true } } = {}) {
+function withHostAgent(testContext, { signedIn = false, signInAnswer = { signedIn: true }, account = null } = {}) {
   const calls = [];
   let resolveSignIn;
   globalThis.crucibleShell = {
@@ -4310,54 +4316,130 @@ function withHostAgent(testContext, { signedIn = false, signInAnswer = { signedI
         return new Promise(resolve => { resolveSignIn = () => resolve(signInAnswer); });
       },
     },
+    ...(account ? { account: { get: async () => account } } : {}),
   };
   testContext.after(() => { delete globalThis.crucibleShell; });
   return { calls, finishSignIn: () => resolveSignIn() };
 }
 
-test("the AI agent step offers a host's built-in agent sign-in above the prompt (#3155)", async testContext => {
+function agentCards(ui) {
+  return ui.root.querySelectorAll('.crucible-studio-setup-agent-card');
+}
+
+function agentCardTitles(ui) {
+  return agentCards(ui).map(card => card.querySelector('.crucible-studio-setup-agent-title').textContent);
+}
+
+function signInControl(ui) {
+  return ui.root.querySelector('.crucible-studio-setup-sign-in');
+}
+
+function iconPathOf(element) {
+  return element.querySelector('.crucible-studio-icon path').getAttribute('d');
+}
+
+test("the AI agent step has two titled cards when a host offers a built-in agent, and its sign-in works (#3311)", async testContext => {
   const host = withHostAgent(testContext);
   const ui = mountStudio(testContext);
   ui.studio.openSetup();
-  const signIn = setupButton(ui, 'Sign in for the built-in AI');
-  assert.ok(signIn, 'the step offers the sign-in when a host provides one');
-  assert.ok(setupButton(ui, 'Copy an agent prompt'), "the prompt for an agent of one's own stays");
+  assert.deepEqual(agentCardTitles(ui), ['Built-in AI', 'Your own agent']);
+  agentCards(ui).forEach(card => {
+    assert.equal(card.getAttribute('role'), 'group');
+    assert.equal(card.getAttribute('aria-labelledby'), card.querySelector('.crucible-studio-setup-agent-title').id, 'a card is named by its title');
+    assert.ok(hasIcon(card.querySelector('.crucible-studio-setup-agent-head')), 'a card title has an icon');
+  });
+  assert.equal(signInControl(ui).dataset.state, 'signed-out');
+  const signIn = setupButton(ui, 'Sign in');
+  assert.ok(signIn, 'the built-in card offers the sign-in');
+  assert.ok(setupButton(ui, 'Copy prompt'), "the prompt for an agent of one's own stays");
   signIn.click();
-  assert.equal(signIn.dataset.state, 'waiting');
+  assert.equal(signInControl(ui).dataset.state, 'waiting');
   assert.equal(signIn.disabled, true);
   assert.deepEqual(host.calls, ['signIn']);
   host.finishSignIn();
   await ui.dom.settle();
-  assert.equal(signIn.dataset.state, 'signed-in');
-  assert.equal(signIn.textContent, 'Signed in to the built-in AI');
+  const control = signInControl(ui);
+  assert.equal(control.dataset.state, 'signed-in');
+  assert.equal(control.textContent, 'Signed in');
+  assert.equal(setupButton(ui, 'Sign in'), undefined, 'the signed-in state is a status, not a button');
+  assert.notEqual(iconPathOf(control), iconPathOf(signIn), 'signed in shows a different mark than signed out');
 });
 
-test('a host that is already signed in shows the step as signed in (#3155)', async testContext => {
+test('a host that is already signed in shows the built-in card as signed in (#3311)', async testContext => {
   withHostAgent(testContext, { signedIn: true });
-  const signedInUi = mountStudio(testContext);
-  signedInUi.studio.openSetup();
-  await signedInUi.dom.settle();
-  assert.ok(setupButton(signedInUi, 'Signed in to the built-in AI'));
+  const ui = mountStudio(testContext);
+  ui.studio.openSetup();
+  await ui.dom.settle();
+  assert.equal(signInControl(ui).dataset.state, 'signed-in');
+  assert.equal(signInControl(ui).textContent, 'Signed in');
 });
 
-test('a refused sign-in returns the button to its first state, so it can be tried again (#3155)', async testContext => {
+test('the built-in card names who is signed in when the host says so, and the account answer wins (#3311)', async testContext => {
+  withHostAgent(testContext, { account: { signedIn: true, name: 'Ada Lovelace', email: 'ada@example.com' } });
+  const named = mountStudio(testContext);
+  named.studio.openSetup();
+  await named.dom.settle();
+  assert.equal(signInControl(named).textContent, 'Signed in as Ada Lovelace');
+
+  withHostAgent(testContext, { account: { signedIn: true, email: 'ada@example.com' } });
+  const emailOnly = mountStudio(testContext);
+  emailOnly.studio.openSetup();
+  await emailOnly.dom.settle();
+  assert.equal(signInControl(emailOnly).textContent, 'Signed in as ada@example.com');
+
+  withHostAgent(testContext, { account: { signedIn: true } });
+  const anonymous = mountStudio(testContext);
+  anonymous.studio.openSetup();
+  await anonymous.dom.settle();
+  assert.equal(signInControl(anonymous).textContent, 'Signed in', 'no name and no email leaves the plain status');
+
+  withHostAgent(testContext, { signedIn: true, account: { signedIn: false } });
+  const signedOut = mountStudio(testContext);
+  signedOut.studio.openSetup();
+  await signedOut.dom.settle();
+  assert.equal(signInControl(signedOut).dataset.state, 'signed-out', 'account.get() decides when the host offers it');
+});
+
+test('a refused sign-in returns the built-in card to its first state, so it can be tried again (#3311)', async testContext => {
   const host = withHostAgent(testContext, { signInAnswer: { signedIn: false } });
   const ui = mountStudio(testContext);
   ui.studio.openSetup();
-  const signIn = setupButton(ui, 'Sign in for the built-in AI');
-  signIn.click();
+  setupButton(ui, 'Sign in').click();
   host.finishSignIn();
   await ui.dom.settle();
-  assert.equal(signIn.dataset.state, 'signed-out');
-  assert.equal(signIn.disabled, false);
+  assert.equal(signInControl(ui).dataset.state, 'signed-out');
+  assert.equal(setupButton(ui, 'Sign in').disabled, false);
 });
 
-test("without a host the AI agent step has only the prompt for an agent of one's own (#3155)", testContext => {
+test("without a host the AI agent step is one finished card for an agent of one's own (#3311)", testContext => {
   const ui = mountStudio(testContext);
   ui.studio.openSetup();
-  assert.equal(setupButton(ui, 'Sign in for the built-in AI'), undefined);
-  assert.equal(ui.root.querySelector('.crucible-studio-setup-sign-in'), null);
-  assert.ok(setupButton(ui, 'Copy an agent prompt'));
+  assert.deepEqual(agentCardTitles(ui), ['Your own agent']);
+  assert.equal(signInControl(ui), null);
+  assert.equal(setupButton(ui, 'Sign in'), undefined);
+  assert.ok(setupButton(ui, 'Copy prompt'));
+  assert.ok(hasIcon(agentCards(ui)[0].querySelector('.crucible-studio-setup-agent-head')));
+});
+
+test('the AI agent step uses a different icon for each part: tab, both cards, sign in and copy (#3311)', testContext => {
+  withHostAgent(testContext);
+  const ui = mountStudio(testContext);
+  ui.studio.openSetup();
+  const tabIcon = iconPathOf(ui.root.querySelectorAll('.crucible-studio-setup-step')[4]);
+  const cardIcons = agentCards(ui).map(card => iconPathOf(card.querySelector('.crucible-studio-setup-agent-head')));
+  const signInIcon = iconPathOf(setupButton(ui, 'Sign in'));
+  const copyIcon = iconPathOf(setupButton(ui, 'Copy prompt'));
+  assert.equal(new Set([tabIcon, ...cardIcons, signInIcon, copyIcon]).size, 5, 'five places, five icons');
+});
+
+test('the prompt and its copy button are one box, and a long prompt stays inside it (#3311)', testContext => {
+  const ui = mountStudio(testContext);
+  ui.studio.openSetup();
+  const box = ui.root.querySelector('.crucible-studio-setup-prompt-box');
+  assert.ok(box.querySelector('textarea.crucible-studio-setup-prompt'), 'the text is in the box');
+  assert.equal(setupButton(ui, 'Copy prompt').parentNode, box, 'the copy control sits on the box itself');
+  assert.match(STUDIO_CSS, /textarea\.crucible-studio-setup-prompt \{[^}]*overflow: auto;[^}]*overflow-wrap: anywhere;/, 'long text wraps or scrolls inside the box');
+  assert.match(STUDIO_CSS, /textarea\.crucible-studio-setup-prompt \{[^}]*max-block-size: 160px;/);
 });
 
 test('Reset in Settings keeps the setup marked done (#2847)', testContext => {
@@ -4439,7 +4521,7 @@ test('every performance tier card and every modelling row carries an icon, and e
   rows.forEach(row => assert.ok(hasIcon(row.querySelector('.crucible-studio-setup-row-label')), 'a modelling row has an icon on its label'));
   ui.root.querySelectorAll('.crucible-studio-setup-step').forEach(step => assert.ok(hasIcon(step), 'a step has an icon'));
   ['build', 'look', 'animate'].forEach(workspace => assert.ok(hasIcon(setupCard(ui, 'startWorkspace', workspace).parentNode), `the ${workspace} chip has an icon`));
-  assert.ok(hasIcon(ui.root.querySelector('.crucible-studio-setup-agent-mark')), 'the agent step shows a chat mark beside the prompt');
+  agentCards(ui).forEach(card => assert.ok(hasIcon(card.querySelector('.crucible-studio-setup-agent-head')), 'each card of the agent step has an icon on its title'));
 });
 
 test('each tier card shows its pixel ratio and anti-aliasing on this screen, and Automatic names the tier it took instead of repeating its numbers (#2847)', testContext => {
@@ -4458,18 +4540,30 @@ test('each tier card shows its pixel ratio and anti-aliasing on this screen, and
   assert.equal(cardOf('automatic').querySelector('.crucible-studio-setup-card-detail').title, 'Hardware not reported');
 });
 
-test('the agent step shows the prompt and the button says Copied once it is on the clipboard (#2847)', async testContext => {
+test('the agent step shows the prompt and the copy button says Copied with a check once it is on the clipboard (#2847)', async testContext => {
   const ui = mountStudio(testContext);
   ui.studio.openSetup();
   const prompt = ui.root.querySelector('.crucible-studio-setup-prompt');
   assert.equal(prompt.readOnly, true);
   assert.match(prompt.value, /Edit Crucible scene/);
-  setupButton(ui, 'Copy an agent prompt').click();
+  const copyButton = setupButton(ui, 'Copy prompt');
+  const copyIcon = iconPathOf(copyButton);
+  copyButton.click();
   await ui.dom.settle();
   const copied = setupButton(ui, 'Copied');
   assert.ok(copied, 'the button shows Copied');
-  assert.ok(copied.querySelector('svg') ?? copied.children[0], 'with the check icon');
+  assert.notEqual(iconPathOf(copied), copyIcon, 'with a check mark instead of the copy icon');
   assert.equal(ui.dom.clipboardTexts[0], prompt.value);
+  assert.equal(ui.status(), '', 'the button says it, so no status toast says it again (#3311)');
+});
+
+test('a blocked clipboard leaves the copy button as it was instead of saying Copied (#3311)', async testContext => {
+  const ui = mountStudio(testContext, { domOptions: { clipboardFails: true } });
+  ui.studio.openSetup();
+  setupButton(ui, 'Copy prompt').click();
+  await ui.dom.settle();
+  assert.equal(setupButton(ui, 'Copied'), undefined);
+  assert.ok(setupButton(ui, 'Copy prompt'));
 });
 
 // Keymap presets (#2847): the preference swaps the keys live.

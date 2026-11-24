@@ -49,7 +49,7 @@ const EXPECTED = {
   recipe: { 'Load file…': 'loadFile', Close: null, 'Apply JSON': 'applyJson' },
   settings: { Reset: 'resetSettings', Done: null },
   shortcuts: {},
-  setup: { Skip: null, Back: null, Next: null, Done: null, 'Sign in for the built-in AI': 'signIn', 'Copy an agent prompt': 'copyPrompt' },
+  setup: { Skip: null, Back: null, Next: null, Done: null, 'Sign in': 'signIn', 'Copy prompt': 'copyPrompt' },
 };
 
 test('every main action of a notice or dialog leads with its own icon and a dismissal has none', testContext => {
