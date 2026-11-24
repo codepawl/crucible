@@ -1,0 +1,909 @@
+{
+ "config": {
+  "startDegrees": 50,
+  "spanDegrees": 100,
+  "radius": 18,
+  "eyeHeight": 1.7,
+  "fov": 58,
+  "baoX": 3.4,
+  "labelScreenHeight": 0.026,
+  "wallWidth": 3,
+  "anaX": -3.4,
+  "anaZ": 0.6,
+  "baoZ": 0.6
+ },
+ "width": 1080,
+ "height": 1920,
+ "summary": {
+  "minEdgeMarginPixels": {
+   "value": 53.99,
+   "frame": 7,
+   "id": "bao-tag"
+  },
+  "minLabelToLabelPixels": {
+   "value": 215.06,
+   "frame": 0,
+   "id": "ana-tag"
+  },
+  "minLabelToSubjectPixels": {
+   "value": 9.49,
+   "frame": 30,
+   "id": "ana-tag"
+  },
+  "minLabelToSubjectMetres": {
+   "value": 0.09,
+   "frame": 30,
+   "id": "ana-tag"
+  }
+ },
+ "rows": [
+  {
+   "frame": 0,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 333.7827210162191,
+    "right": 501.05442599517403,
+    "top": 940.3847590620626,
+    "bottom": 990.5998958602601
+   },
+   "marginPixels": 333.7827210162191,
+   "labelToSubjectPixels": 9.82482909228213,
+   "labelToSubjectMetres": 0.12243294715881348,
+   "labelToLabelPixels": 215.05520707319863
+  },
+  {
+   "frame": 0,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 716.1096330683727,
+    "right": 991.467774186369,
+    "top": 856.9472996989621,
+    "bottom": 909.3620849502147
+   },
+   "marginPixels": 88.53222581363104,
+   "labelToSubjectPixels": 9.70517239146136,
+   "labelToSubjectMetres": 0.0936158150434494,
+   "labelToLabelPixels": 215.05520707319863
+  },
+  {
+   "frame": 1,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 318.1075266689056,
+    "right": 485.60885586857125,
+    "top": 940.6065840195854,
+    "bottom": 990.8771116917193
+   },
+   "marginPixels": 318.1075266689056,
+   "labelToSubjectPixels": 9.808843750254368,
+   "labelToSubjectMetres": 0.12198090553283691,
+   "labelToLabelPixels": 239.13659560151268
+  },
+  {
+   "frame": 1,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 724.7454514700839,
+    "right": 1000.600717370143,
+    "top": 857.0913214265979,
+    "bottom": 909.5910896990605
+   },
+   "marginPixels": 79.399282629857,
+   "labelToSubjectPixels": 9.705379307531302,
+   "labelToSubjectMetres": 0.09470038115978241,
+   "labelToLabelPixels": 239.13659560151268
+  },
+  {
+   "frame": 2,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 302.6772378649959,
+    "right": 470.4305793286585,
+    "top": 940.856175751378,
+    "bottom": 991.1859797889748
+   },
+   "marginPixels": 302.6772378649959,
+   "labelToSubjectPixels": 9.7934850137392,
+   "labelToSubjectMetres": 0.1214756965637207,
+   "labelToLabelPixels": 261.5908945138883
+  },
+  {
+   "frame": 2,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 732.0214738425468,
+    "right": 1008.3063292834315,
+    "top": 857.2516743340776,
+    "bottom": 909.8226224033081
+   },
+   "marginPixels": 71.69367071656848,
+   "labelToSubjectPixels": 9.706434208362566,
+   "labelToSubjectMetres": 0.09581165015697479,
+   "labelToLabelPixels": 261.5908945138883
+  },
+  {
+   "frame": 3,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 287.5262409919772,
+    "right": 455.55203011781066,
+    "top": 941.1328677951877,
+    "bottom": 991.526453751357
+   },
+   "marginPixels": 287.5262409919772,
+   "labelToSubjectPixels": 9.778708239028788,
+   "labelToSubjectMetres": 0.1209183931350708,
+   "labelToLabelPixels": 282.399685610495
+  },
+  {
+   "frame": 3,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 737.9517157283057,
+    "right": 1014.5938651499854,
+    "top": 857.4276829179229,
+    "bottom": 910.0556547942427
+   },
+   "marginPixels": 65.40613485001461,
+   "labelToSubjectPixels": 9.708230036116788,
+   "labelToSubjectMetres": 0.09694544970989227,
+   "labelToLabelPixels": 282.399685610495
+  },
+  {
+   "frame": 4,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 272.6899712962504,
+    "right": 441.00653779602936,
+    "top": 941.4380185311556,
+    "bottom": 991.8984594080802
+   },
+   "marginPixels": 272.6899712962504,
+   "labelToSubjectPixels": 9.76446759586372,
+   "labelToSubjectMetres": 0.12031018733978271,
+   "labelToLabelPixels": 301.5502698817816
+  },
+  {
+   "frame": 4,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 742.556807677811,
+    "right": 1019.4805337468719,
+    "top": 857.6184529344072,
+    "bottom": 910.2892701721097
+   },
+   "marginPixels": 60.519466253128144,
+   "labelToSubjectPixels": 9.710602026611355,
+   "labelToSubjectMetres": 0.09809701144695282,
+   "labelToLabelPixels": 301.5502698817816
+  },
+  {
+   "frame": 5,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 258.2053081985472,
+    "right": 426.8285453160522,
+    "top": 941.7718778336703,
+    "bottom": 992.3018896470021
+   },
+   "marginPixels": 258.2053081985472,
+   "labelToSubjectPixels": 9.750715062508334,
+   "labelToSubjectMetres": 0.1196523904800415,
+   "labelToLabelPixels": 319.0346463610948
+  },
+  {
+   "frame": 5,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 745.863191677147,
+    "right": 1022.9910704235659,
+    "top": 857.8230686689967,
+    "bottom": 910.5225636060486
+   },
+   "marginPixels": 57.00892957643407,
+   "labelToSubjectPixels": 9.713432540945291,
+   "labelToSubjectMetres": 0.09926192462444305,
+   "labelToLabelPixels": 319.0346463610948
+  },
+  {
+   "frame": 6,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 244.11031661222722,
+    "right": 413.0536037175981,
+    "top": 942.1347057619178,
+    "bottom": 992.7365961274195
+   },
+   "marginPixels": 244.11031661222722,
+   "labelToSubjectPixels": 9.737401820862715,
+   "labelToSubjectMetres": 0.11894643306732178,
+   "labelToLabelPixels": 334.8487564723115
+  },
+  {
+   "frame": 6,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 747.9023601899096,
+    "right": 1025.1563320378266,
+    "top": 858.0404515572021,
+    "bottom": 910.754686530235
+   },
+   "marginPixels": 54.84366796217341,
+   "labelToSubjectPixels": 9.716610057097228,
+   "labelToSubjectMetres": 0.1004357784986496,
+   "labelToLabelPixels": 334.8487564723115
+  },
+  {
+   "frame": 7,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 230.44458691612857,
+    "right": 399.7184754827692,
+    "top": 942.5267252398995,
+    "bottom": 993.2024026330432
+   },
+   "marginPixels": 230.44458691612857,
+   "labelToSubjectPixels": 9.724457279656917,
+   "labelToSubjectMetres": 0.1181936264038086,
+   "labelToLabelPixels": 348.99151560489946
+  },
+  {
+   "frame": 7,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 748.7099910876686,
+    "right": 1026.0128762156123,
+    "top": 858.2694281308258,
+    "bottom": 910.9848127996335
+   },
+   "marginPixels": 53.98712378438768,
+   "labelToSubjectPixels": 9.72006537546008,
+   "labelToSubjectMetres": 0.10161451995372772,
+   "labelToLabelPixels": 348.99151560489946
+  },
+  {
+   "frame": 8,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 217.24915926630987,
+    "right": 386.86119233837724,
+    "top": 942.9481533786654,
+    "bottom": 993.6990113484603
+   },
+   "marginPixels": 217.24915926630987,
+   "labelToSubjectPixels": 9.711874431827255,
+   "labelToSubjectMetres": 0.11739611625671387,
+   "labelToLabelPixels": 361.46414813230456
+  },
+  {
+   "frame": 8,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 748.3253404706818,
+    "right": 1025.6017255055253,
+    "top": 858.5087135107382,
+    "bottom": 911.212189853493
+   },
+   "marginPixels": 54.39827449447466,
+   "labelToSubjectPixels": 9.723721523999643,
+   "labelToSubjectMetres": 0.10279397666454315,
+   "labelToLabelPixels": 361.46414813230456
+  },
+  {
+   "frame": 9,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 204.56652737370945,
+    "right": 374.5210419195055,
+    "top": 943.3991720116423,
+    "bottom": 994.226139401819
+   },
+   "marginPixels": 204.56652737370945,
+   "labelToSubjectPixels": 9.699436873797367,
+   "labelToSubjectMetres": 0.11655521392822266,
+   "labelToLabelPixels": 372.2692577014458
+  },
+  {
+   "frame": 9,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 746.7902996209513,
+    "right": 1023.9678454728283,
+    "top": 858.757071941055,
+    "bottom": 911.4361389479669
+   },
+   "marginPixels": 56.032154527171656,
+   "labelToSubjectPixels": 9.727493544831987,
+   "labelToSubjectMetres": 0.10396985709667206,
+   "labelToLabelPixels": 372.2692577014458
+  },
+  {
+   "frame": 10,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 192.44063698189808,
+    "right": 362.7386490695674,
+    "top": 943.8799271978643,
+    "bottom": 994.7833538616591
+   },
+   "marginPixels": 192.44063698189808,
+   "labelToSubjectPixels": 9.686736961841461,
+   "labelToSubjectMetres": 0.11567318439483643,
+   "labelToLabelPixels": 381.4104580300012
+  },
+  {
+   "frame": 10,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 744.1491070995686,
+    "right": 1021.1591878384099,
+    "top": 859.0131245571285,
+    "bottom": 911.6559506200839
+   },
+   "marginPixels": 58.840812161590065,
+   "labelToSubjectPixels": 9.73139214642049,
+   "labelToSubjectMetres": 0.10513882339000702,
+   "labelToLabelPixels": 381.4104580300012
+  },
+  {
+   "frame": 11,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 180.91700294357005,
+    "right": 351.5559313117768,
+    "top": 944.3904864013596,
+    "bottom": 995.370171386475
+   },
+   "marginPixels": 180.91700294357005,
+   "labelToSubjectPixels": 9.674306261570678,
+   "labelToSubjectMetres": 0.11475193500518799,
+   "labelToLabelPixels": 388.8915431864049
+  },
+  {
+   "frame": 11,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 740.4474744981817,
+    "right": 1017.2259424875155,
+    "top": 859.2755121065377,
+    "bottom": 911.8709806553467
+   },
+   "marginPixels": 62.774057512484546,
+   "labelToSubjectPixels": 9.735426093721344,
+   "labelToSubjectMetres": 0.10629753768444061,
+   "labelToLabelPixels": 388.8915431864049
+  },
+  {
+   "frame": 12,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 170.04252518549802,
+    "right": 341.01606654338144,
+    "top": 944.9308874085982,
+    "bottom": 995.9859848563972
+   },
+   "marginPixels": 170.04252518549802,
+   "labelToSubjectPixels": 9.66193301308158,
+   "labelToSubjectMetres": 0.11379373073577881,
+   "labelToLabelPixels": 394.7161653691539
+  },
+  {
+   "frame": 12,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 735.7322319125353,
+    "right": 1012.220192808501,
+    "top": 859.5428823779195,
+    "bottom": 912.0807588865039
+   },
+   "marginPixels": 67.779807191499,
+   "labelToSubjectPixels": 9.739491147517128,
+   "labelToSubjectMetres": 0.10744147002696991,
+   "labelToLabelPixels": 394.7161653691539
+  },
+  {
+   "frame": 13,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 159.8653755301622,
+    "right": 331.16345514092,
+    "top": 945.5010619722456,
+    "bottom": 996.6300730610251
+   },
+   "marginPixels": 159.8653755301622,
+   "labelToSubjectPixels": 9.64968981692732,
+   "labelToSubjectMetres": 0.1128009557723999,
+   "labelToLabelPixels": 398.88738069560924
+  },
+  {
+   "frame": 13,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 730.0508358365292,
+    "right": 1006.1948422737423,
+    "top": 859.8138867516585,
+    "bottom": 912.284694556207
+   },
+   "marginPixels": 73.80515772625768,
+   "labelToSubjectPixels": 9.743661950202522,
+   "labelToSubjectMetres": 0.10856799781322479,
+   "labelToLabelPixels": 398.88738069560924
+  },
+  {
+   "frame": 14,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 150.43501718791074,
+    "right": 322.04368149440285,
+    "top": 946.1008297676078,
+    "bottom": 997.3015947476011
+   },
+   "marginPixels": 150.43501718791074,
+   "labelToSubjectPixels": 9.63757564968489,
+   "labelToSubjectMetres": 0.11177599430084229,
+   "labelToLabelPixels": 401.4072566681746
+  },
+  {
+   "frame": 14,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 723.4509381625775,
+    "right": 999.2035841334703,
+    "top": 860.0871633608864,
+    "bottom": 912.4823241395417
+   },
+   "marginPixels": 80.79641586652974,
+   "labelToSubjectPixels": 9.747941081135423,
+   "labelToSubjectMetres": 0.10967378318309784,
+   "labelToLabelPixels": 401.4072566681746
+  },
+  {
+   "frame": 15,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 141.80203157387427,
+    "right": 313.70323356447074,
+    "top": 946.7299131612909,
+    "bottom": 997.9995441581045
+   },
+   "marginPixels": 141.80203157387427,
+   "labelToSubjectPixels": 9.625433513361259,
+   "labelToSubjectMetres": 0.11072158813476562,
+   "labelToLabelPixels": 402.2768340673775
+  },
+  {
+   "frame": 15,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 715.9800676318482,
+    "right": 991.3001041101912,
+    "top": 860.3613976790141,
+    "bottom": 912.6732178619685
+   },
+   "marginPixels": 88.69989588980877,
+   "labelToSubjectPixels": 9.752349152995748,
+   "labelToSubjectMetres": 0.11075572669506073,
+   "labelToLabelPixels": 402.2768340673775
+  },
+  {
+   "frame": 16,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 134.01771024004694,
+    "right": 306.18954408038064,
+    "top": 947.3878760532875,
+    "bottom": 998.7227803742442
+   },
+   "marginPixels": 134.01771024004694,
+   "labelToSubjectPixels": 9.61347475149853,
+   "labelToSubjectMetres": 0.10964035987854004,
+   "labelToLabelPixels": 401.4957914390276
+  },
+  {
+   "frame": 16,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 707.6853355194082,
+    "right": 982.5378815450963,
+    "top": 860.6353274253271,
+    "bottom": 912.8569784024737
+   },
+   "marginPixels": 97.4621184549037,
+   "labelToSubjectPixels": 9.75692255362344,
+   "labelToSubjectMetres": 0.11181096732616425,
+   "labelToLabelPixels": 401.4957914390276
+  },
+  {
+   "frame": 17,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 127.13404467912758,
+    "right": 299.55059294866294,
+    "top": 948.0741251706048,
+    "bottom": 999.4699668093269
+   },
+   "marginPixels": 127.13404467912758,
+   "labelToSubjectPixels": 9.601489823134784,
+   "labelToSubjectMetres": 0.1085352897644043,
+   "labelToLabelPixels": 399.0626304711776
+  },
+  {
+   "frame": 17,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 698.6132234198406,
+    "right": 972.9697510468048,
+    "top": 860.907704879726,
+    "bottom": 913.0332809757081
+   },
+   "marginPixels": 107.03024895319516,
+   "labelToSubjectPixels": 9.761669721100361,
+   "labelToSubjectMetres": 0.11283640563488007,
+   "labelToLabelPixels": 399.0626304711776
+  },
+  {
+   "frame": 18,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 121.20333858564614,
+    "right": 293.834812549602,
+    "top": 948.7879003524898,
+    "bottom": 1000.2395692785045
+   },
+   "marginPixels": 121.20333858564614,
+   "labelToSubjectPixels": 9.589684059410388,
+   "labelToSubjectMetres": 0.10740959644317627,
+   "labelToLabelPixels": 394.9745150531271
+  },
+  {
+   "frame": 18,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 688.8093276027291,
+    "right": 962.6477600119134,
+    "top": 861.1773468402606,
+    "bottom": 913.201743239353
+   },
+   "marginPixels": 117.35223998808658,
+   "labelToSubjectPixels": 9.766697575043736,
+   "labelToSubjectMetres": 0.11383013427257538,
+   "labelToLabelPixels": 394.9745150531271
+  },
+  {
+   "frame": 19,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 116.27774808713852,
+    "right": 289.09067320912277,
+    "top": 949.5282081296709,
+    "bottom": 1001.029885947423
+   },
+   "marginPixels": 116.27774808713852,
+   "labelToSubjectPixels": 9.578052926151031,
+   "labelToSubjectMetres": 0.10626626014709473,
+   "labelToLabelPixels": 389.2276258504745
+  },
+  {
+   "frame": 19,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 678.3182990595973,
+    "right": 951.6227486057306,
+    "top": 861.4431580950481,
+    "bottom": 913.3621559648045
+   },
+   "marginPixels": 128.37725139426936,
+   "labelToSubjectPixels": 9.77197722360529,
+   "labelToSubjectMetres": 0.11478881537914276,
+   "labelToLabelPixels": 389.2276258504745
+  },
+  {
+   "frame": 20,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 112.4089784251137,
+    "right": 285.3663764310498,
+    "top": 950.2938427146117,
+    "bottom": 1001.8389651425437
+   },
+   "marginPixels": 112.4089784251137,
+   "labelToSubjectPixels": 9.566549214890529,
+   "labelToSubjectMetres": 0.10510873794555664,
+   "labelToLabelPixels": 381.8172450033208
+  },
+  {
+   "frame": 20,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 667.1836214343706,
+    "right": 939.94436311986,
+    "top": 861.7040052872933,
+    "bottom": 913.514226094824
+   },
+   "marginPixels": 140.05563688014,
+   "labelToSubjectPixels": 9.777597369404589,
+   "labelToSubjectMetres": 0.1157105416059494,
+   "labelToLabelPixels": 381.8172450033208
+  },
+  {
+   "frame": 21,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 109.64770016513734,
+    "right": 282.7094414292023,
+    "top": 951.0833404876508,
+    "bottom": 1002.6646409535153
+   },
+   "marginPixels": 109.64770016513734,
+   "labelToSubjectPixels": 9.555467845718454,
+   "labelToSubjectMetres": 0.10394048690795898,
+   "labelToLabelPixels": 372.7381659193937
+  },
+  {
+   "frame": 21,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 655.447607348596,
+    "right": 927.6608817820504,
+    "top": 861.9589532892128,
+    "bottom": 913.6577231739191
+   },
+   "marginPixels": 152.3391182179496,
+   "labelToSubjectPixels": 9.783614465855635,
+   "labelToSubjectMetres": 0.11659316718578339,
+   "labelToLabelPixels": 372.7381659193937
+  },
+  {
+   "frame": 22,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 108.04308398557998,
+    "right": 281.16614806150017,
+    "top": 951.8949908959455,
+    "bottom": 1003.5044828539588
+   },
+   "marginPixels": 108.04308398557998,
+   "labelToSubjectPixels": 9.544636688994046,
+   "labelToSubjectMetres": 0.10276532173156738,
+   "labelToLabelPixels": 361.9851751067383
+  },
+  {
+   "frame": 22,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 643.1513231682385,
+    "right": 914.8190147629863,
+    "top": 862.2070084831703,
+    "bottom": 913.7924746959418
+   },
+   "marginPixels": 165.18098523701372,
+   "labelToSubjectPixels": 9.790054108080426,
+   "labelToSubjectMetres": 0.1174343079328537,
+   "labelToLabelPixels": 361.9851751067383
+  },
+  {
+   "frame": 23,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 107.64208085270786,
+    "right": 280.78114572057956,
+    "top": 952.7267312462347,
+    "bottom": 1004.355848608038
+   },
+   "marginPixels": 107.64208085270786,
+   "labelToSubjectPixels": 9.534397054637225,
+   "labelToSubjectMetres": 0.10158681869506836,
+   "labelToLabelPixels": 349.5534424728384
+  },
+  {
+   "frame": 23,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 630.334588193418,
+    "right": 901.4640308684595,
+    "top": 862.4472912400946,
+    "bottom": 913.9182416598319
+   },
+   "marginPixels": 178.53596913154047,
+   "labelToSubjectPixels": 9.797032388737534,
+   "labelToSubjectMetres": 0.11823277175426483,
+   "labelToLabelPixels": 349.5534424728384
+  },
+  {
+   "frame": 24,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 108.48880276026073,
+    "right": 281.59668993535007,
+    "top": 953.576229170452,
+    "bottom": 1005.2157952052338
+   },
+   "marginPixels": 108.48880276026073,
+   "labelToSubjectPixels": 9.524818724433999,
+   "labelToSubjectMetres": 0.10040915012359619,
+   "labelToLabelPixels": 335.43922601918536
+  },
+  {
+   "frame": 24,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 617.0359159545354,
+    "right": 887.6395365835473,
+    "top": 862.6789870735157,
+    "bottom": 914.0349599209793
+   },
+   "marginPixels": 192.36046341645272,
+   "labelToSubjectPixels": 9.804511646217634,
+   "labelToSubjectMetres": 0.11898569762706757,
+   "labelToLabelPixels": 335.43922601918536
+  },
+  {
+   "frame": 25,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 110.62375553190569,
+    "right": 283.65214362227965,
+    "top": 954.4408027971753,
+    "bottom": 1006.0811546665248
+   },
+   "marginPixels": 110.62375553190569,
+   "labelToSubjectPixels": 9.515981862045123,
+   "labelToSubjectMetres": 0.09923624992370605,
+   "labelToLabelPixels": 319.6404778222863
+  },
+  {
+   "frame": 25,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 603.292621444566,
+    "right": 873.3876993797038,
+    "top": 862.9013095586723,
+    "bottom": 914.1424142473182
+   },
+   "marginPixels": 206.6123006202962,
+   "labelToSubjectPixels": 9.812623705714714,
+   "labelToSubjectMetres": 0.1196923702955246,
+   "labelToLabelPixels": 319.6404778222863
+  },
+  {
+   "frame": 26,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 114.08309139628342,
+    "right": 286.9831361622777,
+    "top": 955.3173884781462,
+    "bottom": 1006.9484778571651
+   },
+   "marginPixels": 114.08309139628342,
+   "labelToSubjectPixels": 9.508293515021705,
+   "labelToSubjectMetres": 0.09807240962982178,
+   "labelToLabelPixels": 302.15766393636454
+  },
+  {
+   "frame": 26,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 589.1408000986422,
+    "right": 858.749024935004,
+    "top": 863.1135762345469,
+    "bottom": 914.2405579737643
+   },
+   "marginPixels": 221.25097506499606,
+   "labelToSubjectPixels": 9.821347724840962,
+   "labelToSubjectMetres": 0.12035040557384491,
+   "labelToLabelPixels": 302.15766393636454
+  },
+  {
+   "frame": 27,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 118.8977137551764,
+    "right": 291.62090243439525,
+    "top": 956.2025964847782,
+    "bottom": 1007.8140844155464
+   },
+   "marginPixels": 118.8977137551764,
+   "labelToSubjectPixels": 9.50158185386158,
+   "labelToSubjectMetres": 0.09692180156707764,
+   "labelToLabelPixels": 282.99446847231127
+  },
+  {
+   "frame": 27,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 574.6153709067065,
+    "right": 843.7626464025092,
+    "top": 863.3151482407281,
+    "bottom": 914.3292515001434
+   },
+   "marginPixels": 236.23735359749082,
+   "labelToSubjectPixels": 9.830769400432018,
+   "labelToSubjectMetres": 0.1209588497877121,
+   "labelToLabelPixels": 282.99446847231127
+  },
+  {
+   "frame": 28,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 125.09251064301128,
+    "right": 297.5914032836996,
+    "top": 957.092637828314,
+    "bottom": 1008.6740110874919
+   },
+   "marginPixels": 125.09251064301128,
+   "labelToSubjectPixels": 9.49643209070291,
+   "labelToSubjectMetres": 0.09578907489776611,
+   "labelToLabelPixels": 262.1588011635906
+  },
+  {
+   "frame": 28,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 559.7502044472902,
+    "right": 828.4662055657554,
+    "top": 863.5054047625878,
+    "bottom": 914.4084008304028
+   },
+   "marginPixels": 251.53379443424456,
+   "labelToSubjectPixels": 9.840940337841062,
+   "labelToSubjectMetres": 0.12151651084423065,
+   "labelToLabelPixels": 262.1588011635906
+  },
+  {
+   "frame": 29,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 132.68526063905952,
+    "right": 304.9146036767233,
+    "top": 957.9834149468899,
+    "bottom": 1009.5241011449257
+   },
+   "marginPixels": 132.68526063905952,
+   "labelToSubjectPixels": 9.492891837341176,
+   "labelToSubjectMetres": 0.09467864036560059,
+   "labelToLabelPixels": 239.66352359498222
+  },
+  {
+   "frame": 29,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 544.5781272717055,
+    "right": 812.895954170295,
+    "top": 863.6838620901551,
+    "bottom": 914.4779528551792
+   },
+   "marginPixels": 267.104045829705,
+   "labelToSubjectPixels": 9.851880877716894,
+   "labelToSubjectMetres": 0.12202195823192596,
+   "labelToLabelPixels": 239.66352359498222
+  },
+  {
+   "frame": 30,
+   "id": "ana-tag",
+   "bounds": {
+    "left": 141.68611227739805,
+    "right": 313.6035216704213,
+    "top": 958.870368065964,
+    "bottom": 1010.3599705875356
+   },
+   "marginPixels": 141.68611227739805,
+   "labelToSubjectPixels": 9.491211736885134,
+   "labelToSubjectMetres": 0.09359514713287354,
+   "labelToLabelPixels": 215.52755333071912
+  },
+  {
+   "frame": 30,
+   "id": "bao-tag",
+   "bounds": {
+    "left": 529.1310750011404,
+    "right": 797.0869496628787,
+    "top": 863.8499920366916,
+    "bottom": 914.5378381639224
+   },
+   "marginPixels": 282.91305033712126,
+   "labelToSubjectPixels": 9.863635589699697,
+   "labelToSubjectMetres": 0.12247423827648163,
+   "labelToLabelPixels": 215.52755333071912
+  }
+ ]
+}
