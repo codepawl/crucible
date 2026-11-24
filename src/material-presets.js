@@ -21,11 +21,11 @@ const BLADE_PRESENCE = Object.freeze({ mul: Object.freeze([
 ]) });
 const BLADE_SHAPE = Object.freeze({ mul: Object.freeze([BLADE_PRESENCE, Object.freeze({ pow: Object.freeze([BLADE_DOME, 2]) })]) });
 const GRASS_TONE = Object.freeze({ add: Object.freeze([
-  Object.freeze({ add: Object.freeze([0.32, Object.freeze({ mul: Object.freeze([Object.freeze({ noise: Object.freeze({ scale: 4, octaves: 2 }) }), 0.12]) })]) }),
+  Object.freeze({ add: Object.freeze([0.36, Object.freeze({ mul: Object.freeze([Object.freeze({ noise: Object.freeze({ scale: 4, octaves: 2 }) }), 0.12]) })]) }),
   Object.freeze({ mul: Object.freeze([BLADE_SHAPE, 0.7]) }),
 ]) });
 const GRASS_PATTERN = Object.freeze({
-  type: 'graph', size: 0.6, bump: 1.1,
+  type: 'graph', size: 0.6, bump: 0.9,
   graph: Object.freeze({
     color: Object.freeze({ ramp: Object.freeze({
       value: Object.freeze({ clamp: Object.freeze([GRASS_TONE, 0, 1]) }),
@@ -82,9 +82,9 @@ const MATERIAL_PRESETS = Object.freeze({
     note: 'A glowing panel: emission 1.5 times a map with a bright tube frame along the edge of each face (4) and a calmer face inside (1.1), in a saturated version of the part colour (emissiveColor) over a near-black base. Pair it with effects.bloom { strength 1, threshold 0.8, radius 3 } for the halo and a point light of the same colour near it for the spill; the default bloom is faint. Set pattern.size to the part width for one frame per face.',
   }),
   glass: Object.freeze({
-    color: Object.freeze([0.55, 0.82, 0.95]), roughness: 0.03, metallic: 0, opacity: 0.5, clearcoat: 1,
-    transmission: 0.9, ior: 1.12, thickness: 0.05, pattern: GLASS_EDGE_PATTERN,
-    note: 'Blended pane, opacity 0.5, that refracts what is behind it (transmission 0.9, ior 1.12, thickness 0.05), with a clear coat that mirrors the sky and a Fresnel edge light, tinted by color.',
+    color: Object.freeze([0.55, 0.82, 0.95]), roughness: 0.03, metallic: 0, opacity: 0.4, clearcoat: 1,
+    transmission: 0.7, ior: 1.15, thickness: 0.06, pattern: GLASS_EDGE_PATTERN,
+    note: 'Blended pane, opacity 0.4, that refracts what is behind it (transmission 0.7, ior 1.15, thickness 0.06), with a clear coat that mirrors the sky and a Fresnel edge light, tinted by color.',
   }),
   brick: Object.freeze({
     color: Object.freeze([0.6, 0.14, 0.09]), roughness: 0.9, metallic: 0,
