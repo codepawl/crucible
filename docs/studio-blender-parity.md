@@ -87,6 +87,24 @@ Blender 5.3 manual, read 2026-11-24. Studio at commit `71aa78ab5`. Status words:
 | [Undo history, adjust last operation, repeat last](https://docs.blender.org/manual/en/latest/interface/undo_redo.html) (Edit menu, F9, Shift+R) | Missing | No list of steps and no panel to tune the last action. |
 | Default keymap | Has. `src/studio-keymap.js:313-317` | Blender keys are the default, with Maya and Cinema 4D presets. |
 
+## Workspaces
+
+Blender's [default workspaces](https://docs.blender.org/manual/en/latest/interface/window_system/workspaces.html#default-workspaces) (manual page read 2026-11-24) are Layout, Modeling, Sculpting, UV Editing, Texture Paint, Shading, Animation, Rendering, Compositing, Geometry Nodes and Scripting. Studio has four: Build, Look, Animate and Export. A workspace exists only when Studio has the tools for it, so no tab is empty. `STUDIO_WORKSPACES` in `src/studio.js` lists them and the Properties panels each one shows.
+
+| Blender workspace | Studio | What Studio does |
+| --- | --- | --- |
+| Layout | Build | Has it under another name: the scene, the object panel and the tools that place objects. |
+| Modeling | Build | Folds it in. Edit mode is entered from Build with Tab, as in Blender's Layout, so it needs no tab of its own. |
+| Sculpting | none | Leaves it out: Studio has no sculpt brushes, so the tab would be empty. |
+| UV Editing | none | Leaves it out: Studio has no UV editor. |
+| Texture Paint | none | Leaves it out: Studio has no paint brushes. |
+| Shading | Look | Has it under another name: the material and look panels. Studio has no node editor for materials. |
+| Animation | Animate | Has it: camera, shots and the timeline. |
+| Rendering | Export | Has it under another name. Blender starts Render Image or an export from the Output properties or the menu. Studio puts each export (image, model, web pack) in the Properties panel of the workspace with one action, and the File menu keeps one row, Export, that opens it. The viewport draws the saved shot there: the scene camera, no grid. Studio has no render settings yet, so the image is always the size of the viewport. |
+| Compositing | Look, in part | Folds in what Studio has: the colour look, exposure and fog sit in the Look panels. Post passes in a recipe are drawn, but no Studio panel edits them and there is no node compositor. |
+| Geometry Nodes | none | Leaves it out: Studio has no node editor. |
+| Scripting | none | Leaves it out: the recipe JSON dialog in the File menu and the MCP tools take its place, and Studio has no text editor or console. |
+
 ## Gaps, in order
 
 Size: S is one small pull request, M is one pull request, L is several. A new mesh operation changes the agent tool schema, so it is never S.
