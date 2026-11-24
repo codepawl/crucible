@@ -324,7 +324,7 @@ const ENVIRONMENT_LOOKUP_UNIFORMS = ['environmentSpecular', 'environmentEnabled'
 const ENVIRONMENT_UNIFORMS = [...ENVIRONMENT_LOOKUP_UNIFORMS, 'environmentBrdf', 'environmentIrradiance[0]', 'environmentBounce', 'environmentDiffuseFrame'];
 // Shares a unit with the skin influence texture, which no light-mapped (rigid) batch binds.
 const LIGHT_MAP_UNIT = 6;
-// The parallax height map: past every other fragment sampler, so no other feature shares it.
+// Where the parallax state starts in a batch's mapState: [heightMap, depth, fade, steps].
 const HEIGHT_STATE_OFFSET = 30;
 const ENVIRONMENT_SPECULAR_UNIT = 9;
 const ENVIRONMENT_BRDF_UNIT = 10;
@@ -1524,7 +1524,6 @@ export class CrucibleRenderer {
     this.context.uniform4fv(this.uniforms['wetnessKeepOut[0]'], this.wetnessKeepOut.boxes);
   }
 
-  /** Sets the surface wear uniforms of a batch; a material without wear turns the term off. */
   // The parallax uniforms and height texture of a batch, in programs that compiled the parallax code. A batch without a height map in such a
   // program sends w = 0, which skips the march.
   bindHeightParallax(batch) {
@@ -1532,12 +1531,14 @@ export class CrucibleRenderer {
     const context = this.context;
     const [, depth, fadeDistance, stepCount] = batch.mapState.slice(HEIGHT_STATE_OFFSET);
     context.uniform4f(this.uniforms.heightState, depth, fadeDistance, stepCount, batch.heightTexture ? 1 : 0);
+    // The sampler always names its own unit: left at its default it would read unit 0, where the cascade array sits.
+    context.uniform1i(this.uniforms.heightMap, HEIGHT_MAP_UNIT);
     if (!batch.heightTexture) return;
     context.activeTexture(context.TEXTURE0 + HEIGHT_MAP_UNIT);
     context.bindTexture(context.TEXTURE_2D, batch.heightTexture);
-    context.uniform1i(this.uniforms.heightMap, HEIGHT_MAP_UNIT);
   }
 
+  /** Sets the surface wear uniforms of a batch; a material without wear turns the term off. */
   bindSurfaceWear(wear) {
     const { context, uniforms } = this;
     context.uniform1f(uniforms.wearEnabled, wear ? 1 : 0);
