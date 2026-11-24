@@ -1,4 +1,4 @@
-// Parallax occlusion mapping for the main fragment shader (#2839). The code joins the program only when a material has a heightMap and a
+// Parallax relief for the main fragment shader (#2839). The code joins the program only when a material has a heightMap and a
 // heightScale above zero, so every other scene compiles the same program as before. A material without one in a scene that has some
 // reads heightState.w = 0 and skips the whole march.
 //
@@ -118,7 +118,7 @@ function spliceOnce(source, anchor, replacement) {
 }
 
 // The main shader picks box mapping or UV mapping with `BOX_MAPPED ? boxCall : uvCall`. Where the global parallaxShift feeds the UV branch,
-// the GPU programs measured (Chrome, ANGLE on Direct3D 11) returned the unshifted sample from that ternary, although the same call made as
+// the GPU programs measured (headless Chrome on Windows) returned the unshifted sample from that ternary, although the same call made as
 // a statement was shifted (#2839). A statement with an early return gives the same picture in the other programs and the shifted one here.
 const MAPPED_SAMPLE_HELPERS = `vec4 mappedSample(sampler2D source, float flag) {
   if (BOX_MAPPED) return sampleBox(source);

@@ -15,3 +15,4 @@
 - goal:lit-box: the relief march is core renderer code for now (about 1.8 KB gzip); moving it into a lazy shader module that only a heightMap scene loads is the follow-up that returns these bytes (#2839).
 - goal:gltf-box: same code as goal:lit-box.
 - goal:agent-scene: same code as goal:lit-box, plus the recipe fields and their checks.
+- entry:gltf: same code as entry:core, reached through the renderer.
