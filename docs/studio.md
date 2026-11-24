@@ -263,7 +263,7 @@ When an agent edits the scene, Studio shows a pointer with the agent's name, the
 - `studio.loadExternalTextFile(text, { agent })` takes `agent: { name }` to name the agent for one edit, `agent: true` to mark any load as an agent edit, and `agent: false` to load without the pointer.
 - `studio.showAgentEdit({ name, nodeIds })` points at objects directly, for a host that hears about each agent step as it happens.
 
-Each agent gets its own colour, picked from its name out of five brand colours, so two agents are easy to tell apart; the pointer, the name tag and the outline share it. The pointer keeps to its object while you orbit, visits at most eight objects for one edit, and with reduced motion it steps from object to object without gliding.
+Each agent gets its own colour, picked from its name out of five brand colours, so two agents are easy to tell apart; the pointer, the name tag and the outline share it. The pointer glides between objects in about a third of a second and sits exactly on its object while you orbit, so it never trails it; a new target mid-glide turns from where the pointer stands. It visits at most eight objects for one edit, and with reduced motion it steps from object to object without gliding.
 
 ## Chat with an agent through the host
 

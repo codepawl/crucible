@@ -6,6 +6,7 @@ import { createTriangleSurfaceIndex } from './mesh-query.js';
 import './mesh-field-surfaces.js';
 import './field-rotation.js';
 import './field-mesh-inputs.js';
+import './field-voronoi.js';
 import {
   checkedPlace, clampedSize, eulerQuaternion, mergeRealizedInstances, meshPoints, pickVariant, thinByDensity, thinBySpacing,
 } from './mesh-instance-placement.js';

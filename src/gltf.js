@@ -5,6 +5,7 @@ import { attributeFloatsInSlices, unreadEmptyMeshoptViews } from './gltf-accesso
 import { createSlicer, forEachChunk } from './cooperative.js';
 import { describeCompressedImage } from './compressed-texture.js';
 import { readImageDimensions } from './image-header.js';
+import { materialWithDerivedThickness } from './glass-thickness.js';
 export { ktx2WorkerConfigFor } from './compressed-texture.js';
 import { decodeGltf, isLinePrimitive, overLimit, textureSourceIndex, throwOverruns, unusablePrimitives } from './gltf-decode.js';
 import { readPunctualLights } from './gltf-lights.js';
@@ -1421,6 +1422,7 @@ export async function parseGltf(data, options = {}) {
     const geometries = new Map();
     const morphMetadata = new Map();
     const materials = new Map();
+    const glassThicknessCache = new Map();
     const maps = options.sharedTextures?.descriptors ?? new Map();
     const nodes = [];
     const lightNodes = [];
@@ -1495,7 +1497,8 @@ export async function parseGltf(data, options = {}) {
         const initialMatrix = new Float32Array(worldMatrixOf(node, instanceMatrix, pendingTransform).elements);
         collapseSingularMatrix(initialMatrix);
         const name = node.name || `glTF mesh ${parts.length + 1}`;
-        const part = { name, label: authoredNodeName(node, document) ?? name, geometry, matrix: initialMatrix, material };
+        const partMaterial = materialWithDerivedThickness(material, document.materials?.[materialIndex], geometry, glassThicknessCache);
+        const part = { name, label: authoredNodeName(node, document) ?? name, geometry, matrix: initialMatrix, material: partMaterial };
         const transformBinding = { node, instanceMatrix, part, mirrored, matrix: part.matrix, pendingMatrix: new Float32Array(16) };
         let pendingSkin;
         if (node.isSkinnedMesh) {

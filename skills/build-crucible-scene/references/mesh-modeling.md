@@ -238,7 +238,7 @@ Whole-mesh modifiers (no selection, no name) go in the stack or the edit log. `s
 A field expression is a small JSON formula over each vertex or face. `displace` and `set_position` take one, and
 `{ "field": expression }` selects faces by one. The formula is plain JSON, so write it as data and never as code.
 Use `{"attr":"position","component":"y"}` for a coordinate, `{"noise":{"scale":3,"seed":7}}` for smooth noise in 0 to
-1 (use `midlevel: 0.5` so it pushes both ways), and `mul`, `add`, `clamp`, `gt` and `if` to shape it. Full list in
+1 (use `midlevel: 0.5` so it pushes both ways; `"kind":"ridged"` gives sharp crests for rock, and `{"voronoi":{"scale":3,"output":"f2MinusF1"}}` cells and cracks), and `mul`, `add`, `clamp`, `gt` and `if` to shape it. Full list in
 `docs/mesh.md#field-expressions`; the limits are 64 nodes and depth 12.
 
 A lumpy boulder from one expression (a sphere keeps its topology, so it stays closed):

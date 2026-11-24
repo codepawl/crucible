@@ -1,5 +1,14 @@
 import { loopedClipTime } from './hero-lab/loop/clip-time.js';
 
+// Key times are stored as float32, so a clip's length can be a rounding step shorter than the frame time of its last key
+// (frame / fps in doubles). That frame must pose the last key, not wrap to the first (#3232). The slack is far below one frame.
+const CLIP_END_SLACK_SECONDS = 1e-4;
+
+export function fileSceneClipTime(seconds, clipDuration) {
+  if (clipDuration > 0 && seconds >= clipDuration && seconds <= clipDuration + CLIP_END_SLACK_SECONDS) return clipDuration;
+  return loopedClipTime(seconds, clipDuration);
+}
+
 // Plays the first animation clip of a scene file's GLB, the way the showcase page does, so a headless frame shows the pose the
 // page shows instead of the bind pose. The clip loops: the time inside it is the frame time modulo the clip length.
 //
@@ -21,7 +30,7 @@ export function createFileSceneClipPlayer({ asset, posedParts, sceneParts, rende
     // Poses the asset's parts without a renderer: the native path tracer packs the parts themselves (skinned vertices included),
     // so it needs the pose and no updateParts call.
     applyAt(seconds) {
-      asset.applyAnimation(loopedClipTime(seconds, clip.duration), 0);
+      asset.applyAnimation(fileSceneClipTime(seconds, clip.duration), 0);
     },
     poseAt(renderer, seconds) {
       this.applyAt(seconds);

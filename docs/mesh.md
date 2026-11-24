@@ -278,6 +278,8 @@ or reach `__proto__` or `constructor`. The same expression gives the same bytes 
 ```json
 { "mul": [{ "attr": "position", "component": "y" }, 0.5] }
 { "noise": { "scale": 3, "seed": 7, "octaves": 2 } }
+{ "noise": { "scale": 2, "seed": 3, "octaves": 4, "kind": "ridged" } }
+{ "voronoi": { "scale": 3, "seed": 5, "output": "f2MinusF1" } }
 { "gt": [{ "dot": [{ "attr": "normal" }, [0, 1, 0]] }, 0.9] }
 ```
 
@@ -295,7 +297,7 @@ Operators that take numbers also take vectors and work on each component; a numb
 | Attributes | `{ "attr": "position" \| "normal" }` with optional `component`, `{ "attr": "index" }`, `{ "attr": "tag", "name": "top" }` |
 | Mesh shape | `{ "faceArea": {} }` area of the face (over points, the mean of the faces around); `{ "edgeAngle": {} }` the sharpest angle between two faces over the element's edges, in radians, 0 on a border; `{ "island": {} }` the index of the connected piece, counted by its first vertex; `{ "neighbors": { "read": "edges" \| "faces" } }` how many edges (default) or faces touch the element. They need a mesh, so a point set rejects them. |
 | Whole domain | Each takes one object and reads every element before it answers. `{ "accumulate": { "value", "group" } }` running total in index order, restarted for each whole-number `group`; `{ "statistic": { "value", "mode": "min" \| "max" \| "mean" \| "sum" \| "range", "group" } }` that statistic over all elements or the group; `{ "blur": { "value", "iterations": 1 to 32, "weight": 0 to 1 } }` mixes the value with the mean of its neighbours (edges over points, shared edges over faces) once per iteration; `{ "sampleIndex": { "value", "index" } }` the value at the element `index` names, clamped to the range; `{ "rank": { "value", "descending" } }` the position of the element when sorted by the value, ties in index order (Blender's Sort Elements index). `value` and `group` are number expressions. |
-| Random | `{ "noise": { "scale", "seed", "octaves", "at" } }` smooth value noise in 0 to 1 at a position (default the element's), `{ "random": { "seed" } }` a number in 0 to 1 per element |
+| Random | `{ "noise": { "scale", "seed", "octaves", "kind", "lacunarity", "gain", "at" } }` smooth value noise in 0 to 1 at a position (default the element's); `kind` is `fbm` (default, soft), `ridged` (sharp crests, for rock and mountains) or `billow` (rounded hills), `lacunarity` 1 to 4 is the frequency step per octave and `gain` 0 to 1 the amplitude step, defaults 2 and 0.5; `{ "voronoi": { "scale", "seed", "output", "jitter", "smoothness", "at" } }` cellular noise in 3D with the outputs of the material graph voronoi (`distance`, `edge` or `f2MinusF1`, `f2`, `cell`, `smoothF1`), 0 to 1, `scale` cells per unit, a node that counts as 8 against the 64 node and work limits; `{ "random": { "seed" } }` a number in 0 to 1 per element |
 
 Limits, checked before evaluation: 64 nodes, depth 12, 250,000 elements, and 8,000,000 node-evaluations (nodes times
 elements). Numbers stay within 1e6, noise scale within 1000 and octaves within 4. An expression over faces reads a

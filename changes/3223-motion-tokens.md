@@ -1,0 +1,1 @@
+- The Studio agent pointer is glued to its object by a compositor `translate` and glides to a new object with a transform animation that lands on it even while you orbit, so it no longer trails the camera; every Studio transition now reads shared `--studio-motion-*` tokens and the section chevron respects reduced motion (#3223).

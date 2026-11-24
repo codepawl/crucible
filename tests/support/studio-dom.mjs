@@ -56,7 +56,10 @@ export class FakeNode {
     this.listeners = [];
     this.attributeMap = new Map();
     this.dataset = {};
-    this.style = {};
+    this.style = {
+      setProperty(name, value) { this[name] = String(value); },
+      getPropertyValue(name) { return this[name] ?? ''; },
+    };
     this.ownText = '';
     this.className = '';
     this.id = '';

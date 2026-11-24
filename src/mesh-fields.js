@@ -57,16 +57,28 @@ export function valueNoise(x, y, z, seed) {
   return interpolate(nearY0, nearY1, fractionZ);
 }
 
-function fractalNoise(x, y, z, seed, octaves) {
+// What one octave of value noise (0 to 1) adds to the sum: fbm keeps it, billow folds it around the middle into rounded
+// hills, ridged turns that fold upside down and squares it into sharp crests (the same kinds as the material graph noise).
+const OCTAVE_SIGNALS = {
+  fbm: value => value,
+  billow: value => Math.abs(value * 2 - 1),
+  ridged: value => (1 - Math.abs(value * 2 - 1)) ** 2,
+};
+const NOISE_KINDS = Object.keys(OCTAVE_SIGNALS);
+const LACUNARITY_RANGE = [1, 4];
+const GAIN_RANGE = [0, 1];
+
+function fractalNoise(x, y, z, seed, octaves, { kind = 'fbm', lacunarity = 2, gain = 0.5 } = {}) {
+  const signal = OCTAVE_SIGNALS[kind];
   let total = 0;
   let amplitude = 1;
   let amplitudeSum = 0;
   let frequency = 1;
   for (let octave = 0; octave < octaves; octave++) {
-    total += valueNoise(x * frequency, y * frequency, z * frequency, seed + octave) * amplitude;
+    total += signal(valueNoise(x * frequency, y * frequency, z * frequency, seed + octave)) * amplitude;
     amplitudeSum += amplitude;
-    amplitude *= 0.5;
-    frequency *= 2;
+    amplitude *= gain;
+    frequency *= lacunarity;
   }
   return total / amplitudeSum;
 }
@@ -216,15 +228,22 @@ function compileAttribute(node, context) {
 
 function compileNoise(node, state, depth) {
   const settings = node.noise;
-  if (!isPlainObject(settings)) throw fieldError('noise takes { scale, seed, octaves, at }.');
-  onlyKeys(settings, ['scale', 'seed', 'octaves', 'at'], 'noise');
+  if (!isPlainObject(settings)) throw fieldError('noise takes { scale, seed, octaves, kind, lacunarity, gain, at }.');
+  onlyKeys(settings, ['scale', 'seed', 'octaves', 'kind', 'lacunarity', 'gain', 'at'], 'noise');
   const scale = settings.scale ?? 1;
   if (typeof scale !== 'number' || !(scale > 0) || scale > MAX_NOISE_SCALE) throw fieldError(`noise scale must be above 0 and at most ${MAX_NOISE_SCALE}.`);
   const seed = integerInRange(settings.seed ?? 0, 0, MAX_SEED, 'noise seed');
   const octaves = integerInRange(settings.octaves ?? 1, 1, MAX_NOISE_OCTAVES, 'noise octaves');
+  const kind = settings.kind ?? 'fbm';
+  if (!NOISE_KINDS.includes(kind)) throw fieldError(`noise kind must be one of ${NOISE_KINDS.join(', ')}.`);
+  const lacunarity = settings.lacunarity ?? 2;
+  if (!isBoundedNumber(lacunarity) || lacunarity < LACUNARITY_RANGE[0] || lacunarity > LACUNARITY_RANGE[1]) throw fieldError(`noise lacunarity must be a number from ${LACUNARITY_RANGE.join(' to ')}.`);
+  const gain = settings.gain ?? 0.5;
+  if (!isBoundedNumber(gain) || gain < GAIN_RANGE[0] || gain > GAIN_RANGE[1]) throw fieldError(`noise gain must be a number from ${GAIN_RANGE.join(' to ')}.`);
   const at = settings.at === undefined ? compileAttribute({ attr: 'position' }, state.context) : compileNode(settings.at, state, depth + 1);
   const [partX, partY, partZ] = requireVector(at, 'noise "at"');
-  return scalarValue(index => fractalNoise(partX(index) * scale, partY(index) * scale, partZ(index) * scale, seed, octaves));
+  const shape = { kind, lacunarity, gain };
+  return scalarValue(index => fractalNoise(partX(index) * scale, partY(index) * scale, partZ(index) * scale, seed, octaves, shape));
 }
 
 function compileRandom(node) {
@@ -260,7 +279,7 @@ function compileInput(node, state, depth) {
 
 const FIELD_DIALECT = Object.freeze({
   name: 'field',
-  accepts: 'a number, a boolean, a vector of three numbers, an attribute, noise, random, nearest, raycast or an operator object',
+  accepts: 'a number, a boolean, a vector of three numbers, an attribute, noise, voronoi, random, nearest, raycast or an operator object',
   maxNodes: MAX_FIELD_NODES,
   maxDepth: MAX_FIELD_DEPTH,
   operators: OPERATORS,

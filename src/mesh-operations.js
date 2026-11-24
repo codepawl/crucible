@@ -105,7 +105,7 @@ export const FIELD_OPERATOR_NAMES = /* @__PURE__ */ Object.freeze([
   'lt', 'lte', 'gt', 'gte', 'eq', 'and', 'or', 'not', 'if',
   'vec', 'dot', 'cross', 'distance', 'length', 'normalize', 'x', 'y', 'z',
   'rotate', 'align', 'transform',
-  'attr', 'noise', 'random', 'nearest', 'raycast',
+  'attr', 'noise', 'voronoi', 'random', 'nearest', 'raycast',
   'faceArea', 'edgeAngle', 'island', 'neighbors', 'accumulate', 'statistic', 'blur', 'sampleIndex', 'rank',
 ]);
 export const INSTANCE_SOURCES = /* @__PURE__ */ Object.freeze(['grid', 'scatter', 'surface', 'curve']);

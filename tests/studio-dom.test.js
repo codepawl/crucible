@@ -1782,11 +1782,12 @@ test('a reload of the watched file walks a named agent cursor over the objects i
   assert.equal(ui.status(), 'Claude edited hero, orb');
   ui.studio.renderNow();
   assert.equal(outlines().length, 1);
-  const heroLeft = Number.parseFloat(cursor.style.left);
-  assert.ok(heroLeft > 0 && heroLeft < 50, `the cursor sits on the hero, left of centre: ${cursor.style.left}`);
+  const heroLeft = Number.parseFloat(cursor.style.getPropertyValue('--studio-agent-x'));
+  const halfWidth = ui.controller.viewportWidth / 2;
+  assert.ok(heroLeft > 0 && heroLeft < halfWidth, `the cursor sits on the hero, left of centre: ${heroLeft}px`);
   ui.dom.runTimers();
   assert.equal(cursor.dataset.nodeId, 'orb');
-  assert.ok(Number.parseFloat(cursor.style.left) > 50, `the cursor moved to the orb: ${cursor.style.left}`);
+  assert.ok(Number.parseFloat(cursor.style.getPropertyValue('--studio-agent-x')) > halfWidth, 'the cursor moved to the orb');
   ui.dom.runTimers();
   assert.equal(cursor.hidden, true);
   ui.studio.renderNow();
@@ -1825,10 +1826,10 @@ test('showAgentEdit points at named objects, skips unknown ones and rejects bad 
   ui.studio.showAgentEdit({ name: 'Claude', nodeIds: ['missing', 'orb'] });
   assert.equal(cursor.dataset.nodeId, 'orb');
   assert.equal(ui.status(), 'Claude edited missing, orb');
-  const before = cursor.style.left;
+  const before = cursor.style.getPropertyValue('--studio-agent-x');
   ui.controller.orbitCamera({ deltaAzimuth: 0.6 });
   ui.studio.renderNow();
-  assert.notEqual(cursor.style.left, before, 'the cursor follows its object when the camera moves');
+  assert.notEqual(cursor.style.getPropertyValue('--studio-agent-x'), before, 'the cursor follows its object when the camera moves');
   ui.studio.showAgentEdit({ nodeIds: [] });
   assert.equal(cursor.hidden, true);
   assert.throws(() => ui.studio.showAgentEdit({ name: '', nodeIds: [] }), /agent name must be a string/);

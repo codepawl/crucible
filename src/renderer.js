@@ -301,7 +301,8 @@ function materialAlphaState(material) {
   validateAlphaMaterial(material);
   const alphaMode = material.alphaMode ?? 'opaque';
   const alphaCutoff = alphaMode === 'mask' ? material.alphaCutoff ?? 0.5 : 0;
-  const opacity = alphaMode === 'mask' ? (material.opacity ?? 1) + (material.opacityBias ?? 0) : 1;
+  // Glass that blends keeps its alpha as coverage over the refracted picture (the liquid pass reads it); other blend parts carry alpha in the shader.
+  const opacity = alphaMode === 'mask' || (alphaMode === 'blend' && material.transmission > 0) ? (material.opacity ?? 1) + (material.opacityBias ?? 0) : 1;
   return [alphaMode, alphaCutoff, opacity, material.doubleSided === true, material.retro, material.waterGlint, material.depthTest !== false];
 }
 
@@ -2275,6 +2276,8 @@ export class CrucibleRenderer {
     if (this.multisampleColor) this.backend.deleteRenderbuffer(this.multisampleColor);
     if (this.multisampleDepth) this.backend.deleteRenderbuffer(this.multisampleDepth);
     if (this.frameTexture) this.backend.deleteTexture(this.frameTexture);
+    this.refractionChain?.release();
+    this.refractionDepth?.release();
     if (this.depthTexture) this.backend.deleteTexture(this.depthTexture);
     for (const target of this.bloomTargets ?? []) {
       context.deleteTexture(target.texture);
@@ -3305,3 +3308,5 @@ export class CrucibleRenderer {
 // Glaze is the public name of the real-time renderer; CrucibleRenderer stays for existing code.
 export { CrucibleRenderer as Glaze };
 /** Deprecated: the old name of CrucibleRenderer, removed in the release after 0.20.0. */
+
+export { renderPass, materialAlphaState };

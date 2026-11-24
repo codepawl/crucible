@@ -2,6 +2,9 @@ import { environmentLookupGlsl } from './environment-shading.js';
 import { registerShaderFeatureCode } from './shader-registry.js';
 import { drawLiquidPass } from './liquid-renderer.js';
 import { probeLookupGlsl, probeUniformsGlsl } from './probe-glsl.js';
+import { ballLensGlsl } from './glass-ball-lens.js';
+import { glassDepthMarchGlsl } from './glass-depth-march.js';
+import { transmissionBlurGlsl } from './transmission-blur.js';
 import { waterMirrorFunctionsGlsl, waterMirrorUniformsGlsl } from './water-mirror-glsl.js';
 
 // Importing this module registers the liquid and foam shader. A renderer with a transmissive, liquid or foam part
@@ -23,6 +26,9 @@ uniform vec3 eye;
 uniform float time;
 uniform mat4 viewProjection;
 uniform sampler2D sceneColor;
+// The opaque pass's depth, in the buffer's convention; depthMapping is (scale, bias, 1 when the buffer is reversed). Glass marches against it.
+uniform highp sampler2D sceneDepth;
+uniform vec3 depthMapping;
 uniform vec2 resolution;
 uniform float exposure;
 uniform float hdrEnabled;
@@ -38,6 +44,10 @@ uniform vec4 liquidOptics;
 // A transmissive PBR material: x: transmission, y: index of refraction, z: thickness in metres, w: attenuation distance
 uniform vec4 glassState;
 uniform vec3 glassTint;
+// The share of the part that covers the refracted picture: the alpha of a blended glass material, 1 for every other part. The shader raises it by the transmission share: light that passes through glass replaces the scene behind it, so a refracted picture drawn at low alpha would leave an unrefracted ghost of the same scene underneath.
+uniform float glassCoverage;
+// 1 for a glass cap with no back face (a cornea): the ray bends once on entry and the glass continues behind it.
+uniform float glassMediumContinues;
 // The glTF metallic-roughness texture; a flag of 2 or more reads the second UV set, as in the opaque shader.
 uniform sampler2D metallicRoughnessMap;
 uniform float hasMetallicRoughnessMap;
@@ -93,6 +103,9 @@ vec3 ambientLight(vec3 normal) {
   return mix(studioAmbient, worldAmbient, worldMode) * ambientIntensity;
 }
 
+${transmissionBlurGlsl}
+${ballLensGlsl}
+${glassDepthMarchGlsl}
 vec3 displayed(vec3 radiance) {
   return hdrEnabled > 0.5 ? clamp(radiance * exposure, vec3(0), vec3(65504.0)) : pow(toneMap(radiance * exposure), vec3(1.0 / 2.2));
 }
@@ -101,6 +114,9 @@ void main() {
   // While the mirror picture is drawn, nothing under the water plane is part of it.
   if (waterClip.y > 0.5 && worldPosition.y < waterClip.x + 0.05) discard;
   vec3 normal = normalize(worldNormal);
+  // Screen-space steps of the position and the normal give the radius of curvature the ball lens model needs.
+  float positionStep = length(fwidth(worldPosition));
+  float normalStep = length(fwidth(normal));
   if (!gl_FrontFacing) normal = -normal;
   vec3 viewDirection = normalize(eye - worldPosition);
   float facing = max(dot(normal, viewDirection), 0.0);
@@ -127,12 +143,30 @@ void main() {
   if (glass && hasMetallicRoughnessMap > 0.5) metallic *= texture(metallicRoughnessMap, hasMetallicRoughnessMap > 1.5 ? lightmapUV : textureUV).b;
   float transmissionShare = glassState.x * (1.0 - metallic);
   float indexOfRefraction = glass ? glassState.y : liquidOptics.y;
-  float thickness = (glass ? glassState.z : liquidOptics.x) * mix(0.15, 1.0, facing);
+  // Glass bends the ray where it enters and where it leaves (a ball lens), then the ray is marched against the opaque depth to the surface
+  // it reaches. A liquid bends it once and reads the scene one thickness along. A march that misses reads the scene where the ray last was on the screen.
+  float thickness = glass ? glassState.z : liquidOptics.x * mix(0.15, 1.0, facing);
   vec3 bent = refract(-viewDirection, normal, 1.0 / indexOfRefraction);
-  vec4 projected = viewProjection * vec4(worldPosition + bent * thickness, 1.0);
+  vec3 samplePosition = worldPosition + bent * thickness;
+  vec3 depthHit = vec3(0.0);
+  if (glass && thickness > 0.0) {
+    vec3 rayOrigin = worldPosition;
+    vec3 rayDirection = bent;
+    float reach = thickness;
+    if (glassMediumContinues < 0.5) {
+      ballLensRay(worldPosition, normal, viewDirection, indexOfRefraction, curvatureRadius(positionStep, normalStep, thickness), thickness, rayOrigin, rayDirection);
+      reach = thickness * SCENE_REACH_PER_THICKNESS;
+    }
+    samplePosition = rayOrigin + rayDirection * reach;
+    depthHit = marchSceneDepth(rayOrigin, rayDirection, thickness * MARCH_REACH_PER_THICKNESS);
+  }
+  vec4 projected = viewProjection * vec4(samplePosition, 1.0);
   vec2 refracted = projected.w > 0.0 ? projected.xy / projected.w * 0.5 + 0.5 : screen;
+  if (depthHit.z > 0.25) refracted = depthHit.xy;
   refracted = clamp(mix(screen, refracted, glass ? 1.0 : liquidOptics.z), vec2(0.001), vec2(0.999));
-  vec3 behind = texture(sceneColor, refracted).rgb;
+  // Rough glass reads a blurrier level of the scene's mip chain; a scene without one (or a liquid) reads the sharp image.
+  float blurLevel = glass ? transmissionBlurLevel(roughness, indexOfRefraction, resolution) : 0.0;
+  vec3 behind = textureLod(sceneColor, refracted, blurLevel).rgb;
   // The material colour is what one metre of this liquid lets through.
   // For a PBR material the colour tints what passes through and the attenuation colour is what attenuationDistance metres let through.
   vec3 absorption = pow(clamp(glass ? glassTint : color, vec3(0.001), vec3(1.0)), vec3(glass ? thickness / glassState.w : thickness));
@@ -151,7 +185,7 @@ void main() {
   vec3 surfaceLight = (inScatter + diffuseShare) * (1.0 - reflectance) + reflection * reflectionTint * reflectance + highlight * reflectionTint;
   surfaceLight = mix(surfaceLight, fogColor, fog);
   float transmitted = glass ? transmissionShare : 1.0;
-  outputColor = vec4(behind * transmittance * transmitted * (1.0 - reflectance) * (1.0 - fog) + displayed(surfaceLight), 1.0);
+  outputColor = vec4(behind * transmittance * transmitted * (1.0 - reflectance) * (1.0 - fog) + displayed(surfaceLight), glass ? glassOutputCoverage(glassCoverage, transmissionShare) : 1.0);
 }`;
 
 registerShaderFeatureCode('liquid', { fragment: liquidFragmentShader, draw: drawLiquidPass });
