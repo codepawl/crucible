@@ -20,7 +20,7 @@ function groupWeights(geometry, name, nodeId) {
 }
 
 // `valueAt(weightA, weightB, weightC)` is the texel value 0 to 1 from the barycentric weights of the three corners.
-function fillTriangle(texels, covered, resolution, uvs, corners, valueAt) {
+function fillTriangle(texels, covered, resolution, uvs, corners, valueAt, flags, flag) {
   const points = corners.map(corner => [uvs[corner * 2] * resolution, uvs[corner * 2 + 1] * resolution]);
   const [[ax, ay], [bx, by], [cx, cy]] = points;
   const area = (bx - ax) * (cy - ay) - (cx - ax) * (by - ay);
@@ -41,6 +41,7 @@ function fillTriangle(texels, covered, resolution, uvs, corners, valueAt) {
       const pixel = row * resolution + column;
       texels[pixel] = Math.min(255, Math.max(0, Math.round(value * 255)));
       covered[pixel] = 1;
+      if (flags) flags[pixel] = flag;
     }
   }
 }
@@ -80,15 +81,17 @@ export function dilateTexels(texels, covered, resolution) {
  * a byte in the red channel), spreads the filled texels outward and returns the frozen `{ width, height, data }` RGBA
  * map. `vertexCount` is the corner count of an unindexed mesh. The work is the texels each triangle covers.
  */
-export function rasterizeUvTriangles(geometry, resolution, vertexCount, valueAt) {
+export function rasterizeUvTriangles(geometry, resolution, vertexCount, valueAt, { flagOfTriangle, afterFill } = {}) {
   const texels = new Uint8Array(resolution * resolution);
   const covered = new Uint8Array(resolution * resolution);
+  const flags = flagOfTriangle ? new Uint8Array(resolution * resolution) : undefined;
   const { indices, uvs } = geometry;
   const cornerCount = indices ? indices.length : vertexCount;
   for (let corner = 0; corner + 2 < cornerCount; corner += 3) {
     const corners = indices ? [indices[corner], indices[corner + 1], indices[corner + 2]] : [corner, corner + 1, corner + 2];
-    fillTriangle(texels, covered, resolution, uvs, corners, (weightA, weightB, weightC) => valueAt(corners, weightA, weightB, weightC));
+    fillTriangle(texels, covered, resolution, uvs, corners, (weightA, weightB, weightC) => valueAt(corners, weightA, weightB, weightC), flags, flagOfTriangle ? flagOfTriangle(corners) : 0);
   }
+  if (afterFill) afterFill(texels, covered, resolution, flags);
   dilateTexels(texels, covered, resolution);
   const data = new Uint8ClampedArray(resolution * resolution * 4);
   for (let pixel = 0; pixel < texels.length; pixel++) {

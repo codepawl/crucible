@@ -1,6 +1,7 @@
 import { invalidField } from './field-error.js';
 import { weldedMaskNormals } from './mesh-weld-normals.js';
 import { rasterizeUvTriangles } from './material-vertex-group-map.js';
+import { smoothMaskTexels, STEEP_FACE_SLOPE } from './material-mask-smooth.js';
 
 // The surface of one mesh drawn into UV space, so a material graph can read its slope or height at each texel with
 // {"surface":{"output":"slope"}}. The normal and the position of every texel are the barycentric blend of the corner
@@ -77,6 +78,17 @@ function faceNormal(positions, corners) {
   ];
 }
 
+// Whether the face of a triangle is steeper than STEEP_FACE_SLOPE (0 flat, 1 vertical), read against the way its vertex normals point.
+function faceIsSteep(positions, normals, corners) {
+  const face = faceNormal(positions, corners);
+  const faceLength = Math.hypot(face[0], face[1], face[2]);
+  if (faceLength === 0) return false;
+  const first = corners[0] * 3;
+  const outward = face[0] * normals[first] + face[1] * normals[first + 1] + face[2] * normals[first + 2] < 0 ? -1 : 1;
+  const slope = Math.acos(Math.min(1, Math.max(-1, outward * face[1] / faceLength))) / RIGHT_ANGLE;
+  return slope >= STEEP_FACE_SLOPE;
+}
+
 function heightBounds(positions, range) {
   if (range) return range;
   let low = Infinity;
@@ -137,7 +149,7 @@ export function surfaceMap(geometry, settings, resolution, nodeId, worldMatrix) 
     const upNormal = length > 0 ? normalY / length : 0;
     if (bounds) upPosition = weightA * positions[corners[0] * 3 + 1] + weightB * positions[corners[1] * 3 + 1] + weightC * positions[corners[2] * 3 + 1];
     return surfaceValue(settings.output, upNormal, upPosition, bounds);
-  });
+  }, settings.output === 'height' ? undefined : { flagOfTriangle: corners => (hasNormals && faceIsSteep(positions, normals, corners) ? 1 : 0), afterFill: smoothMaskTexels });
   maps.set(key, map);
   return map;
 }
