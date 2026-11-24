@@ -90,5 +90,6 @@ test('the edge rule description names the vertex pair form, so scene_capabilitie
   const client = await connect(context);
   const answer = await client.callTool({ name: 'scene_capabilities', arguments: { topic: 'meshEdit' } });
   assert.ok(answer.structuredContent.fields.rules.edgeRule.includes('{"edges":[[a,b],...]} (vertex pairs)'));
+  assert.ok(answer.structuredContent.fields.branches.translate.note.includes('one of select, verts or edges (at most 4096 each)'));
   assert.match(answer.structuredContent.fields.branches.translate.args, /verts\?:vertexRule, edges\?:edgeRule/);
 });
