@@ -6,6 +6,7 @@ import { decodePack } from '../src/scene-pack-format.js';
 import { STUDIO_CSS } from '../src/studio-styles.js';
 import { createStudio, createStudioController, STUDIO_PRIMITIVES, STUDIO_TABS, STUDIO_TEMPLATES, STUDIO_TOOLS } from '../src/studio.js';
 import { LIGHTING_SETUP_NAMES } from '../src/agent-scene-capabilities.js';
+import { createAgentScene } from '../src/agent-scene.js';
 import { directionToSunAngles, hexToLinearRgb } from '../src/studio-controller.js';
 import { buildGridParts } from '../src/studio-viewport-aids.js';
 import { VIEW_TRANSFORM_NAMES } from '../src/view-transform-names.js';
@@ -2201,12 +2202,12 @@ test('the Export workspace holds an image, a model and a web pack, each with its
   for (const group of groups) {
     assert.ok(group.querySelector('.crucible-studio-export-heading svg'), 'each group title has an icon');
     assert.equal(group.querySelectorAll('button').length, 1, 'one action for each export');
-    assert.ok(group.querySelector('button svg'), 'the action has an icon');
+    assert.equal(group.querySelector('button svg'), null, 'the group title carries the icon, as the other Studio buttons carry none');
     assert.equal(group.querySelector('.crucible-studio-export-result').hasAttribute('hidden'), true, 'no result before an export');
   }
   const factTexts = kind => groups.find(group => group.dataset.kind === kind).querySelectorAll('.crucible-studio-export-fact').map(fact => fact.textContent);
   assert.ok(factTexts('model').some(text => /parts?$/.test(text)) && factTexts('model').some(text => /triangles$/.test(text)), 'the model names its parts and triangles');
-  assert.deepEqual(factTexts('pack'), ['motion left out'], 'the pack names what a static snapshot leaves out');
+  assert.deepEqual(factTexts('pack'), [factTexts('model')[0], 'motion left out'], 'the pack names its parts and what a static snapshot leaves out');
   assert.deepEqual(factTexts('image'), ['', '640 × 360'], 'the image shows its shape and names its size in pixels');
 
   byText(ui.root, 'Save PNG').click();
@@ -2219,6 +2220,12 @@ test('the Export workspace holds an image, a model and a web pack, each with its
   assert.equal(modelResult.dataset.state, 'ok');
   assert.match(modelResult.textContent, /^castle\.glb, \d+(\.\d)? (B|KB|MB)$/);
   assert.ok(modelResult.querySelector('svg'), 'a result leads with a mark');
+  const statusRegion = ui.root.querySelector('.crucible-studio-export-status');
+  assert.equal(statusRegion.getAttribute('role'), 'status');
+  assert.equal(statusRegion.hasAttribute('hidden'), false, 'the status region is never hidden, so a screen reader has it before the first message');
+  assert.equal(statusRegion.textContent, modelResult.textContent, 'and it carries the same message');
+  assert.equal(modelResult.getAttribute('aria-hidden'), 'true', 'the line seen is not read twice');
+  assert.equal(ui.root.querySelector('.crucible-studio-inspector .crucible-studio-dock-title span').textContent, 'Export', 'the card is titled for the workspace');
 
   const failing = createDesktop();
   failing.saveGlb = async () => {
@@ -2234,6 +2241,162 @@ test('the Export workspace holds an image, a model and a web pack, each with its
 
   byDataset(ui.root, 'workspace', 'build').click();
   assert.equal(modelResult.hasAttribute('hidden'), true, 'leaving the workspace clears the results');
+  assert.equal(ui.root.querySelector('.crucible-studio-inspector .crucible-studio-dock-title span').textContent, 'Properties');
+});
+
+test('Export is a place to look and save: edits, edit mode, picking and the view are locked, and leaving gives them back (#3343)', testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  const recipeBefore = JSON.stringify(ui.studio.exportRecipe());
+  const toolBefore = ui.controller.tool;
+  const eyeBefore = [...ui.controller.viewCamera.eye];
+  const sceneParts = ui.controller.scene.parts.length;
+  ui.studio.renderNow();
+  assert.ok(ui.gizmo.children.length > 0, 'Build draws the handles of the selection');
+
+  byDataset(ui.root, 'workspace', 'export').click();
+  for (const key of ['Delete', 'x', 'g', 'r', 's', 'Tab', 'k', 'f']) {
+    dispatch(ui.dom.document, 'keydown', { key });
+  }
+  dispatch(ui.dom.document, 'keydown', { key: 'd', shiftKey: true });
+  dispatch(ui.dom.document, 'keydown', { key: 'c', ctrlKey: true });
+  dispatch(ui.dom.document, 'keydown', { key: 'v', ctrlKey: true });
+  assert.equal(ui.root.dataset.workspace, 'export', 'a keyframe key does not carry the person to Animate');
+  assert.equal(JSON.stringify(ui.studio.exportRecipe()), recipeBefore, 'no key edits the scene');
+  assert.equal(ui.controller.tool, toolBefore);
+  assert.equal(ui.controller.selectedNodeId, 'hero');
+  assert.equal(ui.root.querySelector('.crucible-studio-hint-chip'), null, 'no move is waiting for the pointer');
+
+  const orbPoint = ui.controller.projectWorldPoint([2.2, 0.5, 0]);
+  dispatch(ui.canvas, 'pointerdown', ui.clientPoint(orbPoint));
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(orbPoint));
+  assert.equal(ui.controller.selectedNodeId, 'hero', 'a click on the viewport picks nothing');
+  dispatch(ui.canvas, 'pointerdown', ui.clientPoint({ x: 400, y: 300 }));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint({ x: 480, y: 340 }));
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint({ x: 480, y: 340 }));
+  const zoom = dispatch(ui.canvas, 'wheel', { deltaY: 100 });
+  assert.equal(zoom.defaultPrevented, true, 'the page still does not scroll under the wheel');
+  assert.deepEqual([...ui.controller.viewCamera.eye], eyeBefore, 'the view is the shot: dragging and the wheel do not move it');
+
+  const popover = id => ui.root.querySelector(`#crucible-studio-pop-${id}`);
+  byText(popover('edit'), 'Delete').click();
+  byText(popover('edit'), 'Duplicate').click();
+  byText(popover('view'), 'Top view').click();
+  assert.equal(JSON.stringify(ui.studio.exportRecipe()), recipeBefore, 'the menu rows are locked too');
+  assert.deepEqual([...ui.controller.viewCamera.eye], eyeBefore);
+
+  ui.studio.renderNow();
+  assert.equal(ui.gizmo.children.length, 0, 'no handle, outline, mark or agent pointer is built');
+  assert.equal(ui.root.querySelector('.crucible-studio-outliner').inert, true, 'the Scene card cannot be used');
+
+  ui.controller.updateNodeTransform('hero', { translation: [0, 1.5, 0] });
+  byText(popover('edit'), 'Undo').click();
+  assert.equal(JSON.stringify(ui.studio.exportRecipe()), recipeBefore, 'undo stays available');
+
+  byDataset(ui.root, 'workspace', 'build').click();
+  ui.dom.runAnimationFrames(performance.now());
+  assert.ok(ui.gizmo.children.length > 0, 'leaving brings the handles back');
+  assert.equal(ui.renderer.partCount, sceneParts + GRID_LINE_COUNT, 'and the grid');
+  assert.deepEqual([...ui.controller.viewCamera.eye], eyeBefore, 'and the same view');
+  assert.equal(ui.controller.tool, toolBefore);
+  assert.equal(ui.controller.selectedNodeId, 'hero', 'and the same selection');
+  dispatch(ui.dom.document, 'keydown', { key: 'Delete' });
+  assert.equal(ui.studio.exportRecipe().nodes.length, JSON.parse(recipeBefore).nodes.length - 1, 'and the keys edit the scene again');
+});
+
+test('entering Export asks for a frame, so the viewport shows the shot without the grid every time (#3343)', testContext => {
+  const ui = mountStudio(testContext);
+  const sceneParts = ui.controller.scene.parts.length;
+  ui.dom.runAnimationFrames(performance.now());
+  assert.equal(ui.renderer.partCount, sceneParts + GRID_LINE_COUNT);
+  byDataset(ui.root, 'workspace', 'export').click();
+  assert.ok(ui.dom.pendingAnimationFrameCount > 0, 'a change of workspace asks for a frame');
+  ui.dom.runAnimationFrames(performance.now());
+  assert.equal(ui.renderer.partCount, sceneParts, 'no grid inside the frame');
+  assert.equal(ui.root.querySelector('.crucible-studio-export-guide') !== null, true);
+  const hiddenInExport = ['.crucible-studio-view-widget', '.crucible-studio-readout', '.crucible-studio-hintbar', '.crucible-studio-outliner', '.crucible-studio-gizmo'];
+  for (const selector of hiddenInExport) {
+    assert.ok(STUDIO_CSS.includes(`.crucible-studio[data-workspace="export"] ${selector}`), `${selector} is hidden in Export`);
+  }
+});
+
+test('a result line goes when the scene changes, and when the same action runs again (#3343)', async testContext => {
+  const desktop = createDesktop();
+  const ui = mountStudio(testContext, { desktop });
+  byDataset(ui.root, 'workspace', 'export').click();
+  const modelResult = () => ui.root.querySelectorAll('.crucible-studio-export-group').find(group => group.dataset.kind === 'model').querySelector('.crucible-studio-export-result');
+  byText(ui.root, 'Save GLB').click();
+  await ui.dom.settle();
+  assert.equal(modelResult().hasAttribute('hidden'), false);
+  ui.controller.updateNodeTransform('hero', { translation: [0, 1.5, 0] });
+  assert.equal(modelResult().hasAttribute('hidden'), true, 'an edit of the scene clears the line');
+
+  byText(ui.root, 'Save GLB').click();
+  await ui.dom.settle();
+  assert.equal(modelResult().hasAttribute('hidden'), false);
+  desktop.saveGlb = async () => ({ canceled: true });
+  byText(ui.root, 'Save GLB').click();
+  await ui.dom.settle();
+  assert.equal(modelResult().hasAttribute('hidden'), true, 'a cancelled save leaves no old line');
+});
+
+test('the Web pack facts are worked out only while Export is open, and a failure shows as a warning (#3343)', testContext => {
+  const ui = mountStudio(testContext);
+  const packFacts = () => ui.root.querySelectorAll('.crucible-studio-export-group').find(group => group.dataset.kind === 'pack').querySelectorAll('.crucible-studio-export-fact');
+  ui.controller.updateNodeTransform('hero', { translation: [0, 1.5, 0] });
+  assert.equal(packFacts().length, 0, 'nothing is worked out in another workspace');
+
+  const realClone = globalThis.structuredClone;
+  globalThis.structuredClone = value => {
+    // Only the copy the Web pack makes fails; the rest of Studio copies recipes as it always did.
+    if (new Error().stack.includes('buildPackReadyRecipe')) throw new Error('The recipe cannot be copied.');
+    return realClone(value);
+  };
+  try {
+    byDataset(ui.root, 'workspace', 'export').click();
+  } finally {
+    globalThis.structuredClone = realClone;
+  }
+  assert.equal(packFacts().map(fact => fact.textContent).join('|'), 'The recipe cannot be copied.');
+  assert.ok(packFacts()[0].querySelector('svg'), 'the failure leads with the warning mark');
+  const modelFacts = ui.root.querySelectorAll('.crucible-studio-export-group').find(group => group.dataset.kind === 'model').querySelectorAll('.crucible-studio-export-fact');
+  assert.ok(modelFacts.length > 0, 'the other groups are not affected');
+});
+
+test('a scene with no parts cannot be saved as a model or a pack, and Studio refuses a scene with no camera (#3343)', async testContext => {
+  const empty = makeRecipe();
+  empty.nodes = [];
+  const ui = mountStudio(testContext, { recipe: empty });
+  byDataset(ui.root, 'workspace', 'export').click();
+  const group = kind => ui.root.querySelectorAll('.crucible-studio-export-group').find(candidate => candidate.dataset.kind === kind);
+  for (const kind of ['model', 'pack']) {
+    assert.equal(group(kind).querySelector('button').getAttribute('aria-disabled'), 'true', `${kind} is disabled`);
+    assert.equal(group(kind).querySelector('.crucible-studio-export-fact').textContent, 'The scene has no parts to save');
+    assert.ok(group(kind).querySelector('.crucible-studio-export-fact svg'), 'the reason has a warning mark');
+  }
+  assert.notEqual(group('image').querySelector('button').getAttribute('aria-disabled'), 'true', 'an empty scene still has a picture');
+  byText(ui.root, 'Save GLB').click();
+  byText(ui.root, 'Save pack').click();
+  await ui.dom.settle();
+  assert.equal(ui.dom.document.downloads.length, 0, 'a disabled button writes nothing');
+  assert.equal(group('model').querySelector('.crucible-studio-export-result').hasAttribute('hidden'), true);
+
+  const sceneWithoutCamera = { ...createAgentScene(makeRecipe()), camera: undefined };
+  assert.throws(() => mountStudio(testContext, { sharedDom: ui.dom, scene: sceneWithoutCamera }), /Studio scene must provide parts and camera/, 'a scene always has a camera, so the image never lacks one');
+});
+
+test('the desktop host names the file or folder it wrote, whatever it is called (#3343)', async testContext => {
+  const folder = createDesktop({ packWebBundle: async () => ({ outDir: 'C:/out/site' }) });
+  const folderUi = mountStudio(testContext, { desktop: folder, fileName: 'castle.scene.json' });
+  byText(folderUi.root, 'Save pack').click();
+  await folderUi.dom.settle();
+  const resultOf = ui => ui.root.querySelectorAll('.crucible-studio-export-group').find(group => group.dataset.kind === 'pack').querySelector('.crucible-studio-export-result').textContent;
+  assert.match(resultOf(folderUi), /^site, \d+ (B|KB|MB)$/, 'a bundle folder is shown by its folder name, not as a .pack file');
+  const named = createDesktop({ packWebBundle: async () => ({ outDir: 'C:/out', fileName: 'castle.bundle' }) });
+  const namedUi = mountStudio(testContext, { sharedDom: folderUi.dom, desktop: named });
+  byText(namedUi.root, 'Save pack').click();
+  await namedUi.dom.settle();
+  assert.match(resultOf(namedUi), /^castle\.bundle, /, 'a name the host returns wins');
 });
 
 test('each scene row draws the shape of its object in the colour of its material', testContext => {
@@ -2452,6 +2615,7 @@ test('the top bar has File, Edit, View, Agent and Help menus that do what their 
   assert.equal(byText(popover('new'), 'Save').dataset.shortcut, 'Ctrl+S');
   byText(popover('new'), 'Export…').click();
   assert.equal(ui.root.dataset.workspace, 'export', 'the one Export row opens the workspace');
+  byDataset(ui.root, 'workspace', 'build').click();
   assert.equal(popover('new').popoverOpen, false, 'a row closes its menu');
 
   menuButton('Edit').click();

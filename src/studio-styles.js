@@ -1846,6 +1846,7 @@ export const STUDIO_CSS = `
 }
 /* The Export workspace: one group for each thing Studio writes. Groups sit 16px apart and the parts of a group 8px apart. */
 .crucible-studio-export-body {
+  --studio-export-frame-side: 36px;
   display: grid;
   gap: var(--studio-space-16);
   padding: var(--studio-space-12);
@@ -1870,6 +1871,8 @@ export const STUDIO_CSS = `
   gap: var(--studio-space-4);
 }
 .crucible-studio-export-facts:empty { display: none; }
+/* Once a group has written its file, the line of what was written takes the place of the facts about what would be. */
+.crucible-studio-export-group:has(.crucible-studio-export-result:not([hidden])) .crucible-studio-export-facts { display: none; }
 .crucible-studio-export-fact {
   display: inline-flex;
   align-items: center;
@@ -1878,26 +1881,26 @@ export const STUDIO_CSS = `
   padding-inline: var(--studio-space-8);
   border-radius: 8px;
   background: color-mix(in srgb, var(--studio-text) 6%, transparent);
-  color: var(--studio-muted);
+  color: var(--studio-text);
   font: 500 11.5px/1 var(--studio-font-mono);
   font-variant-numeric: tabular-nums;
 }
+.crucible-studio-export-fact[data-warning="true"] .crucible-studio-icon { color: var(--studio-accent); }
 .crucible-studio-export-frame {
   display: block;
   box-sizing: border-box;
+  inline-size: var(--studio-export-frame-side);
   border: 1.5px solid currentColor;
   border-radius: 2px;
 }
+.crucible-studio-export-frame[data-tall="true"] {
+  inline-size: auto;
+  block-size: var(--studio-export-frame-side);
+}
 .crucible-studio button.crucible-studio-export-action {
   inline-size: 100%;
-  background: var(--studio-text);
-  color: var(--studio-bg);
+  background: color-mix(in srgb, var(--studio-text) 6%, transparent);
   font-weight: 600;
-}
-@media (hover: hover) {
-  .crucible-studio button.crucible-studio-export-action:not([aria-disabled="true"]):hover {
-    background: color-mix(in srgb, var(--studio-text) 86%, var(--studio-bg));
-  }
 }
 .crucible-studio-export-result {
   display: flex;
@@ -1910,7 +1913,16 @@ export const STUDIO_CSS = `
 .crucible-studio-export-result[hidden] { display: none; }
 .crucible-studio-export-result[data-state="ok"] .crucible-studio-icon { color: var(--studio-ok); }
 .crucible-studio-export-result[data-state="failed"] .crucible-studio-icon { color: var(--studio-accent); }
-/* The viewport shows the shot as it will be saved: the frame is the edge of the picture, and the editor's aids are off. */
+/* The status region is always in the page for a screen reader and never seen. */
+.crucible-studio-export-status {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* The viewport shows the shot as it will be saved: the frame is the edge of the picture, and everything the editor lays over it is off. */
 .crucible-studio-export-guide {
   display: none;
   position: absolute;
@@ -1921,7 +1933,19 @@ export const STUDIO_CSS = `
   z-index: 3;
 }
 .crucible-studio[data-workspace="export"] .crucible-studio-export-guide { display: block; }
-.crucible-studio[data-workspace="export"] .crucible-studio-gizmo { visibility: hidden; }
+.crucible-studio[data-workspace="export"] .crucible-studio-gizmo,
+.crucible-studio[data-workspace="export"] .crucible-studio-view-widget,
+.crucible-studio[data-workspace="export"] .crucible-studio-readout,
+.crucible-studio[data-workspace="export"] .crucible-studio-hintbar,
+.crucible-studio[data-workspace="export"] .crucible-studio-agent-cursor,
+.crucible-studio[data-workspace="export"] .crucible-studio-outliner,
+.crucible-studio[data-workspace="export"] .crucible-studio-grip-split { display: none; }
+.crucible-studio-toolbar button[hidden] { display: none; }
+/* With the Scene card gone the Properties card has the column, so the three groups fit; a narrow window gives it the room above the rail too. */
+.crucible-studio[data-compact="true"][data-workspace="export"] .crucible-studio-inspector {
+  inset-block-end: var(--studio-edge);
+  max-block-size: calc(100% - var(--studio-top) - var(--studio-edge) * 2);
+}
 .crucible-studio-bookmark-list {
   display: grid;
   gap: 4px;

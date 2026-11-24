@@ -8,7 +8,7 @@ import { VIEW_TRANSFORM_NAMES } from './view-transform-names.js';
 import { CrucibleRenderer, studioFloorHeight } from './renderer.js';
 import { ProgramNotReady, isLinkComplete, setPreparing } from './gl-program.js';
 import { exportGlb } from './export.js';
-import { createExportPanel, dataUrlByteLength, formatFileSize } from './studio-export.js';
+import { createExportPanel, dataUrlByteLength, formatFileSize, lastPathName } from './studio-export.js';
 import { encodePack } from './scene-pack-format.js';
 import { checkImageBudget } from './scene-pack-limits.js';
 import { packedSkyOf } from './scene-pack-sky.js';
@@ -1391,10 +1391,18 @@ export function createStudio(container, {
     item.prepend(createIcon(documentReference, iconName));
     return item;
   };
+  // Export is a place to look at the shot and save it: nothing in the scene changes there and the view does not move. Undo and redo,
+  // the file commands and the settings stay. This one guard serves the keys, the menu rows and the viewport.
+  const SHOT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'view.properties']);
+  const viewingShot = () => root.dataset.workspace === 'export';
+  const shotLocksAction = actionId => viewingShot() && !SHOT_PASS_THROUGH.has(actionId);
   // One row of a menu: its icon, what it does, and its key on the right.
   const createMenuItem = (label, actionId, onChoose, iconName) => {
     const item = showActionKey(createElement(documentReference, 'button', { type: 'button', textContent: label }), actionId);
-    item.addEventListener('click', onChoose);
+    item.addEventListener('click', event => {
+      if (actionId && shotLocksAction(actionId)) return;
+      onChoose(event);
+    });
     return giveMenuIcon(item, iconName);
   };
   const menuToggles = [];
@@ -1490,6 +1498,7 @@ export function createStudio(container, {
   }
   // Shown only while a motion track drives the camera: off means the viewport looks around on its own.
   const sceneCameraToggle = createMenuToggle('Animated camera', '', () => {
+    if (viewingShot()) return;
     if (controller.freeView) {
       controller.lookThroughSceneCamera();
       return;
@@ -2344,6 +2353,9 @@ export function createStudio(container, {
   );
 
   const exportPanel = createExportPanel({ documentReference, createElement, createIcon: iconName => createIcon(documentReference, iconName) });
+  // The scene a set of facts and a result line were made from: a change to the scene makes both stale.
+  let exportFactsSceneKey = null;
+  let exportResultSceneKey = null;
   const panelsByTab = {
     export: createElement(documentReference, 'div', { id: 'crucible-studio-panel-export', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-export', hidden: 'until-found' } }, exportPanel.element),
     node: createElement(documentReference, 'div', { id: 'crucible-studio-panel-node', tabIndex: 0, attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-node' } }, nodePanelBody),
@@ -2367,8 +2379,15 @@ export function createStudio(container, {
       throw new RangeError(`Unknown Studio workspace "${String(nextWorkspace)}". Use one of ${STUDIO_WORKSPACES.map(candidate => candidate.id).join(', ')}.`);
     }
     const workspaceWasOpen = root.dataset.workspace === workspace.id;
+    const firstWorkspace = root.dataset.workspace === undefined;
     root.dataset.workspace = workspace.id;
-    if (workspace.id !== 'export') exportPanel.clearResults();
+    const inExport = workspace.id === 'export';
+    if (!inExport) exportPanel.clearResults();
+    outlinerDock.inert = inExport;
+    for (const button of [...toolButtons, addMenuButton]) button.toggleAttribute('hidden', inExport);
+    showInspectorTitle(inExport);
+    // A change of tab asks for no frame of its own, and the viewport draws the shot differently in Export.
+    if (!workspaceWasOpen && !firstWorkspace) requestFrame();
     for (const button of workspaceButtons) {
       button.setAttribute('aria-selected', button.dataset.workspace === workspace.id ? 'true' : 'false');
     }
@@ -2410,6 +2429,11 @@ export function createStudio(container, {
     onSelect: button => selectInspectorTab(button.dataset.tab),
   });
 
+  const inspectorTitle = createElement(documentReference, 'span', { className: 'crucible-studio-dock-title' });
+  function showInspectorTitle(exporting) {
+    inspectorTitle.replaceChildren(createIcon(documentReference, exporting ? 'export' : 'settings'), createElement(documentReference, 'span', { textContent: exporting ? 'Export' : 'Properties' }));
+  }
+  showInspectorTitle(false);
   const inspectorElement = createElement(
     documentReference,
     'aside',
@@ -2418,7 +2442,7 @@ export function createStudio(container, {
       documentReference,
       'div',
       { className: 'crucible-studio-dock-head' },
-      createElement(documentReference, 'span', { className: 'crucible-studio-dock-title' }, createIcon(documentReference, 'settings'), createElement(documentReference, 'span', { textContent: 'Properties' })),
+      inspectorTitle,
       selectionCountElement,
       createElement(documentReference, 'span', { className: 'crucible-studio-spacer' }),
       propertiesMinimizeButton,
@@ -2808,7 +2832,7 @@ export function createStudio(container, {
 
   // The still is the scene's own shot without the editor's aids. The Export workspace draws the viewport the same way, so what it shows is what gets saved.
   function drawingTheShot() {
-    return capturingStill || root.dataset.workspace === 'export';
+    return capturingStill || viewingShot();
   }
 
   function capturePngDataUrl() {
@@ -2998,17 +3022,20 @@ export function createStudio(container, {
     if (file) await importFileIntoScene(file);
   });
 
-  // Each action says what it wrote under its button: the file, and its size. A refused or failed export says why instead.
+  // Each action says what it wrote under its button: the file, and its size. A refused or failed export says why instead. A line
+  // is true of the scene it was written from, and a new run of the same action clears it first.
   function reportExport(kindId, { fileName, detail }) {
+    exportResultSceneKey = currentSceneKey();
     exportPanel.showResult(kindId, { ok: true, text: [fileName, ...detail].join(', ') });
   }
 
   function reportExportFailure(kindId, error) {
     announce(error.message);
+    exportResultSceneKey = currentSceneKey();
     exportPanel.showResult(kindId, { ok: false, text: error.message });
   }
 
-  exportPanel.actions.image.addEventListener('click', async () => {
+  exportPanel.onAction('image', async () => {
     try {
       const dataUrl = capturePngDataUrl();
       const baseName = activeFileName.replace(/\.(scene\.)?json$/i, '') || 'crucible-render';
@@ -3030,7 +3057,7 @@ export function createStudio(container, {
     }
   });
 
-  exportPanel.actions.model.addEventListener('click', async () => {
+  exportPanel.onAction('model', async () => {
     try {
       const glbBytes = exportGlbBytes();
       const baseName = activeFileName.replace(/\.(scene\.)?json$/i, '') || 'crucible-scene';
@@ -3051,7 +3078,7 @@ export function createStudio(container, {
     }
   });
 
-  exportPanel.actions.pack.addEventListener('click', async () => {
+  exportPanel.onAction('pack', async () => {
     try {
       const payload = await buildWebPackPayload();
       const detail = [formatFileSize(payload.packBytes.byteLength)];
@@ -3060,7 +3087,8 @@ export function createStudio(container, {
         if (!response?.canceled) {
           const note = payload.stripped.length ? ` (static snapshot, omitted ${payload.stripped[0]})` : '';
           announce(`Packed web bundle to ${response.outDir}${note}`);
-          reportExport('pack', { fileName: `${payload.title}.pack`, detail });
+          // The host writes a folder or a file of its own choosing: show the name it returns, not the one a browser download would carry.
+          reportExport('pack', { fileName: lastPathName(response.fileName ?? response.outDir), detail });
         }
         return;
       }
@@ -3341,6 +3369,13 @@ export function createStudio(container, {
     announce(describeAgentEdit(label, { nodeIds, removedNodeIds, otherChange }));
   }
 
+  // The saved shot has no handles, outlines, marks or agent pointer, so none of them is built while Export is open.
+  function clearEditorOverlays() {
+    gizmoSvg.replaceChildren();
+    outlineMask.draw(null, controller.viewportWidth, controller.viewportHeight);
+    activeOutlineMask.draw(null, controller.viewportWidth, controller.viewportHeight);
+  }
+
   function renderPass() {
     if (contextLost) {
       return;
@@ -3349,12 +3384,16 @@ export function createStudio(container, {
     try {
       syncViewportDimensions();
       drawSceneFrame();
-      renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask, activeOutlineMask, { hideSelectionOutline: Boolean(meshEditor?.active), clearRadius: meshEditor?.active ? meshEditor.selectionScreenRadius() : null });
-      if (!drawingTheShot()) {
-        renderSceneObjectMarks(documentReference, gizmoSvg, controller);
+      if (viewingShot()) {
+        clearEditorOverlays();
+      } else {
+        renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask, activeOutlineMask, { hideSelectionOutline: Boolean(meshEditor?.active), clearRadius: meshEditor?.active ? meshEditor.selectionScreenRadius() : null });
+        if (!drawingTheShot()) {
+          renderSceneObjectMarks(documentReference, gizmoSvg, controller);
+        }
+        drawAgentOutline();
+        if (meshEditor?.active && !drawingTheShot()) meshEditor.draw(documentReference, gizmoSvg);
       }
-      drawAgentOutline();
-      if (meshEditor?.active && !drawingTheShot()) meshEditor.draw(documentReference, gizmoSvg);
       syncViewportAids();
     } finally {
       insideDraw = false;
@@ -4035,18 +4074,43 @@ export function createStudio(container, {
     if (controller.activeTab === 'export') syncExportFacts();
   }
 
-  // What each export will hold. The picture's size follows the window, so it is read each frame; the model and the pack follow the scene.
-  let exportFactsSceneKey = null;
-  function syncExportFacts() {
-    exportPanel.showFacts('image', [{ frame: [canvas.width, canvas.height] }, { text: `${canvas.width} × ${canvas.height}` }]);
+  // What each export will hold. The picture's size follows the window, so it is read each frame; the model and the pack follow the
+  // scene and are worked out once for each revision of it, and only while Export is open. A kind that cannot be saved says why.
+  // A scene always has a camera (the controller refuses one without), so only the parts can be missing.
+  function currentSceneKey() {
     const scene = controller.scene;
-    const sceneKey = `${scene.topologyRevision}|${scene.revision}`;
+    return `${scene.topologyRevision}|${scene.revision}`;
+  }
+
+  function syncExportFacts() {
+    const scene = controller.scene;
+    exportPanel.showFacts('image', [{ frame: [canvas.width, canvas.height] }, { text: `${canvas.width} × ${canvas.height}` }]);
+    const sceneKey = currentSceneKey();
     if (exportFactsSceneKey === sceneKey) return;
     exportFactsSceneKey = sceneKey;
+    if (exportResultSceneKey !== null && exportResultSceneKey !== sceneKey) {
+      exportPanel.clearResults();
+      exportResultSceneKey = null;
+    }
     const partCount = scene.parts.length;
+    const noParts = partCount === 0;
+    exportPanel.setBlocked('model', noParts);
+    exportPanel.setBlocked('pack', noParts);
+    if (noParts) {
+      const reason = [{ icon: 'warning', text: 'The scene has no parts to save' }];
+      exportPanel.showFacts('model', reason);
+      exportPanel.showFacts('pack', reason);
+      return;
+    }
+    const partsFact = { text: `${partCount} ${partCount === 1 ? 'part' : 'parts'}` };
     const triangleCount = Math.round(scene.parts.reduce((count, part) => count + (part.geometry?.indices?.length ?? 0) / 3, 0));
-    exportPanel.showFacts('model', [{ text: `${partCount} ${partCount === 1 ? 'part' : 'parts'}` }, { text: `${triangleCount.toLocaleString('en-US')} triangles` }]);
-    exportPanel.showFacts('pack', buildPackReadyRecipe(controller.exportRecipe()).stripped.map(name => ({ icon: 'warning', text: `${name} left out` })));
+    exportPanel.showFacts('model', [partsFact, { text: `${triangleCount.toLocaleString('en-US')} triangles` }]);
+    try {
+      const { stripped } = buildPackReadyRecipe(controller.exportRecipe());
+      exportPanel.showFacts('pack', [partsFact, ...stripped.map(name => ({ icon: 'warning', text: `${name} left out` }))]);
+    } catch (error) {
+      exportPanel.showFacts('pack', [{ icon: 'warning', text: error.message }]);
+    }
   }
 
   function syncLookPanels() {
@@ -4334,6 +4398,7 @@ export function createStudio(container, {
   }
 
   canvas.addEventListener('pointerdown', event => {
+    if (viewingShot()) return;
     if (event.button !== 0 && event.button !== 1 && event.button !== 2) return;
     const keymapMode = findMouseNavigation(keymap, event);
     const defaultMode = event.shiftKey || event.button === 2 || event.button === 1 ? 'pan' : 'orbit';
@@ -4432,6 +4497,7 @@ export function createStudio(container, {
   canvas.addEventListener('contextmenu', event => event.preventDefault());
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
+    if (viewingShot()) return;
     stopFlight();
     controller.orbitCamera({ zoomScale: 1 + Math.max(-0.35, Math.min(0.35, event.deltaY * 0.0012)) });
   }, { passive: false });
@@ -4722,6 +4788,10 @@ export function createStudio(container, {
     // A Ctrl key works over an open dialog; a plain key does not.
     const dialogIsOpen = recipeDialog.open || shortcutsDialog.open || settingsDialog.open;
     if (dialogIsOpen && !match.binding.ctrl) {
+      return;
+    }
+    if (shotLocksAction(match.actionId)) {
+      if (match.binding.ctrl) event.preventDefault();
       return;
     }
     if (meshMatch) {
