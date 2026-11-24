@@ -711,10 +711,14 @@ function isVertexSelection(select) {
   return Boolean(select) && typeof select === 'object' && Object.hasOwn(select, 'vertices');
 }
 
+// Studio's proportional editing names at most this many picked vertices; the recipe holds agents to the same bound.
+const MAX_SELECTED_VERTICES = 256;
+
 function translateSelectedVertices(current, edit, index, result) {
   const { vertices } = edit.select;
-  if (Object.keys(edit.select).length !== 1 || !Array.isArray(vertices) || vertices.length === 0 || vertices.length > current.vertexCount) {
-    throw editField(index, 'select', edit.select, 'a rule such as { "vertices": [3, 8] }: a nonempty list of vertex indices, each once, with no other key', RangeError);
+  const validList = Array.isArray(vertices) && vertices.length > 0 && vertices.length <= MAX_SELECTED_VERTICES && new Set(vertices).size === vertices.length;
+  if (Object.keys(edit.select).length !== 1 || !validList) {
+    throw editField(index, 'select', edit.select, `a rule such as { "vertices": [3, 8] }: a nonempty list of up to ${MAX_SELECTED_VERTICES} vertex indices, each once, with no other key`, RangeError);
   }
   for (const vertex of vertices) {
     if (!Number.isInteger(vertex) || vertex < 0 || vertex >= current.vertexCount) {

@@ -67,10 +67,12 @@ test('a vertex selection without a falloff moves only those vertices', () => {
 
 test('a bad vertex selection says what to pass instead', () => {
   const run = select => () => applyMeshEdits(plane(), [{ op: 'translate', select, offset: [0, 0, 1] }]);
-  assert.throws(run({ vertices: [] }), /nonempty list of vertex indices/);
+  assert.throws(run({ vertices: [] }), /nonempty list of up to 256 vertex indices/);
   assert.throws(run({ vertices: [9999] }), /vertex index from 0 to 120/);
   assert.throws(run({ vertices: [1.5] }), /vertex index from 0 to 120/);
   assert.throws(run({ vertices: [1], faces: [0] }), /no other key/);
+  assert.throws(run({ vertices: [1, 1] }), /each once/);
+  assert.throws(run({ vertices: Array.from({ length: 257 }, (unused, vertex) => vertex % 121) }), /up to 256 vertex indices/);
   assert.doesNotThrow(() => normalizeMeshEdits([{ op: 'translate', select: { vertices: [1] }, offset: [0, 0, 1] }]));
 });
 
