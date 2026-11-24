@@ -14,6 +14,7 @@ import { packedSkyOf } from './scene-pack-sky.js';
 import { encodePackOrRefuse } from './studio-pack-refusal.js';
 import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shaders.js';
 import { STUDIO_CSS } from './studio-styles.js';
+import { createApplyMenus } from './studio-apply-menu.js';
 import { findKeymapAction, findMouseNavigation, formatShortcutKeys, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
@@ -1441,6 +1442,15 @@ export function createStudio(container, {
   );
   // A right click on an object, in the viewport or in the Scene list, opens the actions on that object where the
   // pointer is. The rows are the Edit menu's own, so a key learned in one place works in the other.
+  const applyMenus = createApplyMenus({
+    createMenuPopover,
+    createMenuItem,
+    controller,
+    announce: message => announce(message),
+    announceError: message => announceError(message),
+    getMeshEditor: () => meshEditor,
+    openPopoverAtMenuPoint: popover => openMenuAt(popover, ...(lastObjectMenuPoint ?? [0, 0])),
+  });
   const objectPopover = createMenuPopover(
     'crucible-studio-pop-object',
     createMenuItem('Frame', 'view.frame', () => flyToSelection(), 'frame'),
@@ -1449,22 +1459,29 @@ export function createStudio(container, {
     createMenuItem('Reset position', 'edit.resetPosition', () => resetSelectionTransform('translation'), 'translate'),
     createMenuItem('Reset rotation', 'edit.resetRotation', () => resetSelectionTransform('rotation'), 'rotate'),
     createMenuItem('Reset scale', 'edit.resetScale', () => resetSelectionTransform('scale'), 'scale'),
+    applyMenus.applyRow,
+    applyMenus.originRow,
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
   );
+  let lastObjectMenuPoint = null;
   function openObjectMenu(clientX, clientY) {
+    lastObjectMenuPoint = [clientX, clientY];
+    openMenuAt(objectPopover, clientX, clientY);
+  }
+  function openMenuAt(popover, clientX, clientY) {
     const windowWidth = documentReference.defaultView?.innerWidth ?? 1280;
     const windowHeight = documentReference.defaultView?.innerHeight ?? 800;
-    objectPopover.togglePopover?.(false);
-    objectPopover.style.left = `${Math.round(Math.max(8, Math.min(clientX, windowWidth - 256)))}px`;
-    objectPopover.style.right = 'auto';
+    popover.togglePopover?.(false);
+    popover.style.left = `${Math.round(Math.max(8, Math.min(clientX, windowWidth - 256)))}px`;
+    popover.style.right = 'auto';
     // In the lower half the menu hangs from the pointer and grows upward, so it stays on screen at any height.
     const opensUpward = clientY > windowHeight / 2;
-    objectPopover.style.top = opensUpward ? 'auto' : `${Math.round(clientY)}px`;
-    objectPopover.style.bottom = opensUpward ? `${Math.round(Math.max(8, windowHeight - clientY))}px` : 'auto';
+    popover.style.top = opensUpward ? 'auto' : `${Math.round(clientY)}px`;
+    popover.style.bottom = opensUpward ? `${Math.round(Math.max(8, windowHeight - clientY))}px` : 'auto';
     const opening = popoverOpeningStyle({ opensUpward });
-    objectPopover.style.setProperty('--studio-popover-origin', opening.origin);
-    objectPopover.style.setProperty('--studio-popover-shift', opening.shift);
-    objectPopover.showPopover?.();
+    popover.style.setProperty('--studio-popover-origin', opening.origin);
+    popover.style.setProperty('--studio-popover-shift', opening.shift);
+    popover.showPopover?.();
   }
   function hideSelection() {
     if (!controller.selectedNodeId) return;
@@ -1687,7 +1704,7 @@ export function createStudio(container, {
     createMenuItem('Export web pack', '', () => exportPackButton.click(), 'globe'),
     createElement(documentReference, 'p', { className: 'crucible-studio-popover-note', textContent: 'New scene' }),
   );
-  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, viewPopover, helpPopover]) {
+  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover]) {
     popoverElement.addEventListener('click', event => {
       if (event.target.closest?.('button')) popoverElement.hidePopover?.();
     });
@@ -1750,6 +1767,8 @@ export function createStudio(container, {
     exportPopover,
     editPopover,
     objectPopover,
+    applyMenus.applyPopover,
+    applyMenus.originPopover,
     viewPopover,
     helpPopover,
   );
@@ -4641,6 +4660,15 @@ export function createStudio(container, {
       event.preventDefault();
       invertNodeSelection();
     },
+    'edit.apply': event => {
+      // Ctrl+A is also the page's select all: outside Studio, and in its text fields, the page keeps it.
+      if (!selectAllEventBelongsToStudio(event)) return;
+      event.preventDefault();
+      if (!controller.selectedNodeId) return;
+      const box = canvas.getBoundingClientRect();
+      lastObjectMenuPoint = [box.left + box.width / 2, box.top + box.height / 2];
+      openMenuAt(applyMenus.applyPopover, ...lastObjectMenuPoint);
+    },
     'edit.hide': (event, binding) => {
       if (binding.ctrl) event.preventDefault();
       hideSelection();
@@ -4759,13 +4787,16 @@ export function createStudio(container, {
   const blockPageSelectAll = event => {
     const isLetterA = event.key?.toLowerCase() === 'a' || event.code === 'KeyA';
     const isSelectAll = isLetterA && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
-    if (!isSelectAll || !root.isConnected) return;
-    const path = event.composedPath?.() ?? [event.target];
-    const focusFellToBody = path[0] === documentReference.body && pointerStartedInStudio;
-    if (!path.includes(root) && !focusFellToBody) return;
-    if (path.some(node => isEditableTarget(node, 'a') || node?.closest?.('.crucible-studio-selectable'))) return;
+    if (!isSelectAll || !selectAllEventBelongsToStudio(event)) return;
     event.preventDefault();
   };
+  function selectAllEventBelongsToStudio(event) {
+    if (!root.isConnected) return false;
+    const path = event.composedPath?.() ?? [event.target];
+    const focusFellToBody = path[0] === documentReference.body && pointerStartedInStudio;
+    if (!path.includes(root) && !focusFellToBody) return false;
+    return !path.some(node => isEditableTarget(node, 'a') || node?.closest?.('.crucible-studio-selectable'));
+  }
   documentReference.addEventListener('keydown', onKeyDown);
   documentReference.addEventListener('pointerdown', onPointerInput, true);
 

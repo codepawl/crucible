@@ -64,6 +64,7 @@ on:
       - 'scripts/render-vite.config.mjs'
       - 'scripts/vite-site-pages.mjs'
       - 'src/agent-apply-report.js'
+      - 'src/agent-apply-transform.js'
       - 'src/agent-bake-deferred.js'
       - 'src/agent-bake-gpu.js'
       - 'src/agent-bake.js'

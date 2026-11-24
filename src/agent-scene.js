@@ -2904,6 +2904,14 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           agentSceneModule('settle').applySettle(candidate, operation);
           continue;
         }
+        if (operation.type === 'apply-transform') {
+          agentSceneModule('applyTransform').applyNodeTransform(candidate, operation);
+          continue;
+        }
+        if (operation.type === 'set-origin') {
+          agentSceneModule('applyTransform').setNodeOrigin(candidate, operation, (recipe, geometryId) => generateOperationGeometry(recipe, geometryId, limits).positions);
+          continue;
+        }
         if (operation.type === 'edit-mesh') {
           knownKeys(operation, ['type', 'geometry', 'edits', 'replace'], 'operation');
           const target = meshGeometryTarget(candidate, operation, type => `Add a mesh geometry with base: { type: '${type}', ... } to edit it.`);

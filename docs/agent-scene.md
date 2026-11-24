@@ -533,6 +533,12 @@ Final resource references and hierarchy must be valid before publication.
 | `remove-node` | `id`, optional boolean `recursive`, default `false` |
 | `add-explosion` | `id`, `center`, `size`, optional `start`, `seed`, `fuel`, `debris`, `shake`, `ground`, `sparks`, `motionBlur` (see Explosions below) |
 
+### Apply transforms and move the origin
+
+`{ "type": "apply-transform", "node": "plank", "parts": ["scale"] }` folds the node's location, rotation and scale (all three when `parts` is left out) into its geometry: the node then reads 0, no turn and 1, and every vertex stays where it was in the world. The change is written into the node's mesh edit log (`transform_selection` and `translate`), so a basic shape becomes a mesh under its own ID and a geometry other nodes use is copied for this node only. `{ "type": "set-origin", "node": "plank", "to": "bottom" }` moves the point the node turns and scales about, in the object's own space: `geometry` is the middle of the bounds, `bottom` the middle of the lowest face, `point` takes `point: [x, y, z]`. The geometry shifts the other way and the node moves with it, so nothing moves; children keep their world position.
+
+Both refuse, with the fix in the message, a node with children (apply only), a mesh with a modifier stack, text and other geometries that are not a mesh or basic shape, an imported or placed node, a node a motion track moves, a rotation-only apply on an unevenly scaled node (it would shear), and a mesh whose edit log already holds 64 entries. A scale factor of `transform_selection` may now be negative: it mirrors the selection and turns its faces back outward (not together with a falloff).
+
 ### Explosions
 
 `add-explosion` writes a layered blast into ordinary recipe sections in one call, so an agent does not hand-build six systems (#1050).

@@ -158,11 +158,25 @@ function normalizeTransformRotation(rotation, index) {
   return { axis, angle };
 }
 
-function normalizeTransformScale(scale, index) {
+// A factor may be negative, which mirrors the selection across that axis (its faces are turned back outward); 0 would flatten it.
+function normalizeScaleFactor(factor, index) {
   const bounds = { minimum: 0, maximum: MAX_TRANSFORM_SCALE, exclusiveMinimum: true };
-  if (!Array.isArray(scale)) return finiteNumber(scale, index, 'scale', bounds);
-  if (scale.length !== 3) throw editField(index, 'scale', scale, 'one number above 0, or an array of three, such as 0.5 or [1, 2, 1]');
-  return scale.map(component => finiteNumber(component, index, 'scale', bounds));
+  if (typeof factor !== 'number') return finiteNumber(factor, index, 'scale', bounds);
+  const magnitude = finiteNumber(Math.abs(factor), index, 'scale', bounds);
+  return factor < 0 ? -magnitude : magnitude;
+}
+
+function normalizeTransformScale(scale, index) {
+  if (!Array.isArray(scale)) return normalizeScaleFactor(scale, index);
+  if (scale.length !== 3) throw editField(index, 'scale', scale, 'one number other than 0, or an array of three, such as 0.5 or [1, -1, 1] (a negative factor mirrors)');
+  return scale.map(component => normalizeScaleFactor(component, index));
+}
+
+/** True when the scale has an odd number of negative factors, which turns the selection inside out unless its faces are flipped. */
+export function mirrorsSelection(scale) {
+  if (scale === undefined) return false;
+  const factors = Array.isArray(scale) ? scale : [scale, scale, scale];
+  return factors.filter(factor => factor < 0).length % 2 === 1;
 }
 
 // rotation.angle is radians; a value in degrees is the usual slip, so the bound error says so.
@@ -179,6 +193,9 @@ function normalizeTransformSelection(edit, normalized, index) {
   }
   if (edit.scale !== undefined) normalized.scale = normalizeTransformScale(edit.scale, index);
   if (edit.falloff !== undefined) normalized.falloff = normalizeFalloff(edit.falloff, index);
+  if (edit.falloff !== undefined && mirrorsSelection(normalized.scale)) {
+    throw editField(index, 'scale', edit.scale, 'positive when a falloff is given, because a fading mirror folds the mesh through itself; mirror without a falloff');
+  }
 }
 
 /** Validate an edit list without running it. Returns normalized copies with default names filled in. */
@@ -689,6 +706,7 @@ function runEdit(current, edit, index, { resolveCutter, resolveHeight, limits })
       break;
     case 'transform_selection':
       result.movedVertices = transformFaces(editable, mask, edit).movedVertices;
+      if (mirrorsSelection(edit.scale)) flipFaces(editable, mask);
       break;
     case 'tag':
       tagFaces(editable, Array.from(mask.keys()).filter(face => mask[face]), edit.name);

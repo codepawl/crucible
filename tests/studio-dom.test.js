@@ -2847,7 +2847,7 @@ test('a right click on an object opens its menu; H hides, Alt+H shows all and Al
   const menu = ui.root.querySelector('#crucible-studio-pop-object');
   const heroNode = () => ui.controller.exportRecipe().nodes.find(node => node.id === 'hero');
   const press = (key, modifiers = {}) => dispatch(ui.dom.document, 'keydown', { key, ...modifiers });
-  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Duplicate', 'Hide', 'Reset position', 'Reset rotation', 'Reset scale', 'Delete']);
+  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Duplicate', 'Hide', 'Reset position', 'Reset rotation', 'Reset scale', 'Apply…', 'Set origin…', 'Delete']);
 
   // In the Scene list the row is selected first, then the menu opens on it.
   const heroRow = ui.rows().find(row => row.textContent.includes(heroNode().label ?? 'hero'));

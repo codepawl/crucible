@@ -274,6 +274,7 @@ const cameraFields = {
   focusDistance: positive.optional(),
 };
 const bounded = (minimum, maximum) => z.number().min(minimum).max(maximum);
+const signedFactor = bounded(-1000, 1000);
 const spotAngleMessage = issue => `expected ${spotAngleExpectation(issue.input)} (got ${issue.input})`;
 const spotAngle = z.number().min(MINIMUM_SPOT_ANGLE, { error: spotAngleMessage }).max(MAXIMUM_SPOT_ANGLE, { error: spotAngleMessage });
 const boundedVector = (minimum, maximum) => z.tuple([bounded(minimum, maximum), bounded(minimum, maximum), bounded(minimum, maximum)]);
@@ -476,7 +477,7 @@ const meshEdit = z.discriminatedUnion('op', [
   z.strictObject({ op: z.literal('delete'), select: selectRule }),
   z.strictObject({ op: z.literal('flip_normals'), select: selectRule.optional() }),
   z.strictObject({ op: z.literal('translate'), select: selectRule.optional(), offset: vector3, falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }),
-  z.strictObject({ op: z.literal('transform_selection'), select: selectRule.optional(), pivot: vector3.optional().describe('Point to turn and scale about. Defaults to the mean of the selected vertices.'), rotation: z.strictObject({ axis: vector3, angle: bounded(-6.283185307179586, 6.283185307179586).describe('Radians, not degrees: 90 degrees is 1.5708.') }).optional(), scale: z.union([bounded(0.000001, 1000), z.array(bounded(0.000001, 1000)).length(3)]).optional().describe('Factor above 0, or one per axis; applied before the rotation.'), falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }).describe('Rotate and/or scale the selected vertices about a pivot; falloff fades the move to nothing at its radius.'),
+  z.strictObject({ op: z.literal('transform_selection'), select: selectRule.optional(), pivot: vector3.optional().describe('Point to turn and scale about. Defaults to the mean of the selected vertices.'), rotation: z.strictObject({ axis: vector3, angle: bounded(-6.283185307179586, 6.283185307179586).describe('Radians, not degrees: 90 degrees is 1.5708.') }).optional(), scale: z.union([signedFactor, z.array(signedFactor).length(3)]).optional().describe('Factor other than 0, or one per axis; applied before the rotation. A negative factor mirrors and keeps faces outward (not with a falloff).'), falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }).describe('Rotate and/or scale the selected vertices about a pivot; falloff fades the move to nothing at its radius.'),
   z.strictObject({ op: z.literal('merge_by_distance'), distance: finite.optional() }),
   z.strictObject({
     op: z.literal('loop_cut'), name: editName,
