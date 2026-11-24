@@ -45,7 +45,7 @@ test('presets fill the fields their name promises', async () => {
   const glass = materialOf(scene, 'glass');
   assert.ok(glass.opacity <= 0.85);
   assert.ok(!glass.transmission, 'transmission above 0 makes Glaze drop emission (#3279), which the rim needs');
-  assert.ok(glass.emission >= 20, 'a large emission factor lights the thin Fresnel rim');
+  assert.ok(glass.emission >= 6 && glass.emission <= 8, 'the Fresnel rim is bright (contrast 25 or more on every side) but keeps every channel under 255');
   assert.ok(glass.pattern.graph.emission, 'glass carries a Fresnel edge light');
   assert.equal(glass.clearcoat, 1);
   assert.ok(glass.roughness <= 0.1);
@@ -86,6 +86,16 @@ test('neon glows in a saturated version of the part colour, not white', async ()
   assert.ok(green < 0.05 && blue < 0.05, `emissive colour ${[red, green, blue]} must keep the hue of the part`);
 });
 
+test('neon keeps the hue of a blue part even at the frame emission', async () => {
+  const scene = await build(recipeWith([{ id: 'neon', preset: 'neon', color: [0.1, 0.3, 0.9] }]));
+  const neon = materialOf(scene, 'neon');
+  const frame = neon.pattern.graph.emission.ramp.stops.at(-1)[1];
+  const [red, green, blue] = neon.emissiveColor;
+  assert.equal(blue, 1);
+  assert.ok(green < 0.002, `green leak ${green} against blue 1 at frame emission ${neon.emission * frame}: bloom strength 8 would turn it cyan`);
+  assert.ok(red < green);
+});
+
 test('an explicit emissiveColor wins over the neon default', async () => {
   const scene = await build(recipeWith([{ id: 'neon', preset: 'neon', emissiveColor: [0, 1, 0] }]));
   assert.deepEqual([...materialOf(scene, 'neon').emissiveColor], [0, 1, 0]);
@@ -114,8 +124,10 @@ test('neon is a lit surface with a bright frame along the face edge, which is wh
   const face = stops[0][1];
   const frame = stops[stops.length - 1][1];
   assert.ok(frame > face * 2, 'frame at least twice as bright as the face');
-  assert.ok(neon.emission * frame >= 4, 'frame is well above the bloom threshold of 0.8');
-  assert.ok(neon.emission * face < 2.5, 'face stays low enough to keep its colour');
+  assert.ok(neon.emission * frame >= 100, 'frame is far above the bloom threshold of 10');
+  assert.ok(neon.emission * face < 10, 'face stays under the bloom threshold of 10 the notes ask for, so it keeps its colour');
+  assert.equal(neon.metallic, 1, 'black metal has no sky reflection for bloom to turn into a wash');
+  assert.equal(neon.roughness, 1);
 });
 
 test('brick defaults to a deep red', async () => {
