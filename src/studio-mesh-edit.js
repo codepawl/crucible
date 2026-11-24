@@ -611,7 +611,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       const edit = planMeshMove(state.mesh, vertices, localDelta);
       controller.applyImportOperations([{ type: 'edit-mesh', geometry: geometryId, edits: [edit] }], { detail: { kind: 'topology', nodeId } });
     } catch (error) {
-      announce(error.message);
+      announce(error);
     }
     refresh();
     writingOwnEntry = false;

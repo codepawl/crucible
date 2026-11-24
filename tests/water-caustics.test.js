@@ -56,6 +56,6 @@ test('the water body hands its caustics to the renderer and none when the materi
 test('the shader adds the net to the sun below the surface only and stays out of a shader without water', () => {
   const source = createFragmentShader(['water']);
   assert.ok(source.includes('float causticGain(vec3 position, float depth)'));
-  assert.match(source, /else if \(waterBody\.z > 0\.5 && worldPosition\.y < waterBody\.x\) \{[\s\S]*if \(waterCaustics\.z > 0\.0\) waterSunTransmittance \*= causticGain\(worldPosition, waterDepth\);[\s\S]*\}\s*vec3 keyColor = keyColor \* waterSunTransmittance;/);
+  assert.match(source, /else if \(waterBody\.z > 0\.5 && worldPosition\.y < \(waterSurfaceLevel = waterLevelAt\(worldPosition\)\)\) \{[\s\S]*if \(waterCaustics\.z > 0\.0\) waterSunTransmittance \*= causticGain\(worldPosition, waterDepth\);[\s\S]*\}\s*vec3 keyColor = keyColor \* waterSunTransmittance;/);
   assert.ok(!createFragmentShader([]).includes('causticGain'));
 });

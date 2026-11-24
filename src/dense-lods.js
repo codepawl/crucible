@@ -93,10 +93,29 @@ export function sceneFileLighting(map, fileLights = {}, sceneEnvironment = {}, {
 // (#2761). Both steps decide for themselves whether the parts make a closed room, so open scenes come back unchanged;
 // `renderer.environment.floorSkyTrace: false` and `sunBounce: 0` turn them off. The module loads only for a scene with a sun.
 // `floorSkyOptions` go to the trace (its texel and ray budgets); `skyReport` says what the trace did, or why it did not run.
+// `environment.skyOcclusion: true` also takes sky light away under cover (src/sky-occlusion-grid.js); `floorSkyOptions.skyOcclusion` holds its cell size and ray budgets.
 export async function withFileSceneInteriorLight(parts, environment, floorSkyOptions = {}) {
+  const lit = await withFileSceneSunLight(parts, environment, floorSkyOptions);
+  if (environment?.skyOcclusion !== true) return lit;
+  // Opt-in (#3289): the sky light under canopies and eaves, from a grid traced once here. It goes last so the sun bounce sees the plain parts.
+  const { applySkyOcclusionGrid } = await import('./sky-occlusion-grid.js');
+  const occluded = applySkyOcclusionGrid(lit.parts, floorSkyOptions.skyOcclusion);
+  if (occluded.report.reason) console.warn(`Sky occlusion left out: ${SKY_OCCLUSION_REASONS[occluded.report.reason] ?? occluded.report.reason}.`);
+  if (occluded.report.coarsened) console.warn(`Sky occlusion cells grew to ${occluded.report.cellSize.toFixed(2)} m so the grid stays within its node limit; canopy edges will look softer.`);
+  return { ...lit, parts: occluded.parts, skyOcclusionReport: occluded.report };
+}
+
+const SKY_OCCLUSION_REASONS = Object.freeze({
+  'baked light': 'a part already carries a light map or an irradiance grid, and that baked light wins',
+  'no parts': 'the scene has no parts',
+  'too large or too slow to trace': 'the scene has too many triangles or the trace ran past its time limit',
+});
+
+async function withFileSceneSunLight(parts, environment, floorSkyOptions) {
   const { applyDefaultFloorSky, environmentHasSun, withSunBounce } = await import('./floor-sky-visibility.js');
   if (!environmentHasSun(environment)) return { parts, environment, skyReport: null };
-  const traced = applyDefaultFloorSky(parts, environment, floorSkyOptions);
+  const { skyOcclusion, ...traceOptions } = floorSkyOptions;
+  const traced = applyDefaultFloorSky(parts, environment, traceOptions);
   // A scene past the trace's limits keeps the light it had; say so instead of dropping the reason (#2771).
   if (traced.report?.fallbackReason && traced.report.method !== 'proxy') console.warn(`Sky trace left out (${traced.report.reason}): ${traced.report.fallbackReason}`);
   return { parts: traced.parts, environment: withSunBounce(traced.parts, environment), skyReport: traced.report };

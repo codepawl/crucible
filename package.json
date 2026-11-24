@@ -252,6 +252,7 @@
     "reference:line-art": "node bench/reference/line-art.mjs",
     "size": "node scripts/measure-size.mjs",
     "size:release": "node scripts/measure-size.mjs --set-budgets",
+    "tool-size": "node scripts/tool-size.mjs",
     "validate:gltf": "node scripts/validate-gltf.mjs",
     "tool-cost": "node scripts/check-tool-cost.mjs",
     "tool-cost:release": "node scripts/check-tool-cost.mjs --set-budgets",

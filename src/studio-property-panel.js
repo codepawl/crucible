@@ -1,3 +1,4 @@
+import { STUDIO_PROPERTY_SECTION_ICONS } from './studio-icons.js';
 import { directionToSunAngles, hexToLinearRgb, linearRgbToHex } from './studio-controller.js';
 import {
   formatPropertyNumber,
@@ -64,7 +65,7 @@ export function createPropertyPanel({ documentReference, controller, announce, b
   }
 
   function reportRefusal(error) {
-    announce(error.message);
+    announce(error);
     sync();
   }
 
@@ -290,11 +291,15 @@ export function createPropertyPanel({ documentReference, controller, announce, b
       controls.set(field.id, { field, ...row });
       return row.container;
     }));
+    const chevron = createIcon(documentReference, 'chevron');
+    chevron.setAttribute('class', 'crucible-studio-icon crucible-studio-chevron');
+    const sectionIcon = createIcon(documentReference, STUDIO_PROPERTY_SECTION_ICONS[section.id]);
+    sectionIcon.setAttribute('class', 'crucible-studio-icon crucible-studio-section-icon');
     const title = createElement(documentReference, 'button', {
       type: 'button',
       className: 'crucible-studio-property-title',
       attributes: { 'aria-expanded': 'true' },
-    }, createIcon(documentReference, 'chevron'), createElement(documentReference, 'span', { textContent: section.title }));
+    }, chevron, sectionIcon, createElement(documentReference, 'span', { textContent: section.title }));
     const container = createElement(documentReference, 'div', { className: 'crucible-studio-property-section', dataset: { section: section.id } }, title, rows);
     const showOpen = open => {
       container.dataset.open = open ? 'true' : 'false';

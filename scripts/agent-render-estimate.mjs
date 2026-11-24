@@ -92,7 +92,7 @@ function textureCount(recipe) {
  * The numbers about the scene that the estimate uses, from the scene's inspection result (listing every node) and its recipe.
  * Triangles count each placed node, so ten spheres cost ten spheres even when they share one geometry.
  */
-export function sceneSizeFrom(inspection, recipe, { assetFileBytes = 0 } = {}) {
+export function sceneSizeFrom(inspection, recipe, { assetFileBytes = 0, byAssetId = new Map() } = {}) {
   const look = inspection?.look ?? {};
   const listed = inspection?.nodes ?? [];
   const listedTriangles = listed.reduce((total, node) => total + (node.triangles ?? 0), 0);
@@ -105,17 +105,23 @@ export function sceneSizeFrom(inspection, recipe, { assetFileBytes = 0 } = {}) {
   const placements = (inspection?.assets ?? []).filter(placement => typeof placement.assetId === 'string');
   const copiesPerAsset = placements.length / Math.max(1, new Set(placements.map(placement => placement.assetId)).size);
   const generatedTriangles = Math.max(0, residentTriangles - listedScaled) * Math.max(1, copiesPerAsset);
+  // The placed files are read from their glTF accessor counts: the inspection holds no triangles of an asset it has not loaded, so a large GLB would count as nothing.
+  const placedAssetTriangles = placements.reduce((total, placement) => total + (byAssetId.get(placement.assetId)?.triangles ?? 0), 0);
+  const placedAssetTextures = [...new Set(placements.map(placement => placement.assetId))].reduce((total, assetId) => total + (byAssetId.get(assetId)?.textures ?? 0), 0);
+  const assetTextureMiB = [...new Set(placements.map(placement => placement.assetId))].reduce((total, assetId) => total + (byAssetId.get(assetId)?.textureMiB ?? 0), 0);
   return {
     parts: inspection?.counts?.parts ?? 0,
     assetParts: placements.reduce((total, placement) => total + (placement.parts ?? 0), 0),
     // Size of the placed GLB files, each counted once: their textures decode and upload however few triangles they have.
     assetMiB: round(assetFileBytes / MIB, 1),
     nodes: inspection?.counts?.nodes ?? listed.length,
-    triangles: listedScaled + generatedTriangles,
+    triangles: Math.max(listedScaled + generatedTriangles, listedScaled + placedAssetTriangles),
     // The triangles the node list itself reports, never scaled or guessed: a floor of the real count.
     listedTriangles,
     materials: inspection?.counts?.materials ?? 0,
-    textures: textureCount(recipe),
+    textures: textureCount(recipe) + placedAssetTextures,
+    // Present only when placed files hold images: their resident size from the image headers, which peakMemoryMiB uses instead of a flat figure per image.
+    ...(placedAssetTextures > 0 ? { assetTextures: placedAssetTextures, assetTextureMiB: round(assetTextureMiB, 1) } : {}),
     lights: (look.pointLights ?? 0) + (look.spotLights ?? 0) + (look.areaLights ?? 0) + 1,
   };
 }
@@ -163,7 +169,7 @@ function rasterFrameSeconds({ size, settings }) {
 
 function peakMemoryMiB({ size, settings }) {
   const sceneMiB = Math.min(COST_MODEL.maximumSceneExtraMiB, size.parts * COST_MODEL.extraMiBPerPart + (size.triangles / 1000) * COST_MODEL.extraMiBPerThousandTriangles);
-  return COST_MODEL.nodeBaseMiB + sceneMiB + size.textures * COST_MODEL.miBPerTexture
+  return COST_MODEL.nodeBaseMiB + sceneMiB + (size.textures - (size.assetTextures ?? 0)) * COST_MODEL.miBPerTexture + (size.assetTextureMiB ?? 0)
     + (settings.renderer ? COST_MODEL.pathTracerExtraMiB : 0) + (settings.width * settings.height * COST_MODEL.nodeBytesPerPixel) / MIB;
 }
 

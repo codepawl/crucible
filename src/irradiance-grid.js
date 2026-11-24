@@ -106,7 +106,7 @@ export function gridLayout(parts, resolution) {
 }
 
 // A node inside a solid sees the back of the surfaces around it; its light would be the inside of a wall, not the room's.
-function isInsideSolid(world, tracer, point) {
+export function isInsideSolid(world, tracer, point) {
   const triangle = new Float64Array(9);
   let backfaces = 0;
   let hits = 0;
