@@ -158,3 +158,16 @@ test('a scene with waterReflection on and a clip poses without "Unknown part ide
   assert.doesNotThrow(() => renderAt(0.3));
   assert.equal(renderer.frames.length, 1);
 });
+
+test('only a scene with ground cover hands the frame time to the renderer, so its grass sways', async () => {
+  const asset = await loadRobot();
+  const rendererParts = rendererCopiesOf(asset.parts);
+  const timeSeenBy = async description => {
+    const renderer = strictRenderer(rendererParts);
+    const renderAt = createFileSceneRenderAt({ asset, posedParts: asset.parts, sceneParts: asset.parts, rendererParts, renderer, camera: null, description, frame: { exposure: 1 } });
+    renderAt(0.5);
+    return renderer.frames[0].options.time;
+  };
+  assert.equal(await timeSeenBy(DESCRIPTION), undefined);
+  assert.equal(await timeSeenBy({ ...DESCRIPTION, environment: { groundCover: [{ surfaces: 'Lawn' }] } }), 0.5);
+});

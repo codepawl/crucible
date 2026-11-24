@@ -17,6 +17,8 @@ An agent pays for three things: the tool list, the results of its calls, and the
 | `mesh_stack` | 2,009 B | 574 |
 | The other 21 tools | 29,565 B | 8,447 |
 
+Run `npm run tool-size` to print the size of every tool, largest first, with the total and its estimated tokens (bytes divided by 3.5). Use it to regenerate this table and to see what a schema change costs.
+
 Claude Code loads tool schemas on demand through tool search by default, so it pays this cost only for the tools that a task uses. Other harnesses can send the whole list on every turn. If your harness does that, cut the list to the tools that your task needs:
 
 ```toml

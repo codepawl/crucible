@@ -242,6 +242,7 @@ export class FakeNode {
     event.target ??= this;
     const path = [];
     for (let node = this; node; node = node.parentNode) path.push(node);
+    event.composedPath ??= () => path;
     const run = (node, capturePhase) => {
       event.currentTarget = node;
       for (const entry of [...node.listeners]) {
