@@ -1,0 +1,4356 @@
+{
+ "recipe": {
+  "format": "crucible.scene",
+  "schemaVersion": 1,
+  "geometries": [
+   {
+    "id": "box",
+    "type": "box",
+    "bevel": 0
+   }
+  ],
+  "materials": [
+   {
+    "id": "light",
+    "color": [
+     0.88,
+     0.88,
+     0.86
+    ],
+    "roughness": 0.9
+   },
+   {
+    "id": "dark",
+    "color": [
+     0.12,
+     0.2,
+     0.55
+    ],
+    "roughness": 0.9
+   },
+   {
+    "id": "glass-near",
+    "color": [
+     1,
+     1,
+     1
+    ],
+    "roughness": 0.02,
+    "metallic": 0,
+    "transmission": 1,
+    "ior": 1.5,
+    "thickness": 1.6,
+    "attenuationColor": [
+     1,
+     1,
+     1
+    ],
+    "attenuationDistance": 100
+   },
+   {
+    "id": "glass-far",
+    "color": [
+     1,
+     1,
+     1
+    ],
+    "roughness": 0.02,
+    "metallic": 0,
+    "transmission": 1,
+    "ior": 1.5,
+    "thickness": 0.9,
+    "attenuationColor": [
+     1,
+     1,
+     1
+    ],
+    "attenuationDistance": 100
+   }
+  ],
+  "nodes": [
+   {
+    "id": "floor",
+    "geometry": "box",
+    "material": "light",
+    "translation": [
+     0,
+     -0.1,
+     0
+    ],
+    "scale": [
+     14,
+     0.2,
+     10
+    ]
+   },
+   {
+    "id": "tile0-1",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.25,
+     0.001,
+     -4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile0-3",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.25,
+     0.001,
+     -4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile0-5",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.25,
+     0.001,
+     -4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile0-7",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.25,
+     0.001,
+     -4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile0-9",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.25,
+     0.001,
+     -4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile0-11",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.25,
+     0.001,
+     -4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile0-13",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.25,
+     0.001,
+     -4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile0-15",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.75,
+     0.001,
+     -4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile0-17",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.75,
+     0.001,
+     -4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile0-19",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.75,
+     0.001,
+     -4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile0-21",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.75,
+     0.001,
+     -4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile0-23",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.75,
+     0.001,
+     -4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile0-25",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.75,
+     0.001,
+     -4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile0-27",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.75,
+     0.001,
+     -4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile1-0",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.75,
+     0.001,
+     -4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile1-2",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.75,
+     0.001,
+     -4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile1-4",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.75,
+     0.001,
+     -4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile1-6",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.75,
+     0.001,
+     -4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile1-8",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.75,
+     0.001,
+     -4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile1-10",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.75,
+     0.001,
+     -4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile1-12",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.75,
+     0.001,
+     -4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile1-14",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.25,
+     0.001,
+     -4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile1-16",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.25,
+     0.001,
+     -4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile1-18",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.25,
+     0.001,
+     -4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile1-20",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.25,
+     0.001,
+     -4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile1-22",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.25,
+     0.001,
+     -4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile1-24",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.25,
+     0.001,
+     -4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile1-26",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.25,
+     0.001,
+     -4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile2-1",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.25,
+     0.001,
+     -3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile2-3",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.25,
+     0.001,
+     -3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile2-5",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.25,
+     0.001,
+     -3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile2-7",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.25,
+     0.001,
+     -3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile2-9",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.25,
+     0.001,
+     -3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile2-11",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.25,
+     0.001,
+     -3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile2-13",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.25,
+     0.001,
+     -3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile2-15",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.75,
+     0.001,
+     -3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile2-17",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.75,
+     0.001,
+     -3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile2-19",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.75,
+     0.001,
+     -3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile2-21",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.75,
+     0.001,
+     -3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile2-23",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.75,
+     0.001,
+     -3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile2-25",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.75,
+     0.001,
+     -3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile2-27",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.75,
+     0.001,
+     -3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile3-0",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.75,
+     0.001,
+     -3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile3-2",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.75,
+     0.001,
+     -3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile3-4",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.75,
+     0.001,
+     -3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile3-6",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.75,
+     0.001,
+     -3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile3-8",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.75,
+     0.001,
+     -3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile3-10",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.75,
+     0.001,
+     -3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile3-12",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.75,
+     0.001,
+     -3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile3-14",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.25,
+     0.001,
+     -3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile3-16",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.25,
+     0.001,
+     -3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile3-18",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.25,
+     0.001,
+     -3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile3-20",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.25,
+     0.001,
+     -3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile3-22",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.25,
+     0.001,
+     -3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile3-24",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.25,
+     0.001,
+     -3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile3-26",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.25,
+     0.001,
+     -3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile4-1",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.25,
+     0.001,
+     -2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile4-3",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.25,
+     0.001,
+     -2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile4-5",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.25,
+     0.001,
+     -2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile4-7",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.25,
+     0.001,
+     -2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile4-9",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.25,
+     0.001,
+     -2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile4-11",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.25,
+     0.001,
+     -2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile4-13",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.25,
+     0.001,
+     -2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile4-15",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.75,
+     0.001,
+     -2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile4-17",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.75,
+     0.001,
+     -2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile4-19",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.75,
+     0.001,
+     -2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile4-21",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.75,
+     0.001,
+     -2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile4-23",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.75,
+     0.001,
+     -2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile4-25",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.75,
+     0.001,
+     -2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile4-27",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.75,
+     0.001,
+     -2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile5-0",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.75,
+     0.001,
+     -2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile5-2",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.75,
+     0.001,
+     -2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile5-4",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.75,
+     0.001,
+     -2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile5-6",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.75,
+     0.001,
+     -2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile5-8",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.75,
+     0.001,
+     -2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile5-10",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.75,
+     0.001,
+     -2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile5-12",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.75,
+     0.001,
+     -2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile5-14",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.25,
+     0.001,
+     -2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile5-16",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.25,
+     0.001,
+     -2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile5-18",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.25,
+     0.001,
+     -2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile5-20",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.25,
+     0.001,
+     -2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile5-22",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.25,
+     0.001,
+     -2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile5-24",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.25,
+     0.001,
+     -2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile5-26",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.25,
+     0.001,
+     -2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile6-1",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.25,
+     0.001,
+     -1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile6-3",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.25,
+     0.001,
+     -1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile6-5",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.25,
+     0.001,
+     -1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile6-7",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.25,
+     0.001,
+     -1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile6-9",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.25,
+     0.001,
+     -1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile6-11",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.25,
+     0.001,
+     -1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile6-13",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.25,
+     0.001,
+     -1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile6-15",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.75,
+     0.001,
+     -1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile6-17",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.75,
+     0.001,
+     -1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile6-19",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.75,
+     0.001,
+     -1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile6-21",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.75,
+     0.001,
+     -1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile6-23",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.75,
+     0.001,
+     -1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile6-25",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.75,
+     0.001,
+     -1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile6-27",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.75,
+     0.001,
+     -1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile7-0",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.75,
+     0.001,
+     -1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile7-2",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.75,
+     0.001,
+     -1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile7-4",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.75,
+     0.001,
+     -1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile7-6",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.75,
+     0.001,
+     -1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile7-8",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.75,
+     0.001,
+     -1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile7-10",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.75,
+     0.001,
+     -1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile7-12",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.75,
+     0.001,
+     -1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile7-14",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.25,
+     0.001,
+     -1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile7-16",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.25,
+     0.001,
+     -1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile7-18",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.25,
+     0.001,
+     -1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile7-20",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.25,
+     0.001,
+     -1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile7-22",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.25,
+     0.001,
+     -1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile7-24",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.25,
+     0.001,
+     -1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile7-26",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.25,
+     0.001,
+     -1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile8-1",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.25,
+     0.001,
+     -0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile8-3",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.25,
+     0.001,
+     -0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile8-5",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.25,
+     0.001,
+     -0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile8-7",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.25,
+     0.001,
+     -0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile8-9",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.25,
+     0.001,
+     -0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile8-11",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.25,
+     0.001,
+     -0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile8-13",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.25,
+     0.001,
+     -0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile8-15",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.75,
+     0.001,
+     -0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile8-17",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.75,
+     0.001,
+     -0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile8-19",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.75,
+     0.001,
+     -0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile8-21",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.75,
+     0.001,
+     -0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile8-23",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.75,
+     0.001,
+     -0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile8-25",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.75,
+     0.001,
+     -0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile8-27",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.75,
+     0.001,
+     -0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile9-0",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.75,
+     0.001,
+     -0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile9-2",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.75,
+     0.001,
+     -0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile9-4",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.75,
+     0.001,
+     -0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile9-6",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.75,
+     0.001,
+     -0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile9-8",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.75,
+     0.001,
+     -0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile9-10",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.75,
+     0.001,
+     -0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile9-12",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.75,
+     0.001,
+     -0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile9-14",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.25,
+     0.001,
+     -0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile9-16",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.25,
+     0.001,
+     -0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile9-18",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.25,
+     0.001,
+     -0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile9-20",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.25,
+     0.001,
+     -0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile9-22",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.25,
+     0.001,
+     -0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile9-24",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.25,
+     0.001,
+     -0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile9-26",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.25,
+     0.001,
+     -0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile10-1",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.25,
+     0.001,
+     0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile10-3",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.25,
+     0.001,
+     0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile10-5",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.25,
+     0.001,
+     0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile10-7",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.25,
+     0.001,
+     0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile10-9",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.25,
+     0.001,
+     0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile10-11",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.25,
+     0.001,
+     0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile10-13",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.25,
+     0.001,
+     0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile10-15",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.75,
+     0.001,
+     0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile10-17",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.75,
+     0.001,
+     0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile10-19",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.75,
+     0.001,
+     0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile10-21",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.75,
+     0.001,
+     0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile10-23",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.75,
+     0.001,
+     0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile10-25",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.75,
+     0.001,
+     0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile10-27",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.75,
+     0.001,
+     0.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile11-0",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.75,
+     0.001,
+     0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile11-2",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.75,
+     0.001,
+     0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile11-4",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.75,
+     0.001,
+     0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile11-6",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.75,
+     0.001,
+     0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile11-8",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.75,
+     0.001,
+     0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile11-10",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.75,
+     0.001,
+     0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile11-12",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.75,
+     0.001,
+     0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile11-14",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.25,
+     0.001,
+     0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile11-16",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.25,
+     0.001,
+     0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile11-18",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.25,
+     0.001,
+     0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile11-20",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.25,
+     0.001,
+     0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile11-22",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.25,
+     0.001,
+     0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile11-24",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.25,
+     0.001,
+     0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile11-26",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.25,
+     0.001,
+     0.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile12-1",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.25,
+     0.001,
+     1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile12-3",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.25,
+     0.001,
+     1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile12-5",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.25,
+     0.001,
+     1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile12-7",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.25,
+     0.001,
+     1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile12-9",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.25,
+     0.001,
+     1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile12-11",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.25,
+     0.001,
+     1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile12-13",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.25,
+     0.001,
+     1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile12-15",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.75,
+     0.001,
+     1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile12-17",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.75,
+     0.001,
+     1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile12-19",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.75,
+     0.001,
+     1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile12-21",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.75,
+     0.001,
+     1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile12-23",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.75,
+     0.001,
+     1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile12-25",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.75,
+     0.001,
+     1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile12-27",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.75,
+     0.001,
+     1.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile13-0",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.75,
+     0.001,
+     1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile13-2",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.75,
+     0.001,
+     1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile13-4",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.75,
+     0.001,
+     1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile13-6",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.75,
+     0.001,
+     1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile13-8",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.75,
+     0.001,
+     1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile13-10",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.75,
+     0.001,
+     1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile13-12",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.75,
+     0.001,
+     1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile13-14",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.25,
+     0.001,
+     1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile13-16",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.25,
+     0.001,
+     1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile13-18",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.25,
+     0.001,
+     1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile13-20",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.25,
+     0.001,
+     1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile13-22",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.25,
+     0.001,
+     1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile13-24",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.25,
+     0.001,
+     1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile13-26",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.25,
+     0.001,
+     1.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile14-1",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.25,
+     0.001,
+     2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile14-3",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.25,
+     0.001,
+     2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile14-5",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.25,
+     0.001,
+     2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile14-7",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.25,
+     0.001,
+     2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile14-9",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.25,
+     0.001,
+     2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile14-11",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.25,
+     0.001,
+     2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile14-13",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.25,
+     0.001,
+     2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile14-15",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.75,
+     0.001,
+     2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile14-17",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.75,
+     0.001,
+     2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile14-19",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.75,
+     0.001,
+     2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile14-21",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.75,
+     0.001,
+     2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile14-23",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.75,
+     0.001,
+     2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile14-25",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.75,
+     0.001,
+     2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile14-27",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.75,
+     0.001,
+     2.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile15-0",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.75,
+     0.001,
+     2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile15-2",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.75,
+     0.001,
+     2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile15-4",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.75,
+     0.001,
+     2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile15-6",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.75,
+     0.001,
+     2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile15-8",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.75,
+     0.001,
+     2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile15-10",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.75,
+     0.001,
+     2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile15-12",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.75,
+     0.001,
+     2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile15-14",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.25,
+     0.001,
+     2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile15-16",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.25,
+     0.001,
+     2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile15-18",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.25,
+     0.001,
+     2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile15-20",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.25,
+     0.001,
+     2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile15-22",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.25,
+     0.001,
+     2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile15-24",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.25,
+     0.001,
+     2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile15-26",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.25,
+     0.001,
+     2.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile16-1",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.25,
+     0.001,
+     3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile16-3",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.25,
+     0.001,
+     3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile16-5",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.25,
+     0.001,
+     3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile16-7",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.25,
+     0.001,
+     3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile16-9",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.25,
+     0.001,
+     3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile16-11",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.25,
+     0.001,
+     3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile16-13",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.25,
+     0.001,
+     3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile16-15",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.75,
+     0.001,
+     3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile16-17",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.75,
+     0.001,
+     3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile16-19",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.75,
+     0.001,
+     3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile16-21",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.75,
+     0.001,
+     3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile16-23",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.75,
+     0.001,
+     3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile16-25",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.75,
+     0.001,
+     3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile16-27",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.75,
+     0.001,
+     3.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile17-0",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.75,
+     0.001,
+     3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile17-2",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.75,
+     0.001,
+     3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile17-4",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.75,
+     0.001,
+     3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile17-6",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.75,
+     0.001,
+     3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile17-8",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.75,
+     0.001,
+     3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile17-10",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.75,
+     0.001,
+     3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile17-12",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.75,
+     0.001,
+     3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile17-14",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.25,
+     0.001,
+     3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile17-16",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.25,
+     0.001,
+     3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile17-18",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.25,
+     0.001,
+     3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile17-20",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.25,
+     0.001,
+     3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile17-22",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.25,
+     0.001,
+     3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile17-24",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.25,
+     0.001,
+     3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile17-26",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.25,
+     0.001,
+     3.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile18-1",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.25,
+     0.001,
+     4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile18-3",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.25,
+     0.001,
+     4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile18-5",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.25,
+     0.001,
+     4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile18-7",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.25,
+     0.001,
+     4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile18-9",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.25,
+     0.001,
+     4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile18-11",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.25,
+     0.001,
+     4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile18-13",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.25,
+     0.001,
+     4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile18-15",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.75,
+     0.001,
+     4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile18-17",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.75,
+     0.001,
+     4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile18-19",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.75,
+     0.001,
+     4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile18-21",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.75,
+     0.001,
+     4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile18-23",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.75,
+     0.001,
+     4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile18-25",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.75,
+     0.001,
+     4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile18-27",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.75,
+     0.001,
+     4.25
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile19-0",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -6.75,
+     0.001,
+     4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile19-2",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -5.75,
+     0.001,
+     4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile19-4",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -4.75,
+     0.001,
+     4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile19-6",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -3.75,
+     0.001,
+     4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile19-8",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -2.75,
+     0.001,
+     4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile19-10",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -1.75,
+     0.001,
+     4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile19-12",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     -0.75,
+     0.001,
+     4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile19-14",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     0.25,
+     0.001,
+     4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile19-16",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     1.25,
+     0.001,
+     4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile19-18",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     2.25,
+     0.001,
+     4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile19-20",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     3.25,
+     0.001,
+     4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile19-22",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     4.25,
+     0.001,
+     4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile19-24",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     5.25,
+     0.001,
+     4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "tile19-26",
+    "geometry": "box",
+    "material": "dark",
+    "translation": [
+     6.25,
+     0.001,
+     4.75
+    ],
+    "scale": [
+     0.5,
+     0.004,
+     0.5
+    ]
+   },
+   {
+    "id": "near",
+    "geometry": "box",
+    "material": "glass-near",
+    "translation": [
+     -0.3,
+     0.95,
+     0
+    ],
+    "scale": [
+     1.6,
+     1.6,
+     1.6
+    ],
+    "rotation": [
+     0.08608271092777121,
+     0.1558391846718965,
+     -0.013634161991913887,
+     0.9839298882679104
+    ]
+   },
+   {
+    "id": "far",
+    "geometry": "box",
+    "material": "glass-far",
+    "translation": [
+     0.3,
+     0.8,
+     0.05
+    ],
+    "scale": [
+     0.9,
+     0.9,
+     0.9
+    ],
+    "rotation": [
+     0.06923651956680049,
+     -0.12157247580974431,
+     0.00850117565345496,
+     0.9901283591011188
+    ]
+   }
+  ],
+  "camera": {
+   "eye": [
+    0,
+    1.7,
+    8.5
+   ],
+   "target": [
+    0,
+    0.8,
+    0
+   ],
+   "fov": 30
+  },
+  "environment": {
+   "world": true,
+   "hdri": "studio-softbox",
+   "environmentIntensity": 0.6
+  }
+ },
+ "settings": {
+  "kind": "image",
+  "width": 640,
+  "height": 640
+ },
+ "mode": "raster",
+ "seed": 1,
+ "renderSeconds": 0.016655600000000048
+}
