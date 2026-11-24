@@ -1,0 +1,30 @@
+{
+ "../r15/frames": {
+  "rim lower right": {
+   "mean": 2.131,
+   "p99": 15.0
+  },
+  "rim far left": {
+   "mean": 0.877,
+   "p99": 8.0
+  },
+  "rim whole puddle": {
+   "mean": 0.864,
+   "p99": 8.0
+  }
+ },
+ "frames": {
+  "rim lower right": {
+   "mean": 1.035,
+   "p99": 5.0
+  },
+  "rim far left": {
+   "mean": 0.886,
+   "p99": 8.0
+  },
+  "rim whole puddle": {
+   "mean": 0.709,
+   "p99": 5.0
+  }
+ }
+}

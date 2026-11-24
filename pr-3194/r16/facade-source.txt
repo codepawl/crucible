@@ -1,0 +1,2 @@
+ambientCG Facade 018 A: https://ambientcg.com/a/Facade018A, licence CC0 1.0; 1K-JPG Color+NormalGL+Roughness, used as the building the puddle mirrors (round 16)
+Colour map lightened 1.8x in linear light (clamped) by r16/lighten.py so the mirrored building is not near black; mean linear 0.334, 0.281, 0.266

@@ -1,0 +1,264 @@
+{
+ "size": [
+  960,
+  540
+ ],
+ "samples": 4,
+ "backend": "chrome d3d11",
+ "root": "branch",
+ "camera": {
+  "eye": [
+   -8.900000000000022,
+   1.6,
+   -18.499999999999954
+  ],
+  "target": [
+   -8.900000000000022,
+   0,
+   -21.699999999999953
+  ],
+  "fov": 40
+ },
+ "environment": {
+  "setup": "daylight",
+  "world": true,
+  "environmentIntensity": 1,
+  "keyIntensity": 1.5,
+  "sky": {
+   "type": "physical",
+   "sunElevation": 16,
+   "sunRotation": 0
+  },
+  "wetness": 1,
+  "puddles": {
+   "coverage": 1,
+   "from": "height"
+  }
+ },
+ "recipe": {
+  "format": "crucible.scene",
+  "schemaVersion": 1,
+  "geometries": [
+   {
+    "id": "slab",
+    "type": "box",
+    "bevel": 0
+   },
+   {
+    "id": "post",
+    "type": "cylinder"
+   },
+   {
+    "id": "ball",
+    "type": "sphere"
+   }
+  ],
+  "materials": [
+   {
+    "id": "asphalt",
+    "color": [
+     1,
+     1,
+     1
+    ],
+    "roughness": 1,
+    "colorMap": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+    "normalMap": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2",
+    "roughnessMap": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3",
+    "worldScale": 1.5
+   },
+   {
+    "id": "darkwall",
+    "color": [
+     0.04,
+     0.04,
+     0.045
+    ],
+    "roughness": 0.9
+   },
+   {
+    "id": "facade",
+    "color": [
+     1,
+     1,
+     1
+    ],
+    "roughness": 1,
+    "colorMap": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+    "normalMap": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2",
+    "roughnessMap": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb3",
+    "worldScale": 8
+   },
+   {
+    "id": "pole",
+    "color": [
+     0.03,
+     0.03,
+     0.03
+    ],
+    "roughness": 0.6
+   },
+   {
+    "id": "brick",
+    "color": [
+     0.45,
+     0.2,
+     0.15
+    ],
+    "roughness": 0.9
+   },
+   {
+    "id": "bark",
+    "color": [
+     0.2,
+     0.12,
+     0.07
+    ],
+    "roughness": 0.9
+   },
+   {
+    "id": "leaf",
+    "color": [
+     0.08,
+     0.3,
+     0.08
+    ],
+    "roughness": 0.9
+   }
+  ],
+  "nodes": [
+   {
+    "id": "ground",
+    "geometry": "slab",
+    "material": "asphalt",
+    "translation": [
+     0,
+     -0.05,
+     0
+    ],
+    "scale": [
+     90,
+     0.1,
+     90
+    ]
+   },
+   {
+    "id": "wall",
+    "geometry": "slab",
+    "material": "facade",
+    "translation": [
+     -18.50000000000002,
+     4,
+     -30.699999999999953
+    ],
+    "scale": [
+     16,
+     8,
+     0.4
+    ]
+   },
+   {
+    "id": "pole",
+    "geometry": "post",
+    "material": "pole",
+    "translation": [
+     -8.000000000000021,
+     1.5,
+     -24.199999999999953
+    ],
+    "scale": [
+     0.12,
+     3,
+     0.12
+    ]
+   },
+   {
+    "id": "brick-wall",
+    "geometry": "slab",
+    "material": "brick",
+    "translation": [
+     -2.9000000000000217,
+     2,
+     -24.699999999999953
+    ],
+    "scale": [
+     0.4,
+     4,
+     8
+    ]
+   },
+   {
+    "id": "trunk",
+    "geometry": "post",
+    "material": "bark",
+    "translation": [
+     -13.400000000000022,
+     1.2,
+     -23.199999999999953
+    ],
+    "scale": [
+     0.35,
+     2.4,
+     0.35
+    ]
+   },
+   {
+    "id": "crown",
+    "geometry": "ball",
+    "material": "leaf",
+    "translation": [
+     -13.400000000000022,
+     3.4,
+     -23.199999999999953
+    ],
+    "scale": [
+     2.6,
+     2.6,
+     2.6
+    ]
+   }
+  ],
+  "camera": {
+   "eye": [
+    -8.900000000000022,
+    1.6,
+    -18.499999999999954
+   ],
+   "target": [
+    -8.900000000000022,
+    0,
+    -21.699999999999953
+   ],
+   "fov": 40
+  },
+  "environment": {
+   "setup": "daylight",
+   "world": true,
+   "environmentIntensity": 1,
+   "keyIntensity": 1.5,
+   "sky": {
+    "type": "physical",
+    "sunElevation": 16,
+    "sunRotation": 0
+   },
+   "wetness": 1,
+   "puddles": {
+    "coverage": 1,
+    "from": "height"
+   }
+  }
+ },
+ "pixelHash": "8c7d93144ba41a25b8a79123cd84284fa1255a5fac774801d3260f1241e1293f",
+ "features": [
+  "baseMap",
+  "environmentMap",
+  "fragmentShadowPosition",
+  "instanced",
+  "metallicRoughnessMap",
+  "normalMap",
+  "waterReflection",
+  "wetness"
+ ],
+ "glError": 0,
+ "timings": []
+}
