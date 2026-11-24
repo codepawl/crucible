@@ -40,7 +40,12 @@ function bindUniforms(renderer, post, volume, environment, frame) {
   bindDetail(context, post, volume);
   context.uniform1f(post.uniforms.orthographic, frame.projection === 'orthographic' ? 1 : 0);
   context.uniform1i(post.uniforms.fogSkyVisibility, 5);
-  context.uniform1f(post.uniforms.volumeGridFog, renderer.sceneParts.some(part => part.material?.irradianceGrid) ? 1 : 0);
+  context.uniform1f(post.uniforms.volumeGridFog, fogIsLitByGrid(renderer.sceneParts) ? 1 : 0);
+}
+
+/** True when a baked irradiance grid lights the fog. A sky-only grid (src/sky-occlusion-grid.js) holds no light, so it leaves the fog as it was (#3289). */
+export function fogIsLitByGrid(parts) {
+  return parts.some(part => part.material?.irradianceGrid && !part.material.irradianceGrid.skyOnly);
 }
 
 // Detail, layer top and key light controls. The detail ones only act in a program with the detail step compiled in (fogUsesDetail).

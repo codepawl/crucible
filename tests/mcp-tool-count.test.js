@@ -33,12 +33,15 @@ async function countStatedIn(file, pattern) {
 
 test('documented MCP tool counts match the protocol listing', async () => {
   const listed = await listedToolCount();
-  const statements = {
-    'docs/learn/models-and-ai-agents.md': /(\d+) tools for authoring/,
-    'docs/mcp.md': /Lists all (\d+) tools/,
-    'site/index.html': /(\d+) MCP tools/,
-  };
-  for (const [file, pattern] of Object.entries(statements)) {
+  const statements = [
+    ['docs/learn/models-and-ai-agents.md', /(\d+) tools for authoring/],
+    ['docs/mcp.md', /Lists all (\d+) tools/],
+    ['docs/learn/connect-mcp.md', /gives the agent (\d+) tools/],
+    ['docs/learn/connect-mcp.md', /You must see (\d+) tools/],
+    ['docs/learn/optimize-for-agents.md', /The (\d+) tools total/],
+    ['site/index.html', /(\d+) MCP tools/],
+  ];
+  for (const [file, pattern] of statements) {
     assert.equal(await countStatedIn(file, pattern), listed, `${file} states a different tool count than tools/list`);
   }
 });

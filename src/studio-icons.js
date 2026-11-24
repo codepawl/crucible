@@ -37,19 +37,19 @@ export const STUDIO_ICON_PATHS = Object.freeze({
   look: 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6L19 19M5 19l1.4-1.4M17.6 6.4L19 5',
   camera: 'M3 7h12v10H3zM15 10.5l6-3v9l-6-3z',
   sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2',
-  pointLight: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1',
-  spotLight: 'M9 3h6l-1 5h-4zM10 8l-5 13h14L14 8M5 21c1.2-1 12.8-1 14 0',
-  areaLight: 'M4 6h16v8H4zM8 14v3M16 14v3M7 20h10',
+  pointLight: 'M9 17h6M10 20h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z',
+  spotLight: 'M3.5 8.5l5-5 3 3-5 5zM12 8.5l9 2.5M12.5 12.5l6.5 6.5M8.5 12.5L11 21',
+  areaLight: 'M4 4h16v5H4zM8 12v5M12 12v6M16 12v5',
   sphere: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12c0 1.9 4 3.5 9 3.5s9-1.6 9-3.5',
   cylinder: 'M5 6.5C5 4.6 8.1 3 12 3s7 1.6 7 3.5v11c0 1.9-3.1 3.5-7 3.5s-7-1.6-7-3.5zM5 6.5C5 8.4 8.1 10 12 10s7-1.6 7-3.5',
   cone: 'M12 3L4.5 17.5c0 1.9 3.4 3.5 7.5 3.5s7.5-1.6 7.5-3.5zM4.5 17.5c0-1.9 3.4-3.5 7.5-3.5s7.5 1.6 7.5 3.5',
-  torus: 'M12 6c5 0 9 2.7 9 6s-4 6-9 6-9-2.7-9-6 4-6 9-6zM8.5 11.5c0 1 1.6 1.8 3.5 1.8s3.5-.8 3.5-1.8',
+  torus: 'M12 5c5.5 0 10 3.1 10 7s-4.5 7-10 7S2 15.9 2 12s4.5-7 10-7zM12 9c-3 0-5.5 1.3-5.5 3s2.5 3 5.5 3 5.5-1.3 5.5-3-2.5-3-5.5-3z',
   plane: 'M6.5 8h15l-4 8h-15z',
   group: 'M12 3l9 5-9 5-9-5zM3 13l9 5 9-5',
   open: 'M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
   save: 'M5 3h11l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a1 1 0 0 1 1-1zM8 3v5h7V3M8 21v-7h8v7',
   saveAs: 'M12 4v10M8 10l4 4 4-4M5 17v2h14v-2',
-  code: 'M8 4c-2 0-3 1-3 3v2c0 1.5-.8 3-2 3 1.2 0 2 1.5 2 3v2c0 2 1 3 3 3M16 4c2 0 3 1 3 3v2c0 1.5.8 3 2 3-1.2 0-2 1.5-2 3v2c0 2-1 3-3 3',
+  code: 'M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16',
   image: 'M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM4 16l4.5-4.5 4 4 2.5-2.5 5 5M15.5 8.5h.01',
   globe: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9s1.3-6.4 3.8-9z',
   keyboard: 'M4 7h16a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM7 10.5h.01M11 10.5h.01M15 10.5h.01M8 14h8',
@@ -67,6 +67,22 @@ export const STUDIO_ICON_PATHS = Object.freeze({
   tierAutomatic: 'M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4',
   handle: 'M7 7h10v10H7zM3 3h4v4H3zM17 3h4v4h-4zM3 17h4v4H3zM17 17h4v4h-4z',
   chat: 'M4 5h16v11h-9l-4.5 4v-4H4zM8 9.5h8M8 12.5h5',
+  // Action buttons: reload turns clockwise, reset (put back) the other way, signIn is a door with an arrow going in.
+  reload: 'M20 12a8 8 0 1 1-2.3-5.7L20 8.5M20 4v4.5h-4.5',
+  reset: 'M4 12a8 8 0 1 0 2.3-5.7L4 8.5M4 4v4.5h4.5',
+  signIn: 'M10 4h7a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-7M3 12h11M10.5 8l4 4-4 4',
+  // Silhouettes of the add menu shapes, and the marks of property sections and notices, drawn to stay readable at 16 px.
+  box: 'M4 9l3-5h13v11l-3 5H4zM4 9h13l3-5M17 9v11',
+  icoSphere: 'M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9zM12 7.5l4.5 7.5h-9z',
+  disc: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z',
+  text: 'M5 6V4h14v2M12 4v16M9 20h6',
+  angle: 'M4 20h16M4 20L18 7M10 20a6 6 0 0 0-1.8-4.3',
+  shadow: 'M9 4a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM9 18c0-1.4 2.7-2.5 6-2.5s6 1.1 6 2.5-2.7 2.5-6 2.5-6-1.1-6-2.5z',
+  depthOfField: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5M12 10.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z',
+  fog: 'M6 15h12a3.5 3.5 0 0 0 0-7 4.5 4.5 0 0 0-8.5-1A4 4 0 0 0 6 15zM5 19.5h3M10.5 19.5h3M16 19.5h3',
+  film: 'M5 3h14a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM8 3v18M16 3v18M4 8h4M4 12h4M4 16h4M16 8h4M16 12h4M16 16h4',
+  error: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8.4 9.5l1.1-1.1L12 10.9l2.5-2.5 1.1 1.1L13.1 12l2.5 2.5-1.1 1.1L12 13.1l-2.5 2.5-1.1-1.1L10.9 12z',
+  info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5h.01',
   // Brand marks, the official glyphs from Simple Icons (CC0), unaltered. They are filled shapes, not strokes.
   brandBlender: 'M12.51 13.214c.046-.8.438-1.506 1.03-2.006a3.424 3.424 0 0 1 2.212-.79c.85 0 1.631.3 2.211.79.592.5.983 1.206 1.028 2.005.045.823-.285 1.586-.865 2.153a3.389 3.389 0 0 1-2.374.938 3.393 3.393 0 0 1-2.376-.938c-.58-.567-.91-1.33-.865-2.152M7.35 14.831c.006.314.106.922.256 1.398a7.372 7.372 0 0 0 1.593 2.757 8.227 8.227 0 0 0 2.787 2.001 8.947 8.947 0 0 0 3.66.76 8.964 8.964 0 0 0 3.657-.772 8.285 8.285 0 0 0 2.785-2.01 7.428 7.428 0 0 0 1.592-2.762 6.964 6.964 0 0 0 .25-3.074 7.123 7.123 0 0 0-1.016-2.779 7.764 7.764 0 0 0-1.852-2.043h.002L13.566 2.55l-.02-.015c-.492-.378-1.319-.376-1.86.002-.547.382-.609 1.015-.123 1.415l-.001.001 3.126 2.543-9.53.01h-.013c-.788.001-1.545.518-1.695 1.172-.154.665.38 1.217 1.2 1.22V8.9l4.83-.01-8.62 6.617-.034.025c-.813.622-1.075 1.658-.563 2.313.52.667 1.625.668 2.447.004L7.414 14s-.069.52-.063.831zm12.09 1.741c-.97.988-2.326 1.548-3.795 1.55-1.47.004-2.827-.552-3.797-1.538a4.51 4.51 0 0 1-1.036-1.622 4.282 4.282 0 0 1 .282-3.519 4.702 4.702 0 0 1 1.153-1.371c.942-.768 2.141-1.183 3.396-1.185 1.256-.002 2.455.41 3.398 1.175.48.391.87.854 1.152 1.367a4.28 4.28 0 0 1 .522 1.706 4.236 4.236 0 0 1-.239 1.811 4.54 4.54 0 0 1-1.035 1.626',
   brandMaya: 'M4.348 0 .69 2.203v16.875l3.657-2.203h17.297V1.219c0-.67-.551-1.219-1.22-1.219H4.349zm18.297 3.75v14.125H4.627l-1.943 1.17v3.736c0 .67.55 1.219 1.218 1.219H23.31V3.75h-.664zm-14.471.025h2.937l1.885 7.508 1.977-7.48-.012-.028h2.857v9.354h-2.216v-6.04l-1.565 6.026v.014h-2.203l-1.656-6.28v6.28H8.174V3.775zm1.33 14.762h1.18l1.068 3.543h-.902l-.217-.773H9.568l-.197.773h-.88l1.013-3.543zm1.918 0h.932l.648 1.494.643-1.494h.894l-1.113 2.133v1.41h-.887v-1.406l-1.117-2.137zm3.826 0h1.18l1.068 3.543h-.9l-.217-.773h-1.065l-.197.773h-.88l1.011-3.543zm-5.156.582-.362 1.53h.73l-.368-1.53zm5.744 0-.36 1.53h.73l-.37-1.53z',
@@ -84,6 +100,67 @@ export const STUDIO_ICON_ACCENTS = Object.freeze({
 });
 
 export const STUDIO_BRAND_ICON_NAMES = Object.freeze(['brandBlender', 'brandMaya', 'brandCinema4d']);
+
+// The add menu shows the basic shapes and the lights with a picture; a shape not listed here gets no icon.
+export const STUDIO_PRIMITIVE_ICONS = Object.freeze({
+  plane: 'plane',
+  box: 'box',
+  disc: 'disc',
+  sphere: 'sphere',
+  icoSphere: 'icoSphere',
+  cylinder: 'cylinder',
+  cone: 'cone',
+  torus: 'torus',
+  text: 'text',
+});
+export const STUDIO_LIGHT_ICONS = Object.freeze({ point: 'pointLight', spot: 'spotLight', area: 'areaLight' });
+// One icon for each property section id of PROPERTY_SECTIONS.
+export const STUDIO_PROPERTY_SECTION_ICONS = Object.freeze({
+  light: 'pointLight',
+  shape: 'angle',
+  shadow: 'shadow',
+  transform: 'translate',
+  lens: 'camera',
+  depthOfField: 'depthOfField',
+  sun: 'sun',
+  world: 'globe',
+  atmosphere: 'fog',
+  film: 'film',
+  effects: 'agent',
+  sceneShadow: 'shadow',
+  quality: 'speed',
+});
+// The mark a status notice leads with; its shape differs per outcome.
+export const STUDIO_NOTICE_ICONS = Object.freeze({ success: 'check', warning: 'warning', error: 'error', info: 'info' });
+
+/**
+ * The icon each main action button of a notice or dialog leads with. A dismissal (Close, Skip, Done, Back, Next) has none:
+ * its text says it. Buttons that sit together never share an icon, and none repeats the icon of the title above it.
+ */
+export const STUDIO_ACTION_ICONS = Object.freeze({
+  reload: 'reload',
+  restoreDraft: 'reset',
+  discardDraft: 'remove',
+  loadFile: 'open',
+  applyJson: 'check',
+  resetSettings: 'reset',
+  signIn: 'signIn',
+  signedIn: 'chat',
+  copyPrompt: 'duplicate',
+  copied: 'check',
+});
+
+/** Puts an action's icon before the label of its button and marks the button; the label stays its accessible name. */
+export function leadWithActionIcon(button, icon, iconName) {
+  const label = button.ownerDocument.createElement('span');
+  label.textContent = button.textContent;
+  button.dataset.actionIcon = iconName;
+  button.replaceChildren(icon, label);
+  return button;
+}
+
+// Glyphs drawn as solid shapes with the mark cut out of them, so they show as a weight apart from the outlined set.
+export const STUDIO_FILLED_ICON_NAMES = Object.freeze(['error']);
 
 export const STUDIO_ICON_NAMES = Object.freeze(Object.keys(STUDIO_ICON_PATHS));
 

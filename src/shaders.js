@@ -265,6 +265,9 @@ ${tangent.transform}  // Metres along the object's own axes: a pattern follows i
 ${retro.tail ?? ''}}`;
 }
 
+/** The shadow program feature of parts an opacity track fades (see the dithered shadow test below). */
+export const FADING_SHADOWS_FEATURE = 'fadingShadows';
+
 // Built when a renderer starts, so the crowd addon can install its skinning code first.
 // A feature may rewrite the shadow shaders (the material snippet hook discards there too).
 export function withDepthCode(source, features) {
@@ -272,7 +275,7 @@ export function withDepthCode(source, features) {
 }
 
 export function createDepthVertexShader(features = []) {
-  const tinted = new Set(features).has('tintedShadows');
+  const tinted = new Set(features).has('tintedShadows') || new Set(features).has(FADING_SHADOWS_FEATURE);
   return withDepthCode(`#version 300 es
 ${vertexDefinitions(new Set(features))}
 precision highp float;
@@ -305,6 +308,22 @@ ${tinted ? TINT_VERTEX_ASSIGNMENTS : ''}  gl_Position = lightProjection * world;
 }
 
 export const depthVertexShader = createDepthVertexShader();
+
+/**
+ * Fading shadows: a part that an opacity track fades casts its depth shadow through a dithered alpha test, so the shadow
+ * thins with the part where no tint map exists (cascades, local light tiles, no half float targets). The cast keeps the
+ * fraction of texels that equals the instance opacity: 0 casts nothing, 1 casts the whole shape. Only scenes with a fading
+ * caster compile it, and `shadowDither` is 1 only while such a batch draws.
+ */
+const FADING_FRAGMENT_DECLARATIONS = `uniform float shadowDither;
+`;
+const FADING_TINT_OPACITY_DECLARATION = `in float tintOpacity;
+`;
+const FADING_FRAGMENT_TEST = `  if (shadowDither > 0.5) {
+    float threshold = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    if (tintOpacity <= threshold) discard;
+  }
+  if (alphaMasked < 0.5) return;`;
 
 // Tinted shadows: blended and transmissive casters leave the depth map and draw into a colour map of the light that passes
 // them (see docs/lighting.md). The same vertex and fragment program draws it, switched by the tintPass uniform.
@@ -367,12 +386,21 @@ void main() {
 
 /** The shadow fragment shader. With the tintedShadows feature it also draws the light that blended and transmissive casters let through. */
 export function createDepthFragmentShader(features = []) {
-  const code = withDepthCode(depthFragmentShader, features);
-  if (!new Set(features).has('tintedShadows')) return code;
+  const featureSet = new Set(features);
+  const code = featureSet.has(FADING_SHADOWS_FEATURE) ? addFadingShadowTest(withDepthCode(depthFragmentShader, features), featureSet.has('tintedShadows')) : withDepthCode(depthFragmentShader, features);
+  if (!featureSet.has('tintedShadows')) return code;
   return code
     .replace('precision highp float;', () => `precision highp float;\n${TINT_FRAGMENT_DECLARATIONS}`)
     // A clip plane test (clip-planes.js) comes first, so a clipped caster tints nothing either.
     .replace(/void main\(\) \{\n((?:  discardClipped\(\w+\);\n)?)/, (_start, clipTest) => TINT_FRAGMENT_BRANCH.replace('void main() {\n', (start) => start + clipTest));
+}
+
+function addFadingShadowTest(code, declaresTintOpacity) {
+  const declarations = declaresTintOpacity ? FADING_FRAGMENT_DECLARATIONS : FADING_TINT_OPACITY_DECLARATION + FADING_FRAGMENT_DECLARATIONS;
+  return code
+    .replace('precision highp float;', () => `precision highp float;
+${declarations}`)
+    .replace('  if (alphaMasked < 0.5) return;', () => FADING_FRAGMENT_TEST);
 }
 
 export const benchmarkVertexShader = `#version 300 es
@@ -1150,7 +1178,7 @@ export function liquidPassDrawer() {
 function hasSeparateCode(feature) {
   if (feature in MODULE_FEATURES) return true;
   if (feature === TANGENT_FEATURE) return false;
-  if (feature in SHADER_FEATURE_CONDITIONS || feature === LIGHT_SHADING_FEATURE || feature === WETNESS_FEATURE || feature === FRAGMENT_SHADOW_POSITION_FEATURE) return false;
+  if (feature in SHADER_FEATURE_CONDITIONS || feature === LIGHT_SHADING_FEATURE || feature === WETNESS_FEATURE || feature === FRAGMENT_SHADOW_POSITION_FEATURE || feature === FADING_SHADOWS_FEATURE) return false;
   return !ENVIRONMENT_FEATURES.includes(feature) && !VERTEX_ONLY_FEATURES.includes(feature) && feature !== VERTEX_OPACITY_FEATURE;
 }
 

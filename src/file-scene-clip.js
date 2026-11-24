@@ -44,16 +44,18 @@ export function createFileSceneClipPlayer({ asset, posedParts, sceneParts, rende
 // carries its clip player as `clipPlayer` (null without a clip), so the native path tracer can pose the same clip.
 export function createFileSceneRenderAt({ asset, posedParts, sceneParts, rendererParts, renderer, camera, description, frame, motionBlur = null }) {
   const clipPlayer = createFileSceneClipPlayer({ asset, posedParts, sceneParts, rendererParts });
+  // Only a scene with ground cover passes the time, so grass sways; every other scene draws as before.
+  const frameAt = seconds => (description.environment?.groundCover === undefined ? frame : { ...frame, time: seconds });
   const renderAt = seconds => {
     clipPlayer?.poseAt(renderer, seconds);
     const pose = camera ? camera.sample(seconds) : { eye: description.eye, target: description.target };
     if (!motionBlur) {
-      renderer.render({ ...frame, ...pose });
+      renderer.render({ ...frameAt(seconds), ...pose });
       return;
     }
     // Motion blur (#3233): the blur module poses the shutter's start and end itself, then the frame is posed again at its own time.
     motionBlur.drawWithMotionBlur({
-      renderer, rendererParts, frame, seconds, camera, pose,
+      renderer, rendererParts, frame: frameAt(seconds), seconds, camera, pose,
       poseClip: clipPlayer ? time => clipPlayer.poseAt(renderer, time) : null,
       draw: drawn => renderer.render(drawn),
     });
