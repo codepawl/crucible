@@ -98,3 +98,5 @@ Pick the form by how a person reaches the feature:
 | Motion | setting | `src/studio-preferences.js`, `src/studio-settings.js` | A stored choice made once: follow the system or reduce Studio's own motion. |
 | Zoom direction | setting | `src/studio-preferences.js`, `src/studio-settings.js` | A stored choice made once for which way the wheel and a pinch zoom. |
 | Account | panel | Settings > Account, `src/studio-account.js` | Shows who is signed in and the host's sign-in and sign-out actions in one section; Studio holds no token. |
+| Keyboard shortcuts | panel | Help menu, the ? key; src/studio-help.js | A sheet to read, built from the active keymap. |
+| Documentation | operator | Help menu | One action that opens the guide. |

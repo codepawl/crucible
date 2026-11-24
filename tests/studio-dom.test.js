@@ -1206,7 +1206,8 @@ test('Ctrl+C and Ctrl+V copy and paste the selected object as one undo step, eve
   assert.ok(byText(editMenu, 'Copy'));
   assert.ok(byText(editMenu, 'Paste'));
   const labels = ui.root.querySelector('.crucible-studio-shortcuts-dialog').querySelectorAll('.crucible-studio-shortcut-item').map(item => item.textContent);
-  assert.ok(labels.some(label => label.includes('Ctrl+C / Ctrl+V')));
+  assert.ok(labels.includes('CopyCtrl+C'));
+  assert.ok(labels.includes('PasteCtrl+V'));
 });
 
 test('Ctrl+C and Ctrl+V are left to the browser while typing or while text is selected', testContext => {
@@ -1294,7 +1295,7 @@ test('the Recipe JSON dialog shows the recipe, applies edits and reports bad JSO
   assert.equal(recipeDialog.open, false);
   assert.equal(fileInput.clicks, clicksBefore + 1);
 
-  byText(ui.root, 'Keyboard shortcuts').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-help'), 'Keyboard shortcuts').click();
   assert.equal(shortcutsDialog.open, true);
   assert.ok(shortcutsDialog.querySelectorAll('.crucible-studio-shortcut-item').length >= 8);
   shortcutsDialog.close('close');
@@ -1310,7 +1311,7 @@ test('Save downloads the recipe in the browser and clears the unsaved mark', asy
   const filePill = ui.root.querySelector('.crucible-studio-filepill');
   assert.equal(filePill.dataset.dirty, 'true');
 
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(ui.status(), 'Downloaded untitled.scene.json');
   assert.equal(filePill.dataset.dirty, 'false');
@@ -1339,7 +1340,7 @@ test('Save, Save as and Open go through the desktop shell when there is one', as
   const watchPill = ui.root.querySelector('.crucible-studio-watch-pill');
   assert.equal(watchPill.hidden, true);
 
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(desktop.calls[0].name, 'saveFileAs');
   assert.equal(desktop.calls[0].argument.suggestedName, 'untitled.scene.json');
@@ -1351,7 +1352,7 @@ test('Save, Save as and Open go through the desktop shell when there is one', as
   assert.deepEqual(changes.at(-1), { filePath: 'C:/scenes/saved.scene.json', fileName: 'saved.scene.json', dirty: false });
   assert.match(ui.root.querySelector('#crucible-studio-pop-sync .crucible-studio-popover-note').textContent, /Watching C:\/scenes\/saved.scene.json \(auto-reload on\)\./);
 
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(desktop.calls[1].name, 'saveFile');
   assert.equal(desktop.calls[1].argument.filePath, 'C:/scenes/saved.scene.json');
@@ -1364,7 +1365,7 @@ test('Save, Save as and Open go through the desktop shell when there is one', as
   const nameBeforeCancel = ui.root.querySelector('.crucible-studio-filepill').textContent;
   byText(ui.root, 'Save as\u2026').click();
   await ui.dom.settle();
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, nameBeforeCancel);
 
@@ -4653,7 +4654,7 @@ test('choosing a keymap rewrites the menu keys, the tooltips and the shortcuts d
   assert.ok(ui.label('Redo (Ctrl+Y)'));
   assert.ok(ui.label('Play (Alt+V)'));
   assert.ok(ui.label('Add a keyframe here (S)'));
-  assert.match(shortcutsText(), /W \/ E \/ R/);
+  assert.match(shortcutsText(), /MoveW.*RotateE.*ScaleR/);
   assert.match(shortcutsText(), /Alt \+ left drag/);
   assert.doesNotMatch(shortcutsText(), /While holding/);
 
