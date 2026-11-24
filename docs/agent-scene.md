@@ -109,7 +109,7 @@ Modeling point inputs have a maximum of 4096 points.
 An extrusion has at most 128 holes and 4096 total contour points.
 Shared resource IDs generate geometry once, regardless of the number of mesh nodes.
 
-Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, optional `emissiveColor`, `opacity`, `alphaMode`, `alphaCutoff`, `doubleSided`, `pattern` and `map`.
+Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, optional `preset`, `emissiveColor`, `opacity`, `alphaMode`, `alphaCutoff`, `doubleSided`, `pattern` and `map`.
 The defaults are `surface`, `[0.5, 0.5, 0.5]`, `0`, `0.5`, `0`, opacity `1`, `opaque` and `false`.
 The tag can be `surface`, `unlit`, `liquid`, `foam`, `water`, `foliage` or `grass` (the last two sway in `environment.wind`) and remains fixed during editing.
 `liquid` refracts and tints what lies behind it: its color is the light one metre lets through, so `[0.56, 0.84, 0.88]` is clear water. `foam` draws soft blended droplets.
@@ -132,6 +132,25 @@ Their component products must also remain finite at Float32 precision.
 Unlit emissive radiance is capped at 65500 per component to fit the half-float HDR target.
 Image textures come from catalog images (a colour map sequence, and scanned texture sets under "Scanned texture sets" below); the other procedural material tags are outside this version.
 
+
+### Material presets
+
+`preset` names a ready look for blocky scenes, such as parts exported from Roblox Studio that carry a material name and a colour: `smoothPlastic`, `wood`, `grass`, `neon`, `glass` or `brick`. The preset fills only the fields the material leaves out, so any field you set (`roughness`, `pattern`, `opacity`) wins.
+
+```json
+{ "id": "roof", "preset": "brick", "color": [0.75, 0.2, 0.15] }
+```
+
+| Preset | What it fills |
+| --- | --- |
+| `smoothPlastic` | roughness 0.28, no pattern |
+| `wood` | `wood` pattern, 0.6 m per repeat, roughness 0.8 |
+| `grass` | mottled `noise` pattern, 0.5 m per repeat, roughness 1 (a solid turf block; the `grass` tag is for swaying blades) |
+| `neon` | emission 1.5 in the part colour, which passes the bloom threshold; the halo comes from `effects.bloom` |
+| `glass` | opacity 0.3, roughness 0.04, blended |
+| `brick` | `bricks` pattern, 1 m per repeat, roughness 0.9 |
+
+`color` is the part colour and tints the base: the patterns are grey ramps, so a red `wood` part is red wood. Without `color`, each preset uses its own tint. Pattern `size` is in metres after node scale, so a 4 m part and a 40 m part show the same grain size. An unknown name fails with the list of valid ones. `scene_capabilities` topic `materialPresets` lists the values.
 ### Material patterns
 
 `pattern` gives a `surface` material a procedural texture, baked once and shared by every material with the same definition:

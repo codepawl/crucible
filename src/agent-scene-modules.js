@@ -25,6 +25,7 @@ const MODULE_LOADERS = {
   reflections: () => import('./agent-reflections.js'),
   waterReflection: () => import('./water-reflection.js'),
   patterns: () => import('./material-patterns.js'),
+  materialPresets: () => import('./material-presets.js'),
   assetGraph: () => import('./asset-material-graph.js'),
   relations: () => import('./agent-relations.js'),
   timeline: () => import('./film-timeline.js'),
@@ -105,7 +106,9 @@ const MODULE_MARKERS = {
   reflections: [/"metallic":(0\.[5-9]|1(?![0-9]))/],
   // Wet ground mirrors the scene in its puddles through the water mirror (src/water-reflection.js).
   waterReflection: ['"puddles":'],
-  patterns: ['"pattern"'],
+  patterns: ['"pattern"', '"preset":"wood"', '"preset":"grass"', '"preset":"brick"'],
+  // Any preset name loads it, so a wrong name gets the error that lists the right ones.
+  materialPresets: ['"preset":'],
   // Only a graph on a placed asset needs it: the placement's "pattern" comes after its "asset":{ in the JSON.
   assetGraph: [/"asset":{[^]*"pattern"/],
   relations: ['"relations":'],
