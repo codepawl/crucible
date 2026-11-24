@@ -40,7 +40,7 @@ import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, dra
 import { createBakeMark } from './studio-bake-mark.js';
 import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
-import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, watchContextLoss } from './studio-context-loss.js';
+import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, frameFailureReason, watchContextLoss } from './studio-context-loss.js';
 import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgentEdit, diffRecipeNodes } from './studio-agent-presence.js';
 import {
   STUDIO_LENS_PRESETS,
@@ -1933,17 +1933,23 @@ export function createStudio(container, {
     }
   });
 
-  // The outcome picks the mark the notice leads with: success, warning, error or the plain info.
+  // The outcome picks the mark the notice leads with: success, warning, error or the plain info. An error may be passed whole;
+  // its text is marked selectable so a person can copy it.
   function announce(message, durationMilliseconds = STATUS_DEFAULT_MILLISECONDS, outcome = 'info') {
     clearTimeout(statusTimer);
     clearTimeout(statusExitTimer);
-    if (!message) {
+    const isError = message instanceof Error;
+    const text = isError ? message.message : message;
+    if (!text) {
       clearStatus();
       return;
     }
-    const noticeIcon = createIcon(documentReference, STUDIO_NOTICE_ICONS[outcome]);
-    statusRegion.replaceChildren(noticeIcon, createElement(documentReference, 'span', { textContent: message }));
-    statusRegion.setAttribute('data-outcome', outcome);
+    const shownOutcome = isError ? 'error' : outcome;
+    const noticeIcon = createIcon(documentReference, STUDIO_NOTICE_ICONS[shownOutcome]);
+    const noticeText = createElement(documentReference, 'span', { textContent: text });
+    if (shownOutcome === 'error') noticeText.className = 'crucible-studio-selectable';
+    statusRegion.replaceChildren(noticeIcon, noticeText);
+    statusRegion.setAttribute('data-outcome', shownOutcome);
     statusRegion.dataset.state = 'in';
     statusTimer = setTimeout(hideStatus, durationMilliseconds);
   }
@@ -3394,7 +3400,7 @@ export function createStudio(container, {
         drawWhenLinked();
         return true;
       }
-      pausedNotice.show(describeFrameFailure(error));
+      pausedNotice.show(describeFrameFailure(error), frameFailureReason(error));
       return false;
     } finally {
       deferringLinks = false;
@@ -4273,7 +4279,7 @@ export function createStudio(container, {
     } catch (error) {
       // Edit mode refuses a move it could not write down before the pointer moves, and says why.
       if (!meshEditor?.active) throw error;
-      announce(error.message);
+      announce(error);
       return;
     }
     pointerState = { mode: 'gizmo', pointerId: event.pointerId };
@@ -4540,7 +4546,7 @@ export function createStudio(container, {
     const pressedOnNodeId = controller.selectedNodeId;
     const editor = await loadMeshEditor();
     const converted = editor.conversionOf(pressedOnNodeId);
-    if (converted) await loadAgentSceneModules({ geometries: [converted] }).catch(error => announce(error.message));
+    if (converted) await loadAgentSceneModules({ geometries: [converted] }).catch(error => announce(error));
     if (!meshEnterPending) return;
     meshEnterPending = false;
     // The generator code that was loaded belongs to the object Tab was pressed on: another selection by now gets nothing.
@@ -4737,11 +4743,28 @@ export function createStudio(container, {
   // The last kind of input decides whether a menu animates: a menu opened from the keyboard is a shortcut and appears at once.
   // One keydown listener serves both, so the page keeps the single listener it always had.
   const onKeyDown = event => {
+    blockPageSelectAll(event);
     if (!isModifierKey(event.key)) root.dataset.input = 'keyboard';
     onWindowKeyDown(event);
   };
-  const onPointerInput = () => {
+  const onPointerInput = event => {
     root.dataset.input = 'pointer';
+    pointerStartedInStudio = (event.composedPath?.() ?? []).includes(root);
+  };
+  // Select all is Studio's own, never the browser's: outside a text field it would highlight the page, in any mode and over any dialog.
+  // Studio can sit inside someone else's page, so the host page keeps select all unless the event comes from Studio: its root is on the
+  // event's path (composedPath also sees through a shadow root), or focus fell to the body after the last click landed in Studio.
+  // A text field or an opted-in block anywhere on the path keeps it for its own text.
+  let pointerStartedInStudio = false;
+  const blockPageSelectAll = event => {
+    const isLetterA = event.key?.toLowerCase() === 'a' || event.code === 'KeyA';
+    const isSelectAll = isLetterA && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
+    if (!isSelectAll || !root.isConnected) return;
+    const path = event.composedPath?.() ?? [event.target];
+    const focusFellToBody = path[0] === documentReference.body && pointerStartedInStudio;
+    if (!path.includes(root) && !focusFellToBody) return;
+    if (path.some(node => isEditableTarget(node, 'a') || node?.closest?.('.crucible-studio-selectable'))) return;
+    event.preventDefault();
   };
   documentReference.addEventListener('keydown', onKeyDown);
   documentReference.addEventListener('pointerdown', onPointerInput, true);

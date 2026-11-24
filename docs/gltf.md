@@ -315,3 +315,19 @@ The Draco and KTX2 tests use stand-in loaders, because no encoder is installed: 
 `tests/fixtures/textured-triangle.gltf` contains an original triangle and a generated two-pixel-square PNG.
 Chrome loading preserved its UVs, linear material factors, sampler values, and decoded image dimensions.
 Renderer integration owns the final textured rendering check.
+
+**Grass on named surfaces (#3290).** A scene file can grow grass on parts of its GLB. Add `environment.groundCover` to scene.json and render with `scripts/render-media.mjs --scene file`:
+
+```json
+{ "environment": { "groundCover": [{ "surfaces": "Lawn", "length": 0.12, "density": 900 }] } }
+```
+
+- `surfaces` is a node name, a material name, or a list of them. If none match, the error lists the names the GLB has.
+- Blades grow on the upward faces of those parts. They skip any spot where another part stands within `length` above the surface, so a path or slab on the lawn stays clear.
+- Optional fields: `preset` (`lawn` by default; also `meadow`, `savanna`, `wild`), `density` (blades per square metre), `length` (metres), `color` (`"preset"`, `"surface"` for the surface material colour, or three linear RGB numbers), `wind` (0 to 1, default 1: the share of the scene wind these blades feel) and `seed`.
+- The field is seeded and built once, for the first camera frame. Every frame and every rerender draws the same blades. The blades sway with the frame time, so a video shows the wind and a single frame at one time is always the same.
+- The limit is 2,000,000 blades for all entries together. Crucible estimates the lowest possible count for each entry (area times density times 0.12) and adds them up. If the total is over the limit, it refuses before it grows anything.
+- Wind is per field. The wind moves a blade tip by metres, so a short lawn under the scene wind (0.3 unless `frame.wind` sets it) would lie flat. The ground-cover blades feel the scene wind times `length` over 0.6 m (0.06 for 0.12 m blades at the default wind), times the entry's `wind`. Trees and every other grass field keep the scene wind exactly. Scaling by length inside the shader is #3347.
+- A scene without the field loads nothing and renders as before.
+- `showcase.html` does not draw it. It logs a warning and ignores the field.
+- Measured: a 16 m lawn at 900 blades per square metre has 182,561 blades and 1.18 million triangles, and takes 2.4 s to grow.

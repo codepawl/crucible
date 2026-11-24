@@ -9,8 +9,12 @@ import { leadWithActionIcon, STUDIO_ACTION_ICONS } from './studio-icons.js';
 
 export const CONTEXT_LOST_MESSAGE = 'The picture is paused: the graphics context was lost. It comes back on its own, or reload to restore it.';
 
+export function frameFailureReason(error) {
+  return error?.message ? String(error.message) : 'a frame could not be drawn';
+}
+
 export function describeFrameFailure(error) {
-  const reason = error?.message ? String(error.message) : 'a frame could not be drawn';
+  const reason = frameFailureReason(error);
   return `The picture is paused: ${reason}. Change the view to try again, or reload.`;
 }
 
@@ -36,8 +40,17 @@ export function createPausedPictureNotice({ documentReference, createIcon, reloa
 
   let reloadTimer = 0;
 
-  function show(text) {
-    message.textContent = text;
+  // The reason inside the text is an error's own message, so it is marked selectable; the sentence around it is not.
+  function show(text, reason = '') {
+    const reasonStart = reason ? text.indexOf(reason) : -1;
+    if (reasonStart === -1) {
+      message.textContent = text;
+    } else {
+      const reasonElement = documentReference.createElement('span');
+      reasonElement.className = 'crucible-studio-selectable';
+      reasonElement.textContent = reason;
+      message.replaceChildren(text.slice(0, reasonStart), reasonElement, text.slice(reasonStart + reason.length));
+    }
     element.hidden = false;
     if (reloadTimer || !reloadButton.hidden) {
       return;
