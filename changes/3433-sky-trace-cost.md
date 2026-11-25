@@ -1,0 +1,1 @@
+- The sky trace of an open-sided room asks each ray one question instead of two (the nearest hit tells both whether it escapes and whether it ends close), which cuts the tree walk by about a third with identical results, so the trace stays inside its time limit on a slow runner (#3433)
