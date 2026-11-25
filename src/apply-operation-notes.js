@@ -6,6 +6,8 @@ export const FOLDED_APPLY_OPERATION_NOTES = Object.freeze({
   'bake-motion': '{ nodes [node IDs, 32 at most], start, end, step, tolerance }: samples motion into keyframes. More: topic motionBake.',
   'fracture-node': '{ node, cells 2-64, strength N s, seed, impact [x,y,z], impactRadius, density, friction }: breaks a convex root node into glued physics pieces. More: topic physics.',
   'add-explosion': '{ id, center [x,y,z], size m 0.5-100, ... }: layered blast. More: topic explosion.',
+  'apply-transform': '{ node, parts?: ["location", "rotation", "scale"] }: folds location, rotation and scale into the geometry of the node (all three when parts is left out); the node then reads 0, no turn and 1 and looks the same. A shape becomes a mesh; a geometry other nodes share is copied for this node. Refused for a node with children, modifiers, a motion track or an imported file. A negative scale keeps faces outward. More: docs/agent-scene.md.',
+  'set-origin': '{ node, to: "geometry" | "bottom" | "point", point?: [x,y,z] }: moves the point the node turns and scales about, in the unscaled space of the object: the middle of its bounds, the middle of its lowest face, or point. Nothing moves on screen; children stay in place.',
   settle: '{ settle: { id, geometry, material, colliders, ... } }: drops parts until they rest. More: topic settle.',
   'set-armatures': '{ armatures: [...] or null }: the same array as recipe.armatures in scene_create, 16 at most. More: topic armatures.',
   'set-physics': '{ physics: {...} or null }: the same object as recipe.physics in scene_create. More: topic physics.',

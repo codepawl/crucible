@@ -40,6 +40,12 @@ Each tool has its own handle shape, so the shape says what a drag will do: arrow
 
 One drag is one undo step, and undo leaves the viewport camera where you put it. Undo and redo of an edit, of adding or duplicating an object, and of deleting one change the scene already built instead of building it again, so a large scene stays responsive. That holds for putting a deleted object back into the middle of the list and for undoing a lens change too.
 
+## Apply transforms and set the origin
+
+Stretch a cube to a plank and its **Scale** reads 2, 0.5, 3. Ctrl+A (or **Apply…** in the right-click menu) opens the Apply menu: **Location**, **Rotation**, **Scale** or **All transforms**. The object looks the same and the chosen rows read 0, no turn and 1, so a mirror, bevel or array added later works on the real size. **Set origin…** in the same menu moves the point the object turns and scales about: **Origin to geometry** puts it in the middle of the bounds, **Origin to bottom centre** under the object, and, in edit mode with something picked, **Origin to selection** at the middle of the picked vertices. After the move, a turn swings the object about the new point and nothing moves on screen; objects parented to it stay where they are. Each choice is one undo step.
+
+Apply turns a basic shape (box, sphere, cylinder and the rest) into a mesh, so its shape settings are gone until you undo, and Studio says so. A geometry that other objects use is copied for the selected object only, so the others keep theirs. Studio refuses, and says what to do, for an object that has children (apply them first), a mesh with modifiers (apply or remove them), text, an imported file, an object a motion track moves, and a mesh whose edit log is full. Rotation alone is refused on an object stretched unevenly, because it would shear: apply Scale as well. The bottom is the lowest point of the bounds in the object's own space, not in the world. In code, `controller.applyImportOperations([{ type: 'apply-transform', node, parts }])` and `{ type: 'set-origin', node, to }` do the same.
+
 ## Edit a mesh
 
 The form of each Studio feature (tool, toggle, mode, operator, modifier, setting or panel) and the reason for it are listed in [Studio interaction forms](https://github.com/codepawl/crucible/blob/main/docs/studio-interaction-forms.md).
@@ -177,6 +183,7 @@ While an input method composes text (Japanese, Chinese, Korean), Enter picks the
 | Alt+Z | See through the surface |
 | H, Alt+H | Hide the selection, show everything that is hidden |
 | Alt+G, Alt+R, Alt+S | Reset the position, rotation or scale of the selection |
+| Ctrl+A | Open the Apply menu: fold the selection's location, rotation or scale into its geometry |
 | Right click | Menu of the object under the pointer |
 | F or . | Fly to the selection, or to the whole scene when nothing is selected |
 | 1, 3, 7 | Front, right and top view |
@@ -222,6 +229,7 @@ A right click on an object, in the viewport or in the Scene list, selects it and
 | Invert the selection | Ctrl+I | Ctrl+I | Ctrl+I |
 | Frame the selection | F, . | F | O, S |
 | Show or hide Properties | N | Ctrl+A | Shift+F5 |
+| Apply transforms | Ctrl+A | Ctrl+Alt+A | Ctrl+A |
 | See through the surface | Alt+Z | Alt+Z | Alt+Z |
 | Box select (edit mode) | B | B | B |
 | Insert a keyframe | I, K | S | F9 |

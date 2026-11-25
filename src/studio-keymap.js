@@ -34,6 +34,7 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   // By code, because Option+A types a letter of its own on a Mac, so its key is not "a".
   action('select.none', 'Select none', 'Edit', 'normal', { code: 'KeyA', alt: true }),
   action('select.invert', 'Invert the selection', 'Edit', 'normal', binding('i', { ctrl: true })),
+  action('edit.apply', 'Apply transforms', 'Edit', 'normal', binding('a', { ctrl: true, shift: false })),
   action('edit.hide', 'Hide the selection', 'Edit', 'normal', binding('h')),
   action('edit.showAll', 'Show all', 'Edit', 'normal', binding('h', { alt: true })),
   action('edit.resetPosition', 'Reset position', 'Edit', 'normal', binding('g', { alt: true })),
@@ -104,6 +105,7 @@ export const SHORTCUT_ROWS = Object.freeze([
   Object.freeze({ keys: '{edit.deselect}', label: 'Deselect' }),
   Object.freeze({ keys: '{select.all} / {select.none} / {select.invert}', label: 'Select all / none / invert' }),
   Object.freeze({ keys: 'Shift + click', label: 'Add or remove an object from the selection' }),
+  Object.freeze({ keys: '{edit.apply}', label: 'Apply location, rotation and scale to the geometry' }),
   Object.freeze({ keys: '{edit.hide} / {edit.showAll}', label: 'Hide the selection / show all' }),
   Object.freeze({ keys: '{edit.resetPosition} / {edit.resetRotation} / {edit.resetScale}', label: 'Reset position / rotation / scale' }),
   Object.freeze({ keys: 'Right click', label: 'Menu of the object under the pointer' }),
@@ -311,6 +313,8 @@ const MAYA_BINDINGS = Object.freeze({
   'edit.showAll': binding('h', { ctrl: true, shift: true }),
   'view.frame': binding('f'),
   'view.properties': binding('a', { ctrl: true }),
+  // Ctrl+A is taken by view.properties in this preset, so Apply takes the nearest free key.
+  'edit.apply': binding('a', { ctrl: true, alt: true }),
   'animate.keyframe': binding('s'),
   'animate.play': binding('v', { alt: true }),
   'modal.translate': binding('w'),
