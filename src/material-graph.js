@@ -1,4 +1,4 @@
-import { MATERIAL_GRAPH_LIMITS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS, MESH_MAP_NAMES, SURFACE_OUTPUTS, SURFACE_SPACES } from './agent-scene-capabilities.js';
+import { MATERIAL_GRAPH_LIMITS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS, MESH_MAP_NAMES, SURFACE_OUTPUTS, SURFACE_SPACES } from './material-name-lists.js';
 import { EMISSION_FRESNEL_IOR_RANGE } from './material-layers.js';
 import { clampUnit, smoothStep, wrapCell, hashCell, cellularNoise, smoothCellularDistance, linearToSrgbByte, createImage, normalMapFromHeightFunction } from './material-texture-kit.js';
 
