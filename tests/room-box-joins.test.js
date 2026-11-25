@@ -141,11 +141,54 @@ test('a scene with more rounded boxes than the limit keeps them all rounded',  (
   assert.equal(roomJoinedBoxNodeIds({ ...room, nodes: [...room.nodes, ...crowd] }).size, 0);
 });
 
-test('a floor with many boxes standing on it is not a room, and neither is a room missing its ceiling', () => {
+test('a floor with many boxes standing on it is not a room, and neither is a set missing its ceiling and a wall', () => {
   const room = sixBoxRoom();
   const terrain = boxNode('terrain', [0, 2, 0], [100, 4, 100]);
   const trees = Array.from({ length: 10 }, (_, index) => boxNode(`tree-${index}`, [index * 4 - 18, 3.9 + 1, 0], [0.5, 2, 0.5]));
   assert.equal(roomJoinedBoxNodeIds({ ...room, nodes: [terrain, ...trees] }).size, 0);
-  const noCeiling = { ...room, nodes: room.nodes.filter(node => node.id !== 'ceiling') };
-  assert.equal(roomJoinedBoxNodeIds(noCeiling).size, 0);
+  const fourSides = { ...room, nodes: room.nodes.filter(node => node.id !== 'ceiling' && node.id !== 'front') };
+  assert.equal(roomJoinedBoxNodeIds(fourSides).size, 0);
+});
+
+// #3433: a set open on one side (floor, three walls and a ceiling) leaves the same groove at its joins; the five-box set of that issue.
+function openFiveBoxSet({ bevel } = {}) {
+  const recipe = sixBoxRoom({ bevel });
+  recipe.nodes = recipe.nodes.filter(node => node.id !== 'front');
+  return recipe;
+}
+
+test('a set open on one side is drawn with sharp edges at its joins, vertex for vertex like the same set at bevel 0', async () => {
+  const recipe = openFiveBoxSet();
+  assert.equal(roomJoinedBoxNodeIds(recipe).size, 5);
+  const rounded = await sceneOf(recipe);
+  assert.ok(rounded.parts.every(hasSharpCorners));
+  const sharp = await sceneOf(openFiveBoxSet({ bevel: 0 }));
+  for (const part of rounded.parts) {
+    const sharpPart = sharp.parts.find(candidate => candidate.name === part.name);
+    assert.deepEqual(Array.from(part.geometry.positions), Array.from(sharpPart.geometry.positions), `${part.name} has the geometry of a bevel 0 box`);
+  }
+});
+
+// Furniture is thin boxes that touch too, and none of it is a room: legs and posts span no face, and a bookcase is too small to stand in.
+test('a table, a pergola and a bookcase keep their rounded boxes', () => {
+  const table = [boxNode('top', [0, 0.75, 0], [1.6, 0.05, 0.9]), ...[[-0.75, -0.4], [0.75, -0.4], [-0.75, 0.4], [0.75, 0.4]].map(([x, z], index) => boxNode(`leg-${index}`, [x, 0.36, z], [0.1, 0.72, 0.1]))];
+  const pergola = [boxNode('floor', [0, -0.05, 0], [6, 0.1, 6]), ...[[-2.9, -2.9], [2.9, -2.9], [-2.9, 2.9], [2.9, 2.9]].map(([x, z], index) => boxNode(`post-${index}`, [x, 1.25, z], [0.1, 2.5, 0.1]))];
+  const bookcase = [
+    boxNode('side-left', [-0.45, 0.9, 0], [0.03, 1.8, 0.3]), boxNode('side-right', [0.45, 0.9, 0], [0.03, 1.8, 0.3]),
+    boxNode('top', [0, 1.815, 0], [0.93, 0.03, 0.3]), boxNode('bottom', [0, 0.015, 0], [0.93, 0.03, 0.3]), boxNode('back', [0, 0.9, -0.15], [0.93, 1.8, 0.02]),
+  ];
+  for (const [name, nodes] of [['table', table], ['pergola', pergola], ['bookcase', bookcase]]) {
+    assert.equal(roomJoinedBoxNodeIds({ ...sixBoxRoom(), nodes }).size, 0, `the ${name} is not a room`);
+  }
+});
+
+test('boxes that touch in fewer than four pairs keep the default box geometry, byte for byte', async () => {
+  const recipe = sixBoxRoom();
+  recipe.nodes = [boxNode('floor', [0, 0, 0], [8, 0.2, 6]), boxNode('stool', [0, 0.6, 0], [0.5, 1, 0.5]), boxNode('crate', [3, 0.6, 2], [1, 1, 1])];
+  assert.equal(roomJoinedBoxNodeIds(recipe).size, 0);
+  const { parts } = await sceneOf(recipe);
+  assert.ok(parts.every(part => !hasSharpCorners(part)));
+  const aloneRecipe = { ...recipe, nodes: [boxNode('crate', [3, 0.6, 2], [1, 1, 1])] };
+  const crateAlone = (await sceneOf(aloneRecipe)).parts[0];
+  assert.deepEqual(Array.from(parts.find(part => part.name === 'crate').geometry.positions), Array.from(crateAlone.geometry.positions));
 });
