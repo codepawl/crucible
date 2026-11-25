@@ -1019,6 +1019,16 @@ async function checkStatusBar(page, capture) {
     if (found.fieldWidth < 120) throw new Error(`Agent status layout (${level}): the field is under 120 px wide: ${JSON.stringify(found)}`);
     await checkAgentLayout(page, `status ${level}`);
   }
+  await page.evaluate(() => window.__sampleChat.emit({ type: 'status', model: 'W'.repeat(40), effort: 'high', mode: 'Plan' }));
+  await page.waitForTimeout(150);
+  const longName = await page.evaluate(() => {
+    const row = document.querySelector('.crucible-studio-agent-status');
+    const values = row.querySelector('.crucible-studio-agent-status-values').getBoundingClientRect();
+    const shownItems = [...row.querySelectorAll('.crucible-studio-agent-status-item')].map(item => item.getBoundingClientRect()).filter(box => box.top < values.bottom);
+    return { rowHeight: Math.round(row.getBoundingClientRect().height), shownItems: shownItems.length, cutItem: shownItems.some(box => box.right > values.right + 1) };
+  });
+  if (longName.rowHeight > 18 || longName.shownItems < 1 || longName.cutItem) throw new Error(`Agent status layout: a long model name does not keep the row to one line, with whole values only: ${JSON.stringify(longName)}`);
+  await page.evaluate(() => window.__sampleChat.emit({ type: 'status', model: 'Fable 5.2', effort: 'high', mode: 'Plan' }));
   await page.locator('.crucible-studio-agent-usage').focus();
   await page.waitForSelector('.crucible-studio-agent-usage-tip:popover-open');
   await page.waitForTimeout(250);

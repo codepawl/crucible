@@ -111,7 +111,8 @@ function createRing(documentReference) {
  * card (it opens in the top layer). `sync(status, usage)` shows what they hold and hides what they do not.
  */
 export function createAgentStatusBar({ documentReference, createElement, createIcon, wantsShareInRow = () => false }) {
-  const row = createElement(documentReference, 'div', { className: 'crucible-studio-agent-status', hidden: true });
+  const values = createElement(documentReference, 'div', { className: 'crucible-studio-agent-status-values' });
+  const row = createElement(documentReference, 'div', { className: 'crucible-studio-agent-status', hidden: true }, values);
   const { ring, arc } = createRing(documentReference);
   const shareText = createElement(documentReference, 'span');
   const share = createElement(documentReference, 'span', { className: 'crucible-studio-agent-status-share', attributes: { 'aria-hidden': 'true' } }, createIcon(documentReference, 'creditToken'), shareText);
@@ -204,10 +205,9 @@ export function createAgentStatusBar({ documentReference, createElement, createI
       createElement(documentReference, 'span', { className: 'crucible-studio-agent-status-text', textContent: status[field] }),
     ));
     const shown = shareItems(usage);
-    items.push(...shown);
-    row.dataset.share = String(shown.length > 0);
-    row.replaceChildren(...items);
-    row.hidden = items.length === 0;
+    values.replaceChildren(...items);
+    row.replaceChildren(values, ...shown);
+    row.hidden = items.length === 0 && shown.length === 0;
   }
 
   function syncUsage(usage) {
@@ -250,31 +250,39 @@ export const AGENT_STATUS_CSS = `
   gap: var(--studio-space-8);
   padding: var(--studio-space-8) var(--studio-space-12) var(--studio-space-12);
 }
+/* One line. The values sit in a wrapping box one line tall with its overflow hidden, so a value that does not fit goes to the hidden second
+   line whole, last one first (mode, then effort); the model, first, is cut with an ellipsis only when it alone is wider than the box. */
 .crucible-studio-agent-status {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--studio-space-4) var(--studio-space-8);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--studio-space-8);
   min-inline-size: 0;
   color: color-mix(in srgb, var(--studio-text) 76%, var(--studio-panel));
   font-size: 12px;
 }
 .crucible-studio-agent-status[hidden] { display: none; }
+.crucible-studio-agent-status-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--studio-space-4) var(--studio-space-8);
+  min-inline-size: 0;
+  block-size: 16px;
+  overflow: hidden;
+}
 .crucible-studio-agent-status-item {
   display: inline-flex;
   align-items: center;
   gap: var(--studio-space-4);
+  flex: none;
   min-inline-size: 0;
   max-inline-size: 100%;
 }
 .crucible-studio-agent-status-item .crucible-studio-icon { inline-size: 14px; block-size: 14px; }
-/* With the share at its end the row keeps to one line: the values give way with an ellipsis before the share does. */
-.crucible-studio-agent-status[data-share="true"] { flex-wrap: nowrap; }
 .crucible-studio-agent-status-share {
-  flex: none;
   display: inline-flex;
   align-items: center;
   gap: var(--studio-space-4);
-  margin-inline-start: auto;
   font-variant-numeric: tabular-nums;
 }
 .crucible-studio-agent-status-share .crucible-studio-icon { inline-size: 14px; block-size: 14px; }
