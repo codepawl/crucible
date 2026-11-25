@@ -10,6 +10,7 @@ import { meshEditSourceOf } from './agent-mesh.js';
 import { roundVector } from './studio-controller.js';
 import { isLiveGeometry, unmarkLiveGeometry } from './live-geometry.js';
 import { updatePartVertices } from './update-part-vertices.js';
+import { edgeLoop, edgeRing, faceLoop, growSelection, selectLinked, shrinkSelection } from './mesh-select-topology.js';
 import { spatialFalloffWeights } from './mesh-ops.js';
 import { proportionalCirclePath } from './studio-proportional.js';
 import { MAX_SELECTED_ELEMENTS, MERGE_TARGETS } from './mesh-operations.js';
@@ -882,13 +883,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   /** Picks the element of the current mode under the pixel; `additive` (Shift) toggles it, a click on nothing clears. */
   function pick(pixelX, pixelY, { additive = false } = {}) {
     if (!state || drag) return null;
-    let hit;
-    if (state.mode === 'face') {
-      hit = seeThrough ? faceBehindPointer(pixelX, pixelY) : faceUnderPointer(pixelX, pixelY);
-    } else {
-      const projected = projectCage();
-      hit = state.mode === 'vertex' ? nearestVertex(pixelX, pixelY, projected) : nearestEdge(pixelX, pixelY, projected);
-    }
+    const { hit } = elementUnderPointer(pixelX, pixelY);
     if (hit === null) {
       if (!additive) state.selected = new Set();
     } else if (!additive) {
@@ -904,6 +899,114 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       announce('');
     }
     return hit;
+  }
+
+  // The element of the current mode under the pixel, as pick() finds it, with the projected cage the hit was found on.
+  function elementUnderPointer(pixelX, pixelY) {
+    const projected = projectCage();
+    if (state.mode === 'face') {
+      return { hit: seeThrough ? faceBehindPointer(pixelX, pixelY) : faceUnderPointer(pixelX, pixelY), projected };
+    }
+    const hit = state.mode === 'vertex' ? nearestVertex(pixelX, pixelY, projected) : nearestEdge(pixelX, pixelY, projected);
+    return { hit, projected };
+  }
+
+  // The edge of a face whose screen segment is nearest the pixel.
+  function nearestEdgeOfFace(face, pixelX, pixelY, projected) {
+    const { mesh } = state;
+    let best = mesh.cornerEdges[mesh.faceOffsets[face]];
+    let bestDistance = Infinity;
+    for (let corner = mesh.faceOffsets[face]; corner < mesh.faceOffsets[face + 1]; corner += 1) {
+      const edge = mesh.cornerEdges[corner];
+      const start = mesh.edgeVertices[edge * 2];
+      const end = mesh.edgeVertices[edge * 2 + 1];
+      const distance = distanceToSegmentSquared(pixelX, pixelY, projected.screenX[start], projected.screenY[start], projected.screenX[end], projected.screenY[end]);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = edge;
+      }
+    }
+    return best;
+  }
+
+  // The next edge round a quad, which a face ring crosses instead of the nearest one; any other face has only its nearest.
+  function neighbouringEdgeOfFace(face, edge) {
+    const { mesh } = state;
+    const first = mesh.faceOffsets[face];
+    if (mesh.faceOffsets[face + 1] - first !== 4) return edge;
+    for (let offset = 0; offset < 4; offset += 1) {
+      if (mesh.cornerEdges[first + offset] === edge) return mesh.cornerEdges[first + (offset + 1) % 4];
+    }
+    return edge;
+  }
+
+  function verticesOfEdges(edges) {
+    const vertices = new Set();
+    for (const edge of edges) {
+      vertices.add(state.mesh.edgeVertices[edge * 2]);
+      vertices.add(state.mesh.edgeVertices[edge * 2 + 1]);
+    }
+    return [...vertices];
+  }
+
+  function applySelection(elements, additive) {
+    state.selected = additive ? new Set([...state.selected, ...elements]) : new Set(elements);
+    noteSelectionChanged();
+  }
+
+  /**
+   * Alt+click: the loop under the pixel. An edge (or a vertex, by its edges) picks the loop of the nearest edge; a face picks the band of faces
+   * that crosses the edge nearest the pixel. `ring` (Ctrl+Alt+click) picks the ring of edges, or in face mode the band across
+   * the next edge round the face. Returns how many elements are selected, or null when nothing is under the pixel.
+   */
+  function pickLoop(pixelX, pixelY, { ring = false, additive = false } = {}) {
+    if (!state || drag) return null;
+    const { mesh } = state;
+    let found = null;
+    if (state.mode === 'face') {
+      const { hit, projected } = elementUnderPointer(pixelX, pixelY);
+      if (hit !== null) {
+        const nearest = nearestEdgeOfFace(hit, pixelX, pixelY, projected);
+        found = faceLoop(mesh, hit, ring ? neighbouringEdgeOfFace(hit, nearest) : nearest);
+      }
+    } else {
+      const projected = projectCage();
+      const edge = nearestEdge(pixelX, pixelY, projected);
+      if (edge !== null) {
+        const edges = ring ? edgeRing(mesh, edge) : edgeLoop(mesh, edge);
+        found = state.mode === 'vertex' ? verticesOfEdges(edges) : edges;
+      }
+    }
+    if (found === null) {
+      if (!additive) state.selected = new Set();
+      return null;
+    }
+    applySelection(found, additive);
+    return found.length;
+  }
+
+  /** L: everything joined to the element under the pixel joins the selection. Returns how many are selected, or null when nothing is there. */
+  function selectLinkedAt(pixelX, pixelY) {
+    if (!state || drag) return null;
+    const { hit } = elementUnderPointer(pixelX, pixelY);
+    if (hit === null) return null;
+    applySelection(selectLinked(state.mesh, state.mode, [hit]), true);
+    return state.selected.size;
+  }
+
+  /** Ctrl+L: everything joined to the selection joins it. Returns how many are selected. */
+  function selectLinkedFromSelection() {
+    if (!state || drag || state.selected.size === 0) return 0;
+    applySelection(selectLinked(state.mesh, state.mode, [...state.selected]), false);
+    return state.selected.size;
+  }
+
+  /** One step of adjacency outward (direction 1) or inward (direction -1) in the current mode. Returns how many are selected. */
+  function stepSelection(direction) {
+    if (!state || drag || state.selected.size === 0) return 0;
+    const step = direction > 0 ? growSelection : shrinkSelection;
+    applySelection(step(state.mesh, state.mode, [...state.selected]), false);
+    return state.selected.size;
   }
 
   function selectionCentreWorld() {
@@ -1268,6 +1371,11 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     get circleSelecting() { return circle !== null; },
     get brushRadius() { return brushRadius; },
     pick,
+    pickLoop,
+    selectLinkedAt,
+    selectLinkedFromSelection,
+    growSelection: () => stepSelection(1),
+    shrinkSelection: () => stepSelection(-1),
     refresh,
     cagePaths,
     selectionScreenRadius,
