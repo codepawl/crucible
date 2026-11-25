@@ -30,6 +30,16 @@ function floorHasSkyVisibility(scene) {
   return Boolean(scene.parts.find(part => part.name === 'floor').geometry.skyVisibility);
 }
 
+function withConstantClock(callback) {
+  const realNow = performance.now;
+  performance.now = () => 0;
+  try {
+    return callback();
+  } finally {
+    performance.now = realNow;
+  }
+}
+
 // The recipe path runs the same call with the default texel count, which takes seconds; the test keeps the trace small.
 test('a closed room lit by a sun gets the floor sky trace by default', () => {
   const { parts } = createAgentScene(room({ keyColor: [3, 3, 3], floorSkyTrace: false }));
@@ -62,14 +72,14 @@ test('a node moved in place gives the ground the geometry a build of the edited 
   delete recipe.bake;
   recipe.nodes = recipe.nodes.filter(node => node.id !== 'organiser');
   recipe.geometries = recipe.geometries.filter(geometry => geometry.id !== 'organiser');
-  const edited = createAgentScene(recipe);
+  const edited = withConstantClock(() => createAgentScene(recipe));
   const movedBulb = { type: 'set-node', id: 'pendant-bulb', translation: [0.3, 1.7, 0.2] };
   const groundOf = scene => scene.parts.find(part => part.name === 'ground').geometry;
   const plainGroundVertices = groundOf(edited).positions.length;
   const movedRecipe = structuredClone(edited.exportRecipe());
   movedRecipe.nodes.find(node => node.id === movedBulb.id).translation = movedBulb.translation;
-  edited.apply([movedBulb], { expectedRevision: edited.revision });
-  const freshGround = groundOf(createAgentScene(movedRecipe));
+  withConstantClock(() => edited.apply([movedBulb], { expectedRevision: edited.revision }));
+  const freshGround = groundOf(withConstantClock(() => createAgentScene(movedRecipe)));
   assert.ok(freshGround.positions.length > plainGroundVertices, 'the moved bulb makes the sky trace cut the ground');
   for (const field of Object.keys(freshGround)) {
     assert.deepEqual(groundOf(edited)[field], freshGround[field], field);
@@ -82,14 +92,14 @@ test('a camera edit keeps the traced ground of the room instead of tracing it ag
   delete recipe.bake;
   recipe.nodes = recipe.nodes.filter(node => node.id !== 'organiser');
   recipe.geometries = recipe.geometries.filter(geometry => geometry.id !== 'organiser');
-  const scene = createAgentScene(recipe);
+  const scene = withConstantClock(() => createAgentScene(recipe));
   const groundOf = () => scene.parts.find(part => part.name === 'ground');
   const groundBefore = groundOf();
   scene.apply([{ type: 'set-camera', fov: 40 }], { expectedRevision: scene.revision });
   assert.equal(groundOf(), groundBefore, 'the ground is the same part with the same trace');
   const turnedSun = { type: 'set-environment', environment: { lightDirection: [0.6, 0.7, 0.2] } };
-  scene.apply([turnedSun], { expectedRevision: scene.revision });
-  const fresh = createAgentScene(structuredClone(scene.exportRecipe()));
+  withConstantClock(() => scene.apply([turnedSun], { expectedRevision: scene.revision }));
+  const fresh = withConstantClock(() => createAgentScene(structuredClone(scene.exportRecipe())));
   const freshGround = fresh.parts.find(part => part.name === 'ground').geometry;
   for (const field of Object.keys(freshGround)) {
     assert.deepEqual(groundOf().geometry[field], freshGround[field], `a turned sun is traced again: ${field}`);
@@ -125,7 +135,7 @@ test('the demo room is traced as an open-sided room within a ray bound that leav
   recipe.nodes = recipe.nodes.filter(node => node.id !== 'organiser');
   recipe.geometries = recipe.geometries.filter(geometry => geometry.id !== 'organiser');
   recipe.nodes.find(node => node.id === 'pendant-bulb').translation = [0.3, 1.7, 0.2];
-  createAgentScene(recipe);
+  withConstantClock(() => createAgentScene(recipe));
   const report = lastDefaultFloorSkyReport();
   assert.equal(report.branch, 'open-sided room, every surface traced');
   assert.equal(report.reason, null);
@@ -166,7 +176,7 @@ function lowOpenSet({ panels }) {
 for (const panels of [false, true]) {
   test(`a low wall ${panels ? 'split into panels' : 'of one piece'} keeps the fine cut and all its rays while a stool is a prop`, () => {
     const { parts } = createAgentScene(lowOpenSet({ panels }));
-    const { report } = applyDefaultFloorSky(parts, { keyColor: [3, 3, 3] }, { maximumTexels: 4000 });
+    const { report } = applyDefaultFloorSky(parts, { keyColor: [3, 3, 3] }, { maximumTexels: 4000, maxSeconds: Infinity });
     assert.equal(report.branch, 'open-sided room, every surface traced');
     assert.ok(report.reducedParts.includes('stool'), 'the stool is a prop');
     const walls = parts.filter(part => part.name.startsWith('wall-')).map(part => part.name);
@@ -193,7 +203,7 @@ test('a sky trace that stops at its time limit shows in the scene diagnostics of
   recipe.geometries = recipe.geometries.filter(geometry => geometry.id !== 'organiser');
   recipe.nodes.find(node => node.id === 'pendant-bulb').translation = [0.3, 1.7, 0.2];
   const hasStoppedTrace = scene => (scene.inspect().diagnostics ?? []).some(diagnostic => diagnostic.kind === 'sky-trace-stopped');
-  const normal = createAgentScene(structuredClone(recipe));
+  const normal = withConstantClock(() => createAgentScene(structuredClone(recipe)));
   assert.equal(lastDefaultFloorSkyReport().branch, 'open-sided room, every surface traced');
   assert.deepEqual(lastDefaultFloorSkyReport().warnings, []);
   assert.equal(hasStoppedTrace(normal), false);
@@ -214,7 +224,7 @@ test('a sky trace that stops at its time limit shows in the scene diagnostics of
   assert.match(diagnostic.message, /time limit of 20 s.*plain/);
   assert.match(diagnostic.fix, /maxSeconds.*maximumTexels.*floorSkyTrace/);
   // The next build that finishes in time clears it.
-  const again = createAgentScene(structuredClone(recipe));
+  const again = withConstantClock(() => createAgentScene(structuredClone(recipe)));
   assert.equal(hasStoppedTrace(again), false);
 });
 
@@ -236,7 +246,7 @@ function fiveThinSlabs({ apart }) {
 }
 
 test('a bare open set of five touching thin slabs is traced at the fine cut within the ray limit', () => {
-  const scene = createAgentScene(fiveThinSlabs({ apart: false }));
+  const scene = withConstantClock(() => createAgentScene(fiveThinSlabs({ apart: false })));
   const report = lastDefaultFloorSkyReport();
   assert.equal(report.branch, 'open-sided room, every surface traced');
   assert.equal(report.reason, null);
@@ -249,7 +259,7 @@ test('a bare open set of five touching thin slabs is traced at the fine cut with
 });
 
 test('a set of five rounded thin slabs that do not touch is cut coarser and traced within the ray limit', () => {
-  const scene = createAgentScene(fiveThinSlabs({ apart: true }));
+  const scene = withConstantClock(() => createAgentScene(fiveThinSlabs({ apart: true })));
   const report = lastDefaultFloorSkyReport();
   assert.equal(report.branch, 'open-sided room, every surface traced');
   assert.equal(report.reason, null);

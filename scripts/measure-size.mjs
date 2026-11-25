@@ -2,8 +2,10 @@
 // A pull request fails when a bundle grows past its allowance against the base branch (--base, default origin/main) unless
 // its own changes/*.size.md accepts it. --absolute also enforces the release budgets in bench/size/budgets.json.
 // --update-baseline and --set-budgets refresh the baseline and the budgets at release.
+import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { brotliCompressSync, gzipSync } from 'node:zlib';
 import { build } from 'esbuild';
 import { glslCommentStripperForEsbuild } from './strip-glsl-comments.mjs';
@@ -57,25 +59,61 @@ const SCENES = {
   },
 };
 
-function gzipSize(contents) {
-  return gzipSync(contents, { level: 9 }).length;
+function digestOf(contents) {
+  return createHash('sha256').update(contents).digest('hex');
 }
 
-// Dynamic imports become separate chunks. What a page pays at start is the entry chunk and every chunk it imports
-// statically; the rest loads when a feature asks for it. Both are reported so lazy code never hides.
-function chunkSizes(result) {
-  const renamedContents = renameChunksByContent(result.outputFiles);
-  const outputsByPath = new Map(result.outputFiles.map(file => [relative(process.cwd(), file.path).replaceAll('\\', '/'), { contents: renamedContents.get(file.path) }]));
-  const initialPaths = initialOutputPaths(result.metafile);
-  const sizeOf = paths => {
-    const parts = [...paths].map(path => outputsByPath.get(path).contents);
-    const bytes = Buffer.concat(parts);
-    return { min: bytes.length, gzip: parts.reduce((total, part) => total + gzipSize(part), 0), brotli: parts.reduce((total, part) => total + brotliCompressSync(part).length, 0) };
-  };
-  return { initial: sizeOf(initialPaths), all: sizeOf(outputsByPath.keys()) };
+export function createSizeMeasurer({ includeBrotli = false } = {}) {
+  const gzipCache = new Map();
+  const brotliCache = new Map();
+
+  function cachedGzipSize(contents, digest = digestOf(contents)) {
+    let size = gzipCache.get(digest);
+    if (size === undefined) {
+      size = gzipSync(contents, { level: 9 }).length;
+      gzipCache.set(digest, size);
+    }
+    return size;
+  }
+
+  function cachedBrotliSize(contents, digest = digestOf(contents)) {
+    let size = brotliCache.get(digest);
+    if (size === undefined) {
+      size = brotliCompressSync(contents).length;
+      brotliCache.set(digest, size);
+    }
+    return size;
+  }
+
+  function sizeOfParts(parts) {
+    let min = 0;
+    let gzip = 0;
+    let brotli = 0;
+    for (const part of parts) {
+      min += part.length;
+      const digest = digestOf(part);
+      gzip += cachedGzipSize(part, digest);
+      if (includeBrotli) brotli += cachedBrotliSize(part, digest);
+    }
+    return includeBrotli ? { min, gzip, brotli } : { min, gzip };
+  }
+
+  // Dynamic imports become separate chunks. What a page pays at start is the entry chunk and every chunk it imports
+  // statically; the rest loads when a feature asks for it. Both are reported so lazy code never hides.
+  function chunkSizes(result) {
+    const renamedContents = renameChunksByContent(result.outputFiles);
+    const outputsByPath = new Map(result.outputFiles.map(file => [relative(process.cwd(), file.path).replaceAll('\\', '/'), { contents: renamedContents.get(file.path) }]));
+    const initialPaths = initialOutputPaths(result.metafile);
+    const initial = sizeOfParts([...initialPaths].map(path => outputsByPath.get(path).contents));
+    if (initialPaths.size === outputsByPath.size) return { initial, all: initial };
+    const all = sizeOfParts([...outputsByPath.values()].map(output => output.contents));
+    return { initial, all };
+  }
+
+  return { chunkSizes, sizeOfParts, gzipCache, brotliCache };
 }
 
-async function measureSource(contents) {
+export async function measureSource(contents, { includeBrotli = false, measurer = createSizeMeasurer({ includeBrotli }) } = {}) {
   const result = await build({
     stdin: { contents, resolveDir: process.cwd(), loader: 'js' },
     bundle: true, minify: true, format: 'esm', write: false, treeShaking: true, metafile: true,
@@ -84,7 +122,7 @@ async function measureSource(contents) {
     loader: { '.css': 'empty', '.json': 'json' },
     define: { 'process.env.NODE_ENV': '"production"' },
   });
-  return chunkSizes(result);
+  return measurer.chunkSizes(result);
 }
 
 async function packageEntries() {
@@ -99,13 +137,13 @@ function addMeasured(measured, name, sizes) {
   if (sizes.all.gzip !== sizes.initial.gzip) measured[`${name}+lazy`] = sizes.all;
 }
 
-async function measureAll() {
+export async function measureAll({ includeBrotli = false, measurer = createSizeMeasurer({ includeBrotli }) } = {}) {
   const jobs = Object.entries(await packageEntries()).map(([name, path]) => {
     const absolute = resolve(path).replace(/\\/g, '/');
     return { label: `entry:${name}`, source: `export * from '${absolute}';` };
   });
   for (const [name, scene] of Object.entries(SCENES)) jobs.push({ label: `scene:${name}`, source: scene.engine });
-  const sizes = await mapWithLimit(jobs, job => measureSource(job.source));
+  const sizes = await mapWithLimit(jobs, job => measureSource(job.source, { includeBrotli, measurer }));
   const measured = {};
   jobs.forEach((job, index) => addMeasured(measured, job.label, sizes[index]));
   return measured;
@@ -127,11 +165,13 @@ async function mapWithLimit(items, work) {
   return results;
 }
 
-async function measureThree() {
+export async function measureThree({ includeBrotli = false, measurer = createSizeMeasurer({ includeBrotli }), measure = measureSource } = {}) {
+  const entries = Object.entries(SCENES).filter(([, scene]) => scene.three);
+  const sizes = await Promise.all(entries.map(([, scene]) => measure(scene.three, { includeBrotli, measurer })));
   const measured = {};
-  for (const [name, scene] of Object.entries(SCENES)) {
-    if (scene.three) measured[name] = (await measureSource(scene.three)).initial;
-  }
+  entries.forEach(([name], index) => {
+    measured[name] = sizes[index].initial;
+  });
   return measured;
 }
 
@@ -161,79 +201,87 @@ function printGoals(measured, goals, budgets) {
   }
 }
 
-const argumentsGiven = process.argv.slice(2);
-const flags = new Set(argumentsGiven);
-
-function valueAfter(flag) {
+function valueAfter(argumentsGiven, flag) {
   const index = argumentsGiven.indexOf(flag);
   return index === -1 ? undefined : argumentsGiven[index + 1];
 }
 
-// A child run for the base branch: print the measurement and stop.
-if (flags.has('--json')) {
-  process.stdout.write(JSON.stringify(await measureAll()));
-  process.exit(0);
-}
+async function main(argumentsGiven) {
+  const flags = new Set(argumentsGiven);
 
-// The gate: growth against the base branch. An explicit --base must resolve. Without one, origin/main is used when it exists.
-// The base is measured beside the pull request, and not at all when the run only refreshes the release numbers.
-const requestedBase = valueAfter('--base');
-const baseRef = requestedBase ?? DEFAULT_BASE_REF;
-if (requestedBase && !baseRefExists(baseRef)) {
-  console.error(`The base ref ${baseRef} does not exist. Fetch it first, for example: git fetch origin main`);
-  process.exit(1);
-}
-const refreshing = flags.has('--set-budgets') || flags.has('--update-baseline');
-const checkGrowth = baseRefExists(baseRef) && !refreshing;
-const baseMeasurement = checkGrowth ? measureBase(baseRef) : null;
-const measured = await measureAll();
-const three = await measureThree();
-const budgetFile = await readJson(BUDGETS_PATH);
-const baselineFile = await readJson(BASELINE_PATH);
-
-// Budgets and the baseline move at release, never in a feature pull request.
-if (flags.has('--set-budgets')) {
-  budgetFile.budgets = budgetsFrom(measured);
-  budgetFile.archiveBytes = Math.ceil(measureArchiveBytes() * 1.02);
-}
-if (flags.has('--set-budgets') || flags.has('--update-baseline')) {
-  const threeManifest = await readJson('node_modules/three/package.json');
-  await writeJson(BUDGETS_PATH, budgetFile);
-  await writeJson(BASELINE_PATH, { threeVersion: threeManifest.version, three, bundles: measured });
-}
-
-const { rows, problems: ceilingProblems } = compareToBudgets(measured, budgetFile.budgets, baselineFile.bundles);
-const problems = [];
-
-if (checkGrowth) {
-  const accepted = readAcceptedBundles(baseRef);
-  const growth = compareToBase(measured, await baseMeasurement, accepted);
-  console.log(`Growth against ${baseRef}, in bytes gzip:`);
-  console.log(formatGrowthRows(growth.rows));
-  for (const [name, reason] of accepted) console.log(`Accepted: ${name}, ${reason}`);
-  problems.push(...growth.problems);
-  problems.push(...unknownNoteProblems(accepted, measured, budgetFile.goals));
-  problems.push(...goalProblems(measured, await baseMeasurement, budgetFile.goals, accepted));
-} else if (!refreshing) {
-  console.log(`No ${baseRef} to compare with, so the growth check is skipped. Fetch it, or pass --base <ref>.`);
-}
-
-// The absolute budgets are the release ceilings. They are reported on a pull request and enforced with --absolute.
-console.log('\nAgainst the release budgets:');
-console.log(formatRows(rows));
-printComparisonWithThree(measured, three);
-printGoals(measured, budgetFile.goals, budgetFile.budgets);
-if (ceilingProblems.length) {
-  if (flags.has('--absolute')) {
-    problems.push(...ceilingProblems);
-  } else {
-    console.log(`\n${ceilingProblems.length} bundle(s) are past their release budget. A release refreshes the budgets with npm run size:release. List them with npm run size -- --absolute.`);
+  // A child run for the base branch: print the measurement and stop.
+  if (flags.has('--json')) {
+    process.stdout.write(JSON.stringify(await measureAll({ includeBrotli: false })));
+    process.exit(0);
   }
+
+  // The gate: growth against the base branch. An explicit --base must resolve. Without one, origin/main is used when it exists.
+  // The base is measured beside the pull request, and not at all when the run only refreshes the release numbers.
+  const requestedBase = valueAfter(argumentsGiven, '--base');
+  const baseRef = requestedBase ?? DEFAULT_BASE_REF;
+  if (requestedBase && !baseRefExists(baseRef)) {
+    console.error(`The base ref ${baseRef} does not exist. Fetch it first, for example: git fetch origin main`);
+    process.exit(1);
+  }
+  const refreshing = flags.has('--set-budgets') || flags.has('--update-baseline');
+  const measurer = createSizeMeasurer({ includeBrotli: refreshing });
+  const checkGrowth = baseRefExists(baseRef) && !refreshing;
+  const baseMeasurement = checkGrowth ? measureBase(baseRef) : null;
+  const [measured, three] = await Promise.all([
+    measureAll({ includeBrotli: refreshing, measurer }),
+    measureThree({ includeBrotli: refreshing, measurer }),
+  ]);
+  const budgetFile = await readJson(BUDGETS_PATH);
+  const baselineFile = await readJson(BASELINE_PATH);
+
+  // Budgets and the baseline move at release, never in a feature pull request.
+  if (flags.has('--set-budgets')) {
+    budgetFile.budgets = budgetsFrom(measured);
+    budgetFile.archiveBytes = Math.ceil(measureArchiveBytes() * 1.02);
+  }
+  if (refreshing) {
+    const threeManifest = await readJson('node_modules/three/package.json');
+    await writeJson(BUDGETS_PATH, budgetFile);
+    await writeJson(BASELINE_PATH, { threeVersion: threeManifest.version, three, bundles: measured });
+  }
+
+  const { rows, problems: ceilingProblems } = compareToBudgets(measured, budgetFile.budgets, baselineFile.bundles);
+  const problems = [];
+
+  if (checkGrowth) {
+    const accepted = readAcceptedBundles(baseRef);
+    const growth = compareToBase(measured, await baseMeasurement, accepted);
+    console.log(`Growth against ${baseRef}, in bytes gzip:`);
+    console.log(formatGrowthRows(growth.rows));
+    for (const [name, reason] of accepted) console.log(`Accepted: ${name}, ${reason}`);
+    problems.push(...growth.problems);
+    problems.push(...unknownNoteProblems(accepted, measured, budgetFile.goals));
+    problems.push(...goalProblems(measured, await baseMeasurement, budgetFile.goals, accepted));
+  } else if (!refreshing) {
+    console.log(`No ${baseRef} to compare with, so the growth check is skipped. Fetch it, or pass --base <ref>.`);
+  }
+
+  // The absolute budgets are the release ceilings. They are reported on a pull request and enforced with --absolute.
+  console.log('\nAgainst the release budgets:');
+  console.log(formatRows(rows));
+  printComparisonWithThree(measured, three);
+  printGoals(measured, budgetFile.goals, budgetFile.budgets);
+  if (ceilingProblems.length) {
+    if (flags.has('--absolute')) {
+      problems.push(...ceilingProblems);
+    } else {
+      console.log(`\n${ceilingProblems.length} bundle(s) are past their release budget. A release refreshes the budgets with npm run size:release. List them with npm run size -- --absolute.`);
+    }
+  }
+  if (problems.length) {
+    console.error(`\n${problems.length} size problem(s):`);
+    for (const problem of problems) console.error(`- ${problem}`);
+    process.exit(1);
+  }
+  console.log('\nNo bundle grew past its allowance.');
 }
-if (problems.length) {
-  console.error(`\n${problems.length} size problem(s):`);
-  for (const problem of problems) console.error(`- ${problem}`);
-  process.exit(1);
+
+if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href) {
+  await main(process.argv.slice(2));
 }
-console.log('\nNo bundle grew past its allowance.');
 
