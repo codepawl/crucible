@@ -11,12 +11,16 @@ const BOUNDS_PADDING = 0.05;
 const NEAREST_DEPTH_SHARE = 0.9;
 const FAR_SHARE_LIMIT = 0.01;
 
-/** World-space box around every part (and an optional extra box such as the ground), or null when a part can move out of it. */
-export function sceneBoundsOfParts(parts) {
+/**
+ * World-space box around every part (and an optional extra box such as the ground), or null when a part can move out of it.
+ * `includeMoving` boxes a skinned, morphed or crowd part where it rests instead of giving up, for a reader that only needs to
+ * know roughly where the scene ends (the receivers of the cascaded shadows).
+ */
+export function sceneBoundsOfParts(parts, { includeMoving = false } = {}) {
   const minimum = [Infinity, Infinity, Infinity];
   const maximum = [-Infinity, -Infinity, -Infinity];
   for (const part of parts) {
-    if (part.skin || part.morph || part.crowd || !part.matrix) return null;
+    if (!part.matrix || (!includeMoving && (part.skin || part.morph || part.crowd))) return null;
     const box = geometryBoundingSphere(part.geometry);
     for (let corner = 0; corner < 8; corner++) {
       const x = corner & 1 ? box.maximum[0] : box.minimum[0];
@@ -36,9 +40,9 @@ export function sceneBoundsOfParts(parts) {
 }
 
 /** `bounds` grown to hold `parts` where they are now, or null when one of them can move out of its box. */
-export function boundsGrownByParts(bounds, parts) {
+export function boundsGrownByParts(bounds, parts, options) {
   if (parts.length === 0) return bounds;
-  const moved = sceneBoundsOfParts(parts);
+  const moved = sceneBoundsOfParts(parts, options);
   if (!moved) return null;
   return {
     minimum: bounds.minimum.map((value, axis) => Math.min(value, moved.minimum[axis])),
@@ -46,16 +50,26 @@ export function boundsGrownByParts(bounds, parts) {
   };
 }
 
-/** Depth in front of the eye of the nearest corner of the box, along the view direction. */
-export function nearestDepthOfBounds(bounds, view) {
-  let nearest = Infinity;
+// Depth in front of the eye of every corner of the box, along the view direction.
+function cornerDepths(bounds, view) {
+  const depths = [];
   for (let corner = 0; corner < 8; corner++) {
     const x = corner & 1 ? bounds.maximum[0] : bounds.minimum[0];
     const y = corner & 2 ? bounds.maximum[1] : bounds.minimum[1];
     const z = corner & 4 ? bounds.maximum[2] : bounds.minimum[2];
-    nearest = Math.min(nearest, -(view[2] * x + view[6] * y + view[10] * z + view[14]));
+    depths.push(-(view[2] * x + view[6] * y + view[10] * z + view[14]));
   }
-  return nearest;
+  return depths;
+}
+
+/** Depth in front of the eye of the nearest corner of the box, along the view direction. */
+export function nearestDepthOfBounds(bounds, view) {
+  return Math.min(...cornerDepths(bounds, view));
+}
+
+/** Depth in front of the eye of the farthest corner of the box, along the view direction. */
+export function farthestDepthOfBounds(bounds, view) {
+  return Math.max(...cornerDepths(bounds, view));
 }
 
 /** The near plane for a frame whose camera left near at its default: the default, or further out when the scene is far from the eye. */
