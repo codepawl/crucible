@@ -4,7 +4,7 @@ Crucible Studio lets designers and AI agents work on the same `crucible.scene` r
 
 ## Open Studio
 
-An app mounts it with `createStudio(container, options)` (see below). To try it from a checkout, run `npm run dev` and open `/bench/studio/index.html`. Drop a `scene.json` on the window, or click the file name at the top left and choose **Open**.
+An app mounts it with `createStudio(container, options)` (see below). To try it from a checkout, run `npm run dev` and open `/bench/studio/index.html`. Drop a `scene.json` on the window, or open the **File** menu at the top left and choose **Open**.
 
 ## The screen
 
@@ -14,8 +14,8 @@ The scene fills the window and the controls float on top of it.
 | --- | --- |
 | Top left | The menus. **File**: New scene, Open, Open recent, Save, Save as, the three exports and the recipe JSON (see [New scene and recent scenes](#new-scene-and-recent-scenes)). **Edit**: undo, redo, copy, paste, duplicate, delete, deselect and Settings. **View**: front, right and top view, perspective or orthographic, frame the selection, the grid and the panels. **Agent**: copy a prompt for an AI agent and reload when it edits the file. **Help**: the keyboard shortcuts. Each row shows its key. |
 | Top centre | The workspaces, in the order the work runs: **Build** (objects and their place), **Look** (materials, lighting, sun, exposure, fog) and **Animate** (camera, lens, shots and the timeline). Each one shows only the panels its step needs. Opening a panel from anywhere, or adding a keyframe, brings its workspace forward. A workspace is a way of looking at the scene: it is not saved in the recipe and undo does not touch it. |
-| Top right | The file name, which opens the File menu, and **Export** (PNG image, GLB model, web pack). A green dot beside the name means Studio reloads the file when an agent edits it. |
-| Left rail | The tools that change the scene come first: select, move, rotate, scale, snap to a surface, then add an object or a light, undo and redo. Under one line sit the switches that only change what you see: show or hide the grid, show or hide the panels. |
+| Top right | The file name (click it to rename the scene), and **Export** (PNG image, GLB model, web pack). A green dot beside the name means Studio reloads the file when an agent edits it. |
+| Left rail | The tools that change the scene come first: select, move, rotate, scale, snap to a surface, then add an object or a light, undo and redo. Under one line sit the switches that only change what you see: show or hide the grid, see through the surface (edit mode, **Alt+Z**), show or hide the panels. |
 | Scene card | At the top of the right column, across from the rail. The list shows whole rows only: it scrolls a row at a time and the rows stretch by a pixel or two so a whole number of them fills it. The materials are one row of swatches that scrolls sideways, with the add button fixed beside it. Its head has a search button, which opens a box that filters the list as you type (Esc closes it and clears the filter), and an add button with the same menu as the rail. Every object in the scene, drawn as the shape of its geometry (cube, sphere, cylinder, cone, torus, plane, or a stack for a group) in the colour of its material, an eye to hide each one, and the scene materials as swatches. |
 | Properties | Under the Scene card, in the same column. The panels of the open workspace: the object in Build, material and look in Look, the camera (views, lens, shots) in Animate, with the object one tab away: picking an object there opens its panel and stays in Animate. |
 | Bottom, in Animate | Play, add a keyframe, switch Auto-key, scrub the time, jump to a saved shot. The selected object's keys are diamonds on the scrub track: click one to select it and move the playhead there, drag it or press Left and Right (Shift for finer) to retime it, Delete to remove that key. The readout moves up to make room for it, and floating panels stop above it. |
@@ -57,7 +57,9 @@ Not there yet, and said so on screen when you reach it:
 - A move of more than 19 vertices that are not whole faces cannot be written yet; pick whole faces, or fewer vertices.
 - A mesh with a modifier stack is refused. A mesh of more than 8,000 triangles draws only the picked elements, with a notice.
 - **Alt+A** selects none and **Ctrl+I** inverts the selection, in the mode you are in (vertices, edges or faces); the object stays selected. Inverting nothing selects everything of that mode. Like a pick, neither is an undo step.
-- **C** starts circle select. A circle follows the pointer: drag with the left button to select what it passes over, drag with the middle button (or hold **Shift**) to deselect, turn the wheel to make the circle bigger or smaller (4 to 400 pixels, 25 to start), and press **Esc** or right click to stop. In vertex mode it takes the vertices inside the circle, in edge mode the edges it touches, in face mode the faces it overlaps. Only what faces the camera is taken. The circle keeps its size until you change it.
+- **C** starts circle select. A circle follows the pointer: drag with the left button to select what it passes over, drag with the middle button (or hold **Shift**) to deselect, turn the wheel to make the circle bigger or smaller (4 to 400 pixels, 25 to start; one step per 100 pixels of wheel travel, so a trackpad swipe and a mouse wheel resize alike), and press **Esc** or right click to stop. Switching to another window or tab stops it too. In vertex mode it takes the vertices inside the circle, in edge mode the edges it touches, in face mode the faces it overlaps. Only what faces the camera is taken. The circle keeps its size until you change it.
+- **B** starts box select: drag one rectangle with the left button and everything of the mode that lies wholly inside it is selected (**Shift** adds to the selection instead of replacing it). The key is spent after one rectangle, and **Esc** drops it.
+- **Alt+Z** turns **see-through** on or off, and so does the button in the rail's lower group. While it is on, the surface of the object you edit is drawn faint, the far side of the cage is drawn as strongly as the near side, and a click, the circle and a box reach the far side too: from the front, a box over a cube takes all 8 vertices instead of the 4 facing you. It is a view setting, kept while Studio is open and for the next edit session: it changes nothing in the recipe, adds no undo step, and `studio.setSeeThrough(true)` sets it from code. In face mode a click takes the face whose centre is nearest the pointer among those drawn under it.
 - Rotate, scale, box select, extrude and the other tools come next.
 
 **P** in edit mode opens a small menu at the middle of the viewport with **Selection**: the picked faces (in vertex or edge mode, the faces whose vertices are all picked) become a new object named `<name>-part`, with the same position, size, parent and material, so nothing moves. The object keeps its other faces and stays in edit mode; with nothing picked, or every face picked, it says what to do and changes nothing. It is one undo step.
@@ -114,6 +116,24 @@ Click an object to select it. Shift+click (or Ctrl or Command+click) adds an obj
 
 Every selected object has an outline in the accent colour with a thin ring of the viewport's dark (`--studio-trace-edge`, the same in both themes, because the viewport is dark in both) on each side, so it reads on light and dark surfaces and leaves no pale glow on the floor in the light theme: the active object's outline is 4 px wide and the others' 2 px, twice as wide on screen (the filters draw a 1.5 px ring as 2 px, so a 3 and 1.5 pair only differed by half). In the Scene list every selected row is tinted, the active one more strongly (it also carries `aria-current`); a click on a row selects only that node, and Shift or Ctrl or Command+click on a row adds it or takes it out, as in the viewport. Where the shape outline cannot draw (no WebGL2, or part of the selection is behind the camera) Studio outlines the active node and at most 11 of the others by their convex hull, because each hull costs a pass over its vertices. A selection too dense for the shape outline (past 8,000 triangles) is drawn by the mask at the 2 px strength of the others, and the active object is drawn over it at 4 px: from its own shape when it alone fits the 8,000 triangles, else from a second mask of its own, so a dense imported model gets its true silhouette and not a hull across its holes. Only when that second mask cannot draw (no WebGL2) is the active object marked by its hull. One dense object selected alone is the mask at 4 px. The Properties card, the handles, the readout and every action (move, delete, duplicate, hide, keyframes) still work on the active object only, and the Properties head says how many are selected. Tab edits the mesh of the active object.
 
+## Rename in place
+
+A name you own is renamed where it is shown: the field replaces the name, Enter keeps the new one and Esc cancels. Clicking or tabbing away keeps a valid name and drops an invalid one, so a half-typed name is never applied. While the field is open no Studio key acts, so G, R, S, Delete and Ctrl+A type or edit text.
+
+| Name | How | What changes |
+| --- | --- | --- |
+| The scene file, in the top bar | One click on the name | Only the name part is the field. The type stays beside it as plain text and is kept on save: `.scene.json`, `.json` or `.glb`, or the extension of the open file. Any other dot belongs to the name ("Scene 1.5" stays "Scene 1.5"), and a type typed at the end is dropped. The name stays on the top bar at every width: a long one ends in an ellipsis and its type stays visible. While you edit, the ring surrounds only the name and the type sits after it, outside the ring. |
+| An object, in the Scene list | Double click, or F2 on the active object (also **Edit ▸ Rename** and the right click menu) | The label changes, the id stays, so two objects may share a label. One undo step. With several selected, F2 renames the active one. |
+| A shot, in the Camera tab | Double click | The shot keeps its place and camera. A name another shot has is refused. One undo step. |
+
+The camera, the sun, the lights, the materials (shown by id) and the names Studio gives (tools, sections, templates) are not renamed. A material is its id, which nodes refer to.
+
+A bad name stays in the field with a mark and a reason under it: empty or only spaces; for a file name any of `\ / : * ? " < > |` or a control character, a trailing dot, a Windows device name (CON, PRN, AUX, NUL, COM1 to COM9, LPT1 to LPT9, with or without an extension) and more than 120 characters; for a shot more than 24 characters or anything but letters, digits, - and _; for an object more than 256 characters. Text that cannot be seen or that flips the reading order (zero width characters and bidirectional controls) is refused too. Leading and trailing spaces are trimmed and a new line becomes a space. The reason sits beside the name when the gap between the workspace tabs and the name holds it, and under the name otherwise, moved left so it never covers the Scene panel.
+
+The scene name is not part of the recipe, so a rename does not mark the scene as changed. The next save, the document title and the draft use the new name. A web page cannot rename a file on disk, so there Studio says once that the new name applies from the next save and the old file stays as it is. A host that passes `desktop.renameScene({ filePath, fileName })` is asked to rename the open file instead. It must not overwrite: it answers `{ filePath, fileName }` on success, or `{ exists: true }` when the name is taken, and Studio then shows "A file with this name already exists" in the field. A rejection that is not an error object (a string, or nothing) counts as a failure too. While the host works the field is read-only, with a neutral ring, dimmed text and a turning mark (no turning with reduced motion), Esc and clicking away leave it open, and no second rename starts; when the host answers, the name is applied or the reason shows. The web page says "Renamed. Saved under this name next time."; a host that renamed the real file says only "Renamed". A host without that method sends the next Save through Save as with the new name suggested.
+
+While an input method composes text (Japanese, Chinese, Korean), Enter picks the candidate and does not keep the name, and clicking away does not commit.
+
 ## Keys
 
 **Help ▸ Keyboard shortcuts** (or **?**) lists every key.
@@ -128,13 +148,15 @@ Every selected object has an outline in the accent colour with a thin ring of th
 | Ctrl+C, Ctrl+V | Copy the selected object, paste a copy of it (one undo step, still works after the original is deleted) |
 | Shift+D or Ctrl+D | Duplicate |
 | Ctrl+J | Join the selected objects into the one picked last |
+| F2 | Rename the active object, in its Scene row |
 | X, Delete or Backspace | Delete |
 | Esc | Deselect |
 | A, Alt+A, Ctrl+I | Select all, select none, invert the selection |
 | Tab | Edit the mesh of the selected object; Tab again leaves |
 | 1, 2, 3 | In edit mode: select vertices, edges or faces |
+| Alt+A, Ctrl+I, C, B | In edit mode: select none, invert the selection, circle select (Esc or right click ends it), box select |
 | P | In edit mode: separate the picked faces into their own object |
-| Alt+A, Ctrl+I, C | In edit mode: select none, invert the selection, circle select (Esc or right click ends it) |
+| Alt+Z | See through the surface |
 | H, Alt+H | Hide the selection, show everything that is hidden |
 | Alt+G, Alt+R, Alt+S | Reset the position, rotation or scale of the selection |
 | Right click | Menu of the object under the pointer |
@@ -157,7 +179,7 @@ Keys do nothing while you type in a field or while a dialog is open.
 
 G, R and S: with an object selected and the pointer over the viewport, the key picks the object up: it follows the pointer with no handle to aim at, and a pill at the bottom of the viewport shows how far it has gone and the keys that act on it. X, Y or Z keeps the move to that axis of the object, a click or Enter places it, and Esc or a right click puts it back as if nothing happened. A placed move is one undo step. With nothing selected, or the pointer over a panel, the key only switches the tool, and the handles work as before. Typing a number while holding an object is not supported: type it in Properties instead.
 
-A right click on an object, in the viewport or in the Scene list, selects it and opens its menu at the pointer: Frame, Duplicate, Hide, the three resets and Delete. They are the same rows as in **Edit**, with the same keys. A menu row starts with its icon when one fits and with an empty square when none does, so the labels line up. Dragging with the right button still pans. Alt takes back what the plain key does: G, R and S change a transform and Alt+G, Alt+R and Alt+S reset it, H hides the selection and Alt+H shows everything again, as one undo step.
+A right click on an object, in the viewport or in the Scene list, selects it and opens its menu at the pointer: Frame, Rename, Duplicate, Hide, the three resets and Delete. They are the same rows as in **Edit**, with the same keys. A menu row starts with its icon when one fits and with an empty square when none does, so the labels line up. Dragging with the right button still pans. Alt takes back what the plain key does: G, R and S change a transform and Alt+G, Alt+R and Alt+S reset it, H hides the selection and Alt+H shows everything again, as one undo step.
 
 ## Keymaps
 
@@ -182,6 +204,8 @@ A right click on an object, in the viewport or in the Scene list, selects it and
 | Invert the selection | Ctrl+I | Ctrl+I | Ctrl+I |
 | Frame the selection | F, . | F | O, S |
 | Show or hide Properties | N | Ctrl+A | Shift+F5 |
+| See through the surface | Alt+Z | Alt+Z | Alt+Z |
+| Box select (edit mode) | B | B | B |
 | Insert a keyframe | I, K | S | F9 |
 | Play | Space | Alt+V | F8 |
 

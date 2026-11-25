@@ -3,6 +3,10 @@
 
 export const MAX_MESH_EDITS = 64;
 
+// Most vertex indices or edge pairs one selection lists, for the vertex rule { "vertices": [...] } on a move and the edge rule
+// { "edges": [[a, b], ...] } on every edge-taking edit. A larger selection uses a rule such as inside, angle or a tag.
+export const MAX_SELECTED_ELEMENTS = 4096;
+
 // Modifiers that work on the whole mesh and take no selection or name. Their fields are checked in mesh-modifiers.js and
 // each one is described for agents by MESH_MODIFIER_NOTES in agent-scene-capabilities.js.
 export const MODIFIER_OPERATIONS = /* @__PURE__ */ Object.freeze({
@@ -29,6 +33,11 @@ export const MODIFIER_OPERATIONS = /* @__PURE__ */ Object.freeze({
   build: { fields: ['order', 'axis', 'seed', 'frame', 'start', 'length', 'reverse'], tags: [] },
   ocean: { fields: ['axis', 'windSpeed', 'direction', 'choppiness', 'size', 'seed', 'time', 'resolution', 'coverage', 'foamMemory', 'wake', 'spray'], tags: [] },
 });
+
+// translate and transform_selection take one of these instead of select: the vertices of a vertex rule, or the ends of the
+// edges an edge rule picks. They sit beside the fields list so the list keeps naming the face rule every edit shares.
+export const ELEMENT_SELECTION_FIELDS = /* @__PURE__ */ Object.freeze(['verts', 'edges']);
+export const ELEMENT_MOVE_OPERATIONS = /* @__PURE__ */ Object.freeze(['translate', 'transform_selection']);
 
 export const MESH_EDIT_OPERATIONS = /* @__PURE__ */ Object.freeze({
   extrude_face_region: { fields: ['select', 'name', 'offset', 'direction', 'alongNormals'], tags: ['cap', 'side'] },

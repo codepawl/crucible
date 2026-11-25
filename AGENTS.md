@@ -19,6 +19,7 @@ Crucible makes 3D easy to understand and easy to do. The agent carries the heavy
 - `tests/` holds the Node tests, one `*.test.js` per area. `scripts/` holds the build, smoke and gate scripts.
 - `docs/` holds one guide per feature. `skills/` holds the agent skills that ship with the package.
 - `changes/` holds one changelog note per pull request. `artifacts/` is ignored output for screenshots and logs.
+- `.claude/rules/` holds the Studio, look and agent tool surface rules. Each loads only when you touch a file its `paths:` filter matches.
 
 ## Set up
 
@@ -43,6 +44,8 @@ writes each log to `artifacts/preflight/`, prints only the tail of a failing log
 Run the full preflight once before you push. A green preflight covers the PR gates, the site build, size and tool cost; the `test` workflow also runs `npm audit`, the `package` job (`prepare:release`, `check:links:package`, `check:published-site`, `smoke:package`, `smoke:mcp-package`), the bun smoke and the `COOK_DISABLE=1` leg, which only CI runs.
 `npm ci` installs a pre-push hook that runs `npm run preflight -- --skip-tests`, which includes those fast tests, and stops a push that would fail those gates.
 `SKIP_PREFLIGHT=1 git push` skips it once; use that only for a push you know the gates do not cover.
+
+CI runs a pull request light when it changes only docs, change notes, markdown, site pages or the Studio UI: the affected tests, with no shards or coverage gate (`scripts/ci-plan.mjs`). Anything else runs the full set.
 
 For one test file: `node --test tests/<area>.test.js`.
 
