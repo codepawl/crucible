@@ -436,6 +436,7 @@ on:
       - 'src/tree-sky.js'
       - 'src/triangle-bvh.js'
       - 'src/triangle-math.js'
+      - 'src/triangle-pair-set.js'
       - 'src/triangulate.js'
       - 'src/unsupported-part.js'
       - 'src/user-pass.js'
