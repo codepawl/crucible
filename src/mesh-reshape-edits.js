@@ -4,7 +4,7 @@ import { unsubdivideMesh } from './mesh-unsubdivide.js';
 import { selectEdges, edgeFaces } from './mesh-bevel.js';
 import { selectFaces, countSelected } from './mesh-select.js';
 import { invalidField } from './field-error.js';
-import { editField, editRuleObject } from './mesh-edit-field.js';
+import { editField, editRuleObject, editEdgeRule } from './mesh-edit-field.js';
 import { EDGE_RULE_HINT } from './mesh-cut-edits.js';
 import { pokeFaces, dualMesh, trisToQuads, symmetrizeMesh, scaleElements, extrudeEdges } from './mesh-reshape.js';
 
@@ -39,7 +39,7 @@ export function normalizeReshapeEdit(edit, normalized, index, { finiteNumber, ve
       normalized.scale = finiteNumber(edit.scale, index, 'scale', { minimum: 0, maximum: MAX_SCALE, exclusiveMinimum: true });
       break;
     case 'split_edges':
-      normalized.edges = editRuleObject(edit.edges, index, 'edges', EDGE_RULE_HINT);
+      normalized.edges = editEdgeRule(edit.edges, index, 'edges', EDGE_RULE_HINT);
       break;
     case 'flatten':
       normalized.verts = editRuleObject(edit.verts, index, 'verts', VERTEX_RULE_HINT);
@@ -56,7 +56,7 @@ export function normalizeReshapeEdit(edit, normalized, index, { finiteNumber, ve
       normalized.regular = edit.regular ?? true;
       break;
     case 'extrude_edges':
-      normalized.edges = editRuleObject(edit.edges, index, 'edges', EDGE_RULE_HINT);
+      normalized.edges = editEdgeRule(edit.edges, index, 'edges', EDGE_RULE_HINT);
       normalized.offset = vector(edit.offset, index, 'offset');
       break;
   }

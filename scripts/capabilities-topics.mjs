@@ -77,7 +77,7 @@ function unionIndex(topic, branches, definitions = {}) {
   return {
     branches: entries,
     ...(Object.keys(rules).length ? { rules } : {}),
-    use: `args are name:type, ? marks optional; topic ${topic}.<name> for the notes of every field of one branch; modifier ops not listed here are in meshModifiers`,
+    use: `args are name:type, ?=optional; topic ${topic}.<name> for one branch's field notes; modifier ops not listed here are in meshModifiers${topic === 'meshEdit' ? '; vertex indices are of the mesh just before that edit' : ''}`,
   };
 }
 
@@ -85,7 +85,7 @@ function unionIndex(topic, branches, definitions = {}) {
 const MODIFIER_TOPICS = new Set(['meshEdit', 'meshStack']);
 
 function modifierPointer(topic) {
-  return { modifierOps: Object.keys(MODIFIER_OPERATIONS), modifierUse: `${topic} also takes every op in modifierOps (such as wave and ocean); topic meshModifiers.<op> gives its fields` };
+  return { modifierOps: Object.keys(MODIFIER_OPERATIONS), modifierUse: `${topic} also takes every op in modifierOps; topic meshModifiers.<op> gives its fields` };
 }
 
 function outlineAnswer(topic, branchName, schema) {

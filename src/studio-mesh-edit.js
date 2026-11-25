@@ -31,6 +31,12 @@ export const CIRCLE_BRUSH_DEFAULT_PIXELS = 25;
 export const CIRCLE_BRUSH_MIN_PIXELS = 4;
 export const CIRCLE_BRUSH_MAX_PIXELS = 400;
 const CIRCLE_BRUSH_STEP_FACTOR = 1.15;
+// A wheel step is 100 pixels of travel; a line is a third of a notch and a page is three notches (the wheel's deltaMode).
+const WHEEL_PIXELS_PER_STEP = 100;
+const WHEEL_PIXELS_PER_LINE = WHEEL_PIXELS_PER_STEP / 3;
+const WHEEL_PIXELS_PER_PAGE = WHEEL_PIXELS_PER_STEP * 3;
+const WHEEL_DELTA_LINE = 1;
+const WHEEL_DELTA_PAGE = 2;
 const CIRCLE_SELECT_HINT = 'Circle select: drag to select, middle drag or Shift to deselect, wheel to resize, right click or Esc to leave.';
 const EDIT_MODE_HINT = 'Edit mode: pick a vertex, edge or face.';
 const TOO_LARGE_TO_DRAW = `This mesh has more than ${CAGE_TRIANGLE_BUDGET.toLocaleString('en-US')} triangles, so only the selection is drawn.`;
@@ -216,6 +222,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   // Circle select: null when off, else where the brush circle is drawn (centre is null until the pointer is over the viewport).
   let circle = null;
   let brushRadius = CIRCLE_BRUSH_DEFAULT_PIXELS;
+  let wheelTravel = 0;
 
   function refuse(message) {
     announce(message);
@@ -410,6 +417,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     if (!state || drag) return false;
     if (circle) return true;
     circle = { centre: null };
+    wheelTravel = 0;
     hintShowing = false;
     announce(CIRCLE_SELECT_HINT);
     return true;
@@ -418,8 +426,25 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   function endCircleSelect() {
     if (!circle) return false;
     circle = null;
+    wheelTravel = 0;
     announce('');
     return true;
+  }
+
+  /**
+   * The wheel as the page reports it: the travel is summed, so a trackpad swipe and a mouse wheel of the same distance
+   * resize alike. One step per 100 pixels up (bigger) or down (smaller); the remainder waits for the next event and a turn around drops it.
+   */
+  function wheelCircleBrush(deltaY, deltaMode = 0) {
+    if (!Number.isFinite(deltaY) || deltaY === 0) return brushRadius;
+    const pixelsPerUnit = deltaMode === WHEEL_DELTA_PAGE ? WHEEL_PIXELS_PER_PAGE : deltaMode === WHEEL_DELTA_LINE ? WHEEL_PIXELS_PER_LINE : 1;
+    const travel = -deltaY * pixelsPerUnit;
+    if (Math.sign(travel) !== Math.sign(wheelTravel)) wheelTravel = 0;
+    wheelTravel += travel;
+    const steps = Math.trunc(wheelTravel / WHEEL_PIXELS_PER_STEP);
+    if (steps === 0) return brushRadius;
+    wheelTravel -= steps * WHEEL_PIXELS_PER_STEP;
+    return resizeCircleBrush(steps);
   }
 
   /** The wheel: one notch up (steps > 0) makes the brush bigger, one down smaller; the result stays inside the brush limits. */
@@ -1018,6 +1043,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     beginCircleSelect,
     endCircleSelect,
     resizeCircleBrush,
+    wheelCircleBrush,
     moveCircle,
     paintCircle,
     get circleSelecting() { return circle !== null; },
