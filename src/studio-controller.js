@@ -2760,6 +2760,24 @@ export function createStudioController({
     return cameraIsDriven() ? moveView(shot.camera ?? {}) : camera;
   }
 
+  // The shot keeps its place and camera; only its name changes, in one undoable edit. A name another shot has is refused.
+  function renameBookmark(name, newName) {
+    if (typeof newName !== 'string' || !SHOT_NAME_PATTERN.test(newName)) {
+      throw new RangeError('Bookmark name must be 1 to 24 letters, digits, - or _.');
+    }
+    const existingShots = currentScene.exportRecipe().timeline?.shots ?? [];
+    if (!existingShots.some(candidate => candidate.name === name)) {
+      throw new RangeError(`Unknown camera bookmark "${String(name)}".`);
+    }
+    if (newName !== name && existingShots.some(candidate => candidate.name === newName)) {
+      throw new RangeError(`A camera bookmark named "${newName}" already exists.`);
+    }
+    const renamed = existingShots.map(candidate => (candidate.name === name ? { ...candidate, name: newName } : candidate));
+    applySceneOperations([{ type: 'set-timeline', timeline: { shots: renamed } }]);
+    notify({ kind: 'bookmark', renamed: name, name: newName });
+    return structuredClone(renamed);
+  }
+
   function removeBookmark(name) {
     const recipe = currentScene.exportRecipe();
     const existingShots = recipe.timeline?.shots ?? [];
@@ -3007,6 +3025,7 @@ export function createStudioController({
     saveBookmark,
     applyBookmark,
     removeBookmark,
+    renameBookmark,
     setMotionTime,
     insertNodeKeyframe,
     moveNodeKeyframe,
