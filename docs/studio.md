@@ -217,7 +217,7 @@ Maya and Cinema 4D also take **Alt** with a mouse button on the viewport: Alt an
 | Interface | Theme (System, Light or Dark), Open in (the workspace Studio opens in), Floating panels, Motion |
 | Viewport | Performance tier, Grid, Camera and size readout, Axis widget, Agent cursor, Handle size, Zoom direction |
 | Editing | Move snap step and Rotate snap angle for a Shift drag |
-| Keys | The key preset (Blender, Maya or Cinema 4D) and a button that opens the shortcuts list |
+| Keys | The key preset and a button that opens the shortcuts list |
 | Account | Only when the host page offers an account, see below |
 
 They are kept in the browser (`localStorage`, key `crucible-studio-preferences`), not in the scene recipe, so a scene looks the same for everyone and each person keeps their own setup. **Reset** brings back the defaults of every row. **Run setup again** opens the first-run setup. An app can pass `preferences` to `createStudio` to start from other values, `preferenceStorage: null` to keep nothing, and call `studio.setPreference(name, value)`.
