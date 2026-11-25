@@ -46,6 +46,13 @@ const splatSupport = {};
  */
 export const SPLAT_UNITS = Object.freeze({ splatColor: 11, splatNormal: 12, splatMask: 14, splatPacked: 17 });
 
+/**
+ * The parallax height map sits on the first unit after every registered one: the irradiance grid (a sampler3D) on 16 and the splat array
+ * on 17, so a scene that has both with a height-mapped material never binds two sampler types to one unit. Derived from SPLAT_UNITS, the
+ * highest, so a unit added there moves it (tests/sampler-units.test.js checks it against every unit constant in src/).
+ */
+export const HEIGHT_MAP_UNIT = Math.max(...Object.values(SPLAT_UNITS)) + 1;
+
 export function registerSplatSupport(functions) {
   Object.assign(splatSupport, functions);
 }

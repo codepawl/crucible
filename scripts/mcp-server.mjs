@@ -7,7 +7,7 @@ import { IK_SOLVER_TYPE_NAMES } from '../src/motion-ik-solver-types.js';
 import { MOTION_PROPERTY_KIND_NAMES } from '../src/motion-property-kinds.js';
 import { BRANCH_NAME_PATTERN } from '../src/agent-branches.js';
 import { TEXTURE_SEQUENCE_LIMITS } from '../src/texture-sequence-limits.js';
-import { NORMAL_CONVENTIONS, TEXTURE_MAP_FIELDS, UV_TRANSFORM_LIMITS } from '../src/texture-set-fields.js';
+import { HEIGHT_PARALLAX_LIMITS, NORMAL_CONVENTIONS, TEXTURE_MAP_FIELDS, UV_TRANSFORM_LIMITS } from '../src/texture-set-fields.js';
 import { readEnvironmentVariable } from '../src/environment-variable.js';
 import { McpServer } from '@modelcontextprotocol/server';
 import { resolveJobRoot } from './agent-job-root.mjs';
@@ -232,6 +232,9 @@ const materialFields = {
   textureSet: z.string().max(256).optional().describe('Name of a catalog texture set (scene_asset_catalog textureSets): fills colorMap, normalMap, roughnessMap, metallicMap, occlusionMap and heightMap; scene_capabilities textureSet.'),
   ...Object.fromEntries(TEXTURE_MAP_FIELDS.map(field => [field, catalogImageId.optional()])),
   normalConvention: z.enum(NORMAL_CONVENTIONS).optional().describe('opengl (default) or directx normal map; directx has its green channel flipped on load.'),
+  heightScale: z.number().min(HEIGHT_PARALLAX_LIMITS.scale[0]).max(HEIGHT_PARALLAX_LIMITS.scale[1]).optional().describe('Metres a heightMap sinks below the surface; above 0 draws it as parallax relief (raster only); scene_capabilities textureSet.'),
+  heightFade: z.number().min(HEIGHT_PARALLAX_LIMITS.fade[0]).max(HEIGHT_PARALLAX_LIMITS.fade[1]).optional().describe('Metres from the eye where the relief has faded to plain normal mapping.'),
+  heightSteps: z.number().int().min(HEIGHT_PARALLAX_LIMITS.steps[0]).max(HEIGHT_PARALLAX_LIMITS.steps[1]).optional().describe('Ray steps of the relief.'),
   uvScale: z.union([uvScaleNumber, z.tuple([uvScaleNumber, uvScaleNumber])]).optional().describe('Tiles of every catalog map: one number or [u, v]; with the other UV fields it follows glTF KHR_texture_transform.'),
   uvOffset: z.tuple([uvOffsetNumber, uvOffsetNumber]).optional().describe('[u, v] shift of every catalog map, in tiles.'),
   uvRotation: z.number().min(UV_TRANSFORM_LIMITS.rotation[0]).max(UV_TRANSFORM_LIMITS.rotation[1]).optional().describe('Degrees every catalog map turns.'),
