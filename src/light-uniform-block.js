@@ -27,6 +27,8 @@ export const LIGHT_DATA_BLOCK = Object.freeze({
     { name: 'areaLightTangents', type: 'vec4', count: MAX_AREA_LIGHTS },
     { name: 'localShadowMatrices', type: 'mat4', count: SHADOW_ATLAS_TILE_COUNT },
     { name: 'localShadowTexelAngles', type: 'float', count: SHADOW_ATLAS_TILE_COUNT },
+    // environment.fillColor: the colours of the two fill lights.
+    { name: 'fillLightColors', type: 'vec4', count: 2 },
   ]),
 });
 
