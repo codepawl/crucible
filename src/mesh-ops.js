@@ -1,5 +1,6 @@
 import { createMeshData, deriveEdges, TAG_PREFIX, DOMAINS } from './mesh-data.js';
 import { weldVertices } from './mesh-convert.js';
+import { MATERIAL_SLOT_ATTRIBUTE } from './mesh-operations.js';
 
 // Local topology operators on an EditMesh. Each takes a face mask indexed by EditMesh face index (equal to MeshData
 // face index right after editMesh()) and returns the faces it created, so callers can tag and report them.
@@ -37,6 +38,12 @@ function clearTags(edit, face) {
 export function tagFaces(edit, faces, tag) {
   const attribute = edit.ensureAttribute('face', TAG_PREFIX + tag, Uint8Array, 1);
   for (const face of faces) attribute.data[face] = 1;
+}
+
+/** Points each listed face at material slot `slot` (a face attribute that every other edit carries along with the face). */
+export function assignMaterialSlot(edit, faces, slot) {
+  const attribute = edit.ensureAttribute('face', MATERIAL_SLOT_ATTRIBUTE, Uint8Array, 1);
+  for (const face of faces) attribute.data[face] = slot;
 }
 
 /** Area-weighted normal (Newell) of one EditMesh face; length is twice the area. */

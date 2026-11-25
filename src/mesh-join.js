@@ -1,5 +1,6 @@
 import { createMeshData, deriveEdges } from './mesh-data.js';
 import { registerModifierNormalizer, registerModifierRunner } from './mesh-modifiers.js';
+import { refuseSlottedJoin } from './mesh-material-slots.js';
 import { editField } from './mesh-edit-field.js';
 
 // The `join` modifier: the faces of another recipe geometry are added to this mesh, placed by a 4x4 matrix that takes the
@@ -161,6 +162,7 @@ function runJoinEdit(mesh, edit, { maxVertices, maxFaces, resolveJoinMesh } = {}
     throw new TypeError('join reads another recipe geometry, so it works as an edit of a recipe mesh, not in the modifier stack.');
   }
   const other = resolveJoinMesh(edit.geometry);
+  refuseSlottedJoin(mesh, other);
   if (mesh.vertexCount + other.vertexCount > maxVertices || mesh.faceCount + other.faceCount > maxFaces) {
     throw new RangeError(`join would make ${mesh.vertexCount + other.vertexCount} vertices and ${mesh.faceCount + other.faceCount} faces, over the limit of ${maxVertices} vertices and ${maxFaces} faces. Join a smaller geometry or simplify one of them.`);
   }

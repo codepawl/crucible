@@ -642,7 +642,7 @@ const GEOMETRY_FIELDS = {
   sdf: ['root', 'resolution'],
   curve: ['points', 'shape', 'splines', 'closed', 'kind', 'weights', 'order', 'knots', 'knotMode', 'trim', 'grow', 'radius', 'taper', 'profile', 'resolution', 'radialSegments'],
   text: ['text', 'size', 'depth', 'font', 'align', 'curveSegments'],
-  mesh: ['base', 'edits', 'stack', 'smoothAngle', 'shapeKeys'],
+  mesh: ['base', 'edits', 'stack', 'smoothAngle', 'shapeKeys', 'slots'],
   terrain: ['size', 'resolution', 'seed', 'amplitude', 'holes', 'featureSize', 'octaves', 'warp', 'ridged', 'mountainAmplitude', 'mountainMask', 'chunks', 'levels', 'paths'],
   cloud: ['seed', 'puffs', 'width', 'height', 'flatBase', 'resolution', 'levels', 'upBias', 'unionSoftness'],
   fragment: ['source', 'seed', 'cells', 'index', 'impact', 'impactRadius'],
@@ -686,7 +686,7 @@ function geometryEstimate(value, scope = PENDING_CUTTER_SCOPE) {
     // Terrain checks its own numbers (a whole resolution from 2 to 499), so its message names the real range; null is not absent there, so it still fails below.
     if (value.type === 'terrain' && ['size', 'resolution', 'amplitude', 'featureSize', 'octaves', 'warp', 'ridged', 'mountainAmplitude', 'mountainMask', 'chunks', 'levels'].includes(field) && value[field] !== null) continue;
     if (value.type === 'cloud' && value[field] !== null) continue;
-    if (value[field] !== undefined && !['profile', 'contour', 'holes', 'path', 'closed', 'base', 'edits', 'stack', 'shapeKeys', 'points', 'taper', 'text', 'font', 'align', 'from', 'to', 'shape', 'splines', 'kind', 'weights', 'order', 'knots', 'knotMode', 'trim', 'grow', 'root', 'source', 'impact', 'impacts', 'walls', 'openings', 'part', 'paths'].includes(field)) {
+    if (value[field] !== undefined && !['profile', 'contour', 'holes', 'path', 'closed', 'base', 'edits', 'stack', 'shapeKeys', 'slots', 'points', 'taper', 'text', 'font', 'align', 'from', 'to', 'shape', 'splines', 'kind', 'weights', 'order', 'knots', 'knotMode', 'trim', 'grow', 'root', 'source', 'impact', 'impacts', 'walls', 'openings', 'part', 'paths'].includes(field)) {
       finite(value[field], field);
     }
   }
@@ -794,6 +794,7 @@ function geometryEstimate(value, scope = PENDING_CUTTER_SCOPE) {
       // Stack nodes multiply the mesh: arrays by their count, mirror and solidify at most by two.
       for (const node of agentSceneModule('mesh').normalizeMeshStack(value.stack ?? [])) estimate *= node.op === 'array' ? node.count : 2;
       if (value.shapeKeys !== undefined) agentSceneModule('mesh').normalizeShapeKeys(value.shapeKeys);
+      if (value.slots !== undefined) agentSceneModule('mesh').normalizeMaterialSlots(value.slots);
       if (value.smoothAngle !== undefined && (value.smoothAngle < 0 || value.smoothAngle > 180)) {
         throw invalidField('smoothAngle', value.smoothAngle, 'degrees from 0 to 180, such as 30');
       }
@@ -1003,7 +1004,7 @@ function generateGeometry(value, maxVertices, scope) {
       const heights = heightDependencies(value, scope?.heightSources);
       return agentSceneModule('mesh').generateMeshGeometry(() => meshBaseSplitsBox(value.base) ? box(0, value.base.subdivisions, true) : generateGeometry(value.base, maxVertices), value.edits ?? [], {
         maxVertices, smoothAngle: value.smoothAngle,
-        stack: value.stack ?? [], shapeKeys: value.shapeKeys ?? [],
+        stack: value.stack ?? [], shapeKeys: value.shapeKeys ?? [], slots: value.slots,
         // The edits only name a cutter geometry, so that geometry's own record joins the key: editing it changes the key.
         cacheKey: `${JSON.stringify(value.base)}${dependencies ? `|cutters|${dependencies}` : ''}${heights ? `|heights|${heights}` : ''}`,
         heightSources: scope?.heightSources,
@@ -1228,6 +1229,7 @@ function normalizeRecipe(input, limits, { alreadyCopied = false } = {}) {
   recipe.materials = resources(withDefaultMaterial(recipe), limits.maxMaterials, 'materials', materialFrom);
   recipe.geometries.forEach((definition, index) => {
     if (definition.type === 'mesh') withFieldPrefix(`geometries[${index}]`, () => agentSceneModule('mesh').checkDisplaceMaterials(definition, heightSourcesOf(recipe).materials));
+    if (definition.type === 'mesh') withFieldPrefix(`geometries[${index}]`, () => agentSceneModule('mesh').checkMaterialSlots(definition, new Set(recipe.materials.map(material => material.id))));
   });
   const distinctPatterns = new Set(recipe.materials.filter(material => material.pattern).map(material => JSON.stringify(material.pattern)));
   if (distinctPatterns.size > MAX_MATERIAL_PATTERNS) {
@@ -2161,18 +2163,21 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       materialHandles.set(material.id, handle);
       stagedMaterialSnapshots.push({ id: material.id, holder: handle.holder, snapshot });
     }
-    const activeParts = new Map(state?.sourceRestParts.map(part => [part.name, part]) ?? []);
-    const preferredParts = new Map(preferred?.sourceRestParts.map(part => [part.name, part]) ?? []);
+    // A node with material slots is several parts of one name, one per slot, so reuse looks a part up by name and slot.
+    const partKeyOf = part => part.materialSlot === undefined ? part.name : `${part.name}#slot-${part.materialSlot}`;
+    const activeParts = new Map(state?.sourceRestParts.map(part => [partKeyOf(part), part]) ?? []);
+    const preferredParts = new Map(preferred?.sourceRestParts.map(part => [partKeyOf(part), part]) ?? []);
     const usesVisibility = recipeUsesVisibility(recipe);
     const fadedNodeIds = opacityNodeIds(recipe);
     const roomJoinedNodeIds = roomJoinedBoxNodeIds(recipe);
-    const nextParts = recipe.nodes.filter(node => node.geometry !== undefined).map(node => {
+    const buildPart = (node, materialId, slotGroup) => {
       const binding = skinBindings.get(node.id);
-      const recipeMaterial = materialHandles.get(node.material);
+      const recipeMaterial = materialHandles.get(materialId);
       const sourceGeometry = binding?.geometry ?? (roomJoinedNodeIds.has(node.id) ? sharpJoinBoxGeometry() : geometries.get(node.geometry));
       const foamGeometry = sourceGeometry.vertexGroups?.foam ? agentSceneModule('mesh').waterFoamGeometry(sourceGeometry, recipeMaterial.output) : sourceGeometry;
       const maskedGeometry = recipeMaterial.output.wear ? geometryWithSurfaceMasks(foamGeometry, recipeMaterial.output.wear, node.id) : foamGeometry;
-      const geometry = geometryWithMaterialUvs(maskedGeometry, recipe, node.material, graph, node.id);
+      const wholeGeometry = geometryWithMaterialUvs(maskedGeometry, recipe, materialId, graph, node.id);
+      const geometry = slotGroup ? agentSceneModule('mesh').geometryOfSlot(wholeGeometry, slotGroup) : wholeGeometry;
       // A graph with a vertexGroup node bakes with this mesh's weights, so its textures belong to the mesh.
       const drawnMaterial = recipeMaterial.output.assetGraph ? agentSceneModule('assetGraph').assetGraphView(recipeMaterial.output, geometry, node.id, graph.getNode(node.id).worldMatrix) : recipeMaterial.output.pattern?.graph ? agentSceneModule('patterns').materialViewForGeometry(recipeMaterial.output, geometry, node.id, recipeMaterial.holder.images, graph.getNode(node.id).worldMatrix) : recipeMaterial.output;
       const fades = fadedNodeIds.has(node.id);
@@ -2180,11 +2185,13 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       const assetExtras = assetRuntime.partExtras.get(node.id);
       // Shape keys of a recipe mesh are morph targets with their own weights per part; an imported asset brings its own pose.
       const shapeKeyMorph = geometry.morphTargetValues && !assetExtras?.morph ? { weights: Float32Array.from(geometry.morphTargetValues) } : undefined;
-      const activePart = removedNodes.has(node.id) ? null : activeParts.get(node.id);
-      const existing = [activePart, preferredParts.get(node.id)]
+      const partKey = slotGroup ? `${node.id}#slot-${slotGroup.slot}` : node.id;
+      const activePart = removedNodes.has(node.id) ? null : activeParts.get(partKey);
+      const existing = [activePart, preferredParts.get(partKey)]
         .find(part => part?.geometry === geometry && part.material === material && part.skin === (assetExtras?.skin ?? binding?.skin) && (assetExtras?.morph ? part.morph === assetExtras.morph : Boolean(part.morph) === Boolean(shapeKeyMorph)) && depthLayerOf(part) === depthLayerOf(node) && sameRenderFlags(part, node, usesVisibility, assetExtras, fades));
       return existing ?? Object.freeze({
         name: node.id, geometry, material,
+        ...(slotGroup ? { materialSlot: slotGroup.slot } : {}),
         ...(depthLayerOf(node) ? { depthLayer: depthLayerOf(node) } : {}),
         ...partFlagsOf(node),
         // The renderer reads this holder every update, and publishPose rewrites it for each pose.
@@ -2196,6 +2203,11 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         ...(shapeKeyMorph ? { morph: shapeKeyMorph } : {}),
         ...assetExtras,
       });
+    };
+    // A mesh with material slots draws as one part per slot, each with its slot's material instead of the node's.
+    const nextParts = recipe.nodes.filter(node => node.geometry !== undefined).flatMap(node => {
+      const { materialGroups, materialSlots } = geometries.get(node.geometry);
+      return materialGroups ? materialGroups.map(group => buildPart(node, materialSlots[group.slot], group)) : [buildPart(node, node.material)];
     });
     retainedMatrices(nextParts);
     const sameParts = state && state.sourceRestParts.length === nextParts.length &&

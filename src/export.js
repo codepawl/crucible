@@ -311,9 +311,15 @@ export function exportGlb(parts, options = {}) {
     validateSkinnedPart(part);
     requireUvsForTextures(part);
   }
-  const hierarchy = buildHierarchy(parts, options.nodes);
+  // The parts of a mesh with material slots share a name and a matrix: they become one mesh node with a primitive per slot.
+  const slotParts = new Map();
+  for (const part of parts) {
+    if (part.materialSlot !== undefined) slotParts.set(part.name, [...(slotParts.get(part.name) ?? []), part]);
+  }
+  const nodeParts = parts.filter(part => part.materialSlot === undefined || slotParts.get(part.name)[0] === part);
+  const hierarchy = buildHierarchy(nodeParts, options.nodes);
   const worldCache = new Map();
-  parts.forEach((part, partIndex) => {
+  nodeParts.forEach((part, partIndex) => {
     if (part.skin) return;
     const host = part.matrix?.length === 16 ? hostOfPart(partIndex, hierarchy, worldCache) : null;
     validateMatrix(host ? relativeMatrix(part.matrix, host.world) : part.matrix, part, options.nodePaths);
@@ -346,20 +352,23 @@ export function exportGlb(parts, options = {}) {
     if (node.parent >= 0) (document.nodes[node.parent].children ??= []).push(index);
   });
   const sceneRoots = hierarchy.flatMap((node, index) => node.parent < 0 ? [index] : []);
-  parts.forEach((part, partIndex) => {
-    const geometry = geometryFor(part);
+  function materialIndexFor(part) {
     const materialKey = materialKeyOf(part.material, identify);
     if (!materials.has(materialKey)) {
       materials.set(materialKey, document.materials.length);
       document.materials.push(writeMaterial(writer, textureWriter, part.material));
     }
-    const material = materials.get(materialKey);
-    const meshKey = `${geometry.indices}:${material}`;
+    return materials.get(materialKey);
+  }
+
+  nodeParts.forEach((part, partIndex) => {
+    const primitives = (slotParts.get(part.name) ?? [part]).map(sibling => ({ ...geometryFor(sibling), material: materialIndexFor(sibling) }));
+    const meshKey = primitives.map(primitive => `${primitive.indices}:${primitive.material}`).join('|');
     if (!meshes.has(meshKey)) {
       meshes.set(meshKey, document.meshes.length);
       // glTF has no field for morph target names; the common convention is mesh.extras.targetNames.
       const targetNames = part.geometry.morphTargetNames;
-      document.meshes.push({ primitives: [{ ...geometry, material }], ...(targetNames ? { extras: { targetNames } } : {}) });
+      document.meshes.push({ primitives, ...(targetNames ? { extras: { targetNames } } : {}) });
     }
     const host = part.skin ? null : hostOfPart(partIndex, hierarchy, worldCache);
     // The mesh node of an imported asset is one of its nodes: keep the mesh on it instead of nesting a same-named node.

@@ -82,7 +82,7 @@ function geometryIdsInUse({ geometries, nodes }) {
 /** Material and resource diagnostics for a normalized procedural recipe. */
 export function recipeDiagnostics(recipe) {
   const problems = recipe.materials.flatMap(materialProblems);
-  const usedMaterials = new Set(recipe.nodes.map(node => node.material).filter(Boolean));
+  const usedMaterials = new Set([...recipe.nodes.map(node => node.material), ...recipe.geometries.flatMap(geometry => geometry.slots ?? [])].filter(Boolean));
   const usedGeometries = geometryIdsInUse(recipe);
   for (const material of recipe.materials.filter(candidate => !usedMaterials.has(candidate.id))) {
     problems.push(diagnostic('unused-material', 'info', material.id,

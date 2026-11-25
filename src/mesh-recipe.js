@@ -1,9 +1,9 @@
 import { editMesh, meshData } from './mesh-edit.js';
 import { invalidField } from './field-error.js';
-import { editField, editBoolean, editEdgeRule } from './mesh-edit-field.js';
+import { editField, editBoolean, editEdgeRule, editInteger } from './mesh-edit-field.js';
 import { countSelected, selectFaces } from './mesh-select.js';
 import {
-  extrudeFaceRegion, extrudeIndividual, insetRegion, insetIndividual, deleteFaces, flipFaces, translateFaces, transformFaces, mergeByDistance, tagFaces,
+  extrudeFaceRegion, extrudeIndividual, insetRegion, insetIndividual, deleteFaces, flipFaces, translateFaces, transformFaces, mergeByDistance, tagFaces, assignMaterialSlot,
   FALLOFF_CURVES,
 } from './mesh-ops.js';
 import { meshBoolean, BOOLEAN_OPERATIONS } from './mesh-boolean.js';
@@ -36,9 +36,10 @@ import './mesh-hull-modifiers.js';
 import './mesh-join.js';
 import './mesh-ocean-modifier.js';
 import './mesh-build-modifier.js';
+import { assertSlotsKept } from './mesh-material-slots.js';
 import { remeshMesh, remeshGridSize, MAX_REMESH_RESOLUTION } from './mesh-remesh.js';
 import {
-  MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES, ELEMENT_SELECTION_FIELDS, ELEMENT_MOVE_OPERATIONS, SCULPT_STROKE_TYPES, MAX_SCULPT_STROKES, SHRINKWRAP_MODES,
+  MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, MAX_MATERIAL_SLOTS, STACK_OPERATIONS, MAX_STACK_NODES, ELEMENT_SELECTION_FIELDS, ELEMENT_MOVE_OPERATIONS, SCULPT_STROKE_TYPES, MAX_SCULPT_STROKES, SHRINKWRAP_MODES,
 } from './mesh-operations.js';
 export { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES };
 
@@ -222,7 +223,7 @@ export function normalizeMeshEdits(edits) {
     const normalized = { op: edit.op };
     const movesElements = normalizeMoveSelection(edit, normalized, index);
     if (definition.fields.includes('select') && !movesElements) {
-      if (edit.select === undefined && ['delete', 'tag', 'dissolve_faces'].includes(edit.op)) throw editField(index, 'select', edit.select, 'a face rule such as { "all": true } or { "tag": "top" }');
+      if (edit.select === undefined && ['delete', 'tag', 'dissolve_faces', 'material_slot'].includes(edit.op)) throw editField(index, 'select', edit.select, 'a face rule such as { "all": true } or { "tag": "top" }');
       normalized.select = edit.select ?? { all: true };
     }
     if (definition.fields.includes('name')) {
@@ -394,6 +395,9 @@ export function normalizeMeshEdits(edits) {
           }
           normalized.resolution = edit.resolution;
         }
+        break;
+      case 'material_slot':
+        normalized.slot = editInteger(edit.slot, index, 'slot', 0, MAX_MATERIAL_SLOTS - 1);
         break;
       case 'merge_by_distance':
         normalized.distance =finiteNumber(edit.distance ?? 1e-4, index, 'distance', { minimum: 0, maximum: 1e3 });
@@ -708,6 +712,10 @@ function runEdit(current, edit, index, { resolveCutter, resolveHeight, resolveJo
       result.movedVertices = transformFaces(editable, mask, edit).movedVertices;
       if (mirrorsSelection(edit.scale)) flipFaces(editable, mask);
       break;
+    case 'material_slot':
+      assignMaterialSlot(editable, Array.from(mask.keys()).filter(face => mask[face]), edit.slot);
+      result.slot = edit.slot;
+      break;
     case 'tag':
       tagFaces(editable, Array.from(mask.keys()).filter(face => mask[face]), edit.name);
       result.tags = { [edit.name]: selected };
@@ -753,6 +761,7 @@ export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 
   normalized.forEach((edit, index) => {
     checkArrayBudget(current, edit, limits, index);
     const outcome = runEdit(current, edit, index, { resolveCutter, resolveHeight, resolveJoinMesh, limits });
+    assertSlotsKept(current, outcome.mesh, edit.op);
     current = outcome.mesh;
     checkBudget(current, limits, index, edit.op);
     outcome.result.after = { vertices: current.vertexCount, faces: current.faceCount };
@@ -799,6 +808,7 @@ export function evaluateMeshStack(mesh, stack, { maxVertices = 250_000, maxFaces
     } else {
       checkArrayBudget(current, node, limits, index);
       const outcome = runEdit(current, node, index, { resolveHeight, limits });
+      assertSlotsKept(current, outcome.mesh, node.op);
       current = outcome.mesh;
       checkBudget(current, limits, index, node.op);
       outcome.result.after = { vertices: current.vertexCount, faces: current.faceCount };
