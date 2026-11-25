@@ -579,6 +579,11 @@ async function measureScreens(page, theme, only) {
     await page.waitForTimeout(250);
     screens.push({ name: `modifiers add menu (${theme})`, records: await measure(page, '.crucible-studio') });
     await page.click('.crucible-studio-modifier-add');
+    await page.evaluate(() => document.activeElement?.blur());
+    // The two blocks are undone, so the screens after this one start from the plain object again: edit mode refuses a mesh with modifiers.
+    await page.keyboard.press('Control+z');
+    await page.keyboard.press('Control+z');
+    await page.waitForFunction(() => document.querySelectorAll('.crucible-studio-modifier-list .crucible-studio-modifier-head').length === 0);
     await page.evaluate(() => window.__studioPage.setActiveTab('node'));
   }
   if (!only || only === 'rename') screens.push(...await measureRenameScreens(page, theme));
