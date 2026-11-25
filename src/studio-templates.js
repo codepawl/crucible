@@ -1,4 +1,4 @@
-export const STUDIO_TOOLS = Object.freeze(['select', 'translate', 'rotate', 'scale', 'snap']);
+export const STUDIO_TOOLS = Object.freeze(['select', 'translate', 'rotate', 'scale']);
 export const STUDIO_TABS = Object.freeze(['node', 'modifiers', 'material', 'look', 'camera']);
 // The shapes of the add menu, in the groups it shows them in and in the order of Blender's Add menu: the basic meshes, then
 // text. Every id is one lowercase word, because node ids and button labels are made from it. The lights follow in the menu.
