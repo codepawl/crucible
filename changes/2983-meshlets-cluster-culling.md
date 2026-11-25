@@ -1,0 +1,1 @@
+- Add optional `@codepawlhq/crucible/addons/meshlets` addon to build `meshoptimizer` meshlets, coalesce visible clusters via frustum and backface-cone culling on WebGL2 and WebGPU compute indirect buffers, and add a dense-scan cluster benchmark (`#2983`)
