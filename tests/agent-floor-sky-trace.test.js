@@ -173,6 +173,16 @@ for (const panels of [false, true]) {
     assert.ok(walls.length >= 3);
     for (const wall of walls) assert.ok(!report.reducedParts.includes(wall), `${wall} is not a prop`);
     assert.ok(!report.reducedParts.includes('floor') && !report.reducedParts.includes('ceiling'));
+    // The cut edge and the rays per point of each part, as the trace used them: the stool is cut at four times the walls' edge with half the rays.
+    const perPart = new Map(report.floors.map(floor => [floor.name, floor]));
+    const stool = perPart.get('stool');
+    const fullRayParts = [...walls, 'floor', 'ceiling'];
+    for (const name of fullRayParts) {
+      assert.equal(perPart.get(name).raysPerPoint, 64, `${name} keeps all its rays`);
+      assert.equal(perPart.get(name).maximumEdge, perPart.get('floor').maximumEdge, `${name} keeps the fine cut`);
+    }
+    assert.equal(stool.raysPerPoint, 32);
+    assert.equal(stool.maximumEdge, perPart.get('floor').maximumEdge * 4);
   });
 }
 

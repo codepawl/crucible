@@ -644,7 +644,7 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
     // The fill tints the colour of a closed room's points, so every part of one carries a colour (white where it had none).
     if (everySurface && !builder.hasColors) cutGeometryResult.colors = new Float32Array(vertexCount * 3).fill(1);
     nextParts[index] = Object.freeze({ ...part, geometry: Object.freeze(cutGeometryResult) });
-    const floor = { name: part.name, texels: tracedVertices.size, triangles: indices.length / 3, meanVisibility: 1 };
+    const floor = { name: part.name, texels: tracedVertices.size, triangles: indices.length / 3, meanVisibility: 1, raysPerPoint: raysPerVertex, maximumEdge: partEdge };
     floors.push(floor);
     // A pattern texture is baked once for its mean colour and the renderer needs it anyway, so the bake does not count against maxSeconds.
     const albedoStartedAt = performance.now();
