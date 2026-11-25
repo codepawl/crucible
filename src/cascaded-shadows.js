@@ -1,6 +1,7 @@
 import { mat4, vec3 } from 'gl-matrix';
 import { registerShaderFeatureCode } from './shader-registry.js';
 import { resolveShadowLight } from './shadow-light.js';
+import { farthestDepthOfBounds } from './near-plane-fit.js';
 import { HEIGHT_MAP_UNIT } from './height-parallax-shader.js';
 
 // Cascaded sun shadows. The camera frustum is cut into up to four slices by view depth; each slice gets its own depth
@@ -185,6 +186,18 @@ export function planCascadeSplits(count, near, receiverReach, maximumDistance, l
   return { splits: [...cascadeSplitDistances(nearCount, near, nearReach, lambda), receiverReach], farLayer: true };
 }
 
+/**
+ * The view depth where the receivers end, so the far slice stops there: nothing past it gets a shadow from the single map
+ * either. Bounds the scene wrote (`shadowBounds.extent`) say where that is. Without them a studio scene's sun view is a 7 m
+ * default box that says nothing about the scene, and a room wider than it would read as sunlit past the box (#3379), so the
+ * parts' own bounds decide. A world scene keeps its world view, which its terrain would stretch to the whole far plane. A scene whose parts have no placement keeps the default view.
+ */
+function receiverBoundsFarDistance(renderer, light) {
+  const partBounds = !renderer.world && renderer.shadowBounds?.extent === undefined ? renderer.receiverBounds?.() : null;
+  if (partBounds) return farthestDepthOfBounds(partBounds, renderer.view);
+  return viewDepthOf(light.target, renderer.view) + light.extent;
+}
+
 // The eight corners of the camera frustum, near plane first, from the inverse view-projection matrix.
 function frustumCorners(inverseViewProjection) {
   const corners = [];
@@ -304,8 +317,7 @@ export class CascadedShadows {
     const nearDistance = viewDepthOf(corners[0], renderer.view);
     const planeFarDistance = viewDepthOf(corners[4], renderer.view);
     // A maximum distance nearer than the camera near plane would put the splits in front of the camera and out of order.
-    // Receivers past the scene bounds get no shadow from the single map either, so the far slice stops at the bounds.
-    const boundsFarDistance = viewDepthOf(light.target, renderer.view) + light.extent;
+    const boundsFarDistance = receiverBoundsFarDistance(renderer, light);
     const receiverReach = Math.max(Math.min(planeFarDistance, boundsFarDistance), nearDistance);
     const { splits, farLayer } = planCascadeSplits(this.count, nearDistance, receiverReach, this.maximumDistance, this.splitLambda);
     this.layerCount = splits.length;

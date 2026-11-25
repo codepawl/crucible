@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mat4 } from 'gl-matrix';
-import { boundsGrownByParts, fittedNearPlane, nearestDepthOfBounds, sceneBoundsOfParts } from '../src/near-plane-fit.js';
+import { boundsGrownByParts, farthestDepthOfBounds, fittedNearPlane, nearestDepthOfBounds, sceneBoundsOfParts } from '../src/near-plane-fit.js';
 
 function boxPart(translation, size = 2) {
   const half = size / 2;
@@ -22,6 +22,15 @@ test('scene bounds cover every part with a small padding', () => {
 test('a part that can leave its bounds disables the fit', () => {
   assert.equal(sceneBoundsOfParts([{ ...boxPart([0, 0, -50]), skin: {} }]), null);
   assert.equal(sceneBoundsOfParts([{ ...boxPart([0, 0, -50]), crowd: {} }]), null);
+});
+
+test('a reader that only needs where the scene ends boxes a skinned part where it rests', () => {
+  const parts = [boxPart([0, 0, -50]), { ...boxPart([0, 0, -80]), skin: {} }];
+  const bounds = sceneBoundsOfParts(parts, { includeMoving: true });
+  assert.ok(bounds.minimum[2] < -81, 'the skinned part is inside the box');
+  assert.equal(sceneBoundsOfParts([{ ...boxPart([0, 0, -50]), skin: {} }, { geometry: { positions: new Float32Array(6) } }], { includeMoving: true }), null, 'a part with no placement still gives no box');
+  const view = lookingDownNegativeZ();
+  assert.ok(farthestDepthOfBounds(bounds, view) > 81 && farthestDepthOfBounds(bounds, view) < 90, 'the far end is the farthest corner along the view');
 });
 
 test('the near plane stays at the default when the eye is inside the scene and moves out when it is far', () => {

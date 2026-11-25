@@ -13,7 +13,7 @@ import { planRenderSize, estimateTextureBytes, estimateFrameBytes, memoryBudgetE
 import { applyProjection } from './camera.js';
 import { boundsGrownByParts, fittedNearPlane, sceneBoundsOfParts } from './near-plane-fit.js';
 import { installReversedDepth, prepareCameraRelativeProgram } from './reversed-depth.js';
-import { bloomBlurPlan, isBloomActive, resolveEffects } from './effects.js';
+import { bloomBlurPlan, isBloomActive, isDitherActive, resolveEffects } from './effects.js';
 import { frameDiagnostics, everyCasterOutsideShadowView } from './frame-diagnostics.js';
 import { depthLayerOf, flushOrderOf, RANKS_PER_LAYER } from './depth-layer.js';
 import { createLightingState, updateLightingState } from './lighting.js';
@@ -33,6 +33,7 @@ import { TranslucentOrder } from './translucent-order.js';
 import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
 import { countDraws } from './draw-counter.js';
 import { glassFaceTransmittance } from './glass-shadow.js';
+import { fitStudioShadowView } from './studio-shadow-fit.js';
 import { fitWorldShadowView, resolveShadowLight, shadowBiasPerSlope, sunShadowMapSize, writeShadowLightMatrix } from './shadow-light.js';
 import { CLIP_PLANES_FEATURE, MAX_CLIP_PLANES, packClipPlanes, clipPlaneLocations, bindClipPlanes, clipPlanesChanged } from './clip-planes.js';
 import { MAX_MORPH_TARGETS, requireFeatureCode, deformationSupport, requireDeformationSupport, texturedReplaceSupport, textureUpdateSupport } from './shader-registry.js';
@@ -359,8 +360,12 @@ const ENVIRONMENT_LOOKUP_UNIFORMS = ['environmentSpecular', 'environmentEnabled'
 const ENVIRONMENT_UNIFORMS = [...ENVIRONMENT_LOOKUP_UNIFORMS, 'environmentBrdf', 'environmentIrradiance[0]', 'environmentBounce', 'environmentDiffuseFrame'];
 // Shares a unit with the skin influence texture, which no light-mapped (rigid) batch binds.
 const LIGHT_MAP_UNIT = 6;
-// Where the parallax state starts in a batch's mapState: [heightMap, depth, fade, steps]. It is the last four entries of materialMapState, so a field added before it moves this offset.
-const HEIGHT_STATE_OFFSET = 31;
+// The parallax state is the last entries of materialMapState: [heightMap, depth, fade, steps]. Its start is read from the array itself, so a field added before it cannot leave the offset stale.
+let cachedHeightStateOffset = null;
+function heightStateOffset() {
+  cachedHeightStateOffset ??= materialMapState({}).length - heightParallaxState({}).length;
+  return cachedHeightStateOffset;
+}
 const ENVIRONMENT_SPECULAR_UNIT = 9;
 const ENVIRONMENT_BRDF_UNIT = 10;
 const LOCAL_SHADOW_UNIT = 15;
@@ -429,7 +434,7 @@ function lightMapState(material) {
 
 /** Whether a material's parallax differs from the state a batch kept; a state without the parallax entries means a material with none. */
 function heightParallaxChanged(material, mapState) {
-  const kept = mapState.length > HEIGHT_STATE_OFFSET ? mapState.slice(HEIGHT_STATE_OFFSET) : heightParallaxState({});
+  const kept = mapState.length > heightStateOffset() ? mapState.slice(heightStateOffset()) : heightParallaxState({});
   return heightParallaxState(material).some((value, index) => (value ?? null) !== (kept[index] ?? null));
 }
 
@@ -1586,7 +1591,7 @@ export class CrucibleRenderer {
   bindHeightParallax(batch) {
     if (!this.shaderFeatures?.has(HEIGHT_MAP_FEATURE)) return;
     const context = this.context;
-    const [, depth, fadeDistance, stepCount] = batch.mapState.slice(HEIGHT_STATE_OFFSET);
+    const [, depth, fadeDistance, stepCount] = batch.mapState.slice(heightStateOffset());
     context.uniform4f(this.uniforms.heightState, depth, fadeDistance, stepCount, batch.heightTexture ? 1 : 0);
     // The sampler always names its own unit: left at its default it would read unit 0, where the cascade array sits.
     context.uniform1i(this.uniforms.heightMap, HEIGHT_MAP_UNIT);
@@ -1825,7 +1830,7 @@ export class CrucibleRenderer {
     const mapState = materialMapState(parts[0].material);
     const textures = mapState.slice(0, 5).map((descriptor, index) => this.createTexture(descriptor, index === 1));
     const splat = parts[0].material.layers ? requireSplatSupport().createResources(this, parts[0].material, requireSplatSupport()) : null;
-    const heightTexture = mapState[HEIGHT_STATE_OFFSET] ? this.createTexture(mapState[HEIGHT_STATE_OFFSET]) : null;
+    const heightTexture = mapState[heightStateOffset()] ? this.createTexture(mapState[heightStateOffset()]) : null;
     const lightMapTexture = mapState[14] ? this.createTexture(mapState[14]) : null;
     if (lightMapTexture && (parts[0].skin || parts[0].morph || !geometry.lightUvs)) throw new Error('A light map needs lightUvs on rigid geometry, with no skin or morph.');
     const skin = parts[0].skin ?? null;
@@ -1869,6 +1874,7 @@ export class CrucibleRenderer {
     this.sceneParts = parts;
     this.fitParts = renderParts;
     this.fitBounds = undefined;
+    this.receiverBox = undefined;
     this.densityParts = parts;
     // A scene that gained or lost triangles can cross the density threshold with no size change; resize() judges it again and rebuilds the targets.
     const resampled = this.denseSamples != null && this.chooseMultisampleSamples(this.densityParts) !== this.multisampleSamples;
@@ -2109,6 +2115,7 @@ export class CrucibleRenderer {
     // A part moved toward the camera may leave the box the near plane is fitted to, and the plane would cut it (#2403). Growing the
     // box by the moved parts costs only them; it never shrinks, so the plane stays safe if not as tight.
     if (this.fitBounds) this.fitBounds = boundsGrownByParts(this.fitBounds, parts);
+    if (this.receiverBox) this.receiverBox = boundsGrownByParts(this.receiverBox, parts, { includeMoving: true });
     // A part that crossed a mirror (a flip animation, a toggled billboard) belongs to the other winding batch: regroup every part once.
     // replaceParts packs all parts again, so the rest of this update is done.
     if (mirrorChanged) {
@@ -2178,7 +2185,7 @@ export class CrucibleRenderer {
   shadowMapSizeWanted() {
     const casts = this.batches.some(batch => !batch.floor && batch.castShadow && !this.tintsShadow(batch));
     if (!casts || this.shadowCascades?.replacesSingleMap(this)) return 1;
-    const light = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedWorldShadowView());
+    const light = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedShadowView());
     return sunShadowMapSize(light.extent);
   }
 
@@ -2210,7 +2217,7 @@ export class CrucibleRenderer {
       if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Shadow framebuffer is incomplete.');
       this.shadowFramebufferCheckedSize = mapSize;
     }
-    const resolvedLight = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedWorldShadowView());
+    const resolvedLight = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedShadowView());
     const light = resolvedLight.hard ? registeredFeatureCode.get('hardShadows').snapView(resolvedLight, mapSize) : resolvedLight;
     writeShadowLightMatrix(this.lightProjection, light);
     context.viewport(0, 0, mapSize, mapSize);
@@ -2347,6 +2354,23 @@ export class CrucibleRenderer {
     const casters = this.batches.filter(batch => !batch.floor && batch.castShadow).flatMap(batch => batch.parts);
     if (casters.length === 0) return null;
     return fitWorldShadowView(sceneBoundsOfParts(casters));
+  }
+
+  // The sun view the scene needs: the world fit, or for a scene that is not a world and wrote no bounds, the studio fit (issue #3392).
+  fittedShadowView() {
+    return this.fittedWorldShadowView() ?? this.fittedStudioShadowView();
+  }
+
+  // A scene bigger than the default 7 m studio view gets a view fitted to its parts, so its far walls are shadowed. Cached like the miss check below.
+  fittedStudioShadowView() {
+    if (this.world || this.shadowBounds?.target !== undefined || this.shadowBounds?.extent !== undefined) return null;
+    const cacheKey = `${this.activeLightDirection}|${this.partsMoveCount ?? 0}`;
+    if (this.studioShadowFitCache?.batches !== this.batches || this.studioShadowFitCache.cacheKey !== cacheKey) {
+      const receivers = this.batches.filter(batch => !batch.floor).flatMap(batch => batch.parts);
+      const casters = this.batches.filter(batch => !batch.floor && batch.castShadow).flatMap(batch => batch.parts);
+      this.studioShadowFitCache = { batches: this.batches, cacheKey, view: fitStudioShadowView(casters, receivers, this.activeLightDirection) };
+    }
+    return this.studioShadowFitCache.view;
   }
 
   // The studio shadow view (3.5 m round the origin) stays when a scene sets no shadowBounds target or extent. Returns that view when every
@@ -2498,6 +2522,12 @@ export class CrucibleRenderer {
     const far = frame.far ?? (this.world ? 600 : 100);
     const near = fittedNearPlane(this.fitBounds, this.view, far);
     return near === 0.1 ? frame : { ...frame, near };
+  }
+
+  /** The box around every part where it rests, skinned parts included: where the sun's receivers end, which the cascaded shadows read. */
+  receiverBounds() {
+    if (this.receiverBox === undefined) this.receiverBox = sceneBoundsOfParts(this.fitParts, { includeMoving: true });
+    return this.receiverBox;
   }
 
   /** Every GPU render target this renderer holds: name, size, format, samples and bytes, largest first, with the total. */
@@ -2822,6 +2852,7 @@ export class CrucibleRenderer {
     const gradesColor = effects.saturation !== 1 || effects.contrast !== 1 || effects.temperature !== 0;
     const finishes = gradesColor || (frame.monochrome ?? 0) !== 0 || Boolean(frame.cinematic) || effects.vignette !== 0 || effects.grain !== 0;
     if (finishes) steps.push('finish');
+    if (isDitherActive(effects)) steps.push('dither');
     return steps;
   }
 

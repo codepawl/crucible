@@ -80,6 +80,11 @@ export const TANGENT_FEATURE = 'tangents';
 // The spread of the normals each mip level averages (baked at upload, src/normal-map-variance.js) and the screen-space change
 // of the normal therefore also lower the direct specular, as detail that averages out. The code exists only in a shader that has a normal map, so a shader without one keeps its exact text.
 export const NORMAL_MAP_SPECULAR_FADE_STRENGTH = 32;
+// The linear fade leaves a bead where a pixel crosses many tilted normals: at a silhouette the normal turns 15 degrees a pixel (variance
+// 0.05 to 0.11), a lobe that narrow still peaks four orders above the interior highlight, and a fade of 0.2 to 0.3 leaves it bright.
+// The cubic term, which starts to count where the variance passes this knee, closes the fade there; a highlight in the interior
+// (variance about 0.015 on the Khronos NormalTangentTest) loses under 2 percent (#3142).
+export const NORMAL_MAP_SPECULAR_FADE_KNEE = 0.05;
 
 // A depth rank is measured at no less than this distance (metres) from the camera plane. Without the floor, a vertex of a long face
 // next to or behind the camera plane lifts by an unbounded depth (the depth step grows with 1 / distance squared) and drags the depth of
@@ -93,7 +98,8 @@ const NORMAL_MAP_SPECULAR_CODE = {
     vec3 fadeNormalX = dFdx(normal);
     vec3 fadeNormalY = dFdy(normal);
     float normalVariance = 0.5 * (dot(fadeNormalX, fadeNormalX) + dot(fadeNormalY, fadeNormalY)) + ${NORMAL_SPREAD_GAIN}.0 * normalMapSpread;
-    normalMapSpecularFade = 1.0 / (1.0 + ${NORMAL_MAP_SPECULAR_FADE_STRENGTH}.0 * specularAntiAliasing * normalVariance);
+    float fadeVariance = specularAntiAliasing * normalVariance;
+    normalMapSpecularFade = 1.0 / (1.0 + ${NORMAL_MAP_SPECULAR_FADE_STRENGTH}.0 * fadeVariance + pow(fadeVariance / ${NORMAL_MAP_SPECULAR_FADE_KNEE}, 3.0));
   }
 `,
 };
