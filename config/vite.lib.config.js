@@ -109,6 +109,7 @@ export default defineConfig({
         'linear-output-shader': 'src/linear-output-shader.js',
         'retro-shader': 'src/retro-shader.js',
         'glitter-shader': 'src/glitter-shader.js',
+        'surface-cover': 'src/surface-cover.js',
         'light-linking': 'src/light-linking.js',
         'cascaded-shadows': 'src/cascaded-shadows.js',
         'light-shapes': 'src/light-shapes.js',

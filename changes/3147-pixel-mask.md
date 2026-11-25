@@ -1,0 +1,1 @@
+- scene:surface-cover: `material.surfaceCover` draws a snow or dust layer over up facing or high surfaces with the mask worked out per pixel, so its edge stays smooth on a mesh as large as a mountain (#3147)
