@@ -191,3 +191,33 @@ test('an environment track on a key light field names the sun track that animate
   scene.sampleMotion(2);
   assert.equal(scene.environment.keyIntensity, 1);
 });
+
+test('effects tracks animate bloomStrength, glareStreaks and lensDispersion and validate ranges and preconditions (#3428)', () => {
+  const scene = createAgentScene(sceneRecipe([
+    { kind: 'effects', property: 'bloomStrength', keyframes: keys(0, 4) },
+    { kind: 'effects', property: 'glareStreaks', keyframes: keys(0, 0.8) },
+    { kind: 'effects', property: 'lensDispersion', keyframes: keys(0, 0.5) },
+  ], {
+    effects: {
+      bloom: { strength: 0, threshold: 1, radius: 1 },
+      glare: { streaks: 0 },
+      lensDistortion: { distortion: 0, dispersion: 0 },
+    },
+  }));
+  scene.sampleMotion(1);
+  assert.equal(scene.effects.bloom.strength, 2);
+  assert.equal(scene.effects.glare.streaks, 0.4);
+  assert.equal(scene.effects.lensDistortion.dispersion, 0.25);
+  scene.sampleMotion(null);
+  assert.equal(scene.effects.bloom.strength, 0);
+  assert.equal(scene.effects.glare.streaks, 0);
+  assert.equal(scene.effects.lensDistortion.dispersion, 0);
+
+  assert.throws(() => createAgentScene(sceneRecipe([{ kind: 'effects', property: 'bloomStrength', keyframes: keys(0, 9) }], { effects: {} })), /0 to 8/);
+  assert.throws(() => createAgentScene(sceneRecipe([{ kind: 'effects', property: 'glareStreaks', keyframes: keys(0, 1.5) }], { effects: { glare: { streaks: 0 } } })), /0 to 1/);
+  assert.throws(() => createAgentScene(sceneRecipe([{ kind: 'effects', property: 'glareStreaks', keyframes: keys(0, 0.5) }], { effects: {} })), /effects\.glare is named/);
+  assert.throws(() => createAgentScene(sceneRecipe([{ kind: 'effects', property: 'lensDispersion', keyframes: keys(0, 0.5) }], { effects: {} })), /effects\.lensDistortion is named/);
+  assert.throws(() => createAgentScene(sceneRecipe([{ kind: 'effects', property: 'lensDispersion', keyframes: keys(0, 0.5) }], {
+    effects: { lensDistortion: { distortion: 0, dispersion: 0 }, colorBalance: { gain: [1.1, 1, 1], mask: { depth: { near: 0, far: 10 } } } },
+  })), /no colorBalance, stylize or composite mask is set/);
+});

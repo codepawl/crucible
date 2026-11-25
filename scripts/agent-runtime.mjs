@@ -51,7 +51,7 @@ import { writeWebBuild } from './web-export.mjs';
 import { KTX2_WORKER_CSP, KTX2_WORKER_SOURCE } from './agent-preview-ktx2-worker.mjs';
 import { gameAssetIds, gameImageIds } from '../src/game-assets.js';
 import { resolveJobRoot } from './agent-job-root.mjs';
-import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME, HIGH_PRECISION_FRAME_FACTOR, MAXIMUM_JOB_FRAME_BYTES, MAXIMUM_JOB_OUTPUT_BYTES, RENDER_HISTORY_FILE, normalizeJobSettings, frameByteLimitFor, oversizeFrameBudgetError, requireTracerBackendAvailable } from './agent-render-jobs.mjs';
+import { createAgentRenderJobs, EXPORT_DIRECTORY_NAME, HIGH_PRECISION_FRAME_FACTOR, MAXIMUM_JOB_FRAME_BYTES, MAXIMUM_JOB_OUTPUT_BYTES, RENDER_HISTORY_FILE, normalizeJobSettings, sampleMotionTimeWarp, frameByteLimitFor, oversizeFrameBudgetError, requireTracerBackendAvailable } from './agent-render-jobs.mjs';
 import { RENDER_QUALITY_NOTE, applyQuality, tierReport } from './agent-render-quality.mjs';
 import { RENDER_BUDGET_NOTE, chooseBudgetSettings, parseBudget } from './agent-render-budget.mjs';
 import { RENDER_ESTIMATE_NOTE, addKernelCompile, estimateRenderJob, historyWithJob, outputByteBudgetProblem, parseHistory, pathTraceTriangleProblem, renderReport, sceneSizeFrom } from './agent-render-estimate.mjs';
@@ -1091,7 +1091,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         const shotSample = timeline ? sampleFilmTimeline(timeline, snapshot.recipe, timelineTime) : undefined;
         const frameInput = { sessionId: jobId, ...(highPrecision ? { floatOutput: true } : {}),
           rendererTime: (settings.rendererTime?.start ?? 0) + (timelineTime ?? elapsed) * (settings.rendererTime?.rate ?? 1),
-          ...(settings.motion ? { motionTime: settings.motion.start + elapsed } : {}),
+          ...(settings.motion ? { motionTime: sampleMotionTimeWarp(settings.motion, elapsed) } : {}),
           ...(shotSample?.motionTime == null ? {} : { motionTime: shotSample.motionTime }),
           ...(shotSample?.camera ? { camera: shotSample.camera } : {}),
           ...(shotSample?.depthOfField ? { depthOfField: shotSample.depthOfField } : {}),
@@ -1404,7 +1404,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         },
         jobs: { configured: Boolean(jobRoot), kinds: ['image', 'stills', 'video', 'icons'], icons: ICON_CAPABILITIES, passes: RENDER_PASS_NAMES, pathTracer: PATH_TRACER_CAPABILITIES, maximumActiveJobs: 1, estimate: RENDER_ESTIMATE_NOTE, budget: RENDER_BUDGET_NOTE, quality: RENDER_QUALITY_NOTE, tiers: await deviceTiers(),
           maximumWidth: MAXIMUM_JOB_SIDE, maximumHeight: MAXIMUM_JOB_SIDE, maximumPixels: MAXIMUM_JOB_PIXELS, maximumSequenceWidth: MAXIMUM_SEQUENCE_JOB_SIDE, maximumSequenceHeight: MAXIMUM_SEQUENCE_JOB_SIDE, maximumSequencePixels: MAXIMUM_SEQUENCE_JOB_PIXELS, maximumSquareSide: MAXIMUM_SQUARE_JOB_SIDE, maximumSquareSequenceSide: MAXIMUM_SQUARE_SEQUENCE_JOB_SIDE,
-          maximumDuration: MAXIMUM_VIDEO_SECONDS, maximumFps: MAXIMUM_JOB_FPS, maximumFrames: MAXIMUM_JOB_FRAMES, maximumStills: 8, maximumStillCount: MAXIMUM_STILLS_FRAMES, maximumOutputBytes: MAXIMUM_JOB_OUTPUT_BYTES, maximumFrameBytes: MAXIMUM_JOB_FRAME_BYTES, stillCountNote: 'a stills job with stillCount (2 to maximumStillCount) and fps writes frame-0.png and on, one per 1 / fps s of the motion clock from motion.start; with transparent each is RGBA. Without stillCount it is 8 spread over duration.',
+          maximumDuration: MAXIMUM_VIDEO_SECONDS, maximumFps: MAXIMUM_JOB_FPS, maximumFrames: MAXIMUM_JOB_FRAMES, maximumStills: 8, maximumStillCount: MAXIMUM_STILLS_FRAMES, maximumOutputBytes: MAXIMUM_JOB_OUTPUT_BYTES, maximumFrameBytes: MAXIMUM_JOB_FRAME_BYTES, stillCountNote: 'a stills job with stillCount (2 to maximumStillCount) and fps writes frame-0.png and on, one per 1 / fps s of the motion clock from motion.start; with transparent each is RGBA. Without stillCount it is 8 spread over duration.', timeWarpNote: 'motion.timeWarp takes 2-64 {time, value} keyframes mapping output seconds to scene seconds (stills/video).',
           encoder: 'H.264', encoders: VIDEO_ENCODERS, audio: Boolean(audioRoot), timeline: true, previewSuspendedDuringJob: true,
           glbExport: { maximumBytes: MAXIMUM_GLB_BYTES, maximumKept: MAXIMUM_KEPT_GLBS, maximumTextureSize: 4096 },
           ...(await jobRecords()) },
