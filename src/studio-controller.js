@@ -501,26 +501,29 @@ function planeNormalForAxis(axis, camera, basis = WORLD_BASIS) {
 }
 
 function upsertNodeKeyframeTrack(tracks, nodeId, property, time, value) {
-  const nextTracks = tracks.map(track => structuredClone(track));
-  const existing = nextTracks.find(track => track.kind === 'node' && track.id === nodeId && track.property === property);
-  if (!existing) {
+  const nextTracks = tracks.slice();
+  const existingIndex = nextTracks.findIndex(track => track.kind === 'node' && track.id === nodeId && track.property === property);
+  const roundedTime = roundValue(time, 1000);
+  const entry = { time: roundedTime, value: roundVector(value) };
+  if (existingIndex < 0) {
     nextTracks.push({
       kind: 'node',
       id: nodeId,
       property,
-      keyframes: [{ time: roundValue(time, 1000), value: roundVector(value) }],
+      keyframes: [entry],
     });
     return nextTracks;
   }
-  const roundedTime = roundValue(time, 1000);
-  const matchIndex = keyframeIndexAt(existing.keyframes, roundedTime);
-  const entry = { time: roundedTime, value: roundVector(value) };
+  const existing = nextTracks[existingIndex];
+  const nextKeyframes = existing.keyframes.slice();
+  const matchIndex = keyframeIndexAt(nextKeyframes, roundedTime);
   if (matchIndex >= 0) {
-    existing.keyframes[matchIndex] = entry;
+    nextKeyframes[matchIndex] = entry;
   } else {
-    existing.keyframes.push(entry);
-    existing.keyframes.sort((first, second) => first.time - second.time);
+    nextKeyframes.push(entry);
+    nextKeyframes.sort((first, second) => first.time - second.time);
   }
+  nextTracks[existingIndex] = { ...existing, keyframes: nextKeyframes };
   return nextTracks;
 }
 

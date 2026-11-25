@@ -914,8 +914,8 @@ function sweepTrackValues(sampler, bindings, cameraPath, stagedCamera, duration)
   }
 }
 
-export function compileAgentMotion(input, recipe) {
-  const motion = normalizeAgentMotion(input, recipe);
+export function compileAgentMotion(input, recipe, { normalized = false } = {}) {
+  const motion = normalized ? input : normalizeAgentMotion(input, recipe);
   if (motion === null) {
     return null;
   }

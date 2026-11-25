@@ -166,12 +166,14 @@ export function planChecks(changedPaths, { skipTests = false, release = false, b
     name: 'build library',
     command: ['npm', 'run', 'build:lib'],
     skipped: testSkip,
+    after: ['package links'],
     fix: 'Fix the build error in the log; the MCP tests need build/.',
   });
   checks.push({
     name: 'unit tests and coverage',
     command: ['npm', 'run', 'test:coverage', '--', '--test-reporter=dot', '--test-reporter-destination=stdout', '--test-reporter=lcov', '--test-reporter-destination=coverage/lcov.info'],
     skipped: testSkip,
+    dependsOn: 'build library',
     fix: 'Run the failing file alone with node --test tests/<file>.test.js. Never weaken a test to make it pass.',
   });
   checks.push({
@@ -240,7 +242,9 @@ function logPathFor(check) {
   return join(logFolder, `${check.name.replace(/\W+/g, '-')}.log`);
 }
 
-function runCommand(check) {
+export const DEFAULT_CONCURRENCY = 4;
+
+function defaultRunCommand(check) {
   return new Promise(resolvePromise => {
     const logPath = logPathFor(check);
     const log = createWriteStream(logPath);
@@ -254,38 +258,98 @@ function runCommand(check) {
   });
 }
 
-function tailOf(path, lineCount) {
-  const lines = readFileSync(path, 'utf8').trimEnd().split(/\r?\n/);
-  return lines.slice(-lineCount).join('\n');
-}
+export async function runChecks(checks, {
+  concurrency = DEFAULT_CONCURRENCY,
+  runCommand = defaultRunCommand,
+  writeOutput = text => process.stdout.write(text),
+  readLog = path => readFileSync(path, 'utf8'),
+  tailLines = failingLogTailLines,
+  rootFolder = root,
+} = {}) {
+  const limit = Math.max(1, concurrency);
+  const results = new Array(checks.length);
+  const resultsByName = new Map();
+  const knownNames = new Set(checks.map(check => check.name));
+  const pending = checks.map((check, index) => ({ check, index }));
+  const inFlight = new Set();
 
-async function runChecks(checks) {
-  const results = [];
-  for (const check of checks) {
-    const dependency = check.dependsOn && results.find(result => result.name === check.dependsOn);
-    if (check.skipped) {
-      results.push({ name: check.name, status: 'skip', detail: check.skipped });
-    } else if (dependency && dependency.status !== 'ok') {
-      results.push({ name: check.name, status: 'skip', detail: `${check.dependsOn} did not pass` });
-    } else if (check.kind === 'inline') {
-      results.push(check.failure
-        ? { name: check.name, status: 'fail', detail: check.failure, fix: check.fix }
-        : { name: check.name, status: 'ok' });
-    } else {
-      process.stdout.write(`… ${check.name}: ${check.command.join(' ')}\n`);
-      const startedAt = Date.now();
-      const { code, logPath } = await runCommand(check);
-      const seconds = Math.round((Date.now() - startedAt) / 1000);
-      const log = logPath.slice(root.length).replace(/\\/g, '/');
-      if (code === 0) {
-        const warnings = check.showOutput ? readFileSync(logPath, 'utf8').split('\n').filter(line => line.startsWith('warning:')) : [];
-        results.push({ name: check.name, status: 'ok', detail: `${seconds} s`, log, warnings });
-      } else {
-        process.stdout.write(`\n--- last ${failingLogTailLines} lines of ${log} ---\n${tailOf(logPath, failingLogTailLines)}\n---\n\n`);
-        results.push({ name: check.name, status: 'fail', detail: `exit ${code} after ${seconds} s`, log, fix: check.fix });
+  function finish(index, check, result) {
+    results[index] = result;
+    resultsByName.set(check.name, result);
+  }
+
+  function isReady(check) {
+    if (check.dependsOn && knownNames.has(check.dependsOn) && !resultsByName.has(check.dependsOn)) return false;
+    if (check.after?.some(name => knownNames.has(name) && !resultsByName.has(name))) return false;
+    return true;
+  }
+
+  function resolveImmediate() {
+    let progressed = true;
+    while (progressed) {
+      progressed = false;
+      for (let i = 0; i < pending.length; i++) {
+        const { check, index } = pending[i];
+        if (check.skipped) {
+          finish(index, check, { name: check.name, status: 'skip', detail: check.skipped });
+          pending.splice(i, 1);
+          progressed = true;
+          break;
+        }
+        if (!isReady(check)) continue;
+        const dependency = check.dependsOn ? resultsByName.get(check.dependsOn) : null;
+        if (dependency && dependency.status !== 'ok') {
+          finish(index, check, { name: check.name, status: 'skip', detail: `${check.dependsOn} did not pass` });
+          pending.splice(i, 1);
+          progressed = true;
+          break;
+        }
+        if (check.kind === 'inline') {
+          finish(index, check, check.failure
+            ? { name: check.name, status: 'fail', detail: check.failure, fix: check.fix }
+            : { name: check.name, status: 'ok' });
+          pending.splice(i, 1);
+          progressed = true;
+          break;
+        }
       }
     }
   }
+
+  async function executeCommand(check, index) {
+    writeOutput(`… ${check.name}: ${check.command.join(' ')}\n`);
+    const startedAt = Date.now();
+    const { code, logPath } = await runCommand(check);
+    const seconds = Math.round((Date.now() - startedAt) / 1000);
+    const normalizedRoot = rootFolder.replace(/\\/g, '/');
+    const normalizedLog = logPath.replace(/\\/g, '/');
+    const log = normalizedLog.startsWith(normalizedRoot) ? normalizedLog.slice(normalizedRoot.length) : normalizedLog;
+    if (code === 0) {
+      const warnings = check.showOutput ? readLog(logPath).split('\n').filter(line => line.startsWith('warning:')) : [];
+      finish(index, check, { name: check.name, status: 'ok', detail: `${seconds} s`, log, warnings });
+    } else {
+      const tail = readLog(logPath).trimEnd().split(/\r?\n/).slice(-tailLines).join('\n');
+      writeOutput(`\n--- last ${tailLines} lines of ${log} ---\n${tail}\n---\n\n`);
+      finish(index, check, { name: check.name, status: 'fail', detail: `exit ${code} after ${seconds} s`, log, fix: check.fix });
+    }
+  }
+
+  while (pending.length > 0 || inFlight.size > 0) {
+    resolveImmediate();
+    while (inFlight.size < limit) {
+      const readyIndex = pending.findIndex(({ check }) => isReady(check));
+      if (readyIndex === -1) break;
+      const { check, index } = pending.splice(readyIndex, 1)[0];
+      const task = executeCommand(check, index).finally(() => inFlight.delete(task));
+      inFlight.add(task);
+    }
+    if (inFlight.size > 0) {
+      await Promise.race(inFlight);
+    } else if (pending.length > 0) {
+      throw new Error(`Unresolvable preflight check dependencies: ${pending.map(entry => entry.check.name).join(', ')}`);
+    }
+  }
+
   return results;
 }
 
