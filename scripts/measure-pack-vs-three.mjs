@@ -2,7 +2,7 @@
 //
 //   npm run build:lib && node scripts/measure-pack-vs-three.mjs [--out <folder>] [--size 800x600]
 //
-// Both pages draw one white box (metallic 0, roughness 0.5) lit by a studio light, from the same camera. The packed page is
+// Both pages draw one light grey box (linear 0.8, sRGB 0xe7e7e7, metallic 0, roughness 0.5) lit by a studio light, from the same camera. The packed page is
 // tests/fixtures/pack-lit-box.recipe.json through `crucible pack --no-poster`; the three.js page imports what the `lit-box`
 // scene of scripts/measure-size.mjs imports, at the version in package.json. Every file each page downloads is read in Chrome
 // and compressed with gzip -9, the way docs/pack.md measures. The folder gets both pages, results.json, a markdown table and
@@ -61,7 +61,7 @@ async function buildThreePage(folder, { width, height }) {
     renderer.setSize(${width}, ${height}, false);
     const light = new DirectionalLight(0xffffff, 3);
     light.position.set(2, 4, 3);
-    scene.add(new Mesh(new BoxGeometry(), new MeshStandardMaterial({ color: 0xffffff, metalness: 0, roughness: 0.5 })), light, new AmbientLight(0xffffff, 0.6));
+    scene.add(new Mesh(new BoxGeometry(), new MeshStandardMaterial({ color: 0xe7e7e7, metalness: 0, roughness: 0.5 })), light, new AmbientLight(0xffffff, 0.6));
     const camera = new PerspectiveCamera(${CAMERA.fov}, ${width} / ${height}, 0.1, 100);
     camera.position.set(${CAMERA.eye.join(', ')});
     camera.lookAt(${CAMERA.target.join(', ')});
