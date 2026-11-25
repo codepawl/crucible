@@ -1,0 +1,18 @@
+- entry:core: the parallax march (GLSL and its splice, about 1.8 KB gzip) is the whole cost of drawing a heightMap as relief, an agent-facing capability that was ignored before; a program without a heightMap compiles the same source as before (#2839).
+- entry:core+lazy: same code as entry:core.
+- entry:crowd-skinning: same code, reached through the renderer.
+- entry:cascaded-shadows: same code, reached through the renderer.
+- entry:replace-textured-parts: same code, reached through the renderer.
+- entry:replace-textured-parts+lazy: same code, reached through the renderer.
+- entry:texture-update: same code, reached through the renderer.
+- entry:texture-update+lazy: same code, reached through the renderer.
+- scene:lit-box: same code; moving it into a lazy shader module is the follow-up that returns these bytes.
+- scene:lit-box+lazy: same code.
+- scene:gltf-box: same code.
+- scene:gltf-box+lazy: same code.
+- scene:agent-scene: same code, plus the recipe fields and their checks.
+- scene:agent-scene+lazy: same code, plus the recipe fields, their checks and the capabilities note.
+- goal:lit-box: the relief march is core renderer code for now (about 1.8 KB gzip); moving it into a lazy shader module that only a heightMap scene loads is the follow-up that returns these bytes (#2839).
+- goal:gltf-box: same code as goal:lit-box.
+- goal:agent-scene: same code as goal:lit-box, plus the recipe fields and their checks.
+- entry:gltf: same code as entry:core, reached through the renderer.

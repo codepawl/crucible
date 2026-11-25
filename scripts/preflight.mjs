@@ -14,6 +14,7 @@ import { isLargeFileCandidate } from './check-large-file-growth.mjs';
 import { isScannedPath as isOutsideNameScannedPath } from './check-outside-names.mjs';
 import { RELEASE_FIX, readReleaseProblem } from './check-release-changelog.mjs';
 import { isFragmentName } from './changelog-fragments.mjs';
+import { lockMachineForLocalTests } from './machine-lock.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const logFolder = join(root, 'artifacts', 'preflight');
@@ -335,6 +336,7 @@ async function main(args) {
 
   const { changedPaths, checks } = await planFromArguments(args, baseRef);
   console.log(`${changedPaths.length} files changed since ${baseRef}.`);
+  await lockMachineForLocalTests('npm run preflight');
   const results = await runChecks(checks);
   const manualChecks = manualChecksFor(changedPaths);
   printSummary(results, manualChecks);

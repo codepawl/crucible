@@ -30,7 +30,7 @@ const EXPECTED_PRESET_KEYS = {
     'tool.translate': ['W'],
     'tool.rotate': ['E'],
     'tool.scale': ['R'],
-    'tool.snap': ['J'],
+    'snap.toggle': ['J'],
     'edit.duplicate': ['Ctrl+D'],
     'edit.delete': ['Delete', 'Backspace'],
     'edit.undo': ['Ctrl+Z'],
@@ -52,7 +52,7 @@ const EXPECTED_PRESET_KEYS = {
     'tool.translate': ['E'],
     'tool.rotate': ['R'],
     'tool.scale': ['T'],
-    'tool.snap': ['Shift+S'],
+    'snap.toggle': ['Shift+S'],
     'edit.delete': ['Backspace', 'Delete'],
     'edit.deselect': ['Ctrl+Shift+A', 'Esc'],
     'view.frame': ['O', 'S'],
@@ -122,7 +122,7 @@ test('a preset key finds its action, and a key it freed finds none', () => {
   assert.equal(findKeymapAction(maya, keyEvent('r'), 'modal').actionId, 'modal.scale');
   const cinema = resolveKeymapPreset('cinema4d');
   assert.equal(findKeymapAction(cinema, keyEvent('s')).actionId, 'view.frame');
-  assert.equal(findKeymapAction(cinema, keyEvent('S', { shiftKey: true })).actionId, 'tool.snap');
+  assert.equal(findKeymapAction(cinema, keyEvent('S', { shiftKey: true })).actionId, 'snap.toggle');
   assert.equal(findKeymapAction(cinema, keyEvent('F9')).actionId, 'animate.keyframe');
   assert.equal(findKeymapAction(cinema, keyEvent('x')), null, 'Cinema 4D leaves X free');
 });

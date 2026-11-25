@@ -41,6 +41,7 @@ const MODULE_LOADERS = {
   volumeEmissionMask: () => import('./volume-emission-mask.js'),
   retroShader: () => import('./retro-shader.js'),
   glitterShader: () => import('./glitter-shader.js'),
+  heightParallaxShader: () => import('./height-parallax-shader.js'),
   surfaceCover: () => import('./surface-cover.js'),
   worldMaterials: () => import('./world-material-shader.js'),
   terrain: () => import('./agent-terrain.js'),
@@ -60,6 +61,7 @@ const MODULE_LOADERS = {
   unsupportedPart: () => import('./unsupported-part.js'),
   physicalSky: () => import('./physical-sky.js'),
   skybox: () => import('./skybox.js'),
+  reflectionEnvironment: () => import('./reflection-environment.js'),
   floorSky: () => import('./floor-sky-visibility.js'),
   userPass: () => import('./user-pass.js'),
   pixelGrid: () => import('./pixel-grid.js'),
@@ -130,6 +132,8 @@ const MODULE_MARKERS = {
   subsurfaceShader: ['"subsurface"'],
   retroShader: ['"retro"'],
   glitterShader: ['"waterGlint"'],
+  // Relief needs a heightScale above 0; a heightMap alone is ignored, so the scale is the marker (a texture set sets its height the same way).
+  heightParallaxShader: ['"heightScale"'],
   surfaceCover: ['"surfaceCover"'],
   // Any mention loads it, because an edit can set the density through a path or the environment of an operation.
   fogShader: ['volumeFog', 'localVolumes', '"add-explosion"'],
@@ -162,6 +166,7 @@ const MODULE_MARKERS = {
   floorSky: DEFAULT_STAGE_MARKERS.floorSky,
   physicalSky: ['"type":"physical"', '"type":"gradient"'],
   skybox: ['"skybox":{'],
+  reflectionEnvironment: ['"reflectionHdri":'],
   userPass: ['"postPasses"', '"postPassesAntialias"'],
   pixelGrid: ['"pixelGrid":{'],
   game: ['"game":{', '"set-game"'],

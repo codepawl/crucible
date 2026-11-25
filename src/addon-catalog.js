@@ -42,6 +42,7 @@ export const ADDON_CATALOG = [
   { name: 'liquid-shader', area: 'look', summary: 'Liquid, transmissive and foam materials.' },
   { name: 'world-material-shader', area: 'look', summary: 'Water bodies with absorption and turbidity.' },
   { name: 'glitter-shader', area: 'look', summary: 'Stylized water glint with a hard edge and sparkle.' },
+  { name: 'height-parallax-shader', area: 'look', summary: 'Parallax relief from a height map on a material.' },
   { name: 'retro-shader', area: 'look', summary: 'The PlayStation 1 look: vertex snap and affine textures.' },
   { name: 'surface-cover', area: 'look', summary: 'A snow or dust layer masked per pixel, smooth on huge meshes.' },
   { name: 'splat-shader', area: 'look', summary: 'Splat-mapped ground material blended by a control texture.' },

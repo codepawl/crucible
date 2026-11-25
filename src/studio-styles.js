@@ -1,4 +1,5 @@
 import { SCRUB_THUMB_WIDTH } from './studio-timeline-keys.js';
+import { MODIFIER_CSS } from './studio-modifier-styles.js';
 
 // Studio is one full-bleed viewport with floating islands on top: the scene keeps the screen.
 export const STUDIO_CSS = `
@@ -129,6 +130,10 @@ export const STUDIO_CSS = `
   .crucible-studio button:not([aria-disabled="true"]):not([aria-pressed="true"]):hover {
     background: color-mix(in srgb, var(--studio-text) 8%, transparent);
   }
+  .crucible-studio dialog button.crucible-studio-dialog-primary:not([aria-disabled="true"]):hover,
+  .crucible-studio dialog button.crucible-studio-setup-primary:not([aria-disabled="true"]):hover {
+    background: color-mix(in srgb, var(--studio-text) 86%, var(--studio-bg));
+  }
 }
 @media (prefers-reduced-motion: no-preference) {
   .crucible-studio button {
@@ -142,6 +147,13 @@ export const STUDIO_CSS = `
     --studio-motion-travel: 0ms;
   }
 }
+/* The Motion preference set to Reduced does what the system setting does: the same durations go to 0ms, and the bake pulse stops. */
+.crucible-studio[data-motion="reduced"] {
+  --studio-motion-quick: 0ms;
+  --studio-motion-base: 0ms;
+  --studio-motion-travel: 0ms;
+}
+.crucible-studio[data-motion="reduced"] .crucible-studio-bake-mark .crucible-studio-icon { animation: none; }
 @media (pointer: coarse) {
   .crucible-studio button {
     min-inline-size: 40px;
@@ -1095,6 +1107,7 @@ export const STUDIO_CSS = `
 .crucible-studio-popover button[role="menuitemcheckbox"][aria-checked="true"]::before {
   background: var(--studio-text);
 }
+#crucible-studio-pop-snap button { padding-inline-end: var(--studio-space-24); }
 .crucible-studio-menus {
   display: flex;
   align-items: center;
@@ -1105,11 +1118,11 @@ export const STUDIO_CSS = `
   font-size: 13px;
 }
 .crucible-studio button.crucible-studio-menu-button:hover,
+.crucible-studio button.crucible-studio-menu-button[aria-expanded="true"],
 .crucible-studio button.crucible-studio-menu-button:has(+ *):focus-visible {
   background: color-mix(in srgb, var(--studio-text) 7%, transparent);
 }
 .crucible-studio[data-compact="true"] .crucible-studio-menu-button[popovertarget="crucible-studio-pop-view"],
-.crucible-studio[data-compact="true"] .crucible-studio-menu-button[popovertarget="crucible-studio-pop-help"],
 .crucible-studio[data-compact="true"] .crucible-studio-primary-btn span {
   display: none;
 }
@@ -1148,9 +1161,14 @@ export const STUDIO_CSS = `
   margin-block: 10px;
   gap: 2px;
 }
-.crucible-studio-group[data-mesh-group] button[aria-pressed="true"] {
+.crucible-studio-group[data-mesh-group] button[aria-pressed="true"],
+.crucible-studio button[data-snap-toggle][aria-pressed="true"] {
   background: color-mix(in srgb, var(--studio-accent) 28%, transparent);
   color: var(--studio-accent);
+}
+/* The magnet is filled while snapping is on, so the state is a shape and not only a colour. */
+.crucible-studio button[data-snap-toggle][aria-pressed="true"] svg {
+  fill: currentColor;
 }
 /* What the three mode icons draw over their square. */
 .crucible-studio-icon-dot {
@@ -2228,6 +2246,133 @@ export const STUDIO_CSS = `
   font-weight: 600;
   color: var(--studio-text);
 }
+/* The Export workspace: one group for each thing Studio writes. Groups sit 16px apart and the parts of a group 8px apart. */
+.crucible-studio-export-body {
+  --studio-export-frame-side: 20px;
+  display: grid;
+  gap: var(--studio-space-16);
+  padding: var(--studio-space-12);
+}
+.crucible-studio-export-group {
+  display: grid;
+  gap: var(--studio-space-8);
+}
+.crucible-studio-export-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  font-family: var(--studio-font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--studio-text);
+}
+.crucible-studio-export-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--studio-space-4);
+  /* The shape pill is taller for a tall picture; the row keeps that height so a wide picture, or a resize, moves nothing. */
+  min-block-size: calc(var(--studio-export-frame-side) + var(--studio-space-8));
+}
+.crucible-studio-export-facts:empty { display: none; }
+.crucible-studio-export-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--studio-space-4);
+  padding: var(--studio-space-4) var(--studio-space-8);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--studio-text) 6%, transparent);
+  color: var(--studio-text);
+  font: 500 11.5px/1.4 var(--studio-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.crucible-studio-export-fact[data-warning="true"] .crucible-studio-icon { color: var(--studio-accent); }
+.crucible-studio-export-frame {
+  display: block;
+  box-sizing: border-box;
+  inline-size: var(--studio-export-frame-side);
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  background: color-mix(in srgb, currentColor 15%, transparent);
+}
+.crucible-studio-export-frame[data-tall="true"] {
+  inline-size: auto;
+  block-size: var(--studio-export-frame-side);
+}
+.crucible-studio button.crucible-studio-export-action {
+  inline-size: 100%;
+  background: color-mix(in srgb, var(--studio-text) 6%, transparent);
+  font-weight: 600;
+}
+.crucible-studio-export-result {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  font-size: 12px;
+  color: var(--studio-text);
+  overflow-wrap: anywhere;
+  /* The row is reserved under the button, so a result that appears or clears moves nothing. */
+  min-block-size: var(--studio-space-24);
+}
+.crucible-studio-export-result[hidden] { visibility: hidden; }
+.crucible-studio-export-result[data-state="ok"] .crucible-studio-icon { color: var(--studio-ok); }
+.crucible-studio-export-result[data-state="failed"] .crucible-studio-icon { color: var(--studio-accent); }
+/* The status region is always in the page for a screen reader and never seen. */
+.crucible-studio-export-status {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* The viewport shows the shot as it will be saved: the frame is the edge of the picture, and everything the editor lays over it is off. */
+.crucible-studio-export-guide {
+  display: none;
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border: 2px solid var(--studio-accent);
+  pointer-events: none;
+  z-index: 3;
+}
+.crucible-studio[data-workspace="export"] .crucible-studio-export-guide { display: block; }
+.crucible-studio[data-workspace="export"] .crucible-studio-gizmo,
+.crucible-studio[data-workspace="export"] .crucible-studio-view-widget,
+.crucible-studio[data-workspace="export"] .crucible-studio-readout,
+.crucible-studio[data-workspace="export"] .crucible-studio-hintbar,
+.crucible-studio[data-workspace="export"] .crucible-studio-agent-cursor,
+.crucible-studio[data-workspace="export"] .crucible-studio-outliner,
+.crucible-studio[data-workspace="export"] .crucible-studio-grip-split { display: none; }
+.crucible-studio-toolbar button[hidden] { display: none; }
+/* A control that does nothing here must not look pressed either. */
+.crucible-studio[data-workspace="export"] button[aria-pressed="true"][aria-disabled="true"] { background: transparent; }
+/* A quiet message is for a screen reader only. */
+.crucible-studio-status[data-quiet="true"] {
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+/* In a narrow window the panel is a column beside the picture, not a card over it: the viewport takes the free space, so the picture
+   and its frame are what is left of the window, and the frame is the edge of the saved image. */
+.crucible-studio[data-compact="true"][data-workspace="export"] {
+  --studio-export-column: min(260px, 45%);
+}
+.crucible-studio[data-compact="true"][data-workspace="export"] .crucible-studio-viewport {
+  inset: var(--studio-top) 0 var(--studio-edge) calc(var(--studio-edge) * 2 + var(--studio-rail));
+}
+.crucible-studio[data-compact="true"][data-workspace="export"][data-inspector-collapsed="false"] .crucible-studio-viewport {
+  inset-inline-end: calc(var(--studio-export-column) + var(--studio-edge) * 2);
+}
+.crucible-studio[data-compact="true"][data-workspace="export"] .crucible-studio-inspector {
+  inset-block: var(--studio-top) var(--studio-edge);
+  inset-inline: auto var(--studio-edge);
+  inline-size: var(--studio-export-column);
+  max-block-size: none;
+}
 .crucible-studio-bookmark-list {
   display: grid;
   gap: 4px;
@@ -2394,7 +2539,7 @@ export const STUDIO_CSS = `
 .crucible-studio[data-compact="true"] button.crucible-studio-filepill { max-inline-size: 190px; }
 
 .crucible-studio dialog {
-  width: min(560px, calc(100vw - 32px));
+  width: min(600px, calc(100vw - 32px));
   padding: 16px;
   border: 1px solid var(--studio-border);
   border-radius: 14px;
@@ -2432,20 +2577,98 @@ export const STUDIO_CSS = `
 .crucible-studio dialog button {
   background: color-mix(in srgb, var(--studio-text) 7%, transparent);
 }
+/* One fixed height for every section; a section with more rows than fit scrolls its rows, never the dialog. */
 .crucible-studio dialog.crucible-studio-settings-dialog {
-  width: min(380px, calc(100vw - 32px));
+  width: min(600px, calc(100vw - 32px));
+  block-size: min(456px, calc(100vh - 48px));
 }
+/* A ring is drawn inside its control, so it never leaves the dialog's inset or the rows' scroll area. */
+.crucible-studio-settings-dialog :focus-visible { outline-offset: -2px; }
+.crucible-studio-settings-dialog:focus { outline: none; }
+.crucible-studio dialog.crucible-studio-settings-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--studio-space-16);
+  padding: var(--studio-space-24);
+}
+/* Trimmed to the letters, so the title sits as far from the top edge as the list does from the left and the buttons from the bottom. */
+.crucible-studio dialog.crucible-studio-settings-dialog h2 {
+  margin: 0;
+  text-box: trim-both cap alphabetic;
+}
+.crucible-studio-settings-dialog .crucible-studio-dialog-actions { margin-top: 0; }
+.crucible-studio-settings-body {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: var(--studio-space-16);
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+.crucible-studio-settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--studio-space-8);
+  align-self: start;
+}
+.crucible-studio dialog button.crucible-studio-settings-section {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--studio-space-8);
+  min-block-size: 36px;
+  padding-inline: var(--studio-space-8);
+  background: transparent;
+  color: var(--studio-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.crucible-studio dialog button.crucible-studio-settings-section .crucible-studio-icon { flex: none; }
+.crucible-studio dialog button.crucible-studio-settings-section[data-current="true"] {
+  background: color-mix(in srgb, var(--studio-text) 8%, transparent);
+  color: var(--studio-text);
+}
+/* Every section sits in the same grid cell, so the dialog keeps the height of the tallest one and does not jump between sections. */
 .crucible-studio-settings {
   display: grid;
-  gap: var(--studio-space-4);
+  grid-template-rows: minmax(0, 1fr);
+  min-block-size: 0;
   font-size: 12.5px;
+}
+.crucible-studio-settings-pane {
+  grid-area: 1 / 1;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--studio-space-8);
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+.crucible-studio-settings-pane[data-current="false"] { visibility: hidden; }
+.crucible-studio-settings-pane h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  min-block-size: 36px;
+  margin: 0;
+  font-family: var(--studio-font-heading);
+  font-size: 15px;
+}
+.crucible-studio-settings-pane h3 .crucible-studio-icon { flex: none; color: var(--studio-muted); }
+.crucible-studio-settings-rows {
+  display: grid;
+  align-content: start;
+  gap: var(--studio-space-8);
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .crucible-studio-setting {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--studio-space-4);
-  min-block-size: 34px;
+  gap: var(--studio-space-8);
+  min-block-size: 32px;
+  white-space: nowrap;
 }
 .crucible-studio-setting select {
   inline-size: 132px;
@@ -2585,6 +2808,71 @@ export const STUDIO_CSS = `
 }
 .crucible-studio-popover button[data-keeps-menu="true"][aria-expanded="true"] > .crucible-studio-icon[data-recent-chevron] { transform: rotate(90deg); }
 .crucible-studio-popover button:disabled { opacity: 0.45; cursor: default; }
+.crucible-studio dialog button.crucible-studio-settings-quiet {
+  margin-inline: calc(var(--studio-space-12) * -1) auto;
+  background: transparent;
+  color: var(--studio-muted);
+}
+.crucible-studio-account {
+  display: grid;
+  gap: var(--studio-space-12);
+  min-inline-size: 0;
+}
+.crucible-studio-account-status,
+.crucible-studio-account-error {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+}
+.crucible-studio-account-status { font-weight: 600; }
+.crucible-studio-account-status .crucible-studio-icon,
+.crucible-studio-account-error .crucible-studio-icon { flex: none; }
+.crucible-studio-account[data-phase="signed-in"] .crucible-studio-account-status .crucible-studio-icon { color: var(--studio-ok); }
+.crucible-studio-account[data-phase="signed-out"] .crucible-studio-account-status .crucible-studio-icon,
+.crucible-studio-account[data-phase="loading"] .crucible-studio-account-status .crucible-studio-icon,
+.crucible-studio-account[data-phase="waiting"] .crucible-studio-account-status .crucible-studio-icon { color: var(--studio-muted); }
+.crucible-studio-account-error .crucible-studio-icon { color: var(--studio-accent); }
+.crucible-studio-account-who {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-12);
+  min-inline-size: 0;
+}
+.crucible-studio-account-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  inline-size: 40px;
+  block-size: 40px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--studio-text) 12%, transparent);
+  font-family: var(--studio-font-heading);
+  font-size: 15px;
+  font-weight: 600;
+}
+.crucible-studio-account-lines {
+  display: grid;
+  min-inline-size: 0;
+}
+.crucible-studio-account-name,
+.crucible-studio-account-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crucible-studio-account-email,
+.crucible-studio-account-value { color: var(--studio-muted); }
+.crucible-studio button[data-action-icon] { gap: var(--studio-space-8); }
+.crucible-studio-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--studio-space-8);
+}
+@media (max-width: 520px) {
+  .crucible-studio-settings-body { grid-template-columns: 36px minmax(0, 1fr); gap: var(--studio-space-16); }
+  .crucible-studio dialog button.crucible-studio-settings-section { padding-inline: 0; justify-content: center; }
+  .crucible-studio dialog button.crucible-studio-settings-section span { display: none; }
+}
 .crucible-studio dialog.crucible-studio-setup-dialog {
   width: min(780px, calc(100vw - 32px));
   max-block-size: calc(100vh - 48px);
@@ -2974,6 +3262,7 @@ export const STUDIO_CSS = `
   background: transparent;
   color: var(--studio-text);
 }
+.crucible-studio dialog button.crucible-studio-dialog-primary,
 .crucible-studio dialog button.crucible-studio-setup-primary {
   min-inline-size: 88px;
   background: var(--studio-text);
@@ -2984,18 +3273,89 @@ export const STUDIO_CSS = `
 @media (prefers-reduced-motion: no-preference) {
   .crucible-studio-setup-card { transition: border-color var(--studio-motion-quick) var(--studio-ease-out), box-shadow var(--studio-motion-quick) var(--studio-ease-out); }
 }
+.crucible-studio-shortcuts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--studio-space-16);
+  margin-block-end: var(--studio-space-16);
+}
+.crucible-studio dialog.crucible-studio-shortcuts-dialog h2 { margin: 0; }
 .crucible-studio-shortcuts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px 16px;
+  align-items: start;
+  gap: var(--studio-space-24);
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  /* The scrolling box reaches 16 px into the dialog padding: 8 px for the scrollbar and 8 px of air, so the text edges stay 24 px from both sides. */
+  margin-inline-end: calc(var(--studio-space-16) * -1);
+  padding-inline-end: var(--studio-space-8);
   font-size: 12.5px;
+  /* Rows hidden above or below fade at that edge; the strip over the scrollbar stays solid. */
+  --studio-fade-top: 0px;
+  --studio-fade-bottom: 0px;
+  mask-image:
+    linear-gradient(to bottom, transparent 0, #000 var(--studio-fade-top), #000 calc(100% - var(--studio-fade-bottom)), transparent 100%),
+    linear-gradient(to right, transparent calc(100% - var(--studio-space-16)), #000 calc(100% - var(--studio-space-16)));
+  mask-composite: add;
+}
+.crucible-studio-shortcuts[data-above="true"] { --studio-fade-top: calc(var(--studio-space-24) * 2); }
+.crucible-studio-shortcuts[data-more="true"] { --studio-fade-bottom: calc(var(--studio-space-24) * 2); }
+.crucible-studio-shortcuts::-webkit-scrollbar { width: 8px; }
+.crucible-studio-shortcuts::-webkit-scrollbar-track { background: transparent; }
+.crucible-studio-shortcuts::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--studio-text) 38%, transparent);
+}
+.crucible-studio-shortcuts::-webkit-scrollbar-button { display: none; }
+@supports not selector(::-webkit-scrollbar) {
+  .crucible-studio-shortcuts {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--studio-text) 38%, transparent) transparent;
+  }
+}
+.crucible-studio-shortcuts-dialog[data-columns="3"] .crucible-studio-shortcuts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.crucible-studio-shortcuts-dialog[data-columns="1"] .crucible-studio-shortcuts { grid-template-columns: minmax(0, 1fr); }
+.crucible-studio-shortcut-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--studio-space-16);
+}
+.crucible-studio-shortcut-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--studio-space-8);
+}
+.crucible-studio-shortcut-group h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  margin: 0;
+  font-family: var(--studio-font-heading);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--studio-text);
+}
+.crucible-studio-shortcut-group h3 .crucible-studio-icon {
+  inline-size: 16px;
+  block-size: 16px;
 }
 .crucible-studio-shortcut-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+  align-items: baseline;
+  gap: var(--studio-space-8);
+  font-weight: 400;
+  color: color-mix(in srgb, var(--studio-text) 84%, var(--studio-muted));
+}
+.crucible-studio-shortcut-keys {
+  color: var(--studio-muted);
+  flex: none;
+  text-align: end;
+  white-space: nowrap;
 }
 .crucible-studio kbd {
   padding: 2px 8px;
@@ -3008,6 +3368,16 @@ export const STUDIO_CSS = `
 }
 .crucible-studio dialog.crucible-studio-shortcuts-dialog {
   width: min(680px, calc(100vw - 32px));
+  padding: var(--studio-space-24);
+}
+.crucible-studio dialog.crucible-studio-shortcuts-dialog[data-columns="3"] {
+  width: min(960px, calc(100vw - 32px));
+}
+.crucible-studio dialog.crucible-studio-shortcuts-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  max-block-size: calc(100vh - 32px);
+  box-sizing: border-box;
 }
 /* Docked panels: the bar, the rail and the column take the edges of the window and the viewport is the room they
    leave, so the scene is drawn at that size and nothing lies over it. Below the compact width the panels float. */
@@ -3091,4 +3461,4 @@ export const STUDIO_CSS = `
     outline: 2px solid Highlight;
   }
 }
-`;
+${MODIFIER_CSS}`;

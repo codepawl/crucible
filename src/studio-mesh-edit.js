@@ -14,6 +14,9 @@ import { edgeLoop, edgeRing, faceLoop, growSelection, selectLinked, shrinkSelect
 import { spatialFalloffWeights } from './mesh-ops.js';
 import { proportionalCirclePath } from './studio-proportional.js';
 import { MAX_SELECTED_ELEMENTS, MERGE_TARGETS } from './mesh-operations.js';
+import { CONVERTIBLE_PRIMITIVES, meshGeometryOfPrimitive, planOwnMesh } from './studio-own-mesh.js';
+
+export { meshGeometryOfPrimitive };
 
 export const MESH_SELECTION_MODES = Object.freeze(['vertex', 'edge', 'face']);
 export const MAX_MASK_VERTICES = 19;
@@ -286,28 +289,6 @@ function logsShareTheirPrefix(first, second) {
   return true;
 }
 
-// The shapes of the Add menu's Mesh group turn into a mesh on the first Tab. A box and a cylinder lose their bevel on the way:
-// as a mesh the bevel is hundreds of tiny faces (a box of 6 faces becomes 1,482), which nobody can pick one by one. A written 0 is
-// needed: without a bevel field the shape builds with its default one.
-// A plane is written back by the recipe as a grid.
-const CONVERTIBLE_PRIMITIVES = new Set(['plane', 'grid', 'box', 'circle', 'sphere', 'icoSphere', 'cylinder', 'cone', 'torus']);
-const PRIMITIVES_WITHOUT_BEVEL = new Set(['box', 'cylinder']);
-
-/** The mesh geometry a shape becomes in edit mode: its own description as the base, or null for a geometry that is no such shape. */
-export function meshGeometryOfPrimitive(geometrySpec) {
-  if (!geometrySpec || !CONVERTIBLE_PRIMITIVES.has(geometrySpec.type)) return null;
-  const { id, ...base } = structuredClone(geometrySpec);
-  if (PRIMITIVES_WITHOUT_BEVEL.has(base.type)) base.bevel = 0;
-  return { type: 'mesh', base };
-}
-
-function uniqueGeometryId(recipe, wanted) {
-  const taken = new Set((recipe.geometries ?? []).map(geometry => geometry.id));
-  let candidate = wanted;
-  for (let suffix = 2; taken.has(candidate); suffix += 1) candidate = `${wanted}-${suffix}`;
-  return candidate;
-}
-
 /**
  * The edit mode of one Studio: `enter()` on the selected node, pick with `pick()`, move with the handles of the
  * controller (this editor installs an element session on it), `leave()`. `updatePart` writes a drag preview into the GPU
@@ -392,21 +373,10 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return null;
   }
 
-  // The geometry of the node becomes a mesh of its own before the first edit, in one scene change (one undo step). A geometry
-  // another node uses is copied: the preview writes into the geometry's buffers and the edit log belongs to the geometry, so the
-  // twin would move too. A shape becomes the mesh of its own description; the shape itself goes when nothing else uses it.
+  // The geometry of the node becomes a mesh of its own before the first edit, in one scene change (one undo step).
   function giveNodeItsOwnMesh(nodeId) {
-    const recipe = controller.exportRecipe();
-    const node = recipe.nodes.find(candidate => candidate.id === nodeId);
-    const spec = recipe.geometries.find(candidate => candidate.id === node.geometry);
-    const sharing = recipe.nodes.filter(candidate => candidate.geometry === node.geometry).length > 1;
-    const converted = meshGeometryOfPrimitive(spec);
-    if (!sharing && !converted) return;
-    const ownId = uniqueGeometryId(recipe, converted ? `${spec.id}-mesh` : `${spec.id}-${nodeId}`);
-    const ownGeometry = converted ?? structuredClone(spec);
-    const operations = [{ type: 'add-geometry', geometry: { ...ownGeometry, id: ownId } }, { type: 'set-node', id: nodeId, geometry: ownId }];
-    if (converted && !sharing) operations.push({ type: 'remove-geometry', id: spec.id });
-    controller.applyImportOperations(operations, { detail: { kind: 'topology', nodeId } });
+    const { operations } = planOwnMesh(controller.exportRecipe(), nodeId);
+    if (operations.length > 0) controller.applyImportOperations(operations, { detail: { kind: 'topology', nodeId } });
   }
 
   // The mesh the node would become on Tab, or null: Studio loads the code that builds it before it calls enter().

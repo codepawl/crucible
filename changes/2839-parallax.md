@@ -1,0 +1,1 @@
+- A material with a `heightMap` and a `heightScale` above 0 draws parallax relief in the rasterizer (`heightFade`, `heightSteps` tune it; off by default). Part of #2839
