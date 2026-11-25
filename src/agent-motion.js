@@ -36,9 +36,9 @@ const PROPERTIES = {
     ambientIntensity: 1, fillIntensity: 1, environmentIntensity: 1, environmentRotation: 1,
     sunElevation: 1, sunRotation: 1, turbidity: 1, groundAlbedo: 1, aerialPerspective: 1, ozone: 1,
   },
-  // Frame effects: exposure, and the focus distance of the depth of field (needs effects.depthOfField.blur above 0).
-  // distortionStrength and flashIntensity are gains from 0 to 1 on every source of the distortion and flash steps.
-  effects: { exposure: 1, focusDistance: 1, distortionStrength: 1, flashIntensity: 1 },
+  // Frame effects: exposure, focus distance (needs effects.depthOfField.blur above 0), distortionStrength/flashIntensity (0 to 1 multipliers),
+  // bloomStrength (0 to 8), and glareStreaks / lensDispersion (0 to 1 on recipes with effects.glare / effects.lensDistortion).
+  effects: { exposure: 1, focusDistance: 1, distortionStrength: 1, flashIntensity: 1, bloomStrength: 1, glareStreaks: 1, lensDispersion: 1 },
 };
 // Every kind a motion track may have; the MCP schema and its error message take this list so they cannot drift from the backend.
 export const MOTION_TRACK_KINDS = Object.freeze(Object.keys(PROPERTIES));
@@ -55,7 +55,7 @@ const LOOK_RANGES = {
     ambientIntensity: [0, 100], fillIntensity: [0, 100], environmentIntensity: [0, 100], environmentRotation: [-100, 100],
     sunElevation: [-90, 90], sunRotation: [-360, 360], turbidity: [1, 10], groundAlbedo: [0, 1], aerialPerspective: [0, 4], ozone: [0, 10],
   },
-  effects: { exposure: [0.01, 16], focusDistance: [0.01, 100000], distortionStrength: [0, 1], flashIntensity: [0, 1] },
+  effects: { exposure: [0.01, 16], focusDistance: [0.01, 100000], distortionStrength: [0, 1], flashIntensity: [0, 1], bloomStrength: [0, 8], glareStreaks: [0, 1], lensDispersion: [0, 1] },
   geometry: { oceanTime: [-1e6, 1e6] },
 };
 const INTERPOLATIONS = ['LINEAR', 'STEP', 'SMOOTH', 'CUBICSPLINE'];
@@ -190,6 +190,17 @@ function checkLookTarget(track, recipe) {
   }
   if (kind === 'effects' && property === 'flashIntensity' && !recipe.effects.flash?.length) {
     throw invalidField('motion.tracks.property', 'effects.flashIntensity', 'a track only when effects.flash names a source, such as { "intensity": 4 }');
+  }
+  if (kind === 'effects' && property === 'glareStreaks' && !recipe.effects.glare) {
+    throw invalidField('motion.tracks.property', 'effects.glareStreaks', 'a track only when effects.glare is named in the recipe, such as { "streaks": 0 }');
+  }
+  if (kind === 'effects' && property === 'lensDispersion') {
+    if (!recipe.effects.lensDistortion) {
+      throw invalidField('motion.tracks.property', 'effects.lensDispersion', 'a track only when effects.lensDistortion is named in the recipe, such as { "dispersion": 0 }');
+    }
+    if (['colorBalance', 'stylize', 'composite'].some(name => recipe.effects[name]?.mask)) {
+      throw invalidField('motion.tracks.property', 'effects.lensDispersion', 'a track only when no colorBalance, stylize or composite mask is set, because dispersion warps the frame after masks are built');
+    }
   }
   if (kind === 'environment' && PHYSICAL_SKY_TRACK_PROPERTIES.has(property) && recipe.environment.sky?.type !== 'physical') {
     throw invalidField('motion.tracks.property', `environment.${property}`, 'a track only when environment.sky is { "type": "physical" }');
@@ -859,13 +870,16 @@ export function motionEnvironment(environment, sampled) {
   return environment;
 }
 
-/** Effects (a clone the caller may change) with the exposure and focus distance a sampled motion sets. */
+/** Effects (a clone the caller may change) with the look values a sampled motion sets. */
 export function motionEffects(effects, sampled) {
-  const { exposure, focusDistance, distortionStrength, flashIntensity } = sampled.effects;
+  const { exposure, focusDistance, distortionStrength, flashIntensity, bloomStrength, glareStreaks, lensDispersion } = sampled.effects;
   for (const source of distortionStrength === undefined ? [] : effects.distortion ?? []) source.strength *= distortionStrength;
   for (const source of flashIntensity === undefined ? [] : effects.flash ?? []) source.intensity *= flashIntensity;
   if (exposure !== undefined) effects.exposure = exposure;
   if (focusDistance !== undefined) effects.depthOfField.focusDistance = focusDistance;
+  if (bloomStrength !== undefined) effects.bloom.strength = bloomStrength;
+  if (glareStreaks !== undefined && effects.glare) effects.glare.streaks = glareStreaks;
+  if (lensDispersion !== undefined && effects.lensDistortion) effects.lensDistortion.dispersion = lensDispersion;
   return effects;
 }
 
