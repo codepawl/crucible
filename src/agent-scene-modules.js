@@ -13,9 +13,11 @@ const MODULE_LOADERS = {
   springs: () => import('./spring-bones.js'),
   face: () => import('./face-animation.js'),
   settle: () => import('./agent-settle.js'),
+  applyTransform: () => import('./agent-apply-transform.js'),
   drive: () => import('./agent-drive.js'),
   physics: () => import('./agent-physics.js'),
   fracture: () => import('./agent-fracture.js'),
+  meshParts: () => import('./agent-mesh-parts.js'),
   explosion: () => import('./agent-explosion.js'),
   vehicleDamage: () => import('./vehicle-damage.js'),
   cloth: () => import('./agent-cloth.js'),
@@ -27,6 +29,7 @@ const MODULE_LOADERS = {
   reflections: () => import('./agent-reflections.js'),
   waterReflection: () => import('./water-reflection.js'),
   patterns: () => import('./material-patterns.js'),
+  materialPresets: () => import('./material-presets.js'),
   assetGraph: () => import('./asset-material-graph.js'),
   relations: () => import('./agent-relations.js'),
   timeline: () => import('./film-timeline.js'),
@@ -88,7 +91,9 @@ const DEFAULT_STAGE_MARKERS = {
 
 // Each test errs on the side of loading: a false positive costs a chunk, a false negative a clear error.
 const MODULE_MARKERS = {
-  mesh: ['"type":"mesh"', '"instances"'],
+  mesh: ['"type":"mesh"', '"instances"', '"separate-faces"', '"join-meshes"', '"apply-transform"', '"set-origin"'],
+  meshParts: ['"separate-faces"', '"join-meshes"'],
+  applyTransform: ['"apply-transform"', '"set-origin"'],
   modeling: ['"type":"lathe"', '"type":"extrude"', '"type":"tube"', '"type":"curve"', '"type":"sdf"', '"type":"cloud"'],
   text: ['"type":"text"'],
   motion: ['"motion":{', '"bake-motion"', '"add-explosion"'],
@@ -112,14 +117,16 @@ const MODULE_MARKERS = {
   reflections: [/"metallic":(0\.[5-9]|1(?![0-9]))/],
   // Wet ground mirrors the scene in its puddles through the water mirror (src/water-reflection.js).
   waterReflection: ['"puddles":'],
-  patterns: ['"pattern"'],
+  patterns: ['"pattern"', '"preset":"wood"', '"preset":"grass"', '"preset":"brick"', '"preset":"glass"'],
+  // Any preset name loads it, so a wrong name gets the error that lists the right ones.
+  materialPresets: ['"preset":'],
   // Only a graph on a placed asset needs it: the placement's "pattern" comes after its "asset":{ in the JSON.
   assetGraph: [/"asset":{[^]*"pattern"/],
   relations: ['"relations":'],
   timeline: ['"timeline":{'],
-  layerShaders: ['"anisotropy"', '"iridescence"', '"fresnel"', '"emissionMask"', '"softEdge"'],
+  layerShaders: ['"anisotropy"', '"iridescence"', '"fresnel"', '"preset":"glass"', '"emissionMask"', '"softEdge"'],
   emissionMask: ['"emissionMask"'],
-  liquidShader: ['"transmission"', '"liquid"', '"foam"'],
+  liquidShader: ['"transmission"', '"preset":"glass"', '"liquid"', '"foam"'],
   subsurfaceShader: ['"subsurface"'],
   retroShader: ['"retro"'],
   glitterShader: ['"waterGlint"'],

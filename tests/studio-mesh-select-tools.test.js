@@ -4,7 +4,7 @@ import test from 'node:test';
 import { createAgentScene } from '../src/agent-scene.js';
 import { meshEditSourceOf } from '../src/agent-mesh.js';
 import { createStudio, createStudioController } from '../src/studio.js';
-import { byDataset, createFakeRenderer, dispatch, installStudioDom } from './support/studio-dom.mjs';
+import { byDataset, createFakeRenderer, dispatch, FakeNode, installStudioDom } from './support/studio-dom.mjs';
 import {
   CIRCLE_BRUSH_DEFAULT_PIXELS,
   CIRCLE_BRUSH_MAX_PIXELS,
@@ -268,4 +268,160 @@ test('Alt+A, Ctrl+I and C through the page: none and invert in each mode, circle
   assert.equal(ui.root.querySelector('.crucible-studio-cage-brush'), null, 'a right click ends circle select');
   assert.equal(ui.root.dataset.meshEdit, 'true');
   assert.ok(byDataset(ui.root, 'meshMode', 'vertex'));
+});
+
+// The brush ends when the window loses focus or the page is hidden, and the wheel sums its travel (#3363).
+const WHEEL_LINE_MODE = 1;
+const WHEEL_PAGE_MODE = 2;
+
+test('the wheel sums its travel: one radius step per 100 pixels, the remainder kept, a turn around starts again', () => {
+  const { editor } = mount();
+  editor.beginCircleSelect();
+  const start = editor.brushRadius;
+  editor.wheelCircleBrush(-100);
+  const oneNotch = editor.brushRadius;
+  assert.ok(oneNotch > start, 'a mouse notch up still gives one step bigger');
+  editor.wheelCircleBrush(100);
+  assert.equal(editor.brushRadius, start, 'a notch down gives one step back');
+
+  for (let event = 0; event < 30; event += 1) editor.wheelCircleBrush(-10);
+  const trackpadRadius = editor.brushRadius;
+  editor.wheelCircleBrush(300);
+  assert.equal(editor.brushRadius, start, '300 px of trackpad travel is three steps, not thirty');
+  editor.wheelCircleBrush(-300);
+  assert.equal(editor.brushRadius, trackpadRadius, 'one 300 px event gives the same radius as thirty 10 px events');
+
+  editor.wheelCircleBrush(100);
+  editor.wheelCircleBrush(-60);
+  const beforeRemainder = editor.brushRadius;
+  editor.wheelCircleBrush(-60);
+  assert.ok(editor.brushRadius > beforeRemainder, '60 px and 60 px make one step: the remainder was kept');
+
+  const settled = editor.brushRadius;
+  editor.wheelCircleBrush(-60);
+  editor.wheelCircleBrush(60);
+  assert.equal(editor.brushRadius, settled, 'a sign change drops the remainder: 60 px down alone is not a step');
+  editor.wheelCircleBrush(50);
+  assert.ok(editor.brushRadius < settled, '60 px and 50 px in the same direction are one step');
+});
+
+test('the wheel turns lines and pages into pixels, and ignores a zero or broken delta', () => {
+  const { editor } = mount();
+  editor.beginCircleSelect();
+  const start = editor.brushRadius;
+  editor.wheelCircleBrush(-3, WHEEL_LINE_MODE);
+  const afterNotchInLines = editor.brushRadius;
+  assert.ok(afterNotchInLines > start, 'three lines are one notch, so one step');
+  editor.wheelCircleBrush(3, WHEEL_LINE_MODE);
+  assert.equal(editor.brushRadius, start);
+  editor.wheelCircleBrush(-1, WHEEL_PAGE_MODE);
+  assert.ok(editor.brushRadius > afterNotchInLines, 'a page is several steps');
+  editor.wheelCircleBrush(1, WHEEL_PAGE_MODE);
+  assert.equal(editor.brushRadius, start);
+  editor.wheelCircleBrush(0);
+  editor.wheelCircleBrush(Number.NaN);
+  assert.equal(editor.brushRadius, start);
+});
+
+test('a new brush session starts with no wheel remainder', () => {
+  const { editor } = mount();
+  editor.beginCircleSelect();
+  const start = editor.brushRadius;
+  editor.wheelCircleBrush(-60);
+  editor.endCircleSelect();
+  editor.beginCircleSelect();
+  editor.wheelCircleBrush(-60);
+  assert.equal(editor.brushRadius, start, 'the 60 px from the last session do not count');
+});
+
+function listenerCount(target, type) {
+  return target.listeners.filter(entry => entry.type === type).length;
+}
+
+function mountStudioWithWindow(testContext) {
+  const dom = installStudioDom();
+  const windowTarget = new FakeNode(dom.document, 'window');
+  Object.assign(windowTarget, dom.document.defaultView);
+  dom.document.defaultView = windowTarget;
+  const studio = createStudio(dom.container, { recipe: recipeOf(), renderer: createFakeRenderer() });
+  testContext.after(() => {
+    studio.dispose();
+    dom.uninstall();
+  });
+  const root = dom.container.firstElementChild;
+  const viewport = root.querySelector('.crucible-studio-viewport');
+  viewport.box = VIEWPORT_BOX;
+  studio.renderNow();
+  studio.controller.selectNode('hero');
+  const press = (key, properties = {}) => dispatch(dom.document, 'keydown', { key, ...properties });
+  return { dom, studio, root, viewport, canvas: viewport.querySelector('canvas'), press, windowTarget };
+}
+
+test('circle select ends on window blur and when the page is hidden, and its listeners are removed when it ends', async testContext => {
+  const ui = mountStudioWithWindow(testContext);
+  ui.press('Tab');
+  await untilEditing(ui);
+  const brushIsDrawn = () => {
+    ui.studio.renderNow();
+    dispatch(ui.viewport, 'pointermove', { clientX: 440, clientY: 330 });
+    ui.studio.renderNow();
+    return ui.root.querySelector('.crucible-studio-cage-brush') !== null;
+  };
+  const blurListeners = () => listenerCount(ui.windowTarget, 'blur');
+  const hiddenListeners = () => listenerCount(ui.dom.document, 'visibilitychange');
+  const blurBefore = blurListeners();
+  const hiddenBefore = hiddenListeners();
+
+  ui.press('c');
+  assert.equal(brushIsDrawn(), true, 'the brush is on');
+  assert.equal(blurListeners(), blurBefore + 1, 'a blur listener waits while the brush is on');
+  assert.equal(hiddenListeners(), hiddenBefore + 1);
+  dispatch(ui.windowTarget, 'blur');
+  assert.equal(brushIsDrawn(), false, 'blur ends the brush');
+  assert.equal(ui.root.dataset.meshEdit, 'true', 'and stays in edit mode, as Esc does');
+  assert.equal(blurListeners(), blurBefore, 'the blur listener is gone');
+  assert.equal(hiddenListeners(), hiddenBefore, 'the visibility listener is gone');
+
+  ui.press('c');
+  ui.dom.document.hidden = true;
+  dispatch(ui.dom.document, 'visibilitychange');
+  assert.equal(brushIsDrawn(), false, 'hiding the page ends the brush');
+  assert.equal(blurListeners(), blurBefore);
+
+  ui.dom.document.hidden = false;
+  ui.press('c');
+  dispatch(ui.dom.document, 'visibilitychange');
+  assert.equal(brushIsDrawn(), true, 'a page that is visible again does not end it');
+  ui.press('Escape');
+  assert.equal(blurListeners(), blurBefore, 'Esc removes the listeners too');
+  assert.equal(hiddenListeners(), hiddenBefore);
+
+  ui.press('c');
+  dispatch(ui.canvas, 'contextmenu', { clientX: 440, clientY: 330 });
+  assert.equal(blurListeners(), blurBefore, 'a right click removes them');
+  ui.press('c');
+  ui.press('Tab');
+  assert.equal(blurListeners(), blurBefore, 'leaving edit mode removes them');
+});
+
+test('the wheel through the page sums a trackpad gesture', async testContext => {
+  const ui = mountStudioWithWindow(testContext);
+  ui.press('Tab');
+  await untilEditing(ui);
+  ui.press('c');
+  const radiusAfter = deltas => {
+    ui.press('Escape');
+    ui.press('c');
+    for (const deltaY of deltas) dispatch(ui.canvas, 'wheel', { deltaY });
+    ui.studio.renderNow();
+    dispatch(ui.viewport, 'pointermove', { clientX: 440, clientY: 330 });
+    ui.studio.renderNow();
+    return Number(ui.root.querySelector('.crucible-studio-cage-brush').getAttribute('d').match(/a(\d+) /)[1]);
+  };
+  // The radius stays between sessions, so each gesture is measured from where the last one left it.
+  const start = radiusAfter([]);
+  const manyEvents = radiusAfter(Array.from({ length: 30 }, () => -10));
+  assert.ok(manyEvents > start, 'thirty small events up make the brush bigger');
+  assert.equal(radiusAfter([300]), start, 'one 300 px event down is three steps, the same three that thirty small ones made');
+  assert.equal(radiusAfter([-300]), manyEvents, 'one 300 px event up gives what thirty 10 px events gave');
 });

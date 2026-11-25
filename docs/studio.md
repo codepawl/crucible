@@ -4,7 +4,7 @@ Crucible Studio lets designers and AI agents work on the same `crucible.scene` r
 
 ## Open Studio
 
-An app mounts it with `createStudio(container, options)` (see below). To try it from a checkout, run `npm run dev` and open `/bench/studio/index.html`. Drop a `scene.json` on the window, or click the file name at the top left and choose **Open**.
+An app mounts it with `createStudio(container, options)` (see below). To try it from a checkout, run `npm run dev` and open `/bench/studio/index.html`. Drop a `scene.json` on the window, or open the **File** menu at the top left and choose **Open**.
 
 ## The screen
 
@@ -12,10 +12,10 @@ The scene fills the window and the controls float on top of it.
 
 | Where | What it does |
 | --- | --- |
-| Top left | The menus. **File**: New scene, Open, Open recent, Save, Save as, the three exports and the recipe JSON (see [New scene and recent scenes](#new-scene-and-recent-scenes)). **Edit**: undo, redo, copy, paste, duplicate, delete, deselect and Settings. **View**: front, right and top view, perspective or orthographic, frame the selection, the grid and the panels. **Agent**: copy a prompt for an AI agent and reload when it edits the file. **Help**: the keyboard shortcuts. Each row shows its key. |
+| Top left | The menus. **File**: New scene, Open, Open recent, Save, Save as, the three exports and the recipe JSON (see [New scene and recent scenes](#new-scene-and-recent-scenes)). **Edit**: undo, redo, the history of edits, copy, paste, duplicate, delete, deselect and Settings. **View**: front, right and top view, perspective or orthographic, frame the selection, the grid and the panels, History among them. **Agent**: copy a prompt for an AI agent and reload when it edits the file. **Help**: the keyboard shortcuts. Each row shows its key. |
 | Top centre | The workspaces, in the order the work runs: **Build** (objects and their place), **Look** (materials, lighting, sun, exposure, fog) and **Animate** (camera, lens, shots and the timeline). Each one shows only the panels its step needs. Opening a panel from anywhere, or adding a keyframe, brings its workspace forward. A workspace is a way of looking at the scene: it is not saved in the recipe and undo does not touch it. |
-| Top right | The file name, which opens the File menu, and **Export** (PNG image, GLB model, web pack). A green dot beside the name means Studio reloads the file when an agent edits it. |
-| Left rail | The tools that change the scene come first: select, move, rotate, scale, snap to a surface, then add an object or a light, undo and redo. Under one line sit the switches that only change what you see: show or hide the grid, show or hide the panels. |
+| Top right | The file name (click it to rename the scene), and **Export** (PNG image, GLB model, web pack). A green dot beside the name means Studio reloads the file when an agent edits it. |
+| Left rail | The tools that change the scene come first: select, move, rotate, scale, snap to a surface, then add an object or a light, undo and redo. Under one line sit the switches that only change what you see: show or hide the grid, see through the surface (edit mode, **Alt+Z**), show or hide the panels. |
 | Scene card | At the top of the right column, across from the rail. The list shows whole rows only: it scrolls a row at a time and the rows stretch by a pixel or two so a whole number of them fills it. The materials are one row of swatches that scrolls sideways, with the add button fixed beside it. Its head has a search button, which opens a box that filters the list as you type (Esc closes it and clears the filter), and an add button with the same menu as the rail. Every object in the scene, drawn as the shape of its geometry (cube, sphere, cylinder, cone, torus, plane, or a stack for a group) in the colour of its material, an eye to hide each one, and the scene materials as swatches. |
 | Properties | Under the Scene card, in the same column. The panels of the open workspace: the object in Build, material and look in Look, the camera (views, lens, shots) in Animate, with the object one tab away: picking an object there opens its panel and stays in Animate. |
 | Bottom, in Animate | Play, add a keyframe, switch Auto-key, scrub the time, jump to a saved shot. The selected object's keys are diamonds on the scrub track: click one to select it and move the playhead there, drag it or press Left and Right (Shift for finer) to retime it, Delete to remove that key. The readout moves up to make room for it, and floating panels stop above it. |
@@ -40,25 +40,43 @@ Each tool has its own handle shape, so the shape says what a drag will do: arrow
 
 One drag is one undo step, and undo leaves the viewport camera where you put it. Undo and redo of an edit, of adding or duplicating an object, and of deleting one change the scene already built instead of building it again, so a large scene stays responsive. That holds for putting a deleted object back into the middle of the list and for undoing a lens change too.
 
+## Apply transforms and set the origin
+
+Stretch a cube to a plank and its **Scale** reads 2, 0.5, 3. Ctrl+A (or **Apply…** in the right-click menu) opens the Apply menu: **Location**, **Rotation**, **Scale** or **All transforms**. The object looks the same and the chosen rows read 0, no turn and 1, so a mirror, bevel or array added later works on the real size. **Set origin…** in the same menu moves the point the object turns and scales about: **Origin to geometry** puts it in the middle of the bounds, **Origin to bottom centre** under the object, and, in edit mode with something picked, **Origin to selection** at the middle of the picked vertices. After the move, a turn swings the object about the new point and nothing moves on screen; objects parented to it stay where they are. Each choice is one undo step.
+
+Apply turns a basic shape (box, sphere, cylinder and the rest) into a mesh, so its shape settings are gone until you undo, and Studio says so. A geometry that other objects use is copied for the selected object only, so the others keep theirs. Studio refuses, and says what to do, for an object that has children (apply them first), a mesh with modifiers (apply or remove them), text, an imported file, an object a motion track moves, and a mesh whose edit log is full. Rotation alone is refused on an object stretched unevenly, because it would shear: apply Scale as well. The bottom is the lowest point of the bounds in the object's own space, not in the world. In code, `controller.applyImportOperations([{ type: 'apply-transform', node, parts }])` and `{ type: 'set-origin', node, to }` do the same.
+
 ## Edit a mesh
 
 The form of each Studio feature (tool, toggle, mode, operator, modifier, setting or panel) and the reason for it are listed in [Studio interaction forms](https://github.com/codepawl/crucible/blob/main/docs/studio-interaction-forms.md).
 
 Select an object and press **Tab**. A shape from the Add menu's Mesh group (plane, box, circle, sphere, icosphere, cylinder, cone, torus) turns into a mesh on the spot and edit mode starts, with no question asked; an object that is a mesh already just enters. Its cage appears over the picture: the polygon edges in pale lines, quieter on the far side of the mesh, with the vertices as dots in vertex mode. A group of three buttons joins the rail in the accent colour while you edit: vertex, edge or face, on **1**, **2** and **3**, with a button below them that leaves edit mode. The readout line at the bottom names the mode, and what you picked is drawn in the accent colour over the handles. Click picks the nearest vertex or edge or the face under the pointer; **Shift + click** adds or removes one; a click on nothing clears the selection. The move handles stand at the centre of the selection and work as they do for an object: drag an arrow or a square to move what you picked. They leave the pick in view: the centre dot gives way to a thin ring around the pick (drag it to move on the screen plane, as the dot did; a click inside it still picks), each arrow moves out whole, keeping its length, by the pick's reach on screen plus 12 pixels, and each plane square slides outward with its arrows. The ring and the arrows stop moving out at 100 pixels, so on a face larger than that they overlap the face. A plane square seen almost edge on, thinner than 4 pixels, is not drawn or grabbed. The arrow tips win over a square that lies over them. **Esc** during a drag puts it back; with nothing selected, **Esc** or **Tab** leaves edit mode.
 
-A mesh is the shape of the edit log in the recipe (`type: "mesh"`, a `base` shape and `edits`), so what you do is written there, and undo, redo, save and agents all see it. One drag is one entry of the log: a `translate` of faces when what you moved is exactly some faces, else a `set_position` of the picked vertices. Moves are in the object's own space, so a turned or stretched object moves the way its mesh does. While you drag, the surface follows the pointer for a mesh that Studio can rewrite in place (no skin, shape keys or level-of-detail set); the edit is written when you let go.
+In edit mode **X**, **Delete** or **Backspace** opens the Delete menu, with Dissolve Vertices, Dissolve Edges and Dissolve Faces. Each acts on what you picked in any mode: edges between picked vertices, the edges around a picked face, the faces whose every corner is picked. Dissolve Edges also removes the vertices it leaves with two edges, so dissolving a loop leaves clean quads. **M** opens the Merge menu: At Center, At First, At Last and Collapse. At First and At Last keep the vertex you picked first or last, so they work in vertex mode only; Collapse joins each connected group of picked vertices at its own centre. There is no At Cursor, because Studio has no 3D cursor. Each choice is one edit-log entry and one undo step, and the pick is cleared afterwards because the vertex numbers change.
+
+A mesh is the shape of the edit log in the recipe (`type: "mesh"`, a `base` shape and `edits`), so what you do is written there, and undo, redo, save and agents all see it. One drag is one entry of the log: a `translate` of faces when what you moved is exactly some faces, else a `set_position` of the picked vertices. With proportional editing on, the same drag is a `translate` with a `falloff` (below). Moves are in the object's own space, so a turned or stretched object moves the way its mesh does. While you drag, the surface follows the pointer for a mesh that Studio can rewrite in place (no skin, shape keys or level-of-detail set); the edit is written when you let go.
 
 The conversion keeps the object where it is, its size, material, name, parent, children and animation. A box and a cylinder lose their small bevel on the way, so their edges turn sharp and the cage is the plain shape: a box is 6 faces (1,482 with the bevel), a cylinder 96 (672). The other shapes keep every segment they had: plane 64 faces, circle 37, sphere 864, icosphere 320, cone 72, torus 1,344 (the Add menu's torus, 56 by 24 segments; a torus in a recipe with no segments given has 48 by 48, 2,304 faces). The conversion is one undo step that gives the shape back and leaves edit mode; redo makes the mesh again.
 
 Not there yet, and said so on screen when you reach it:
 
 - Text, a light, a group or an imported file has no mesh to edit, and the message says what it is and what to do instead.
-- A mesh holds at most 64 edits, and a move needs one. At the limit Studio refuses the drag before it starts.
+- A mesh holds at most 64 edits, and a move, a dissolve or a merge needs one. At the limit Studio refuses it before it starts.
 - A move of more than 19 vertices that are not whole faces cannot be written yet; pick whole faces, or fewer vertices.
 - A mesh with a modifier stack is refused. A mesh of more than 8,000 triangles draws only the picked elements, with a notice.
 - **Alt+A** selects none and **Ctrl+I** inverts the selection, in the mode you are in (vertices, edges or faces); the object stays selected. Inverting nothing selects everything of that mode. Like a pick, neither is an undo step.
-- **C** starts circle select. A circle follows the pointer: drag with the left button to select what it passes over, drag with the middle button (or hold **Shift**) to deselect, turn the wheel to make the circle bigger or smaller (4 to 400 pixels, 25 to start), and press **Esc** or right click to stop. In vertex mode it takes the vertices inside the circle, in edge mode the edges it touches, in face mode the faces it overlaps. Only what faces the camera is taken. The circle keeps its size until you change it.
+- **Alt+click** selects a loop: in edge mode (or vertex mode) the loop of edges through the edge nearest the pointer, in face mode the band of faces that crosses the face edge nearest the pointer. **Ctrl+Alt+click** selects the ring of edges, or in face mode the band across the next edge round the face. **Shift** with either adds to the selection. A loop goes straight on through a vertex with four edges and four quads around it, and stops at a corner where 3 or 5 or more edges meet, at the border of the mesh and at a triangle or a larger polygon. A ring crosses quads only. In keymap presets that orbit the view with Alt and the left button, Alt+click and Ctrl+Alt+click orbit instead, so loop and ring selection is not reachable by click there.
+- **L** selects everything joined to the element under the pointer, and **Ctrl+L** everything joined to the selection; parts that share a vertex count as joined.
+- **]** grows the selection by one step and **[** shrinks it by one, in the mode you are in: vertices step along edges, edges and faces step to the ones that share a vertex. **Ctrl+Numpad +** and **Ctrl+Numpad -** do the same. The brackets come first because Ctrl with plus or minus zooms the page and a laptop has no numpad.
+- **C** starts circle select. A circle follows the pointer: drag with the left button to select what it passes over, drag with the middle button (or hold **Shift**) to deselect, turn the wheel to make the circle bigger or smaller (4 to 400 pixels, 25 to start; one step per 100 pixels of wheel travel, so a trackpad swipe and a mouse wheel resize alike), and press **Esc** or right click to stop. Switching to another window or tab stops it too. In vertex mode it takes the vertices inside the circle, in edge mode the edges it touches, in face mode the faces it overlaps. Only what faces the camera is taken. The circle keeps its size until you change it.
+- **B** starts box select: drag one rectangle with the left button and everything of the mode that lies wholly inside it is selected (**Shift** adds to the selection instead of replacing it). The key is spent after one rectangle, and **Esc** drops it.
+- **Alt+Z** turns **see-through** on or off, and so does the button in the rail's lower group. While it is on, the surface of the object you edit is drawn faint, the far side of the cage is drawn as strongly as the near side, and a click, the circle and a box reach the far side too: from the front, a box over a cube takes all 8 vertices instead of the 4 facing you. It is a view setting, kept while Studio is open and for the next edit session: it changes nothing in the recipe, adds no undo step, and `studio.setSeeThrough(true)` sets it from code. In face mode a click takes the face whose centre is nearest the pointer among those drawn under it.
+- **O** turns proportional editing on or off, from the button at the foot of the edit mode group (it lights while on). While it is on, a move also takes the vertices around the picked ones along, by a curve that fades to nothing at a radius, and a circle around the pick shows that radius. Turn the wheel while you hold a move to widen or narrow it (a factor of 1.15 a notch, from 0.01 to 100 in the mesh's own units, 0.5 to start). The button beside it opens a popover with the curve (smooth, round, root, sharp, linear or flat, each drawn) and a size slider. The move is written as one `translate` with a `falloff` of `{ radius, curve }`, the falloff a recipe or an agent writes, so an undo, a save and a replay give the same hill. A pick that is not whole faces is named by its vertices (`verts: { "vertices": [..] }`, up to 4096) because it has no face to select. In a keymap preset where O frames the object, O is proportional editing inside edit mode and S still frames.
 - Rotate, scale, box select, extrude and the other tools come next.
+
+**P** in edit mode opens a small menu at the middle of the viewport with **Selection**: the picked faces (in vertex or edge mode, the faces whose vertices are all picked) become a new object named `<name>-part`, with the same position, size, parent and material, so nothing moves. The object keeps its other faces and stays in edit mode; with nothing picked, or every face picked, it says what to do and changes nothing. It is one undo step.
+
+**Ctrl+J** (or **Edit ▸ Join**) joins the selected objects into the one picked last: each mesh is added to it where it stood in the scene, and the other objects go. Select two or more first (Shift or Ctrl with a click, or the Scene list). A shape joins as a mesh, and a joined object that has children, motion or a physics body is refused with the reason. The objects must share one material, since a mesh draws with one; if they differ, give them the same material first or keep them apart. It is one undo step.
 
 If another object uses the same geometry, entering edit mode gives this object a geometry of its own (the same conversion step), so the other one keeps its shape and does not move with it.
 
@@ -79,6 +97,18 @@ Each shape is an ordinary recipe geometry, so an agent can keep editing it: a ci
 Select a plane, box, circle, sphere, icosphere, cylinder, cone or torus and the node panel shows a Shape section with the fields of its geometry: segments, rings, bevel, bevel segments, subdivisions, the radii of a cone, the inner radius of a circle, and the tube radius and sides of a torus. A shape's size is its scale, which stays in the Transform rows. Type a number and press Enter: the shape is rebuilt and the change is one undo step. A shape that another object uses is copied for the selected one, so the others keep theirs. A number outside the range, or text that is not a number, is refused with a message that names the range, and the field goes back to the recipe.
 
 An edit in edit mode turns the shape into a mesh, which has no such fields. The section then says so instead of showing them; undoing the edit brings them back. A geometry that is not one of these shapes (text, lathe, extrude, terrain and the rest) shows no Shape section.
+
+## The Edit menu and History
+
+The **Edit** menu sits next to File in the top bar. Its first rows are Undo, Redo, History and, further down, Settings, each with an icon, and Undo and Redo show the keys of the active keymap. Undo and Redo are dimmed while there is nothing to step to.
+
+**History** is a panel in the right column, a card under Properties. **View > History** shows and hides it, and the choice is kept with the other view preferences; there is no close button, since the toggle that opened it hides it. **Edit > History** shows it and puts the keyboard focus on the row of the edit the scene shows. Like Scene and Properties it has a chevron in its header that folds it to its title row, and that choice is remembered too; Properties gets the room back. Properties has priority in the column: History takes at most a third of it and shows at most six rows, whole rows only (the list scrolls a row at a time and keeps the current row and the undone rows after it in view), and Properties keeps at least 240 px while History is shown, its body scrolling inside its card. At 1280 by 720 that is three rows. A body that scrolls (Scene, Properties, History) always shows a thin scrollbar and fades the edge that hides content, so a cut row never looks like the end. In a window under the compact width the panel starts closed like the others, shows at most four rows, and takes turns with Properties: showing History puts Properties away, and the panels button or View > Properties brings Properties back and puts History away.
+
+The rows are the edits in the order they were made, oldest at the top and the newest at the bottom, so a recording reads downward. **Start** is the first row: the scene as it was opened (it is left out once the oldest steps have fallen off the 32-step stack). Each row has an icon for the kind of edit, its name (Move, Rotate, Scale, Add box, Hide, Change material, Edit animation and so on) and, in muted text, the object it acted on, such as "Move Cube". A name too long for the panel ends in an ellipsis and its full text is in the row's title. Every edit adds its row at once and the newest row scrolls into view.
+
+A filled mark and strong text sit on the edit the scene shows now. The rows after it, the edits that were undone and can still be redone, are dimmed in the muted colour and stay clickable. Click a row, or press Enter or Space on it, to go there: the scene steps back or forward through undo and redo until it matches that edit. Tab reaches the current row, Up and Down move between rows, and Home and End go to the first and last. An edit made while some rows are dimmed removes them.
+
+In code, `controller.history` gives `{ labels, details, position, reachesStart }` (the names oldest first, what each acted on, how many edits are applied, and whether the list starts at the opened scene), and `controller.goToHistoryPosition(position)` steps to a position from 0 to `labels.length`. The name of an edit comes from the operations it applied, so a handle, a field and an agent that make the same edit read the same.
 
 ## Camera and lights in the Scene list
 
@@ -110,6 +140,24 @@ Click an object to select it. Shift+click (or Ctrl or Command+click) adds an obj
 
 Every selected object has an outline in the accent colour with a thin ring of the viewport's dark (`--studio-trace-edge`, the same in both themes, because the viewport is dark in both) on each side, so it reads on light and dark surfaces and leaves no pale glow on the floor in the light theme: the active object's outline is 4 px wide and the others' 2 px, twice as wide on screen (the filters draw a 1.5 px ring as 2 px, so a 3 and 1.5 pair only differed by half). In the Scene list every selected row is tinted, the active one more strongly (it also carries `aria-current`); a click on a row selects only that node, and Shift or Ctrl or Command+click on a row adds it or takes it out, as in the viewport. Where the shape outline cannot draw (no WebGL2, or part of the selection is behind the camera) Studio outlines the active node and at most 11 of the others by their convex hull, because each hull costs a pass over its vertices. A selection too dense for the shape outline (past 8,000 triangles) is drawn by the mask at the 2 px strength of the others, and the active object is drawn over it at 4 px: from its own shape when it alone fits the 8,000 triangles, else from a second mask of its own, so a dense imported model gets its true silhouette and not a hull across its holes. Only when that second mask cannot draw (no WebGL2) is the active object marked by its hull. One dense object selected alone is the mask at 4 px. The Properties card, the handles, the readout and every action (move, delete, duplicate, hide, keyframes) still work on the active object only, and the Properties head says how many are selected. Tab edits the mesh of the active object.
 
+## Rename in place
+
+A name you own is renamed where it is shown: the field replaces the name, Enter keeps the new one and Esc cancels. Clicking or tabbing away keeps a valid name and drops an invalid one, so a half-typed name is never applied. While the field is open no Studio key acts, so G, R, S, Delete and Ctrl+A type or edit text.
+
+| Name | How | What changes |
+| --- | --- | --- |
+| The scene file, in the top bar | One click on the name | Only the name part is the field. The type stays beside it as plain text and is kept on save: `.scene.json`, `.json` or `.glb`, or the extension of the open file. Any other dot belongs to the name ("Scene 1.5" stays "Scene 1.5"), and a type typed at the end is dropped. The name stays on the top bar at every width: a long one ends in an ellipsis and its type stays visible. While you edit, the ring surrounds only the name and the type sits after it, outside the ring. |
+| An object, in the Scene list | Double click, or F2 on the active object (also **Edit ▸ Rename** and the right click menu) | The label changes, the id stays, so two objects may share a label. One undo step. With several selected, F2 renames the active one. |
+| A shot, in the Camera tab | Double click | The shot keeps its place and camera. A name another shot has is refused. One undo step. |
+
+The camera, the sun, the lights, the materials (shown by id) and the names Studio gives (tools, sections, templates) are not renamed. A material is its id, which nodes refer to.
+
+A bad name stays in the field with a mark and a reason under it: empty or only spaces; for a file name any of `\ / : * ? " < > |` or a control character, a trailing dot, a Windows device name (CON, PRN, AUX, NUL, COM1 to COM9, LPT1 to LPT9, with or without an extension) and more than 120 characters; for a shot more than 24 characters or anything but letters, digits, - and _; for an object more than 256 characters. Text that cannot be seen or that flips the reading order (zero width characters and bidirectional controls) is refused too. Leading and trailing spaces are trimmed and a new line becomes a space. The reason sits beside the name when the gap between the workspace tabs and the name holds it, and under the name otherwise, moved left so it never covers the Scene panel.
+
+The scene name is not part of the recipe, so a rename does not mark the scene as changed. The next save, the document title and the draft use the new name. A web page cannot rename a file on disk, so there Studio says once that the new name applies from the next save and the old file stays as it is. A host that passes `desktop.renameScene({ filePath, fileName })` is asked to rename the open file instead. It must not overwrite: it answers `{ filePath, fileName }` on success, or `{ exists: true }` when the name is taken, and Studio then shows "A file with this name already exists" in the field. A rejection that is not an error object (a string, or nothing) counts as a failure too. While the host works the field is read-only, with a neutral ring, dimmed text and a turning mark (no turning with reduced motion), Esc and clicking away leave it open, and no second rename starts; when the host answers, the name is applied or the reason shows. The web page says "Renamed. Saved under this name next time."; a host that renamed the real file says only "Renamed". A host without that method sends the next Save through Save as with the new name suggested.
+
+While an input method composes text (Japanese, Chinese, Korean), Enter picks the candidate and does not keep the name, and clicking away does not commit.
+
 ## Keys
 
 **Help ▸ Keyboard shortcuts** (or **?**) lists every key.
@@ -119,18 +167,29 @@ Every selected object has an outline in the accent colour with a thin ring of th
 | Q, T | Select, snap to a surface |
 | G, R, S | Pick the selected object up to move, rotate or scale it |
 | X, Y, Z | While holding an object: keep it to that axis; the same key again frees it |
+| Shift+X, Shift+Y, Shift+Z | While holding an object: keep it to the plane across that axis |
 | Click or Enter, Esc or right click | While holding an object: place it, put it back |
 | Shift+A | Add an object or a light |
 | Ctrl+C, Ctrl+V | Copy the selected object, paste a copy of it (one undo step, still works after the original is deleted) |
 | Shift+D or Ctrl+D | Duplicate |
+| Ctrl+J | Join the selected objects into the one picked last |
+| F2 | Rename the active object, in its Scene row |
 | X, Delete or Backspace | Delete |
 | Esc | Deselect |
 | A, Alt+A, Ctrl+I | Select all, select none, invert the selection |
 | Tab | Edit the mesh of the selected object; Tab again leaves |
 | 1, 2, 3 | In edit mode: select vertices, edges or faces |
-| Alt+A, Ctrl+I, C | In edit mode: select none, invert the selection, circle select (Esc or right click ends it) |
+| X or Delete, M | In edit mode: the Delete menu (dissolve), the Merge menu |
+| Alt+A, Ctrl+I, C, B | In edit mode: select none, invert the selection, circle select (Esc or right click ends it), box select |
+| P | In edit mode: separate the picked faces into their own object |
+| L, Ctrl+L | In edit mode: select what is linked under the pointer, or linked to the selection |
+| ], Ctrl+Numpad + | In edit mode: grow the selection by one step |
+| [, Ctrl+Numpad - | In edit mode: shrink the selection by one step |
+| O | In edit mode: proportional editing on or off (see Proportional editing) |
+| Alt+Z | See through the surface |
 | H, Alt+H | Hide the selection, show everything that is hidden |
 | Alt+G, Alt+R, Alt+S | Reset the position, rotation or scale of the selection |
+| Ctrl+A | Open the Apply menu: fold the selection's location, rotation or scale into its geometry |
 | Right click | Menu of the object under the pointer |
 | F or . | Fly to the selection, or to the whole scene when nothing is selected |
 | 1, 3, 7 | Front, right and top view |
@@ -149,9 +208,17 @@ When a motion track moves the camera, the track decides what the scene camera se
 
 Keys do nothing while you type in a field or while a dialog is open.
 
-G, R and S: with an object selected and the pointer over the viewport, the key picks the object up: it follows the pointer with no handle to aim at, and a pill at the bottom of the viewport shows how far it has gone and the keys that act on it. X, Y or Z keeps the move to that axis of the object, a click or Enter places it, and Esc or a right click puts it back as if nothing happened. A placed move is one undo step. With nothing selected, or the pointer over a panel, the key only switches the tool, and the handles work as before. Typing a number while holding an object is not supported: type it in Properties instead.
+G, R and S pick an object up. With an object selected and the pointer over the viewport, the key picks the object up: it follows the pointer with no handle to aim at, and a pill at the bottom of the viewport shows how far it has gone and the keys that act on it. X, Y or Z keeps the move to that axis of the object, a click or Enter places it, and Esc or a right click puts it back as if nothing happened. A placed move is one undo step. With nothing selected, or the pointer over a panel, the key only switches the tool, and the handles work as before. Shift with X, Y or Z keeps a move or a scale on the plane across that axis instead: Shift+Y is the ground, Shift+X the Y and Z plane and Shift+Z the X and Y plane (a turn goes around one axis, so there Shift+Y turns about Y). Typing the amount sets it exactly: G, X, 2, Enter moves 2 m along X, R, Y, 9, 0 turns 90 degrees about Y and S, 2 doubles the size. Digits, a point and a minus sign build the number, which shows in the pill, Backspace takes the last one back and the pointer stops steering until it is cleared. On a plane the number applies to both of its axes; with no axis a move goes to the right of the view. The same drag carries a handle drag and a drag in edit mode, so one typed amount path serves all of them.
 
-A right click on an object, in the viewport or in the Scene list, selects it and opens its menu at the pointer: Frame, Duplicate, Hide, the three resets and Delete. They are the same rows as in **Edit**, with the same keys. A menu row starts with its icon when one fits and with an empty square when none does, so the labels line up. Dragging with the right button still pans. Alt takes back what the plain key does: G, R and S change a transform and Alt+G, Alt+R and Alt+S reset it, H hides the selection and Alt+H shows everything again, as one undo step.
+A right click on an object, in the viewport or in the Scene list, selects it and opens its menu at the pointer: Frame, Rename, Duplicate, Hide, the three resets and Delete. They are the same rows as in **Edit**, with the same keys. A menu row starts with its icon when one fits and with an empty square when none does, so the labels line up. Dragging with the right button still pans. Alt takes back what the plain key does: G, R and S change a transform and Alt+G, Alt+R and Alt+S reset it, H hides the selection and Alt+H shows everything again, as one undo step.
+
+## Help
+
+The last menu of the top bar, **Help**, has four rows, each with an icon.
+
+- **Keyboard shortcuts** (or **?**) opens a sheet in the middle of the window. It lists every action that has a key in the keymap you chose, in groups by what you are doing (File, History, Selection, Clipboard and objects, Transform and tools, View, Animation, Mesh editing, Holding an object, Mouse, Help and settings), one row per action with its key on the right. A keymap preset or a rebound key shows its new label the next time the sheet is filled. The groups sit in two columns, or one in a narrow window, and the sheet scrolls inside itself when the window is short. **Esc** or the close button in the title row closes it, and the focus goes back to the **Help** button when it was opened from there.
+- **Documentation** opens this guide on GitHub in a new tab that cannot reach back into Studio. A host page that passes `openExternal(url)` to `createStudio` gets the address instead and opens it its own way.
+- **Set up Studio** reopens the setup. **Save diagnostics report** downloads the report described under Diagnostics.
 
 ## Keymaps
 
@@ -176,6 +243,9 @@ A right click on an object, in the viewport or in the Scene list, selects it and
 | Invert the selection | Ctrl+I | Ctrl+I | Ctrl+I |
 | Frame the selection | F, . | F | O, S |
 | Show or hide Properties | N | Ctrl+A | Shift+F5 |
+| Apply transforms | Ctrl+A | Ctrl+Alt+A | Ctrl+A |
+| See through the surface | Alt+Z | Alt+Z | Alt+Z |
+| Box select (edit mode) | B | B | B |
 | Insert a keyframe | I, K | S | F9 |
 | Play | Space | Alt+V | F8 |
 
@@ -185,7 +255,46 @@ Maya and Cinema 4D also take **Alt** with a mouse button on the viewport: Alt an
 
 ## Settings
 
-**Edit ▸ Settings** (Ctrl+,) opens Settings: the step and the angle a Shift drag snaps to, the size of the handles, the workspace Studio opens in, the theme (System, Light or Dark), the performance tier, the keys (Blender, Maya or Cinema 4D), and whether the grid, the readout, the axis widget and the agent cursor show. They are kept in the browser (`localStorage`, key `crucible-studio-preferences`), not in the scene recipe, so a scene looks the same for everyone and each person keeps their own setup. **Reset** brings back the defaults. An app can pass `preferences` to `createStudio` to start from other values, `preferenceStorage: null` to keep nothing, and call `studio.setPreference(name, value)`.
+**Edit ▸ Settings** (Ctrl+,) opens Settings. A short list of sections stands on the left, each with an icon, and the rows of the chosen section are beside it; the dialog keeps the height of the tallest section, so it does not jump when you switch. On a narrow window the list shows only the icons.
+
+| Section | Rows |
+| --- | --- |
+| Interface | Theme (System, Light or Dark), Open in (the workspace Studio opens in), Floating panels, Motion |
+| Viewport | Performance tier, Grid, Camera and size readout, Axis widget, Agent cursor, Handle size, Zoom direction |
+| Editing | Move snap step and Rotate snap angle for a Shift drag |
+| Keys | The key preset and a button that opens the shortcuts list |
+| Account | Only when the host page offers an account, see below |
+
+They are kept in the browser (`localStorage`, key `crucible-studio-preferences`), not in the scene recipe, so a scene looks the same for everyone and each person keeps their own setup. **Reset** brings back the defaults of every row. **Run setup again** opens the first-run setup. An app can pass `preferences` to `createStudio` to start from other values, `preferenceStorage: null` to keep nothing, and call `studio.setPreference(name, value)`.
+
+**Motion** is `motion`: `'system'` (the default) follows the system's reduced-motion setting, and `'reduced'` turns off Studio's own motion whatever the system says: menus, hover fades and the agent pointer's glide take no time, the bake pulse stops, and F frames the selection with a jump instead of a flight. Both ways go through one switch, so the system setting and the preference never disagree. Showing full motion over a system that asks for less is not offered: the motion rules are written as `prefers-reduced-motion` media queries, which a preference cannot turn back on.
+
+**Zoom direction** is `zoomDirection`: `'normal'` (the default) moves the camera away when the wheel scrolls down, `'inverted'` brings it closer. A trackpad pinch arrives as a wheel with Ctrl held and follows the same choice.
+
+**Units** (metres, centimetres, millimetres, feet and inches) are not a setting yet: the readout, the drag labels and the number fields each format lengths on their own, so a display unit needs one shared length formatter first.
+
+### Account
+
+When the host page provides `globalThis.crucibleShell.account`, Settings gets an **Account** section. Studio holds no token and makes no network call: it shows what the object reports and calls the functions it offers.
+
+```js
+globalThis.crucibleShell = {
+  account: {
+    // Required. Every optional field may be missing; text fields are shown as plain text.
+    async get() {
+      return { signedIn: true, name: 'Sample Person', email: 'sample.person@example.com', remainingText: '1,240 credits left', planText: 'Studio plan' };
+    },
+    async signIn() {},        // resolves when the sign-in is done; rejecting shows its message under the status
+    async signOut() {},       // resolves when done; Sign out is shown only when this exists
+    buyCredits() {},          // optional: "Buy more" is shown only when this exists
+    manageBilling() {},       // optional: "Manage billing" is shown only when this exists
+  },
+};
+// When the account changes, tell Studio and it reads get() again:
+document.dispatchEvent(new Event('crucible-shell:account-changed'));
+```
+
+Signed out, the section shows a lock mark, "Signed out" and one **Sign in** button; while `signIn()` runs the button reads "Waiting" and is disabled. Signed in, it shows a check mark, the person in a round avatar with an initial (no remote images), then `remainingText` as "Left to use" and `planText` as "Plan" when given, and the buttons. A host that has only the older `crucibleShell.builtInAgent` (`isSignedIn()`, `signIn()`) gets the section with the state and Sign in. With neither, there is no Account section.
 
 **Theme** forces the Studio light or dark whatever the system says; System follows the system. The dialogs and menus follow it too. An app that wants to theme its own frame passes `onThemeChange(theme)` to `createStudio`; it is called with `'light'` or `'dark'` at the start and on each change.
 
@@ -195,7 +304,7 @@ Maya and Cinema 4D also take **Alt** with a mouse button on the viewport: Alt an
 
 Studio spaces everything on one scale: 4, 8, 12, 16 and 24 px, as `--studio-space-4` to `--studio-space-24` on the Studio root, and 0. A 2 px step is allowed only between touching controls of one group (the buttons of a tool row); 6, 10, 14 and 18 px are not, because every use turned out to be a 4, 8, 12 or 16. Inside a group the gap is small (4 or 8), between groups it is larger (16 in a card), and the gap between groups is never smaller than the gap inside one. A card has the same inset on all four sides, measured from its real children.
 
-`node scripts/studio-layout-audit.mjs [--json] [--only setup|studio|popover|newscene|dialog|notice|notices]` checks this on the real DOM in headless Chrome: the Studio page, each of its menus, the three dialogs (the Settings dialog for selection only until #3317 redesigns it), the notices (an error toast, a plain toast, the paused notice with and without Reload, the draft notice), the five steps of the setup dialog, the New scene chooser, its unsaved-changes question and the File menu with Open recent expanded, in the dark and the light theme at 1280 by 720 (`--width 720` checks a narrow window). It fails with the selector, the measured numbers and the token to use when a container with a visible edge shows unequal insets (more than 2 px apart), when a gap or padding is off the scale, or when the gap between groups is smaller than the gap inside them. A container with no gap is not held to the last rule, since it keeps its parts apart with padding or is one surface. The few insets that are meant to differ (the tool rail, the end of an outliner row, a menu row) are declared with a reason in `ALLOWLIST` of `scripts/studio-layout-audit.mjs`; fix a real finding in the CSS instead of listing it. The rules are plain functions in `scripts/studio-layout-rules.mjs`, tested without a browser in `tests/studio-layout-rules.test.js`; `tests/studio-layout-audit.test.js` runs the audit in Chrome with the unit tests and seeds a mistake it must catch.
+`node scripts/studio-layout-audit.mjs [--json] [--only setup|settings|studio|popover|newscene|dialog|notice|notices]` checks this on the real DOM in headless Chrome: the Studio page, each of its menus, the dialogs (Settings is measured section by section, with a sample signed-in host so Account is included), the notices (an error toast, a plain toast, the paused notice with and without Reload, the draft notice), the five steps of the setup dialog, the New scene chooser, its unsaved-changes question and the File menu with Open recent expanded, in the dark and the light theme at 1280 by 720 (`--width 720` checks a narrow window). It fails with the selector, the measured numbers and the token to use when a container with a visible edge shows unequal insets (more than 2 px apart), when a gap or padding is off the scale, or when the gap between groups is smaller than the gap inside them. A container with no gap is not held to the last rule, since it keeps its parts apart with padding or is one surface. The few insets that are meant to differ (the tool rail, the end of an outliner row, a menu row) are declared with a reason in `ALLOWLIST` of `scripts/studio-layout-audit.mjs`; fix a real finding in the CSS instead of listing it. The rules are plain functions in `scripts/studio-layout-rules.mjs`, tested without a browser in `tests/studio-layout-rules.test.js`; `tests/studio-layout-audit.test.js` runs the audit in Chrome with the unit tests and seeds a mistake it must catch.
 
 ## Selecting text
 

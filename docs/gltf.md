@@ -302,6 +302,8 @@ A scene file whose GLB has no lights of its own, and whose `renderer.environment
 
 A scene file that lists its own `pointLights`, `spotLights` or emitting `areaLights` in `renderer.environment` (a portal emits nothing) is lit by them alone, as a GLB with `KHR_lights_punctual` is: the renderer's studio fill goes off, and so does the studio key, unless the file writes `keyIntensity`, `fillIntensity`, `lightDirection` or `keyColor` itself, which then wins (#2765). A scene file with no lights of its own keeps the studio key and fill. The HDRI sun of the previous paragraph still becomes the key when the file names no key.
 
+**Effects that read depth (#3388).** A scene file whose `frame.effects` asks for ambient occlusion (`ambientOcclusion` above 0), depth of field (`depthOfField.blur` above 0), motion blur (`motionBlur.shutter` above 0) or sun rays (`sunRays`, intensity above 0) gets a renderer with depth on, so those effects draw without `"renderer": { "depth": true }`. Before, ambient occlusion alone was skipped without a message, and the frame matched one with `ambientOcclusion` 0. The file asking for the effect wins over a `"depth": false` written in the same file. The list is `src/file-scene-depth.js`.
+
 ## Verification
 
 `node --test tests/gltf.test.js` covers generated GLB triangles and the existing `exportGlb` roundtrip.
@@ -325,7 +327,7 @@ Renderer integration owns the final textured rendering check.
 - `surfaces` is a node name, a material name, or a list of them. If none match, the error lists the names the GLB has.
 - Blades grow on the upward faces of those parts. They skip any spot where another part stands within `length` above the surface, so a path or slab on the lawn stays clear.
 - Optional fields: `preset` (`lawn` by default; also `meadow`, `savanna`, `wild`), `density` (blades per square metre), `length` (metres), `color` (`"preset"`, `"surface"` for the surface material colour, or three linear RGB numbers), `wind` (0 to 1, default 1: the share of the scene wind these blades feel) and `seed`.
-- The field is seeded and built once, for the first camera frame. Every frame and every rerender draws the same blades. The blades sway with the frame time, so a video shows the wind and a single frame at one time is always the same.
+- The field is seeded and built once, for the first camera frame. The blades grow on a worker in the browser, so the page stays responsive while a large meadow builds (an 80 by 80 unit lawn at 150 per square unit held the page for about 0.8 s before); Node and hosts without workers grow the same blades on the calling thread. Every frame and every rerender draws the same blades. The blades sway with the frame time, so a video shows the wind and a single frame at one time is always the same.
 - The limit is 2,000,000 blades for all entries together. Crucible estimates the lowest possible count for each entry (area times density times 0.12) and adds them up. If the total is over the limit, it refuses before it grows anything.
 - Wind is per field. The wind bends a blade tip by a share of the blade length, so a 0.12 m lawn and a 0.6 m meadow lean to the same angle under the same wind. `wind` sets the share of the scene wind a field feels; trees and every other grass field keep the scene wind exactly.
 - A scene without the field loads nothing and renders as before.

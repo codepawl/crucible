@@ -1,0 +1,3 @@
+- goal:lit-box: the cubic fade term (about 30 bytes gzip) removes the remaining bright beads along the silhouette of normal-mapped metal, a visible fault; the bytes are the shader text of the fade (#3142).
+- goal:gltf-box: the cubic fade term (about 30 bytes gzip) removes the remaining bright beads along the silhouette of normal-mapped metal, a visible fault; the bytes are the shader text of the fade (#3142).
+- goal:agent-scene: the cubic fade term (about 30 bytes gzip) removes the remaining bright beads along the silhouette of normal-mapped metal, a visible fault; the bytes are the shader text of the fade (#3142).

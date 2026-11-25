@@ -68,7 +68,7 @@ const PART_FLAG_FIELDS = RENDER_FLAG_FIELDS.slice(1);
 // On an asset placement these two flags reach each part it expands to.
 const ASSET_PLACEMENT_FLAG_FIELDS = ['castShadow', 'receiveShadow'];
 const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'vegetation', 'clutter', 'grass', 'decal', 'faceImages', 'depthLayer', 'billboard', 'blend', 'rayVisibility', ...RENDER_FLAG_FIELDS];
-const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'alphaCutoff', 'doubleSided', 'depthTest', 'pattern', 'map', 'text', 'subsurface', 'snippet', 'waterPreset', 'absorption', 'turbidity', 'foamEdge', 'foamWidth', 'foamColor', 'foamVeins', 'contactFoam', 'caustics', 'ripples', 'waterRamp', 'aov', 'wear', 'surfaceCover', 'retro', 'emissionMask', 'toonColors', ...MATERIAL_LAYER_FIELDS];
+const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'alphaCutoff', 'doubleSided', 'depthTest', 'pattern', 'map', 'text', 'subsurface', 'snippet', 'preset', 'waterPreset', 'absorption', 'turbidity', 'foamEdge', 'foamWidth', 'foamColor', 'foamVeins', 'contactFoam', 'caustics', 'ripples', 'waterRamp', 'aov', 'wear', 'surfaceCover', 'retro', 'emissionMask', 'toonColors', ...MATERIAL_LAYER_FIELDS];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'layerMaps', 'transmissionMap', 'aovMap', 'emissionFresnel', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = [...Object.keys(CAMERA_DEFAULTS), ...CAMERA_LENS_FIELDS];
 // Fields of an optional shader module join the list here, so the long list above stays a line each material feature does not rewrite.
@@ -324,8 +324,9 @@ function applyAlphaCutoff(value, result) {
   result.alphaCutoff = value.alphaCutoff;
 }
 
-function materialFrom(value) {
-  knownKeys(value, ['id', 'tag', ...MATERIAL_FIELDS, ...TEXTURE_SET_RECIPE_FIELDS], 'material');
+function materialFrom(recipeValue) {
+  const value = recipeValue.preset === undefined ? recipeValue : agentSceneModule('materialPresets').applyMaterialPreset(recipeValue, (given, expected) => invalidField('preset', given, expected));
+  knownKeys(recipeValue, ['id', 'tag', ...MATERIAL_FIELDS, ...TEXTURE_SET_RECIPE_FIELDS], 'material');
   // A pattern or a catalog colour map brings its own colours, so the color field tints it and leaves it unchanged by default.
   const defaultColor = value.pattern === undefined && value.colorMap === undefined && value.text === undefined ? [0.5, 0.5, 0.5] : [1, 1, 1];
   const graph = value.pattern?.type === 'graph' ? value.pattern.graph : {};
@@ -781,10 +782,11 @@ function geometryEstimate(value, scope = PENDING_CUTTER_SCOPE) {
       const cutterScope = meshCutterScope(value, scope);
       let referencedWork = 0;
       for (const edit of agentSceneModule('mesh').normalizeMeshEdits(value.edits ?? [])) {
-        if (edit.op !== 'boolean') continue;
-        const cutterVertices = cutterEstimate(edit.cutter, cutterScope);
+        const reference = geometryReferenceOf(edit);
+        if (!reference) continue;
+        const cutterVertices = cutterEstimate(reference, cutterScope);
         estimate += cutterVertices;
-        if (isCutterReference(edit.cutter)) referencedWork += cutterVertices;
+        if (isCutterReference(reference)) referencedWork += cutterVertices;
       }
       if (referencedWork > MAX_CUTTER_WORK_VERTICES) {
         throw invalidField('cutter.geometry', `${referencedWork} estimated cutter vertices in ${cutterScope.chain.join(' -> ')}`, `cutter geometries that total at most ${MAX_CUTTER_WORK_VERTICES} estimated vertices; use fewer segments or fewer referenced cutters`);
@@ -869,8 +871,15 @@ function referencedCutterEstimate(cutter, scope) {
   return geometryEstimate(definition, { definitions: scope.definitions, chain });
 }
 
+// What an edit reads from another recipe geometry or primitive: a boolean's cutter, or the geometry a join adds.
+function geometryReferenceOf(edit) {
+  if (edit?.op === 'boolean') return edit.cutter;
+  if (edit?.op === 'join') return { geometry: edit.geometry };
+  return null;
+}
+
 function namesCutterGeometry(edit) {
-  return edit?.op === 'boolean' && typeof edit.cutter?.geometry === 'string';
+  return typeof geometryReferenceOf(edit)?.geometry === 'string';
 }
 
 // The records of the cutter geometries a mesh names, nested ones included: what its result depends on beyond its own record.
@@ -878,7 +887,7 @@ function cutterDependencySignature(meshDefinition, definitions) {
   const parts = [];
   for (const edit of meshDefinition.edits ?? []) {
     if (!namesCutterGeometry(edit)) continue;
-    const definition = definitions.get(edit.cutter.geometry);
+    const definition = definitions.get(geometryReferenceOf(edit).geometry);
     parts.push(JSON.stringify(definition), cutterDependencySignature(definition, definitions));
   }
   return parts.join('|');
@@ -2898,6 +2907,10 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           if (fracturedId !== undefined) removedNodes.add(fracturedId);
           continue;
         }
+        if (operation.type === 'separate-faces' || operation.type === 'join-meshes') {
+          agentSceneModule('meshParts').applyMeshPartsOperation(candidate, operation, removedNodes, geometryId => generateOperationGeometry(candidate, geometryId, limits));
+          continue;
+        }
         if (operation.type === 'add-explosion') {
           const sourceGeometry = geometryId => generateOperationGeometry(candidate, geometryId, limits);
           agentSceneModule('explosion').addExplosion(candidate, operation, { sourceGeometry, fractureNode: fracture => agentSceneModule('fracture').fractureNode(candidate, fracture, sourceGeometry) });
@@ -2906,6 +2919,14 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         }
         if (operation.type === 'settle') {
           agentSceneModule('settle').applySettle(candidate, operation);
+          continue;
+        }
+        if (operation.type === 'apply-transform') {
+          agentSceneModule('applyTransform').applyNodeTransform(candidate, operation);
+          continue;
+        }
+        if (operation.type === 'set-origin') {
+          agentSceneModule('applyTransform').setNodeOrigin(candidate, operation, (recipe, geometryId) => generateOperationGeometry(recipe, geometryId, limits).positions);
           continue;
         }
         if (operation.type === 'edit-mesh') {
