@@ -59,6 +59,7 @@ function ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fr
  */
 export function copySceneIntoMipChain(renderer, width, height) {
   const context = renderer.context;
+  context.activeTexture(context.TEXTURE0);
   const hdr = Boolean(renderer.hdr);
   let chain = renderer.refractionChain;
   if (!chain || chain.width !== width || chain.height !== height || chain.hdr !== hdr) {
@@ -85,6 +86,7 @@ export function copySceneIntoMipChain(renderer, width, height) {
   context.bindFramebuffer(context.READ_FRAMEBUFFER, renderer.resolveFramebuffer);
   context.bindFramebuffer(context.DRAW_FRAMEBUFFER, chain.framebuffer);
   context.blitFramebuffer(0, 0, width, height, 0, 0, width, height, context.COLOR_BUFFER_BIT, context.NEAREST);
+  context.activeTexture(context.TEXTURE0);
   context.bindTexture(context.TEXTURE_2D, chain.texture);
   context.generateMipmap(context.TEXTURE_2D);
   return chain.texture;
@@ -97,6 +99,7 @@ export function copySceneIntoMipChain(renderer, width, height) {
  */
 export function resolveSceneDepth(renderer, width, height) {
   const context = renderer.context;
+  context.activeTexture(context.TEXTURE0);
   const reversed = Boolean(renderer.reversedDepth);
   let target = renderer.refractionDepth;
   if (!target || target.width !== width || target.height !== height || target.reversed !== reversed) {

@@ -12,6 +12,7 @@ import { createFileSceneRenderAt } from './file-scene-clip.js';
 import { startDeferredLods } from './deferred-lods.js';
 import { MEMORY_BUDGET_ERROR_CODE } from './budget.js';
 import { withDepthForRequestedEffects } from './file-scene-depth.js';
+import { applyFileSceneMaterialOverrides, logGltfWarnings, needsWorldMaterialsForOverrides } from './file-scene-overrides.js';
 import { partsForRendererOptions, planLodsForRendererOptions, sceneFileLighting, sunShadowBounds, withFileSceneInteriorLight, withSceneFileLights, withSceneFileRendererDefaults } from './dense-lods.js';
 
 // Headless twin of the showcase page for scripts/render-media.mjs (--scene file). The export script serves the scene.json
@@ -28,6 +29,7 @@ async function loadStagedParts(description, asset, model, sharedTextures) {
     const restModel = await fetch(restPath).then(response => response.blob());
     const baseUrl = new URL('.', new URL(restPath, location.href)).href;
     const rest = await loadGltf(restModel, { baseUrl, sharedTextures, ...(description.gltfOptions ?? {}) });
+    logGltfWarnings(rest.warnings);
     files.push({ parts: rest.parts, ranks: await readPartRanks(restModel) });
   }
   await import('./replace-textured-parts.js');
@@ -118,9 +120,14 @@ async function start() {
   const sharedTextures = createSharedTextures();
   const gltfOptions = description.gltfOptions ?? {};
   const asset = await loadGltf(model, { baseUrl: new URL('.', new URL(description.glb, location.href)).href, sharedTextures, ...gltfOptions });
+  logGltfWarnings(asset.warnings);
   const assetOwnParts = asset.parts;
   asset.parts = await loadStagedParts(description, asset, model, sharedTextures);
   await addGroundCover(asset, description, camera);
+  if (description.materials) {
+    const worldMaterials = needsWorldMaterialsForOverrides(description.materials) ? await import('./world-material-shader.js') : null;
+    asset.parts = applyFileSceneMaterialOverrides(asset.parts, description.materials, worldMaterials);
+  }
   // An effect the file asks for that reads depth (ambient occlusion, depth of field, motion blur, sun rays) turns the depth buffer on (#3388).
   const rendererOptions = withDepthForRequestedEffects(withSceneFileRendererDefaults(description.renderer), description.frame?.effects);
   await loadViewTransformForRendererOptions(rendererOptions);
