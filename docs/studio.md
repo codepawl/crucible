@@ -74,6 +74,10 @@ Not there yet, and said so on screen when you reach it:
 - **O** turns proportional editing on or off, from the button at the foot of the edit mode group (it lights while on). While it is on, a move also takes the vertices around the picked ones along, by a curve that fades to nothing at a radius, and a circle around the pick shows that radius. Turn the wheel while you hold a move to widen or narrow it (a factor of 1.15 a notch, from 0.01 to 100 in the mesh's own units, 0.5 to start). The button beside it opens a popover with the curve (smooth, round, root, sharp, linear or flat, each drawn) and a size slider. The move is written as one `translate` with a `falloff` of `{ radius, curve }`, the falloff a recipe or an agent writes, so an undo, a save and a replay give the same hill. A pick that is not whole faces is named by its vertices (`verts: { "vertices": [..] }`, up to 4096) because it has no face to select. In a keymap preset where O frames the object, O is proportional editing inside edit mode and S still frames.
 - Rotate, scale, box select, extrude and the other tools come next.
 
+**P** in edit mode opens a small menu at the middle of the viewport with **Selection**: the picked faces (in vertex or edge mode, the faces whose vertices are all picked) become a new object named `<name>-part`, with the same position, size, parent and material, so nothing moves. The object keeps its other faces and stays in edit mode; with nothing picked, or every face picked, it says what to do and changes nothing. It is one undo step.
+
+**Ctrl+J** (or **Edit ▸ Join**) joins the selected objects into the one picked last: each mesh is added to it where it stood in the scene, and the other objects go. Select two or more first (Shift or Ctrl with a click, or the Scene list). A shape joins as a mesh, and a joined object that has children, motion or a physics body is refused with the reason. The objects must share one material, since a mesh draws with one; if they differ, give them the same material first or keep them apart. It is one undo step.
+
 If another object uses the same geometry, entering edit mode gives this object a geometry of its own (the same conversion step), so the other one keeps its shape and does not move with it.
 
 ## Add an object or a light
@@ -168,6 +172,7 @@ While an input method composes text (Japanese, Chinese, Korean), Enter picks the
 | Shift+A | Add an object or a light |
 | Ctrl+C, Ctrl+V | Copy the selected object, paste a copy of it (one undo step, still works after the original is deleted) |
 | Shift+D or Ctrl+D | Duplicate |
+| Ctrl+J | Join the selected objects into the one picked last |
 | F2 | Rename the active object, in its Scene row |
 | X, Delete or Backspace | Delete |
 | Esc | Deselect |
@@ -176,6 +181,7 @@ While an input method composes text (Japanese, Chinese, Korean), Enter picks the
 | 1, 2, 3 | In edit mode: select vertices, edges or faces |
 | X or Delete, M | In edit mode: the Delete menu (dissolve), the Merge menu |
 | Alt+A, Ctrl+I, C, B | In edit mode: select none, invert the selection, circle select (Esc or right click ends it), box select |
+| P | In edit mode: separate the picked faces into their own object |
 | L, Ctrl+L | In edit mode: select what is linked under the pointer, or linked to the selection |
 | ], Ctrl+Numpad + | In edit mode: grow the selection by one step |
 | [, Ctrl+Numpad - | In edit mode: shrink the selection by one step |

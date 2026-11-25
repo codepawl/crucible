@@ -1454,6 +1454,7 @@ export function createStudio(container, {
     createMenuItem('Copy', 'edit.copy', () => copySelection(), 'duplicate'),
     createMenuItem('Paste', 'edit.paste', () => pasteCopy(), 'clipboard'),
     createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicateObject'),
+    createMenuItem('Join', 'edit.join', () => joinSelection(), 'duplicate'),
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
     createMenuItem('Rename', 'edit.rename', () => renameActiveObjectFromMenu(), 'text'),
     createMenuItem('Deselect', 'edit.deselect', () => controller.selectNode(null), 'deselect'),
@@ -1487,6 +1488,11 @@ export function createStudio(container, {
     applyMenus.applyRow,
     applyMenus.originRow,
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
+  );
+  // P in edit mode: what to separate. Selection is the picked faces.
+  const separatePopover = createMenuPopover(
+    'crucible-studio-pop-separate',
+    createMenuItem('Selection', 'mesh.separate', () => separateMeshSelection(), 'duplicate'),
   );
   let lastObjectMenuPoint = null;
   // Edit mode's Delete and Merge menus (X and M). Dissolve acts on the selection of any mode; the merges need picked
@@ -1775,7 +1781,7 @@ export function createStudio(container, {
     startMenuGroup(importAndExportRows[0]),
     ...importAndExportRows.slice(1),
   );
-  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, meshDeletePopover, meshMergePopover, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover]) {
+  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, separatePopover, meshDeletePopover, meshMergePopover, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover]) {
     popoverElement.addEventListener('click', event => {
       const clickedButton = event.target.closest?.('button');
       if (clickedButton && !clickedButton.dataset.keepsMenu) popoverElement.hidePopover?.();
@@ -1839,6 +1845,7 @@ export function createStudio(container, {
     exportPopover,
     editPopover,
     objectPopover,
+    separatePopover,
     applyMenus.applyPopover,
     applyMenus.originPopover,
     meshDeletePopover,
@@ -5270,6 +5277,48 @@ export function createStudio(container, {
   // The second Tab pressed while the editor is still loading takes the first one back.
   let meshEnterPending = false;
 
+  // Ctrl+J: the other selected objects join the active one (the last picked), one undo step. A shape becomes a mesh first.
+  async function joinSelection() {
+    const activeId = controller.selectedNodeId;
+    const otherIds = controller.selectedNodeIds.filter(nodeId => nodeId !== activeId);
+    if (!activeId || otherIds.length === 0) {
+      announce('Select two or more objects to join. The one picked last keeps the result.');
+      return;
+    }
+    const recipe = controller.exportRecipe();
+    const operations = [];
+    const active = recipe.nodes.find(node => node.id === activeId);
+    const activeGeometry = recipe.geometries.find(geometry => geometry.id === active?.geometry);
+    if (activeGeometry && activeGeometry.type !== 'mesh') {
+      const { meshGeometryOfPrimitive } = await import('./studio-mesh-edit.js');
+      const converted = meshGeometryOfPrimitive(activeGeometry);
+      if (converted) {
+        const takenIds = new Set(recipe.geometries.map(geometry => geometry.id));
+        let meshId = `${activeGeometry.id}-mesh`;
+        for (let suffix = 2; takenIds.has(meshId); suffix += 1) meshId = `${activeGeometry.id}-mesh-${suffix}`;
+        operations.push({ type: 'add-geometry', geometry: { ...converted, id: meshId } }, { type: 'set-node', id: activeId, geometry: meshId });
+      }
+    }
+    operations.push({ type: 'join-meshes', node: activeId, nodes: otherIds });
+    try {
+      controller.applyImportOperations(operations, { selectNodeId: activeId, detail: { kind: 'topology', nodeId: activeId } });
+      announce(`Joined ${otherIds.length + 1} objects into ${activeId}`);
+    } catch (error) {
+      announce(error.message);
+    }
+  }
+
+  function separateMeshSelection() {
+    meshEditor?.separateSelection();
+    syncUi();
+    requestFrame();
+  }
+
+  function openSeparateMenu() {
+    const bounds = canvas.getBoundingClientRect();
+    openPopoverAt(separatePopover, bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+  }
+
   async function enterMeshEdit() {
     if (meshEnterPending) {
       meshEnterPending = false;
@@ -5538,6 +5587,10 @@ export function createStudio(container, {
       syncUi();
       requestFrame();
     },
+    'mesh.separate': event => {
+      event.preventDefault();
+      openSeparateMenu();
+    },
   };
 
   // Handlers of the normal context by action id. A handler calls preventDefault for the keys the browser would
@@ -5559,6 +5612,10 @@ export function createStudio(container, {
     'edit.duplicate': (event, binding) => {
       if (binding.ctrl) event.preventDefault();
       duplicateSelection();
+    },
+    'edit.join': event => {
+      event.preventDefault();
+      joinSelection();
     },
     'edit.delete': event => {
       if (!controller.selectedNodeId && !selectedObjectIsDeletable()) return;

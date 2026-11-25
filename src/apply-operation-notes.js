@@ -5,6 +5,8 @@
 export const FOLDED_APPLY_OPERATION_NOTES = Object.freeze({
   'bake-motion': '{ nodes [node IDs, 32 at most], start, end, step, tolerance }: samples motion into keyframes. More: topic motionBake.',
   'fracture-node': '{ node, cells 2-64, strength N s, seed, impact [x,y,z], impactRadius, density, friction }: breaks a convex root node into glued physics pieces. More: topic physics.',
+  'separate-faces': '{ node, faces [face numbers of the mesh, as edit mode counts them], id }: the picked faces become a new node with the same transform and material, so nothing moves; the node keeps the rest. A mesh geometry other nodes use is copied first.',
+  'join-meshes': '{ node, nodes [node IDs, 32 at most] }: adds the meshes of nodes to the mesh of node, each placed where it stood in the world, and removes those nodes. They need the same material as node; a join mesh edit does the placing.',
   'add-explosion': '{ id, center [x,y,z], size m 0.5-100, ... }: layered blast. More: topic explosion.',
   'apply-transform': '{ node, parts?: ["location", "rotation", "scale"] }: folds location, rotation and scale into the geometry of the node (all three when parts is left out); the node then reads 0, no turn and 1 and looks the same. A shape becomes a mesh; a geometry other nodes share is copied for this node. Refused for a node with children, modifiers, a motion track or an imported file. A negative scale keeps faces outward. More: docs/agent-scene.md.',
   'set-origin': '{ node, to: "geometry" | "bottom" | "point", point?: [x,y,z] }: moves the point the node turns and scales about, in the unscaled space of the object: the middle of its bounds, the middle of its lowest face, or point. Nothing moves on screen; children stay in place.',
