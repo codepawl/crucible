@@ -126,6 +126,8 @@ export function generateMeshGeometry(baseGeometry, edits, {
     const outcome = applyMeshEdits(base, edits, {
       maxVertices, maxFaces: maxVertices,
       resolveCutter: resolveCutter && (cutter => meshFromGeometry(resolveCutter(cutter))), resolveHeight,
+      // A joined geometry brings its own polygon mesh, tags and uv included, not a copy rebuilt from its triangles.
+      resolveJoinMesh: resolveCutter && (geometry => polygonMeshOf(resolveCutter({ geometry }))),
     });
     edited = { mesh: outcome.mesh, result: outcome.results };
     if (editsKey !== undefined) evaluationCache.set(editsKey, edited);

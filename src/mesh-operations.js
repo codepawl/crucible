@@ -27,6 +27,7 @@ export const MODIFIER_OPERATIONS = /* @__PURE__ */ Object.freeze({
   wave: { fields: ['height', 'width', 'narrowness', 'speed', 'time', 'timeOffset', 'start', 'cyclic', 'axes', 'normal'], tags: [] },
   weighted_normal: { fields: ['angle', 'weight'], tags: [] },
   smooth_by_angle: { fields: ['angle', 'ignoreSharp'], tags: [] },
+  join: { fields: ['geometry', 'matrix'], tags: [] },
   bounding_box: { fields: [], tags: [] },
   convex_hull: { fields: [], tags: [] },
   build: { fields: ['order', 'axis', 'seed', 'frame', 'start', 'length', 'reverse'], tags: [] },
@@ -38,6 +39,9 @@ export const MODIFIER_OPERATIONS = /* @__PURE__ */ Object.freeze({
 export const ELEMENT_SELECTION_FIELDS = /* @__PURE__ */ Object.freeze(['verts', 'edges']);
 export const ELEMENT_MOVE_OPERATIONS = /* @__PURE__ */ Object.freeze(['translate', 'transform_selection']);
 
+// Where merge_verts puts the vertex: the centre of the picked ones, the first or last one picked, or each connected group at its own centre.
+export const MERGE_TARGETS = /* @__PURE__ */ Object.freeze(['center', 'first', 'last', 'collapse']);
+
 export const MESH_EDIT_OPERATIONS = /* @__PURE__ */ Object.freeze({
   extrude_face_region: { fields: ['select', 'name', 'offset', 'direction', 'alongNormals'], tags: ['cap', 'side'] },
   extrude_individual: { fields: ['select', 'name', 'offset', 'direction'], tags: ['cap', 'side'] },
@@ -48,6 +52,7 @@ export const MESH_EDIT_OPERATIONS = /* @__PURE__ */ Object.freeze({
   translate: { fields: ['select', 'offset', 'falloff'], tags: [] },
   transform_selection: { fields: ['select', 'pivot', 'rotation', 'scale', 'falloff'], tags: [] },
   merge_by_distance: { fields: ['distance'], tags: [] },
+  merge_verts: { fields: ['vertices', 'at'], tags: [] },
   tag: { fields: ['select', 'name'], tags: [] },
   boolean: { fields: ['name', 'operation', 'cutter', 'translation', 'rotation', 'scale'], tags: ['cut'] },
   mirror: { fields: ['name', 'axis', 'merge'], tags: ['mirrored'] },
@@ -61,7 +66,7 @@ export const MESH_EDIT_OPERATIONS = /* @__PURE__ */ Object.freeze({
   subdivide: { fields: ['levels', 'crease', 'sharpness'], tags: [] },
   fill_holes: { fields: ['name', 'sides'], tags: ['fill'] },
   dissolve_faces: { fields: ['select', 'name'], tags: ['merged'] },
-  dissolve_edges: { fields: ['edges', 'name'], tags: ['merged'] },
+  dissolve_edges: { fields: ['edges', 'removeStraight', 'name'], tags: ['merged'] },
   dissolve_verts: { fields: ['verts', 'name'], tags: ['merged'] },
   dissolve_limited: { fields: ['edges', 'angle', 'name'], tags: ['merged'] },
   bisect_plane: { fields: ['name', 'point', 'normal', 'distance', 'clearInner', 'clearOuter', 'fill'], tags: ['inner', 'outer', 'cap'] },
@@ -100,6 +105,7 @@ export const MAX_SHRINKWRAP_TRIANGLE_TESTS = 20_000_000;
 
 export const STACK_OPERATIONS = /* @__PURE__ */ Object.freeze(['mirror', 'array', 'solidify', 'bevel', 'uv_unwrap', 'uv_project', 'uv_pack', 'subdivide', 'set_position', 'displace', 'decimate', 'remesh', ...Object.keys(MODIFIER_OPERATIONS)]);
 export const MAX_STACK_NODES = 16;
+export const MAX_ARRAY_COUNT = 256;
 
 // Field expressions (mesh-fields.js) and instancing (mesh-instances.js): limits and names as plain data. A test
 // keeps FIELD_OPERATOR_NAMES equal to the operators the language really has.

@@ -241,7 +241,7 @@ the earlier work. Results list one entry per node with `cached: true` when reuse
 and misses. `evaluateMeshStack(mesh, stack, { cache, cacheKey })` runs a stack outside recipes.
 
 The `mesh_stack` tool sets the whole stack in one revision. `apply: n` moves the first `n` nodes into the edit log,
-as Blender's Apply modifier, which leaves the result unchanged.
+so the result stays unchanged. A node may carry `enabled: false`: it stays in the stack and is skipped when the stack runs (a switch that hides it without deleting it); `apply` refuses a switched-off node. Studio writes this stack from the Modifiers tab ([Studio](studio.md)).
 
 ### Shape keys
 
@@ -261,6 +261,7 @@ Normals stay those of the base mesh. Test: `tests/mesh-shape-keys.test.js`.
 
 | op | fields | does |
 | --- | --- | --- |
+| `join` | `geometry` (ID of a recipe geometry), `matrix` (16 numbers, column-major, from that geometry's space into this mesh's space; identity when left out) | Adds the faces of another recipe geometry as a separate shell, nothing welded; tags, uv and colours carry over, a mirroring matrix flips the faces so they still face outward. An edit of a recipe mesh only, not a stack node. The other geometry is part of the cache key, so editing it updates this mesh. |
 | `weld` | `distance` (0.001) | Merges vertices closer than the distance, as Merge by Distance; faces that collapse go. |
 | `triangulate` | `minVertices` (4) | Cuts faces with that many corners or more into triangles; tags, uv and winding carry over. |
 | `edge_split` | `angle` (30) | Gives each smooth fan of faces its own vertex, so edges bending more than `angle` degrees, and edges shared by three faces, come apart. |
@@ -452,7 +453,7 @@ boundary edges whose midpoint is in a box, which picks one hole among several.
 | --- | --- | --- | --- |
 | `fill_holes` | `sides` | `fill` | Caps each closed boundary loop with one polygon; `sides` skips loops with more edges. |
 | `dissolve_faces` | `select` | `merged` | Merges connected selected faces into one polygon each. |
-| `dissolve_edges` | `edges` | `merged` | Merges the two faces beside each selected edge. Boundary edges are ignored. |
+| `dissolve_edges` | `edges`, `removeStraight` (default false) | `merged` | Merges the two faces beside each selected edge. Boundary edges are ignored. With `removeStraight` a vertex the dissolve leaves with two edges goes too, so a dissolved loop leaves clean polygons; the result lists `removedStraight`. |
 | `dissolve_verts` | `verts` | `merged` | Removes vertices: a vertex with two edges just leaves its faces, one with more merges the faces around it. |
 | `dissolve_limited` | `edges` (default all), `angle` (default 5) | `merged` | Dissolves edges whose faces bend by at most `angle` degrees, then the straight vertices left behind. |
 | `bisect_plane` | `point`, `normal`, `distance`, `clearInner`, `clearOuter`, `fill` | `inner`, `outer`, `cap` | Cuts at a plane. `clearInner` removes the side behind the normal, `clearOuter` the side in front. `fill` caps the cut; with both sides kept the halves separate into two closed shells. |
@@ -460,6 +461,7 @@ boundary edges whose midpoint is in a box, which picks one hole among several.
 | `subdivide_edges` | `edges`, `cuts` | `split` | Splits each selected edge into `cuts` + 1 pieces. Quads with two opposite edges split become bands, with four split a grid, and any other face keeps one n-gon with the new points inserted. |
 | `grid_fill` | `edges` | `fill` | Fills each closed boundary loop of an even number of edges (4 or more) with a grid of quads, up to 65,536 grid vertices. |
 | `knife_project` | `path`, `direction` | `cut` | Cuts along a polyline of object-space points projected along `direction`, through front and back faces. |
+| `merge_verts` | `vertices` (2 to 4096 distinct indices, in pick order), `at` (`center`, `first`, `last` or `collapse`, default `center`) | none | Merges the picked vertices into one: at their centre, at the first or at the last one listed, or with `collapse` each group joined by edges between picked vertices into one vertex at its own centre. Faces left with fewer than three corners or a repeated vertex, and faces that repeat another face, are removed; it throws when no face is left. The result lists `mergedVertices` and `removedFaces`. |
 
 `dissolve_verts` rules: `{ "all": true }`, `{ "vertices": [indices] }`, `{ "valence": 2 }` (vertices with exactly that many
 neighbours) or `{ "inside": { "min", "max" } }`. `dissolve_edges`, `dissolve_verts` and `dissolve_faces` refuse a merge
@@ -617,6 +619,13 @@ cylinder three islands with no distortion, a 48 x 24 sphere six charts with 0.09
 unwraps in about 0.3 s. There is no angle-based (ABF) or SLIM solver and no packing into an existing layout.
 
 Cutting by a plane or a path is in the edit table: `bisect_plane` and `knife_project`.
+
+### Separate and join
+
+Two `scene_apply` operations split a mesh object in two or merge several into one. Both write ordinary recipe data, so the result saves, replays and undoes as one revision.
+
+- `separate-faces { node, faces, id }`: `faces` are face numbers of the mesh the edit log builds (the numbers edit mode and `mesh_inspect` use). They become a new node `id` (default `<node>-part`) with the same parent, transform and material, so nothing moves in the world. The new node's geometry is a copy of the mesh with a `delete` edit on every face but the picked ones; the node keeps the rest through a `delete` edit on the picked ones. A geometry another node uses is copied for the node first. Needs a mesh geometry; no faces, a repeated or missing face number, or every face is refused with the fix.
+- `join-meshes { node, nodes }`: the meshes of `nodes` (1 to 32) are added to the mesh of `node` with one `join` edit each, placed by the matrix that takes them from their world position into the space of `node`, and the nodes go. They need the same material as `node` (a mesh draws with one material); a node with children, motion or a physics body is refused. `node` needs a mesh geometry, which is copied first when another node uses it.
 
 ## MCP
 

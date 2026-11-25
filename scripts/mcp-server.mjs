@@ -277,6 +277,7 @@ const cameraFields = {
   focusDistance: positive.optional(),
 };
 const bounded = (minimum, maximum) => z.number().min(minimum).max(maximum);
+const signedFactor = bounded(-1000, 1000);
 const spotAngleMessage = issue => `expected ${spotAngleExpectation(issue.input)} (got ${issue.input})`;
 const spotAngle = z.number().min(MINIMUM_SPOT_ANGLE, { error: spotAngleMessage }).max(MAXIMUM_SPOT_ANGLE, { error: spotAngleMessage });
 const boundedVector = (minimum, maximum) => z.tuple([bounded(minimum, maximum), bounded(minimum, maximum), bounded(minimum, maximum)]);
@@ -322,6 +323,7 @@ const environment = z.strictObject({
   setup: z.enum(LIGHTING_SETUP_NAMES).optional().describe('Named lighting; resets key, fill and ambient fields. Default daylight.'),
   environmentIntensity: bounded(0, 100).optional().describe('Scales the setup environment light and its reflections.'),
   hdri: catalogReference(BUNDLED_ENVIRONMENT_NAMES, '.hdr').nullable().optional().describe('HDRI instead of the setup sky; scene_capabilities catalogLooks.'),
+  reflectionHdri: catalogReference(BUNDLED_ENVIRONMENT_NAMES, '.hdr').nullable().optional().describe('A second HDRI that only reflections read (glass, water, metal); the lighting stays hdri or setup.'),
   keyFromHdri: z.boolean().optional().describe('With an hdri: the key light takes the HDRI sun direction, colour and strength, and the sun leaves the map.'),
   environmentRotation: bounded(-100, 100).optional().describe('Turns the setup environment around the vertical axis, in radians.'),
   lightDirection: boundedVector(-1e6, 1e6).optional().describe('Direction toward the key light; shadows follow.'),
@@ -399,7 +401,7 @@ const environment = z.strictObject({
   wind: z.strictObject({ strength: bounded(0, 4).optional(), direction: bounded(-360, 360).optional().describe('Degrees: 0 toward +x, 90 toward +z.') }).optional().describe('Sway of foliage and grass materials; strength defaults to 0.3.'),
 });
 // Every tool lists the same short environment; the full schema is served by scene_capabilities topic environment.
-const environmentListed = listed('environment', environment, 'Lighting and sky. More fields: sky (physicalSky), hdri, look, viewTransform, keyColor, keyIntensity, fillIntensity, ambientIntensity, ambientColor, ambientMix, fillColor, environmentDiffuseScale, daylight, keyAffects, shadowCascades, pointLights, spotLights, areaLights, skyTop, skyBottom, fogColor, fogDensity, volumeFog (density, scatterOctaves, multiScatter, keyTransmittance, surfaceTransmittance and more: scene_capabilities environment), liquid, lines, wind, objectReflections, floorSkyTrace, sunBounce, specularAntiAliasing, wetness, puddles, resolveCoplanar; see scene_capabilities environment.', coreOf(environment.shape, ['setup', 'world', 'ground', 'lightDirection', 'environmentIntensity']));
+const environmentListed = listed('environment', environment, 'Lighting and sky. More fields: sky (physicalSky), hdri, reflectionHdri, look, viewTransform, keyColor, keyIntensity, fillIntensity, ambientIntensity, ambientColor, ambientMix, fillColor, environmentDiffuseScale, daylight, keyAffects, shadowCascades, pointLights, spotLights, areaLights, skyTop, skyBottom, fogColor, fogDensity, volumeFog (density, scatterOctaves, multiScatter, keyTransmittance, surfaceTransmittance and more: scene_capabilities environment), liquid, lines, wind, objectReflections, floorSkyTrace, sunBounce, specularAntiAliasing, wetness, puddles, resolveCoplanar; see scene_capabilities environment.', coreOf(environment.shape, ['setup', 'world', 'ground', 'lightDirection', 'environmentIntensity']));
 // Named post steps are checked by the engine and listed in docs/agent-look.md; every tool that takes a recipe repeats this schema.
 const looseField = z.unknown().optional();
 const effects = z.strictObject({
@@ -483,7 +485,7 @@ const meshEdit = z.discriminatedUnion('op', [
   z.strictObject({ op: z.literal('delete'), select: selectRule }),
   z.strictObject({ op: z.literal('flip_normals'), select: selectRule.optional() }),
   z.strictObject({ op: z.literal('translate'), select: selectRule.optional(), verts: vertexRule.optional(), edges: edgeRule.optional(), offset: vector3, falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }).describe('Move the vertices of one of select, verts or edges (at most 4096 each); a shared vertex moves once.'),
-  z.strictObject({ op: z.literal('transform_selection'), select: selectRule.optional(), verts: vertexRule.optional(), edges: edgeRule.optional(), pivot: vector3.optional().describe('Point to turn and scale about. Defaults to the mean of the selected vertices.'), rotation: z.strictObject({ axis: vector3, angle: bounded(-6.283185307179586, 6.283185307179586).describe('Radians, not degrees: 90 degrees is 1.5708.') }).optional(), scale: z.union([bounded(0.000001, 1000), z.array(bounded(0.000001, 1000)).length(3)]).optional().describe('Factor above 0, or one per axis; applied before the rotation.'), falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }).describe('Rotate and/or scale the vertices of one of select, verts or edges about a pivot; falloff fades to 0 at its radius.'),
+  z.strictObject({ op: z.literal('transform_selection'), select: selectRule.optional(), verts: vertexRule.optional(), edges: edgeRule.optional(), pivot: vector3.optional().describe('Point to turn and scale about. Defaults to the mean of the selected vertices.'), rotation: z.strictObject({ axis: vector3, angle: bounded(-6.283185307179586, 6.283185307179586).describe('Radians, not degrees: 90 degrees is 1.5708.') }).optional(), scale: z.union([signedFactor, z.array(signedFactor).length(3)]).optional().describe('Factor other than 0, or one per axis; applied before the rotation. A negative factor mirrors and keeps faces outward (not with a falloff, verts or edges).'), falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }).describe('Rotate and/or scale the vertices of one of select, verts or edges about a pivot; falloff fades to 0 at its radius.'),
   z.strictObject({ op: z.literal('merge_by_distance'), distance: finite.optional() }),
   z.strictObject({
     op: z.literal('loop_cut'), name: editName,
@@ -493,9 +495,9 @@ const meshEdit = z.discriminatedUnion('op', [
   }).describe('Loop cut across quads. Bands between cuts get <name>.band-0 (low side) to <name>.band-<cuts>.'),
   z.strictObject({ op: z.literal('fill_holes'), name: editName, sides: z.number().int().min(3).max(4096).optional().describe('Skip boundary loops with more edges than this.') }).describe('Cap each closed boundary loop with one polygon, tagged <name>.fill. Fixes the lint boundary-edge warning.'),
   z.strictObject({ op: z.literal('dissolve_faces'), name: editName, select: selectRule }).describe('Merge connected selected faces into one polygon each, tagged <name>.merged.'),
-  z.strictObject({ op: z.literal('dissolve_edges'), name: editName, edges: edgeRule }).describe('Merge the two faces beside each selected edge, tagged <name>.merged.'),
+  z.strictObject({ op: z.literal('dissolve_edges'), name: editName, edges: edgeRule, removeStraight: z.boolean().optional().describe('Also remove two-edge vertices left.') }).describe('Merge the two faces beside each selected edge, tagged <name>.merged.'),
   z.strictObject({ op: z.literal('dissolve_verts'), name: editName, verts: z.record(z.string(), z.unknown()).describe('Vertex rule: {"all":true}, {"vertices":[indices]}, {"valence":2} or {"inside":{"min":[x,y,z],"max":[x,y,z]}}.') }).describe('Remove vertices. Two-edge vertices leave their faces; others merge the faces around them.'),
-  z.strictObject({ op: z.literal('dissolve_limited'), name: editName, edges: edgeRule.optional().describe('Defaults to all edges.'), angle: bounded(0, 180).optional().describe('Degrees of bend still counted as flat. Defaults to 5.') }).describe('Dissolve flat edges and the straight vertices left behind; undoes a loop cut.'),
+  z.strictObject({ op: z.literal('dissolve_limited'), name: editName, edges: edgeRule.optional().describe('Defaults to all edges.'), angle: bounded(0, 180).optional().describe('Degrees of bend still counted as flat. Defaults to 5.') }).describe('Dissolve flat edges and straight vertices.'),
   z.strictObject({
     op: z.literal('bisect_plane'), name: editName,
     point: vector3.describe('A point on the plane, in the mesh\'s local space.'), normal: vector3.describe('Plane normal. The inner side is behind it, the outer side in front.'),
@@ -512,14 +514,15 @@ const meshEdit = z.discriminatedUnion('op', [
   z.strictObject({
     op: z.literal('knife_project'), name: editName,
     path: z.array(vector3).min(2).max(256).describe('Polyline in the mesh\'s local space.'), direction: vector3.describe('Direction the line is projected along, for example [0,0,-1].'),
-  }).describe('Cut along a polyline projected along a direction, through front and back faces. Split faces get <name>.cut.'),
+  }).describe('Cut along a polyline projected along a direction, front and back faces alike. Split faces get <name>.cut.'),
   z.strictObject({ op: z.literal('poke'), select: selectRule.optional(), name: editName, offset: finite.optional().describe('Move each new centre along the face normal. Defaults to 0.'), relative: z.boolean().optional().describe('Scale offset by the face\'s average corner distance.') }).describe('Triangle fan around a centre vertex per selected face, tagged <name>.poke.'),
-  z.strictObject({ op: z.literal('dual'), name: editName }).describe('Dual mesh: a vertex per face centre, a face per vertex, tagged <name>.dual. Needs a closed, consistently wound mesh.'),
-  z.strictObject({ op: z.literal('tris_to_quads'), select: selectRule.optional(), name: editName, angle: bounded(0, 180).optional().describe('Largest angle in degrees between the two triangle normals. Defaults to 40.') }).describe('Join adjacent triangles into convex quads, best-shaped first, tagged <name>.merged.'),
+  z.strictObject({ op: z.literal('dual'), name: editName }).describe('Dual mesh, tagged <name>.dual. Needs a closed, consistently wound mesh.'),
+  z.strictObject({ op: z.literal('tris_to_quads'), select: selectRule.optional(), name: editName, angle: bounded(0, 180).optional().describe('Largest angle in degrees between the two triangle normals. Defaults to 40.') }).describe('Join adjacent triangles into convex quads, tagged <name>.merged.'),
   z.strictObject({ op: z.literal('symmetrize'), name: editName, axis: z.enum(['x', 'y', 'z']).optional(), keep: z.enum(['positive', 'negative']).optional().describe('Side of the plane kept and mirrored. Defaults to positive.'), distance: bounded(0, 1).optional().describe('Vertices this close to the plane count as on it. Defaults to 0.0001.') }).describe('Cut at the origin plane, drop one half, mirror the kept half. Mirrored faces get <name>.mirrored.'),
   z.strictObject({ op: z.literal('scale_elements'), select: selectRule.optional(), scale: finite.describe('Factor above 0 about each connected group of selected faces.') }).describe('Scale each connected group of selected faces about its centre.'),
   z.strictObject({ op: z.literal('extrude_edges'), name: editName, edges: edgeRule.describe('Edges to extrude, usually {"open":true} for a boundary.'), offset: vector3.describe('Where the copied vertices move.') }).describe('Extrude edges into quads, tagged <name>.side.'),
   z.strictObject({ op: z.literal('split_edges'), name: editName, edges: edgeRule.describe('Edges to open.') }).describe('Open the surface along these edges.'),
+  z.strictObject({ op: z.literal('merge_verts'), vertices: z.array(z.number().int().min(0).max(16777215)).min(2).max(4096).describe('Indices in pick order.'), at: z.enum(['center', 'first', 'last', 'collapse']).optional() }).describe('Merge picked vertices into one.'),
   z.strictObject({ op: z.literal('delete_loose') }).describe('Remove vertices no face uses.'),
   z.strictObject({ op: z.literal('flatten'), verts: vertexRule, normal: vector3.optional().describe('Plane normal.'), factor: unit.optional().describe('0 to 1, default 1.') }).describe('Move vertices onto a plane.'),
   z.strictObject({ op: z.literal('unsubdivide') }).describe('Reverse one Catmull-Clark level.'),
@@ -551,7 +554,7 @@ const stackNodes = [
     op: z.literal('set_position'), select: selectRule.optional(),
     position: fieldExpression.optional().describe('Vector expression for the new position of each selected vertex. Defaults to the current position.'),
     offset: fieldExpression.optional().describe('Vector expression added after position, for example {"vec":[0,{"noise":{"scale":3}},0]}. Give position, offset or both.'),
-  }).describe('Set Position with field expressions on the input positions, for the vertices of the selected faces.'),
+  }).describe('Field expressions set the vertex positions of the selected faces.'),
   z.strictObject({
     op: z.literal('displace'), select: selectRule.optional(),
     field: fieldExpression.describe('Number expression used as the texture.'),

@@ -128,11 +128,11 @@ test('packRecipeFile checks its inputs before it writes anything', async () => {
   }
 });
 
-test('the <crucible-scene> runtime imports no agent-scene compiler code', async () => {
+test('the <crucible-scene> runtime imports no agent-scene compiler code or capability lists', async () => {
   const result = await build({ entryPoints: ['src/crucible-scene.js'], bundle: true, write: false, metafile: true, format: 'esm', splitting: true, outdir: 'out', logLevel: 'error' });
   const inputs = Object.keys(result.metafile.inputs);
   assert.ok(inputs.includes('src/renderer.js'), 'the runtime reaches the renderer');
-  const compilerModules = inputs.filter(path => /src\/(agent-scene(?!-capabilities)|agent-look|agent-apply|scene-pack\.js)/.test(path));
+  const compilerModules = inputs.filter(path => /src\/(agent-scene|agent-look|agent-apply|scene-pack\.js)/.test(path));
   assert.deepEqual(compilerModules, []);
 });
 

@@ -1210,7 +1210,8 @@ test('Ctrl+C and Ctrl+V copy and paste the selected object as one undo step, eve
   assert.ok(byText(editMenu, 'Copy'));
   assert.ok(byText(editMenu, 'Paste'));
   const labels = ui.root.querySelector('.crucible-studio-shortcuts-dialog').querySelectorAll('.crucible-studio-shortcut-item').map(item => item.textContent);
-  assert.ok(labels.some(label => label.includes('Ctrl+C / Ctrl+V')));
+  assert.ok(labels.includes('CopyCtrl+C'));
+  assert.ok(labels.includes('PasteCtrl+V'));
 });
 
 test('Ctrl+C and Ctrl+V are left to the browser while typing or while text is selected', testContext => {
@@ -1298,7 +1299,7 @@ test('the Recipe JSON dialog shows the recipe, applies edits and reports bad JSO
   assert.equal(recipeDialog.open, false);
   assert.equal(fileInput.clicks, clicksBefore + 1);
 
-  byText(ui.root, 'Keyboard shortcuts').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-help'), 'Keyboard shortcuts').click();
   assert.equal(shortcutsDialog.open, true);
   assert.ok(shortcutsDialog.querySelectorAll('.crucible-studio-shortcut-item').length >= 8);
   shortcutsDialog.close('close');
@@ -1314,7 +1315,7 @@ test('Save downloads the recipe in the browser and clears the unsaved mark', asy
   const filePill = ui.root.querySelector('.crucible-studio-filepill');
   assert.equal(filePill.dataset.dirty, 'true');
 
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(ui.status(), 'Downloaded untitled.scene.json');
   assert.equal(filePill.dataset.dirty, 'false');
@@ -1369,7 +1370,7 @@ test('a click on the scene name edits its name part in place and keeps the type 
   assert.equal(filePill.dataset.dirty, 'false', 'the name is not part of the recipe, so a rename is not a change of the scene');
   assert.equal(ui.status(), 'Renamed. Saved under this name next time.');
   assert.notEqual(ui.root.querySelector('.crucible-studio-status svg'), null, 'the toast starts with a mark');
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(ui.dom.document.downloads.at(-1).filename, 'lounge.scene.json');
 });
@@ -1463,7 +1464,7 @@ test('a host that can rename is asked, never overwrites and reports a taken name
   assert.equal(filePill.textContent, 'fresh.scene.json');
   assert.equal(filePill.title, 'C:/scenes/fresh.scene.json');
   assert.deepEqual(desktop.calls.filter(call => call.name === 'renameScene').map(call => call.argument.fileName), ['taken.scene.json', 'fresh.scene.json']);
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(desktop.calls.at(-1).name, 'saveFile', 'the file already moved, so Save writes to its new path');
   assert.equal(desktop.calls.at(-1).argument.filePath, 'C:/scenes/fresh.scene.json');
@@ -1501,11 +1502,11 @@ test('a host without a rename method sends the next Save through Save as with th
   ui.studio.setFileContext({ filePath: 'C:/scenes/old.scene.json', fileName: 'old.scene.json', dirty: false });
   await renameSceneTo(ui, 'newer');
   assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, 'newer.scene.json');
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(desktop.calls.at(-1).name, 'saveFileAs');
   assert.equal(desktop.calls.at(-1).argument.suggestedName, 'newer.scene.json');
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(desktop.calls.at(-1).name, 'saveFile', 'after the file exists under the new name, Save is plain again');
 });
@@ -1818,7 +1819,7 @@ test('Save, Save as and Open go through the desktop shell when there is one', as
   const watchPill = ui.root.querySelector('.crucible-studio-watch-pill');
   assert.equal(watchPill.hidden, true);
 
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(desktop.calls[0].name, 'saveFileAs');
   assert.equal(desktop.calls[0].argument.suggestedName, 'untitled.scene.json');
@@ -1830,7 +1831,7 @@ test('Save, Save as and Open go through the desktop shell when there is one', as
   assert.deepEqual(changes.at(-1), { filePath: 'C:/scenes/saved.scene.json', fileName: 'saved.scene.json', dirty: false });
   assert.match(ui.root.querySelector('#crucible-studio-pop-sync .crucible-studio-popover-note').textContent, /Watching C:\/scenes\/saved.scene.json \(auto-reload on\)\./);
 
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(desktop.calls[1].name, 'saveFile');
   assert.equal(desktop.calls[1].argument.filePath, 'C:/scenes/saved.scene.json');
@@ -1843,7 +1844,7 @@ test('Save, Save as and Open go through the desktop shell when there is one', as
   const nameBeforeCancel = ui.root.querySelector('.crucible-studio-filepill').textContent;
   byText(ui.root, 'Save as\u2026').click();
   await ui.dom.settle();
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, nameBeforeCancel);
 
@@ -2642,8 +2643,8 @@ test('workspaces run Build, Look, Animate and each shows only the panels its ste
 
   assert.equal(ui.root.dataset.workspace, 'build');
   assert.equal(workspaceTab('build').getAttribute('aria-selected'), 'true');
-  assert.deepEqual(shownTabs(), ['node']);
-  assert.ok(tabList.hasAttribute('hidden'), 'one panel needs no tab row');
+  assert.deepEqual(shownTabs(), ['node', 'modifiers']);
+  assert.equal(tabList.hasAttribute('hidden'), false, 'Build holds the Object and Modifiers tabs');
 
   const recipeBefore = JSON.stringify(ui.studio.exportRecipe());
   workspaceTab('look').click();
@@ -2770,6 +2771,8 @@ test('Settings change the snap, the handles and what the viewport shows, and are
     propertiesHeight: 0,
     sceneMinimized: false,
     propertiesMinimized: false,
+    historyVisible: false,
+    historyMinimized: false,
     propertyGroupsOpen: {},
     panelsFloating: false,
     moveSnapStep: 1,
@@ -2781,6 +2784,8 @@ test('Settings change the snap, the handles and what the viewport shows, and are
     theme: 'system',
     performance: 'automatic',
     keymap: 'crucible',
+    motion: 'system',
+    zoomDirection: 'normal',
     setupDone: false,
     gridVisible: false,
     readoutVisible: false,
@@ -2822,7 +2827,7 @@ test('Scene and Properties share one column and the Scene head carries its icons
   const ui = mountStudio(testContext);
   const side = ui.root.querySelector('.crucible-studio-side');
   const docks = side.children.map(child => child.getAttribute('aria-label'));
-  assert.deepEqual(docks, ['Panel width', 'Scene outliner', 'Scene card height', 'Scene inspector']);
+  assert.deepEqual(docks, ['Panel width', 'Scene outliner', 'Scene card height', 'Scene inspector', 'History']);
   const head = side.querySelector('.crucible-studio-dock-head');
   assert.ok(head.querySelector('.crucible-studio-dock-title').querySelector('svg'));
   const sideRule = STUDIO_CSS.slice(STUDIO_CSS.indexOf('.crucible-studio-side {'), STUDIO_CSS.indexOf('.crucible-studio-side > .crucible-studio-dock {'));
@@ -2889,7 +2894,7 @@ test('the top bar has File, Edit, View, Agent and Help menus that do what their 
   assert.equal(byText(popover('new'), 'Save').dataset.shortcut, 'Ctrl+S');
 
   menuButton('Edit').click();
-  assert.deepEqual(rows('edit'), ['Undo', 'Redo', 'Copy', 'Paste', 'Duplicate', 'Delete', 'Rename', 'Deselect', 'Hide', 'Show all', 'Reset position', 'Reset rotation', 'Reset scale', 'Settings…']);
+  assert.deepEqual(rows('edit'), ['Undo', 'Redo', 'History', 'Copy', 'Paste', 'Duplicate', 'Join', 'Delete', 'Rename', 'Deselect', 'Hide', 'Show all', 'Reset position', 'Reset rotation', 'Reset scale', 'Settings…']);
   ui.selectRow('hero');
   const countBefore = ui.studio.exportRecipe().nodes.length;
   byText(popover('edit'), 'Duplicate').click();
@@ -3249,7 +3254,7 @@ test('the axis widget stands at the top right of the viewport, beside the panel 
   assert.ok(!floating.includes('inset-block-end'), 'no longer in the bottom corner');
   assert.ok(STUDIO_CSS.includes('.crucible-studio {\n  --studio-gizmo-clear: calc(var(--studio-scene-width, 284px) + var(--studio-edge));\n}'), 'it follows the Scene card width');
   assert.ok(STUDIO_CSS.includes('[data-outliner-minimized="true"]:not([data-inspector-collapsed="true"]) {\n  --studio-gizmo-clear: calc(max(var(--studio-scene-width, 284px), var(--studio-properties-width, 284px))'), 'a short minimized Scene card leaves a wider Properties card the room under the widget');
-  assert.ok(rule('.crucible-studio[data-outliner-collapsed="true"][data-inspector-collapsed="true"]').includes('--studio-gizmo-clear: 0px;'), 'with both cards away it takes the corner');
+  assert.ok(rule('.crucible-studio[data-outliner-collapsed="true"][data-inspector-collapsed="true"][data-history-collapsed="true"]').includes('--studio-gizmo-clear: 0px;'), 'with both cards away it takes the corner');
   const docked = rule('.crucible-studio[data-floating="false"]:not([data-compact="true"]) .crucible-studio-view-widget');
   assert.ok(docked.includes('inset-inline-end: var(--studio-edge);') && docked.includes('inset-block-start: var(--studio-edge);'), 'docked, the viewport already ends at the column, so the widget takes its corner');
   assert.ok(rule('.crucible-studio[data-compact="true"] .crucible-studio-view-widget').includes('inset-inline-end: var(--studio-edge);'), 'a compact window keeps it in the corner under the bar, clear of the cards');
@@ -3394,7 +3399,7 @@ test('a right click on an object opens its menu; H hides, Alt+H shows all and Al
   const menu = ui.root.querySelector('#crucible-studio-pop-object');
   const heroNode = () => ui.controller.exportRecipe().nodes.find(node => node.id === 'hero');
   const press = (key, modifiers = {}) => dispatch(ui.dom.document, 'keydown', { key, ...modifiers });
-  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Rename', 'Duplicate', 'Hide', 'Reset position', 'Reset rotation', 'Reset scale', 'Delete']);
+  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Rename', 'Duplicate', 'Hide', 'Reset position', 'Reset rotation', 'Reset scale', 'Apply…', 'Set origin…', 'Delete']);
 
   // In the Scene list the row is selected first, then the menu opens on it.
   const heroRow = ui.rows().find(row => row.textContent.includes(heroNode().label ?? 'hero'));
@@ -4283,7 +4288,8 @@ test('the Look tab shows the lighting presets on one row and the sun direction p
 test('the stylesheet fades rows under a pinned group title and at the bottom of the panels, and keeps the label column wide enough', () => {
   assert.ok(STUDIO_CSS.includes('container-type: scroll-state;'), 'a group title can tell when it is pinned');
   assert.ok(STUDIO_CSS.includes('@container scroll-state(stuck: top)'), 'the fade under a title shows only while it is pinned');
-  assert.ok(STUDIO_CSS.includes('.crucible-studio-panels::after'), 'the panels fade at the bottom edge');
+  assert.ok(STUDIO_CSS.includes('.crucible-studio-scroll[data-fade-bottom="true"]'), 'a scrolling card body fades at the edges that hide content');
+  assert.ok(STUDIO_CSS.includes('scrollbar-gutter: stable'), 'the scrollbar gutter stays so content does not shift');
   assert.ok(STUDIO_CSS.includes('grid-template-columns: minmax(min-content, 45%) minmax(0, 1fr);'), 'a label column grows to its label');
   assert.ok(STUDIO_CSS.includes('scroll-snap-type: y mandatory;'), 'the Scene list scrolls a whole row at a time');
 });
@@ -5194,7 +5200,7 @@ test('choosing a keymap rewrites the menu keys, the tooltips and the shortcuts d
   assert.ok(ui.label('Redo (Ctrl+Y)'));
   assert.ok(ui.label('Play (Alt+V)'));
   assert.ok(ui.label('Add a keyframe here (S)'));
-  assert.match(shortcutsText(), /W \/ E \/ R/);
+  assert.match(shortcutsText(), /MoveW.*RotateE.*ScaleR/);
   assert.match(shortcutsText(), /Alt \+ left drag/);
   assert.doesNotMatch(shortcutsText(), /While holding/);
 
@@ -5619,4 +5625,257 @@ test('the target button always shows the icon of the active target, open or clos
   assert.equal(targetButton.dataset.icon, 'grid', 'opening the menu is not a different glyph');
   byDataset(popover, 'snapTarget', 'vertex').click();
   assert.equal(targetButton.dataset.icon, 'meshVertex', 'choosing a target changes it for good');
+});
+
+function makeFiveEdits(ui) {
+  ui.controller.updateNodeTransform('hero', { translation: [1, 0.5, 0] });
+  ui.controller.updateNodeTransform('hero', { rotationDegrees: [0, 45, 0] });
+  ui.controller.updateNodeTransform('orb', { scale: [0.8, 0.8, 0.8] });
+  ui.controller.addPrimitive('box');
+  ui.controller.updateNodeTransform('hero', { visible: false });
+}
+
+const historyPanelOf = ui => ui.root.querySelector('.crucible-studio-history');
+const historyRows = ui => historyPanelOf(ui).querySelectorAll('.crucible-studio-history-row');
+const historyRow = (ui, name) => historyRows(ui).find(row => row.dataset.label === name);
+const historyStates = ui => historyRows(ui).map(row => row.dataset.state);
+const editPopoverOf = ui => ui.root.querySelector('#crucible-studio-pop-edit');
+const viewPopoverOf = ui => ui.root.querySelector('#crucible-studio-pop-view');
+const showHistoryFromViewMenu = ui => byText(viewPopoverOf(ui), 'History').click();
+const mountWithStorage = (testContext, options = {}) => {
+  const saved = new Map();
+  const preferenceStorage = { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) };
+  return { saved, preferenceStorage, ui: mountStudio(testContext, { preferenceStorage, ...options }) };
+};
+
+test('the Edit menu shows Undo, Redo, History and Settings with an icon, and Undo and Redo show their keys', testContext => {
+  const ui = mountStudio(testContext);
+  const editMenu = editPopoverOf(ui);
+  const rowNames = editMenu.querySelectorAll('button').map(row => row.textContent);
+  assert.deepEqual(rowNames.slice(0, 3), ['Undo', 'Redo', 'History']);
+  assert.ok(rowNames.includes('Settings…'));
+  for (const name of ['Undo', 'Redo', 'History', 'Settings…']) {
+    assert.match(String(byText(editMenu, name).children[0].getAttribute('class')), /crucible-studio-icon/, name);
+  }
+  assert.equal(byText(editMenu, 'Undo').dataset.shortcut, 'Ctrl+Z');
+  assert.equal(byText(editMenu, 'Redo').dataset.shortcut, 'Ctrl+Shift+Z');
+  byText(editMenu, 'Settings…').click();
+  assert.ok(ui.root.querySelectorAll('dialog').some(dialog => dialog.open), 'Settings opens');
+});
+
+test('Copy, Paste, Duplicate and Deselect each have their own icon', testContext => {
+  const ui = mountStudio(testContext);
+  const iconPath = name => byText(editPopoverOf(ui), name).children[0].descendants().find(element => element.getAttribute('d'))?.getAttribute('d');
+  const paths = ['Copy', 'Paste', 'Duplicate', 'Deselect'].map(iconPath);
+  assert.ok(paths.every(Boolean), 'every row draws an icon');
+  assert.equal(new Set(paths).size, 4);
+});
+
+test('Undo and Redo in the Edit menu are disabled until the stack has something to step to, and History is always there', testContext => {
+  const ui = mountStudio(testContext);
+  const editMenu = editPopoverOf(ui);
+  const disabled = name => byText(editMenu, name).getAttribute('aria-disabled');
+  assert.deepEqual(['Undo', 'Redo'].map(disabled), ['true', 'true']);
+  assert.notEqual(disabled('History'), 'true');
+
+  ui.controller.updateNodeTransform('hero', { translation: [1, 0.5, 0] });
+  assert.deepEqual(['Undo', 'Redo'].map(disabled), ['false', 'true']);
+
+  ui.controller.undo();
+  assert.deepEqual(['Undo', 'Redo'].map(disabled), ['true', 'false']);
+});
+
+test('a dimmed menu row uses the muted token, which is over 3:1 on the menu surface in both themes', () => {
+  const rule = STUDIO_CSS.slice(STUDIO_CSS.indexOf('.crucible-studio .crucible-studio-popover button[aria-disabled="true"] {'));
+  assert.match(rule.slice(0, 120), /opacity: 1;\s+color: var\(--studio-muted\);/);
+});
+
+test('the History panel starts hidden and an empty history shows just Start', testContext => {
+  const ui = mountStudio(testContext);
+  assert.equal(ui.root.dataset.historyCollapsed, 'true');
+  showHistoryFromViewMenu(ui);
+  assert.equal(ui.root.dataset.historyCollapsed, 'false');
+  assert.deepEqual(historyRows(ui).map(row => row.dataset.label), ['Start']);
+  assert.equal(historyRows(ui)[0].getAttribute('aria-current'), 'step');
+  assert.equal(historyPanelOf(ui).querySelector('.crucible-studio-dock-head').textContent, 'History');
+  assert.equal(historyPanelOf(ui).querySelectorAll('button').some(button => button.getAttribute('aria-label') === 'Close'), false, 'a panel has no close button');
+});
+
+test('History rows follow edits live, oldest first, with the kind icon, the name and the target', testContext => {
+  const ui = mountStudio(testContext);
+  showHistoryFromViewMenu(ui);
+  makeFiveEdits(ui);
+  assert.deepEqual(historyRows(ui).map(row => row.dataset.label), ['Start', 'Move', 'Rotate', 'Scale', 'Add box', 'Hide']);
+  assert.deepEqual(historyRows(ui).map(row => row.querySelector('.crucible-studio-history-detail')?.textContent ?? ''), ['', 'hero', 'hero', 'orb', '', 'hero']);
+  assert.deepEqual(historyStates(ui), ['done', 'done', 'done', 'done', 'done', 'current']);
+  const iconPaths = historyRows(ui).map(row => row.descendants().find(element => element.getAttribute('d'))?.getAttribute('d'));
+  assert.ok(iconPaths.every(Boolean), 'every row draws an icon');
+  assert.equal(new Set(iconPaths).size, 6, 'start, move, rotate, scale, add and hide each have their own icon');
+  ui.controller.updateNodeTransform('orb', { translation: [3, 0.5, 0] });
+  assert.equal(historyRows(ui).length, 7, 'a new edit adds its row at once');
+  assert.equal(historyRows(ui)[6].dataset.state, 'current');
+  assert.equal(historyRows(ui)[6].tabIndex, 0, 'the current row is the one Tab reaches');
+});
+
+test('a long name or target is cut with an ellipsis and its full text is in the title', testContext => {
+  const ui = mountStudio(testContext);
+  showHistoryFromViewMenu(ui);
+  const longLabel = 'A very long object name that cannot fit in the panel';
+  ui.controller.updateNodeTransform('hero', { label: longLabel });
+  ui.controller.updateNodeTransform('hero', { translation: [1, 0.5, 0] });
+  assert.equal(historyRow(ui, 'Move').title.includes(longLabel), true);
+  assert.match(STUDIO_CSS, /\.crucible-studio-history-name,\s*\.crucible-studio-history-detail \{[^}]*text-overflow: ellipsis;/);
+});
+
+test('a History row steps the scene to that edit in both directions', testContext => {
+  const ui = mountStudio(testContext);
+  const original = ui.studio.exportRecipe();
+  showHistoryFromViewMenu(ui);
+  ui.controller.updateNodeTransform('hero', { translation: [1, 0.5, 0] });
+  const afterMove = ui.studio.exportRecipe();
+  ui.controller.updateNodeTransform('orb', { scale: [0.8, 0.8, 0.8] });
+  ui.controller.addPrimitive('box');
+  const afterAdd = ui.studio.exportRecipe();
+
+  historyRow(ui, 'Move').click();
+  assert.deepEqual(ui.studio.exportRecipe(), afterMove, 'back to the move');
+  assert.deepEqual(historyStates(ui), ['done', 'current', 'undone', 'undone']);
+  assert.equal(ui.dom.document.activeElement, historyRow(ui, 'Move'));
+  assert.equal(ui.status(), 'Went to Move');
+
+  historyRow(ui, 'Add box').click();
+  assert.deepEqual(ui.studio.exportRecipe(), afterAdd, 'forward again to the add');
+  assert.deepEqual(historyStates(ui), ['done', 'done', 'done', 'current']);
+
+  historyRow(ui, 'Start').click();
+  assert.deepEqual(ui.studio.exportRecipe(), original);
+  assert.equal(ui.controller.canUndo, false);
+  assert.equal(ui.status(), 'Back to the start');
+  assert.deepEqual(historyStates(ui), ['current', 'undone', 'undone', 'undone']);
+});
+
+test('undoing marks the rows after the current one as undone and a new edit removes them', testContext => {
+  const ui = mountStudio(testContext);
+  showHistoryFromViewMenu(ui);
+  makeFiveEdits(ui);
+  ui.controller.undo();
+  ui.controller.undo();
+  assert.deepEqual(historyStates(ui), ['done', 'done', 'done', 'current', 'undone', 'undone']);
+  assert.equal(historyRows(ui).length, 6, 'the undone rows stay listed');
+  ui.controller.updateNodeTransform('orb', { translation: [3, 0.5, 0] });
+  assert.deepEqual(historyRows(ui).map(row => row.dataset.label), ['Start', 'Move', 'Rotate', 'Scale', 'Move']);
+  assert.deepEqual(historyStates(ui), ['done', 'done', 'done', 'done', 'current']);
+});
+
+test('the dimmed History rows use the muted token and the current row the strong text token with a filled mark', () => {
+  const ruleOf = selector => STUDIO_CSS.slice(STUDIO_CSS.indexOf(selector), STUDIO_CSS.indexOf('}', STUDIO_CSS.indexOf(selector)));
+  assert.match(ruleOf('.crucible-studio .crucible-studio-history-row[data-state="undone"],'), /color: var\(--studio-muted\)/);
+  assert.match(ruleOf('.crucible-studio .crucible-studio-history-row {'), /color: var\(--studio-text\)/);
+  assert.match(ruleOf('.crucible-studio-history-row[data-state="current"] .crucible-studio-history-mark'), /background: var\(--studio-accent\)/);
+  assert.doesNotMatch(ruleOf('.crucible-studio .crucible-studio-history-row[data-state="undone"],'), /opacity/);
+});
+
+test('History rows are reached with Tab once, moved with Up and Down, and pressed with Enter or Space', testContext => {
+  const ui = mountStudio(testContext);
+  showHistoryFromViewMenu(ui);
+  makeFiveEdits(ui);
+  assert.deepEqual(historyRows(ui).map(row => row.tabIndex), [-1, -1, -1, -1, -1, 0]);
+  historyRows(ui)[5].focus();
+  assert.equal(dispatch(historyRows(ui)[5], 'keydown', { key: 'ArrowUp' }).defaultPrevented, true);
+  assert.equal(ui.dom.document.activeElement, historyRows(ui)[4]);
+  dispatch(historyRows(ui)[4], 'keydown', { key: 'ArrowDown' });
+  assert.equal(ui.dom.document.activeElement, historyRows(ui)[5]);
+  dispatch(historyRows(ui)[5], 'keydown', { key: 'Home' });
+  assert.equal(ui.dom.document.activeElement, historyRows(ui)[0]);
+  assert.equal(historyRows(ui)[0].tagName, 'BUTTON', 'a button, so Enter and Space press it');
+  historyRows(ui)[0].click();
+  assert.equal(ui.controller.history.position, 0);
+});
+
+test('History keeps no more rows than the undo depth', testContext => {
+  const ui = mountStudio(testContext);
+  showHistoryFromViewMenu(ui);
+  for (let step = 0; step < 40; step += 1) {
+    ui.controller.updateNodeTransform('hero', { translation: [step, 0.5, 0] });
+  }
+  assert.equal(historyRows(ui).length, 32, 'the controller keeps its 32 newest edits');
+  assert.equal(historyRows(ui).some(row => row.dataset.label === 'Start'), false, 'the opened scene is no longer reachable');
+  assert.equal(historyRows(ui)[31].dataset.state, 'current');
+});
+
+test('whether the History panel is shown is remembered with the other view preferences', testContext => {
+  const first = mountWithStorage(testContext);
+  showHistoryFromViewMenu(first.ui);
+  assert.equal(JSON.parse(first.saved.get('crucible-studio-preferences')).historyVisible, true);
+  const second = mountStudio(testContext, { preferenceStorage: first.preferenceStorage });
+  assert.equal(second.root.dataset.historyCollapsed, 'false', 'a new Studio opens with the panel shown');
+  showHistoryFromViewMenu(second);
+  assert.equal(second.root.dataset.historyCollapsed, 'true');
+  assert.equal(JSON.parse(first.saved.get('crucible-studio-preferences')).historyVisible, false);
+});
+
+test('Edit > History shows the panel and puts focus on the current row', testContext => {
+  const ui = mountStudio(testContext);
+  makeFiveEdits(ui);
+  ui.controller.undo();
+  assert.equal(ui.root.dataset.historyCollapsed, 'true');
+  byText(editPopoverOf(ui), 'History').click();
+  assert.equal(ui.root.dataset.historyCollapsed, 'false');
+  assert.equal(ui.dom.document.activeElement, historyRows(ui).find(row => row.dataset.state === 'current'));
+  assert.equal(historyRows(ui).length, 6);
+});
+
+test('a compact window starts with the History panel closed, and History and Properties take turns there', testContext => {
+  const ui = mountStudio(testContext, { containerWidth: 600, preferences: { historyVisible: true } });
+  assert.equal(ui.root.dataset.compact, 'true');
+  assert.equal(ui.root.dataset.historyCollapsed, 'true');
+  showHistoryFromViewMenu(ui);
+  assert.equal(ui.root.dataset.historyCollapsed, 'false');
+  assert.equal(ui.root.dataset.inspectorCollapsed, 'true', 'showing History puts Properties away');
+  ui.label('Show or hide the panels').click();
+  assert.equal(ui.root.dataset.inspectorCollapsed, 'false', 'the panels button brings Properties back');
+  assert.equal(ui.root.dataset.historyCollapsed, 'true', 'and puts History away');
+  assert.equal(ui.studio.preferences.historyVisible, true, 'the remembered choice is untouched');
+});
+
+test('the History card minimizes to its title row like the Scene and Properties cards and remembers it', testContext => {
+  const { saved, preferenceStorage, ui } = mountWithStorage(testContext);
+  showHistoryFromViewMenu(ui);
+  const minimize = historyPanelOf(ui).querySelector('.crucible-studio-dock-head').querySelectorAll('button')[0];
+  assert.equal(minimize.getAttribute('aria-label'), 'Minimize History');
+  assert.equal(ui.root.dataset.historyMinimized, 'false');
+  minimize.click();
+  assert.equal(ui.root.dataset.historyMinimized, 'true');
+  assert.equal(minimize.getAttribute('aria-label'), 'Expand History');
+  assert.equal(JSON.parse(saved.get('crucible-studio-preferences')).historyMinimized, true);
+  assert.ok(STUDIO_CSS.includes('[data-history-minimized="true"] .crucible-studio-history > :not(.crucible-studio-dock-head) { display: none; }'));
+  const second = mountStudio(testContext, { preferenceStorage });
+  assert.equal(second.root.dataset.historyMinimized, 'true', 'a new Studio opens with it minimized');
+  minimize.click();
+  assert.equal(ui.root.dataset.historyMinimized, 'false');
+});
+
+test('the column rule keeps Properties at 240 px or more and History to a third of the column', () => {
+  const flat = STUDIO_CSS.replace(/\s+/g, ' ');
+  assert.ok(flat.includes('.crucible-studio-dock.crucible-studio-history { flex: 0 1 auto; min-block-size: 0; max-block-size: 34%;'));
+  assert.ok(flat.includes('.crucible-studio-side > .crucible-studio-inspector { min-block-size: 240px; }'));
+});
+
+test('the History position is validated and names every kind of edit', testContext => {
+  const ui = mountStudio(testContext);
+  assert.throws(() => ui.controller.goToHistoryPosition(1), /from 0 to 0/);
+  ui.controller.updateNodeTransform('hero', { label: 'Boss' });
+  ui.controller.updateNodeTransform('hero', { translation: [0, 1, 0], scale: [2, 2, 2] });
+  ui.controller.updateNodeTransform('hero', { visible: false });
+  ui.controller.updateNodeTransform('hero', { visible: true });
+  ui.controller.beginUndoGroup();
+  ui.controller.updateNodeTransform('orb', { translation: [3, 0.5, 0] });
+  ui.controller.updateNodeTransform('orb', { rotationDegrees: [0, 10, 0] });
+  ui.controller.endUndoGroup();
+  assert.deepEqual(ui.controller.history.labels, ['Rename', 'Transform', 'Hide', 'Show', 'Move']);
+  assert.deepEqual(ui.controller.history.details, ['hero', 'Boss', 'Boss', 'Boss', 'orb']);
+  assert.throws(() => ui.controller.goToHistoryPosition(1.5), /whole number/);
+  assert.equal(ui.controller.goToHistoryPosition(0), 0);
+  assert.equal(ui.controller.goToHistoryPosition(3), 3);
+  assert.equal(ui.controller.history.position, 3);
 });

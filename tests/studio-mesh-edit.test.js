@@ -7,7 +7,7 @@ import { meshEditSourceOf } from '../src/agent-mesh.js';
 import { isLiveGeometry, markLiveGeometry } from '../src/live-geometry.js';
 import { clearedArrow, clearedPlaneCorners, clearedRingRadius, createStudio, planeSquareIsTooThin, createStudioController } from '../src/studio.js';
 import { byDataset, byLabel, createFakeRenderer, dispatch, installStudioDom } from './support/studio-dom.mjs';
-import { CAGE_TRIANGLE_BUDGET, MAX_LOG_ENTRIES, MAX_MASK_VERTICES, createMeshEditor, planMeshMove, previewNormalsOf } from '../src/studio-mesh-edit.js';
+import { CAGE_TRIANGLE_BUDGET, MAX_LOG_ENTRIES, MAX_MASK_VERTICES, createMeshEditor, planMeshMove, planMeshDissolve, planMeshMerge, previewNormalsOf } from '../src/studio-mesh-edit.js';
 import { DEFAULT_KEYMAP_ACTIONS, findKeymapAction, resolveKeymap } from '../src/studio-keymap.js';
 
 const CAMERA = { eye: [0.8, 1.4, 4.5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 100 };
@@ -401,8 +401,9 @@ test('the mesh keymap context binds Tab, Esc and 1 2 3, and stays out of the way
   assert.equal(findKeymapAction(keymap, { key: 'Tab' }, 'mesh').actionId, 'mesh.leave');
   assert.equal(findKeymapAction(keymap, { key: 'Escape' }, 'mesh').actionId, 'mesh.escape');
   assert.equal(findKeymapAction(keymap, { key: 'Tab' }, 'normal').actionId, 'mesh.enter');
-  assert.equal(findKeymapAction(keymap, { key: 'x' }, 'mesh').actionId, 'mesh.noop');
-  assert.equal(findKeymapAction(keymap, { key: 'Delete' }, 'mesh').actionId, 'mesh.noop');
+  assert.equal(findKeymapAction(keymap, { key: 'x' }, 'mesh').actionId, 'mesh.deleteMenu');
+  assert.equal(findKeymapAction(keymap, { key: 'Delete' }, 'mesh').actionId, 'mesh.deleteMenu');
+  assert.equal(findKeymapAction(keymap, { key: 'm' }, 'mesh').actionId, 'mesh.mergeMenu');
   assert.equal(findKeymapAction(keymap, { key: 'z', ctrlKey: true }, 'mesh'), null);
   assert.ok(DEFAULT_KEYMAP_ACTIONS.filter(action => action.context === 'mesh').length >= 6);
 });
@@ -1132,4 +1133,132 @@ test('edit mode moves obey the snapping toggle and Ctrl flips it for the move (#
   assert.equal(controller.updateGizmoDrag(origin.x + 43, origin.y - 27).elementDelta.every(onGrid), true, 'snapping on: the move lands on the step');
   assert.equal(controller.updateGizmoDrag(origin.x + 43, origin.y - 27, { ctrlKey: true }).elementDelta.every(onGrid), false, 'Ctrl with snapping on: free');
   controller.cancelGizmoDrag();
+});
+
+function pickVertices(controller, editor, vertices) {
+  editor.setMode('vertex');
+  vertices.forEach((vertex, order) => {
+    const pixel = pixelOfVertex(controller, vertex);
+    editor.pick(pixel.x, pixel.y, { additive: order > 0 });
+  });
+}
+
+function meshOf(controller) {
+  return meshEditSourceOf(heroPart(controller).geometry).mesh;
+}
+
+test('M merges two picked vertices into one in one undo step', () => {
+  const { controller, editor } = mount();
+  editor.enter();
+  const first = vertexAt(controller, [0.5, 0.5, 0.5]);
+  const second = vertexAt(controller, [-0.5, 0.5, 0.5]);
+  const before = meshOf(controller).vertexCount;
+  pickVertices(controller, editor, [first, second]);
+  assert.equal(editor.merge('center').ok, true);
+  assert.equal(meshOf(controller).vertexCount, before - 1);
+  assert.deepEqual(logOf(controller).map(entry => entry.op), ['merge_verts']);
+  assert.deepEqual(editor.selection.indices, [], 'the old numbers mean nothing in the new mesh');
+  vertexAt(controller, [0, 0.5, 0.5]);
+  controller.undo();
+  editor.refresh();
+  assert.equal(meshOf(controller).vertexCount, before, 'one undo brings both vertices back');
+  assert.equal(logOf(controller).length, 0);
+});
+
+test('merging at first and at last follows the order the vertices were picked', () => {
+  const { controller, editor } = mount();
+  editor.enter();
+  const right = vertexAt(controller, [0.5, 0.5, 0.5]);
+  const left = vertexAt(controller, [-0.5, 0.5, 0.5]);
+  pickVertices(controller, editor, [right, left]);
+  assert.deepEqual(logOf(controller), []);
+  editor.merge('first');
+  assert.deepEqual(logOf(controller)[0].vertices, [right, left], 'the log keeps the pick order');
+  vertexAt(controller, [0.5, 0.5, 0.5]);
+  assert.throws(() => vertexAt(controller, [-0.5, 0.5, 0.5]));
+  controller.undo();
+  editor.refresh();
+  pickVertices(controller, editor, [right, left]);
+  editor.merge('last');
+  vertexAt(controller, [-0.5, 0.5, 0.5]);
+  assert.throws(() => vertexAt(controller, [0.5, 0.5, 0.5]));
+});
+
+test('At First and At Last are refused outside vertex mode, and one picked vertex cannot merge', () => {
+  const { controller, editor, messages } = mount();
+  editor.enter();
+  const front = faceOf(controller, point => point[2] > 0.4);
+  const pixel = pixelOfFaceCentre(controller, front.corners);
+  editor.pick(pixel.x, pixel.y);
+  const refused = editor.merge('first');
+  assert.equal(refused.ok, false);
+  assert.match(messages.at(-1), /vertex mode/);
+  assert.equal(editor.merge('center').ok, true, 'the four corners of a face still merge at their centre');
+  editor.setMode('vertex');
+  pickVertices(controller, editor, [vertexAt(controller, [0.5, 0.5, -0.5])]);
+  assert.match(editor.merge('center').message, /at least two vertices/);
+});
+
+test('a picked ring of edges is written as vertex pairs with removeStraight, and an empty pick writes nothing', () => {
+  const { controller, editor } = mount(recipeOf({ edits: [{ op: 'loop_cut', name: 'cut', edges: { along: [0, 1, 0] } }] }));
+  editor.enter();
+  const mesh = meshOf(controller);
+  assert.equal(mesh.faceCount, 10);
+  editor.setMode('edge');
+  const ring = [];
+  for (let edge = 0; edge < mesh.edgeCount; edge += 1) {
+    const ends = [mesh.edgeVertices[edge * 2], mesh.edgeVertices[edge * 2 + 1]];
+    if (ends.every(vertex => Math.abs(mesh.positions[vertex * 3 + 1]) < 1e-6)) ring.push(edge);
+  }
+  assert.equal(ring.length, 4);
+  const plan = planMeshDissolve(mesh, 'edge', new Set(ring), 'edges');
+  assert.equal(plan.op, 'dissolve_edges');
+  assert.equal(plan.removeStraight, true);
+  assert.equal(plan.edges.edges.length, 4);
+  const logBefore = logOf(controller).length;
+  assert.equal(editor.dissolve('edges').ok, false);
+  assert.equal(logOf(controller).length, logBefore, 'nothing is picked, so nothing is written');
+});
+
+test('dissolving a picked edge loop leaves six clean quads and one undo takes it back', () => {
+  const { controller, editor } = mount(recipeOf({ edits: [{ op: 'loop_cut', name: 'cut', edges: { along: [0, 1, 0] } }] }));
+  editor.enter();
+  const mesh = meshOf(controller);
+  const ringVertices = [];
+  for (let vertex = 0; vertex < mesh.vertexCount; vertex += 1) {
+    if (Math.abs(mesh.positions[vertex * 3 + 1]) < 1e-6) ringVertices.push(vertex);
+  }
+  assert.equal(ringVertices.length, 4);
+  editor.setMode('vertex');
+  for (const vertex of ringVertices) {
+    const pixel = pixelOfVertex(controller, vertex);
+    editor.pick(pixel.x, pixel.y, { additive: true });
+  }
+  assert.equal(editor.selection.indices.length, 4);
+  assert.equal(editor.dissolve('edges').ok, true);
+  const dissolved = meshOf(controller);
+  assert.equal(dissolved.faceCount, 6);
+  assert.equal(dissolved.vertexCount, 8);
+  for (let face = 0; face < dissolved.faceCount; face += 1) {
+    const corners = [...dissolved.cornerVertices.subarray(dissolved.faceOffsets[face], dissolved.faceOffsets[face + 1])];
+    assert.equal(new Set(corners).size, corners.length);
+    assert.equal(corners.length, 4);
+  }
+  assert.equal(logOf(controller).length, 2);
+  controller.undo();
+  editor.refresh();
+  assert.equal(meshOf(controller).faceCount, 10);
+  assert.equal(logOf(controller).length, 1);
+});
+
+test('dissolve and merge plans name what to pick', () => {
+  const { controller } = mount();
+  const mesh = meshOf(controller);
+  assert.throws(() => planMeshDissolve(mesh, 'vertex', new Set(), 'vertices'), /Pick a vertex, edge or face/);
+  assert.throws(() => planMeshDissolve(mesh, 'vertex', new Set([0]), 'edges'), /at least one edge/);
+  assert.throws(() => planMeshDissolve(mesh, 'vertex', new Set([0, 1]), 'faces'), /at least one whole face/);
+  assert.throws(() => planMeshDissolve(mesh, 'vertex', new Set([0]), 'loops'), /Unknown dissolve kind/);
+  assert.throws(() => planMeshMerge(mesh, 'vertex', new Set([0, 1]), 'cursor'), /Unknown merge target/);
+  assert.deepEqual(planMeshMerge(mesh, 'vertex', new Set([5, 2]), 'last'), { op: 'merge_verts', vertices: [5, 2], at: 'last' });
+  assert.deepEqual(planMeshMerge(mesh, 'face', new Set([0]), 'collapse').vertices.length, 4);
 });
