@@ -235,7 +235,7 @@ The last menu of the top bar, **Help**, has four rows, each with an icon.
 
 ## Keymaps
 
-**Settings ▸ Keyboard** (or the **Keys** step of the setup) switches the keys to those of another program: **Blender** (the table above, the default), **Maya** or **Cinema 4D**. The change is live: key presses, the keys beside menu rows, tooltips, the pill at the bottom of the viewport and the shortcuts dialog all follow it at once, with no reload. Only the keys the vendors list are set; every other action keeps its Blender key. The sources are Autodesk, [All Maya Hotkeys](https://help.autodesk.com/cloudhelp/2025/ENU/Maya-KeyboardShortcuts/files/GUID-30CACC9D-8FBE-4B85-8A8F-C5ADF32DDD4E.htm), and Maxon, [Keyboard Shortcuts](https://help.maxon.net/c4d/en-us/Content/html/Shortcuts.html).
+**Settings ▸ Keyboard** (or the **Keys** step of the setup) switches the keys to another keymap preset: the Blender preset (the table above, the default), the Maya preset or the Cinema 4D preset. The change is live: key presses, the keys beside menu rows, tooltips, the pill at the bottom of the viewport and the shortcuts dialog all follow it at once, with no reload. Only the keys the vendors list are set; every other action keeps its key from the Blender preset. The sources are the lists of default keys of Autodesk, [the Maya keys](https://help.autodesk.com/cloudhelp/2025/ENU/Maya-KeyboardShortcuts/files/GUID-30CACC9D-8FBE-4B85-8A8F-C5ADF32DDD4E.htm), and Maxon, [Keyboard Shortcuts](https://help.maxon.net/c4d/en-us/Content/html/Shortcuts.html).
 
 | Action | Blender | Maya | Cinema 4D |
 | --- | --- | --- | --- |
@@ -275,7 +275,7 @@ Maya and Cinema 4D also take **Alt** with a mouse button on the viewport: Alt an
 - **Reset.** A row that differs from its preset has a dot before its name and a reset button that returns just that action. **Reset keys** returns every key of the preset after a confirm (**Reset 3 keys** or **Keep**); the **Reset settings** button in the footer returns every setting, key changes of all presets included.
 - **Find a shortcut.** The field above the list keeps the actions whose name contains what you type.
 
-Changes are kept in the browser with the other Settings as `keyOverrides`, per preset: `{ "crucible": { "tool.select": { "key": "v", "shift": false } }, "maya": { "tool.rotate": null } }`. A value is a binding, a list of bindings, or `null` for no key. When the settings load, an unknown preset or action, a malformed or browser-reserved binding, or a set that gives one key to two actions is dropped and the preset's own keys stay. Key presses, menu labels, tooltips, the pill at the bottom of the viewport and the Help sheet all read the one keymap, so they follow a change at once.
+Changes are kept in the browser with the other Settings as `keyOverrides`, per preset: `{ "crucible": { "tool.select": { "key": "v", "shift": false }, "tool.rotate": null } }`. A value is a binding, a list of bindings, or `null` for no key. When the settings load, an unknown preset or action, a malformed or browser-reserved binding, or a set that gives one key to two actions is dropped and the preset's own keys stay. Key presses, menu labels, tooltips, the pill at the bottom of the viewport and the Help sheet all read the one keymap, so they follow a change at once.
 
 ## Settings
 
@@ -286,7 +286,7 @@ Changes are kept in the browser with the other Settings as `keyOverrides`, per p
 | Interface | Theme (System, Light or Dark), Open in (the workspace Studio opens in), Floating panels, Motion |
 | Viewport | Performance tier, Grid, Camera and size readout, Axis widget, Agent cursor, Handle size, Zoom direction |
 | Editing | Move snap step and Rotate snap angle: what a snapping move or turn lands on |
-| Keyboard | The key preset (Blender, Maya or Cinema 4D), a field to find an action, and every shortcut of the preset as a button that records a new key ([Change a shortcut](#change-a-shortcut)) |
+| Keyboard | The key preset, a field to find an action, and every shortcut of the preset as a button that records a new key ([Change a shortcut](#change-a-shortcut)) |
 | Account | Only when the host page offers an account, see below |
 
 They are kept in the browser (`localStorage`, key `crucible-studio-preferences`), not in the scene recipe, so a scene looks the same for everyone and each person keeps their own setup. **Reset** brings back the defaults of every row. **Run setup again** opens the first-run setup. An app can pass `preferences` to `createStudio` to start from other values, `preferenceStorage: null` to keep nothing, and call `studio.setPreference(name, value)`.
