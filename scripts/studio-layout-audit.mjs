@@ -275,6 +275,9 @@ function checkKeyboardScrollCue() {
   }
   const unnotedHeights = [...list.querySelectorAll('.crucible-studio-keyboard-row:not([data-noted])')].map(row => row.getBoundingClientRect().height);
   if (unnotedHeights.some(height => Math.abs(height - unnotedHeights[0]) > 0.5)) problems.push('rows differ in height (' + [...new Set(unnotedHeights)].join(', ') + ' px); a changed row must be as tall as the others');
+  const toolbarRight = Math.max(...[...document.querySelectorAll('.crucible-studio-keyboard-head button, .crucible-studio-keyboard-head select, .crucible-studio-keyboard-head input')].map(control => control.getBoundingClientRect().right));
+  const keysRight = Math.max(...[...list.querySelectorAll('button.crucible-studio-keyboard-keys')].map(button => button.getBoundingClientRect().right));
+  if (Math.abs(toolbarRight - keysRight) > 1) problems.push('the toolbar ends at ' + toolbarRight + 'px and the key buttons at ' + keysRight + 'px; they share one right edge');
   const labelLeft = row => row.querySelector('.crucible-studio-keyboard-name > span:last-child').getBoundingClientRect().left;
   const rows = [...list.querySelectorAll('.crucible-studio-keyboard-row')];
   if (rows.some(row => Math.abs(labelLeft(row) - labelLeft(rows[0])) > 1)) problems.push('row labels do not share one left edge');
@@ -302,6 +305,9 @@ function checkKeyboardScrollCue() {
       block.right - Math.max(...noteChildren.map(child => child.right)),
     ];
     if (Math.max(...insets) - Math.min(...insets) > 1) problems.push('the tinted block has unequal room around its content (top, bottom, left, right: ' + insets.join(', ') + ' px)');
+    const above = note.previousElementSibling ?? note.closest('.crucible-studio-keyboard-group').querySelector('h4');
+    const gapAbove = block.top - above.getBoundingClientRect().bottom;
+    if (gapAbove < 8) problems.push('the tinted block starts ' + gapAbove + 'px under the row or title above it; it keeps at least 8px');
     const trackGap = box.right - (list.offsetWidth - list.clientWidth) - block.right;
     if (trackGap < 8) problems.push('the tinted block ends ' + trackGap + 'px from the scrollbar; it keeps at least 8px');
     const keysRight = note.querySelector('.crucible-studio-keyboard-keys').getBoundingClientRect().right;

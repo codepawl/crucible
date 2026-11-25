@@ -2218,7 +2218,8 @@ export const STUDIO_CSS = `
   block-size: 100%;
   min-block-size: 0;
 }
-.crucible-studio-keyboard-head { display: grid; gap: var(--studio-space-8); }
+/* Shares the list's right inset, so the last toolbar button and the key column end on one edge. */
+.crucible-studio-keyboard-head { display: grid; gap: var(--studio-space-8); padding-inline-end: var(--studio-space-8); }
 .crucible-studio-keyboard-tools,
 .crucible-studio-keyboard-actions,
 .crucible-studio-keyboard-controls,
@@ -2322,7 +2323,6 @@ export const STUDIO_CSS = `
 /* A row with a message to answer (a clash, a refused combination) sits on its own surface, the message on a second line, so it reads as one block. */
 .crucible-studio-keyboard-row[data-noted="true"] {
   margin-inline: calc(var(--studio-space-8) * -1);
-  margin-block: calc(var(--studio-space-4) * -1);
   padding: var(--studio-space-8);
   border-radius: 8px;
   background: color-mix(in srgb, var(--studio-text) 7%, transparent);
