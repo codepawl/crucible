@@ -151,9 +151,12 @@ function packSecondUvSet(data, base, uvs1, corners) {
   data[base + 8 + 3] = uvs1[corners[2] * 2 + 1];
 }
 
-/** Shelf-packs the distinct material textures into one RGBA8 atlas; returns where each one went. */
-export function packAtlas(materials) {
-  const fields = ['texture', 'normalTexture', 'surfaceTexture', 'emissiveTexture'];
+/**
+ * Shelf-packs the distinct material textures into one RGBA8 atlas; returns where each one went. `withOcclusion` also places the occlusion
+ * maps (the WebGPU tracer reads them from its own table, packOcclusion); the other tracers leave them out, so their atlas never grows.
+ */
+export function packAtlas(materials, { withOcclusion = false } = {}) {
+  const fields = withOcclusion ? [...GPU_MAP_FIELDS, 'occlusionTexture'] : GPU_MAP_FIELDS;
   const placements = new Map();
   const textures = [];
   for (const material of materials) {
@@ -248,6 +251,32 @@ export function packMaterials(materials, atlas, shadowOnlyParts = null, lampLigh
     data[base + UV_SET_SLOT] = materialUvSetMask(material);
     if (shadowOnlyParts?.[index] === 1) data[base + SHADOW_ONLY_SLOT] = 1;
     if (lampLightMasks) data[base + LAMP_LIGHTS_SLOT] = lampLightMasks[index];
+  });
+  return table;
+}
+
+/** Vectors per material of the occlusion table: (atlas rectangle) and (texture flags, strength, second UV set, unused). */
+export const OCCLUSION_TEXELS = 2;
+
+/** True when a material has an occlusion map, which is when the WebGPU kernel needs the occlusion table. */
+export function sceneUsesOcclusionMap(materials) {
+  return materials.some(material => material.occlusionTexture);
+}
+
+/**
+ * The occlusion map of each material, two texels per material. The material record has no free slot for a fifth map, so this table
+ * follows the material table in the same buffer. A material without a map has a rectangle of width 0, which the kernel reads as no occlusion.
+ */
+export function packOcclusion(materials, atlas) {
+  const table = createTable(materials.length * OCCLUSION_TEXELS);
+  const { data } = table;
+  materials.forEach((material, index) => {
+    const texture = material.occlusionTexture;
+    if (!texture) return;
+    const place = atlas.placements.get(texture.data);
+    const base = index * OCCLUSION_TEXELS * 4;
+    data.set([place.x, place.y, texture.width, texture.height], base);
+    data.set([textureFlags(texture), material.occlusionStrength ?? 1, texture.uvSet === 1 ? 1 : 0, 0], base + 4);
   });
   return table;
 }
