@@ -2191,7 +2191,7 @@ export function createStudio(container, {
     if (duplicateButton.getAttribute('aria-disabled') === 'true') return;
     try {
       const cloned = controller.duplicateSelected();
-      announce(`Duplicated to ${cloned.label}`);
+      announceDuplicated(cloned);
     } catch (error) {
       announceError(error.message);
     }
@@ -5409,14 +5409,20 @@ export function createStudio(container, {
       announce(`Deleted ${label}`);
       return;
     }
+    const deletedCount = controller.selectionRoots().length;
     controller.deleteSelected();
-    announce('Deleted node');
+    announce(deletedCount > 1 ? `Deleted ${deletedCount} objects` : 'Deleted node');
+  }
+
+  function announceDuplicated(activeCopy) {
+    const copyCount = controller.selectedNodeIds.length;
+    announce(copyCount > 1 ? `Duplicated ${copyCount} objects` : `Duplicated to ${activeCopy.label}`);
   }
 
   function duplicateSelection() {
     if (controller.selectedNodeId) {
       const cloned = controller.duplicateSelected();
-      announce(`Duplicated to ${cloned.label}`);
+      announceDuplicated(cloned);
     }
   }
 

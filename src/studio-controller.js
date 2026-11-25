@@ -1698,6 +1698,7 @@ export function createStudioController({
       parentInverse: parentWorld ? mat4.invert(mat4.create(), parentWorld) : null,
       parentWorld: parentWorld ?? null,
       companions: elementSession ? [] : moveCompanionsOf(recipe, node.id, worldMatrices),
+      activeCarried: !elementSession && !selectionRootsIn(recipe.nodes).includes(node.id),
       selectionIds,
       ownPoints: sampledOwnPoints,
       snapMarker: null,
@@ -1781,11 +1782,11 @@ export function createStudioController({
   // A keyed node shows its sampled pose, so with auto-key on the dragged pose is also keyed at the playhead as the pointer
   // moves; built from the motion the drag began with, so each move replaces the last and cancel can put the motion back.
   function writeDraggedPose(pose) {
-    const operations = [{ type: 'set-node', id: dragState.nodeId, ...pose }];
+    const operations = dragState.activeCarried ? [] : [{ type: 'set-node', id: dragState.nodeId, ...pose }];
     if (pose.translation) {
       operations.push(...companionMoveOperations(pose.translation));
     }
-    if (autoKey) {
+    if (autoKey && !dragState.activeCarried) {
       const motion = motionWithPoseKeys(dragState.baseMotion, dragState.nodeId, pose, motionTime);
       if (motion) {
         operations.push({ type: 'set-motion', motion });
@@ -1807,13 +1808,14 @@ export function createStudioController({
   }
 
   // The other selected objects that move with the dragged one: the selection's roots, minus what already moves with it
-  // (its own children) and what carries it (its selected ancestors).
+  // (its own children). A selected ancestor of the dragged object is one of them and carries it along, so the dragged
+  // object is then not written itself (`activeCarried`).
   // They start from the pose the dragged node starts from: the sampled pose under auto-key, the authored one otherwise.
   function moveCompanionsOf(recipe, activeId, worldMatrices) {
     const recipeNodes = recipe.nodes;
     const carriedByActive = descendantIdsOf(recipeNodes, activeId);
     return selectionRootsIn(recipeNodes)
-      .filter(nodeId => !carriedByActive.has(nodeId) && !descendantIdsOf(recipeNodes, nodeId).has(activeId))
+      .filter(nodeId => !carriedByActive.has(nodeId))
       .map(nodeId => {
         const node = recipeNodes.find(candidate => candidate.id === nodeId);
         const parentWorld = node.parent ? worldMatrices.get(node.parent) : null;
@@ -2564,11 +2566,10 @@ export function createStudioController({
     return source;
   }
 
-  // One undo step that adds a copy of `source`, shifted aside by `offsetSteps` offsets, and selects it.
-  function addNodeCopy(source, offsetSteps) {
-    const recipe = currentScene.exportRecipe();
-    const existingIds = new Set(recipe.nodes.map(node => node.id));
+  // A copy of `source` shifted aside by `offsetSteps` offsets, with an id and label of its own. `existingIds` gains the new id.
+  function buildNodeCopy(source, offsetSteps, existingIds) {
     const copyId = uniqueIdentifier(existingIds, `${source.id}-copy`);
+    existingIds.add(copyId);
     const cloned = structuredClone(source);
     cloned.id = copyId;
     cloned.label = `${source.label ?? source.id} copy`;
@@ -2577,19 +2578,57 @@ export function createStudioController({
       source.translation?.[1] ?? 0,
       (source.translation?.[2] ?? 0) + COPY_OFFSET[2] * offsetSteps,
     ]);
-    // The parent may be gone by the time a copy is pasted.
-    if (cloned.parent !== undefined && !existingIds.has(cloned.parent)) {
-      delete cloned.parent;
-    }
-    applySceneOperations([{ type: 'add-node', node: cloned }]);
-    commitNodeSelection([copyId], copyId);
-    selectedObjectKey = null;
-    notify({ kind: 'topology', nodeId: copyId });
     return cloned;
   }
 
+  // The nodes ordered so that each one comes after the parent it names, when that parent is in the list too.
+  function parentsFirst(nodes) {
+    const ordered = [];
+    const placed = new Set();
+    const waiting = [...nodes];
+    while (waiting.length > 0) {
+      const waitingIds = new Set(waiting.map(node => node.id));
+      const ready = waiting.filter(node => !waitingIds.has(node.parent) || node.parent === node.id);
+      for (const node of ready.length > 0 ? ready : waiting) {
+        ordered.push(node);
+        placed.add(node.id);
+      }
+      waiting.splice(0, waiting.length, ...waiting.filter(node => !placed.has(node.id)));
+    }
+    return ordered;
+  }
+
+  // One undo step that adds a copy of each source and selects the copies; the copy of `activeSourceId` is the active one.
+  function addNodeCopies(sources, offsetSteps, activeSourceId) {
+    const recipe = currentScene.exportRecipe();
+    const existingIds = new Set(recipe.nodes.map(node => node.id));
+    const copies = sources.map(source => buildNodeCopy(source, offsetSteps, existingIds));
+    const copyIdBySourceId = new Map(sources.map((source, index) => [source.id, copies[index].id]));
+    copies.forEach((cloned, index) => {
+      const source = sources[index];
+      if (copyIdBySourceId.has(source.parent)) {
+        // Under the copy of its parent it keeps its place relative to it: the parent's shift already carries it.
+        cloned.parent = copyIdBySourceId.get(source.parent);
+        cloned.translation = structuredClone(source.translation ?? [0, 0, 0]);
+      } else if (cloned.parent !== undefined && !recipe.nodes.some(node => node.id === cloned.parent)) {
+        // The parent may be gone by the time a copy is pasted.
+        delete cloned.parent;
+      }
+    });
+    applySceneOperations(parentsFirst(copies).map(node => ({ type: 'add-node', node })));
+    const activeIndex = Math.max(0, sources.findIndex(source => source.id === activeSourceId));
+    commitNodeSelection(copies.map(node => node.id), copies[activeIndex].id);
+    selectedObjectKey = null;
+    notify({ kind: 'topology', nodeId: copies[activeIndex].id });
+    return copies[activeIndex];
+  }
+
+  /** Adds a copy of every selected object as one undo step and selects the copies; returns the copy of the active one. */
   function duplicateSelected() {
-    return addNodeCopy(selectedSourceNode('duplicating'), 1);
+    const activeSource = selectedSourceNode('duplicating');
+    const nodesById = new Map(currentScene.exportRecipe().nodes.map(node => [node.id, node]));
+    const sources = selectedNodeIds.map(nodeId => nodesById.get(nodeId)).filter(Boolean);
+    return addNodeCopies(sources.length > 0 ? sources : [activeSource], 1, activeSource.id);
   }
 
   /** Remembers the selected node, as it is now, for pasteCopy. The scene is not touched. */
@@ -2605,9 +2644,10 @@ export function createStudioController({
       throw new RangeError('Copy a node before pasting: select one and use copySelected().');
     }
     pasteCount += 1;
-    return addNodeCopy(copiedNode, pasteCount);
+    return addNodeCopies([copiedNode], pasteCount, copiedNode.id);
   }
 
+  /** Removes every selected object (and what hangs below it) as one undo step. */
   function deleteSelected() {
     if (!selectedNodeId) {
       throw new RangeError('Select a node before deleting it.');
@@ -2616,7 +2656,9 @@ export function createStudioController({
     if (!recipe.nodes.some(node => node.id === selectedNodeId)) {
       throw new RangeError(`Unknown node "${selectedNodeId}".`);
     }
-    const removed = descendantIdsOf(recipe.nodes, selectedNodeId);
+    const knownIds = new Set(recipe.nodes.map(node => node.id));
+    const roots = selectionRootsIn(recipe.nodes).filter(nodeId => knownIds.has(nodeId));
+    const removed = descendantIdsOfMany(recipe.nodes, roots);
     const operations = [];
     if (recipe.motion?.tracks?.some(track => track.kind === 'node' && removed.has(track.id))) {
       const remainingTracks = recipe.motion.tracks.filter(track => !(track.kind === 'node' && removed.has(track.id)));
@@ -2627,7 +2669,9 @@ export function createStudioController({
       const nextLineNodes = Object.fromEntries(Object.entries(recipe.environment.lines.nodes).filter(([id]) => !removed.has(id)));
       operations.push({ type: 'set-environment', environment: { lines: { ...recipe.environment.lines, nodes: nextLineNodes } } });
     }
-    operations.push({ type: 'remove-node', id: selectedNodeId, recursive: true });
+    for (const rootId of roots) {
+      operations.push({ type: 'remove-node', id: rootId, recursive: true });
+    }
     applySceneOperations(operations);
     // Nothing is selected afterwards, so a second Delete cannot remove an object nobody picked.
     commitNodeSelection([], null);
