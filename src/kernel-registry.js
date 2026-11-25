@@ -4,6 +4,7 @@ import { bakeClothWithFields } from './cloth-fields.js';
 import { bakeMaterialPattern } from './material-patterns.js';
 import { traceProbes } from './probe-trace.js';
 import { unwrapUv } from './mesh-uv.js';
+import { bakeSurfaceMask } from './material-surface-map.js';
 
 // The kernels a worker can run, by the name the call sites give `runKernel`. Each is the same function the call site
 // computes inline with, so the worker and the inline path return identical data.
@@ -15,6 +16,7 @@ const KERNELS = Object.assign(Object.create(null), {
   pattern: bakeMaterialPattern,
   uvUnwrap: unwrapUv,
   groundCover: groundCoverParts,
+  surfaceMask: bakeSurfaceMask,
 });
 
 function collectBuffers(value, buffers) {

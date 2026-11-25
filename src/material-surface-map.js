@@ -1,6 +1,7 @@
 import { invalidField } from './field-error.js';
 import { weldedMaskNormals } from './mesh-weld-normals.js';
 import { rasterizeUvTriangles } from './material-vertex-group-map.js';
+import { runKernel } from './kernel-offload.js';
 
 // The surface of one mesh drawn into UV space, so a material graph can read its slope or height at each texel with
 // {"surface":{"output":"slope"}}. The normal and the position of every texel are the barycentric blend of the corner
@@ -217,31 +218,37 @@ export function smoothMaskTexels(texels, covered, resolution, steepFaces, snowIs
 }
 
 const mapsByGeometry = new WeakMap();
+const meshesByGeometry = new WeakMap();
 
-/**
- * One surface output of a render geometry as `{ width, height, data }` RGBA bytes with the value (0 to 255) in the red
- * channel. \`worldMatrix\` (16 numbers, column-major) places the mesh first when \`space\` is "world"; it is ignored in
- * "object" space. Cached per geometry, settings and matrix, so a part keeps the same map between rebuilds. Throws, with
- * what to pass instead, when the mesh has no UVs.
- */
-export function surfaceMap(geometry, settings, resolution, nodeId, worldMatrix) {
+/** Throws, with what to pass instead, when `geometry` has no UVs to draw a surface mask into. */
+export function requireSurfaceUvs(geometry, settings, nodeId) {
   if (!geometry.uvs) {
     throw invalidField('surface', settings.output, `a mesh with UVs (node ${nodeId} has none); add UVs with a uv mesh edit`);
   }
-  const matrix = settings.space === 'world' ? worldMatrix : undefined;
-  let maps = mapsByGeometry.get(geometry);
-  if (!maps) {
-    maps = new Map();
-    mapsByGeometry.set(geometry, maps);
+}
+
+// The fields the bake reads, as plain data a worker can receive. One object per geometry, so the welded normals that
+// `weldedMaskNormals` remembers per object are shared by every output of the same mesh.
+function surfaceMeshOf(geometry) {
+  let mesh = meshesByGeometry.get(geometry);
+  if (!mesh) {
+    mesh = { positions: geometry.positions, normals: geometry.normals, indices: geometry.indices, uvs: geometry.uvs };
+    meshesByGeometry.set(geometry, mesh);
   }
-  const key = `${settings.output}|${settings.space}|${settings.range ? settings.range.join(',') : ''}|${resolution}|${matrixKey(matrix)}`;
-  const remembered = maps.get(key);
-  if (remembered) return remembered;
-  const positions = placedPositions(geometry.positions, matrix);
-  const normals = placedNormals(weldedMaskNormals(geometry), geometry.positions, matrix ? normalMatrixOf(matrix) : undefined);
+  return mesh;
+}
+
+/**
+ * Bakes one surface output from plain data: `mesh` is `{ positions, normals, indices, uvs }`, `settings` is
+ * `{ output, space, range }` and `matrix` is the 16 numbers that place the mesh in world space, or null for object
+ * space. It is the kernel a worker runs, and the same function the page computes with when no worker is available.
+ */
+export function bakeSurfaceMask(mesh, settings, resolution, matrix) {
+  const positions = placedPositions(mesh.positions, matrix ?? undefined);
+  const normals = placedNormals(weldedMaskNormals(mesh), mesh.positions, matrix ? normalMatrixOf(matrix) : undefined);
   const bounds = settings.output === 'height' ? heightBounds(positions, settings.range) : undefined;
-  const hasNormals = Boolean(geometry.normals);
-  const map = rasterizeUvTriangles(geometry, resolution, positions.length / 3, (corners, weightA, weightB, weightC) => {
+  const hasNormals = Boolean(mesh.normals);
+  return rasterizeUvTriangles(mesh, resolution, positions.length / 3, (corners, weightA, weightB, weightC) => {
     let normalX;
     let normalY;
     let normalZ;
@@ -259,6 +266,28 @@ export function surfaceMap(geometry, settings, resolution, nodeId, worldMatrix) 
     if (bounds) upPosition = weightA * positions[corners[0] * 3 + 1] + weightB * positions[corners[1] * 3 + 1] + weightC * positions[corners[2] * 3 + 1];
     return surfaceValue(settings.output, upNormal, upPosition, bounds);
   }, settings.output === 'height' ? undefined : { flagOfTriangle: corners => (hasNormals && faceIsSteep(positions, normals, corners) ? 1 : 0), afterFill: (texels, covered, size, steepFaces) => smoothMaskTexels(texels, covered, size, steepFaces, settings.output === 'normalY') });
+}
+
+/**
+ * One surface output of a render geometry as `{ width, height, data }` RGBA bytes with the value (0 to 255) in the red
+ * channel. `worldMatrix` (16 numbers, column-major) places the mesh first when `space` is "world"; it is ignored in
+ * "object" space. Cached per geometry, settings and matrix, so a part keeps the same map between rebuilds. Inside a
+ * `buildWithKernels` session the bake runs on a worker, one geometry per task, and this call defers until it is back.
+ * Throws, with what to pass instead, when the mesh has no UVs.
+ */
+export function surfaceMap(geometry, settings, resolution, nodeId, worldMatrix) {
+  requireSurfaceUvs(geometry, settings, nodeId);
+  const matrix = settings.space === 'world' ? worldMatrix : undefined;
+  let maps = mapsByGeometry.get(geometry);
+  if (!maps) {
+    maps = new Map();
+    mapsByGeometry.set(geometry, maps);
+  }
+  const key = `${settings.output}|${settings.space}|${settings.range ? settings.range.join(',') : ''}|${resolution}|${matrixKey(matrix)}`;
+  const remembered = maps.get(key);
+  if (remembered) return remembered;
+  const plainSettings = { output: settings.output, space: settings.space, range: settings.range ?? null };
+  const map = runKernel('surfaceMask', [surfaceMeshOf(geometry), plainSettings, resolution, matrix ? Array.from(matrix) : null], bakeSurfaceMask);
   maps.set(key, map);
   return map;
 }

@@ -1,7 +1,7 @@
 import { invalidField } from './field-error.js';
 import { registerAssetGraphModule } from './agent-scene-assets.js';
 import { baseMapKey, BASE_OUTPUT_SOURCES, graphBaseOutputs, graphImageAssets, graphSurfaceSettings, normalizeMaterialGraph } from './material-graph.js';
-import { groupMapsOf, materialPatternTextures, normalizeMaterialPattern } from './material-patterns.js';
+import { checkGroupInputs, groupMapsOf, materialPatternTextures, normalizeMaterialPattern } from './material-patterns.js';
 
 // A material graph on a placed asset part (#3202). The graph bakes in the part's UV space like a recipe pattern with
 // mapping "uv", and it can read the scan's own textures through `base` nodes. Whatever the graph does not write keeps the
@@ -194,9 +194,13 @@ export function assetGraphView(output, geometry, nodeId, worldMatrix) {
   }
   const remembered = views.get(output);
   if (remembered?.placement === placement) return remembered.view;
-  const groups = { ...groupMapsOf(pattern, geometry, nodeId, worldMatrix), ...baseMapsOf(output, pattern, nodeId) };
+  checkGroupInputs(pattern, geometry, nodeId);
+  const baseMaps = baseMapsOf(output, pattern, nodeId);
+  const placedMatrix = worldMatrix ? Array.from(worldMatrix) : undefined;
+  let groups;
   let baked;
   const bakedTextures = () => {
+    groups ??= { ...groupMapsOf(pattern, geometry, nodeId, placedMatrix), ...baseMaps };
     baked ??= materialPatternTextures(pattern, undefined, groups);
     return baked;
   };
