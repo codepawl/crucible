@@ -97,6 +97,9 @@ test('bad fields throw errors that name the field and the fix', () => {
   assert.throws(edit({ scale: [1, -0, 1] }), /edits\[0\]\.scale/, 'minus zero is still zero');
   assert.throws(edit({ scale: -2000 }), /edits\[0\]\.scale/);
   assert.throws(edit({ scale: -1, falloff: { radius: 1 } }), /positive when a falloff is given/);
+  assert.throws(edit({ scale: -1, verts: { all: true } }), /positive when verts or edges are given/);
+  assert.throws(edit({ scale: [1, -1, 1], edges: { edges: [[0, 1]] } }), /positive when verts or edges are given/);
+  assert.doesNotThrow(edit({ scale: [-1, -1, 1], verts: { all: true } }), 'two negative factors are a turn, not a mirror');
   assert.throws(edit({ scale: [1, 0, 1] }), /edits\[0\]\.scale/);
   assert.throws(edit({ scale: 5000 }), /edits\[0\]\.scale/);
   assert.throws(edit({ scale: Number.NaN }), /edits\[0\]\.scale/);

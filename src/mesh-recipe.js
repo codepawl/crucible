@@ -197,6 +197,9 @@ function normalizeTransformSelection(edit, normalized, index) {
   if (edit.falloff !== undefined && mirrorsSelection(normalized.scale)) {
     throw editField(index, 'scale', edit.scale, 'positive when a falloff is given, because a fading mirror folds the mesh through itself; mirror without a falloff');
   }
+  if ((edit.verts !== undefined || edit.edges !== undefined) && mirrorsSelection(normalized.scale)) {
+    throw editField(index, 'scale', edit.scale, 'positive when verts or edges are given, because a mirrored part of a mesh has no faces to turn outward; select faces with select to mirror');
+  }
 }
 
 // The fields an op takes: its listed fields, plus the vertex and edge selections a move takes instead of a face rule.
