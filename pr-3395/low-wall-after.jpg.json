@@ -1,0 +1,82 @@
+{
+  "file": "low.png",
+  "side": "branch",
+  "label": "branch 3389-open-room-sky a4f35f150",
+  "camera": {
+    "name": "low",
+    "eye": [
+      0,
+      1.4,
+      13
+    ],
+    "target": [
+      0,
+      1.3,
+      -1
+    ],
+    "fov": 70
+  },
+  "size": {
+    "width": 960,
+    "height": 540
+  },
+  "fps": 30,
+  "backend": "gpu",
+  "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002487) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "seed": null,
+  "recipe": {
+    "file": "scene.json",
+    "sha256": "ef7cd85fbde58195b8e7312b74ff406092860aae6aada2f3777a22e017428d7d"
+  },
+  "lights": {
+    "environment": {
+      "pointLights": [
+        {
+          "position": [
+            -3,
+            3,
+            -1
+          ],
+          "color": [
+            1,
+            0.75,
+            0.45
+          ],
+          "intensity": 14,
+          "range": 12
+        },
+        {
+          "position": [
+            3,
+            3,
+            -1
+          ],
+          "color": [
+            1,
+            0.75,
+            0.45
+          ],
+          "intensity": 14,
+          "range": 12
+        },
+        {
+          "position": [
+            0,
+            3,
+            2
+          ],
+          "color": [
+            1,
+            0.75,
+            0.45
+          ],
+          "intensity": 14,
+          "range": 12
+        }
+      ]
+    },
+    "lights": null
+  },
+  "kind": "still",
+  "frame": 0
+}
