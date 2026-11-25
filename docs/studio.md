@@ -18,7 +18,7 @@ The scene fills the window and the controls float on top of it.
 | Left rail | The tools that change the scene come first: select, move, rotate, scale, then the snapping magnet and its target menu, then add an object or a light, undo and redo. Under one line sit the switches that only change what you see: show or hide the grid, see through the surface (edit mode, **Alt+Z**), show or hide the panels. |
 | Scene card | At the top of the right column, across from the rail. The list shows whole rows only: it scrolls a row at a time and the rows stretch by a pixel or two so a whole number of them fills it. The materials are one row of swatches that scrolls sideways, with the add button fixed beside it. Its head has a search button, which opens a box that filters the list as you type (Esc closes it and clears the filter), and an add button with the same menu as the rail. Every object in the scene, drawn as the shape of its geometry (cube, sphere, cylinder, cone, torus, plane, or a stack for a group) in the colour of its material, an eye to hide each one, and the scene materials as swatches. |
 | Properties | Under the Scene card, in the same column. The panels of the open workspace: the object in Build, material and look in Look, the camera (views, lens, shots) in Animate, with the object one tab away: picking an object there opens its panel and stays in Animate. Build also has a Modifiers tab (wrench icon): an Add Modifier menu (subdivision, mirror, array, bevel, solidify) and one collapsible block per modifier of the selected mesh, with a show-in-viewport switch, move up and down (or drag the grip), Apply and Delete. A shape of the Add menu becomes a mesh with its first modifier. Apply bakes that one modifier into the mesh as if it were first, and the others stay in the stack. Each change is one undo step. A mesh with modifiers still cannot enter edit mode. |
-| Agent card | At the foot of the right column, under Scene, Properties and History, and only when the host page offers a chat (see [Agent chat](#agent-chat)); without one there is no card, no View row and no key. Its title row has the chat icon and a minimize button, with no close button: **View > Agent** and **Alt+M** show and hide it. It holds the conversation (your messages, the reply as it streams, and quiet one-line rows for each step and each outcome), then a message field with Send, which becomes Stop while a run goes on. Drag its top edge to resize it; the height, the minimized state and whether it is shown are remembered. The column holds Scene (at least 192 px), Properties (at least 240 px) and the card (at least 232 px, 288 px while a notice shows), so the card stacks under them only in a window at least 820 px tall. In a shorter window the card and Properties take turns: both keep their title row in the column, and pressing the one that is folded opens it and folds the other (this turn is not remembered; only a fold you made in a tall window is). In a window under the compact width the card lies over the scene and takes turns by being put away. Stacked, it ends inside the column with the same gap as the other cards. |
+| Agent card | At the foot of the right column, under Scene, Properties and History, and only when the host page offers a chat (see [Agent chat](#agent-chat)); without one there is no card, no View row and no key. Its title row has the chat icon and a minimize button, with no close button: **View > Agent** and **Alt+M** show and hide it. It holds the conversation (your messages, the reply as it streams, and quiet one-line rows for each step and each outcome), then a message field with Send, which becomes Stop while a run goes on. Drag its top edge to resize it; the height, the minimized state and whether it is shown are remembered. The column holds Scene (at least 192 px), Properties (at least 240 px) and the card (at least 248 px, 304 px while a notice shows), so the card stacks under them only in a window at least 840 px tall. In a shorter window the card and Properties take turns: both keep their title row in the column, and pressing the one that is folded opens it and folds the other (this turn is not remembered; only a fold you made in a tall window is). In a window under the compact width the card lies over the scene and takes turns by being put away. Stacked, it ends inside the column with the same gap as the other cards. |
 | Bottom, in Animate | Play, add a keyframe, switch Auto-key, scrub the time, jump to a saved shot. The selected object's keys are diamonds on the scrub track: click one to select it and move the playhead there, drag it or press Left and Right (Shift for finer) to retime it, Delete to remove that key. The readout moves up to make room for it, and floating panels stop above it. |
 | Bottom left | The camera (perspective and lens, or orthographic), the grid step, and the size of the selected object in metres. |
 | Top right, beside the right column | The view widget: the X, Y and Z axes as the camera sees them. Click an end to look from the right, left, top, front or back. |
@@ -295,19 +295,24 @@ When the host page provides `globalThis.crucibleShell.account`, Settings gets an
 ```js
 globalThis.crucibleShell = {
   account: {
-    // Required. Every optional field may be missing; text fields are shown as plain text.
+    // Who is signed in. A promise of a boolean, or a plain boolean from an older host. A rejection counts as signed out.
+    async isSignedIn() { return true; },
+    // Optional. The person and the credit, read only while isSignedIn() says true; every field may be missing, text is shown as plain text.
     async get() {
-      return { signedIn: true, name: 'Sample Person', email: 'sample.person@example.com', remainingText: '1,240 credits left', planText: 'Studio plan' };
+      return { name: 'Sample Person', email: 'sample.person@example.com', remainingText: '1,240 credits left', planText: 'Studio plan' };
     },
     async signIn() {},        // resolves when the sign-in is done; rejecting shows its message under the status
     async signOut() {},       // resolves when done; Sign out is shown only when this exists
     buyCredits() {},          // optional: "Buy more" is shown only when this exists
-    manageBilling() {},       // optional: "Manage billing" is shown only when this exists
+    // Resolves with { opened: boolean, reason?: string }; "Manage billing" is shown only when this exists.
+    async manageBilling() { return { opened: true }; },
   },
 };
 // When the account changes, tell Studio and it reads get() again:
 document.dispatchEvent(new Event('crucible-shell:account-changed'));
 ```
+
+Studio always reads `await Promise.resolve(account.isSignedIn())` and shows no account rows (no Sign in, Sign out or Manage billing) until it settles, so a slow host never flashes the wrong buttons. An answer that arrives after a newer one, or after Settings was closed, is dropped; opening Settings reads again. After `signOut()` resolves Studio reads `isSignedIn()` again and redraws. **Sign in** shows when signed out and `signIn` exists; **Sign out**, **Buy more** and **Manage billing** show when signed in and the host has each function. `manageBilling()` resolving with `opened: false` shows its `reason` (plain text, up to 200 characters; "Billing could not be opened." when there is none) in the error row of the section; a rejection shows its message the same way. A result with no `opened` field, such as from a host that returns nothing, shows nothing. The older form still works: an account with `get()` that returns `signedIn` along with the fields (and no `isSignedIn`) is read as before, and when both exist `isSignedIn()` decides the state and `get()` only adds the fields.
 
 Signed out, the section shows a lock mark, "Signed out" and one **Sign in** button; while `signIn()` runs the button reads "Waiting" and is disabled. Signed in, it shows a check mark, the person in a round avatar with an initial (no remote images), then `remainingText` as "Left to use" and `planText` as "Plan" when given, and the buttons. A host that has only the older `crucibleShell.builtInAgent` (`isSignedIn()`, `signIn()`) gets the section with the state and Sign in. With neither, there is no Account section.
 
@@ -325,7 +330,10 @@ globalThis.crucibleShell = {
     // Required. Resolves when the run ends; rejecting shows the message in the list as a failed outcome.
     async send(text) {},
     stop() {},                  // Required. Called by the Stop button; end the run with a 'stopped' event.
-    subscribe(listener) {       // Required. Call listener(event) for each event; return the function that stops it.
+    // Required. Call listener(event) for each event; return the function that stops it. Studio passes a second argument,
+    // { events: ['status', 'usage'], noticeKinds: ['quota-warning'] }: the newer event types and notice kinds it can show. A host
+    // that sends those only to a Studio that asks for them reads it; a host that ignores it still works.
+    subscribe(listener, options) {
       return () => {};
     },
     retry() {},                 // Optional. Called by the free "Try again" button; same promise rules as send. Without it the button sends the last text again.
@@ -339,7 +347,7 @@ The listener takes plain JSON events, checked at this boundary (a bad one shows 
 | --- | --- |
 | `{ type: 'text', text }` | A piece of the reply, appended to the reply being written (up to 20,000 characters per reply, 20,000 per piece). |
 | `{ type: 'step', label, nodeId? }` | A one-line row such as "Moved the lamp" (up to 120 characters). With `nodeId` the agent pointer walks to that object, as it does for an edit read from the scene file. |
-| `{ type: 'done' }`, `{ type: 'stopped' }` | An outcome row with its own mark: a check for done, a square for stopped. The run ends. |
+| `{ type: 'done', retryFree?: boolean }`, `{ type: 'stopped' }` | An outcome row with its own mark: a check for done, a square for stopped. The run ends. When `retryFree` is exactly `true` on a `done` the row also has the **Try again** button described under `error`; a `stopped` never has one. |
 | `{ type: 'error', message, retryFree?: boolean }` | An outcome row with the error mark. The run ends. When `retryFree` is exactly `true` the row also has a **Try again** button with the quiet word "Free" beside it. Pressing it calls `agentChat.retry()` when the host has it, otherwise `agentChat.send(<the last text the person sent>)`, and the button goes away; it also goes away when a new run starts. Without `retryFree` the row is as before. |
 | `{ type: 'notice', kind, message, actionLabel?, action? }` | `kind` is `signedOut`, `quota-warning` (the credit is running low, with the warning triangle), `quota` (the credit is gone, with an empty ring) or `error`; any other kind shows as an error notice that says it was not known. The notice sits in its own area of the card under the list, never as a row of the conversation, with a mark per kind. With `actionLabel` and an `action` function it carries that button; pressing it clears the notice and calls `action()`. A notice of the same kind replaces the one before, and sending a new message clears them all. |
 | `{ type: 'status', model?, effort?, mode? }` | The quiet row under the field (see below). |

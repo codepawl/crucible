@@ -1443,10 +1443,10 @@ export function createStudio(container, {
   let agentShortWindow = false;
   let agentOpenInShortWindow = false;
   let propertiesHeldForAgent = false;
-  // Below this window height the column cannot stack Scene (at least 192 px), Properties (240 px) and the open card (232 px, 288 px with a
+  // Below this window height the column cannot stack Scene (at least 192 px), Properties (240 px) and the open card (248 px, 304 px with a
   // notice) with the gaps and the top bar. Then the card and Properties take turns: both keep their title row in the column and the one
   // that is away folds to it. That turn is not saved: only a fold the person made in a tall window is `agentMinimized`.
-  const AGENT_STACK_MINIMUM_HEIGHT = 820;
+  const AGENT_STACK_MINIMUM_HEIGHT = 840;
   // A compact window lays its cards over the scene, where they cannot sit as rows, so the card there takes turns by being put away.
   const agentTakesTurns = () => root.dataset.compact === 'true';
   const agentHoldsRoom = () => agentShortWindow && agentShown && agentOpenInShortWindow;

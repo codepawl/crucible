@@ -326,7 +326,7 @@ export function createAgentChatCard({ documentReference, createElement, createIc
       createIcon(documentReference, NOTICE_ICONS[notice.kind]),
       createElement(documentReference, 'span', { className: 'crucible-studio-agent-notice-text', textContent: notice.message }));
     if (notice.actionLabel) {
-      const button = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-primary-btn', textContent: notice.actionLabel });
+      const button = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-primary-btn' }, createElement(documentReference, 'span', { textContent: notice.actionLabel }));
       // The button of a quota notice buys credits, so it carries the coin. The words stay, so the icon is only a mark.
       if (notice.kind.startsWith('quota')) button.prepend(createIcon(documentReference, 'creditToken'));
       button.addEventListener('click', () => {
@@ -438,15 +438,15 @@ export function createAgentChatCard({ documentReference, createElement, createIc
 
 /** The stylesheet of the card, added to Studio's own. Colours, fonts and spacing come from the --studio tokens. */
 export const AGENT_CHAT_CSS = AGENT_STATUS_CSS + `
-/* The card at the foot of the column. Its floors (232 px, 288 px with a notice) keep four whole rows in the list; Scene keeps 192 px and
+/* The card at the foot of the column. Its floors (248 px, 304 px with a notice) keep four whole rows in the list and the status row whole under the field; Scene keeps 192 px and
    Properties 240 px beside it. When the window is too short for all three the card and Properties take turns, each keeping its title row (studio.js). */
 .crucible-studio-side > .crucible-studio-dock.crucible-studio-agent {
   flex: 0 1 var(--studio-agent-height, 240px);
-  min-block-size: 232px;
+  min-block-size: 248px;
   max-block-size: 55%;
   inline-size: var(--studio-properties-width, 284px);
 }
-.crucible-studio-side > .crucible-studio-dock.crucible-studio-agent[data-notice="true"] { min-block-size: 288px; }
+.crucible-studio-side > .crucible-studio-dock.crucible-studio-agent[data-notice="true"] { min-block-size: 304px; }
 .crucible-studio[data-agent-tight="true"] .crucible-studio-side > .crucible-studio-dock.crucible-studio-agent {
   flex: 1 1 0;
   max-block-size: none;
@@ -542,7 +542,7 @@ export const AGENT_CHAT_CSS = AGENT_STATUS_CSS + `
   display: flex;
   align-items: center;
   gap: var(--studio-space-8);
-  padding-inline-start: calc(17px + var(--studio-space-8));
+  padding-inline-start: var(--studio-space-24);
 }
 .crucible-studio-agent-retry button.crucible-studio-primary-btn { min-block-size: 28px; }
 .crucible-studio-agent-outcome[data-outcome="done"] .crucible-studio-icon { color: var(--studio-ok); }
@@ -571,6 +571,7 @@ export const AGENT_CHAT_CSS = AGENT_STATUS_CSS + `
 }
 .crucible-studio-agent-notice button.crucible-studio-primary-btn .crucible-studio-icon { inline-size: 14px; block-size: 14px; }
 .crucible-studio-agent-notice button.crucible-studio-primary-btn {
+  gap: var(--studio-space-4);
   min-block-size: 28px;
   background: color-mix(in srgb, var(--studio-text) 14%, transparent);
 }

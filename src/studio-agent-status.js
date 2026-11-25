@@ -243,7 +243,7 @@ export const AGENT_STATUS_CSS = `
 .crucible-studio-agent-status {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--studio-space-4) var(--studio-space-12);
+  gap: var(--studio-space-4) var(--studio-space-8);
   min-inline-size: 0;
   color: color-mix(in srgb, var(--studio-text) 76%, var(--studio-panel));
   font-size: 12px;
@@ -267,9 +267,9 @@ export const AGENT_STATUS_CSS = `
   --studio-agent-ring-color: var(--studio-icon);
 }
 .crucible-studio-agent button.crucible-studio-agent-usage[hidden] { display: none; }
-.crucible-studio-agent-usage[data-level="half"] { --studio-agent-ring-color: var(--studio-accent); }
-.crucible-studio-agent-usage[data-level="low"],
-.crucible-studio-agent-usage[data-level="empty"] { --studio-agent-ring-color: var(--studio-warning); }
+.crucible-studio-agent button.crucible-studio-agent-usage[data-level="half"] { --studio-agent-ring-color: var(--studio-accent); }
+.crucible-studio-agent button.crucible-studio-agent-usage[data-level="low"],
+.crucible-studio-agent button.crucible-studio-agent-usage[data-level="empty"] { --studio-agent-ring-color: var(--studio-warning); }
 @media (hover: hover) {
   .crucible-studio-agent button.crucible-studio-agent-usage:hover { background: color-mix(in srgb, var(--studio-text) 7%, transparent); }
 }

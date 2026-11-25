@@ -41,10 +41,11 @@ const PANELS_TOGGLE = 'button[title="Show or hide the panels"]';
 const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history|agent|helpmenu] [--width pixels] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
-// A signed-in host with every optional field, so the Account section of Settings is on screen and measured.
+// A signed-in host (isSignedIn, sign out, billing) with every optional field, so the Account section of Settings is on screen and measured.
 const SAMPLE_ACCOUNT_HOST = `globalThis.crucibleShell = { account: {
-  get: async () => ({ signedIn: true, name: 'Sample Person', email: 'sample.person@example.com', remainingText: '1,240 credits left', planText: 'Studio plan' }),
-  signIn: async () => {}, signOut: async () => {}, buyCredits: () => {}, manageBilling: () => {},
+  isSignedIn: async () => true,
+  get: async () => ({ name: 'Sample Person', email: 'sample.person@example.com', remainingText: '1,240 credits left', planText: 'Studio plan' }),
+  signIn: async () => {}, signOut: async () => {}, buyCredits: () => {}, manageBilling: async () => ({ opened: true }),
 } };`;
 // A host that offers an agent chat, only for the screens of the Agent card: the reply is scripted, with two steps, and
 // window.__sampleChat.emit lets the audit push an event of its own.
