@@ -1,4 +1,4 @@
-import { createMeshData, deriveEdges, TAG_PREFIX } from './mesh-data.js';
+import { createMeshData, TAG_PREFIX } from './mesh-data.js';
 import { lintMesh } from './mesh-lint.js';
 import { triangulateMesh } from './mesh-render.js';
 import { faceNormals } from './mesh-normals.js';
@@ -93,63 +93,214 @@ function solverError(module, manifold, label) {
   return `${label} is not a closed manifold for the boolean solver (${status}). Run mesh_inspect: every edge needs exactly two faces with matching winding. Fix open edges or merge_by_distance first.`;
 }
 
+const NO_VERTEX = 0xFFFFFFFF;
+
+function hashPair(first, second, mask) {
+  let hash = Math.imul(first, 0x9E3779B1) ^ Math.imul(second, 0x85EBCA6B);
+  hash ^= hash >>> 15;
+  return hash & mask;
+}
+
+function tableSizeFor(entryCount) {
+  let size = 8;
+  while (size < entryCount * 2) size *= 2;
+  return size;
+}
+
+/**
+ * Scratch tables for one source face's triangles, allocated once for the largest group and reused. The directed edge
+ * table and the vertex table are open-addressing hash tables over typed arrays, cleared per group only as far as the
+ * group uses them, so a quad's two triangles cost a few slots rather than a Set and two Maps of strings.
+ */
+function createGroupScratch(largestGroup) {
+  const edgeCapacity = largestGroup * 3;
+  const tableSize = tableSizeFor(edgeCapacity);
+  return {
+    edgeFrom: new Uint32Array(tableSize),
+    edgeTo: new Uint32Array(tableSize),
+    edgeUsed: new Uint8Array(tableSize),
+    listFrom: new Uint32Array(edgeCapacity),
+    listTo: new Uint32Array(edgeCapacity),
+    vertexKey: new Uint32Array(tableSize),
+    vertexUsed: new Uint8Array(tableSize),
+    vertexProperty: new Uint32Array(tableSize),
+    vertexNext: new Uint32Array(tableSize),
+  };
+}
+
+/** Slot of the directed edge in the group's edge table, or the empty slot where it would go. */
+function edgeSlot(scratch, mask, from, to) {
+  let slot = hashPair(from, to, mask);
+  while (scratch.edgeUsed[slot] && !(scratch.edgeFrom[slot] === from && scratch.edgeTo[slot] === to)) slot = (slot + 1) & mask;
+  return slot;
+}
+
+/** Slot of the vertex in the group's vertex table, or the empty slot where it would go. */
+function vertexSlot(scratch, mask, vertex) {
+  let slot = hashPair(vertex, 0, mask);
+  while (scratch.vertexUsed[slot] && scratch.vertexKey[slot] !== vertex) slot = (slot + 1) & mask;
+  return slot;
+}
+
+/** Source face ids in order of first appearance, and each group's triangles in output order (a counting sort). */
+function groupTrianglesBySourceFace(triangleFaceIds) {
+  let highestId = 0;
+  for (let triangle = 0; triangle < triangleFaceIds.length; triangle++) {
+    if (triangleFaceIds[triangle] > highestId) highestId = triangleFaceIds[triangle];
+  }
+  const groupOfId = new Int32Array(highestId + 1).fill(-1);
+  const groupIds = [];
+  const groupSizes = [];
+  for (let triangle = 0; triangle < triangleFaceIds.length; triangle++) {
+    const id = triangleFaceIds[triangle];
+    let group = groupOfId[id];
+    if (group === -1) {
+      group = groupIds.length;
+      groupOfId[id] = group;
+      groupIds.push(id);
+      groupSizes.push(0);
+    }
+    groupSizes[group]++;
+  }
+  const groupStarts = new Uint32Array(groupIds.length + 1);
+  let largestGroup = 0;
+  for (let group = 0; group < groupIds.length; group++) {
+    groupStarts[group + 1] = groupStarts[group] + groupSizes[group];
+    if (groupSizes[group] > largestGroup) largestGroup = groupSizes[group];
+  }
+  const nextFree = groupStarts.slice(0, groupIds.length);
+  const groupTriangles = new Uint32Array(triangleFaceIds.length);
+  for (let triangle = 0; triangle < triangleFaceIds.length; triangle++) {
+    groupTriangles[nextFree[groupOfId[triangleFaceIds[triangle]]]++] = triangle;
+  }
+  return { groupIds, groupStarts, groupTriangles, largestGroup };
+}
+
+/** Fill the group's tables: each distinct directed edge once, in order, and each vertex's first property vertex. */
+function indexGroupTriangles(scratch, mask, tableSize, triangles, weldedTriangles, propertyTriangles) {
+  scratch.edgeUsed.fill(0, 0, tableSize);
+  scratch.vertexUsed.fill(0, 0, tableSize);
+  let edgeCount = 0;
+  for (const triangle of triangles) {
+    for (let corner = 0; corner < 3; corner++) {
+      const from = weldedTriangles[triangle * 3 + corner];
+      const to = weldedTriangles[triangle * 3 + (corner + 1) % 3];
+      const slot = edgeSlot(scratch, mask, from, to);
+      if (!scratch.edgeUsed[slot]) {
+        scratch.edgeUsed[slot] = 1;
+        scratch.edgeFrom[slot] = from;
+        scratch.edgeTo[slot] = to;
+        scratch.listFrom[edgeCount] = from;
+        scratch.listTo[edgeCount++] = to;
+      }
+      const slotOfVertex = vertexSlot(scratch, mask, from);
+      if (!scratch.vertexUsed[slotOfVertex]) {
+        scratch.vertexUsed[slotOfVertex] = 1;
+        scratch.vertexKey[slotOfVertex] = from;
+        scratch.vertexProperty[slotOfVertex] = propertyTriangles[triangle * 3 + corner];
+        scratch.vertexNext[slotOfVertex] = NO_VERTEX;
+      }
+    }
+  }
+  return edgeCount;
+}
+
+/**
+ * Link every boundary edge (one whose reverse is not in the group) from its start vertex to its end vertex.
+ * Returns the boundary edge count, whether two boundary edges leave one vertex, and the first boundary start vertex.
+ */
+function linkBoundaryEdges(scratch, mask, edgeCount) {
+  let boundaryCount = 0;
+  let branching = false;
+  let firstVertex = NO_VERTEX;
+  for (let edge = 0; edge < edgeCount; edge++) {
+    const from = scratch.listFrom[edge];
+    const to = scratch.listTo[edge];
+    if (scratch.edgeUsed[edgeSlot(scratch, mask, to, from)]) continue;
+    boundaryCount++;
+    if (firstVertex === NO_VERTEX) firstVertex = from;
+    const slot = vertexSlot(scratch, mask, from);
+    if (scratch.vertexNext[slot] !== NO_VERTEX) branching = true;
+    scratch.vertexNext[slot] = to;
+  }
+  return { boundaryCount, branching, firstVertex };
+}
+
+/**
+ * Walk the boundary loop into `loopVertices` from `loopStart`. Returns the loop length, or 0 when the boundary
+ * does not close into one loop of exactly `boundaryCount` vertices (holes, separate pieces).
+ */
+function traceBoundaryLoop(scratch, mask, firstVertex, boundaryCount, loopVertices, loopStart) {
+  let length = 0;
+  let vertex = firstVertex;
+  do {
+    if (length > boundaryCount) return 0;
+    loopVertices[loopStart + length++] = vertex;
+    const slot = vertexSlot(scratch, mask, vertex);
+    if (!scratch.vertexUsed[slot]) return 0;
+    vertex = scratch.vertexNext[slot];
+    if (vertex === NO_VERTEX) return 0;
+  } while (vertex !== firstVertex);
+  return length === boundaryCount ? length : 0;
+}
+
 /**
  * Group output triangles by source face and turn each group back into one polygon when its triangles form a single
  * boundary loop; otherwise (holes, separate pieces) keep the group's triangles. Works on welded vertex indices, so
  * property vertices that Manifold keeps apart at one position do not open fake boundaries.
- * Each polygon lists its welded vertices and, per corner, one property vertex for interpolated attributes.
+ * Returns the polygons as flat arrays: per polygon its source face and corner range, per corner its welded vertex
+ * and one property vertex for interpolated attributes.
  */
 function polygonsFromTriangles(weldedTriangles, propertyTriangles, triangleFaceIds) {
-  const groups = new Map();
-  for (let triangle = 0; triangle < triangleFaceIds.length; triangle++) {
-    const id = triangleFaceIds[triangle];
-    if (!groups.has(id)) groups.set(id, []);
-    groups.get(id).push(triangle);
-  }
-  const polygons = [];
-  for (const [sourceFace, triangles] of groups) {
-    const directed = new Set();
-    const propertyOf = new Map();
-    for (const triangle of triangles) {
-      for (let corner = 0; corner < 3; corner++) {
-        const from = weldedTriangles[triangle * 3 + corner];
-        const to = weldedTriangles[triangle * 3 + (corner + 1) % 3];
-        directed.add(`${from},${to}`);
-        if (!propertyOf.has(from)) propertyOf.set(from, propertyTriangles[triangle * 3 + corner]);
+  const { groupIds, groupStarts, groupTriangles, largestGroup } = groupTrianglesBySourceFace(triangleFaceIds);
+  const scratch = createGroupScratch(largestGroup);
+  const sourceFaces = new Uint32Array(triangleFaceIds.length);
+  const faceOffsets = new Uint32Array(triangleFaceIds.length + 1);
+  // One slot more than three per triangle: a loop that fails to close may write one corner past its boundary count.
+  const cornerVertices = new Uint32Array(triangleFaceIds.length * 3 + 1);
+  const cornerProperties = new Uint32Array(triangleFaceIds.length * 3 + 1);
+  let polygonCount = 0;
+  let cornerCount = 0;
+  for (let group = 0; group < groupIds.length; group++) {
+    const triangles = groupTriangles.subarray(groupStarts[group], groupStarts[group + 1]);
+    const tableSize = tableSizeFor(triangles.length * 3);
+    const mask = tableSize - 1;
+    const edgeCount = indexGroupTriangles(scratch, mask, tableSize, triangles, weldedTriangles, propertyTriangles);
+    const { boundaryCount, branching, firstVertex } = linkBoundaryEdges(scratch, mask, edgeCount);
+    const loopLength = !branching && boundaryCount >= 3
+      ? traceBoundaryLoop(scratch, mask, firstVertex, boundaryCount, cornerVertices, cornerCount)
+      : 0;
+    if (loopLength) {
+      for (let corner = 0; corner < loopLength; corner++) {
+        const slot = vertexSlot(scratch, mask, cornerVertices[cornerCount + corner]);
+        cornerProperties[cornerCount + corner] = scratch.vertexProperty[slot];
       }
-    }
-    const nextVertex = new Map();
-    let boundaryCount = 0;
-    let branching = false;
-    for (const key of directed) {
-      const [from, to] = key.split(',').map(Number);
-      if (directed.has(`${to},${from}`)) continue;
-      boundaryCount++;
-      if (nextVertex.has(from)) branching = true;
-      nextVertex.set(from, to);
-    }
-    let loop = null;
-    if (!branching && boundaryCount >= 3) {
-      const start = nextVertex.keys().next().value;
-      loop = [start];
-      let vertex = nextVertex.get(start);
-      while (vertex !== start && loop.length <= boundaryCount) {
-        loop.push(vertex);
-        vertex = nextVertex.get(vertex);
-      }
-      if (vertex !== start || loop.length !== boundaryCount) loop = null;
-    }
-    if (loop) {
-      polygons.push({ sourceFace, vertices: loop, properties: loop.map(vertex => propertyOf.get(vertex)) });
+      sourceFaces[polygonCount] = groupIds[group];
+      cornerCount += loopLength;
+      faceOffsets[++polygonCount] = cornerCount;
       continue;
     }
     for (const triangle of triangles) {
-      const vertices = Array.from(weldedTriangles.subarray(triangle * 3, triangle * 3 + 3));
-      if (new Set(vertices).size !== 3) continue;
-      polygons.push({ sourceFace, vertices, properties: Array.from(propertyTriangles.subarray(triangle * 3, triangle * 3 + 3)) });
+      const first = weldedTriangles[triangle * 3];
+      const second = weldedTriangles[triangle * 3 + 1];
+      const third = weldedTriangles[triangle * 3 + 2];
+      if (first === second || second === third || first === third) continue;
+      cornerVertices[cornerCount] = first;
+      cornerVertices[cornerCount + 1] = second;
+      cornerVertices[cornerCount + 2] = third;
+      cornerProperties.set(propertyTriangles.subarray(triangle * 3, triangle * 3 + 3), cornerCount);
+      sourceFaces[polygonCount] = groupIds[group];
+      cornerCount += 3;
+      faceOffsets[++polygonCount] = cornerCount;
     }
   }
-  return polygons;
+  return {
+    polygonCount,
+    sourceFaces: sourceFaces.slice(0, polygonCount),
+    faceOffsets: faceOffsets.slice(0, polygonCount + 1),
+    cornerVertices: cornerVertices.slice(0, cornerCount),
+    cornerProperties: cornerProperties.slice(0, cornerCount),
+  };
 }
 
 /**
@@ -164,7 +315,7 @@ export function meshBoolean(mesh, cutter, operation, { cutTag } = {}) {
   if (cutTag !== undefined && !(typeof cutTag === 'string' && cutTag)) throw new TypeError(`meshBoolean: cutTag was ${JSON.stringify(cutTag)}; pass a non-empty string.`);
   const module = requireModule();
   for (const [label, input] of [['The mesh', mesh], ['The cutter', cutter]]) {
-    const report = lintMesh(input);
+    const report = lintMesh(input, { topology: false });
     const open = report.problems.filter(problem => ['boundary-edge', 'non-manifold-edge', 'inconsistent-winding', 'inverted-part'].includes(problem.kind));
     if (open.length) {
       throw new RangeError(`${label} must be closed and outward facing for a boolean: ${open.map(problem => `${problem.count} ${problem.kind}`).join(', ')}. ${open[0].fix}`);
@@ -197,60 +348,73 @@ export function meshBoolean(mesh, cutter, operation, { cutTag } = {}) {
   }
 }
 
-function rebuildOutput(mesh, output, propertyCount, cutTag) {
-  const outputProperties = output.numProp;
-  const vertexCount = output.vertProperties.length / outputProperties;
-  // Property vertices split at UV seams (or kept apart by the solver) share positions; weld them by exact position.
-  const positionKey = new Map();
+/**
+ * Weld property vertices that share an exact position (Manifold keeps UV seams apart; the mesh does not). Positions
+ * compare by value, so 0 and -0 weld together and the first one seen is kept.
+ */
+function weldByPosition(vertProperties, outputProperties) {
+  const vertexCount = vertProperties.length / outputProperties;
+  const bits = new Uint32Array(vertProperties.buffer, vertProperties.byteOffset, vertProperties.length);
+  const tableSize = tableSizeFor(vertexCount);
+  const mask = tableSize - 1;
+  const table = new Int32Array(tableSize).fill(-1);
   const meshVertexOf = new Uint32Array(vertexCount);
-  const positions = [];
+  const positions = new Float32Array(vertexCount * 3);
+  let meshVertexCount = 0;
   for (let vertex = 0; vertex < vertexCount; vertex++) {
-    const x = output.vertProperties[vertex * outputProperties];
-    const y = output.vertProperties[vertex * outputProperties + 1];
-    const z = output.vertProperties[vertex * outputProperties + 2];
-    const key = `${x},${y},${z}`;
-    let meshVertex = positionKey.get(key);
-    if (meshVertex === undefined) {
-      meshVertex = positions.length / 3;
-      positionKey.set(key, meshVertex);
-      positions.push(x, y, z);
+    const base = vertex * outputProperties;
+    const x = vertProperties[base];
+    const y = vertProperties[base + 1];
+    const z = vertProperties[base + 2];
+    // Zero hashes as +0 so that -0 lands in the same bucket as the +0 it compares equal to.
+    let slot = hashPair(hashPair(x === 0 ? 0 : bits[base], y === 0 ? 0 : bits[base + 1], 0x7FFFFFFF), z === 0 ? 0 : bits[base + 2], mask);
+    let meshVertex = table[slot];
+    while (meshVertex !== -1 && !(positions[meshVertex * 3] === x && positions[meshVertex * 3 + 1] === y && positions[meshVertex * 3 + 2] === z)) {
+      slot = (slot + 1) & mask;
+      meshVertex = table[slot];
+    }
+    if (meshVertex === -1) {
+      meshVertex = meshVertexCount++;
+      table[slot] = meshVertex;
+      positions[meshVertex * 3] = x;
+      positions[meshVertex * 3 + 1] = y;
+      positions[meshVertex * 3 + 2] = z;
     }
     meshVertexOf[vertex] = meshVertex;
   }
+  return { meshVertexOf, positions: positions.slice(0, meshVertexCount * 3) };
+}
+
+function rebuildOutput(mesh, output, propertyCount, cutTag) {
+  const outputProperties = output.numProp;
+  const { meshVertexOf, positions } = weldByPosition(output.vertProperties, outputProperties);
   const weldedTriangles = new Uint32Array(output.triVerts.length);
   for (let index = 0; index < output.triVerts.length; index++) weldedTriangles[index] = meshVertexOf[output.triVerts[index]];
   const polygons = polygonsFromTriangles(weldedTriangles, output.triVerts, output.faceID);
-  const faceOffsets = new Uint32Array(polygons.length + 1);
-  const cornerVertices = [];
-  const cornerUv = propertyCount === 5 ? [] : null;
-  const sourceFaces = new Uint32Array(polygons.length);
-  polygons.forEach((polygon, face) => {
-    sourceFaces[face] = polygon.sourceFace;
-    polygon.vertices.forEach((vertex, index) => {
-      cornerVertices.push(vertex);
-      if (cornerUv) {
-        const propertyVertex = polygon.properties[index];
-        cornerUv.push(output.vertProperties[propertyVertex * outputProperties + 3], output.vertProperties[propertyVertex * outputProperties + 4]);
-      }
-    });
-    faceOffsets[face + 1] = cornerVertices.length;
-  });
-  const corners = Uint32Array.from(cornerVertices);
-  const edges = deriveEdges(positions.length / 3, faceOffsets, corners);
+  const { polygonCount, sourceFaces, faceOffsets, cornerVertices } = polygons;
+  let cornerUv = null;
+  if (propertyCount === 5) {
+    cornerUv = new Float32Array(cornerVertices.length * 2);
+    for (let corner = 0; corner < cornerVertices.length; corner++) {
+      const propertyBase = polygons.cornerProperties[corner] * outputProperties;
+      cornerUv[corner * 2] = output.vertProperties[propertyBase + 3];
+      cornerUv[corner * 2 + 1] = output.vertProperties[propertyBase + 4];
+    }
+  }
   const faceAttributes = {};
   const fromCutter = face => sourceFaces[face] >= mesh.faceCount;
   for (const [name, attribute] of Object.entries(mesh.attributes.face)) {
-    const data = new attribute.data.constructor(polygons.length * attribute.size);
-    for (let face = 0; face < polygons.length; face++) {
+    const data = new attribute.data.constructor(polygonCount * attribute.size);
+    for (let face = 0; face < polygonCount; face++) {
       if (fromCutter(face)) continue;
       data.set(attribute.data.subarray(sourceFaces[face] * attribute.size, (sourceFaces[face] + 1) * attribute.size), face * attribute.size);
     }
     faceAttributes[name] = { data, size: attribute.size };
   }
   if (cutTag) {
-    const data = faceAttributes[TAG_PREFIX + cutTag]?.data ?? new Uint8Array(polygons.length);
-    const cutterMark = new Uint8Array(polygons.length);
-    for (let face = 0; face < polygons.length; face++) {
+    const data = faceAttributes[TAG_PREFIX + cutTag]?.data ?? new Uint8Array(polygonCount);
+    const cutterMark = new Uint8Array(polygonCount);
+    for (let face = 0; face < polygonCount; face++) {
       if (!fromCutter(face)) continue;
       data[face] = 1;
       cutterMark[face] = 1;
@@ -261,14 +425,12 @@ function rebuildOutput(mesh, output, propertyCount, cutTag) {
     faceAttributes[CUTTER_MARK] = { data: cutterMark, size: 1 };
   }
   const triangles = createMeshData({
-    positions: Float32Array.from(positions),
+    positions,
     faceOffsets,
-    cornerVertices: corners,
-    edgeVertices: edges.edgeVertices,
-    cornerEdges: edges.cornerEdges,
+    cornerVertices,
     attributes: {
       face: faceAttributes,
-      corner: cornerUv ? { uv: { data: Float32Array.from(cornerUv), size: 2 } } : {},
+      corner: cornerUv ? { uv: { data: cornerUv, size: 2 } } : {},
     },
   });
   // Faces with holes come back as triangle fans; join flat pairs that share every attribute back into quads.
