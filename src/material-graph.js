@@ -31,8 +31,8 @@ const RAMP_COST = 375;
 const HUE_COST = 625;
 const CURVE_COST = 250;
 const LAYER_COST = 225;
-// normalMapFromHeightFunction reads the height field four times a pixel and normalizes the slope in between.
-const BUMP_HEIGHT_READS = 4;
+// normalMapFromHeightFunction caches adjacent edge samples, so it reads the height field twice a pixel and normalizes the slope in between.
+const BUMP_HEIGHT_READS = 2;
 const BUMP_NORMALIZE_COST = 250;
 // A vector node (a colour) runs its operation once for each of three channels, and the bake writes each pixel's channels.
 const VECTOR_NODE_COST = 200;
@@ -931,7 +931,7 @@ function internStructure(value, ids, interned, depth = 0) {
   if (depth > MAX_INTERNED_DEPTH) return UNSHARED_STRUCTURE;
   let signature;
   if (isObject) {
-    const keys = Array.isArray(value) ? undefined : Object.keys(value);
+    const keys = Array.isArray(value) ? undefined : Object.keys(value).sort();
     const parts = (keys ?? value).map(entry => internStructure(keys ? value[entry] : entry, ids, interned, depth + 1));
     if (parts.includes(UNSHARED_STRUCTURE)) return UNSHARED_STRUCTURE;
     signature = keys ? `o:${keys.map((key, index) => `${JSON.stringify(key)}:${parts[index]}`).join(',')}` : `a:${parts.join(',')}`;
@@ -1051,9 +1051,9 @@ function compileUnpricedNode(node, state, depth, field) {
 
 const SCALAR_OUTPUTS = ['roughness', 'metallic', 'height', 'opacity', 'clearcoat', 'transmission'];
 
-// The bump reads the height field four times a pixel, each at a shifted spot, so a node shared with another output is worked
+// The bump reads the height field twice a pixel, each at a shifted spot, so a node shared with another output is worked
 // out again for each read. The graph's total already holds the height once, at what it added beyond the nodes the other
-// outputs share (`addedCost`); the bump pays for four standalone reads of the whole height field, plus the normalize.
+// outputs share (`addedCost`); the bump pays for two standalone reads of the whole height field, plus the normalize.
 function bumpExtraCost(heightNode, state, addedCost) {
   const alone = { ...state, nodeCount: 0, cost: 0, shared: undefined };
   const { ids, repeated } = countRepeatedStructures(heightNode);
@@ -1074,8 +1074,13 @@ export function compileMaterialGraph(graph, { size = 1, images, groups } = {}) {
   const { ids, repeated } = countRepeatedStructures(graph);
   const state = { nodeCount: 0, cost: 0, size, images, groups, shared: { ids, repeated, compiled: new Map() } };
   const outputs = Object.create(null);
-  let emissionFresnel;
   for (const name of MATERIAL_GRAPH_OUTPUTS) {
+    if (names.includes(name)) outputs[name] = undefined;
+  }
+  let emissionFresnel;
+  // Compile height last so shared nodes inside height are counted once without hiding cost from outputs that follow height in MATERIAL_GRAPH_OUTPUTS.
+  const compileOrder = [...MATERIAL_GRAPH_OUTPUTS.filter(name => name !== 'height'), 'height'];
+  for (const name of compileOrder) {
     if (!names.includes(name)) continue;
     let node = graph[name];
     if (name === 'emission') {
