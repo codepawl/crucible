@@ -74,7 +74,7 @@ test('createStudioController validates inputs and enforces tool, tab and node bo
   assert.throws(() => createStudioController({ scene, maxHistory: 0 }), /maxHistory/);
 
   const controller = createStudioController({ scene, viewportWidth: 800, viewportHeight: 600 });
-  assert.deepEqual(STUDIO_TOOLS, ['select', 'translate', 'rotate', 'scale', 'snap']);
+  assert.deepEqual(STUDIO_TOOLS, ['select', 'translate', 'rotate', 'scale']);
   assert.deepEqual(STUDIO_TABS, ['node', 'modifiers', 'material', 'look', 'camera']);
   assert.throws(() => controller.selectNode('missing-node'), /Unknown node/);
   assert.throws(() => controller.setTool('sculpt'), /Unknown Studio tool/);
@@ -148,7 +148,7 @@ test('gizmo handles and drags update translate, rotate with snap, scale and surf
   assert.ok(Math.abs(heroNode().translation[1] - 0.5) < 1e-6);
   assert.ok(Math.abs(heroNode().translation[2]) < 1e-6);
 
-  // Rotate around Y: the turn equals the angle the pointer swept on the ring, snapped to 15 degrees.
+  // Rotate around Y: the turn equals the angle the pointer swept on the ring, snapped to 15 degrees by Ctrl (snapping is off).
   controller.setTool('rotate');
   handles = controller.gizmoHandles();
   const ringPoint = degrees => controller.projectWorldPoint([
@@ -159,7 +159,7 @@ test('gizmo handles and drags update translate, rotate with snap, scale and surf
   grab = ringPoint(0);
   release = ringPoint(33);
   controller.beginGizmoDrag('y', grab.x, grab.y);
-  controller.updateGizmoDrag(release.x, release.y, { shiftKey: true });
+  controller.updateGizmoDrag(release.x, release.y, { ctrlKey: true });
   controller.endGizmoDrag();
   const rotated = heroNode();
   assert.ok(Math.abs(Math.hypot(...rotated.rotation) - 1) < 1e-3);
@@ -192,14 +192,14 @@ test('gizmo handles and drags update translate, rotate with snap, scale and surf
   assert.ok(Math.abs(heroNode().scale[1] - 2) < 0.01, `expected y scale near 2, got ${heroNode().scale}`);
   assert.ok(Math.abs(heroNode().scale[0] - 1) < 1e-6);
 
-  // Shift snaps the travel to quarter-metre steps along the object's own axis.
+  // Ctrl with snapping off turns it on for the drag: the travel snaps to quarter-metre steps along the object's own axis.
   controller.setTool('translate');
   handles = controller.gizmoHandles();
   const beforeSnapMove = heroNode().translation;
   grab = pointAlong(handles, 'x', handles.handleLength);
   release = pointAlong(handles, 'x', handles.handleLength + 0.6);
   controller.beginGizmoDrag('x', grab.x, grab.y);
-  controller.updateGizmoDrag(release.x, release.y, { shiftKey: true });
+  controller.updateGizmoDrag(release.x, release.y, { ctrlKey: true });
   controller.endGizmoDrag();
   turnedX.forEach((value, index) => {
     assert.ok(Math.abs(heroNode().translation[index] - beforeSnapMove[index] - value * 0.5) < 1e-3);
@@ -660,13 +660,16 @@ test('rotate rings, move planes and surface snapping drag through every axis', (
     controller.updateNodeTransform('hero', { translation: [0, 0.5, 0] });
   }
 
-  controller.setTool('snap');
+  // The Face target: the free move of the centre handle drops the object on the surface under the pointer.
+  controller.setInteractionSettings({ snapEnabled: true, snapTarget: 'face' });
   controller.updateNodeTransform('hero', { translation: [0, 4, 0] });
   const floorPoint = controller.projectWorldPoint([0, 0, -2]);
-  controller.beginGizmoDrag('surface', floorPoint.x, floorPoint.y);
+  controller.beginGizmoDrag('screen', floorPoint.x, floorPoint.y);
   const snapped = controller.updateGizmoDrag(floorPoint.x, floorPoint.y);
   assert.ok(snapped.translation[1] < 1.2);
-  assert.equal(controller.updateGizmoDrag(5, 5), null, 'a pointer over the sky leaves the object where it is');
+  const flipped = controller.updateGizmoDrag(floorPoint.x, floorPoint.y, { ctrlKey: true });
+  assert.ok(Math.abs(flipped.translation[1] - 4) < 1e-6, 'Ctrl flips snapping off for the move: the object stays where the free move puts it');
+  controller.updateGizmoDrag(floorPoint.x, floorPoint.y);
   assert.equal(controller.endGizmoDrag(), true);
   controller.undo();
   assert.deepEqual(heroNode().translation, [0, 4, 0]);
@@ -694,7 +697,6 @@ test('a child node moves along its own parent axes and snaps in its parent space
   assert.notDeepEqual(after, before);
   assert.ok(Math.abs(Math.hypot(...after.map((value, index) => value - before[index])) - 0.25) < 0.02, 'half a world metre is a quarter metre inside a parent scaled by two');
 
-  controller.setTool('snap');
   const floorPoint = controller.projectWorldPoint([3, 0, 0]);
   const snapped = controller.snapSelectedToAt(floorPoint.x, floorPoint.y);
   assert.ok(snapped);
