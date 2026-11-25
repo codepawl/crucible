@@ -27,6 +27,7 @@ import { describeReceived } from '../src/field-error.js';
 import { LOOK_VIEW_NAMES } from '../src/look-views.js';
 import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, LIGHTING_SETUP_NAMES, RENDER_PASS_NAMES, RENDER_OUTPUT_FORMATS, MAXIMUM_JOB_FPS, VIDEO_ENCODERS, MAXIMUM_JOB_SIDE, maximumMemoryMiB, memoryRangeError, MAXIMUM_STILLS_FRAMES, RECIPE_ALPHA_MODES, PHYSICS_BODY_SHAPES } from '../src/agent-scene-capabilities.js';
 import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES, TOON_COLOR_MAXIMUM } from '../src/material-layers.js';
+import { MATERIAL_PRESET_NAMES } from '../src/material-presets.js';
 import { SUBSURFACE_RANGES } from '../src/subsurface-limits.js';
 import { responseFormatField, chosenFormat, conciseReview, conciseJobStatus, conciseJobResult, conciseCapabilities } from './mcp-response-format.mjs';
 import { resolveAddons } from './mcp-addons.mjs';
@@ -245,6 +246,7 @@ const materialFields = {
   alphaCutoff: unit.optional().describe('With alphaMode mask only: alpha below this is cut out (0.5 default).'),
   doubleSided: z.boolean().optional().describe('Draw and light both faces (thin sheets, leaves, cloth).'),
   depthTest: z.boolean().optional().describe('Test against the depth buffer (true default); false draws blend or add materials through opaque geometry.'),
+  preset: z.enum(MATERIAL_PRESET_NAMES).optional().describe('Named look that fills the fields you leave out; color tints it: see scene_capabilities materialPresets.'),
   aov: z.union([unit, color]).optional(),
 };
 const materialTag = z.enum(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass', 'water']).optional().describe('Surface kind; liquid, foam, foliage, grass and water change how it renders: see scene_capabilities materialTags and water.');
