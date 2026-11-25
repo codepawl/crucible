@@ -41,6 +41,14 @@ export function createKeyboardSection({ documentReference, createElement, create
     list,
   );
 
+  // Escape in the confirmation picks Keep, and does not reach the dialog, which would close Settings.
+  element.addEventListener('keydown', event => {
+    if (!state.confirmingReset || event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    keepShortcuts();
+  });
+
   function iconButton(label, iconName, className, onClick) {
     const button = createElement(documentReference, 'button', { type: 'button', className, attributes: { 'aria-label': label, title: label } }, createIcon(documentReference, iconName));
     button.addEventListener('click', onClick);
@@ -112,6 +120,17 @@ export function createKeyboardSection({ documentReference, createElement, create
     render();
   }
 
+  // Beside the recording key: the key that leaves the recording, shown as a quiet key cap with what it does.
+  function cancelHint() {
+    return createElement(
+      documentReference,
+      'span',
+      { className: 'crucible-studio-keyboard-cancel', attributes: { 'aria-hidden': 'true' } },
+      createElement(documentReference, 'span', { className: 'crucible-studio-keyboard-cap', textContent: 'Esc' }),
+      createElement(documentReference, 'span', { textContent: 'cancels' }),
+    );
+  }
+
   function keysButton(row) {
     const recording = state.recordingId === row.actionId;
     const pending = state.pending?.actionId === row.actionId ? state.pending : null;
@@ -168,6 +187,7 @@ export function createKeyboardSection({ documentReference, createElement, create
         commit(withoutActionOverride(getOverrides(), row.actionId));
       }));
     }
+    if (state.recordingId === row.actionId) controls.append(cancelHint());
     controls.append(keysButton(row));
     const name = createElement(documentReference, 'span', { className: 'crucible-studio-keyboard-name' }, createElement(documentReference, 'span', { textContent: row.label }));
     if (changed) name.prepend(createElement(documentReference, 'span', { className: 'crucible-studio-keyboard-changed', attributes: { title: 'Changed from the preset' } }));
@@ -192,28 +212,35 @@ export function createKeyboardSection({ documentReference, createElement, create
 
   function resetCountLabel() {
     const count = Object.keys(getOverrides()).length;
-    return count === 1 ? 'Reset 1 key' : `Reset ${count} keys`;
+    return count === 1 ? 'Reset 1 shortcut' : `Reset ${count} shortcuts`;
   }
 
-  function renderTools() {
+  function keepShortcuts() {
+    state.confirmingReset = false;
+    renderTools();
+    toolButtons.querySelector('[data-reset-all]')?.focus?.();
+  }
+
+  // The confirmation: Keep is the plain default and takes the focus, so Enter or Space keeps; the reset is the warning-coloured button.
+  function renderTools({ focusKeep = false } = {}) {
     toolButtons.replaceChildren();
     if (state.confirmingReset) {
+      const keep = textButton('Keep', 'check', keepShortcuts);
       toolButtons.append(
-        textButton(resetCountLabel(), 'reset', () => {
+        keep,
+        textButton(resetCountLabel(), 'warning', () => {
           state.confirmingReset = false;
           commit({});
         }, 'crucible-studio-keyboard-confirm'),
-        textButton('Keep', 'close', () => {
-          state.confirmingReset = false;
-          renderTools();
-        }),
       );
+      if (focusKeep) keep.focus?.();
       return;
     }
-    const resetAll = textButton('Reset keys', 'reset', () => {
+    const resetAll = textButton('Reset shortcuts', 'resetShortcuts', () => {
       state.confirmingReset = true;
-      renderTools();
+      renderTools({ focusKeep: true });
     });
+    resetAll.dataset.resetAll = 'true';
     resetAll.disabled = Object.keys(getOverrides()).length === 0;
     toolButtons.append(showSheetButton, resetAll);
   }

@@ -2689,8 +2689,8 @@ export const STUDIO_CSS = `
   block-size: 100%;
   min-block-size: 0;
 }
-/* Shares the list's right inset, so the last toolbar button and the key column end on one edge. */
-.crucible-studio-keyboard-head { display: grid; gap: var(--studio-space-8); padding-inline-end: var(--studio-space-8); }
+/* The preset, the toolbar and the key column end on the right edge of the dialog's footer buttons. */
+.crucible-studio-keyboard-head { display: grid; gap: var(--studio-space-8); }
 .crucible-studio-keyboard-tools,
 .crucible-studio-keyboard-actions,
 .crucible-studio-keyboard-controls,
@@ -2713,8 +2713,12 @@ export const STUDIO_CSS = `
   margin-inline-start: calc(var(--studio-space-16) * -1);
   padding-inline-start: var(--studio-space-16);
 }
-/* A row with a message reaches 8 px past the keys on the right, so the list keeps 16 px of air before its scrollbar and the tint ends 8 px short of it. */
-.crucible-studio-keyboard-list.crucible-studio-fade-scroll { padding-inline-end: var(--studio-space-16); }
+/* The scrollbar sits in the dialog's own 24 px of padding, so the keys end where the footer buttons end whether or not the list scrolls.
+   A row with a message reaches 8 px past the keys, which leaves 8 px of air before the scrollbar. */
+.crucible-studio-keyboard-list.crucible-studio-fade-scroll {
+  margin-inline-end: calc(var(--studio-space-24) * -1);
+  padding-inline-end: var(--studio-space-16);
+}
 .crucible-studio-keyboard-tools > input::placeholder { color: var(--studio-muted); opacity: 1; }
 .crucible-studio-keyboard-group { display: flex; flex-direction: column; gap: var(--studio-space-8); }
 .crucible-studio-keyboard-group h4 {
@@ -2789,6 +2793,29 @@ export const STUDIO_CSS = `
   color: var(--studio-muted);
 }
 .crucible-studio dialog button.crucible-studio-keyboard-reset:hover { color: var(--studio-text); }
+/* The key that leaves a recording, beside the recording key: a quiet cap and its verb. */
+.crucible-studio-keyboard-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  color: var(--studio-muted);
+  white-space: nowrap;
+}
+.crucible-studio-keyboard-cap {
+  display: inline-grid;
+  place-items: center;
+  min-block-size: 20px;
+  padding-inline: var(--studio-space-8);
+  border: 1px solid var(--studio-border);
+  border-radius: var(--studio-radius-control);
+  font-size: 11.5px;
+}
+/* The reset the confirmation asks about: the warning colour on its text and icon, Keep beside it stays plain. */
+.crucible-studio dialog button.crucible-studio-keyboard-confirm {
+  border-color: var(--studio-warning);
+  color: var(--studio-warning);
+}
+.crucible-studio dialog button.crucible-studio-keyboard-confirm .crucible-studio-icon { stroke: var(--studio-warning); }
 .crucible-studio-keyboard-fixed { color: var(--studio-muted); white-space: nowrap; }
 .crucible-studio-keyboard-note { grid-column: 1 / -1; flex-wrap: wrap; min-block-size: 28px; }
 /* A row with a message to answer (a clash, a refused combination) sits on its own surface, the message on a second line, so it reads as one block. */

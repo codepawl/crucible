@@ -87,6 +87,8 @@ export const STUDIO_ICON_PATHS = Object.freeze({
   buyMore: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8v8M8 12h8',
   card: 'M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3 10h18M7 15h3',
   reset: 'M4 12a8 8 0 1 0 2.3-5.7L4 8.5M4 4v4.5h4.5',
+  // A key cap with the put-back arrow inside: it returns shortcuts, where the round arrow of reset returns settings.
+  resetShortcuts: 'M6 5h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM10.5 9.5L8 12l2.5 2.5M8 12h5a2 2 0 0 1 0 4h-1',
   chat: 'M4 5h16v11h-9l-4.5 4v-4H4zM8 9.5h8M8 12.5h5',
   copy: 'M9 4h6v3H9zM7 5.5H5a1 1 0 0 0-1 1V20a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6.5a1 1 0 0 0-1-1h-2M8.5 12h7M8.5 16h5',
   // Action buttons: reload turns clockwise, reset (put back) the other way, signIn is a door with an arrow going in.

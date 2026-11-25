@@ -399,6 +399,10 @@ function checkKeyboardScrollCue() {
   const toolbarRight = Math.max(...[...document.querySelectorAll('.crucible-studio-keyboard-head button, .crucible-studio-keyboard-head select, .crucible-studio-keyboard-head input')].map(control => control.getBoundingClientRect().right));
   const keysRight = Math.max(...[...list.querySelectorAll('button.crucible-studio-keyboard-keys')].map(button => button.getBoundingClientRect().right));
   if (Math.abs(toolbarRight - keysRight) > 1) problems.push('the toolbar ends at ' + toolbarRight + 'px and the key buttons at ' + keysRight + 'px; they share one right edge');
+  const footerRight = Math.max(...[...document.querySelectorAll('dialog.crucible-studio-settings-dialog .crucible-studio-dialog-actions button')].map(button => button.getBoundingClientRect().right));
+  const presetRight = document.querySelector('.crucible-studio-settings-pane[data-section="keys"] select').getBoundingClientRect().right;
+  if (Math.abs(footerRight - keysRight) > 1) problems.push('the key column ends at ' + keysRight + 'px and the footer buttons at ' + footerRight + 'px; they share one right edge');
+  if (Math.abs(footerRight - presetRight) > 1) problems.push('the preset field ends at ' + presetRight + 'px and the footer buttons at ' + footerRight + 'px; they share one right edge');
   const labelLeft = row => row.querySelector('.crucible-studio-keyboard-name > span:last-child').getBoundingClientRect().left;
   const rows = [...list.querySelectorAll('.crucible-studio-keyboard-row')];
   if (rows.some(row => Math.abs(labelLeft(row) - labelLeft(rows[0])) > 1)) problems.push('row labels do not share one left edge');
@@ -487,6 +491,19 @@ async function measureKeyboard(page, theme) {
   const changedRows = () => page.evaluate(() => document.querySelectorAll('.crucible-studio-keyboard-row[data-changed="true"]').length);
   if (await changedRows() !== 1) throw new Error('Pressing a free key while recording must change exactly that row.');
   await assertKeyboardScrollCue(page, 'changed row');
+  await page.locator('.crucible-studio-keyboard-actions button', { hasText: 'Reset shortcuts' }).click();
+  await page.waitForTimeout(150);
+  const keepHasFocus = await page.evaluate(() => document.activeElement?.textContent.trim() === 'Keep');
+  if (!keepHasFocus) throw new Error('The reset confirmation must open with the focus on Keep.');
+  screens.push({ name: `keyboard reset confirm (${theme})`, records: await measure(page, dialogSelector) });
+  await assertKeyboardScrollCue(page, 'reset confirm');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  const afterEscape = await page.evaluate(() => ({
+    open: document.querySelector('dialog.crucible-studio-settings-dialog').open,
+    confirming: document.querySelector('.crucible-studio-keyboard-confirm') !== null,
+  }));
+  if (!afterEscape.open || afterEscape.confirming) throw new Error('Escape in the reset confirmation must pick Keep and keep Settings open: ' + JSON.stringify(afterEscape));
   await page.locator('button.crucible-studio-keyboard-reset').first().click();
   await page.waitForTimeout(150);
   if (await changedRows() !== 0) throw new Error('The reset of a changed row must put the preset key back and leave no changed row.');

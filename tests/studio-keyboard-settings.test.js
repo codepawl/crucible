@@ -170,23 +170,23 @@ test('a combination the browser keeps is refused inline and nothing changes (#33
   assert.equal(ui.note('tool.select'), null);
 });
 
-test('a changed row has a reset button that returns it to the preset, and Reset keys asks first (#3390)', testContext => {
+test('a changed row has a reset button that returns it to the preset, and Reset shortcuts asks first (#3390)', testContext => {
   const storage = memoryStorage();
   const ui = mountStudio(testContext, { preferenceStorage: storage });
   assert.equal(ui.reset('tool.select'), null, 'a row at the preset has no reset');
-  assert.equal(ui.toolButton('Reset keys').disabled, true);
+  assert.equal(ui.toolButton('Reset shortcuts').disabled, true);
   ui.record('tool.select', 'v');
   ui.record('tool.rotate', 'b');
   ui.reset('tool.select').click();
   assert.equal(ui.keys('tool.select').textContent, 'Q');
   assert.equal(ui.row('tool.select').dataset.changed, 'false');
   assert.equal(ui.keys('tool.rotate').textContent, 'B');
-  ui.toolButton('Reset keys').click();
+  ui.toolButton('Reset shortcuts').click();
   assert.equal(ui.keys('tool.rotate').textContent, 'B', 'nothing happens before the confirm');
   ui.toolButton('Keep').click();
-  assert.ok(ui.toolButton('Reset keys'));
-  ui.toolButton('Reset keys').click();
-  ui.toolButton('Reset 1 key').click();
+  assert.ok(ui.toolButton('Reset shortcuts'));
+  ui.toolButton('Reset shortcuts').click();
+  ui.toolButton('Reset 1 shortcut').click();
   assert.equal(ui.keys('tool.rotate').textContent, 'R');
   assert.deepEqual(JSON.parse(storage.saved.get('crucible-studio-preferences')).keyOverrides, {});
   ui.press('r');
@@ -224,4 +224,49 @@ test('the Keyboard section uses only tokens for colour and spacing and nothing s
     assert.match(match[1], /var\(--studio-space-\d+\)|^0|auto|calc/, `spacing "${match[1]}" comes from the scale`);
   }
   assert.doesNotMatch(block, /border-(top|bottom):|<hr/);
+});
+test('a recording row shows the Esc key that cancels beside its key, and Escape cancels without closing Settings (#3390)', testContext => {
+  const ui = mountStudio(testContext);
+  assert.equal(ui.row('tool.select').querySelector('.crucible-studio-keyboard-cancel'), null, 'a row at rest shows no hint');
+  ui.keys('tool.select').click();
+  const hint = ui.row('tool.select').querySelector('.crucible-studio-keyboard-cancel');
+  assert.deepEqual(hint.querySelectorAll('span').map(part => part.textContent), ['Esc', 'cancels']);
+  assert.equal(hint.nextElementSibling, ui.keys('tool.select'), 'in the same row, right before the recording key');
+  assert.match(ui.keys('tool.select').textContent, /Press keys/);
+  const escape = dispatch(ui.keys('tool.select'), 'keydown', { key: 'Escape', cancelable: true });
+  assert.equal(escape.defaultPrevented, true, 'the dialog does not see the key');
+  assert.equal(ui.settingsDialog.open, true);
+  assert.equal(ui.keys('tool.select').dataset.recording, undefined);
+  assert.equal(ui.row('tool.select').querySelector('.crucible-studio-keyboard-cancel'), null, 'the hint goes with the recording');
+  assert.equal(ui.keys('tool.select').textContent, 'Q');
+});
+
+test('the reset confirmation: Keep has the focus and Escape, the reset is the warning button, and Enter never resets (#3390)', testContext => {
+  const storage = memoryStorage();
+  const ui = mountStudio(testContext, { preferenceStorage: storage });
+  ui.record('tool.rotate', 'b');
+  const resetButton = ui.toolButton('Reset shortcuts');
+  assert.equal(resetButton.dataset.actionIcon, 'resetShortcuts');
+  const footerReset = ui.settingsDialog.querySelectorAll('button').find(button => button.textContent === 'Reset settings');
+  assert.notEqual(resetButton.dataset.actionIcon, footerReset.dataset.actionIcon, 'its icon differs in shape from the footer reset');
+  resetButton.click();
+  const keep = ui.toolButton('Keep');
+  const confirmReset = ui.toolButton('Reset 1 shortcut');
+  assert.equal(ui.dom.document.activeElement, keep, 'Keep has the focus when the confirmation opens');
+  assert.equal(confirmReset.dataset.actionIcon, 'warning', 'the reset leads with the warning icon');
+  assert.match(confirmReset.className, /crucible-studio-keyboard-confirm/);
+  const confirmRule = STUDIO_CSS.slice(STUDIO_CSS.indexOf('button.crucible-studio-keyboard-confirm {'));
+  assert.ok(confirmRule.slice(0, confirmRule.indexOf('}')).includes('color: var(--studio-warning)'), 'its text uses the warning token');
+  assert.equal(keep.className, '', 'Keep is the plain default button');
+  // Enter or Space on the focused default is a click on Keep.
+  ui.dom.document.activeElement.click();
+  assert.equal(ui.toolButton('Reset 1 shortcut'), undefined, 'the confirmation closed');
+  assert.equal(ui.keys('tool.rotate').textContent, 'B', 'Enter on the default kept the shortcut');
+  ui.toolButton('Reset shortcuts').click();
+  const escape = dispatch(ui.toolButton('Keep'), 'keydown', { key: 'Escape', cancelable: true });
+  assert.equal(escape.defaultPrevented, true);
+  assert.equal(ui.settingsDialog.open, true);
+  assert.equal(ui.toolButton('Reset 1 shortcut'), undefined, 'Escape picked Keep');
+  assert.equal(ui.keys('tool.rotate').textContent, 'B');
+  assert.deepEqual(Object.keys(JSON.parse(storage.saved.get('crucible-studio-preferences')).keyOverrides.crucible), ['tool.rotate']);
 });
