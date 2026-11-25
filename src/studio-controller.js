@@ -1667,7 +1667,7 @@ export function createStudioController({
       authoredPose: { ...authoredPose, rotation: normalizeQuaternion(authoredPose.rotation) },
       parentInverse: parentWorld ? mat4.invert(mat4.create(), parentWorld) : null,
       parentWorld,
-      companions: toolMode === 'translate' && !elementSession ? movingCompanions(recipe, worldMatrices) : [],
+      ...(toolMode === 'translate' && !elementSession ? movingCompanions(recipe, worldMatrices) : { companions: [], activeCarried: false }),
       axisScreen,
       axisWorld,
       axisStartParameter,
@@ -1745,18 +1745,14 @@ export function createStudioController({
     return [rotated[0], rotated[1], rotated[2]];
   }
 
-  // A keyed node shows its sampled pose, so with auto-key on the dragged pose is also keyed at the playhead as the pointer
-  // moves; built from the motion the drag began with, so each move replaces the last and cancel can put the motion back.
-  // The other selected objects that follow the active one when it is moved, each with its own parent's inverse so a world
-  // move lands the same on all of them. A selected ancestor of the active object is left out: it carries the active one along.
+  // The selected objects that move with the active one, each with its own parent's inverse so one world move lands the same
+  // on all of them: every selected object that has no selected ancestor. When the active object has a selected ancestor, that
+  // ancestor is one of them and carries the active object along, so the active object is not written itself (`activeCarried`).
   function movingCompanions(recipe, worldMatrices) {
     const nodesById = new Map(recipe.nodes.map(node => [node.id, node]));
-    const ancestorsOfActive = new Set();
-    for (let ancestor = nodesById.get(selectedNodeId)?.parent; ancestor !== undefined && !ancestorsOfActive.has(ancestor); ancestor = nodesById.get(ancestor)?.parent) {
-      ancestorsOfActive.add(ancestor);
-    }
-    return selectionRootsIn(recipe.nodes)
-      .filter(nodeId => nodeId !== selectedNodeId && !ancestorsOfActive.has(nodeId) && nodesById.has(nodeId))
+    const roots = selectionRootsIn(recipe.nodes).filter(nodeId => nodesById.has(nodeId));
+    const companions = roots
+      .filter(nodeId => nodeId !== selectedNodeId)
       .map(nodeId => {
         const node = nodesById.get(nodeId);
         const parentMatrix = node.parent ? worldMatrices.get(node.parent) : null;
@@ -1766,6 +1762,7 @@ export function createStudioController({
           parentInverse: parentMatrix ? mat4.invert(mat4.create(), parentMatrix) : null,
         };
       });
+    return { companions, activeCarried: !roots.includes(selectedNodeId) };
   }
 
   // The move the active object just made, as a world move, repeated on each companion in its own parent space.
@@ -1791,12 +1788,14 @@ export function createStudioController({
     return [rotated[0], rotated[1], rotated[2]];
   }
 
+  // A keyed node shows its sampled pose, so with auto-key on the dragged pose is also keyed at the playhead as the pointer
+  // moves; built from the motion the drag began with, so each move replaces the last and cancel can put the motion back.
   function writeDraggedPose(pose) {
-    const operations = [{ type: 'set-node', id: dragState.nodeId, ...pose }];
+    const operations = dragState.activeCarried ? [] : [{ type: 'set-node', id: dragState.nodeId, ...pose }];
     if (pose.translation && dragState.companions.length > 0) {
       operations.push(...companionOperations(pose.translation));
     }
-    if (autoKey) {
+    if (autoKey && !dragState.activeCarried) {
       const motion = motionWithPoseKeys(dragState.baseMotion, dragState.nodeId, pose, motionTime);
       if (motion) {
         operations.push({ type: 'set-motion', motion });
@@ -2495,18 +2494,41 @@ export function createStudioController({
     return cloned;
   }
 
+  // The nodes ordered so that each one comes after the parent it names, when that parent is in the list too.
+  function parentsFirst(nodes) {
+    const ordered = [];
+    const placed = new Set();
+    const waiting = [...nodes];
+    while (waiting.length > 0) {
+      const waitingIds = new Set(waiting.map(node => node.id));
+      const ready = waiting.filter(node => !waitingIds.has(node.parent) || node.parent === node.id);
+      for (const node of ready.length > 0 ? ready : waiting) {
+        ordered.push(node);
+        placed.add(node.id);
+      }
+      waiting.splice(0, waiting.length, ...waiting.filter(node => !placed.has(node.id)));
+    }
+    return ordered;
+  }
+
   // One undo step that adds a copy of each source and selects the copies; the copy of `activeSourceId` is the active one.
   function addNodeCopies(sources, offsetSteps, activeSourceId) {
     const recipe = currentScene.exportRecipe();
     const existingIds = new Set(recipe.nodes.map(node => node.id));
     const copies = sources.map(source => buildNodeCopy(source, offsetSteps, existingIds));
-    for (const cloned of copies) {
-      // The parent may be gone by the time a copy is pasted.
-      if (cloned.parent !== undefined && !recipe.nodes.some(node => node.id === cloned.parent)) {
+    const copyIdBySourceId = new Map(sources.map((source, index) => [source.id, copies[index].id]));
+    copies.forEach((cloned, index) => {
+      const source = sources[index];
+      if (copyIdBySourceId.has(source.parent)) {
+        // Under the copy of its parent it keeps its place relative to it: the parent's shift already carries it.
+        cloned.parent = copyIdBySourceId.get(source.parent);
+        cloned.translation = structuredClone(source.translation ?? [0, 0, 0]);
+      } else if (cloned.parent !== undefined && !recipe.nodes.some(node => node.id === cloned.parent)) {
+        // The parent may be gone by the time a copy is pasted.
         delete cloned.parent;
       }
-    }
-    applySceneOperations(copies.map(node => ({ type: 'add-node', node })));
+    });
+    applySceneOperations(parentsFirst(copies).map(node => ({ type: 'add-node', node })));
     const activeIndex = Math.max(0, sources.findIndex(source => source.id === activeSourceId));
     commitNodeSelection(copies.map(node => node.id), copies[activeIndex].id);
     selectedObjectKey = null;
