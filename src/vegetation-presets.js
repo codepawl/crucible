@@ -47,6 +47,9 @@ export const LEAF_COUNT_REFERENCE = 5;
 const BROADLEAF_CROWN_LEAF = Object.freeze({
   texture: 'twig',
   placement: Object.freeze({ interiorKeep: 0, outwardTilt: 0.45, upTilt: 0.3 }),
+  // Twig tips sit in a shell, so more of the crown reaches the hull than a filled ball would: a steeper fall-off keeps the inside as
+  // dark as it was (#3420; the plain species keeps 5.5).
+  crownLight: Object.freeze({ core: 0.14, hull: 3.1, exponent: 8.5 }),
 });
 
 // Each species paints its own spray atlas (#3057): the oak's lobed leaves are the default, the others are their own kind.
