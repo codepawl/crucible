@@ -2068,6 +2068,14 @@ export function createStudio(container, {
   // Shown only while edit mode is on, so the group itself says which mode the viewport is in.
   const meshModeGroup = createElement(documentReference, 'div', { className: 'crucible-studio-group', hidden: true, dataset: { meshGroup: 'true' }, attributes: { role: 'group', 'aria-label': 'Mesh selection' } }, meshObjectButton, ...meshModeButtons);
 
+  // Proportional editing: the toggle and the popover that sets its curve and size. They sit in the mesh group, shown while editing; the
+  // settings and the popover are made with the editor (studio-proportional.js loads on the first Tab).
+  const PROPORTIONAL_POPOVER_ID = 'crucible-studio-pop-proportional';
+  const proportionalButton = createKeyedIconButton('proportional', () => `Proportional editing (${keyLabel(keymap, 'mesh.proportional')})`, { dataset: { proportional: 'toggle' }, attributes: { 'aria-pressed': 'false' } });
+  const proportionalMenuButton = createIconButton(documentReference, 'chevron', 'Falloff and size of proportional editing', { dataset: { proportional: 'menu' }, attributes: { popovertarget: PROPORTIONAL_POPOVER_ID } });
+  proportionalButton.addEventListener('click', () => toggleProportional());
+  meshModeGroup.append(proportionalButton, proportionalMenuButton);
+
   const undoButton = createKeyedIconButton('undo', () => `Undo (${keyLabel(keymap, 'edit.undo')})`, { attributes: { 'aria-disabled': 'true' } });
   const redoButton = createKeyedIconButton('redo', () => `Redo (${keyLabel(keymap, 'edit.redo')})`, { attributes: { 'aria-disabled': 'true' } });
   const duplicateButton = createKeyedIconButton('duplicateObject', () => `Duplicate (${lastKeyLabel(keymap, 'edit.duplicate')})`);
@@ -4531,6 +4539,7 @@ export function createStudio(container, {
     const editingMesh = Boolean(meshEditor?.active);
     root.dataset.meshEdit = editingMesh ? 'true' : 'false';
     meshModeGroup.hidden = !editingMesh;
+    proportionalButton.setAttribute('aria-pressed', editingMesh && meshEditor.proportional?.enabled ? 'true' : 'false');
     const meshMode = editingMesh ? meshEditor.mode : null;
     if (meshMode !== shownMeshMode) {
       shownMeshMode = meshMode;
@@ -5113,8 +5122,17 @@ export function createStudio(container, {
       requestFrame();
       return;
     }
+    if (proportionalHoldsWheel()) return;
     stopFlight();
     controller.orbitCamera({ zoomScale: 1 + Math.max(-0.35, Math.min(0.35, event.deltaY * 0.0012)) });
+  }, { passive: false });
+
+  // While a move is held with proportional editing on, the wheel sets how far it reaches instead of zooming. It listens on the
+  // viewport, not the canvas, because the pointer of a held move often sits on a move handle drawn over the canvas.
+  viewportElement.addEventListener('wheel', event => {
+    if (!proportionalHoldsWheel()) return;
+    event.preventDefault();
+    meshEditor.proportional.resize(event.deltaY < 0 ? 1 : -1);
   }, { passive: false });
 
   viewportElement.addEventListener('dragover', event => {
@@ -5196,9 +5214,33 @@ export function createStudio(container, {
     return Boolean(selection && !selection.isCollapsed && selection.toString() !== '');
   }
 
+  function proportionalHoldsWheel() {
+    return Boolean(meshEditor?.holdingMove && meshEditor.proportional?.enabled);
+  }
+
+  function toggleProportional() {
+    const settings = meshEditor?.proportional;
+    if (!settings) return;
+    settings.toggle();
+    announce(settings.enabled ? 'Proportional editing on' : 'Proportional editing off');
+  }
+
   function loadMeshEditor() {
-    meshEditorLoad ??= import('./studio-mesh-edit.js').then(({ createMeshEditor }) => {
-      meshEditor = createMeshEditor({ controller, announce, getRenderer: () => renderer });
+    meshEditorLoad ??= Promise.all([import('./studio-mesh-edit.js'), import('./studio-proportional.js')]).then(([{ createMeshEditor }, { createProportionalSettings, createProportionalPopover }]) => {
+      let proportionalPopover = null;
+      const proportional = createProportionalSettings({
+        onChange: () => {
+          proportionalPopover?.sync();
+          // A radius or curve changed while a move is held: the hill follows it under the pointer.
+          meshEditor?.reweighDrag();
+          syncUi();
+          requestFrame();
+        },
+      });
+      proportionalPopover = createProportionalPopover({ documentReference, settings: proportional, popoverId: PROPORTIONAL_POPOVER_ID });
+      root.append(proportionalPopover.popover);
+      bindPopoverAnchor(proportionalMenuButton, proportionalPopover.popover, { beside: true });
+      meshEditor = createMeshEditor({ controller, announce, getRenderer: () => renderer, proportional });
       meshEditor.setSeeThrough(seeThrough);
       return meshEditor;
     });
@@ -5440,6 +5482,7 @@ export function createStudio(container, {
       syncUi();
       requestFrame();
     },
+    'mesh.proportional': () => toggleProportional(),
     'mesh.boxSelect': () => {
       if (meshEditor.boxSelecting) {
         cancelBoxSelect();
