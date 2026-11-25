@@ -71,6 +71,7 @@ export const STUDIO_ICON_PATHS = Object.freeze({
   tierAutomatic: 'M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4',
   handle: 'M7 7h10v10H7zM3 3h4v4H3zM17 3h4v4h-4zM3 17h4v4H3zM17 17h4v4h-4z',
   chat: 'M4 5h16v11h-9l-4.5 4v-4H4zM8 9.5h8M8 12.5h5',
+  copy: 'M9 4h6v3H9zM7 5.5H5a1 1 0 0 0-1 1V20a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6.5a1 1 0 0 0-1-1h-2M8.5 12h7M8.5 16h5',
   // Action buttons: reload turns clockwise, reset (put back) the other way, signIn is a door with an arrow going in.
   reload: 'M20 12a8 8 0 1 1-2.3-5.7L20 8.5M20 4v4.5h-4.5',
   reset: 'M4 12a8 8 0 1 0 2.3-5.7L4 8.5M4 4v4.5h4.5',
@@ -149,8 +150,8 @@ export const STUDIO_ACTION_ICONS = Object.freeze({
   applyJson: 'check',
   resetSettings: 'reset',
   signIn: 'signIn',
-  signedIn: 'chat',
-  copyPrompt: 'duplicate',
+  signedIn: 'check',
+  copyPrompt: 'copy',
   copied: 'check',
 });
 

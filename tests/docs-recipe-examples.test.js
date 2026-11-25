@@ -78,6 +78,8 @@ const EXAMPLES = {
   ],
   'docs/mesh.md': [
     'field expressions, not a recipe',
+    // The Cracks example is a whole scene, so it goes to scene_create unchanged (#3245).
+    block => create(block),
     block => create(baseRecipe({ geometries: [block], nodes: [boxNode('a', { geometry: block.id })] })),
     block => create(baseRecipe({ geometries: [block], nodes: [boxNode('a', { geometry: block.id })] })),
     'a mesh_inspect result, not an input',

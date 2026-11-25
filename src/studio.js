@@ -1632,11 +1632,13 @@ export function createStudio(container, {
   }
 
   /** Copies the prompt; when the browser refuses, shows it in the recipe dialog instead. Resolves true only when it was copied. */
-  async function copyAgentPrompt() {
+  async function copyAgentPrompt({ announceResult = true } = {}) {
     const promptText = agentPromptText();
     try {
       await navigator.clipboard.writeText(promptText);
-      announceSuccess('Copied AI prompt to clipboard');
+      if (announceResult) {
+        announceSuccess('Copied AI prompt to clipboard');
+      }
       return true;
     } catch {
       openImportDialog(promptText);
@@ -2834,6 +2836,7 @@ export function createStudio(container, {
     copyAgentPrompt,
     // A host page (the desktop app) may offer its own built-in agent; the setup's AI agent step then offers its sign-in.
     builtInAgent: globalThis.crucibleShell?.builtInAgent,
+    account: globalThis.crucibleShell?.account,
     onClose: () => {
       if (!preferences.setupDone) setPreference('setupDone', true);
     },
