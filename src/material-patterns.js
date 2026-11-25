@@ -1,4 +1,4 @@
-import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS } from './agent-scene-capabilities.js';
+import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS } from './material-name-lists.js';
 import { bakeMaterialGraph, graphBaseOutputs, graphImageData, graphMeshMapNames, graphSurfaceSettings, graphVertexGroupNames, MESH_MAP_KEY_PREFIX, normalizeMaterialGraph, surfaceMapKey } from './material-graph.js';
 import { meshMapForGeometry } from './mesh-map-bake.js';
 import { surfaceMap } from './material-surface-map.js';

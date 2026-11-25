@@ -3,11 +3,12 @@
 // studio-layout-rules.mjs: unequal insets around the content of a padded container, a gap or padding off the spacing
 // scale, or a gap between groups smaller than the gap inside one. Every failure names the selector, the numbers and the fix.
 //
-//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|rename|popover|newscene|dialog|notice|notices] [--width pixels] [--records file.json]
+//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history|helpmenu] [--width pixels] [--records file.json]
 //
 // Without --origin it starts a Vite dev server on a free port and stops it (by its own PID) at the end. Screens: the Studio
 // page, each of its popover menus, the five steps of the setup dialog, and the New scene chooser with its unsaved-changes
 // question, each in the dark and the light theme at 1280 by 720 (--width changes the width, for example 720).
+// The History panel is measured at 1280 and 720 after six edits with two undone, and the Edit menu with its History row beside it.
 // The notices (a draft found in storage, the paused picture after a lost context) and the recipe, settings and shortcuts
 // dialogs are measured at 1280 and at 720 pixels wide, because their buttons wrap first when the window narrows.
 import { spawn } from 'node:child_process';
@@ -22,9 +23,6 @@ const STUDIO_PAGE = '/bench/studio/index.html?setup=off';
 const READY_EXPRESSION = 'Boolean(window.__studioPage?.renderer) && !document.getElementById("studio-loading")';
 const PREFERENCES_KEY = 'crucible-studio-preferences';
 const DRAFT_KEY = 'crucible.studio.draft';
-// The Settings dialog is checked for selection only: its spacing has an open finding that pull request #3317, which redesigns Settings,
-// closes. The Recipe JSON and shortcuts dialogs keep every spacing rule.
-const SELECTION_ONLY_DIALOG_TITLES = new Set(['crucible-studio-settings-title']);
 const THEMES = ['dark', 'light'];
 const VIEWPORT = { width: 1280, height: 720 };
 const NARROW_VIEWPORT = { width: 720, height: 720 };
@@ -37,9 +35,14 @@ const DIALOG_SELECTORS = Object.freeze({
   'shortcuts dialog': 'dialog.crucible-studio-shortcuts-dialog',
 });
 const SERVER_START_TIMEOUT_MS = 60000;
-const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|rename|popover|newscene|dialog|notice|notices] [--width pixels] [--records file.json]';
+const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history|helpmenu] [--width pixels] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
+// A signed-in host with every optional field, so the Account section of Settings is on screen and measured.
+const SAMPLE_ACCOUNT_HOST = `globalThis.crucibleShell = { account: {
+  get: async () => ({ signedIn: true, name: 'Sample Person', email: 'sample.person@example.com', remainingText: '1,240 credits left', planText: 'Studio plan' }),
+  signIn: async () => {}, signOut: async () => {}, buyCredits: () => {}, manageBilling: () => {},
+} };`;
 const SOFTWARE_ARGUMENTS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'];
 
 // An uneven inset or an off-scale value that is meant. Each entry names the kind, the selector (a substring of the
@@ -48,6 +51,7 @@ export const ALLOWLIST = Object.freeze([
   { kind: 'uneven-inset', selector: 'crucible-studio-toolbar', reason: 'The tool rail is a strip as tall as the window; its buttons sit at the top and the strip ends below them.' },
   { kind: 'uneven-inset', selector: 'crucible-studio-tree-row', reason: 'The visibility button at the end of an outliner row is a hit area with its own room, so the row keeps 2px on that side.' },
   { kind: 'uneven-inset', selector: 'crucible-studio-popover > button', reason: 'A menu row is a full-width hit area whose label starts at the leading edge; the free space is the end of the row.' },
+  { kind: 'uneven-inset', selector: 'crucible-studio-settings-section', reason: 'A section of the Settings list is a full-width hit area whose icon and label start at the leading edge; the free space is the end of the row.' },
 ]);
 
 // Runs inside the page. Returns one record per visible element under `rootElement`; the rules read them in Node.
@@ -168,6 +172,36 @@ const RENAME_WIDTHS = [1280, 921, 919, 720];
 const LONG_NAME = 'a-scene-name-that-is-as-long-as-sixty-characters-in-all-ok-1234';
 const BESIDE_ERROR_MIN_WIDTH = 1180;
 
+const SETTLED_FRAMES = 3;
+const SETTLE_TIMEOUT_MS = 10000;
+
+// Runs inside the page: one signature of the top bar that changes when anything about its layout changes. The compact layout
+// is applied by a ResizeObserver on the frame after a resize, so a bar read before that frame still has the wide layout
+// (its islands reach past the window), and a loaded machine can make that frame late.
+function readTopBarSignature() {
+  const bar = document.querySelector('.crucible-studio-menubar');
+  const boxes = Array.from(bar.querySelectorAll(':scope > .crucible-studio-island, .crucible-studio-filepill, .crucible-studio-name-editor')).map(element => {
+    const { left, right, top, bottom } = element.getBoundingClientRect();
+    return [element.className, left, right, top, bottom];
+  });
+  return JSON.stringify({ width: window.innerWidth, compact: document.querySelector('.crucible-studio').dataset.compact, boxes });
+}
+
+// Resolves once the top bar has the same signature on SETTLED_FRAMES animation frames in a row. Each read waits for a frame
+// of its own, so a late frame makes it wait longer instead of reading early as a fixed wait does.
+export async function waitForSettledLayout(page, { framesNeeded = SETTLED_FRAMES, timeoutMs = SETTLE_TIMEOUT_MS } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let previous = null;
+  let unchangedFrames = 1;
+  while (Date.now() < deadline) {
+    const signature = await page.evaluate(`new Promise(resolveFrame => requestAnimationFrame(() => resolveFrame((${readTopBarSignature.toString()})())))`);
+    unchangedFrames = signature === previous ? unchangedFrames + 1 : 1;
+    if (unchangedFrames >= framesNeeded) return;
+    previous = signature;
+  }
+  throw new Error(`The top bar was still changing size after ${timeoutMs} ms, so it cannot be measured.`);
+}
+
 // Runs inside the page: what the name (or its editor) and its reason do to the rest of the top bar. Returns sentences, empty when fine.
 function collectBarOverlaps(besideErrorMinWidth) {
   const problems = [];
@@ -219,7 +253,7 @@ async function measureRenameScreens(page, theme) {
   };
   for (const width of RENAME_WIDTHS) {
     await page.setViewportSize({ width, height: VIEWPORT.height });
-    await page.waitForTimeout(400);
+    await waitForSettledLayout(page);
     await openEditor();
     screens.push({ name: `rename editing ${width} (${theme})`, records: await measure(page, '.crucible-studio'), overlaps: await measureBarOverlaps(page) });
     await page.fill('.crucible-studio-name-editor input', 'bad|name');
@@ -228,13 +262,14 @@ async function measureRenameScreens(page, theme) {
     await page.keyboard.press('Escape');
   }
   await page.setViewportSize({ width: RENAME_WIDTHS[0], height: VIEWPORT.height });
-  await page.waitForTimeout(300);
+  await waitForSettledLayout(page);
   await openEditorWithName(page, LONG_NAME);
   for (const width of RENAME_WIDTHS) {
     await page.setViewportSize({ width, height: VIEWPORT.height });
-    await page.waitForTimeout(400);
+    await waitForSettledLayout(page);
     const closedOverlaps = await measureBarOverlaps(page);
     await openEditor();
+    await waitForSettledLayout(page);
     const overlaps = [...closedOverlaps.map(problem => `(name shown) ${problem}`), ...await measureBarOverlaps(page)];
     screens.push({ name: `rename long ${width} (${theme})`, records: await measure(page, '.crucible-studio'), overlaps });
     await page.fill('.crucible-studio-name-editor input', `bad|${LONG_NAME}`);
@@ -272,7 +307,8 @@ const FAKE_POINTER_LOCK_SCRIPT = () => {
 
 export async function launchBrowser() {
   const { chromium } = await import('playwright');
-  const options = { headless: true, args: process.platform === 'win32' ? GPU_ARGUMENTS : SOFTWARE_ARGUMENTS };
+  // Headless Chrome hides scrollbars unless told not to; the scroll cue of the panel column has to show in the pictures and the audit.
+  const options = { headless: true, ignoreDefaultArgs: ['--hide-scrollbars'], args: process.platform === 'win32' ? GPU_ARGUMENTS : SOFTWARE_ARGUMENTS };
   if (CHROME_PATH && existsSync(CHROME_PATH)) return chromium.launch({ ...options, executablePath: CHROME_PATH });
   return chromium.launch(options).catch(() => chromium.launch({ ...options, channel: 'chrome' }));
 }
@@ -280,6 +316,7 @@ export async function launchBrowser() {
 export async function openStudio(browser, origin, theme, extraCss = '', { viewport = VIEWPORT, draft = false, savedDraft = null } = {}) {
   const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
   await context.addInitScript(FAKE_POINTER_LOCK_SCRIPT);
+  await context.addInitScript(SAMPLE_ACCOUNT_HOST);
   await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [PREFERENCES_KEY, JSON.stringify({ theme, setupDone: true })]);
   if (draft) await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [DRAFT_STORAGE_KEY, SEEDED_DRAFT]);
   if (savedDraft) await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [DRAFT_KEY, JSON.stringify(savedDraft)]);
@@ -339,11 +376,195 @@ async function measureDraftNotice(browser, origin, theme, extraCss) {
   }
 }
 
+// Runs inside the page: the spacing and the key text contrast of the open shortcut sheet. Returns the problems and the numbers.
+function probeShortcutSheet() {
+  const dialog = document.querySelector('dialog.crucible-studio-shortcuts-dialog');
+  const style = getComputedStyle(dialog);
+  const problems = [];
+  const insets = ['Top', 'Right', 'Bottom', 'Left'].map(side => parseFloat(style['padding' + side]));
+  if (new Set(insets).size !== 1 || ![16, 24].includes(insets[0])) problems.push('The sheet padding is ' + insets.join('/') + ' px: use one value, 16 or 24.');
+  const head = dialog.querySelector('.crucible-studio-shortcuts-head').getBoundingClientRect();
+  const body = dialog.querySelector('.crucible-studio-shortcuts').getBoundingClientRect();
+  const headGap = Math.round(body.top - head.bottom);
+  if (headGap !== 16) problems.push('The title row to the first group gap is ' + headGap + ' px: use 16.');
+  const firstGroup = dialog.querySelector('.crucible-studio-shortcut-column');
+  const groups = Array.from(firstGroup.querySelectorAll('.crucible-studio-shortcut-group'));
+  const rows = Array.from(groups[0].querySelectorAll('.crucible-studio-shortcut-item'));
+  const rowGap = Math.round(rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().bottom);
+  const groupGap = Math.round(groups[1].getBoundingClientRect().top - groups[0].getBoundingClientRect().bottom);
+  if (groupGap <= rowGap) problems.push('The gap between groups (' + groupGap + ' px) must be larger than the gap between rows (' + rowGap + ' px).');
+  const columns = Array.from(dialog.querySelectorAll('.crucible-studio-shortcut-column')).map(column => column.getBoundingClientRect());
+  if (columns.length === 2 && columns[1].left > columns[0].left) {
+    const columnGap = Math.round(columns[1].left - columns[0].right);
+    if (columnGap <= rowGap) problems.push('The gap between columns (' + columnGap + ' px) must be larger than the gap between rows (' + rowGap + ' px).');
+  }
+  const toRgb = color => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext('2d');
+    context.fillStyle = color;
+    context.fillRect(0, 0, 1, 1);
+    return Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3);
+  };
+  const luminance = rgb => {
+    const [red, green, blue] = rgb.map(channel => {
+      const value = channel / 255;
+      return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const textLuminance = luminance(toRgb(getComputedStyle(dialog.querySelector('.crucible-studio-shortcut-keys')).color));
+  const surfaceLuminance = luminance(toRgb(style.backgroundColor));
+  const contrast = (Math.max(textLuminance, surfaceLuminance) + 0.05) / (Math.min(textLuminance, surfaceLuminance) + 0.05);
+  if (contrast < 4.5) problems.push('The key text contrast is ' + contrast.toFixed(2) + ':1: it must be 4.5:1 or more.');
+  const scrollBody = dialog.querySelector('.crucible-studio-shortcuts');
+  const scrolls = scrollBody.scrollHeight > scrollBody.clientHeight;
+  if (scrolls && scrollBody.offsetWidth - scrollBody.clientWidth <= 0) problems.push('The sheet scrolls but shows no scrollbar track: keep scrollbar-gutter stable and the thin scrollbar.');
+  if (scrolls && scrollBody.scrollTop === 0 && scrollBody.dataset.more !== 'true') problems.push('The sheet has rows below but shows no fade at its bottom edge.');
+  const tallRows = Array.from(dialog.querySelectorAll('.crucible-studio-shortcut-item')).filter(row => row.getBoundingClientRect().height > 20);
+  if (tallRows.length > 0) problems.push('These sheet rows wrap to more than one line: ' + tallRows.map(row => row.textContent).join(', ') + '.');
+  const dialogBox = dialog.getBoundingClientRect();
+  const keyRights = Array.from(dialog.querySelectorAll('.crucible-studio-shortcut-keys')).map(keys => keys.getBoundingClientRect().right);
+  const labelLefts = Array.from(dialog.querySelectorAll('.crucible-studio-shortcut-item > span:first-child')).map(label => label.getBoundingClientRect().left);
+  const leftInset = Math.round((Math.min(...labelLefts) - dialogBox.left) * 10) / 10;
+  const rightInset = Math.round((dialogBox.right - Math.max(...keyRights)) * 10) / 10;
+  const scrollbarWidth = scrollBody.offsetWidth - scrollBody.clientWidth;
+  const scrollbarLeft = scrollBody.getBoundingClientRect().right - scrollbarWidth;
+  const scrollbarGap = Math.round((scrollbarLeft - Math.max(...keyRights)) * 10) / 10;
+  if (scrolls && scrollbarGap < 8) problems.push('The key text ends ' + scrollbarGap + ' px from the scrollbar: keep at least 8.');
+  if (!scrolls && Math.abs(leftInset - rightInset) > 1) problems.push('The text is ' + leftInset + ' px from the left edge of the sheet and ' + rightInset + ' px from the right one: they must match within 1 px.');
+  const columnCount = dialog.querySelectorAll('.crucible-studio-shortcut-column').length;
+  return { problems, numbers: { padding: insets[0], headGap, rowGap, groupGap, contrast: Number(contrast.toFixed(2)), columns: columnCount, scrolls, leftInset, rightInset, scrollbarGap } };
+}
+
+// With a short window the sheet scrolls inside itself: the last group is reachable and the title row with the close button stays in view.
+async function probeShortWindow(page) {
+  await page.locator('button.crucible-studio-menu-button', { hasText: 'Help' }).click();
+  await page.locator('#crucible-studio-pop-help button', { hasText: 'Keyboard shortcuts' }).click();
+  await page.waitForSelector('dialog.crucible-studio-shortcuts-dialog[open]');
+  await page.mouse.move(2, 2);
+  await page.waitForTimeout(250);
+  await page.evaluate(() => {
+    const body = document.querySelector('.crucible-studio-shortcuts');
+    body.scrollTop = body.scrollHeight;
+  });
+  const state = await page.evaluate(() => {
+    const dialog = document.querySelector('dialog.crucible-studio-shortcuts-dialog');
+    const body = dialog.querySelector('.crucible-studio-shortcuts');
+    const groups = Array.from(body.querySelectorAll('.crucible-studio-shortcut-group'));
+    const lastRow = groups[groups.length - 1].querySelector('.crucible-studio-shortcut-item:last-child').getBoundingClientRect();
+    const closeBox = dialog.querySelector('.crucible-studio-shortcuts-head button').getBoundingClientRect();
+    const bodyBox = body.getBoundingClientRect();
+    return {
+      scrolls: body.scrollHeight > body.clientHeight,
+      lastRowReachable: lastRow.bottom <= bodyBox.bottom + 1 && lastRow.top >= bodyBox.top,
+      closeVisible: closeBox.top >= 0 && closeBox.bottom <= window.innerHeight && closeBox.right <= window.innerWidth,
+    };
+  });
+  if (!state.scrolls || !state.lastRowReachable || !state.closeVisible) {
+    throw new Error('In a 720 by 480 window the sheet must scroll inside itself, reach its last row and keep the close button in view: ' + JSON.stringify(state));
+  }
+  return { name: 'shortcut sheet 720x480 short window', records: await measure(page, 'dialog.crucible-studio-shortcuts-dialog') };
+}
+
+// The Help menu open, then the shortcut sheet opened from it. Escape must close the sheet and give the focus back to the Help button.
+async function measureHelpMenu(page, theme, label) {
+  const screens = [];
+  await page.locator('button.crucible-studio-menu-button', { hasText: 'Help' }).click();
+  await page.waitForTimeout(250);
+  screens.push({ name: `help menu${label} (${theme})`, records: await measure(page, '#crucible-studio-pop-help') });
+  await page.locator('#crucible-studio-pop-help button', { hasText: 'Keyboard shortcuts' }).click();
+  await page.waitForSelector('dialog.crucible-studio-shortcuts-dialog[open]');
+  await page.waitForTimeout(250);
+  screens.push({ name: `shortcut sheet${label} (${theme})`, records: await measure(page, 'dialog.crucible-studio-shortcuts-dialog') });
+  const probe = await page.evaluate(probeShortcutSheet);
+  console.log(`Shortcut sheet${label} (${theme}): ${JSON.stringify(probe.numbers)}`);
+  if (probe.problems.length > 0) throw new Error(probe.problems.join(' '));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  const state = await page.evaluate(() => ({
+    sheetOpen: document.querySelector('dialog.crucible-studio-shortcuts-dialog').open,
+    focusedLabel: document.activeElement?.textContent ?? '',
+  }));
+  if (state.sheetOpen || state.focusedLabel !== 'Help') {
+    throw new Error(`The shortcut sheet must close on Escape and return the focus to the Help button: it is ${state.sheetOpen ? 'still open' : 'closed'} and the focus is on "${state.focusedLabel}".`);
+  }
+  return screens;
+}
+
+function openSettingsFromMenu(page) {
+  return page.evaluate(() => [...document.querySelectorAll('.crucible-studio button')].find(button => button.textContent.trim().startsWith('Settings')).click());
+}
+
+const SETTINGS_FOOTER_GAP = 16;
+const EXTRA_ROWS = 3;
+
+// Runs in the page. Settings opened the way a person opens it, in a 600 px high window with three more rows than the longest section has:
+// the dialog keeps its height, the rows scroll inside themselves, the last row stays at least 16 px above the footer, focus rests on the
+// dialog, and Done is the one filled button.
+function checkSettingsFit(extraRows, footerGap) {
+  const dialog = document.querySelector('dialog.crucible-studio-settings-dialog');
+  const problems = [];
+  const report = (kind, detail, message) => problems.push({ kind, selector: 'crucible-studio-settings-dialog', detail, message });
+  const heightOf = element => element.getBoundingClientRect().height;
+  const rows = dialog.querySelector('.crucible-studio-settings-pane[data-section="viewport"] .crucible-studio-settings-rows');
+  const clones = [];
+  for (let index = 0; index < extraRows; index += 1) {
+    const clone = rows.firstElementChild.cloneNode(true);
+    clones.push(clone);
+    rows.append(clone);
+  }
+  [...document.querySelectorAll('.crucible-studio button')].find(button => button.textContent.trim().startsWith('Settings')).click();
+  if (document.activeElement !== dialog) report('settings-focus', 'open', 'Settings must open with focus on the dialog, so every section looks the same and no ring is drawn.');
+  if (dialog.querySelector('.crucible-studio-settings-pane[data-current="true"]').dataset.section !== 'interface') report('settings-focus', 'section', 'Settings must open on its first section.');
+  const heightBefore = heightOf(dialog);
+  for (const section of ['interface', 'viewport', 'editing', 'keys']) {
+    dialog.querySelector(`nav button[data-section="${section}"]`).click();
+    const pane = dialog.querySelector(`.crucible-studio-settings-pane[data-section="${section}"]`);
+    const area = pane.querySelector('.crucible-studio-settings-rows');
+    const footer = dialog.querySelector('.crucible-studio-dialog-actions').getBoundingClientRect();
+    if (Math.abs(heightOf(dialog) - heightBefore) > 0.5) report('settings-height', section, `The Settings dialog changed height on ${section} (${heightBefore} to ${heightOf(dialog)} px); it keeps one height.`);
+    if (footer.top - area.getBoundingClientRect().bottom < footerGap) report('settings-footer-gap', section, `The rows of ${section} end less than ${footerGap} px above the footer.`);
+    if (section === 'viewport' && area.scrollHeight <= area.clientHeight) report('settings-scroll', section, `With ${extraRows} more rows the Viewport rows must scroll inside themselves; they did not.`);
+    const innerRight = dialog.getBoundingClientRect().right - parseFloat(getComputedStyle(dialog).paddingRight) - parseFloat(getComputedStyle(dialog).borderRightWidth);
+    for (const control of area.querySelectorAll('select, input, button')) {
+      if (control.getBoundingClientRect().right > innerRight + 0.5 && getComputedStyle(pane).visibility !== 'hidden') report('settings-inset', section, 'A control reaches past the dialog inset.');
+    }
+  }
+  const buttons = [...dialog.querySelectorAll('.crucible-studio-dialog-actions button')];
+  const fillOf = button => getComputedStyle(button).backgroundColor;
+  const done = buttons.find(button => button.textContent === 'Done');
+  if (buttons.some(button => button !== done && fillOf(button) === fillOf(done))) report('settings-primary', 'Done', 'Done must be the one filled button of the dialog.');
+  dialog.close();
+  for (const clone of clones) clone.remove();
+  return problems;
+}
+
+async function measureSettingsFit(page) {
+  await page.setViewportSize({ width: VIEWPORT.width, height: 600 });
+  await page.waitForTimeout(250);
+  const problems = await page.evaluate(`(${checkSettingsFit.toString()})(${EXTRA_ROWS}, ${SETTINGS_FOOTER_GAP})`);
+  await page.setViewportSize(VIEWPORT);
+  await page.waitForTimeout(250);
+  return problems;
+}
+
+// Edit mode builds its own popover on the first Tab (the proportional editing settings), so enter it once and leave: the
+// popover stays in the page and the loop below measures it with the others.
+async function createEditModePopovers(page) {
+  await page.keyboard.press('Tab');
+  await page.waitForSelector('.crucible-studio[data-mesh-edit="true"]');
+  await page.keyboard.press('Tab');
+  await page.waitForSelector('.crucible-studio[data-mesh-edit="false"]');
+}
+
 async function measureScreens(page, theme, only) {
   const screens = [];
   if (!only || only === 'studio') screens.push({ name: `studio (${theme})`, records: await measure(page, '.crucible-studio') });
   if (!only || only === 'rename') screens.push(...await measureRenameScreens(page, theme));
   if (!only || only === 'popover') {
+    await createEditModePopovers(page);
     const identifiers = await page.evaluate(() => Array.from(document.querySelectorAll('.crucible-studio [popover]')).map(element => element.id).filter(Boolean));
     for (const identifier of identifiers) {
       await page.evaluate(id => document.getElementById(id).showPopover(), identifier);
@@ -352,12 +573,24 @@ async function measureScreens(page, theme, only) {
       await page.evaluate(id => document.getElementById(id).hidePopover(), identifier);
     }
   }
+  if (!only || only === 'settings') {
+    await openSettingsFromMenu(page);
+    const sections = page.locator('.crucible-studio-settings-section');
+    for (let index = 0; index < await sections.count(); index += 1) {
+      await sections.nth(index).click();
+      await page.waitForTimeout(200);
+      const sectionName = await sections.nth(index).getAttribute('data-section');
+      screens.push({ name: `settings ${sectionName} (${theme})`, records: await measure(page, 'dialog.crucible-studio-settings-dialog') });
+    }
+    await page.evaluate(() => document.querySelector('dialog.crucible-studio-settings-dialog').close());
+    screens.push({ name: `settings fit (${theme})`, records: [], problems: await measureSettingsFit(page) });
+  }
   if (!only || only === 'dialog') {
     const titles = await page.evaluate(() => Array.from(document.querySelectorAll('.crucible-studio dialog:not(.crucible-studio-setup-dialog)')).map(dialog => dialog.querySelector('h2')?.id).filter(Boolean));
     for (const title of titles) {
       await page.evaluate(identifier => document.getElementById(identifier).closest('dialog').showModal(), title);
       await page.waitForTimeout(250);
-      screens.push({ name: `${title.replace('crucible-studio-', '')} dialog (${theme})`, records: await measure(page, `dialog:has(#${title})`), selectionOnly: SELECTION_ONLY_DIALOG_TITLES.has(title) });
+      screens.push({ name: `${title.replace('crucible-studio-', '')} dialog (${theme})`, records: await measure(page, `dialog:has(#${title})`) });
       await page.evaluate(identifier => document.getElementById(identifier).closest('dialog').close(), title);
     }
   }
@@ -430,6 +663,210 @@ export async function runSelectionBehavior({ origin } = {}) {
   }
 }
 
+// The Edit menu open, with its History row. When STUDIO_AUDIT_STILLS names a folder, each screen is also saved there as a picture.
+async function measureEditMenu(page, theme, label) {
+  const capture = createCapture(page, theme, label);
+  await page.locator('.crucible-studio-menu-button', { hasText: 'Edit' }).click();
+  await capture('edit menu', '#crucible-studio-pop-edit');
+  return capture.screens;
+}
+
+function createCapture(page, theme, label) {
+  const screens = [];
+  const stillsFolder = process.env.STUDIO_AUDIT_STILLS;
+  const capture = async (name, selector, extra = {}) => {
+    // The pointer waits away from the list, so no row shows the highlight of a hover.
+    await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height - 24);
+    await page.waitForTimeout(250);
+    screens.push({ name: `${name}${label} (${theme})`, records: await measure(page, selector), ...extra });
+    if (stillsFolder) await page.screenshot({ path: `${stillsFolder}/${name.replace(/ /g, '-')}${label.replace(/ /g, '-')}-${theme}.png` });
+  };
+  capture.screens = screens;
+  return capture;
+}
+
+// The column rule and the whole-row rule, measured: History is a whole number of rows, at most six (four in a compact window), the
+// first row shown starts at the top of the list, History takes at most a third of the column and leaves Properties 240 px or more,
+// and a dimmed row is the plain muted token with no opacity on top of it. Returns the Properties height for the collapsed check.
+async function checkHistoryLayout(page) {
+  const found = await page.evaluate(() => {
+    const root = document.querySelector('.crucible-studio');
+    const list = document.querySelector('.crucible-studio-history-list');
+    const rows = [...list.children];
+    const style = getComputedStyle(list);
+    const gap = parseFloat(style.rowGap);
+    const padding = parseFloat(style.paddingTop);
+    const pitch = rows[0].getBoundingClientRect().height + gap;
+    const listBox = list.getBoundingClientRect();
+    const wholeRows = (list.clientHeight - padding * 2 + gap) / pitch;
+    const firstShown = rows.find(row => row.getBoundingClientRect().bottom > listBox.top + 1);
+    const inspector = document.querySelector('.crucible-studio-inspector');
+    const undone = rows.find(row => row.dataset.state === 'undone');
+    const lastBox = rows.at(-1).getBoundingClientRect();
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--studio-muted)';
+    root.append(probe);
+    const mutedColor = getComputedStyle(probe).color;
+    probe.remove();
+    return {
+      compact: root.dataset.compact === 'true',
+      wholeRows,
+      lastRowCut: lastBox.bottom - listBox.bottom,
+      firstTopGap: firstShown.getBoundingClientRect().top - listBox.top,
+      columnHeight: document.querySelector('.crucible-studio-side').getBoundingClientRect().height,
+      historyHeight: document.querySelector('.crucible-studio-history').getBoundingClientRect().height,
+      inspectorHeight: inspector.getBoundingClientRect().height,
+      inspectorShown: getComputedStyle(inspector).display !== 'none',
+      undoneOpacity: getComputedStyle(undone).opacity,
+      nameOpacity: getComputedStyle(undone.querySelector('.crucible-studio-history-name')).opacity,
+      nameColor: getComputedStyle(undone.querySelector('.crucible-studio-history-name')).color,
+      mutedColor,
+    };
+  });
+  const expect = (condition, message) => {
+    if (!condition) throw new Error(`History panel layout: ${message}: ${JSON.stringify(found)}`);
+  };
+  expect(Math.abs(found.wholeRows - Math.round(found.wholeRows)) < 0.02, 'the list is not a whole number of rows tall');
+  expect(found.firstTopGap >= -0.5, 'the first row shown starts above the top of the list');
+  expect(found.lastRowCut <= 1, 'the newest row is cut at the bottom of the list');
+  expect(Math.round(found.wholeRows) <= (found.compact ? 4 : 6), 'the list shows more rows than its limit');
+  if (!found.compact) {
+    expect(found.historyHeight <= found.columnHeight / 3 + 1, 'History takes more than a third of the column');
+    expect(found.inspectorShown && found.inspectorHeight >= 239, 'Properties is under 240 px');
+  }
+  expect(found.undoneOpacity === '1' && found.nameOpacity === '1', 'a dimmed row also has an opacity');
+  expect(found.nameColor === found.mutedColor, 'the text of a dimmed row is not the plain muted token');
+  return found;
+}
+
+// The scroll cue of the panel column: a body whose content is taller than its card shows a scrollbar track at least 6 px wide, the
+// fade marker is set on the edge that hides content (top once scrolled down, bottom while more remains) and on no other edge, and
+// the fade is a real mask. A body that does not scroll carries no marker.
+async function checkScrollCue(page, step) {
+  const found = await page.evaluate(() => [
+    '.crucible-studio-panels',
+    '.crucible-studio-history-list',
+    '.crucible-studio-tree',
+  ].map(selector => {
+    const body = document.querySelector(selector);
+    const shown = Boolean(body) && body.getBoundingClientRect().height > 0;
+    if (!shown) return { selector, shown };
+    const hiddenBelow = body.scrollHeight - body.clientHeight - body.scrollTop;
+    return {
+      selector,
+      shown,
+      scrolls: body.scrollHeight - body.clientHeight > 1,
+      trackWidth: body.offsetWidth - body.clientWidth,
+      hiddenAbove: body.scrollTop > 1,
+      hiddenBelow: hiddenBelow > 1,
+      fadeTop: body.dataset.fadeTop === 'true',
+      fadeBottom: body.dataset.fadeBottom === 'true',
+      masked: getComputedStyle(body).maskImage !== 'none',
+    };
+  }));
+  for (const body of found.filter(entry => entry.shown)) {
+    const fail = message => { throw new Error(`Scroll cue (${step}): ${body.selector} ${message}: ${JSON.stringify(body)}`); };
+    if (body.scrolls && body.trackWidth < 6) fail('scrolls but shows no scrollbar track');
+    if (body.scrolls && body.hiddenAbove !== body.fadeTop) fail('has the top fade marker wrong');
+    if (body.scrolls && body.hiddenBelow !== body.fadeBottom) fail('has the bottom fade marker wrong');
+    if (!body.scrolls && (body.fadeTop || body.fadeBottom)) fail('carries a fade marker without scrolling');
+    if ((body.fadeTop || body.fadeBottom) && !body.masked) fail('has a fade marker but no fade');
+  }
+  return found;
+}
+
+// What a person does in the History panel, in a real browser: Edit > History shows it with focus on the current row, a click on
+// an earlier row steps back and dims the rows after it, a click on a dimmed row steps forward, and a new edit drops the dimmed rows.
+async function checkHistoryBehavior(page) {
+  const state = () => page.evaluate(() => {
+    const rows = [...document.querySelectorAll('.crucible-studio-history-row')];
+    const colorOf = state => {
+      const row = rows.find(candidate => candidate.dataset.state === state);
+      return row ? getComputedStyle(row).color : null;
+    };
+    const list = document.querySelector('.crucible-studio-history-list');
+    const listStyle = getComputedStyle(list);
+    return {
+      states: rows.map(row => row.dataset.state),
+      focusedState: document.activeElement?.dataset?.state ?? null,
+      currentColor: colorOf('current'),
+      doneColor: colorOf('done'),
+      undoneColor: colorOf('undone'),
+      listInsets: [listStyle.paddingTop, listStyle.paddingRight, listStyle.paddingBottom, listStyle.paddingLeft],
+      currentVisible: (() => {
+        const current = rows.find(row => row.dataset.state === 'current')?.getBoundingClientRect();
+        const box = list.getBoundingClientRect();
+        return Boolean(current) && current.top >= box.top - 1 && current.bottom <= box.bottom + 1;
+      })(),
+    };
+  });
+  const expect = (condition, message, found) => {
+    if (!condition) throw new Error(`History panel behavior: ${message}: ${JSON.stringify(found)}`);
+  };
+  await page.locator('.crucible-studio-menu-button', { hasText: 'Edit' }).click();
+  await page.locator('#crucible-studio-pop-edit button', { hasText: 'History' }).click();
+  let found = await state();
+  expect(found.states.filter(value => value === 'undone').length === 2, 'two rows are undone', found);
+  expect(found.focusedState === 'current', 'focus starts on the current row', found);
+  expect(found.currentVisible, 'the current row is scrolled into view', found);
+  expect(found.undoneColor !== found.currentColor && found.undoneColor !== found.doneColor, 'dimmed rows differ from the current row and the done rows', found);
+  expect(new Set(found.listInsets).size === 1, 'the list has even insets', found);
+  await page.locator('.crucible-studio-history-row[data-state="undone"]').last().click();
+  found = await state();
+  expect(found.states.at(-1) === 'current' && !found.states.includes('undone'), 'a click on the last dimmed row steps forward to it', found);
+  await page.locator('.crucible-studio-history-row[data-state="done"]').nth(2).click();
+  found = await state();
+  expect(found.states.filter(value => value === 'undone').length >= 1, 'a click on an earlier row dims the rows after it', found);
+  await page.evaluate(() => window.__studioPage.controller.updateNodeTransform('cube', { translation: [2, 0.5, 0] }));
+  found = await state();
+  expect(!found.states.includes('undone') && found.states.at(-1) === 'current', 'a new edit removes the dimmed rows', found);
+}
+
+// The History panel after six edits, two of them undone, shown through Edit > History.
+async function measureHistoryPanel(page, theme, label) {
+  await page.evaluate(() => {
+    const controller = window.__studioPage.controller;
+    controller.updateNodeTransform('cube', { translation: [1, 0.5, 0] });
+    controller.updateNodeTransform('cube', { rotationDegrees: [0, 45, 0] });
+    controller.updateNodeTransform('cube', { scale: [1.2, 1.2, 1.2] });
+    controller.addPrimitive('box');
+    controller.updateNodeTransform('cube', { visible: false });
+    controller.updateNodeTransform('cube', { visible: true });
+    controller.undo();
+    controller.undo();
+  });
+  const capture = createCapture(page, theme, label);
+  await page.locator('.crucible-studio-menu-button', { hasText: 'Edit' }).click();
+  await page.locator('#crucible-studio-pop-edit button', { hasText: 'History' }).click();
+  await page.waitForSelector('.crucible-studio-history:not([hidden])');
+  const menuStillOpen = await page.evaluate(() => document.getElementById('crucible-studio-pop-edit').matches(':popover-open'));
+  if (menuStillOpen) throw new Error('History panel behavior: the Edit menu stays open over the scene after History is chosen');
+  await capture('history panel', '.crucible-studio-history');
+  const layout = await checkHistoryLayout(page);
+  await page.waitForTimeout(100);
+  await checkScrollCue(page, 'History shown');
+  await page.evaluate(() => { document.querySelector('.crucible-studio-history-list').scrollTop = 0; });
+  await page.waitForTimeout(100);
+  await checkScrollCue(page, 'History at the first row');
+  await page.evaluate(() => { const list = document.querySelector('.crucible-studio-history-list'); list.scrollTop = list.scrollHeight; });
+  await page.waitForTimeout(100);
+  await checkScrollCue(page, 'History at the last row');
+  await page.locator('.crucible-studio-history button[aria-label="Minimize History"]').click();
+  await capture('history panel collapsed', '.crucible-studio-history');
+  const collapsed = await page.evaluate(() => ({
+    minimized: document.querySelector('.crucible-studio').dataset.historyMinimized,
+    historyHeight: document.querySelector('.crucible-studio-history').getBoundingClientRect().height,
+    inspectorHeight: document.querySelector('.crucible-studio-inspector').getBoundingClientRect().height,
+  }));
+  await page.waitForTimeout(100);
+  await checkScrollCue(page, 'History minimized');
+  if (collapsed.minimized !== 'true' || collapsed.historyHeight > 60) throw new Error(`History panel layout: it does not collapse to its title row: ${JSON.stringify(collapsed)}`);
+  if (!layout.compact && collapsed.inspectorHeight <= layout.inspectorHeight) throw new Error(`History panel layout: Properties does not get the room back: ${JSON.stringify({ collapsed, layout })}`);
+  await page.locator('.crucible-studio-history button[aria-label="Expand History"]').click();
+  await checkHistoryBehavior(page);
+  return capture.screens;
+}
+
 // Runs on a page loaded with a seeded draft, so the draft notice is there on its own and the paused notice comes from a real
 // lost WebGL context. The dialogs are opened the way the menu opens them, with showModal.
 async function measureNoticesAndDialogs(page, theme, label) {
@@ -463,7 +900,31 @@ export async function runAudit({ origin, only, extraCss, viewport = VIEWPORT } =
       const { context, page } = await openStudio(browser, server.origin, theme, extraCss, { viewport });
       screens.push(...await measureScreens(page, theme, only));
       await context.close();
+      if (!only || only === 'editmenu') {
+        for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
+          const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport });
+          screens.push(...await measureEditMenu(opened.page, theme, label));
+          await opened.context.close();
+        }
+      }
+      if (!only || only === 'history') {
+        for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
+          const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport });
+          screens.push(...await measureHistoryPanel(opened.page, theme, label));
+          await opened.context.close();
+        }
+      }
       if (!only || only === 'notice') screens.push(await measureDraftNotice(browser, server.origin, theme, extraCss));
+      if (!only || only === 'helpmenu') {
+        for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
+          const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport });
+          screens.push(...await measureHelpMenu(opened.page, theme, label));
+          await opened.context.close();
+        }
+        const shortWindow = await openStudio(browser, server.origin, theme, extraCss, { viewport: { width: 720, height: 480 } });
+        screens.push(await probeShortWindow(shortWindow.page));
+        await shortWindow.context.close();
+      }
       if (!only || only === 'notices') {
         for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
           const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport, draft: true });
@@ -489,7 +950,7 @@ export function summarize(screens, allowlist = ALLOWLIST) {
   const allowedMerged = new Map();
   for (const screen of screens) {
     const spacing = screen.selectionOnly ? { findings: [], allowed: [] } : findSpacingProblems(screen.records, { allowlist });
-    const findings = [...spacing.findings, ...findSelectionProblems(screen.records)];
+    const findings = [...spacing.findings, ...(screen.problems ?? []), ...findSelectionProblems(screen.records)];
     const rowHeights = screen.buttonRowHeights ?? [];
     if (rowHeights.length > 1 && Math.max(...rowHeights) - Math.min(...rowHeights) > 1) {
       findings.push({

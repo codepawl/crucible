@@ -782,10 +782,11 @@ function geometryEstimate(value, scope = PENDING_CUTTER_SCOPE) {
       const cutterScope = meshCutterScope(value, scope);
       let referencedWork = 0;
       for (const edit of agentSceneModule('mesh').normalizeMeshEdits(value.edits ?? [])) {
-        if (edit.op !== 'boolean') continue;
-        const cutterVertices = cutterEstimate(edit.cutter, cutterScope);
+        const reference = geometryReferenceOf(edit);
+        if (!reference) continue;
+        const cutterVertices = cutterEstimate(reference, cutterScope);
         estimate += cutterVertices;
-        if (isCutterReference(edit.cutter)) referencedWork += cutterVertices;
+        if (isCutterReference(reference)) referencedWork += cutterVertices;
       }
       if (referencedWork > MAX_CUTTER_WORK_VERTICES) {
         throw invalidField('cutter.geometry', `${referencedWork} estimated cutter vertices in ${cutterScope.chain.join(' -> ')}`, `cutter geometries that total at most ${MAX_CUTTER_WORK_VERTICES} estimated vertices; use fewer segments or fewer referenced cutters`);
@@ -870,8 +871,15 @@ function referencedCutterEstimate(cutter, scope) {
   return geometryEstimate(definition, { definitions: scope.definitions, chain });
 }
 
+// What an edit reads from another recipe geometry or primitive: a boolean's cutter, or the geometry a join adds.
+function geometryReferenceOf(edit) {
+  if (edit?.op === 'boolean') return edit.cutter;
+  if (edit?.op === 'join') return { geometry: edit.geometry };
+  return null;
+}
+
 function namesCutterGeometry(edit) {
-  return edit?.op === 'boolean' && typeof edit.cutter?.geometry === 'string';
+  return typeof geometryReferenceOf(edit)?.geometry === 'string';
 }
 
 // The records of the cutter geometries a mesh names, nested ones included: what its result depends on beyond its own record.
@@ -879,7 +887,7 @@ function cutterDependencySignature(meshDefinition, definitions) {
   const parts = [];
   for (const edit of meshDefinition.edits ?? []) {
     if (!namesCutterGeometry(edit)) continue;
-    const definition = definitions.get(edit.cutter.geometry);
+    const definition = definitions.get(geometryReferenceOf(edit).geometry);
     parts.push(JSON.stringify(definition), cutterDependencySignature(definition, definitions));
   }
   return parts.join('|');
@@ -2902,6 +2910,10 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           if (fracturedId !== undefined) removedNodes.add(fracturedId);
           continue;
         }
+        if (operation.type === 'separate-faces' || operation.type === 'join-meshes') {
+          agentSceneModule('meshParts').applyMeshPartsOperation(candidate, operation, removedNodes, geometryId => generateOperationGeometry(candidate, geometryId, limits));
+          continue;
+        }
         if (operation.type === 'add-explosion') {
           const sourceGeometry = geometryId => generateOperationGeometry(candidate, geometryId, limits);
           agentSceneModule('explosion').addExplosion(candidate, operation, { sourceGeometry, fractureNode: fracture => agentSceneModule('fracture').fractureNode(candidate, fracture, sourceGeometry) });
@@ -2910,6 +2922,14 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         }
         if (operation.type === 'settle') {
           agentSceneModule('settle').applySettle(candidate, operation);
+          continue;
+        }
+        if (operation.type === 'apply-transform') {
+          agentSceneModule('applyTransform').applyNodeTransform(candidate, operation);
+          continue;
+        }
+        if (operation.type === 'set-origin') {
+          agentSceneModule('applyTransform').setNodeOrigin(candidate, operation, (recipe, geometryId) => generateOperationGeometry(recipe, geometryId, limits).positions);
           continue;
         }
         if (operation.type === 'edit-mesh') {
