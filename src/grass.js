@@ -169,7 +169,11 @@ function stalkProfile(progress) {
   return STALK_WIDTH + HEAD_WIDTH * Math.sin(Math.PI * (progress - HEAD_START) / (1 - HEAD_START));
 }
 
+// The wind shader bends a tip by a share of the blade length, so each vertex carries it: u is the side (0, 0.5 or 1) plus 2 per millimetre of length.
+const UV_STEP_PER_MILLIMETRE = 2;
+
 function addBlade(builder, blade, tileX, tileZ, level, settings) {
+  const lengthCode = Math.max(1, Math.round(blade.height * 1000)) * UV_STEP_PER_MILLIMETRE;
   const right = [Math.cos(blade.yaw), 0, Math.sin(blade.yaw)];
   const width = settings.width * level.widthScale * (0.7 + 0.6 * blade.height / settings.height[1]);
   const base = [blade.x - tileX, blade.y, blade.z - tileZ];
@@ -186,11 +190,11 @@ function addBlade(builder, blade, tileX, tileZ, level, settings) {
       const tilted = normalized(faceNormal.map((component, axis) => component + right[axis] * side * ROUNDING_TILT));
       const shading = normalized(tilted.map((component, axis) => component * (1 - CANOPY_BLEND) + WORLD_UP[axis] * CANOPY_BLEND));
       const position = center.map((component, axis) => component + right[axis] * side * halfWidth);
-      return builder.addVertex(position, shading, (side + 1) / 2, 1 - progress, color);
+      return builder.addVertex(position, shading, (side + 1) / 2 + lengthCode, 1 - progress, color);
     };
     if (segment === level.segments) {
       const tipNormal = normalized(faceNormal.map((component, axis) => component * (1 - CANOPY_BLEND) + WORLD_UP[axis] * CANOPY_BLEND));
-      rows.push([builder.addVertex(center, tipNormal, 0.5, 0, color)]);
+      rows.push([builder.addVertex(center, tipNormal, 0.5 + lengthCode, 0, color)]);
     } else {
       rows.push([vertexFor(-1), vertexFor(1)]);
     }
@@ -270,7 +274,7 @@ export function createGrass(options = {}) {
     }
     if (builder.vertexCount === 0) return [];
     // `level` and `bladeCount` let a host report the field per level of detail.
-    return [{ name: `Grass tile ${tile.column},${tile.row}`, geometry: builder.build(), matrix: tileMatrix(tile), material, castShadow: settings.castShadow, level: levelIndex, bladeCount }];
+    return [{ name: `Grass tile ${tile.column},${tile.row}`, geometry: { ...builder.build(), grassLengthUvs: true }, matrix: tileMatrix(tile), material, castShadow: settings.castShadow, level: levelIndex, bladeCount }];
   }
 
   const field = createTileField({ ...settings, buildParts });

@@ -36,10 +36,10 @@ function materialProblems(material) {
         `Remove ${field}, or set the material tag to surface with scene_apply set-material.`));
     }
   }
-  if (material.heightMap !== undefined) {
+  if (material.heightMap !== undefined && !(material.heightScale > 0)) {
     problems.push(diagnostic('ignored-material-field', 'warning', material.id,
-      'heightMap is ignored: no renderer displaces or parallax-maps a surface from it yet, so it has no effect on the picture.',
-      'Remove heightMap, or rely on normalMap for the surface relief.'));
+      'heightMap is ignored: heightScale is 0 or missing, so the rasterizer draws no parallax relief from it, and no renderer displaces the mesh.',
+      'Set heightScale above 0 (for example 0.02, metres) to draw the relief in the rasterizer, or remove heightMap and rely on normalMap.'));
   }
   if (transmitting) {
     for (const field of FIELDS_IGNORED_BY_TRANSMISSION.filter(layer => hasValue(material, layer))) {

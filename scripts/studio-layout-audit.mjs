@@ -37,6 +37,7 @@ const DIALOG_SELECTORS = Object.freeze({
   'shortcuts dialog': 'dialog.crucible-studio-shortcuts-dialog',
 });
 const SERVER_START_TIMEOUT_MS = 60000;
+const PANELS_TOGGLE = 'button[title="Show or hide the panels"]';
 const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history|agent|helpmenu] [--width pixels] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
@@ -89,6 +90,7 @@ export const ALLOWLIST = Object.freeze([
   { kind: 'uneven-inset', selector: 'crucible-studio-toolbar', reason: 'The tool rail is a strip as tall as the window; its buttons sit at the top and the strip ends below them.' },
   { kind: 'uneven-inset', selector: 'crucible-studio-tree-row', reason: 'The visibility button at the end of an outliner row is a hit area with its own room, so the row keeps 2px on that side.' },
   { kind: 'uneven-inset', selector: 'crucible-studio-popover > button', reason: 'A menu row is a full-width hit area whose label starts at the leading edge; the free space is the end of the row.' },
+  { kind: 'uneven-inset', selector: 'button.crucible-studio-switch', reason: 'A switch is a track whose knob travels from one end to the other, so its content sits at unequal insets by design.' },
   { kind: 'uneven-inset', selector: 'crucible-studio-settings-section', reason: 'A section of the Settings list is a full-width hit area whose icon and label start at the leading edge; the free space is the end of the row.' },
 ]);
 
@@ -601,6 +603,33 @@ async function createEditModePopovers(page) {
 async function measureScreens(page, theme, only) {
   const screens = [];
   if (!only || only === 'studio') screens.push({ name: `studio (${theme})`, records: await measure(page, '.crucible-studio') });
+  if (!only || only === 'studio') {
+    // The Modifiers tab with two blocks, one folded away from the default, so its cards and rows are measured too.
+    // A narrow window starts with the panels put away: they are opened the way a person opens them, and put away again after.
+    const panelsWerePutAway = await page.evaluate(() => document.querySelector('.crucible-studio').dataset.inspectorCollapsed === 'true');
+    if (panelsWerePutAway) await page.click(PANELS_TOGGLE);
+    await page.evaluate(() => window.__studioPage.setActiveTab('modifiers'));
+    for (const modifier of ['mirror', 'array']) {
+      await page.click('.crucible-studio-modifier-add');
+      await page.click(`.crucible-studio-modifier-add-menu [data-modifier="${modifier}"]`);
+    }
+    // Scrolled to the end, so the bottom inset of the last block is measured too.
+    await page.evaluate(() => document.querySelector('.crucible-studio-panels').scrollTo(0, 1e6));
+    await page.waitForTimeout(250);
+    screens.push({ name: `modifiers (${theme})`, records: await measure(page, '.crucible-studio') });
+    await page.click('.crucible-studio-modifier-add');
+    await page.evaluate(() => document.querySelector('.crucible-studio-panels').scrollTo(0, 0));
+    await page.waitForTimeout(250);
+    screens.push({ name: `modifiers add menu (${theme})`, records: await measure(page, '.crucible-studio') });
+    await page.click('.crucible-studio-modifier-add');
+    await page.evaluate(() => document.activeElement?.blur());
+    // The two blocks are undone, so the screens after this one start from the plain object again: edit mode refuses a mesh with modifiers.
+    await page.keyboard.press('Control+z');
+    await page.keyboard.press('Control+z');
+    await page.waitForFunction(() => document.querySelectorAll('.crucible-studio-modifier-list .crucible-studio-modifier-head').length === 0);
+    await page.evaluate(() => window.__studioPage.setActiveTab('node'));
+    if (panelsWerePutAway) await page.click(PANELS_TOGGLE);
+  }
   if (!only || only === 'rename') screens.push(...await measureRenameScreens(page, theme));
   if (!only || only === 'popover') {
     await createEditModePopovers(page);

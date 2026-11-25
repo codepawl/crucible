@@ -28,7 +28,7 @@ Pick the form by how a person reaches the feature:
 ## How to write a row
 
 - Name the feature, its form, where it lives and why that form fits.
-- `Where` is a code or doc anchor. A row for a rail tool (`STUDIO_TOOLS` in `src/studio-templates.js`) carries its id there, such as `tool:snap`, and its form contains `tool`.
+- `Where` is a code or doc anchor. A row for a rail tool (`STUDIO_TOOLS` in `src/studio-templates.js`) carries its id there, such as `tool:translate`, and its form contains `tool`.
 - `Reason` says in plain words why the form fits. It is never empty.
 - Add or update the row in the same pull request that changes the feature. `tests/studio-interaction-forms.test.js` checks the rail tools, the form words and the reasons on every unit pass.
 
@@ -40,7 +40,7 @@ Pick the form by how a person reaches the feature:
 | Move | tool + operator | `tool:translate`, `src/studio-keymap.js:22`, `src/studio.js:1935`, `src/studio.js:4660` | The rail tool shows handles. The G key is the same action as an operator: it picks the object up under the pointer with no handle to aim at. |
 | Rotate | tool + operator | `tool:rotate`, `src/studio-keymap.js:23` | Same as Move: handles from the tool, a held phase from the R key. |
 | Scale | tool + operator | `tool:scale`, `src/studio-keymap.js:24` | Same as Move: handles from the tool, a held phase from the S key. |
-| Snap | tool | `tool:snap`, `src/studio-keymap.js:25`, `src/studio-controller.js:1584`, `docs/studio.md:37` | A surface snap tool on T owns the pointer to drop an object on a surface. Step snap while Shift is held is part of the transform tools (`src/studio-controller.js:1755`). |
+| Snapping | toggle + setting | the magnet on the rail, Shift+Tab, `src/studio-snapping.js` | A state every transform obeys; the target (Increment, Vertex, Face) is a setting of that state. |
 | Add primitive | operator | `src/studio.js:1375` | One action that drops a shape in at a default size. |
 | Add menu | operator | `src/studio-keymap.js:26`, `src/studio-templates.js:5` | Shift+A and the rail button open the same menu of eight mesh shapes, 3D text and three lights. |
 | Measure readout | panel | `src/studio.js:2064` | The size of the selected object is a value to read, so it sits in a panel and owns no pointer. |

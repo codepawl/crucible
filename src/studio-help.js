@@ -46,6 +46,7 @@ const GROUP_BY_ACTION = Object.freeze({
   'edit.resetPosition': 'Transform and tools',
   'edit.resetRotation': 'Transform and tools',
   'edit.resetScale': 'Transform and tools',
+  'snap.toggle': 'Transform and tools',
   'mesh.enter': 'Mesh editing',
   'mesh.selectNone': 'Mesh selection',
   'mesh.invertSelection': 'Mesh selection',
