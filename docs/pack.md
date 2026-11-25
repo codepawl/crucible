@@ -97,7 +97,7 @@ The two stills are pixel identical (RMSE 0, no pixel differs).
 
 ### Against the same scene in three.js
 
-One white box (metallic 0, roughness 0.5) with a studio light, from the camera `eye 3 3 3`, `target 0 0 0`, `fov 45`, 800 by 600. The packed page is `tests/fixtures/pack-lit-box.recipe.json` through `crucible pack --no-poster`. The three.js page imports what the `lit-box` scene of `bench/size/README.md` imports, plus an ambient light, bundled with esbuild (minified, tree shaken) at three.js 0.187.0. Measured 2026-11-25 in GPU Chrome, gzip -9 of each file the page downloaded:
+One white box (metallic 0, roughness 0.5) with a studio light, from the camera `eye 3 3 3`, `target 0 0 0`, `fov 45`, 800 by 600. The packed page is `tests/fixtures/pack-lit-box.recipe.json` through `crucible pack --no-poster`. The three.js page imports what the `lit-box` size scene imports (defined in `scripts/measure-size.mjs`, listed in `bench/size/README.md`), plus an ambient light and antialiasing, bundled with esbuild (minified, tree shaken) at three.js 0.187.0. Measured 2026-11-25 in GPU Chrome, gzip -9 of each file the page downloaded:
 
 | | Packed bundle | three.js |
 | --- | --- | --- |
