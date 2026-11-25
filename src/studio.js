@@ -1412,29 +1412,41 @@ export function createStudio(container, {
     watchScrollFade,
     host: globalThis.crucibleShell?.agentChat,
     onStep: nodeId => showAgentEdit({ nodeIds: [nodeId] }),
-    onMinimize: () => setPreference('agentMinimized', !preferences.agentMinimized),
+    onMinimize: () => (agentShortWindow ? setAgentOpenInShortWindow(!agentOpenInShortWindow) : setPreference('agentMinimized', !preferences.agentMinimized)),
   });
   let agentShown = false;
-  let agentTight = false;
+  let agentRoomState = '';
+  let agentShortWindow = false;
+  let agentOpenInShortWindow = false;
   let propertiesHeldForAgent = false;
-  // Below this window height the column cannot hold Scene (192 px), Properties (240 px), the card (up to 288 px with a notice),
-  // the column gaps and the top bar, so the card takes turns with Properties instead of stacking, as it does in a compact window.
+  // Below this window height the column cannot stack Scene (at least 192 px), Properties (240 px) and the open card (232 px, 288 px with a
+  // notice) with the gaps and the top bar. Then the card and Properties take turns: both keep their title row in the column and the one
+  // that is away folds to it. That turn is not saved: only a fold the person made in a tall window is `agentMinimized`.
   const AGENT_STACK_MINIMUM_HEIGHT = 820;
-  const agentTakesTurns = () => root.dataset.compact === 'true' || (root.clientHeight > 0 && root.clientHeight < AGENT_STACK_MINIMUM_HEIGHT);
+  // A compact window lays its cards over the scene, where they cannot sit as rows, so the card there takes turns by being put away.
+  const agentTakesTurns = () => root.dataset.compact === 'true';
+  const agentHoldsRoom = () => agentShortWindow && agentShown && agentOpenInShortWindow;
   function syncAgentRoom() {
     if (!agentChat) return;
-    const tight = agentTakesTurns();
-    if (tight === agentTight && root.dataset.agentTight) return;
-    agentTight = tight;
-    root.dataset.agentTight = tight ? 'true' : 'false';
-    setAgentShown(tight ? false : preferences.agentVisible, { remember: false });
+    const compact = agentTakesTurns();
+    agentShortWindow = !compact && root.clientHeight > 0 && root.clientHeight < AGENT_STACK_MINIMUM_HEIGHT;
+    const state = compact ? 'compact' : agentShortWindow ? 'short' : 'tall';
+    if (state === agentRoomState) return;
+    agentRoomState = state;
+    root.dataset.agentTight = agentShortWindow ? 'true' : 'false';
+    agentOpenInShortWindow = false;
+    setAgentShown(compact ? false : preferences.agentVisible, { remember: false });
+    applyPreferences();
+  }
+  function setAgentOpenInShortWindow(open) {
+    agentOpenInShortWindow = open;
+    applyPreferences();
   }
   function syncAgentCard() {
     if (!agentChat) return;
     root.dataset.agentCollapsed = agentShown ? 'false' : 'true';
-    showPanelMinimized(agentChat.minimizeButton, 'agentMinimized', 'Agent', preferences.agentMinimized);
+    showPanelMinimized(agentChat.minimizeButton, 'agentMinimized', 'Agent', agentShortWindow ? !agentOpenInShortWindow : preferences.agentMinimized);
   }
-  // When the cards cannot all fit, the Agent card takes turns with Properties and History; Properties comes back when it leaves.
   function setAgentShown(shown, { remember = true } = {}) {
     if (!agentChat) return;
     agentShown = shown;
@@ -1446,6 +1458,8 @@ export function createStudio(container, {
       propertiesHeldForAgent = false;
       setInspectorCollapsed(false);
     }
+    // Asking for the card in a short window opens it, and Properties folds to its title row.
+    if (shown && remember && agentShortWindow) agentOpenInShortWindow = true;
     if (remember) setPreference('agentVisible', shown);
     syncAgentCard();
     syncMenuToggles();
@@ -1973,7 +1987,7 @@ export function createStudio(container, {
   // With several objects selected the panels follow the active one; the head says how many there are.
   const selectionCountLabel = createElement(documentReference, 'span');
   const selectionCountElement = createElement(documentReference, 'span', { className: 'crucible-studio-selection-count', attributes: { hidden: '' } }, createIcon(documentReference, 'select'), selectionCountLabel);
-  propertiesMinimizeButton.addEventListener('click', () => setPreference('propertiesMinimized', !preferences.propertiesMinimized));
+  propertiesMinimizeButton.addEventListener('click', () => (agentHoldsRoom() ? setAgentOpenInShortWindow(false) : setPreference('propertiesMinimized', !preferences.propertiesMinimized)));
 
   const outlinerDock = createElement(
     documentReference,
@@ -3035,7 +3049,7 @@ export function createStudio(container, {
     setGridVisible(preferences.gridVisible);
     showPanelSizes(preferences);
     showPanelMinimized(sceneMinimizeButton, 'outlinerMinimized', 'Scene', preferences.sceneMinimized);
-    showPanelMinimized(propertiesMinimizeButton, 'inspectorMinimized', 'Properties', preferences.propertiesMinimized);
+    showPanelMinimized(propertiesMinimizeButton, 'inspectorMinimized', 'Properties', preferences.propertiesMinimized || agentHoldsRoom());
     showPanelMinimized(historyMinimizeButton, 'historyMinimized', 'History', preferences.historyMinimized);
     refitHistoryList();
     syncAgentCard();

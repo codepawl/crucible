@@ -343,7 +343,7 @@ export function createAgentChatCard({ documentReference, createElement, createIc
 /** The stylesheet of the card, added to Studio's own. Colours, fonts and spacing come from the --studio tokens. */
 export const AGENT_CHAT_CSS = `
 /* The card at the foot of the column. Its floors (232 px, 288 px with a notice) keep four whole rows in the list; Scene keeps 192 px and
-   Properties 240 px beside it. When the window is too short for all three the card takes turns with Properties (studio.js). */
+   Properties 240 px beside it. When the window is too short for all three the card and Properties take turns, each keeping its title row (studio.js). */
 .crucible-studio-side > .crucible-studio-dock.crucible-studio-agent {
   flex: 0 1 var(--studio-agent-height, 240px);
   min-block-size: 232px;
@@ -365,7 +365,7 @@ export const AGENT_CHAT_CSS = `
   flex-shrink: 1;
   min-block-size: 192px;
 }
-.crucible-studio[data-floating="false"][data-agent-collapsed="false"]:not([data-agent-minimized="true"]):not([data-compact="true"]):not([data-scene-sized="true"]):not([data-outliner-minimized="true"]) .crucible-studio-side > .crucible-studio-outliner {
+.crucible-studio[data-floating="false"][data-agent-collapsed="false"]:not([data-agent-minimized="true"]):not([data-agent-tight="true"]):not([data-compact="true"]):not([data-scene-sized="true"]):not([data-outliner-minimized="true"]) .crucible-studio-side > .crucible-studio-outliner {
   flex-basis: 30%;
 }
 .crucible-studio[data-agent-collapsed="false"]:not([data-agent-minimized="true"]):not([data-compact="true"]):not([data-inspector-minimized="true"]) .crucible-studio-side > .crucible-studio-inspector {
@@ -408,7 +408,7 @@ export const AGENT_CHAT_CSS = `
   flex-direction: column;
   gap: var(--studio-space-8);
   min-block-size: 128px;
-  padding: var(--studio-space-8);
+  padding: var(--studio-space-8) var(--studio-space-12);
   overflow-y: auto;
 }
 .crucible-studio-agent-list[data-empty="true"] { justify-content: center; align-items: center; }
@@ -446,7 +446,7 @@ export const AGENT_CHAT_CSS = `
 .crucible-studio-agent-notices {
   display: grid;
   gap: var(--studio-space-8);
-  padding: var(--studio-space-8);
+  padding: var(--studio-space-8) var(--studio-space-12);
 }
 .crucible-studio-agent-notices[hidden] { display: none; }
 .crucible-studio-agent-notice {
@@ -474,22 +474,35 @@ export const AGENT_CHAT_CSS = `
   display: flex;
   align-items: stretch;
   gap: var(--studio-space-8);
-  padding: var(--studio-space-8);
+  padding: var(--studio-space-8) var(--studio-space-12);
 }
-.crucible-studio-agent-field {
+.crucible-studio-agent button.crucible-studio-agent-send { min-block-size: 36px; }
+/* Send is the card's one primary action, filled the way the primary button of a dialog is; Stop keeps the quiet wash. */
+.crucible-studio-agent button.crucible-studio-agent-send:not([data-action-icon]) {
+  background: var(--studio-text);
+  color: var(--studio-bg);
+}
+@media (hover: hover) {
+  .crucible-studio-agent button.crucible-studio-agent-send:not([data-action-icon]):not([aria-disabled="true"]):not([aria-pressed="true"]):hover {
+    background: color-mix(in srgb, var(--studio-text) 86%, var(--studio-bg));
+  }
+}
+/* Named with its element so it outranks the rule every Studio textarea shares. */
+.crucible-studio-agent textarea.crucible-studio-agent-field {
   flex: 1 1 auto;
   min-inline-size: 0;
+  min-block-size: 36px;
   max-block-size: 96px;
   padding: var(--studio-space-8);
   border: 1px solid var(--studio-border);
   border-radius: var(--studio-radius-control);
   background: var(--studio-surface);
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 18px;
   resize: none;
   field-sizing: content;
 }
-.crucible-studio-agent-field::placeholder {
+.crucible-studio-agent textarea.crucible-studio-agent-field::placeholder {
   color: color-mix(in srgb, var(--studio-text) 76%, var(--studio-surface));
   opacity: 1;
 }

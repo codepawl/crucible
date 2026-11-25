@@ -329,21 +329,44 @@ function mountSized(testContext, { width, height }) {
   return dom.container.firstElementChild;
 }
 
-test('in a window too short to stack Scene, Properties and the card, the card takes turns with Properties', testContext => {
+test('in a window too short to stack the cards, the card and Properties take turns and both keep a title row', testContext => {
   const root = mountSized(testContext, { width: 1280, height: 720 });
-  const viewMenu = () => root.querySelector('#crucible-studio-pop-view');
+  const agentButton = () => root.querySelector('.crucible-studio-agent').querySelector('.crucible-studio-dock-head').querySelectorAll('button')[0];
+  const propertiesButton = () => root.querySelectorAll('button').find(button => /^(Minimize|Expand) Properties$/.test(button.getAttribute('aria-label') ?? ''));
   assert.equal(root.dataset.agentTight, 'true');
-  assert.equal(root.dataset.agentCollapsed, 'true', 'it starts closed, as in a compact window');
-  assert.equal(root.dataset.inspectorCollapsed, 'false');
-  byText(viewMenu(), 'Agent').click();
-  assert.equal(root.dataset.agentCollapsed, 'false');
-  assert.equal(root.dataset.inspectorCollapsed, 'true', 'the card takes Properties place');
-  byText(viewMenu(), 'Agent').click();
-  assert.equal(root.dataset.inspectorCollapsed, 'false', 'Properties comes back when the card leaves');
-  byText(viewMenu(), 'Agent').click();
-  byText(viewMenu(), 'Properties').click();
-  assert.equal(root.dataset.agentCollapsed, 'true', 'showing Properties puts the card away');
-  assert.equal(root.dataset.inspectorCollapsed, 'false');
+  assert.equal(root.dataset.agentCollapsed, 'false', 'the card stays in the column as a title row');
+  assert.equal(root.dataset.agentMinimized, 'true');
+  assert.equal(root.dataset.inspectorMinimized, 'false');
+  assert.equal(agentButton().getAttribute('aria-label'), 'Expand Agent');
+  agentButton().click();
+  assert.equal(root.dataset.agentMinimized, 'false', 'the card takes the room');
+  assert.equal(root.dataset.inspectorMinimized, 'true', 'Properties folds to its title row');
+  assert.equal(agentButton().getAttribute('aria-label'), 'Minimize Agent');
+  assert.equal(propertiesButton().getAttribute('aria-label'), 'Expand Properties');
+  propertiesButton().click();
+  assert.equal(root.dataset.agentMinimized, 'true', 'opening Properties folds the card to its title row');
+  assert.equal(root.dataset.inspectorMinimized, 'false');
+});
+
+test('a turn taken in a short window is not saved over the minimized preference', testContext => {
+  const saved = new Map();
+  const storage = { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) };
+  const dom = installStudioDom();
+  dom.container.clientWidth = 1280;
+  dom.container.clientHeight = 720;
+  globalThis.crucibleShell = { agentChat: createSampleHost().host };
+  const studio = createStudio(dom.container, { recipe: RECIPE, renderer: createFakeRenderer(), storage });
+  testContext.after(() => {
+    studio.dispose();
+    dom.uninstall();
+    delete globalThis.crucibleShell;
+  });
+  const root = dom.container.firstElementChild;
+  root.querySelector('.crucible-studio-agent').querySelector('.crucible-studio-dock-head').querySelectorAll('button')[0].click();
+  const savedText = saved.get('crucible-studio-preferences');
+  const savedPreferences = savedText ? JSON.parse(savedText) : {};
+  assert.notEqual(savedPreferences.agentMinimized, true);
+  assert.notEqual(savedPreferences.propertiesMinimized, true);
 });
 
 test('in a tall window the card stacks under Properties', testContext => {

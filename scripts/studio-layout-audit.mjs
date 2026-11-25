@@ -908,8 +908,8 @@ async function measureHistoryPanel(page, theme, label) {
 }
 
 // The column rule for the Agent card, measured. Stacked, it ends inside the column with the same bottom gap as the other cards,
-// Scene keeps 192 px and Properties 240 px beside it. In a window too short for that the card takes Properties' place instead,
-// and in a compact window it lies over the scene inside the window. The list keeps four whole rows (112 px) and nothing scrolls
+// Scene keeps 192 px and Properties 240 px beside it. In a window too short for that the card and Properties take turns, both
+// keep a title row in the column and the one that is away folds to it, and in a compact window the card lies over the scene. The list keeps four whole rows (112 px) and nothing scrolls
 // sideways. Returns the rectangles, which the stills report.
 async function checkAgentLayout(page, step) {
   const found = await page.evaluate(() => {
@@ -951,9 +951,41 @@ async function checkAgentLayout(page, step) {
   if (!found.compact) {
     expect(found.gapAbove >= 3 && found.gapAbove <= 5, 'the gap above the card is not the column gap');
     expect(found.scene.height >= 191, 'the Scene card is under its floor');
-    expect(found.tight ? found.properties === null : found.properties.height >= 239, 'Properties is under its floor, or is stacked when the card should take its turn');
+    expect(found.tight ? found.properties !== null && found.properties.height <= 60 : found.properties.height >= 239, 'Properties is under its floor, or is not folded to its title row while the card has the turn');
   }
   return found;
+}
+
+// In a window too short to stack the cards, both title rows stay in the column, each with a name a screen reader says, and
+// pressing the one that is away gives it the room. The card is then open for the checks that follow.
+async function checkShortWindowTurns(page, capture) {
+  const state = await page.evaluate(() => {
+    const root = document.querySelector('.crucible-studio');
+    const nameOf = selector => document.querySelector(selector)?.getAttribute('aria-label') ?? null;
+    const titleRow = selector => {
+      const element = document.querySelector(selector);
+      return element && getComputedStyle(element).display !== 'none' ? Math.round(element.getBoundingClientRect().height) : null;
+    };
+    const propertiesButton = [...document.querySelectorAll('.crucible-studio-inspector button')].find(button => /^(Minimize|Expand) Properties$/.test(button.getAttribute('aria-label') ?? ''));
+    return {
+      tight: root.dataset.agentTight === 'true',
+      agentName: nameOf('.crucible-studio-agent button[aria-label]'),
+      agentHeight: titleRow('.crucible-studio-agent'),
+      propertiesName: propertiesButton?.getAttribute('aria-label') ?? null,
+      propertiesHeight: titleRow('.crucible-studio-inspector'),
+    };
+  });
+  if (!state.tight) return;
+  const problems = [];
+  if (state.agentName !== 'Expand Agent') problems.push('the Agent title row does not offer "Expand Agent" while Properties has the room');
+  if (!state.agentHeight || state.agentHeight > 60) problems.push('the Agent title row is not in the column');
+  if (!state.propertiesName) problems.push('Properties has no named collapse control');
+  if (problems.length) throw new Error(`Agent card layout (short window): ${problems.join('; ')}: ${JSON.stringify(state)}`);
+  await capture('agent card away, Properties open', '.crucible-studio-side');
+  await page.locator('.crucible-studio-agent button[aria-label="Expand Agent"]').click();
+  await page.waitForTimeout(300);
+  const turned = await page.evaluate(() => [...document.querySelectorAll('.crucible-studio-inspector button')].map(button => button.getAttribute('aria-label')).find(name => /Properties$/.test(name ?? '')));
+  if (turned !== 'Expand Properties') throw new Error(`Agent card layout (short window): Properties does not fold to a titled row when the card opens: ${turned}`);
 }
 
 // The Agent card with a sample host: empty, a run streaming with its steps, the reply, one notice of each kind outside the list,
@@ -967,6 +999,7 @@ async function measureAgentCard(page, theme, label) {
   }
   await page.waitForSelector('.crucible-studio-agent');
   await page.waitForTimeout(300);
+  await checkShortWindowTurns(page, capture);
   await capture('agent card empty', '.crucible-studio-agent');
   await checkAgentLayout(page, 'empty');
   await page.locator('.crucible-studio-agent-field').fill('Lift the cube and make it a little larger');
