@@ -325,10 +325,15 @@ export class FakeNode {
     const toggleEvent = this.ownerDocument.createEvent('beforetoggle', { newState: 'open' });
     this.dispatchEvent(toggleEvent);
     this.popoverOpen = true;
+    this.dispatchEvent(this.ownerDocument.createEvent('toggle', { newState: 'open' }));
   }
 
   hidePopover() {
+    const wasOpen = this.popoverOpen;
     this.popoverOpen = false;
+    if (wasOpen) {
+      this.dispatchEvent(this.ownerDocument.createEvent('toggle', { newState: 'closed' }));
+    }
   }
 
   showModal() {
