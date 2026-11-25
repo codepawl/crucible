@@ -262,9 +262,14 @@ function transformDirection(matrix, x, y, z, out) {
   return out;
 }
 
-function worldEdgeLength(matrix, positions, first, second) {
-  const edge = transformDirection(matrix, positions[second * 3] - positions[first * 3], positions[second * 3 + 1] - positions[first * 3 + 1], positions[second * 3 + 2] - positions[first * 3 + 2], [0, 0, 0]);
-  return Math.hypot(edge[0], edge[1], edge[2]);
+// The weld key of a vertex: every number of its position, normal, UV and colour rounded to the weld scale. Built by appending, since the cut makes one key per corner of every cut triangle.
+function weldKey(position, normal, uv, color) {
+  let key = '';
+  for (const values of [position, normal, uv, color]) {
+    if (!values) continue;
+    for (let slot = 0; slot < values.length; slot++) key += `${Math.round(values[slot] * WELD_SCALE)},`;
+  }
+  return key;
 }
 
 // The part's mesh as growing arrays, with vertices shared by position, normal, UV and colour so the cut stays connected.
@@ -277,7 +282,7 @@ function createMeshBuilder(geometry) {
   const colors = [];
   const welded = new Map();
   function addVertex(position, normal, uv, color) {
-    const key = [...position, ...normal, ...(uv ?? []), ...(color ?? [])].map(value => Math.round(value * WELD_SCALE)).join(',');
+    const key = weldKey(position, normal, uv, color);
     if (!welded.has(key)) {
       welded.set(key, positions.length / 3);
       positions.push(...position);
@@ -326,7 +331,12 @@ function* cutGeometrySteps(geometry, matrix, maximumEdge, onlyUpward, checkpoint
   const indices = [];
   const tracedVertices = new Set();
   const midpoints = new Map();
-  const sourceIndex = vertexData => builder.addVertex(vertexData.position, vertexData.normal, vertexData.uv, vertexData.color);
+  // A vertex's data object stands for one welded vertex for the whole cut, so its index is looked up once instead of building its weld key every time a triangle reads it.
+  const welded = new Map();
+  const sourceIndex = vertexData => {
+    if (!welded.has(vertexData)) welded.set(vertexData, builder.addVertex(vertexData.position, vertexData.normal, vertexData.uv, vertexData.color));
+    return welded.get(vertexData);
+  };
   const inputVertices = [];
   for (let index = 0; index < geometry.positions.length / 3; index++) {
     inputVertices.push(builder.readVertex(index));
@@ -349,7 +359,11 @@ function* cutGeometrySteps(geometry, matrix, maximumEdge, onlyUpward, checkpoint
       indices.push(...triangle.map(vertexIndex => sourceIndex(inputVertices[vertexIndex])));
     }
   }
-  const lengthBetween = (first, second) => worldEdgeLength(matrix, [...first.position, ...second.position], 0, 1);
+  const edgeVector = [0, 0, 0];
+  const lengthBetween = (first, second) => {
+    transformDirection(matrix, second.position[0] - first.position[0], second.position[1] - first.position[1], second.position[2] - first.position[2], edgeVector);
+    return Math.hypot(edgeVector[0], edgeVector[1], edgeVector[2]);
+  };
   while (cutWork.length > 0) {
     if (++itemsSinceCheckpoint === CUT_ITEMS_PER_CHECKPOINT) {
       itemsSinceCheckpoint = 0;
