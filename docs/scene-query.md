@@ -97,3 +97,33 @@ The server keeps one such scene; asking for another `assetId` replaces it.
 
 Measured on the Bistro sample (2,829,226 triangles in 224 parts, 48 MiB file) on a machine under load: parsing 1.3 s, a 0.25 m grid over x -62 to 111 and z -88 to 97 (513,513 cells; in code, since the tool caps a region at 65,536 cells) with `keepOut` 1.0 in 38 s.
 Against a Blender walk map of the same grid, 99.95 percent of the 149,652 cells with a surface in both agree on obstacle or not, and all 295 pole clusters in it are excluded.
+
+## Surface decal overlaps
+
+When placing Canvas2D silkscreens, labels or etched frames on a board, floorplan or panel alongside 3D parts and wires, `findSurfaceDecalOverlaps` flags anything closer than `clearance` before rendering.
+
+```js
+import { findSurfaceDecalOverlaps } from 'crucible/addons/scene-query';
+
+const overlaps = findSurfaceDecalOverlaps(
+  parts,
+  { min: [0, 0], max: [0.2, 0.15], y: 0.002, coordinateSpace: 'world' },
+  [
+    { id: 'silkscreen-frame', bounds: [0.01, 0.01, 0.19, 0.14], hollow: true, strokeWidth: 0.002 },
+    { id: 'label-u1', bounds: [0.05, 0.05, 0.09, 0.07] },
+  ],
+  {
+    clearance: 0.005,
+    wires: [{ id: 'bus-clk', points: [[0.02, 0.06], [0.18, 0.06]], width: 0.003 }],
+    heightRange: [-0.005, 0.05],
+  },
+);
+// [{ decalId: 'label-u1', targetId: 'bus-clk', kind: 'wire', clearanceGap: -0.0015 }, ...]
+```
+
+Each entry holds `{ decalId, targetId, kind, clearanceGap }` in metres, sorted worst first (`clearanceGap < 0` is penetration; `0 <= clearanceGap < clearance` violates clearance).
+`kind` is `'part'`, `'wire'`, `'border'`, or `'decal'`.
+
+- `surfaceQuad` accepts `{ origin, uAxis, vAxis, normal?, coordinateSpace? }` for any oriented 3D plane, or `{ min: [minX, minZ], max: [maxX, maxZ], y?, normal?, coordinateSpace? }` for horizontal surfaces. `coordinateSpace` defaults to `'uv'` (`0` to `1` across the quad) and also accepts `'metres'` or `'world'` (`'xz'` on horizontal quads).
+- `decals` accepts `{ id, bounds, hollow?, strokeWidth? }`, where `bounds` is `[minU, minV, maxU, maxV]` or `{ min, max }`. Set `hollow: true` for border frames so parts and labels inside the frame stay valid unless they cross an edge.
+- `options` accepts `clearance` (metres, default `0`), `wires` (`{ id, points, radius? | width? }` with 2D quad coordinates or 3D world points), `heightRange` (`[minHeight, maxHeight]` along the surface normal), `ignore` (id Array, Set, or `(id, kind, item) => boolean`), `checkBorder` (default `true`), `checkDecals` (default `true`), and `maxOverlaps` (default `4096`).
