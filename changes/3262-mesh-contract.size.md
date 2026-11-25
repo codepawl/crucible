@@ -1,0 +1,3 @@
+- scene:agent-scene: a person editing in Studio and an agent can now move any vertex or edge of a mesh through the same recipe entry, where before only faces could move and one vertex took a field mask of at most 19 vertices.
+- scene:agent-scene+lazy: the same selection code, validation and the edge pair rule, about 5 KB of source in the lazy mesh chunk.
+- goal:agent-scene: the growth is the vertex and edge selection of the two moves (a new src/mesh-element-move.js and the edge pair rule), which Studio edit mode needs to write moves into the recipe.
