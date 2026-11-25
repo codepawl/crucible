@@ -1,6 +1,7 @@
 import { mat4, vec3 } from 'gl-matrix';
-import { registerShaderFeatureCode } from './shader-registry.js';
+import { HEIGHT_MAP_UNIT, registerShaderFeatureCode } from './shader-registry.js';
 import { resolveShadowLight } from './shadow-light.js';
+import { farthestDepthOfBounds } from './near-plane-fit.js';
 
 // Cascaded sun shadows. The camera frustum is cut into up to four slices by view depth; each slice gets its own depth
 // map, fitted to a bounding sphere of the slice, so a shadow near the camera is sharp and a far one is coarse. Pass
@@ -26,7 +27,7 @@ const DEFAULT_SPLIT_LAMBDA = 0.7;
 const DEFAULT_CASTER_REACH = 200;
 // A sampler that a program never sets reads unit 0, and the cascade array lives on unit 0, so the main program's other
 // samplers are pinned to their own units here. These are the units renderer.js uses: the five maps on 1 to 5, the light map on 6, the local shadow atlas on 15.
-const MAIN_SAMPLER_UNITS = { baseMap: 1, normalMap: 2, metallicRoughnessMap: 3, occlusionMap: 4, emissiveMap: 5, lightMap: 6, localShadowAtlas: 15 };
+const MAIN_SAMPLER_UNITS = { baseMap: 1, normalMap: 2, metallicRoughnessMap: 3, occlusionMap: 4, emissiveMap: 5, lightMap: 6, localShadowAtlas: 15, heightMap: HEIGHT_MAP_UNIT };
 const NDC_CORNERS = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
 
 const CASCADE_DECLARATIONS = `uniform highp sampler2DArray cascadeShadowMap;
@@ -184,6 +185,18 @@ export function planCascadeSplits(count, near, receiverReach, maximumDistance, l
   return { splits: [...cascadeSplitDistances(nearCount, near, nearReach, lambda), receiverReach], farLayer: true };
 }
 
+/**
+ * The view depth where the receivers end, so the far slice stops there: nothing past it gets a shadow from the single map
+ * either. Bounds the scene wrote (`shadowBounds.extent`) say where that is. Without them a studio scene's sun view is a 7 m
+ * default box that says nothing about the scene, and a room wider than it would read as sunlit past the box (#3379), so the
+ * parts' own bounds decide. A world scene keeps its world view, which its terrain would stretch to the whole far plane. A scene whose parts have no placement keeps the default view.
+ */
+function receiverBoundsFarDistance(renderer, light) {
+  const partBounds = !renderer.world && renderer.shadowBounds?.extent === undefined ? renderer.receiverBounds?.() : null;
+  if (partBounds) return farthestDepthOfBounds(partBounds, renderer.view);
+  return viewDepthOf(light.target, renderer.view) + light.extent;
+}
+
 // The eight corners of the camera frustum, near plane first, from the inverse view-projection matrix.
 function frustumCorners(inverseViewProjection) {
   const corners = [];
@@ -303,8 +316,7 @@ export class CascadedShadows {
     const nearDistance = viewDepthOf(corners[0], renderer.view);
     const planeFarDistance = viewDepthOf(corners[4], renderer.view);
     // A maximum distance nearer than the camera near plane would put the splits in front of the camera and out of order.
-    // Receivers past the scene bounds get no shadow from the single map either, so the far slice stops at the bounds.
-    const boundsFarDistance = viewDepthOf(light.target, renderer.view) + light.extent;
+    const boundsFarDistance = receiverBoundsFarDistance(renderer, light);
     const receiverReach = Math.max(Math.min(planeFarDistance, boundsFarDistance), nearDistance);
     const { splits, farLayer } = planCascadeSplits(this.count, nearDistance, receiverReach, this.maximumDistance, this.splitLambda);
     this.layerCount = splits.length;

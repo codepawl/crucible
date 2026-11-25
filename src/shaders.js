@@ -4,7 +4,7 @@ import { TANGENT_CODE_MINIMUM } from './tangent-encoding.js';
 import { UNBAKED_ALPHA_THRESHOLD, NORMAL_SPREAD_GAIN } from './normal-map-variance.js';
 import { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './light-limits.js';
 import { LIGHT_DATA_BLOCK, uniformBlockDeclaration } from './light-uniform-block.js';
-import { registeredFeatureCode, requireFeatureCode, registerShaderFeatureCode, registerSplatSupport, requireSplatSupport, layerTextureSupport, viewTransformShader, SPLAT_UNITS } from './shader-registry.js';
+import { registeredFeatureCode, HEIGHT_MAP_FEATURE, requireFeatureCode, requireHeightParallaxSupport, registerShaderFeatureCode, registerSplatSupport, requireSplatSupport, layerTextureSupport, viewTransformShader, SPLAT_UNITS } from './shader-registry.js';
 
 export { registerShaderFeatureCode, registerSplatSupport, requireSplatSupport, layerTextureSupport, viewTransformShader, SPLAT_UNITS };
 
@@ -79,6 +79,11 @@ export const TANGENT_FEATURE = 'tangents';
 // The spread of the normals each mip level averages (baked at upload, src/normal-map-variance.js) and the screen-space change
 // of the normal therefore also lower the direct specular, as detail that averages out. The code exists only in a shader that has a normal map, so a shader without one keeps its exact text.
 export const NORMAL_MAP_SPECULAR_FADE_STRENGTH = 32;
+// The linear fade leaves a bead where a pixel crosses many tilted normals: at a silhouette the normal turns 15 degrees a pixel (variance
+// 0.05 to 0.11), a lobe that narrow still peaks four orders above the interior highlight, and a fade of 0.2 to 0.3 leaves it bright.
+// The cubic term, which starts to count where the variance passes this knee, closes the fade there; a highlight in the interior
+// (variance about 0.015 on the Khronos NormalTangentTest) loses under 2 percent (#3142).
+export const NORMAL_MAP_SPECULAR_FADE_KNEE = 0.05;
 
 // A depth rank is measured at no less than this distance (metres) from the camera plane. Without the floor, a vertex of a long face
 // next to or behind the camera plane lifts by an unbounded depth (the depth step grows with 1 / distance squared) and drags the depth of
@@ -92,7 +97,8 @@ const NORMAL_MAP_SPECULAR_CODE = {
     vec3 fadeNormalX = dFdx(normal);
     vec3 fadeNormalY = dFdy(normal);
     float normalVariance = 0.5 * (dot(fadeNormalX, fadeNormalX) + dot(fadeNormalY, fadeNormalY)) + ${NORMAL_SPREAD_GAIN}.0 * normalMapSpread;
-    normalMapSpecularFade = 1.0 / (1.0 + ${NORMAL_MAP_SPECULAR_FADE_STRENGTH}.0 * specularAntiAliasing * normalVariance);
+    float fadeVariance = specularAntiAliasing * normalVariance;
+    normalMapSpecularFade = 1.0 / (1.0 + ${NORMAL_MAP_SPECULAR_FADE_STRENGTH}.0 * fadeVariance + pow(fadeVariance / ${NORMAL_MAP_SPECULAR_FADE_KNEE}, 3.0));
   }
 `,
 };
@@ -1127,6 +1133,9 @@ const SHADER_FEATURE_CONDITIONS = {
 export const LIGHT_SHADING_FEATURE = 'lightShading';
 // Environment wetness (wetness.js): its code joins the program only when the environment is wet, and it is not in SHADER_FEATURES.
 export const WETNESS_FEATURE = 'wetness';
+// Parallax occlusion mapping of a material's heightMap (height-parallax-shader.js): spliced in only when a material has one, so it is not in SHADER_FEATURES.
+// Its code is a lazy module that registers itself on import, like the other optional features.
+export { HEIGHT_MAP_FEATURE };
 /** Renderer option values: 'full' is the default picture, 'light' leaves out costly terms for weak machines. */
 export const SHADING_MODES = Object.freeze(['full', 'light']);
 /** The light preset resolves at most this many MSAA samples (on SwiftShader 2 cost a third of 4 in the blend heavy scene). */
@@ -1184,7 +1193,7 @@ export function liquidPassDrawer() {
 function hasSeparateCode(feature) {
   if (feature in MODULE_FEATURES) return true;
   if (feature === TANGENT_FEATURE) return false;
-  if (feature in SHADER_FEATURE_CONDITIONS || feature === LIGHT_SHADING_FEATURE || feature === WETNESS_FEATURE || feature === FRAGMENT_SHADOW_POSITION_FEATURE || feature === FADING_SHADOWS_FEATURE) return false;
+  if (feature in SHADER_FEATURE_CONDITIONS || feature === LIGHT_SHADING_FEATURE || feature === WETNESS_FEATURE || feature === HEIGHT_MAP_FEATURE || feature === FRAGMENT_SHADOW_POSITION_FEATURE || feature === FADING_SHADOWS_FEATURE) return false;
   return !ENVIRONMENT_FEATURES.includes(feature) && !VERTEX_ONLY_FEATURES.includes(feature) && feature !== VERTEX_OPACITY_FEATURE;
 }
 
@@ -1196,6 +1205,7 @@ function featureCodeSplicer(features) {
   }
   if (WORLD_MATERIAL_FEATURES.some(feature => enabled.has(feature))) codes.push(requireFeatureCode('worldMaterials'));
   if (enabled.has(WETNESS_FEATURE)) codes.push(WETNESS_CODE);
+  if (enabled.has(HEIGHT_MAP_FEATURE)) codes.push(requireFeatureCode(HEIGHT_MAP_FEATURE));
   if (enabled.has('normalMap')) codes.push(NORMAL_MAP_SPECULAR_CODE);
   if (enabled.has(TANGENT_FEATURE)) codes.push(tangentFragmentCode(enabled.has('normalMapTransform') ? requireFeatureCode('normalMapTransform').normalUv ?? '' : ''));
   codes.push(enabled.has('environmentMap') ? registeredFeatureCode.get('environmentMap') ?? ENVIRONMENT_STUB : ENVIRONMENT_STUB);
@@ -1264,7 +1274,8 @@ export function createFragmentShader(features = SHADER_FEATURES) {
   lines.push(`#define ENVIRONMENT_ENABLED ${environmentCondition(enabled)}`);
   // Not in SHADER_FEATURES: the preset is chosen by the renderer, so a shader built from every feature keeps the full look.
   lines.push(`#define LIGHT_SHADING ${enabled.has(LIGHT_SHADING_FEATURE) ? 'true' : 'false'}`);
-  const source = buildFragmentShader(lines.join('\n'), featureCodeSplicer([...enabled]));
+  const built = buildFragmentShader(lines.join('\n'), featureCodeSplicer([...enabled]));
+  const source = enabled.has(HEIGHT_MAP_FEATURE) ? requireHeightParallaxSupport().rewrite(built) : built;
   const withOpacity = enabled.has(VERTEX_OPACITY_FEATURE) ? withVertexOpacityFragment(source) : source;
   return enabled.has('alphaMode') ? withBlendCoverage(withOpacity) : withOpacity;
 }

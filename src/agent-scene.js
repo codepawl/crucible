@@ -11,7 +11,7 @@ import { cameraFieldsToClear, splitClearedLookFields, mergeGroupPatch } from './
 import { postStepSupport } from './shader-registry.js';
 import { agentSceneModule, agentSceneModuleActive, agentSceneModuleLoaded, defaultStageModulesNamed } from './agent-scene-modules.js';
 import { CURVE_TEXT_LIMITS, AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
-import { TEXTURE_SET_RECIPE_FIELDS, TEXTURE_MAP_FIELDS, UV_TRANSFORM_FIELDS } from './texture-set-fields.js';
+import { TEXTURE_SET_RECIPE_FIELDS, TEXTURE_MAP_FIELDS, UV_TRANSFORM_FIELDS, HEIGHT_PARALLAX_FIELDS } from './texture-set-fields.js';
 import { normalizeMaterialWear, geometryWithSurfaceMasks } from './material-wear.js';
 import { ALL_LIGHTS_MASK, MATERIAL_LAYER_FIELDS, validateMaterialLayers } from './material-layers.js';
 import { recipeDiagnostics, closedRoomDiagnostic, droppedVertexAlphaDiagnostics } from './agent-diagnostics.js';
@@ -68,7 +68,7 @@ const PART_FLAG_FIELDS = RENDER_FLAG_FIELDS.slice(1);
 // On an asset placement these two flags reach each part it expands to.
 const ASSET_PLACEMENT_FLAG_FIELDS = ['castShadow', 'receiveShadow'];
 const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'vegetation', 'clutter', 'grass', 'decal', 'faceImages', 'depthLayer', 'billboard', 'blend', 'rayVisibility', ...RENDER_FLAG_FIELDS];
-const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'alphaCutoff', 'doubleSided', 'depthTest', 'pattern', 'map', 'text', 'subsurface', 'snippet', 'waterPreset', 'absorption', 'turbidity', 'foamEdge', 'foamWidth', 'foamColor', 'foamVeins', 'contactFoam', 'caustics', 'ripples', 'waterRamp', 'aov', 'wear', 'surfaceCover', 'retro', 'emissionMask', 'toonColors', ...MATERIAL_LAYER_FIELDS];
+const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'alphaCutoff', 'doubleSided', 'depthTest', 'pattern', 'map', 'text', 'subsurface', 'snippet', 'preset', 'waterPreset', 'absorption', 'turbidity', 'foamEdge', 'foamWidth', 'foamColor', 'foamVeins', 'contactFoam', 'caustics', 'ripples', 'waterRamp', 'aov', 'wear', 'surfaceCover', 'retro', 'emissionMask', 'toonColors', ...MATERIAL_LAYER_FIELDS];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'layerMaps', 'transmissionMap', 'aovMap', 'emissionFresnel', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = [...Object.keys(CAMERA_DEFAULTS), ...CAMERA_LENS_FIELDS];
 // Fields of an optional shader module join the list here, so the long list above stays a line each material feature does not rewrite.
@@ -324,8 +324,9 @@ function applyAlphaCutoff(value, result) {
   result.alphaCutoff = value.alphaCutoff;
 }
 
-function materialFrom(value) {
-  knownKeys(value, ['id', 'tag', ...MATERIAL_FIELDS, ...TEXTURE_SET_RECIPE_FIELDS], 'material');
+function materialFrom(recipeValue) {
+  const value = recipeValue.preset === undefined ? recipeValue : agentSceneModule('materialPresets').applyMaterialPreset(recipeValue, (given, expected) => invalidField('preset', given, expected));
+  knownKeys(recipeValue, ['id', 'tag', ...MATERIAL_FIELDS, ...TEXTURE_SET_RECIPE_FIELDS], 'material');
   // A pattern or a catalog colour map brings its own colours, so the color field tints it and leaves it unchanged by default.
   const defaultColor = value.pattern === undefined && value.colorMap === undefined && value.text === undefined ? [0.5, 0.5, 0.5] : [1, 1, 1];
   const graph = value.pattern?.type === 'graph' ? value.pattern.graph : {};
@@ -781,10 +782,11 @@ function geometryEstimate(value, scope = PENDING_CUTTER_SCOPE) {
       const cutterScope = meshCutterScope(value, scope);
       let referencedWork = 0;
       for (const edit of agentSceneModule('mesh').normalizeMeshEdits(value.edits ?? [])) {
-        if (edit.op !== 'boolean') continue;
-        const cutterVertices = cutterEstimate(edit.cutter, cutterScope);
+        const reference = geometryReferenceOf(edit);
+        if (!reference) continue;
+        const cutterVertices = cutterEstimate(reference, cutterScope);
         estimate += cutterVertices;
-        if (isCutterReference(edit.cutter)) referencedWork += cutterVertices;
+        if (isCutterReference(reference)) referencedWork += cutterVertices;
       }
       if (referencedWork > MAX_CUTTER_WORK_VERTICES) {
         throw invalidField('cutter.geometry', `${referencedWork} estimated cutter vertices in ${cutterScope.chain.join(' -> ')}`, `cutter geometries that total at most ${MAX_CUTTER_WORK_VERTICES} estimated vertices; use fewer segments or fewer referenced cutters`);
@@ -869,8 +871,15 @@ function referencedCutterEstimate(cutter, scope) {
   return geometryEstimate(definition, { definitions: scope.definitions, chain });
 }
 
+// What an edit reads from another recipe geometry or primitive: a boolean's cutter, or the geometry a join adds.
+function geometryReferenceOf(edit) {
+  if (edit?.op === 'boolean') return edit.cutter;
+  if (edit?.op === 'join') return { geometry: edit.geometry };
+  return null;
+}
+
 function namesCutterGeometry(edit) {
-  return edit?.op === 'boolean' && typeof edit.cutter?.geometry === 'string';
+  return typeof geometryReferenceOf(edit)?.geometry === 'string';
 }
 
 // The records of the cutter geometries a mesh names, nested ones included: what its result depends on beyond its own record.
@@ -878,7 +887,7 @@ function cutterDependencySignature(meshDefinition, definitions) {
   const parts = [];
   for (const edit of meshDefinition.edits ?? []) {
     if (!namesCutterGeometry(edit)) continue;
-    const definition = definitions.get(edit.cutter.geometry);
+    const definition = definitions.get(geometryReferenceOf(edit).geometry);
     parts.push(JSON.stringify(definition), cutterDependencySignature(definition, definitions));
   }
   return parts.join('|');
@@ -1349,7 +1358,7 @@ function materialHandle(snapshot, sequence, images) {
   const holder = { snapshot, sequence, images };
   holder.catalogTextures = catalogTexturesOf(holder);
   const output = {};
-  for (const field of ['id', 'tag', ...MATERIAL_FIELDS]) {
+  for (const field of ['id', 'tag', ...MATERIAL_FIELDS, ...HEIGHT_PARALLAX_FIELDS]) {
     Object.defineProperty(output, field, {
       enumerable: true,
       configurable: true,
@@ -2334,8 +2343,11 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   }
 
   // A closed room a sun lights gets the sky each floor texel sees; the lazy module decides, keeps its result and honours environment.floorSkyTrace.
+  // The report of the latest default sky trace, kept so scene_inspect can say when the trace stopped at its time limit (#3389).
+  let skyTraceReport = null;
+  const rememberSkyTraceReport = report => (skyTraceReport = report);
   function stageFloorSky(recipe, parts, graph) {
-    return agentSceneModuleActive('floorSky', requestedModules) ? agentSceneModule('floorSky').stageFloorSky(recipe.environment, parts, name => graph.getNode(name).worldMatrix) : parts;
+    return agentSceneModuleActive('floorSky', requestedModules) ? agentSceneModule('floorSky').stageFloorSky(recipe.environment, parts, name => graph.getNode(name).worldMatrix, rememberSkyTraceReport) : parts;
   }
 
   // A scene that asks for no bake and looks like a closed room gets one diagnostic naming the bake. The ray test costs a
@@ -2637,7 +2649,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   function* stageSettledParts(bakedParts) {
     const { recipe, graph } = state;
     const reflected = stageObjectReflections(recipe, state.sourceRestParts, bakedParts, graph);
-    const sky = agentSceneModuleActive('floorSky', requestedModules) ? yield* agentSceneModule('floorSky').stageFloorSkySteps(recipe.environment, reflected ? reflected.parts : bakedParts, name => graph.getNode(name).worldMatrix) : reflected ? reflected.parts : bakedParts;
+    const sky = agentSceneModuleActive('floorSky', requestedModules) ? yield* agentSceneModule('floorSky').stageFloorSkySteps(recipe.environment, reflected ? reflected.parts : bakedParts, name => graph.getNode(name).worldMatrix, rememberSkyTraceReport) : reflected ? reflected.parts : bakedParts;
     const linked = stageLightLinks(recipe, sky);
     const rankedParts = partsToRank(recipe, linked);
     if (agentSceneModuleActive('coplanar', requestedModules) && recipe.environment.resolveCoplanar !== false && !rankedLists().some(list => sameParts(list.rankedParts, rankedParts))) {
@@ -2845,7 +2857,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           knownKeys(operation, ['type', lookField], 'operation');
           const patch = operation[lookField];
           // Spot and area lights, cascades and sun links are absent from a recipe until it sets them.
-          const optionalFields = lookField === 'environment' ? ['ground', 'spotLights', 'areaLights', 'shadowCascades', 'localVolumes', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'hdri', 'keyFromHdri', 'sky', 'wetness', 'puddles', 'ambientColor', 'ambientMix', 'fillColor', 'environmentDiffuseScale', 'skybox'] : lookField === 'effects' ? postStepSupport.fields : lookField === 'shadow' ? ['hard'] : [];
+          const optionalFields = lookField === 'environment' ? ['ground', 'spotLights', 'areaLights', 'shadowCascades', 'localVolumes', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'hdri', 'reflectionHdri', 'keyFromHdri', 'sky', 'wetness', 'puddles', 'ambientColor', 'ambientMix', 'fillColor', 'environmentDiffuseScale', 'skybox'] : lookField === 'effects' ? postStepSupport.fields : lookField === 'shadow' ? ['hard'] : [];
           knownKeys(patch, [...Object.keys(candidate[lookField]), ...optionalFields], lookField);
           requireChange(Object.keys(patch).length > 0, operation, [...Object.keys(candidate[lookField]), ...optionalFields]);
           const { kept: keptPatch, cleared: clearedFields } = splitClearedLookPatch(lookField, patch);
@@ -2898,6 +2910,10 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           if (fracturedId !== undefined) removedNodes.add(fracturedId);
           continue;
         }
+        if (operation.type === 'separate-faces' || operation.type === 'join-meshes') {
+          agentSceneModule('meshParts').applyMeshPartsOperation(candidate, operation, removedNodes, geometryId => generateOperationGeometry(candidate, geometryId, limits));
+          continue;
+        }
         if (operation.type === 'add-explosion') {
           const sourceGeometry = geometryId => generateOperationGeometry(candidate, geometryId, limits);
           agentSceneModule('explosion').addExplosion(candidate, operation, { sourceGeometry, fractureNode: fracture => agentSceneModule('fracture').fractureNode(candidate, fracture, sourceGeometry) });
@@ -2906,6 +2922,14 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         }
         if (operation.type === 'settle') {
           agentSceneModule('settle').applySettle(candidate, operation);
+          continue;
+        }
+        if (operation.type === 'apply-transform') {
+          agentSceneModule('applyTransform').applyNodeTransform(candidate, operation);
+          continue;
+        }
+        if (operation.type === 'set-origin') {
+          agentSceneModule('applyTransform').setNodeOrigin(candidate, operation, (recipe, geometryId) => generateOperationGeometry(recipe, geometryId, limits).positions);
           continue;
         }
         if (operation.type === 'edit-mesh') {
@@ -2929,6 +2953,10 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           const applied = operation.apply ?? 0;
           if (!Number.isInteger(applied) || applied < 0 || applied > stack.length) {
             throw invalidField('apply', applied, `a whole number from 0 to the stack length ${stack.length}, such as 0`);
+          }
+          const switchedOff = stack.slice(0, applied).findIndex(node => node.enabled === false);
+          if (switchedOff >= 0) {
+            throw invalidField('apply', applied, `a count that stops before stack node ${switchedOff}, which is switched off (enabled: false); switch it on or remove it first`);
           }
           // Applying moves the first nodes into the edit log, as Blender's Apply modifier does.
           target.edits = [...(target.edits ?? []), ...stack.slice(0, applied)];
@@ -3028,7 +3056,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         return result;
       });
       const resident = geometryStats(ownedGeometryRecords());
-      const diagnostics = [...recipeDiagnostics(state.recipe), ...droppedVertexAlphaDiagnostics(state.parts), ...closedRoomProblems(), ...staleBakeProblems(), ...(state.bakeSkipped ? [agentSceneModule('bake').bakeSkippedDiagnostic(state.bakeSkipped)] : []),...(state.reflectionSkipped ? [agentSceneModule('reflections').reflectionSkippedDiagnostic(state.reflectionSkipped)] : []), ...coplanarProblems(), ...(agentSceneModuleLoaded('unsupportedPart') ? agentSceneModule('unsupportedPart').unsupportedPartProblems(state.parts, state.recipe, revision) : []), ...(state.particleSampler?.diagnostics() ?? []), ...(state.assetRuntime.animators.length ? agentSceneModule('assets').placedClipDiagnostics(state.assetRuntime) : [])];
+      const diagnostics = [...recipeDiagnostics(state.recipe), ...droppedVertexAlphaDiagnostics(state.parts), ...closedRoomProblems(), ...(skyTraceReport ? agentSceneModule('floorSky').skyTraceProblems(skyTraceReport) : []), ...staleBakeProblems(), ...(state.bakeSkipped ? [agentSceneModule('bake').bakeSkippedDiagnostic(state.bakeSkipped)] : []),...(state.reflectionSkipped ? [agentSceneModule('reflections').reflectionSkippedDiagnostic(state.reflectionSkipped)] : []), ...coplanarProblems(), ...(agentSceneModuleLoaded('unsupportedPart') ? agentSceneModule('unsupportedPart').unsupportedPartProblems(state.parts, state.recipe, revision) : []), ...(state.particleSampler?.diagnostics() ?? []), ...(state.assetRuntime.animators.length ? agentSceneModule('assets').placedClipDiagnostics(state.assetRuntime) : [])];
       return {
         revision, topologyRevision,
         ...(state.recipe.motion?.ik?.length ? { motionIk: agentSceneModule('motion').compileAgentMotion(state.recipe.motion, state.recipe).sweepIk() } : {}),

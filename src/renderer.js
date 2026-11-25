@@ -4,16 +4,16 @@ import { materialTags, registeredFeatureCode } from './shader-registry.js';
 import { mat4, mat3 } from 'gl-matrix';
 import { BLEND_FACTORS } from './blend-output.js';
 import { packNormalsWithTangents, validateGeometryTangents } from './tangent-encoding.js';
-import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, WETNESS_FEATURE, FRAGMENT_SHADOW_POSITION_FEATURE, FADING_SHADOWS_FEATURE, VERTEX_OPACITY_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, TANGENT_FEATURE, vertexShader, liquidFragmentSource, createFragmentShader, liquidPassDrawer, createDepthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
-import { postFragment, createPostFragment, KEEP_HUE_STEP, GRID_MOTION_STEP, GRID_DETAIL_STEP, NOISE_OCTAVES_STEP, localVolumeKindSteps, POST_STEPS, POST_STEPS_WITH_OPTIONAL_CODE, skyFragment, bloomFragment } from './post.js';
+import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, WETNESS_FEATURE, HEIGHT_MAP_FEATURE, FRAGMENT_SHADOW_POSITION_FEATURE, FADING_SHADOWS_FEATURE, VERTEX_OPACITY_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, TANGENT_FEATURE, vertexShader, liquidFragmentSource, createFragmentShader, liquidPassDrawer, createDepthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
 import { createGlazeBackend } from './glaze-backend.js';
+import { postFragment, createPostFragment, KEEP_HUE_STEP, GRID_MOTION_STEP, GRID_DETAIL_STEP, NOISE_OCTAVES_STEP, localVolumeKindSteps, POST_STEPS, POST_STEPS_WITH_OPTIONAL_CODE, skyFragment, bloomFragment } from './post.js';
 import { fullscreenVertex, compileProgram, ProgramNotReady, isLinkComplete, setPreparing, releaseStartedPrograms } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
 import { planRenderSize, estimateTextureBytes, estimateFrameBytes, memoryBudgetError, automaticBudgetCeilingMiB } from './budget.js';
 import { applyProjection } from './camera.js';
 import { boundsGrownByParts, fittedNearPlane, sceneBoundsOfParts } from './near-plane-fit.js';
 import { installReversedDepth, prepareCameraRelativeProgram } from './reversed-depth.js';
-import { bloomBlurPlan, isBloomActive, resolveEffects } from './effects.js';
+import { bloomBlurPlan, isBloomActive, isDitherActive, resolveEffects } from './effects.js';
 import { frameDiagnostics, everyCasterOutsideShadowView } from './frame-diagnostics.js';
 import { depthLayerOf, flushOrderOf, RANKS_PER_LAYER } from './depth-layer.js';
 import { createLightingState, updateLightingState } from './lighting.js';
@@ -31,9 +31,10 @@ import { TranslucentOrder } from './translucent-order.js';
 import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
 import { countDraws } from './draw-counter.js';
 import { glassFaceTransmittance } from './glass-shadow.js';
+import { fitStudioShadowView } from './studio-shadow-fit.js';
 import { fitWorldShadowView, resolveShadowLight, shadowBiasPerSlope, sunShadowMapSize, writeShadowLightMatrix } from './shadow-light.js';
 import { CLIP_PLANES_FEATURE, MAX_CLIP_PLANES, packClipPlanes, clipPlaneLocations, bindClipPlanes, clipPlanesChanged } from './clip-planes.js';
-import { MAX_MORPH_TARGETS, requireFeatureCode, deformationSupport, requireDeformationSupport, texturedReplaceSupport, textureUpdateSupport } from './shader-registry.js';
+import { MAX_MORPH_TARGETS, requireFeatureCode, requireHeightParallaxSupport, deformationSupport, requireDeformationSupport, texturedReplaceSupport, textureUpdateSupport } from './shader-registry.js';
 import { bakeNormalMapVariance } from './normal-map-variance.js';
 
 // Liquid and foam see the resolved opaque scene, so they draw in their own pass after it.
@@ -299,6 +300,7 @@ export function shaderFeaturesOfParts(parts) {
     if (material.environmentProbe) features.add('probe');
     if (material.irradianceGrid) features.add('irradianceGrid');
     if (material.normalMap?.uvTransform) features.add('normalMapTransform');
+    if (usesHeightParallax(material)) features.add(HEIGHT_MAP_FEATURE);
     Object.keys(material.layerMaps ?? {}).forEach(name => features.add(name));
     if (material.layers) features.add('splat');
     for (const name of POSITIVE_SHADER_FEATURES) {
@@ -356,6 +358,12 @@ const ENVIRONMENT_LOOKUP_UNIFORMS = ['environmentSpecular', 'environmentEnabled'
 const ENVIRONMENT_UNIFORMS = [...ENVIRONMENT_LOOKUP_UNIFORMS, 'environmentBrdf', 'environmentIrradiance[0]', 'environmentBounce', 'environmentDiffuseFrame'];
 // Shares a unit with the skin influence texture, which no light-mapped (rigid) batch binds.
 const LIGHT_MAP_UNIT = 6;
+// The parallax state is the last entries of materialMapState, [heightMap, depth, fade, steps], and only a material that draws its heightMap has them. Its start is the length of the state of a material without them, read from the array itself, so a field added before it cannot leave the offset stale.
+let cachedHeightStateOffset = null;
+function heightStateOffset() {
+  cachedHeightStateOffset ??= materialMapState({}).length;
+  return cachedHeightStateOffset;
+}
 const ENVIRONMENT_SPECULAR_UNIT = 9;
 const ENVIRONMENT_BRDF_UNIT = 10;
 const LOCAL_SHADOW_UNIT = 15;
@@ -410,7 +418,7 @@ function materialMapState(material) {
   const occlusionStrength = material.occlusionStrength ?? 1;
   if (material.layers || material.splat) requireSplatSupport().validate(material);
   if (material.layers && PROCEDURAL_MATERIAL_TAGS.has(material.tag)) throw new Error('Splat layers require a standard PBR material tag.');
-  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), material.layers ?? null, material.splat ?? null, material.layerMaps ?? null, material.environmentProbe ?? null, material.waterReflection ?? null, material.irradianceGrid ?? null, material.wear ?? null, material.surfaceCover ?? null, material.foamEdge ?? null, material.foamWidth ?? null, material.foamColor ?? null, material.foamVeins ?? null, material.contactFoam ?? null, material.waterRamp ?? null, material.ripples ?? null];
+  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), material.layers ?? null, material.splat ?? null, material.layerMaps ?? null, material.environmentProbe ?? null, material.waterReflection ?? null, material.irradianceGrid ?? null, material.wear ?? null, material.surfaceCover ?? null, material.foamEdge ?? null, material.foamWidth ?? null, material.foamColor ?? null, material.foamVeins ?? null, material.contactFoam ?? null, material.waterRamp ?? null, material.ripples ?? null, ...heightMapState(material)];
 }
 
 // A baked light map reads the second UV set, so it is only drawn for parts that cannot be skinned or morphed.
@@ -420,6 +428,23 @@ function lightMapState(material) {
   if (!Number.isFinite(scale) || scale < 0) throw new RangeError('lightMapScale must be a nonnegative number.');
   if ((material.lightMap.colorSpace ?? 'srgb') !== 'srgb') throw new Error('lightMap requires an srgb texture descriptor.');
   return [material.lightMap, scale];
+}
+
+/** Whether a material's parallax differs from the state a batch kept; a batch of a material without parallax keeps no entries. */
+function heightParallaxChanged(material, mapState) {
+  const kept = mapState.slice(heightStateOffset());
+  const next = heightMapState(material);
+  return next.length !== kept.length || next.some((value, index) => value !== kept[index]);
+}
+
+/** Whether a material draws its heightMap: a map and a heightScale above zero. A zero scale leaves the map unread and the shader unchanged. */
+function usesHeightParallax(material) {
+  return material.heightScale > 0 && Boolean(material.heightMap);
+}
+
+/** [heightMap, depth, fade distance, ray steps] of a material that draws its heightMap, from the lazy height-parallax-shader module; [] for every other material. */
+function heightMapState(material) {
+  return usesHeightParallax(material) ? requireHeightParallaxSupport().state(material, PROCEDURAL_MATERIAL_TAGS) : [];
 }
 
 function validateAlphaMaterial(material) {
@@ -1087,10 +1112,10 @@ export class CrucibleRenderer {
     const maps = new Set();
     for (const group of groups) {
       const material = group[0].material;
-      for (const [field, map] of [...MATERIAL_MAPS, 'lightMap'].map(name => [name, material[name]]).concat(Object.entries(material.layerMaps ?? {}))) {
+      for (const [field, map] of [...MATERIAL_MAPS, 'lightMap', ...(usesHeightParallax(material) ? ['heightMap'] : [])].map(name => [name, material[name]]).concat(Object.entries(material.layerMaps ?? {}))) {
         if (!map) continue;
         const info = textureDescriptorInfo(map, textureLimit);
-        if (['normalMap', 'metallicRoughnessMap', 'occlusionMap'].includes(field) && map.colorSpace !== 'linear') throw new Error(`${field} requires a linear texture descriptor.`);
+        if (['normalMap', 'metallicRoughnessMap', 'occlusionMap', 'heightMap'].includes(field) && map.colorSpace !== 'linear') throw new Error(`${field} requires a linear texture descriptor.`);
         if (field === 'emissiveMap' && (map.colorSpace ?? 'srgb') !== 'srgb') throw new Error('emissiveMap requires an srgb texture descriptor.');
         if (!maps.has(map)) this.textureBytes += info.bytes;
         maps.add(map);
@@ -1378,7 +1403,7 @@ export class CrucibleRenderer {
 
   finishMainProgram(pendingProgram) {
     this.program = this.backend.finishProgram(pendingProgram);
-    this.uniforms = Object.fromEntries(['materialDielectric', 'materialEmissionFresnel', 'materialSoftEdge', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'lightLinkMask', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'viewProjection', 'flushBias', 'clipPerMetre', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'shadowBiasPerSlope', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', 'wetnessState', 'wetnessKeepOut[0]', 'wearEnabled', 'wearMetal', 'wearDirt', 'wearShape', 'wearDirtShape', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', 'baseColor', 'surface', 'instanceEmission', 'instanceOpacity', 'boxNormalMatrix', 'shadowBlind', 'compositeMode', 'tintShadowMap', 'tintBlind', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['materialDielectric', 'materialEmissionFresnel', 'materialSoftEdge', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'lightLinkMask', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'heightMap', 'heightState', 'viewProjection', 'flushBias', 'clipPerMetre', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'shadowBiasPerSlope', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', 'wetnessState', 'wetnessKeepOut[0]', 'wearEnabled', 'wearMetal', 'wearDirt', 'wearShape', 'wearDirtShape', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', 'baseColor', 'surface', 'instanceEmission', 'instanceOpacity', 'boxNormalMatrix', 'shadowBlind', 'compositeMode', 'tintShadowMap', 'tintBlind', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     Object.assign(this.uniforms, clipPlaneLocations(this.context, this.program));
     for (const name of LIGHT_UNIFORMS) {
       this.uniforms[name] = this.context.getUniformLocation(this.program, name);
@@ -1546,6 +1571,13 @@ export class CrucibleRenderer {
     const [wetness, fillLevel] = this.lighting.wetnessState;
     this.context.uniform4f(this.uniforms.wetnessState, wetness, fillLevel, this.wetnessKeepOut.count, this.wetnessGroundHeight);
     this.context.uniform4fv(this.uniforms['wetnessKeepOut[0]'], this.wetnessKeepOut.boxes);
+  }
+
+  // The parallax uniforms and height texture of a batch, in programs that compiled the parallax code (so the module is loaded). A batch
+  // without a height map in such a program sends w = 0, which skips the march.
+  bindHeightParallax(batch) {
+    if (!this.shaderFeatures?.has(HEIGHT_MAP_FEATURE)) return;
+    requireHeightParallaxSupport().bind(this.context, this.uniforms, batch.mapState.slice(heightStateOffset()), batch.heightTexture);
   }
 
   /** Sets the surface wear uniforms of a batch; a material without wear turns the term off. */
@@ -1778,6 +1810,7 @@ export class CrucibleRenderer {
     const mapState = materialMapState(parts[0].material);
     const textures = mapState.slice(0, 5).map((descriptor, index) => this.createTexture(descriptor, index === 1));
     const splat = parts[0].material.layers ? requireSplatSupport().createResources(this, parts[0].material, requireSplatSupport()) : null;
+    const heightTexture = mapState[heightStateOffset()] ? this.createTexture(mapState[heightStateOffset()]) : null;
     const lightMapTexture = mapState[14] ? this.createTexture(mapState[14]) : null;
     if (lightMapTexture && (parts[0].skin || parts[0].morph || !geometry.lightUvs)) throw new Error('A light map needs lightUvs on rigid geometry, with no skin or morph.');
     const skin = parts[0].skin ?? null;
@@ -1791,7 +1824,7 @@ export class CrucibleRenderer {
     const [alphaMode, alphaCutoff, opacity, doubleSided, retro, waterGlint, depthTest] = materialAlphaState(parts[0].material);
     const layerState = materialLayerState(parts[0].material);
     const culling = this.createCullingState(parts);
-    const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, retro, waterGlint, depthTest, mirrored: isMirroredMatrix(parts[0].matrix), layerState, wear: parts[0].material.wear ?? null, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, lightMapTexture, texture: textures[0], map, skin, skinTexture, influenceTexture, crowd, crowdTexture, morph, morphTexture, morphWeights, indexCount: flushOrder?.indices.length ?? geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), tintedShadow: castsTintedShadow(parts[0]), tintBlind: Object.keys(parts[0].material.layerMaps ?? {}).length >= 3, receivesShadow: receivesShadow(parts[0]), compositeMode: compositeModeOf(parts[0]), depthLayer: depthLayerOf(parts[0]), flushOrder, flushIndexBuffer, pass: partPass(parts[0]), clipPlanes: parts[0].clipPlanes ?? null };
+    const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, retro, waterGlint, depthTest, mirrored: isMirroredMatrix(parts[0].matrix), layerState, wear: parts[0].material.wear ?? null, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, lightMapTexture, heightTexture, texture: textures[0], map, skin, skinTexture, influenceTexture, crowd, crowdTexture, morph, morphTexture, morphWeights, indexCount: flushOrder?.indices.length ?? geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), tintedShadow: castsTintedShadow(parts[0]), tintBlind: Object.keys(parts[0].material.layerMaps ?? {}).length >= 3, receivesShadow: receivesShadow(parts[0]), compositeMode: compositeModeOf(parts[0]), depthLayer: depthLayerOf(parts[0]), flushOrder, flushIndexBuffer, pass: partPass(parts[0]), clipPlanes: parts[0].clipPlanes ?? null };
     if (parts[0].lods) culling.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level));
     culling.shadowLevels?.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level, batch.shadowLevels));
     parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, layerState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
@@ -1821,6 +1854,7 @@ export class CrucibleRenderer {
     this.sceneParts = parts;
     this.fitParts = renderParts;
     this.fitBounds = undefined;
+    this.receiverBox = undefined;
     this.densityParts = parts;
     // A scene that gained or lost triangles can cross the density threshold with no size change; resize() judges it again and rebuilds the targets.
     const resampled = this.denseSamples != null && this.chooseMultisampleSamples(this.densityParts) !== this.multisampleSamples;
@@ -2052,6 +2086,7 @@ export class CrucibleRenderer {
         if ((part.material[MATERIAL_MAPS[index]] ?? null) !== mapState[index]) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
       }
       const [lightMapDescriptor, lightMapScale] = lightMapState(part.material);
+      if (heightParallaxChanged(part.material, mapState)) throw new Error(`Height map and parallax changes require a new renderer: ${part.name}`);
       if (lightMapDescriptor !== (mapState[14] ?? null) || lightMapScale !== (mapState[15] ?? 0) || (part.material.layerMaps ?? null) !== (mapState[18] ?? null)) throw new Error(`Light map and layer texture changes require a new renderer: ${part.name}`);
       if (normalScale[0] !== mapState[5] || normalScale[1] !== mapState[6] || (part.material.occlusionStrength ?? 1) !== mapState[7] || mossState(part.material).some((value, index) => value !== mapState[8 + index]) || materialLayerState(part.material).some((value, index) => value !== location.layerState[index])) throw new Error(`Material map or scale changes require a new renderer: ${part.name}`);
       validateTransform(part, location.normalMatrix, hidden);
@@ -2060,6 +2095,7 @@ export class CrucibleRenderer {
     // A part moved toward the camera may leave the box the near plane is fitted to, and the plane would cut it (#2403). Growing the
     // box by the moved parts costs only them; it never shrinks, so the plane stays safe if not as tight.
     if (this.fitBounds) this.fitBounds = boundsGrownByParts(this.fitBounds, parts);
+    if (this.receiverBox) this.receiverBox = boundsGrownByParts(this.receiverBox, parts, { includeMoving: true });
     // A part that crossed a mirror (a flip animation, a toggled billboard) belongs to the other winding batch: regroup every part once.
     // replaceParts packs all parts again, so the rest of this update is done.
     if (mirrorChanged) {
@@ -2129,7 +2165,7 @@ export class CrucibleRenderer {
   shadowMapSizeWanted() {
     const casts = this.batches.some(batch => !batch.floor && batch.castShadow && !this.tintsShadow(batch));
     if (!casts || this.shadowCascades?.replacesSingleMap(this)) return 1;
-    const light = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedWorldShadowView());
+    const light = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedShadowView());
     return sunShadowMapSize(light.extent);
   }
 
@@ -2161,7 +2197,7 @@ export class CrucibleRenderer {
       if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Shadow framebuffer is incomplete.');
       this.shadowFramebufferCheckedSize = mapSize;
     }
-    const resolvedLight = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedWorldShadowView());
+    const resolvedLight = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedShadowView());
     const light = resolvedLight.hard ? registeredFeatureCode.get('hardShadows').snapView(resolvedLight, mapSize) : resolvedLight;
     writeShadowLightMatrix(this.lightProjection, light);
     context.viewport(0, 0, mapSize, mapSize);
@@ -2298,6 +2334,23 @@ export class CrucibleRenderer {
     const casters = this.batches.filter(batch => !batch.floor && batch.castShadow).flatMap(batch => batch.parts);
     if (casters.length === 0) return null;
     return fitWorldShadowView(sceneBoundsOfParts(casters));
+  }
+
+  // The sun view the scene needs: the world fit, or for a scene that is not a world and wrote no bounds, the studio fit (issue #3392).
+  fittedShadowView() {
+    return this.fittedWorldShadowView() ?? this.fittedStudioShadowView();
+  }
+
+  // A scene bigger than the default 7 m studio view gets a view fitted to its parts, so its far walls are shadowed. Cached like the miss check below.
+  fittedStudioShadowView() {
+    if (this.world || this.shadowBounds?.target !== undefined || this.shadowBounds?.extent !== undefined) return null;
+    const cacheKey = `${this.activeLightDirection}|${this.partsMoveCount ?? 0}`;
+    if (this.studioShadowFitCache?.batches !== this.batches || this.studioShadowFitCache.cacheKey !== cacheKey) {
+      const receivers = this.batches.filter(batch => !batch.floor).flatMap(batch => batch.parts);
+      const casters = this.batches.filter(batch => !batch.floor && batch.castShadow).flatMap(batch => batch.parts);
+      this.studioShadowFitCache = { batches: this.batches, cacheKey, view: fitStudioShadowView(casters, receivers, this.activeLightDirection) };
+    }
+    return this.studioShadowFitCache.view;
   }
 
   // The studio shadow view (3.5 m round the origin) stays when a scene sets no shadowBounds target or extent. Returns that view when every
@@ -2449,6 +2502,12 @@ export class CrucibleRenderer {
     const far = frame.far ?? (this.world ? 600 : 100);
     const near = fittedNearPlane(this.fitBounds, this.view, far);
     return near === 0.1 ? frame : { ...frame, near };
+  }
+
+  /** The box around every part where it rests, skinned parts included: where the sun's receivers end, which the cascaded shadows read. */
+  receiverBounds() {
+    if (this.receiverBox === undefined) this.receiverBox = sceneBoundsOfParts(this.fitParts, { includeMoving: true });
+    return this.receiverBox;
   }
 
   /** Every GPU render target this renderer holds: name, size, format, samples and bytes, largest first, with the total. */
@@ -2773,6 +2832,7 @@ export class CrucibleRenderer {
     const gradesColor = effects.saturation !== 1 || effects.contrast !== 1 || effects.temperature !== 0;
     const finishes = gradesColor || (frame.monochrome ?? 0) !== 0 || Boolean(frame.cinematic) || effects.vignette !== 0 || effects.grain !== 0;
     if (finishes) steps.push('finish');
+    if (isDitherActive(effects)) steps.push('dither');
     return steps;
   }
 
@@ -3175,6 +3235,7 @@ export class CrucibleRenderer {
       this.context.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
       if (this.shaderFeatures?.has('splat')) requireSplatSupport().bind(this, batch.splat);
       layerTextureSupport.bind?.(this, batch.mapState, layers, batch);
+      this.bindHeightParallax(batch);
       this.bindBatchWind(batch);
       this.context.uniform1f(this.uniforms.hasLightMap, batch.lightMapTexture ? 1 : 0);
       if (batch.lightMapTexture) {

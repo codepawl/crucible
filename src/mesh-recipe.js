@@ -1,6 +1,6 @@
 import { editMesh, meshData } from './mesh-edit.js';
 import { invalidField } from './field-error.js';
-import { editField, editBoolean } from './mesh-edit-field.js';
+import { editField, editBoolean, editEdgeRule } from './mesh-edit-field.js';
 import { countSelected, selectFaces } from './mesh-select.js';
 import {
   extrudeFaceRegion, extrudeIndividual, insetRegion, insetIndividual, deleteFaces, flipFaces, translateFaces, transformFaces, mergeByDistance, tagFaces,
@@ -10,6 +10,7 @@ import { meshBoolean, BOOLEAN_OPERATIONS } from './mesh-boolean.js';
 import { createMeshData } from './mesh-data.js';
 import { mirrorMesh, arrayMesh, solidifyMesh } from './mesh-stack.js';
 import { bevelEdges, MAX_BEVEL_SEGMENTS } from './mesh-bevel.js';
+import { normalizeMoveSelection, isElementMove, runElementMove } from './mesh-element-move.js';
 import { loopCut, MAX_LOOP_CUTS } from './mesh-loopcut.js';
 import { CUT_OPERATIONS, normalizeCutEdit, runCutEdit, checkCutBudget } from './mesh-cut-edits.js';
 import { RESHAPE_OPERATIONS, normalizeReshapeEdit, runReshapeEdit, checkReshapeBudget } from './mesh-reshape-edits.js';
@@ -32,11 +33,13 @@ import './field-rotation.js';
 import './field-mesh-inputs.js';
 import './field-voronoi.js';
 import './mesh-hull-modifiers.js';
+import './mesh-join.js';
 import './mesh-ocean-modifier.js';
 import './mesh-build-modifier.js';
 import { remeshMesh, remeshGridSize, MAX_REMESH_RESOLUTION } from './mesh-remesh.js';
 import {
-  MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES, SCULPT_STROKE_TYPES, MAX_SCULPT_STROKES, SHRINKWRAP_MODES,
+  MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES, ELEMENT_SELECTION_FIELDS, ELEMENT_MOVE_OPERATIONS, SCULPT_STROKE_TYPES, MAX_SCULPT_STROKES, SHRINKWRAP_MODES,
+  MAX_ARRAY_COUNT,
 } from './mesh-operations.js';
 export { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES };
 
@@ -158,11 +161,25 @@ function normalizeTransformRotation(rotation, index) {
   return { axis, angle };
 }
 
-function normalizeTransformScale(scale, index) {
+// A factor may be negative, which mirrors the selection across that axis (its faces are turned back outward); 0 would flatten it.
+function normalizeScaleFactor(factor, index) {
   const bounds = { minimum: 0, maximum: MAX_TRANSFORM_SCALE, exclusiveMinimum: true };
-  if (!Array.isArray(scale)) return finiteNumber(scale, index, 'scale', bounds);
-  if (scale.length !== 3) throw editField(index, 'scale', scale, 'one number above 0, or an array of three, such as 0.5 or [1, 2, 1]');
-  return scale.map(component => finiteNumber(component, index, 'scale', bounds));
+  if (typeof factor !== 'number') return finiteNumber(factor, index, 'scale', bounds);
+  const magnitude = finiteNumber(Math.abs(factor), index, 'scale', bounds);
+  return factor < 0 ? -magnitude : magnitude;
+}
+
+function normalizeTransformScale(scale, index) {
+  if (!Array.isArray(scale)) return normalizeScaleFactor(scale, index);
+  if (scale.length !== 3) throw editField(index, 'scale', scale, 'one number other than 0, or an array of three, such as 0.5 or [1, -1, 1] (a negative factor mirrors)');
+  return scale.map(component => normalizeScaleFactor(component, index));
+}
+
+/** True when the scale has an odd number of negative factors, which turns the selection inside out unless its faces are flipped. */
+export function mirrorsSelection(scale) {
+  if (scale === undefined) return false;
+  const factors = Array.isArray(scale) ? scale : [scale, scale, scale];
+  return factors.filter(factor => factor < 0).length % 2 === 1;
 }
 
 // rotation.angle is radians; a value in degrees is the usual slip, so the bound error says so.
@@ -179,6 +196,17 @@ function normalizeTransformSelection(edit, normalized, index) {
   }
   if (edit.scale !== undefined) normalized.scale = normalizeTransformScale(edit.scale, index);
   if (edit.falloff !== undefined) normalized.falloff = normalizeFalloff(edit.falloff, index);
+  if (edit.falloff !== undefined && mirrorsSelection(normalized.scale)) {
+    throw editField(index, 'scale', edit.scale, 'positive when a falloff is given, because a fading mirror folds the mesh through itself; mirror without a falloff');
+  }
+  if ((edit.verts !== undefined || edit.edges !== undefined) && mirrorsSelection(normalized.scale)) {
+    throw editField(index, 'scale', edit.scale, 'positive when verts or edges are given, because a mirrored part of a mesh has no faces to turn outward; select faces with select to mirror');
+  }
+}
+
+// The fields an op takes: its listed fields, plus the vertex and edge selections a move takes instead of a face rule.
+function editFields(op, definition) {
+  return ELEMENT_MOVE_OPERATIONS.includes(op) ? [...definition.fields, ...ELEMENT_SELECTION_FIELDS] : definition.fields;
 }
 
 /** Validate an edit list without running it. Returns normalized copies with default names filled in. */
@@ -190,10 +218,11 @@ export function normalizeMeshEdits(edits) {
     const definition = Object.hasOwn(MESH_EDIT_OPERATIONS, edit.op) ? MESH_EDIT_OPERATIONS[edit.op] : undefined;
     if (!definition) throw editField(index, 'op', edit.op, `one of ${Object.keys(MESH_EDIT_OPERATIONS).join(', ')}`);
     for (const key of Object.keys(edit)) {
-      if (key !== 'op' && !definition.fields.includes(key)) throw editField(index, key, edit[key], `one of the fields ${edit.op} takes: ${definition.fields.join(', ')}; remove "${key}"`);
+      if (key !== 'op' && !editFields(edit.op, definition).includes(key)) throw editField(index, key, edit[key], `one of the fields ${edit.op} takes: ${editFields(edit.op, definition).join(', ')}; remove "${key}"`);
     }
     const normalized = { op: edit.op };
-    if (definition.fields.includes('select')) {
+    const movesElements = normalizeMoveSelection(edit, normalized, index);
+    if (definition.fields.includes('select') && !movesElements) {
       if (edit.select === undefined && ['delete', 'tag', 'dissolve_faces'].includes(edit.op)) throw editField(index, 'select', edit.select, 'a face rule such as { "all": true } or { "tag": "top" }');
       normalized.select = edit.select ?? { all: true };
     }
@@ -268,7 +297,7 @@ export function normalizeMeshEdits(edits) {
         normalized.merge = edit.merge === undefined ? 0.001 : finiteNumber(edit.merge, index, 'merge', { minimum: 0, maximum: 1e3 });
         break;
       case 'array':
-        if (!Number.isInteger(edit.count ?? 2) || (edit.count ?? 2) < 1 || (edit.count ?? 2) > 256) throw editField(index, 'count', edit.count, 'a whole number from 1 to 256, such as 4');
+        if (!Number.isInteger(edit.count ?? 2) || (edit.count ?? 2) < 1 || (edit.count ?? 2) > MAX_ARRAY_COUNT) throw editField(index, 'count', edit.count, `a whole number from 1 to ${MAX_ARRAY_COUNT}, such as 4`);
         normalized.count = edit.count ?? 2;
         normalized.offset = edit.offset === undefined ? [0, 0, 0] : vector(edit.offset, index, 'offset');
         normalized.relativeOffset = edit.relativeOffset === undefined ? (edit.offset === undefined ? [1, 0, 0] : [0, 0, 0]) : vector(edit.relativeOffset, index, 'relativeOffset');
@@ -281,10 +310,7 @@ export function normalizeMeshEdits(edits) {
         normalized.evenThickness = edit.evenThickness ?? true;
         break;
       case 'bevel':
-        if (edit.edges !== undefined && (!edit.edges || typeof edit.edges !== 'object' || Array.isArray(edit.edges))) {
-          throw editField(index, 'edges', edit.edges, 'an edge rule such as { "all": true }, { "angle": 30 }, { "between": [faceRule, faceRule] } or { "boundaryOf": faceRule }');
-        }
-        normalized.edges = edit.edges ?? { angle: 30 };
+        normalized.edges = edit.edges === undefined ? { angle: 30 } : editEdgeRule(edit.edges, index, 'edges', 'an edge rule such as { "all": true }, { "angle": 30 }, { "between": [faceRule, faceRule] } or { "boundaryOf": faceRule }');
         normalized.width = finiteNumber(edit.width, index, 'width', { minimum: 0, exclusiveMinimum: true });
         if (!Number.isInteger(edit.segments ?? 1) || (edit.segments ?? 1) < 1 || (edit.segments ?? 1) > MAX_BEVEL_SEGMENTS) throw editField(index, 'segments', edit.segments, `a whole number from 1 to ${MAX_BEVEL_SEGMENTS}, such as 3`);
         normalized.segments = edit.segments ?? 1;
@@ -293,10 +319,7 @@ export function normalizeMeshEdits(edits) {
         normalized.clampOverlap = edit.clampOverlap ?? true;
         break;
       case 'loop_cut':
-        if (!edit.edges || typeof edit.edges !== 'object' || Array.isArray(edit.edges)) {
-          throw editField(index, 'edges', edit.edges, 'a rule that picks the ring, such as { "along": [0, 1, 0] } for the vertical edges');
-        }
-        normalized.edges = edit.edges;
+        normalized.edges = editEdgeRule(edit.edges, index, 'edges', 'a rule that picks the ring, such as { "along": [0, 1, 0] } for the vertical edges');
         if (!Number.isInteger(edit.cuts ?? 1) || (edit.cuts ?? 1) < 1 || (edit.cuts ?? 1) > MAX_LOOP_CUTS) throw editField(index, 'cuts', edit.cuts, `a whole number from 1 to ${MAX_LOOP_CUTS}, such as 1`);
         normalized.cuts = edit.cuts ?? 1;
         if (edit.factor !== undefined && normalized.cuts !== 1) throw editField(index, 'factor', edit.factor, 'left out when cuts is above 1, because factor applies only to a single cut');
@@ -304,10 +327,7 @@ export function normalizeMeshEdits(edits) {
         if (normalized.factor === 0 || normalized.factor === 1) throw editField(index, 'factor', normalized.factor, 'a number above 0 and below 1, such as 0.5');
         break;
       case 'uv_unwrap':
-        if (edit.seams !== undefined && (!edit.seams || typeof edit.seams !== 'object' || Array.isArray(edit.seams))) {
-          throw editField(index, 'seams', edit.seams, 'an edge rule such as { "angle": 60 } or { "boundaryOf": { "tag": "lid.cap" } }');
-        }
-        normalized.seams = edit.seams ?? { angle: 60 };
+        normalized.seams = edit.seams === undefined ? { angle: 60 } : editEdgeRule(edit.seams, index, 'seams', 'an edge rule such as { "angle": 60 } or { "boundaryOf": { "tag": "lid.cap" } }');
         normalized.margin = edit.margin === undefined ? 0.01 : finiteNumber(edit.margin, index, 'margin', { minimum: 0, maximum: 0.2 });
         normalized.maxDistortion = edit.maxDistortion === undefined ? 0.25 : finiteNumber(edit.maxDistortion, index, 'maxDistortion', { minimum: 0, maximum: 100 });
         break;
@@ -333,10 +353,7 @@ export function normalizeMeshEdits(edits) {
         }
         normalized.levels = edit.levels ?? 1;
         if (edit.crease !== undefined) {
-          if (!edit.crease || typeof edit.crease !== 'object' || Array.isArray(edit.crease)) {
-            throw editField(index, 'crease', edit.crease, 'an edge rule such as { "angle": 60 } or { "between": [faceRule, faceRule] }');
-          }
-          normalized.crease = edit.crease;
+          normalized.crease = editEdgeRule(edit.crease, index, 'crease', 'an edge rule such as { "angle": 60 } or { "between": [faceRule, faceRule] }');
           normalized.sharpness = edit.sharpness === undefined
             ? MAX_CREASE_SHARPNESS
             : finiteNumber(edit.sharpness, index, 'sharpness', { minimum: 0, maximum: MAX_CREASE_SHARPNESS, exclusiveMinimum: true });
@@ -471,14 +488,14 @@ function surfaceLoader(resolveCutter) {
   };
 }
 
-function runEdit(current, edit, index, { resolveCutter, resolveHeight, limits }) {
+function runEdit(current, edit, index, { resolveCutter, resolveHeight, resolveJoinMesh, limits }) {
   const loadSurface = surfaceLoader(resolveCutter);
   const result = { op: edit.op };
   if (edit.name) result.name = edit.name;
   if (isModifierOperation(edit.op)) {
     let outcome;
     try {
-      outcome = runModifierEdit(current, edit, limits);
+      outcome = runModifierEdit(current, edit, { ...limits, resolveJoinMesh });
     } catch (error) {
       throw editFailure(error, index, `${edit.op}`);
     }
@@ -652,6 +669,7 @@ function runEdit(current, edit, index, { resolveCutter, resolveHeight, limits })
     result.tags = tagSummary(generated, edit.name);
     return { mesh: generated, result };
   }
+  if (isElementMove(edit)) return runElementMove(current, edit, index, result, editFailure);
   let mask;
   try {
     mask = selectFaces(current, edit.select);
@@ -689,6 +707,7 @@ function runEdit(current, edit, index, { resolveCutter, resolveHeight, limits })
       break;
     case 'transform_selection':
       result.movedVertices = transformFaces(editable, mask, edit).movedVertices;
+      if (mirrorsSelection(edit.scale)) flipFaces(editable, mask);
       break;
     case 'tag':
       tagFaces(editable, Array.from(mask.keys()).filter(face => mask[face]), edit.name);
@@ -727,14 +746,14 @@ function tagSummary(mesh, name) {
  * the tags it created (and their face counts) and the mesh size after it.
  * An edit that selects no faces throws, because silently doing nothing hides a wrong selection from the agent.
  */
-export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 250_000, resolveCutter, resolveHeight } = {}) {
+export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 250_000, resolveCutter, resolveHeight, resolveJoinMesh } = {}) {
   const normalized = normalizeMeshEdits(edits);
   const limits = { maxVertices, maxFaces };
   const results = [];
   let current = mesh;
   normalized.forEach((edit, index) => {
     checkArrayBudget(current, edit, limits, index);
-    const outcome = runEdit(current, edit, index, { resolveCutter, resolveHeight, limits });
+    const outcome = runEdit(current, edit, index, { resolveCutter, resolveHeight, resolveJoinMesh, limits });
     current = outcome.mesh;
     checkBudget(current, limits, index, edit.op);
     outcome.result.after = { vertices: current.vertexCount, faces: current.faceCount };
@@ -744,18 +763,25 @@ export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 
 }
 
 
-/** Validate a modifier stack: nodes restricted to STACK_OPERATIONS, at most 16. */
+/**
+ * Validate a modifier stack: nodes restricted to STACK_OPERATIONS, at most 16. A node may carry `enabled: false`, the
+ * switch that hides a modifier without deleting it: it stays in the stack and is skipped when the stack runs.
+ * `enabled: true` is the default and is not kept.
+ */
 export function normalizeMeshStack(stack) {
   if (!Array.isArray(stack)) throw new TypeError('stack must be an array.');
   if (stack.length > MAX_STACK_NODES) throw new RangeError(`A stack holds at most ${MAX_STACK_NODES} nodes.`);
   for (const [index, node] of stack.entries()) {
     if (!STACK_OPERATIONS.includes(node?.op)) throw new TypeError(`Stack node ${index} op must be one of ${STACK_OPERATIONS.join(', ')}.`);
+    if (node.enabled !== undefined && typeof node.enabled !== 'boolean') throw editField(index, 'enabled', node.enabled, 'true or false');
   }
   // Stack nodes default their names from their own position, separately from the edit log.
-  return normalizeMeshEdits(stack.map((node, index) => {
-    if (!MESH_EDIT_OPERATIONS[node.op].fields.includes('name')) return node;
-    return { ...node, name: node.name ?? `${node.op}-s${index + 1}` };
+  const normalized = normalizeMeshEdits(stack.map((node, index) => {
+    const { enabled, ...operationFields } = node;
+    if (!MESH_EDIT_OPERATIONS[node.op].fields.includes('name')) return operationFields;
+    return { ...operationFields, name: node.name ?? `${node.op}-s${index + 1}` };
   }));
+  return normalized.map((node, index) => (stack[index].enabled === false ? { ...node, enabled: false } : node));
 }
 
 /**
@@ -770,6 +796,10 @@ export function evaluateMeshStack(mesh, stack, { maxVertices = 250_000, maxFaces
   let current = mesh;
   let key = cacheKey;
   normalized.forEach((node, index) => {
+    if (node.enabled === false) {
+      results.push({ op: node.op, enabled: false, after: { vertices: current.vertexCount, faces: current.faceCount } });
+      return;
+    }
     key = key === undefined ? undefined : `${key}|${JSON.stringify(node)}`;
     const hit = key === undefined ? undefined : cache?.get(key);
     let result;

@@ -1,79 +1,33 @@
-// Runs every tests/*.test.js that mentions one of the given source files, directly or through one level of re-export.
+// Runs every tests/*.test.js that mentions one of the given source files, by name, or reaches one of them through the import graph.
 // Usage: npm run test:affected -- src/foo.js scripts/bar.mjs
 //        npm run test:affected            with no files, uses the files changed since origin/main (as preflight does)
-import { readdirSync, readFileSync } from 'node:fs';
-import { basename, dirname, join, normalize, relative, resolve } from 'node:path';
+import { basename } from 'node:path';
+import { buildImportGraph } from './import-graph.mjs';
+import { lockMachineForLocalTests } from './machine-lock.mjs';
 import { changedPathsSince } from './preflight.mjs';
 import { isMainModule, listTestFiles, repositoryRoot, runTestFiles } from './test-run.mjs';
 
-const SOURCE_FOLDERS = ['src', 'scripts', 'packages', 'bin'];
-const SOURCE_EXTENSION = /\.(m?js|cjs)$/;
-const REEXPORT_PATTERN = /export\s+(?:\*(?:\s+as\s+\w+)?|\{[^}]*\})\s+from\s+['"]([^'"]+)['"]/g;
-
 function toPosix(path) {
   return path.replace(/\\/g, '/');
-}
-
-function listSourceFiles(folder) {
-  const found = [];
-  const visit = directory => {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (entry.name === 'node_modules') continue;
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) visit(path);
-      else if (SOURCE_EXTENSION.test(entry.name)) found.push(path);
-    }
-  };
-  for (const sourceFolder of SOURCE_FOLDERS) {
-    try {
-      visit(join(folder, sourceFolder));
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
-    }
-  }
-  return found;
-}
-
-// Files that re-export `targetPath` (repo-relative, posix): `export ... from './target.js'`.
-export function findReexporters(targetPath, folder = repositoryRoot) {
-  const target = normalize(resolve(folder, targetPath));
-  const reexporters = [];
-  for (const sourceFile of listSourceFiles(folder)) {
-    const text = readFileSync(sourceFile, 'utf8');
-    for (const match of text.matchAll(REEXPORT_PATTERN)) {
-      if (!match[1].startsWith('.')) continue;
-      if (normalize(resolve(dirname(sourceFile), match[1])) === target) {
-        reexporters.push(toPosix(relative(folder, sourceFile)));
-        break;
-      }
-    }
-  }
-  return reexporters;
 }
 
 function escapeForPattern(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function mentionPattern(filePath) {
-  return new RegExp(`(^|[/'"\`\\s])${escapeForPattern(basename(filePath))}`);
+// One pattern for all names: a name starts after a path separator, a quote or whitespace.
+function mentionPattern(filePaths) {
+  const names = new Set(filePaths.map(filePath => escapeForPattern(basename(filePath))));
+  return new RegExp(`(^|[/'"\`\\s])(?:${[...names].join('|')})`);
 }
 
-// Test files (repo-relative, sorted) that mention any given file by name, or a module that re-exports it.
+// Test files (repo-relative, sorted) that reach a changed file through imports or re-exports of any depth, or that name a
+// changed file or a file that reaches it (a script they spawn or read by path).
 export function findAffectedTests(sourcePaths, folder = repositoryRoot) {
-  const sources = sourcePaths.map(toPosix);
-  const names = new Set(sources);
-  for (const source of sources) {
-    if (SOURCE_EXTENSION.test(source)) findReexporters(source, folder).forEach(path => names.add(path));
-  }
-  const patterns = [...names].map(mentionPattern);
-  const testFiles = listTestFiles(folder);
-  const affected = testFiles.filter(testFile => {
-    if (names.has(testFile)) return true;
-    const text = readFileSync(join(folder, testFile), 'utf8');
-    return patterns.some(pattern => pattern.test(text));
-  });
-  return affected;
+  const graph = buildImportGraph(folder);
+  const reached = graph.reachedFrom(sourcePaths.map(toPosix));
+  const pattern = mentionPattern([...reached]);
+  return listTestFiles(folder).filter(testFile => reached.has(testFile) || pattern.test(graph.sourceOf(testFile)));
 }
 
 async function main(arguments_) {
@@ -85,6 +39,7 @@ async function main(arguments_) {
     return;
   }
   console.log(`Running ${affected.length} test file(s) that mention ${sourcePaths.length} file(s).`);
+  await lockMachineForLocalTests('npm run test:affected');
   process.exit(runTestFiles(affected).code);
 }
 

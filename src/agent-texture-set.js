@@ -1,6 +1,6 @@
 import { createImage } from './material-texture-kit.js';
 import { invalidField } from './field-error.js';
-import { NORMAL_CONVENTIONS, TEXTURE_MAP_FIELDS, UV_TRANSFORM_FIELDS, UV_TRANSFORM_LIMITS } from './texture-set-fields.js';
+import { HEIGHT_PARALLAX_FIELDS, HEIGHT_PARALLAX_LIMITS, NORMAL_CONVENTIONS, TEXTURE_MAP_FIELDS, UV_TRANSFORM_FIELDS, UV_TRANSFORM_LIMITS } from './texture-set-fields.js';
 
 // Scanned PBR maps on a recipe material: `colorMap`, `normalMap`, `roughnessMap`, `metallicMap`, `occlusionMap` and `heightMap`
 // each take a catalog image asset ID (the MCP server turns `textureSet: "<name>"` into those IDs before the scene is built).
@@ -35,7 +35,8 @@ export function applyTextureMaps(value, result) {
   }
   const used = TEXTURE_MAP_FIELDS.filter(field => value[field] !== undefined);
   applyUvTransform(value, result, used.length > 0 || value.map !== undefined);
-  if (used.length === 0 && value.normalConvention === undefined) return;
+  const usesParallax = HEIGHT_PARALLAX_FIELDS.some(field => value[field] !== undefined);
+  if (used.length === 0 && value.normalConvention === undefined && !usesParallax) return;
   if (result.tag !== 'surface') throw invalidField(used[0] ?? 'normalConvention', value[used[0]], 'a material with the surface tag; remove the map fields or use the surface tag');
   if (value.pattern !== undefined) throw invalidField(used[0] ?? 'normalConvention', value[used[0]], 'nothing, because a material takes a pattern or catalog maps, not both', TypeError);
   if (value.colorMap !== undefined && value.map !== undefined) throw invalidField('colorMap', value.colorMap, 'nothing, because the colour map is either a map sequence or a catalog colorMap, not both', TypeError);
@@ -51,6 +52,21 @@ export function applyTextureMaps(value, result) {
     if (value.normalMap === undefined) throw invalidField('normalConvention', value.normalConvention, 'a material that sets normalMap; add the normal map, or remove normalConvention');
     result.normalConvention = value.normalConvention;
   }
+  if (usesParallax) applyHeightParallax(value, result);
+}
+
+const HEIGHT_EXAMPLES = Object.freeze({ heightScale: '0.02 (2 cm deep)', heightFade: '12 (metres)', heightSteps: '16' });
+
+/** Each parallax field sits inside its limits (heightSteps is a whole number), with or without a heightMap, and the fields need a heightMap. The module that draws the relief is not loaded for this. */
+function applyHeightParallax(value, result) {
+  const named = HEIGHT_PARALLAX_FIELDS.find(field => value[field] !== undefined);
+  if (value.heightScale !== undefined) result.heightScale = checkedNumber('heightScale', value.heightScale, HEIGHT_PARALLAX_LIMITS.scale, HEIGHT_EXAMPLES.heightScale);
+  if (value.heightFade !== undefined) result.heightFade = checkedNumber('heightFade', value.heightFade, HEIGHT_PARALLAX_LIMITS.fade, HEIGHT_EXAMPLES.heightFade);
+  if (value.heightSteps !== undefined) {
+    if (!Number.isInteger(value.heightSteps)) throw invalidField('heightSteps', value.heightSteps, `a whole number ${rangeText(HEIGHT_PARALLAX_LIMITS.steps)}, such as ${HEIGHT_EXAMPLES.heightSteps}`);
+    result.heightSteps = checkedNumber('heightSteps', value.heightSteps, HEIGHT_PARALLAX_LIMITS.steps, HEIGHT_EXAMPLES.heightSteps);
+  }
+  if (value.heightMap === undefined) throw invalidField(named, value[named], 'a material that sets heightMap; add the height map, or remove the parallax fields');
 }
 
 function sameSize(left, right) {

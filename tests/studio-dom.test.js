@@ -6,6 +6,7 @@ import { decodePack } from '../src/scene-pack-format.js';
 import { STUDIO_CSS } from '../src/studio-styles.js';
 import { createStudio, createStudioController, STUDIO_PRIMITIVES, STUDIO_TABS, STUDIO_TEMPLATES, STUDIO_TOOLS } from '../src/studio.js';
 import { LIGHTING_SETUP_NAMES } from '../src/agent-scene-capabilities.js';
+import { createAgentScene } from '../src/agent-scene.js';
 import { directionToSunAngles, hexToLinearRgb } from '../src/studio-controller.js';
 import { buildGridParts } from '../src/studio-viewport-aids.js';
 import { VIEW_TRANSFORM_NAMES } from '../src/view-transform-names.js';
@@ -160,11 +161,14 @@ test('tool buttons, tab buttons and tool keys switch the active tool and inspect
       assert.equal(ui.tool(other).getAttribute('aria-pressed'), other === tool ? 'true' : 'false');
     }
   }
-  const keyToTool = { q: 'select', g: 'translate', r: 'rotate', s: 'scale', t: 'snap', G: 'translate' };
+  const keyToTool = { q: 'select', g: 'translate', r: 'rotate', s: 'scale', G: 'translate' };
   for (const [key, tool] of Object.entries(keyToTool)) {
     dispatch(ui.dom.document, 'keydown', { key });
     assert.equal(ui.controller.tool, tool, `key ${key}`);
   }
+  assert.equal(ui.dom.document.querySelector('[data-tool="snap"]'), null, 'snapping is no longer a tool on the rail');
+  dispatch(ui.dom.document, 'keydown', { key: 't' });
+  assert.equal(ui.controller.tool, 'translate', 'T, the old Snap key, is free');
 
   for (const tab of STUDIO_TABS) {
     ui.tab(tab).click();
@@ -267,9 +271,11 @@ test('the outliner selects, hides, filters and renames nodes', testContext => {
 
   ui.rows()[2].querySelector('.crucible-studio-tree-select').dispatchEvent(ui.dom.document.createEvent('dblclick'));
   assert.equal(ui.controller.selectedNodeId, 'orb');
-  assert.equal(ui.controller.activeTab, 'node');
-  assert.equal(ui.dom.document.activeElement, ui.label('Node label'));
-  assert.equal(ui.label('Node label').selected, true);
+  const rowEditorInput = ui.root.querySelector('.crucible-studio-name-editor input');
+  assert.equal(rowEditorInput.value, 'orb', 'a double click edits the name in the row itself (#3344)');
+  assert.equal(ui.dom.document.activeElement === rowEditorInput, true);
+  assert.equal(rowEditorInput.selected, true);
+  dispatch(rowEditorInput, 'keydown', { key: 'Escape' });
 
   const nameInput = ui.label('Node label');
   nameInput.value = 'Moon';
@@ -501,7 +507,7 @@ test('a scene holding a heart and a vase shows both in the Scene list and select
 
 test('popover buttons open each menu, close it again on a click inside and stay inside the window', testContext => {
   const ui = mountStudio(testContext);
-  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  const filePill = ui.root.querySelectorAll('button').find(button => button.getAttribute('popovertarget') === 'crucible-studio-pop-new');
   filePill.box = { left: 20, top: 10, width: 120, height: 24, right: 140, bottom: 34 };
   filePill.click();
   const newPopover = ui.root.querySelector('#crucible-studio-pop-new');
@@ -512,14 +518,7 @@ test('popover buttons open each menu, close it again on a click inside and stay 
   newPopover.querySelector('#crucible-studio-recent-list').dispatchEvent(ui.dom.document.createEvent('click', { bubbles: true }));
   assert.equal(newPopover.popoverOpen, true);
 
-  const exportButton = byText(ui.root, 'Export').parentNode;
-  exportButton.box = { left: 1100, top: 8, width: 90, height: 30, right: 1190, bottom: 38 };
-  exportButton.click();
-  const exportPopover = ui.root.querySelector('#crucible-studio-pop-export');
-  assert.equal(exportPopover.style.left, 'auto');
-  assert.equal(exportPopover.style.right, '85px');
-  byText(exportPopover, 'PNG image').click();
-  assert.equal(exportPopover.popoverOpen, false);
+  assert.equal(ui.root.querySelector('#crucible-studio-pop-export'), null, 'Export is a workspace, so the top bar holds no export menu');
 
   const syncButton = ui.label('Work with an AI agent');
   syncButton.box = { left: 1000, top: 700, width: 30, height: 30, right: 1030, bottom: 730 };
@@ -891,9 +890,6 @@ test('the gizmo draws handles for each tool and clears them when nothing is sele
   ui.studio.renderNow();
   assert.deepEqual([...axesDrawn()].sort(), ['uniform', 'x', 'y', 'z']);
   assert.equal(ui.gizmo.querySelectorAll('rect').length, 3);
-  ui.tool('snap').click();
-  ui.studio.renderNow();
-  assert.deepEqual([...axesDrawn()].sort(), ['surface', 'x', 'y', 'z']);
 });
 
 test('dragging a gizmo handle with the pointer moves the node, and undo puts it back', testContext => {
@@ -927,7 +923,7 @@ test('dragging a gizmo handle with the pointer moves the node, and undo puts it 
   assert.deepEqual(ui.node('hero').translation, [0, 0.5, 0]);
 });
 
-test('rotate and scale handles turn and stretch the node, and shift snaps the turn', testContext => {
+test('rotate and scale handles turn and stretch the node, and Ctrl snaps the turn', testContext => {
   const ui = mountStudio(testContext);
   ui.selectRow('hero');
   ui.tool('rotate').click();
@@ -939,7 +935,7 @@ test('rotate and scale handles turn and stretch the node, and shift snaps the tu
     handles.pivot[2] - Math.sin((degrees * Math.PI) / 180),
   ]);
   dispatch(ui.gizmoPart('y'), 'pointerdown', ui.clientPoint(ringPoint(0)));
-  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(ringPoint(33)), shiftKey: true });
+  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(ringPoint(33)), ctrlKey: true });
   dispatch(ui.canvas, 'pointerup', ui.clientPoint(ringPoint(33)));
   assert.ok(Math.abs(ui.node('hero').rotation[1] - Math.sin((15 * Math.PI) / 180)) < 1e-3);
   assert.ok(Math.abs(ui.label('Rotation ° Y').value - 30) < 0.5);
@@ -1008,14 +1004,16 @@ test('the mouse wheel zooms the camera and the page does not scroll', testContex
   assert.ok(distance() / beforeHuge <= 1.35 + 1e-3, 'one wheel step is limited to 35 percent');
 });
 
-test('alt-clicking with the snap tool drops the selection onto the surface under the pointer', testContext => {
-  const ui = mountStudio(testContext);
+test('Move with the Face target drops the selection onto the surface under the pointer', testContext => {
+  const ui = mountStudio(testContext, { preferences: { snapEnabled: true, snapTarget: 'face' } });
   ui.selectRow('hero');
   ui.controller.updateNodeTransform('hero', { translation: [0, 5, 0] });
-  ui.tool('snap').click();
+  ui.tool('translate').click();
+  ui.studio.renderNow();
   const floorPoint = ui.controller.projectWorldPoint([0, 0, -2]);
-  dispatch(ui.canvas, 'pointerdown', ui.clientPoint(floorPoint));
-  dispatch(ui.canvas, 'pointerup', { ...ui.clientPoint(floorPoint), altKey: true });
+  dispatch(ui.gizmoPart('screen'), 'pointerdown', ui.clientPoint(ui.controller.gizmoHandles().origin));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(floorPoint));
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(floorPoint));
   assert.ok(ui.node('hero').translation[1] < 1.2, `y ${ui.node('hero').translation[1]}`);
   assert.equal(ui.controller.selectedNodeId, 'hero');
 
@@ -1332,6 +1330,481 @@ test('Save downloads the recipe in the browser and clears the unsaved mark', asy
   assert.equal(ui.dom.document.downloads.length, 4);
 });
 
+const sceneNameEditor = ui => ui.root.querySelector('.crucible-studio-name-editor');
+
+async function renameSceneTo(ui, typedText, key = 'Enter') {
+  ui.root.querySelector('.crucible-studio-filepill').click();
+  const input = sceneNameEditor(ui).querySelector('input');
+  input.value = typedText;
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key });
+  await ui.dom.settle();
+}
+
+test('a click on the scene name edits its name part in place and keeps the type fixed (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  assert.equal(filePill.getAttribute('aria-label'), 'Rename scene');
+  filePill.click();
+  assert.notEqual(ui.root.querySelector('#crucible-studio-pop-new').popoverOpen, true, 'the File menu belongs to the File button');
+  const editor = sceneNameEditor(ui);
+  assert.equal(filePill.dataset.renaming, 'true');
+  const input = editor.querySelector('input');
+  assert.equal(input.value, 'untitled');
+  assert.equal(input.getAttribute('aria-label'), 'Rename scene');
+  assert.equal(editor.querySelector('.crucible-studio-name-suffix').textContent, '.scene.json');
+  assert.equal(input.selected, true);
+
+  input.value = 'lounge.glb';
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key: 'Enter' });
+  await ui.dom.settle();
+  assert.equal(sceneNameEditor(ui), null);
+  assert.equal(filePill.textContent, 'lounge.scene.json', 'the typed type is dropped and the original type stays');
+  assert.equal(filePill.dataset.dirty, 'false', 'the name is not part of the recipe, so a rename is not a change of the scene');
+  assert.equal(ui.status(), 'Renamed. Saved under this name next time.');
+  assert.notEqual(ui.root.querySelector('.crucible-studio-status svg'), null, 'the toast starts with a mark');
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
+  await ui.dom.settle();
+  assert.equal(ui.dom.document.downloads.at(-1).filename, 'lounge.scene.json');
+});
+
+test('the scene name editor refuses bad names in place and Escape restores the old name (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  for (const bad of ['', '   ', 'a|b', 'a.', '...', 'CON', 'x'.repeat(121)]) {
+    await renameSceneTo(ui, bad);
+    const editor = sceneNameEditor(ui);
+    assert.notEqual(editor, null, `${JSON.stringify(bad)} keeps the editor open`);
+    assert.equal(editor.querySelector('.crucible-studio-name-error').hidden, false);
+    assert.equal(filePill.textContent, 'untitled.scene.json');
+    dispatch(editor.querySelector('input'), 'keydown', { key: 'Escape' });
+    assert.equal(sceneNameEditor(ui), null);
+    assert.equal(filePill.textContent, 'untitled.scene.json');
+  }
+  await renameSceneTo(ui, 'changed', 'Escape');
+  assert.equal(filePill.textContent, 'untitled.scene.json', 'Escape cancels a valid name too');
+});
+
+test('a click away keeps a valid scene name and drops an invalid one (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  filePill.click();
+  let input = sceneNameEditor(ui).querySelector('input');
+  input.value = 'half|typed';
+  dispatch(input, 'input');
+  dispatch(input, 'blur');
+  await ui.dom.settle();
+  assert.equal(sceneNameEditor(ui), null);
+  assert.equal(filePill.textContent, 'untitled.scene.json');
+  filePill.click();
+  input = sceneNameEditor(ui).querySelector('input');
+  input.value = 'kept';
+  dispatch(input, 'input');
+  dispatch(input, 'blur');
+  await ui.dom.settle();
+  assert.equal(filePill.textContent, 'kept.scene.json');
+});
+
+test('studio shortcuts do not fire while a name is typed (#3344)', testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  const toolBefore = ui.controller.tool;
+  ui.root.querySelector('.crucible-studio-filepill').click();
+  const input = sceneNameEditor(ui).querySelector('input');
+  for (const key of ['g', 'r', 's', 'x', 'a', 'Delete', 'Backspace']) dispatch(input, 'keydown', { key });
+  dispatch(input, 'keydown', { key: 'a', ctrlKey: true });
+  assert.deepEqual(ui.studio.exportRecipe().nodes.map(node => node.id), ['ground', 'hero', 'orb']);
+  assert.equal(ui.controller.selectedNodeId, 'hero');
+  assert.equal(ui.controller.tool, toolBefore);
+});
+
+test('a second rename does not repeat the browser notice and a new file closes an open editor (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  await renameSceneTo(ui, 'first');
+  assert.match(ui.status(), /Saved under this name next time/);
+  ui.dom.runTimers();
+  await renameSceneTo(ui, 'second');
+  assert.doesNotMatch(ui.status(), /Saved under this name/);
+  ui.root.querySelector('.crucible-studio-filepill').click();
+  assert.notEqual(sceneNameEditor(ui), null);
+  ui.studio.setFileContext({ filePath: 'C:/scenes/other.scene.json', fileName: 'other.scene.json' });
+  assert.equal(sceneNameEditor(ui), null, 'the name never lands on a different file');
+  assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, 'other.scene.json');
+});
+
+test('a host that can rename is asked, never overwrites and reports a taken name in place (#3344)', async testContext => {
+  const taken = new Set(['C:/scenes/taken.scene.json']);
+  const desktop = createDesktop({
+    renameScene: async ({ filePath, fileName }) => {
+      const target = `C:/scenes/${fileName}`;
+      desktop.calls.push({ name: 'renameScene', argument: { filePath, fileName } });
+      return taken.has(target) ? { exists: true } : { filePath: target, fileName };
+    },
+  });
+  const ui = mountStudio(testContext, { desktop });
+  ui.studio.setFileContext({ filePath: 'C:/scenes/old.scene.json', fileName: 'old.scene.json', dirty: false });
+  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  await renameSceneTo(ui, 'taken');
+  const editor = sceneNameEditor(ui);
+  assert.notEqual(editor, null, 'the editor stays open');
+  assert.equal(editor.querySelector('.crucible-studio-name-error-text').textContent, 'A file with this name already exists');
+  assert.equal(filePill.textContent, 'old.scene.json');
+  const input = editor.querySelector('input');
+  input.value = 'fresh';
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key: 'Enter' });
+  await ui.dom.settle();
+  assert.equal(filePill.textContent, 'fresh.scene.json');
+  assert.equal(filePill.title, 'C:/scenes/fresh.scene.json');
+  assert.deepEqual(desktop.calls.filter(call => call.name === 'renameScene').map(call => call.argument.fileName), ['taken.scene.json', 'fresh.scene.json']);
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
+  await ui.dom.settle();
+  assert.equal(desktop.calls.at(-1).name, 'saveFile', 'the file already moved, so Save writes to its new path');
+  assert.equal(desktop.calls.at(-1).argument.filePath, 'C:/scenes/fresh.scene.json');
+});
+
+test('renaming the scene renames its entry in Open recent, and a scene that was never listed stays out of it (#3344)', async testContext => {
+  let entries = [{ id: 'h1', name: 'old.scene.json' }];
+  const recentScenes = {
+    list: async () => entries.map(entry => ({ ...entry })),
+    remember: async ({ name }) => {
+      entries = [{ id: `h-${name}`, name }, ...entries.filter(entry => entry.name !== name)];
+    },
+    remove: async id => {
+      entries = entries.filter(entry => entry.id !== id);
+    },
+  };
+  const desktop = createDesktop({
+    recentScenes,
+    renameScene: async ({ fileName }) => ({ filePath: `C:/scenes/${fileName}`, fileName }),
+  });
+  const ui = mountStudio(testContext, { desktop });
+  ui.studio.setFileContext({ filePath: 'C:/scenes/old.scene.json', fileName: 'old.scene.json', dirty: false });
+  await renameSceneTo(ui, 'fresh');
+  assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, 'fresh.scene.json');
+  assert.deepEqual(entries.map(entry => entry.name), ['fresh.scene.json'], 'the list shows the new name and no leftover of the old one');
+
+  entries = [{ id: 'h2', name: 'other.scene.json' }];
+  await renameSceneTo(ui, 'again');
+  assert.deepEqual(entries.map(entry => entry.name), ['other.scene.json'], 'a scene that was not in the list is not added by a rename');
+});
+
+test('a host without a rename method sends the next Save through Save as with the new name (#3344)', async testContext => {
+  const desktop = createDesktop();
+  const ui = mountStudio(testContext, { desktop });
+  ui.studio.setFileContext({ filePath: 'C:/scenes/old.scene.json', fileName: 'old.scene.json', dirty: false });
+  await renameSceneTo(ui, 'newer');
+  assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, 'newer.scene.json');
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
+  await ui.dom.settle();
+  assert.equal(desktop.calls.at(-1).name, 'saveFileAs');
+  assert.equal(desktop.calls.at(-1).argument.suggestedName, 'newer.scene.json');
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
+  await ui.dom.settle();
+  assert.equal(desktop.calls.at(-1).name, 'saveFile', 'after the file exists under the new name, Save is plain again');
+});
+
+async function typeInRowEditor(ui, typedText, key = 'Enter') {
+  const input = ui.root.querySelector('.crucible-studio-tree .crucible-studio-name-editor input');
+  input.value = typedText;
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key });
+  await ui.dom.settle();
+}
+
+test('F2 renames the active object in its Scene row; the id stays, labels may repeat, one undo step (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  const dirtyBefore = ui.root.querySelector('.crucible-studio-filepill').dataset.dirty;
+  assert.equal(dirtyBefore, 'false');
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  const input = ui.root.querySelector('.crucible-studio-tree .crucible-studio-name-editor input');
+  assert.equal(input.value, 'hero');
+  assert.equal(input.getAttribute('aria-label'), 'Rename hero');
+  await typeInRowEditor(ui, '  Hero cube  ');
+  assert.equal(ui.node('hero').label, 'Hero cube');
+  assert.equal(ui.node('hero').id, 'hero');
+  assert.deepEqual(ui.rowLabels(), ['ground', 'Hero cube', 'orb']);
+  assert.equal(ui.root.querySelector('.crucible-studio-filepill').dataset.dirty, 'true', 'a label is part of the saved recipe');
+
+  ui.selectRow('orb');
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  await typeInRowEditor(ui, 'Hero cube');
+  assert.deepEqual(ui.rowLabels(), ['ground', 'Hero cube', 'Hero cube'], 'a second object may carry the same label');
+  ui.controller.undo();
+  assert.deepEqual(ui.rowLabels(), ['ground', 'Hero cube', 'orb'], 'one undo step takes the rename back');
+  ui.controller.undo();
+  assert.deepEqual(ui.rowLabels(), ['ground', 'hero', 'orb']);
+});
+
+test('in the Scene list a single click only selects, a double click renames, Escape and a bad name keep the old label (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  assert.equal(ui.root.querySelector('.crucible-studio-name-editor'), null, 'a single click does not edit');
+  ui.rows()[1].querySelector('.crucible-studio-tree-select').dispatchEvent(ui.dom.document.createEvent('dblclick'));
+  assert.notEqual(ui.root.querySelector('.crucible-studio-name-editor'), null);
+  await typeInRowEditor(ui, 'gone', 'Escape');
+  assert.equal(ui.node('hero').label, undefined, 'Escape restores');
+  assert.equal(ui.root.querySelector('.crucible-studio-name-editor'), null);
+
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  await typeInRowEditor(ui, '   ');
+  const editor = ui.root.querySelector('.crucible-studio-name-editor');
+  assert.notEqual(editor, null, 'an empty name keeps the editor open');
+  assert.equal(editor.querySelector('.crucible-studio-name-error').hidden, false);
+  assert.match(editor.querySelector('.crucible-studio-name-error-text').textContent, /Enter a name/);
+  dispatch(editor.querySelector('input'), 'blur');
+  await ui.dom.settle();
+  assert.equal(ui.root.querySelector('.crucible-studio-name-editor'), null);
+  assert.deepEqual(ui.rowLabels(), ['ground', 'hero', 'orb']);
+
+  const properties = ui.label('Node label');
+  properties.value = '  ';
+  dispatch(properties, 'change');
+  assert.equal(ui.node('hero').label, undefined, 'the Properties field refuses an empty name too');
+  assert.equal(properties.value, 'hero');
+});
+
+test('with several objects selected F2 renames the active one only (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  const orbSelect = ui.rows()[2].querySelector('.crucible-studio-tree-select');
+  dispatch(orbSelect, 'click', { shiftKey: true });
+  assert.deepEqual([...ui.controller.selectedNodeIds].sort(), ['hero', 'orb']);
+  const active = ui.controller.selectedNodeId;
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  await typeInRowEditor(ui, 'Only this');
+  const renamed = ['hero', 'orb'].filter(id => ui.node(id).label === 'Only this');
+  assert.deepEqual(renamed, [active]);
+});
+
+test('F2 opens a collapsed or filtered Scene list, and on the camera it says the name is fixed (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('orb');
+  ui.studio.setOutlinerCollapsed(true);
+  const search = ui.label('Filter the scene list');
+  search.value = 'ground';
+  dispatch(search, 'input');
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  assert.equal(ui.root.dataset.outlinerCollapsed, 'false');
+  assert.equal(search.value, '');
+  assert.equal(ui.root.querySelector('.crucible-studio-name-editor input').value, 'orb');
+  dispatch(ui.root.querySelector('.crucible-studio-name-editor input'), 'keydown', { key: 'Escape' });
+
+  ui.controller.selectSceneObject('camera');
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  assert.equal(ui.root.querySelector('.crucible-studio-name-editor'), null);
+  assert.match(ui.status(), /keep their names/);
+});
+
+test('the Edit menu and the right click menu have a Rename row with F2 beside it (#3344)', testContext => {
+  const ui = mountStudio(testContext);
+  for (const popoverId of ['crucible-studio-pop-edit', 'crucible-studio-pop-object']) {
+    const row = byText(ui.root.querySelector(`#${popoverId}`), 'Rename');
+    assert.ok(row, popoverId);
+    assert.match(row.dataset.shortcut ?? '', /F2/);
+  }
+});
+
+test('a shot is renamed in place by a double click; a taken name is refused in the field (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  ui.controller.saveBookmark('wide');
+  ui.controller.saveBookmark('tall');
+  ui.studio.renderNow();
+  const listButton = name => ui.root.querySelector('.crucible-studio-bookmark-list').querySelectorAll('button').find(button => button.textContent === name);
+  listButton('wide').dispatchEvent(ui.dom.document.createEvent('dblclick'));
+  const input = ui.root.querySelector('.crucible-studio-bookmark-list .crucible-studio-name-editor input');
+  assert.equal(input.getAttribute('aria-label'), 'Rename shot wide');
+  input.value = 'tall';
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key: 'Enter' });
+  await ui.dom.settle();
+  assert.match(ui.root.querySelector('.crucible-studio-name-error-text').textContent, /already exists/);
+  assert.deepEqual(ui.controller.listBookmarks().map(shot => shot.name), ['wide', 'tall']);
+  input.value = 'close up';
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key: 'Enter' });
+  await ui.dom.settle();
+  assert.deepEqual(ui.controller.listBookmarks().map(shot => shot.name), ['close-up', 'tall'], 'the shot keeps its place');
+  ui.controller.undo();
+  assert.deepEqual(ui.controller.listBookmarks().map(shot => shot.name), ['wide', 'tall'], 'one undo step');
+});
+
+test('renameBookmark keeps the camera of the shot and refuses unknown, taken and malformed names (#3344)', testContext => {
+  const ui = mountStudio(testContext);
+  const shot = ui.controller.saveBookmark('wide');
+  ui.controller.saveBookmark('tall');
+  ui.controller.renameBookmark('wide', 'wide');
+  const renamed = ui.controller.renameBookmark('wide', 'establishing');
+  assert.deepEqual(renamed.find(candidate => candidate.name === 'establishing').camera, shot.camera);
+  assert.throws(() => ui.controller.renameBookmark('establishing', 'tall'), /already exists/);
+  assert.throws(() => ui.controller.renameBookmark('missing', 'x'), /Unknown camera bookmark/);
+  assert.throws(() => ui.controller.renameBookmark('tall', 'a b'), /1 to 24 letters/);
+  assert.throws(() => ui.controller.renameBookmark('tall', 'x'.repeat(25)), /1 to 24 letters/);
+});
+
+test('only a known type or the extension the host gave is the fixed type: "Scene 1.5" keeps its dot (#3344)', async testContext => {
+  const named = mountStudio(testContext, { fileName: 'Scene 1.5' });
+  named.root.querySelector('.crucible-studio-filepill').click();
+  assert.equal(sceneNameEditor(named).querySelector('input').value, 'Scene 1.5', 'no file behind the name: the dot belongs to it');
+  assert.equal(sceneNameEditor(named).querySelector('.crucible-studio-name-suffix').textContent, '.scene.json');
+  dispatch(sceneNameEditor(named).querySelector('input'), 'keydown', { key: 'Escape' });
+  const ui = mountStudio(testContext);
+  ui.studio.setFileContext({ fileName: 'notes.txt' });
+  ui.root.querySelector('.crucible-studio-filepill').click();
+  assert.equal(sceneNameEditor(ui).querySelector('input').value, 'notes');
+  assert.equal(sceneNameEditor(ui).querySelector('.crucible-studio-name-suffix').textContent, '.txt');
+  dispatch(sceneNameEditor(ui).querySelector('input'), 'keydown', { key: 'Escape' });
+  await renameSceneTo(ui, 'my.scene');
+  assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, 'my.scene.txt');
+});
+
+test('a pending host rename keeps the field, blocks a second rename and is applied when it settles (#3344)', async testContext => {
+  let settle;
+  const pending = new Promise(resolve => { settle = resolve; });
+  const desktop = createDesktop({ renameScene: () => pending });
+  const ui = mountStudio(testContext, { desktop });
+  ui.studio.setFileContext({ filePath: 'C:/scenes/old.scene.json', fileName: 'old.scene.json', dirty: false });
+  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  filePill.click();
+  const input = sceneNameEditor(ui).querySelector('input');
+  input.value = 'fresh';
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key: 'Enter' });
+  assert.equal(input.readOnly, true);
+  assert.equal(sceneNameEditor(ui).dataset.busy, 'true');
+  dispatch(input, 'keydown', { key: 'Escape' });
+  dispatch(input, 'blur');
+  ui.selectRow('hero');
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  assert.equal(ui.root.querySelector('.crucible-studio-tree .crucible-studio-name-editor'), null, 'no second rename while one is pending');
+  assert.notEqual(sceneNameEditor(ui), null, 'Escape and a click away did not close it');
+  settle({ filePath: 'C:/scenes/fresh.scene.json', fileName: 'fresh.scene.json' });
+  await ui.dom.settle();
+  assert.equal(sceneNameEditor(ui), null);
+  assert.equal(filePill.textContent, 'fresh.scene.json');
+  assert.equal(filePill.title, 'C:/scenes/fresh.scene.json');
+  assert.equal(ui.status(), 'Renamed', 'a host that renamed the file says only that');
+});
+
+test('a host that rejects shows a readable error and leaves the old name (#3344)', async testContext => {
+  for (const rejection of [null, 'The folder is read-only', new Error('Access denied')]) {
+    const desktop = createDesktop({ renameScene: () => Promise.reject(rejection) });
+    const ui = mountStudio(testContext, { desktop });
+    ui.studio.setFileContext({ filePath: 'C:/scenes/old.scene.json', fileName: 'old.scene.json', dirty: false });
+    await renameSceneTo(ui, 'fresh');
+    const shown = sceneNameEditor(ui).querySelector('.crucible-studio-name-error-text').textContent;
+    assert.ok(shown.length > 0 && shown !== 'null');
+    assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, 'old.scene.json');
+    assert.equal(sceneNameEditor(ui).dataset.busy, 'false');
+  }
+});
+
+test('a rename finished after another file was opened does not touch that file (#3344)', async testContext => {
+  let settle;
+  const pending = new Promise(resolve => { settle = resolve; });
+  const desktop = createDesktop({ renameScene: () => pending });
+  const ui = mountStudio(testContext, { desktop });
+  ui.studio.setFileContext({ filePath: 'C:/scenes/old.scene.json', fileName: 'old.scene.json', dirty: false });
+  ui.root.querySelector('.crucible-studio-filepill').click();
+  const input = sceneNameEditor(ui).querySelector('input');
+  input.value = 'fresh';
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key: 'Enter' });
+  ui.studio.setFileContext({ filePath: 'C:/scenes/other.scene.json', fileName: 'other.scene.json' });
+  settle({ filePath: 'C:/scenes/fresh.scene.json', fileName: 'fresh.scene.json' });
+  await ui.dom.settle();
+  assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, 'other.scene.json');
+  assert.equal(ui.root.querySelector('.crucible-studio-filepill').title, 'C:/scenes/other.scene.json');
+});
+
+test('focus returns to the name only after a rename started from the keyboard (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  await renameSceneTo(ui, 'by-mouse');
+  assert.equal(ui.dom.document.activeElement === filePill, false, 'a click start leaves no ring on the name');
+  dispatch(filePill, 'click', { detail: 0 });
+  const input = sceneNameEditor(ui).querySelector('input');
+  input.value = 'by-key';
+  dispatch(input, 'input');
+  dispatch(input, 'keydown', { key: 'Enter' });
+  await ui.dom.settle();
+  assert.equal(ui.dom.document.activeElement === filePill, true, 'a keyboard start puts focus back on the name');
+});
+
+test('a Rename row of the Edit or the right click menu opens the field once the menu has closed (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  for (const popoverId of ['crucible-studio-pop-edit', 'crucible-studio-pop-object']) {
+    ui.selectRow('hero');
+    const popover = ui.root.querySelector(`#${popoverId}`);
+    byText(popover, 'Rename').dispatchEvent(ui.dom.document.createEvent('click', { bubbles: true }));
+    assert.equal(ui.root.querySelector('.crucible-studio-name-editor'), null, 'not while the menu is still closing');
+    ui.dom.runTimers();
+    await ui.dom.settle();
+    const input = ui.root.querySelector('.crucible-studio-tree .crucible-studio-name-editor input');
+    assert.notEqual(input, null, popoverId);
+    assert.equal(ui.dom.document.activeElement === input, true);
+    dispatch(input, 'keydown', { key: 'Escape' });
+  }
+});
+
+test('a Scene row rebuilt under an open field answers it like a click away (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  let input = ui.root.querySelector('.crucible-studio-tree .crucible-studio-name-editor input');
+  input.value = 'Typed';
+  dispatch(input, 'input');
+  ui.controller.updateNodeTransform('hero', { visible: false });
+  await ui.dom.settle();
+  assert.equal(ui.root.querySelector('.crucible-studio-name-editor'), null, 'no orphan field');
+  assert.equal(ui.node('hero').label, 'Typed', 'a valid name is kept');
+
+  ui.selectRow('orb');
+  dispatch(ui.canvas, 'keydown', { key: 'F2' });
+  input = ui.root.querySelector('.crucible-studio-tree .crucible-studio-name-editor input');
+  input.value = '   ';
+  dispatch(input, 'input');
+  ui.controller.updateNodeTransform('orb', { visible: false });
+  await ui.dom.settle();
+  assert.equal(ui.root.querySelector('.crucible-studio-name-editor'), null);
+  assert.equal(ui.node('orb').label, undefined, 'an invalid name is dropped');
+});
+
+test('saving, renaming and removing a shot mark the scene as changed, and a double click applies it once (#3344)', async testContext => {
+  const ui = mountStudio(testContext);
+  const filePill = ui.root.querySelector('.crucible-studio-filepill');
+  assert.equal(filePill.dataset.dirty, 'false');
+  ui.controller.saveBookmark('wide');
+  assert.equal(filePill.dataset.dirty, 'true', 'a saved shot is part of the recipe');
+  ui.studio.setFileContext({ dirty: false });
+  ui.controller.renameBookmark('wide', 'tall');
+  assert.equal(filePill.dataset.dirty, 'true', 'a renamed shot too');
+  ui.studio.setFileContext({ dirty: false });
+  ui.controller.removeBookmark('tall');
+  assert.equal(filePill.dataset.dirty, 'true', 'and a removed one');
+
+  ui.controller.saveBookmark('wide');
+  ui.studio.renderNow();
+  const button = ui.root.querySelector('.crucible-studio-bookmark-list').querySelectorAll('button').find(candidate => candidate.textContent === 'wide');
+  const shotEye = ui.controller.listBookmarks()[0].camera.eye.slice();
+  ui.controller.updateCamera({ eye: [1, 2, 3] });
+  dispatch(button, 'click', { detail: 1 });
+  assert.deepEqual(ui.controller.scene.camera.eye, shotEye, 'the first click applies the shot');
+  ui.controller.updateCamera({ eye: [1, 2, 3] });
+  dispatch(button, 'click', { detail: 2 });
+  button.dispatchEvent(ui.dom.document.createEvent('dblclick'));
+  assert.deepEqual(ui.controller.scene.camera.eye, [1, 2, 3], 'the second click of a double click does not apply it again');
+  assert.notEqual(ui.root.querySelector('.crucible-studio-bookmark-list .crucible-studio-name-editor'), null);
+});
+
+test('no element reads a data-tight attribute any more (#3344)', testContext => {
+  const ui = mountStudio(testContext);
+  assert.equal(ui.root.dataset.tight, undefined);
+  assert.doesNotMatch(STUDIO_CSS, /data-tight/);
+});
+
 test('Save, Save as and Open go through the desktop shell when there is one', async testContext => {
   const desktop = createDesktop();
   const changes = [];
@@ -1528,7 +2001,7 @@ test('Copy a prompt for the agent uses the clipboard and falls back to the recip
 test('Export saves a PNG still in the browser and through the desktop shell', async testContext => {
   const ui = mountStudio(testContext, { fileName: 'castle.scene.json' });
   const renderCountBefore = ui.renderer.frames.length;
-  byText(ui.root, 'PNG image').click();
+  byText(ui.root, 'Save PNG').click();
   await ui.dom.settle();
   assert.equal(ui.canvas.lastDataUrlType, 'image/png');
   assert.ok(ui.renderer.frames.length > renderCountBefore, 'a still renders a fresh frame first');
@@ -1541,7 +2014,7 @@ test('Export saves a PNG still in the browser and through the desktop shell', as
 
   const desktop = createDesktop();
   const desktopUi = mountStudio(testContext, { sharedDom: ui.dom, desktop, fileName: 'castle.scene.json' });
-  byText(desktopUi.root, 'PNG image').click();
+  byText(desktopUi.root, 'Save PNG').click();
   await desktopUi.dom.settle();
   assert.equal(desktop.calls[0].name, 'savePng');
   assert.equal(desktop.calls[0].argument.suggestedName, 'castle.png');
@@ -1549,14 +2022,14 @@ test('Export saves a PNG still in the browser and through the desktop shell', as
   assert.equal(desktopUi.status(), 'Saved shot.png');
   desktop.savePng = async () => ({ canceled: true });
   desktopUi.dom.runTimers();
-  byText(desktopUi.root, 'PNG image').click();
+  byText(desktopUi.root, 'Save PNG').click();
   await desktopUi.dom.settle();
   assert.equal(desktopUi.status(), '');
 });
 
 test('Export writes a GLB model of the scene and reports a desktop failure', async testContext => {
   const ui = mountStudio(testContext);
-  byText(ui.root, 'GLB model').click();
+  byText(ui.root, 'Save GLB').click();
   await ui.dom.settle();
   const [download] = ui.dom.document.downloads;
   assert.equal(download.filename, 'untitled.glb');
@@ -1568,7 +2041,7 @@ test('Export writes a GLB model of the scene and reports a desktop failure', asy
 
   const desktop = createDesktop();
   const desktopUi = mountStudio(testContext, { sharedDom: ui.dom, desktop });
-  byText(desktopUi.root, 'GLB model').click();
+  byText(desktopUi.root, 'Save GLB').click();
   await desktopUi.dom.settle();
   assert.equal(desktop.calls[0].name, 'saveGlb');
   assert.equal(desktop.calls[0].argument.suggestedName, 'untitled.glb');
@@ -1577,19 +2050,19 @@ test('Export writes a GLB model of the scene and reports a desktop failure', asy
   desktop.saveGlb = async () => {
     throw new Error('Disk is full.');
   };
-  byText(desktopUi.root, 'GLB model').click();
+  byText(desktopUi.root, 'Save GLB').click();
   await desktopUi.dom.settle();
   assert.equal(desktopUi.status(), 'Disk is full.');
   desktop.saveGlb = async () => ({ canceled: true });
   desktopUi.dom.runTimers();
-  byText(desktopUi.root, 'GLB model').click();
+  byText(desktopUi.root, 'Save GLB').click();
   await desktopUi.dom.settle();
   assert.equal(desktopUi.status(), '');
 });
 
 test('Export packs a web bundle, naming what a still pack leaves out', async testContext => {
   const ui = mountStudio(testContext, { recipe: animatedRecipe() });
-  byText(ui.root, 'Web pack').click();
+  byText(ui.root, 'Save pack').click();
   await ui.dom.settle();
   const [download] = ui.dom.document.downloads;
   assert.equal(download.filename, 'untitled.pack');
@@ -1605,20 +2078,20 @@ test('Export packs a web bundle, naming what a still pack leaves out', async tes
 
   const desktop = createDesktop();
   const desktopUi = mountStudio(testContext, { sharedDom: ui.dom, desktop, recipe: animatedRecipe(), fileName: 'castle.scene.json' });
-  byText(desktopUi.root, 'Web pack').click();
+  byText(desktopUi.root, 'Save pack').click();
   await desktopUi.dom.settle();
   assert.equal(desktop.calls[0].name, 'packWebBundle');
   assert.equal(desktop.calls[0].argument.title, 'castle');
   assert.equal(desktopUi.status(), 'Packed web bundle to C:/out/web (static snapshot, omitted motion)');
   desktop.packWebBundle = async () => ({ canceled: true });
   desktopUi.dom.runTimers();
-  byText(desktopUi.root, 'Web pack').click();
+  byText(desktopUi.root, 'Save pack').click();
   await desktopUi.dom.settle();
   assert.equal(desktopUi.status(), '');
   desktop.packWebBundle = async () => {
     throw new Error('Out folder is not writable.');
   };
-  byText(desktopUi.root, 'Web pack').click();
+  byText(desktopUi.root, 'Save pack').click();
   await desktopUi.dom.settle();
   assert.equal(desktopUi.status(), 'Out folder is not writable.');
 
@@ -1627,7 +2100,7 @@ test('Export packs a web bundle, naming what a still pack leaves out', async tes
   assert.deepEqual(plainPayload.stripped, []);
   const plainDesktop = createDesktop();
   const plainDesktopUi = mountStudio(testContext, { sharedDom: ui.dom, desktop: plainDesktop });
-  byText(plainDesktopUi.root, 'Web pack').click();
+  byText(plainDesktopUi.root, 'Save pack').click();
   await plainDesktopUi.dom.settle();
   assert.equal(plainDesktopUi.status(), 'Packed web bundle to C:/out/web');
 });
@@ -2069,7 +2542,7 @@ test('turning a ring shows where the turn began, how far it has gone and hides t
   }
   sweep = ui.controller.rotationSweep();
   assert.ok(Math.abs(sweep.degrees - 230) < 0.5, 'a turn past half a circle keeps counting');
-  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(ringPoint(228)), shiftKey: true });
+  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(ringPoint(228)), ctrlKey: true });
   assert.equal(ui.controller.rotationSweep().degrees, 225);
 
   dispatch(ui.canvas, 'pointerup', ui.clientPoint(ringPoint(228)));
@@ -2150,22 +2623,22 @@ test('a new object lands beside the ones already there, and ground pieces stay a
   assert.deepEqual(studio.controller.addPrimitive('box', { translation: [0, 0.5, 0] }).translation, [0, 0.5, 0], 'a given place is kept');
 });
 
-test('workspaces run Build, Look, Animate and each shows only the panels its step needs', testContext => {
+test('workspaces run Build, Look, Animate, Export and each shows only the panels its step needs', testContext => {
   const ui = mountStudio(testContext);
   const workspaceTab = id => byDataset(ui.root, 'workspace', id);
   const shownTabs = () => STUDIO_TABS.filter(tab => !ui.tab(tab).hasAttribute('hidden'));
   const tabList = ui.root.querySelector('.crucible-studio-tablist');
   const workspaceList = ui.root.querySelector('.crucible-studio-workspaces');
-  assert.deepEqual(workspaceList.querySelectorAll('.crucible-studio-workspace-label').map(label => label.textContent), ['Build', 'Look', 'Animate']);
-  assert.deepEqual(workspaceList.querySelectorAll('button').map(button => button.querySelector('svg') !== null), [true, true, true], 'each workspace tab leads with an icon');
-  assert.deepEqual(workspaceList.querySelectorAll('button').map(button => button.getAttribute('aria-label')), ['Build', 'Look', 'Animate']);
+  assert.deepEqual(workspaceList.querySelectorAll('.crucible-studio-workspace-label').map(label => label.textContent), ['Build', 'Look', 'Animate', 'Export']);
+  assert.deepEqual(workspaceList.querySelectorAll('button').map(button => button.querySelector('svg') !== null), [true, true, true, true], 'each workspace tab leads with an icon');
+  assert.deepEqual(workspaceList.querySelectorAll('button').map(button => button.getAttribute('aria-label')), ['Build', 'Look', 'Animate', 'Export']);
   assert.equal(workspaceList.getAttribute('role'), 'tablist');
   assert.equal(workspaceList.parentNode.className, 'crucible-studio-menubar', 'the tabs share the menu bar, not a row of their own');
 
   assert.equal(ui.root.dataset.workspace, 'build');
   assert.equal(workspaceTab('build').getAttribute('aria-selected'), 'true');
-  assert.deepEqual(shownTabs(), ['node']);
-  assert.ok(tabList.hasAttribute('hidden'), 'one panel needs no tab row');
+  assert.deepEqual(shownTabs(), ['node', 'modifiers']);
+  assert.equal(tabList.hasAttribute('hidden'), false, 'Build holds the Object and Modifiers tabs');
 
   const recipeBefore = JSON.stringify(ui.studio.exportRecipe());
   workspaceTab('look').click();
@@ -2191,6 +2664,223 @@ test('workspaces run Build, Look, Animate and each shows only the panels its ste
   assert.equal(ui.root.dataset.workspace, 'build', 'opening a panel brings its workspace forward');
   dispatch(ui.dom.document, 'keydown', { key: 'k' });
   assert.equal(ui.root.dataset.workspace, 'animate', 'a keyframe opens the timeline');
+
+  workspaceTab('export').click();
+  assert.equal(ui.root.dataset.workspace, 'export');
+  assert.equal(workspaceTab('export').getAttribute('aria-selected'), 'true');
+  assert.deepEqual(shownTabs(), ['export'], 'Export shows its own panel alone');
+  assert.ok(tabList.hasAttribute('hidden'), 'one panel needs no tab row');
+  assert.equal(ui.controller.activeTab, 'export');
+  assert.equal(JSON.stringify(ui.studio.exportRecipe()), recipeBefore, 'entering Export keeps the scene');
+  assert.equal(ui.controller.canUndo, false);
+});
+
+test('the Export workspace holds an image, a model and a web pack, each with its facts, one action and a result line', async testContext => {
+  const ui = mountStudio(testContext, { recipe: animatedRecipe(), fileName: 'castle.scene.json' });
+  ui.canvas.width = 640;
+  ui.canvas.height = 360;
+  byDataset(ui.root, 'workspace', 'export').click();
+  const groups = ui.root.querySelectorAll('.crucible-studio-export-group');
+  assert.deepEqual(groups.map(group => group.dataset.kind), ['image', 'model', 'pack']);
+  assert.deepEqual(groups.map(group => group.querySelector('.crucible-studio-export-heading span').textContent), ['Image', 'Model', 'Web pack']);
+  for (const group of groups) {
+    assert.ok(group.querySelector('.crucible-studio-export-heading svg'), 'each group title has an icon');
+    assert.equal(group.querySelectorAll('button').length, 1, 'one action for each export');
+    assert.equal(group.querySelector('button svg'), null, 'the group title carries the icon, as the other Studio buttons carry none');
+    assert.equal(group.querySelector('.crucible-studio-export-result').hasAttribute('hidden'), true, 'no result before an export');
+  }
+  const factTexts = kind => groups.find(group => group.dataset.kind === kind).querySelectorAll('.crucible-studio-export-fact').map(fact => fact.textContent);
+  assert.ok(factTexts('model').some(text => /parts?$/.test(text)) && factTexts('model').some(text => /triangles$/.test(text)), 'the model names its parts and triangles');
+  assert.deepEqual(factTexts('pack'), [factTexts('model')[0], 'motion left out'], 'the pack names its parts and what a static snapshot leaves out');
+  assert.deepEqual(factTexts('image'), ['', '640 × 360'], 'the image shows its shape and names its size in pixels');
+
+  byText(ui.root, 'Save PNG').click();
+  await ui.dom.settle();
+  const imageResult = groups.find(group => group.dataset.kind === 'image').querySelector('.crucible-studio-export-result');
+  assert.match(imageResult.textContent, /^castle\.png, 640 × 360, \d+ B$/);
+  byText(ui.root, 'Save GLB').click();
+  await ui.dom.settle();
+  const modelResult = groups.find(group => group.dataset.kind === 'model').querySelector('.crucible-studio-export-result');
+  assert.equal(modelResult.dataset.state, 'ok');
+  assert.match(modelResult.textContent, /^castle\.glb, \d+(\.\d)? (B|KB|MB)$/);
+  assert.ok(modelResult.querySelector('svg'), 'a result leads with a mark');
+  const statusRegion = ui.root.querySelector('.crucible-studio-export-status');
+  assert.equal(statusRegion.getAttribute('role'), 'status');
+  assert.equal(statusRegion.hasAttribute('hidden'), false, 'the status region is never hidden, so a screen reader has it before the first message');
+  assert.equal(statusRegion.textContent, modelResult.textContent, 'and it carries the same message');
+  assert.equal(modelResult.getAttribute('aria-hidden'), 'true', 'the line seen is not read twice');
+  assert.equal(ui.root.querySelector('.crucible-studio-inspector .crucible-studio-dock-title span').textContent, 'Export', 'the card is titled for the workspace');
+
+  const failing = createDesktop();
+  failing.saveGlb = async () => {
+    throw new Error('Disk is full.');
+  };
+  const failingUi = mountStudio(testContext, { sharedDom: ui.dom, desktop: failing });
+  byText(failingUi.root, 'Save GLB').click();
+  await failingUi.dom.settle();
+  const failedResult = failingUi.root.querySelectorAll('.crucible-studio-export-group').find(group => group.dataset.kind === 'model').querySelector('.crucible-studio-export-result');
+  assert.equal(failedResult.dataset.state, 'failed');
+  assert.equal(failedResult.textContent, 'Disk is full.');
+  assert.notEqual(failedResult.querySelector('path').getAttribute('d'), modelResult.querySelector('path').getAttribute('d'), 'success and failure differ in shape');
+
+  byDataset(ui.root, 'workspace', 'build').click();
+  assert.equal(modelResult.hasAttribute('hidden'), true, 'leaving the workspace clears the results');
+  assert.equal(ui.root.querySelector('.crucible-studio-inspector .crucible-studio-dock-title span').textContent, 'Properties');
+});
+
+test('Export is a place to look and save: edits, edit mode, picking and the view are locked, and leaving gives them back (#3343)', testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  const recipeBefore = JSON.stringify(ui.studio.exportRecipe());
+  const toolBefore = ui.controller.tool;
+  const eyeBefore = [...ui.controller.viewCamera.eye];
+  const sceneParts = ui.controller.scene.parts.length;
+  ui.studio.renderNow();
+  assert.ok(ui.gizmo.children.length > 0, 'Build draws the handles of the selection');
+
+  byDataset(ui.root, 'workspace', 'export').click();
+  for (const key of ['Delete', 'x', 'g', 'r', 's', 'Tab', 'k', 'f']) {
+    dispatch(ui.dom.document, 'keydown', { key });
+  }
+  dispatch(ui.dom.document, 'keydown', { key: 'd', shiftKey: true });
+  dispatch(ui.dom.document, 'keydown', { key: 'c', ctrlKey: true });
+  dispatch(ui.dom.document, 'keydown', { key: 'v', ctrlKey: true });
+  assert.equal(ui.root.dataset.workspace, 'export', 'a keyframe key does not carry the person to Animate');
+  assert.equal(JSON.stringify(ui.studio.exportRecipe()), recipeBefore, 'no key edits the scene');
+  assert.equal(ui.controller.tool, toolBefore);
+  assert.equal(ui.controller.selectedNodeId, 'hero');
+  assert.equal(ui.root.querySelector('.crucible-studio-hint-chip'), null, 'no move is waiting for the pointer');
+
+  const orbPoint = ui.controller.projectWorldPoint([2.2, 0.5, 0]);
+  dispatch(ui.canvas, 'pointerdown', ui.clientPoint(orbPoint));
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(orbPoint));
+  assert.equal(ui.controller.selectedNodeId, 'hero', 'a click on the viewport picks nothing');
+  dispatch(ui.canvas, 'pointerdown', ui.clientPoint({ x: 400, y: 300 }));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint({ x: 480, y: 340 }));
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint({ x: 480, y: 340 }));
+  const zoom = dispatch(ui.canvas, 'wheel', { deltaY: 100 });
+  assert.equal(zoom.defaultPrevented, true, 'the page still does not scroll under the wheel');
+  assert.deepEqual([...ui.controller.viewCamera.eye], eyeBefore, 'the view is the shot: dragging and the wheel do not move it');
+
+  const popover = id => ui.root.querySelector(`#crucible-studio-pop-${id}`);
+  byText(popover('edit'), 'Delete').click();
+  byText(popover('edit'), 'Duplicate').click();
+  byText(popover('view'), 'Top view').click();
+  assert.equal(JSON.stringify(ui.studio.exportRecipe()), recipeBefore, 'the menu rows are locked too');
+  assert.deepEqual([...ui.controller.viewCamera.eye], eyeBefore);
+
+  ui.studio.renderNow();
+  assert.equal(ui.gizmo.children.length, 0, 'no handle, outline, mark or agent pointer is built');
+  assert.equal(ui.root.querySelector('.crucible-studio-outliner').inert, true, 'the Scene card cannot be used');
+
+  ui.controller.updateNodeTransform('hero', { translation: [0, 1.5, 0] });
+  byText(popover('edit'), 'Undo').click();
+  assert.equal(JSON.stringify(ui.studio.exportRecipe()), recipeBefore, 'undo stays available');
+
+  byDataset(ui.root, 'workspace', 'build').click();
+  ui.dom.runAnimationFrames(performance.now());
+  assert.ok(ui.gizmo.children.length > 0, 'leaving brings the handles back');
+  assert.equal(ui.renderer.partCount, sceneParts + GRID_LINE_COUNT, 'and the grid');
+  assert.deepEqual([...ui.controller.viewCamera.eye], eyeBefore, 'and the same view');
+  assert.equal(ui.controller.tool, toolBefore);
+  assert.equal(ui.controller.selectedNodeId, 'hero', 'and the same selection');
+  dispatch(ui.dom.document, 'keydown', { key: 'Delete' });
+  assert.equal(ui.studio.exportRecipe().nodes.length, JSON.parse(recipeBefore).nodes.length - 1, 'and the keys edit the scene again');
+});
+
+test('entering Export asks for a frame, so the viewport shows the shot without the grid every time (#3343)', testContext => {
+  const ui = mountStudio(testContext);
+  const sceneParts = ui.controller.scene.parts.length;
+  ui.dom.runAnimationFrames(performance.now());
+  assert.equal(ui.renderer.partCount, sceneParts + GRID_LINE_COUNT);
+  byDataset(ui.root, 'workspace', 'export').click();
+  assert.ok(ui.dom.pendingAnimationFrameCount > 0, 'a change of workspace asks for a frame');
+  ui.dom.runAnimationFrames(performance.now());
+  assert.equal(ui.renderer.partCount, sceneParts, 'no grid inside the frame');
+  assert.equal(ui.root.querySelector('.crucible-studio-export-guide') !== null, true);
+  const hiddenInExport = ['.crucible-studio-view-widget', '.crucible-studio-readout', '.crucible-studio-hintbar', '.crucible-studio-outliner', '.crucible-studio-gizmo'];
+  for (const selector of hiddenInExport) {
+    assert.ok(STUDIO_CSS.includes(`.crucible-studio[data-workspace="export"] ${selector}`), `${selector} is hidden in Export`);
+  }
+});
+
+test('a result line goes when the scene changes, and when the same action runs again (#3343)', async testContext => {
+  const desktop = createDesktop();
+  const ui = mountStudio(testContext, { desktop });
+  byDataset(ui.root, 'workspace', 'export').click();
+  const modelResult = () => ui.root.querySelectorAll('.crucible-studio-export-group').find(group => group.dataset.kind === 'model').querySelector('.crucible-studio-export-result');
+  byText(ui.root, 'Save GLB').click();
+  await ui.dom.settle();
+  assert.equal(modelResult().hasAttribute('hidden'), false);
+  ui.controller.updateNodeTransform('hero', { translation: [0, 1.5, 0] });
+  assert.equal(modelResult().hasAttribute('hidden'), true, 'an edit of the scene clears the line');
+
+  byText(ui.root, 'Save GLB').click();
+  await ui.dom.settle();
+  assert.equal(modelResult().hasAttribute('hidden'), false);
+  desktop.saveGlb = async () => ({ canceled: true });
+  byText(ui.root, 'Save GLB').click();
+  await ui.dom.settle();
+  assert.equal(modelResult().hasAttribute('hidden'), true, 'a cancelled save leaves no old line');
+});
+
+test('the Web pack facts are worked out only while Export is open, and a failure shows as a warning (#3343)', testContext => {
+  const ui = mountStudio(testContext);
+  const packFacts = () => ui.root.querySelectorAll('.crucible-studio-export-group').find(group => group.dataset.kind === 'pack').querySelectorAll('.crucible-studio-export-fact');
+  ui.controller.updateNodeTransform('hero', { translation: [0, 1.5, 0] });
+  assert.equal(packFacts().length, 0, 'nothing is worked out in another workspace');
+
+  const realClone = globalThis.structuredClone;
+  globalThis.structuredClone = value => {
+    // Only the copy the Web pack makes fails; the rest of Studio copies recipes as it always did.
+    if (new Error().stack.includes('buildPackReadyRecipe')) throw new Error('The recipe cannot be copied.');
+    return realClone(value);
+  };
+  try {
+    byDataset(ui.root, 'workspace', 'export').click();
+  } finally {
+    globalThis.structuredClone = realClone;
+  }
+  assert.equal(packFacts().map(fact => fact.textContent).join('|'), 'The recipe cannot be copied.');
+  assert.ok(packFacts()[0].querySelector('svg'), 'the failure leads with the warning mark');
+  const modelFacts = ui.root.querySelectorAll('.crucible-studio-export-group').find(group => group.dataset.kind === 'model').querySelectorAll('.crucible-studio-export-fact');
+  assert.ok(modelFacts.length > 0, 'the other groups are not affected');
+});
+
+test('a scene with no parts cannot be saved as a model or a pack, and Studio refuses a scene with no camera (#3343)', async testContext => {
+  const empty = makeRecipe();
+  empty.nodes = [];
+  const ui = mountStudio(testContext, { recipe: empty });
+  byDataset(ui.root, 'workspace', 'export').click();
+  const group = kind => ui.root.querySelectorAll('.crucible-studio-export-group').find(candidate => candidate.dataset.kind === kind);
+  for (const kind of ['model', 'pack']) {
+    assert.equal(group(kind).querySelector('button').getAttribute('aria-disabled'), 'true', `${kind} is disabled`);
+    assert.equal(group(kind).querySelector('.crucible-studio-export-fact').textContent, 'No parts to save');
+    assert.ok(group(kind).querySelector('.crucible-studio-export-fact svg'), 'the reason has a warning mark');
+  }
+  assert.notEqual(group('image').querySelector('button').getAttribute('aria-disabled'), 'true', 'an empty scene still has a picture');
+  byText(ui.root, 'Save GLB').click();
+  byText(ui.root, 'Save pack').click();
+  await ui.dom.settle();
+  assert.equal(ui.dom.document.downloads.length, 0, 'a disabled button writes nothing');
+  assert.equal(group('model').querySelector('.crucible-studio-export-result').hasAttribute('hidden'), true);
+
+  const sceneWithoutCamera = { ...createAgentScene(makeRecipe()), camera: undefined };
+  assert.throws(() => mountStudio(testContext, { sharedDom: ui.dom, scene: sceneWithoutCamera }), /Studio scene must provide parts and camera/, 'a scene always has a camera, so the image never lacks one');
+});
+
+test('the desktop host names the file or folder it wrote, whatever it is called (#3343)', async testContext => {
+  const folder = createDesktop({ packWebBundle: async () => ({ outDir: 'C:/out/site' }) });
+  const folderUi = mountStudio(testContext, { desktop: folder, fileName: 'castle.scene.json' });
+  byText(folderUi.root, 'Save pack').click();
+  await folderUi.dom.settle();
+  const resultOf = ui => ui.root.querySelectorAll('.crucible-studio-export-group').find(group => group.dataset.kind === 'pack').querySelector('.crucible-studio-export-result').textContent;
+  assert.match(resultOf(folderUi), /^site, \d+ (B|KB|MB)$/, 'a bundle folder is shown by its folder name, not as a .pack file');
+  const named = createDesktop({ packWebBundle: async () => ({ outDir: 'C:/out', fileName: 'castle.bundle' }) });
+  const namedUi = mountStudio(testContext, { sharedDom: folderUi.dom, desktop: named });
+  byText(namedUi.root, 'Save pack').click();
+  await namedUi.dom.settle();
+  assert.match(resultOf(namedUi), /^castle\.bundle, /, 'a name the host returns wins');
 });
 
 test('each scene row draws the shape of its object in the colour of its material', testContext => {
@@ -2264,7 +2954,7 @@ test('Settings change the snap, the handles and what the viewport shows, and are
     control(name).checked = checked;
     dispatch(control(name), 'change');
   };
-  assert.deepEqual(ui.controller.interactionSettings, { moveSnapStep: 0.25, rotateSnapDegrees: 15, gizmoPixels: 74 });
+  assert.deepEqual(ui.controller.interactionSettings, { moveSnapStep: 0.25, rotateSnapDegrees: 15, gizmoPixels: 74, snapEnabled: false, snapTarget: 'increment' });
   assert.equal(control('moveSnapStep').value, '0.25');
   assert.equal(control('gridVisible').checked, true);
 
@@ -2273,7 +2963,7 @@ test('Settings change the snap, the handles and what the viewport shows, and are
   choose('moveSnapStep', 1);
   choose('rotateSnapDegrees', 45);
   choose('gizmoSize', 'large');
-  assert.deepEqual(ui.controller.interactionSettings, { moveSnapStep: 1, rotateSnapDegrees: 45, gizmoPixels: 92 });
+  assert.deepEqual(ui.controller.interactionSettings, { moveSnapStep: 1, rotateSnapDegrees: 45, gizmoPixels: 92, snapEnabled: false, snapTarget: 'increment' });
   toggle('gridVisible', false);
   assert.equal(ui.studio.gridVisible, false);
   assert.equal(ui.label('Show or hide the grid').getAttribute('aria-pressed'), 'false');
@@ -2292,10 +2982,14 @@ test('Settings change the snap, the handles and what the viewport shows, and are
     propertiesHeight: 0,
     sceneMinimized: false,
     propertiesMinimized: false,
+    historyVisible: false,
+    historyMinimized: false,
     propertyGroupsOpen: {},
     panelsFloating: false,
     moveSnapStep: 1,
     rotateSnapDegrees: 45,
+    snapEnabled: false,
+    snapTarget: 'increment',
     gizmoSize: 'large',
     startWorkspace: 'animate',
     theme: 'system',
@@ -2320,13 +3014,13 @@ test('Settings change the snap, the handles and what the viewport shows, and are
   assert.equal(next.root.dataset.readout, 'off');
 
   next.button('Reset settings').click();
-  assert.deepEqual(next.controller.interactionSettings, { moveSnapStep: 0.25, rotateSnapDegrees: 15, gizmoPixels: 74 });
+  assert.deepEqual(next.controller.interactionSettings, { moveSnapStep: 0.25, rotateSnapDegrees: 15, gizmoPixels: 74, snapEnabled: false, snapTarget: 'increment' });
   assert.equal(next.root.dataset.readout, 'on');
   assert.equal(JSON.parse(saved.get('crucible-studio-preferences')).startWorkspace, 'build');
   assert.throws(() => next.studio.setPreference('colour', 'pink'), /Unknown Studio preference/);
 });
 
-test('a Shift drag snaps a move to the step chosen in Settings', testContext => {
+test('a Ctrl drag snaps a move to the step chosen in Settings while snapping is off', testContext => {
   const ui = mountStudio(testContext, { preferences: { moveSnapStep: 1 } });
   ui.selectRow('hero');
   ui.tool('translate').click();
@@ -2335,7 +3029,7 @@ test('a Shift drag snaps a move to the step chosen in Settings', testContext => 
   const along = distance => ui.controller.projectWorldPoint(handles.pivot.map((value, index) => value + handles.basis.x[index] * distance));
   const startX = ui.node('hero').translation[0];
   dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
-  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(along(handles.handleLength + 1.3)), shiftKey: true });
+  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(along(handles.handleLength + 1.3)), ctrlKey: true });
   dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength + 1.3)));
   const travelled = ui.node('hero').translation[0] - startX;
   assert.ok(Math.abs(travelled - Math.round(travelled)) < 1e-6 && Math.abs(travelled) >= 1, `moved ${travelled} m in whole metres`);
@@ -2345,7 +3039,7 @@ test('Scene and Properties share one column and the Scene head carries its icons
   const ui = mountStudio(testContext);
   const side = ui.root.querySelector('.crucible-studio-side');
   const docks = side.children.map(child => child.getAttribute('aria-label'));
-  assert.deepEqual(docks, ['Panel width', 'Scene outliner', 'Scene card height', 'Scene inspector']);
+  assert.deepEqual(docks, ['Panel width', 'Scene outliner', 'Scene card height', 'Scene inspector', 'History']);
   const head = side.querySelector('.crucible-studio-dock-head');
   assert.ok(head.querySelector('.crucible-studio-dock-title').querySelector('svg'));
   const sideRule = STUDIO_CSS.slice(STUDIO_CSS.indexOf('.crucible-studio-side {'), STUDIO_CSS.indexOf('.crucible-studio-side > .crucible-studio-dock {'));
@@ -2408,11 +3102,15 @@ test('the top bar has File, Edit, View, Agent and Help menus that do what their 
 
   menuButton('File').click();
   assert.equal(popover('new').popoverOpen, true);
-  assert.deepEqual(rows('new'), ['New scene…', 'Open…', 'Open recent', 'Save', 'Save as…', 'Export PNG image', 'Export GLB model', 'Export web pack', 'Recipe JSON']);
+  assert.deepEqual(rows('new'), ['New scene…', 'Open…', 'Open recent', 'Save', 'Save as…', 'Export…', 'Recipe JSON']);
   assert.equal(byText(popover('new'), 'Save').dataset.shortcut, 'Ctrl+S');
+  byText(popover('new'), 'Export…').click();
+  assert.equal(ui.root.dataset.workspace, 'export', 'the one Export row opens the workspace');
+  byDataset(ui.root, 'workspace', 'build').click();
+  assert.equal(popover('new').popoverOpen, false, 'a row closes its menu');
 
   menuButton('Edit').click();
-  assert.deepEqual(rows('edit'), ['Undo', 'Redo', 'Copy', 'Paste', 'Duplicate', 'Delete', 'Deselect', 'Hide', 'Show all', 'Reset position', 'Reset rotation', 'Reset scale', 'Settings…']);
+  assert.deepEqual(rows('edit'), ['Undo', 'Redo', 'History', 'Copy', 'Paste', 'Duplicate', 'Join', 'Delete', 'Rename', 'Deselect', 'Hide', 'Show all', 'Reset position', 'Reset rotation', 'Reset scale', 'Settings…']);
   ui.selectRow('hero');
   const countBefore = ui.studio.exportRecipe().nodes.length;
   byText(popover('edit'), 'Duplicate').click();
@@ -2447,11 +3145,11 @@ test('the rail keeps scene tools above one line and the show and hide switches b
   const toolbar = ui.root.querySelector('.crucible-studio-toolbar');
   const rows = toolbar.children.map(child => child.getAttribute('role') === 'separator' ? 'line' : child.getAttribute('aria-label'));
   // The mesh selection modes are in the rail but hidden until edit mode starts.
-  assert.deepEqual(rows, ['Transform tool', 'Mesh selection', 'Edit the scene', 'line', 'Show or hide']);
-  assert.equal(toolbar.children[1].hidden, true);
+  assert.deepEqual(rows, ['Transform tool', 'Snapping', 'Mesh selection', 'Edit the scene', 'line', 'Show or hide']);
+  assert.equal(toolbar.children[2].hidden, true);
   const below = toolbar.children.at(-1).children.map(button => button.getAttribute('aria-label'));
-  assert.deepEqual(below, ['Show or hide the grid', 'Show or hide the panels']);
-  const above = toolbar.children[2].children.map(button => button.dataset.icon);
+  assert.deepEqual(below, ['Show or hide the grid', 'See through the surface (Alt+Z)', 'Show or hide the panels']);
+  const above = toolbar.children[3].children.map(button => button.dataset.icon);
   assert.deepEqual(above, ['add', 'undo', 'redo']);
 });
 
@@ -2772,7 +3470,7 @@ test('the axis widget stands at the top right of the viewport, beside the panel 
   assert.ok(!floating.includes('inset-block-end'), 'no longer in the bottom corner');
   assert.ok(STUDIO_CSS.includes('.crucible-studio {\n  --studio-gizmo-clear: calc(var(--studio-scene-width, 284px) + var(--studio-edge));\n}'), 'it follows the Scene card width');
   assert.ok(STUDIO_CSS.includes('[data-outliner-minimized="true"]:not([data-inspector-collapsed="true"]) {\n  --studio-gizmo-clear: calc(max(var(--studio-scene-width, 284px), var(--studio-properties-width, 284px))'), 'a short minimized Scene card leaves a wider Properties card the room under the widget');
-  assert.ok(rule('.crucible-studio[data-outliner-collapsed="true"][data-inspector-collapsed="true"]').includes('--studio-gizmo-clear: 0px;'), 'with both cards away it takes the corner');
+  assert.ok(rule('.crucible-studio[data-outliner-collapsed="true"][data-inspector-collapsed="true"][data-history-collapsed="true"]').includes('--studio-gizmo-clear: 0px;'), 'with both cards away it takes the corner');
   const docked = rule('.crucible-studio[data-floating="false"]:not([data-compact="true"]) .crucible-studio-view-widget');
   assert.ok(docked.includes('inset-inline-end: var(--studio-edge);') && docked.includes('inset-block-start: var(--studio-edge);'), 'docked, the viewport already ends at the column, so the widget takes its corner');
   assert.ok(rule('.crucible-studio[data-compact="true"] .crucible-studio-view-widget').includes('inset-inline-end: var(--studio-edge);'), 'a compact window keeps it in the corner under the bar, clear of the cards');
@@ -2850,12 +3548,74 @@ test('G picks the selected object up under the pointer; X locks an axis, Esc put
   assert.equal(ui.controller.canUndo, false);
 });
 
+test('typed digits set the amount of a held move, turn or scale, and Shift with an axis keeps the move on a plane', testContext => {
+  const ui = mountStudio(testContext);
+  const hintBar = ui.root.querySelector('.crucible-studio-hintbar');
+  const heroNode = () => ui.controller.exportRecipe().nodes.find(node => node.id === ui.controller.selectedNodeId);
+  const press = (key, modifiers = {}) => dispatch(ui.dom.document, 'keydown', { key, ...modifiers });
+  const pressAll = keys => keys.forEach(key => press(key));
+  ui.controller.selectNode(ui.controller.exportRecipe().nodes[0].id);
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  const before = structuredClone(heroNode().translation);
+
+  // G X 2 Enter moves 2 m along X in one undo step, whatever the pointer does.
+  pressAll(['g', 'x', '2']);
+  dispatch(ui.dom.document, 'pointermove', { clientX: 380, clientY: 150 });
+  assert.match(hintBar.textContent, /= 2 m/);
+  assert.deepEqual(heroNode().translation, [before[0] + 2, before[1], before[2]]);
+  press('.');
+  press('5');
+  assert.equal(heroNode().translation[0], before[0] + 2.5);
+  press('Backspace');
+  press('Backspace');
+  assert.equal(heroNode().translation[0], before[0] + 2);
+  press('-');
+  assert.equal(heroNode().translation[0], before[0] - 2);
+  press('Enter');
+  assert.equal(ui.root.dataset.modal, undefined);
+  assert.equal(heroNode().translation[0], before[0] - 2);
+  ui.controller.undo();
+  assert.deepEqual(heroNode().translation, before);
+  assert.equal(ui.controller.canUndo, false);
+
+  // An amount typed before the axis survives the lock; Esc puts everything back.
+  pressAll(['g', '3', 'x']);
+  assert.equal(heroNode().translation[0], before[0] + 3);
+  press('Escape');
+  assert.deepEqual(heroNode().translation, before);
+
+  // Shift+Y keeps the move on the ground plane: the height does not change, the pointer sets X and Z.
+  press('g');
+  dispatch(ui.dom.document, 'pointermove', { clientX: 380, clientY: 150 });
+  press('Y', { shiftKey: true });
+  assert.deepEqual(hintBar.querySelectorAll('kbd').filter(key => key.getAttribute('aria-pressed') === 'true').map(key => key.textContent), ['X', 'Z']);
+  dispatch(ui.dom.document, 'pointermove', { clientX: 420, clientY: 120 });
+  assert.equal(heroNode().translation[1], before[1]);
+  assert.notEqual(heroNode().translation[0], before[0]);
+  pressAll(['4']);
+  assert.deepEqual(heroNode().translation, [before[0] + 4, before[1], before[2] + 4]);
+  press('Escape');
+
+  // Rotate takes degrees and scale takes a factor.
+  const beforeScale = structuredClone(heroNode().scale ?? [1, 1, 1]);
+  pressAll(['s', '2']);
+  assert.deepEqual(heroNode().scale, beforeScale.map(value => value * 2));
+  press('Enter');
+  ui.controller.undo();
+  pressAll(['r', 'y', '9', '0']);
+  const [, turned, , turnedW] = heroNode().rotation;
+  assert.ok(Math.abs(turned - Math.sin(Math.PI / 4)) < 1e-3 && Math.abs(turnedW - Math.cos(Math.PI / 4)) < 1e-3, 'ninety degrees about Y');
+  press('Enter');
+  ui.controller.undo();
+  assert.equal(ui.controller.canUndo, false);
+});
+
 test('a right click on an object opens its menu; H hides, Alt+H shows all and Alt+G, R and S reset the transform', testContext => {
   const ui = mountStudio(testContext);
   const menu = ui.root.querySelector('#crucible-studio-pop-object');
   const heroNode = () => ui.controller.exportRecipe().nodes.find(node => node.id === 'hero');
   const press = (key, modifiers = {}) => dispatch(ui.dom.document, 'keydown', { key, ...modifiers });
-  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Duplicate', 'Hide', 'Reset position', 'Reset rotation', 'Reset scale', 'Delete']);
+  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Rename', 'Duplicate', 'Hide', 'Reset position', 'Reset rotation', 'Reset scale', 'Apply…', 'Set origin…', 'Delete']);
 
   // In the Scene list the row is selected first, then the menu opens on it.
   const heroRow = ui.rows().find(row => row.textContent.includes(heroNode().label ?? 'hero'));
@@ -3054,6 +3814,35 @@ test('the Animated camera row shows only when a track drives the camera, and swi
   row.click();
   assert.equal(driven.controller.freeView, false);
   assert.equal(row.getAttribute('aria-checked'), 'true');
+});
+
+test('the Export workspace draws the viewport as the saved shot: the scene camera, no grid, and the free view comes back after it (#3343)', testContext => {
+  const drivenRecipe = makeRecipe();
+  drivenRecipe.motion = {
+    duration: 4,
+    loop: false,
+    tracks: [{ kind: 'camera', property: 'fov', interpolation: 'LINEAR', keyframes: [{ time: 0, value: 40 }, { time: 4, value: 30 }] }],
+  };
+  const ui = mountStudio(testContext, { recipe: drivenRecipe });
+  const sceneParts = ui.controller.scene.parts.length;
+  const sceneEye = Array.from(ui.controller.scene.camera.eye);
+  ui.controller.moveViewportCamera({ eye: [9, 9, 9], target: [0, 0, 0] });
+  ui.studio.renderNow();
+  assert.deepEqual([...ui.renderer.frames.at(-1).eye], [9, 9, 9], 'Build draws the free view');
+  assert.equal(ui.renderer.partCount, sceneParts + GRID_LINE_COUNT, 'Build draws the grid');
+  assert.ok(ui.renderer.frames.at(-1).near !== undefined, 'Build widens the clip planes');
+
+  byDataset(ui.root, 'workspace', 'export').click();
+  ui.studio.renderNow();
+  assert.deepEqual([...ui.renderer.frames.at(-1).eye], sceneEye, 'Export draws the scene camera, which is what a PNG uses');
+  assert.equal(ui.renderer.partCount, sceneParts, 'Export leaves the grid out, as the saved image does');
+  assert.equal(ui.renderer.frames.at(-1).near, ui.controller.scene.camera.near, 'Export keeps the scene camera clip planes');
+  assert.equal(ui.controller.freeView, true, 'the free view is kept while Export is open');
+
+  byDataset(ui.root, 'workspace', 'build').click();
+  ui.studio.renderNow();
+  assert.deepEqual([...ui.renderer.frames.at(-1).eye], [9, 9, 9], 'leaving Export brings the free view back');
+  assert.equal(ui.renderer.partCount, sceneParts + GRID_LINE_COUNT, 'and the grid');
 });
 
 test('the scene list shows the camera, the sun and each light above the nodes, selects them and honours the filter', testContext => {
@@ -3744,7 +4533,8 @@ test('the Look tab shows the lighting presets on one row and the sun direction p
 test('the stylesheet fades rows under a pinned group title and at the bottom of the panels, and keeps the label column wide enough', () => {
   assert.ok(STUDIO_CSS.includes('container-type: scroll-state;'), 'a group title can tell when it is pinned');
   assert.ok(STUDIO_CSS.includes('@container scroll-state(stuck: top)'), 'the fade under a title shows only while it is pinned');
-  assert.ok(STUDIO_CSS.includes('.crucible-studio-panels::after'), 'the panels fade at the bottom edge');
+  assert.ok(STUDIO_CSS.includes('.crucible-studio-scroll[data-fade-bottom="true"]'), 'a scrolling card body fades at the edges that hide content');
+  assert.ok(STUDIO_CSS.includes('scrollbar-gutter: stable'), 'the scrollbar gutter stays so content does not shift');
   assert.ok(STUDIO_CSS.includes('grid-template-columns: minmax(min-content, 45%) minmax(0, 1fr);'), 'a label column grows to its label');
   assert.ok(STUDIO_CSS.includes('scroll-snap-type: y mandatory;'), 'the Scene list scrolls a whole row at a time');
 });
@@ -4017,6 +4807,23 @@ test('choosing a new scene on purpose clears the draft and its notice', async te
   await ui.dom.settle();
   assert.equal(storage.entries.has(DRAFT_KEY), false);
   assert.equal(ui.root.querySelector('.crucible-studio-draft').hidden, true);
+});
+
+test('New scene works from the Export workspace like Open does: it replaces the scene and Export stays open (#3343)', async testContext => {
+  const ui = mountStudio(testContext);
+  await ui.studio.ready;
+  byDataset(ui.root, 'workspace', 'export').click();
+  assert.equal(ui.root.dataset.workspace, 'export');
+  assert.ok(ui.node('hero'), 'the scene has its object before');
+  const newSceneRow = byText(ui.root.querySelector('#crucible-studio-pop-new'), 'New scene…');
+  assert.notEqual(newSceneRow.getAttribute('aria-disabled'), 'true', 'the row is not locked in Export');
+  newSceneRow.click();
+  await ui.dom.settle();
+  byDataset(ui.root, 'template', 'empty').click();
+  await ui.dom.settle();
+  assert.equal(ui.node('hero'), undefined, 'the scene was replaced');
+  assert.equal(ui.root.dataset.workspace, 'export', 'the workspace stays on Export');
+  assert.equal(byDataset(ui.root, 'export', 'image').disabled, false, 'the export actions follow the new scene');
 });
 
 test('a delete leaves nothing selected, so a second Delete removes nothing, and its undo brings the object back in hand (#2817)', testContext => {
@@ -4619,7 +5426,7 @@ test('the Cinema 4D keymap: E, R and T choose the tool, 9 selects and F9 keys', 
   press('9');
   assert.equal(ui.controller.tool, 'select');
   press('S', { shiftKey: true });
-  assert.equal(ui.controller.tool, 'snap');
+  assert.equal(ui.studio.preferences.snapEnabled, true, 'Shift+S, the Cinema 4D snapping key, turns snapping on');
   press('F9');
   await ui.dom.settle();
   assert.equal(ui.studio.exportRecipe().motion.tracks.length > 0, true, 'F9 sets a key');
@@ -4752,6 +5559,147 @@ test('Maya and Cinema 4D navigate with Alt and a mouse button, and the Blender k
   assert.notDeepEqual(ui.controller.scene.camera.target, targetBefore, 'the default right drag still pans, whatever the keymap');
 });
 
+// Snapping is a state on the rail, not a tool (#3342).
+function snapParts(ui) {
+  return {
+    toggle: byDataset(ui.root, 'snapToggle', 'true'),
+    targetButton: byDataset(ui.root, 'snapTargetButton', 'true'),
+    popover: ui.root.querySelector('#crucible-studio-pop-snap'),
+  };
+}
+
+test('the magnet toggle and its target menu sit on the rail, lit when on, and are kept for the next visit (#3342)', testContext => {
+  const saved = new Map();
+  const preferenceStorage = { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) };
+  const ui = mountStudio(testContext, { preferenceStorage });
+  const { toggle, targetButton, popover } = snapParts(ui);
+  assert.equal(toggle.dataset.icon, 'snap');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+  assert.match(toggle.getAttribute('aria-label'), /^Snapping off \(Shift\+Tab\)$/);
+  assert.equal(targetButton.getAttribute('aria-label'), 'Snap to Increment');
+  assert.deepEqual(popover.querySelectorAll('button').map(item => [item.textContent, item.dataset.snapTarget, item.querySelector('svg') !== null]), [
+    ['Increment', 'increment', true],
+    ['Vertex', 'vertex', true],
+    ['Face', 'face', true],
+  ]);
+  assert.deepEqual(popover.querySelectorAll('button').map(item => item.getAttribute('aria-checked')), ['true', 'false', 'false']);
+  assert.ok(STUDIO_CSS.includes('button[data-snap-toggle][aria-pressed="true"] svg'), 'the lit magnet is filled, not only tinted');
+
+  toggle.click();
+  assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+  assert.equal(ui.controller.interactionSettings.snapEnabled, true);
+  assert.match(toggle.getAttribute('aria-label'), /^Snapping on/);
+  assert.equal(ui.status(), 'Snapping on, to Increment');
+
+  byText(popover, 'Vertex').click();
+  assert.equal(ui.controller.interactionSettings.snapTarget, 'vertex');
+  assert.equal(targetButton.dataset.icon, 'meshVertex');
+  assert.equal(targetButton.getAttribute('aria-label'), 'Snap to Vertex');
+  assert.deepEqual(popover.querySelectorAll('button').map(item => item.getAttribute('aria-checked')), ['false', 'true', 'false']);
+
+  const next = mountStudio(testContext, { preferenceStorage, sharedDom: ui.dom });
+  const nextParts = snapParts(next);
+  assert.equal(nextParts.toggle.getAttribute('aria-pressed'), 'true', 'the state comes back');
+  assert.equal(nextParts.targetButton.getAttribute('aria-label'), 'Snap to Vertex', 'and so does the target');
+  assert.deepEqual([next.controller.interactionSettings.snapEnabled, next.controller.interactionSettings.snapTarget], [true, 'vertex']);
+
+  next.button('Reset settings').click();
+  assert.equal(nextParts.toggle.getAttribute('aria-pressed'), 'false', 'Reset turns snapping off');
+  assert.equal(nextParts.targetButton.getAttribute('aria-label'), 'Snap to Increment', 'and back to Increment');
+});
+
+test('Shift+Tab toggles snapping from the page or the canvas, and leaves Tab to the browser anywhere else (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const { toggle } = snapParts(ui);
+  const shiftTab = target => dispatch(target, 'keydown', { key: 'Tab', shiftKey: true });
+
+  assert.equal(shiftTab(ui.dom.document).defaultPrevented, true);
+  assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  shiftTab(ui.canvas);
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false', 'from the canvas too, with the pointer over the viewport');
+
+  const onButton = shiftTab(ui.label('Delete (Del)'));
+  assert.equal(onButton.defaultPrevented, false, 'a focused control keeps Shift+Tab as the way back');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+  const inField = shiftTab(ui.root.querySelector('input'));
+  assert.equal(inField.defaultPrevented, false);
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+
+  byText(ui.root, 'Settings…').click();
+  shiftTab(ui.dom.document);
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false', 'nothing happens behind an open dialog');
+});
+
+test('Shift+Tab does not enter edit mode (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  const meshBefore = ui.root.dataset.meshEdit;
+  dispatch(ui.dom.document, 'keydown', { key: 'Tab', shiftKey: true });
+  assert.equal(ui.root.dataset.meshEdit, meshBefore, 'Shift+Tab only toggled snapping');
+  assert.equal(snapParts(ui).toggle.getAttribute('aria-pressed'), 'true');
+});
+
+test('holding or letting go of Ctrl flips snapping for a handle drag at once, in both directions (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  ui.tool('translate').click();
+  ui.studio.renderNow();
+  const handles = ui.controller.gizmoHandles();
+  const along = distance => ui.controller.projectWorldPoint(handles.pivot.map((value, index) => value + handles.basis.x[index] * distance));
+  const heroX = () => ui.node('hero').translation[0];
+  const onStep = value => Math.abs(value / 0.25 - Math.round(value / 0.25)) < 1e-6;
+
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(along(handles.handleLength + 0.83)));
+  const free = heroX();
+  assert.equal(onStep(free), false, 'snapping is off: the move is free');
+  dispatch(ui.dom.document, 'keydown', { key: 'Control', ctrlKey: true });
+  assert.equal(onStep(heroX()), true, 'Ctrl down snaps the move in hand without the pointer moving');
+  dispatch(ui.dom.document, 'keyup', { key: 'Control', ctrlKey: false });
+  assert.equal(heroX(), free, 'Ctrl up gives the free move back');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength + 0.83)));
+
+  snapParts(ui).toggle.click();
+  ui.controller.updateNodeTransform('hero', { translation: [0, 0.5, 0] });
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(along(handles.handleLength + 0.83)));
+  assert.equal(onStep(heroX()), true, 'snapping is on: the move is on the step');
+  dispatch(ui.dom.document, 'keydown', { key: 'Control', ctrlKey: true });
+  assert.equal(onStep(heroX()), false, 'Ctrl down frees it');
+  dispatch(ui.dom.document, 'keyup', { key: 'Control', ctrlKey: false });
+  assert.equal(onStep(heroX()), true, 'Ctrl up snaps it again');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength + 0.83)));
+});
+
+test('G and R obey the snapping state, and Ctrl flips it while the object is held (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const press = (key, modifiers = {}) => dispatch(ui.dom.document, 'keydown', { key, ...modifiers });
+  const heroX = () => ui.node('hero').translation[0];
+  const onStep = value => Math.abs(value / 0.25 - Math.round(value / 0.25)) < 1e-6;
+  ui.controller.selectNode('hero');
+  snapParts(ui).toggle.click();
+
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  press('g');
+  press('x');
+  dispatch(ui.dom.document, 'pointermove', { clientX: 377, clientY: 200 });
+  assert.equal(onStep(heroX()) && heroX() !== 0, true, `G with snapping on lands on the step: ${heroX()}`);
+  press('Control', { ctrlKey: true });
+  assert.equal(onStep(heroX()), false, 'Ctrl while holding frees the move');
+  dispatch(ui.dom.document, 'keyup', { key: 'Control', ctrlKey: false });
+  assert.equal(onStep(heroX()), true);
+  press('Escape');
+
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  press('r');
+  dispatch(ui.dom.document, 'pointermove', { clientX: 333, clientY: 200 });
+  const turned = ui.node('hero').rotation;
+  const degrees = (2 * Math.asin(Math.max(Math.abs(turned[0]), Math.abs(turned[1]), Math.abs(turned[2]))) * 180) / Math.PI;
+  assert.ok(Math.abs(degrees / 15 - Math.round(degrees / 15)) < 1e-3 && degrees > 1, `R turns in 15 degree steps: ${degrees}`);
+  press('Escape');
+});
+
 test('select all belongs to Studio only when the event comes from Studio (#3328)', testContext => {
   const ui = mountStudio(testContext);
   const hostText = ui.dom.document.createElement('p');
@@ -4841,4 +5789,386 @@ test('settleUntil gives up at its deadline when the work never finishes', async 
   await dom.settleUntil(() => false, 50);
   const waited = performance.now() - started;
   assert.ok(waited >= 50 && waited < 5000, `waited ${waited} ms for a 50 ms deadline`);
+});
+
+test('in Export the controls that do nothing look disabled, a save draws no toast and the picture shape is labelled (#3343)', async testContext => {
+  const ui = mountStudio(testContext);
+  const gridButton = ui.root.querySelectorAll('button').find(button => button.getAttribute('aria-label') === 'Show or hide the grid');
+  const rowIn = (popoverId, label) => ui.root.querySelectorAll('.crucible-studio-popover').find(popover => popover.id === popoverId).querySelectorAll('button').find(button => button.textContent.startsWith(label));
+  const blockedRows = [['edit', 'Duplicate'], ['edit', 'Delete'], ['view', 'Grid'], ['view', 'Frame the selection']].map(([menu, label]) => rowIn(`crucible-studio-pop-${menu}`, label));
+  for (const control of [gridButton, ...blockedRows]) assert.notEqual(control.getAttribute('aria-disabled'), 'true', 'live in Build');
+  const allowedRows = [rowIn('crucible-studio-pop-new', 'Save'), rowIn('crucible-studio-pop-new', 'Open')];
+
+  byDataset(ui.root, 'workspace', 'export').click();
+  for (const control of [gridButton, ...blockedRows]) assert.equal(control.getAttribute('aria-disabled'), 'true', 'dimmed in Export like undo with nothing to undo');
+  for (const row of allowedRows) assert.notEqual(row.getAttribute('aria-disabled'), 'true', 'the file rows stay live');
+  const gridBefore = ui.controller.scene.revision;
+  gridButton.click();
+  assert.equal(ui.studio.gridVisible, true, 'the grid toggle does nothing in Export');
+  assert.equal(ui.controller.scene.revision, gridBefore);
+
+  const shape = ui.root.querySelectorAll('.crucible-studio-export-frame')[0];
+  assert.equal(shape.getAttribute('role'), 'img');
+  assert.equal(shape.getAttribute('aria-label'), 'Shape of the picture');
+
+  byText(ui.root, 'Save PNG').click();
+  await ui.dom.settle();
+  const toast = ui.root.querySelector('.crucible-studio-status');
+  assert.equal(ui.status(), 'Saved PNG still', 'a screen reader still hears it');
+  assert.equal(toast.getAttribute('data-quiet'), 'true', 'and nothing is drawn');
+  assert.ok(ui.root.querySelectorAll('.crucible-studio-export-result').some(result => result.textContent.includes('.png')), 'the result line is the report');
+
+  byDataset(ui.root, 'workspace', 'build').click();
+  for (const control of [gridButton, ...blockedRows]) assert.equal(control.getAttribute('aria-disabled'), 'false', 'live again in Build');
+});
+
+test('Shift+Tab on the focused canvas is the browser reverse tab while the pointer is off the viewport (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const { toggle } = snapParts(ui);
+  const shiftTab = target => dispatch(target, 'keydown', { key: 'Tab', shiftKey: true });
+
+  const withoutPointer = shiftTab(ui.canvas);
+  assert.equal(withoutPointer.defaultPrevented, false, 'no pointer over the viewport: the browser takes it');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  assert.equal(shiftTab(ui.canvas).defaultPrevented, true, 'pointer over the viewport: snapping takes it');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+
+  dispatch(ui.viewport, 'pointerleave');
+  const afterLeaving = shiftTab(ui.canvas);
+  assert.equal(afterLeaving.defaultPrevented, false, 'the pointer left: the browser takes it again');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+
+  assert.equal(shiftTab(ui.dom.document).defaultPrevented, true, 'with nothing focused it still toggles');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+});
+
+test('no object menu opens over a handle drag or a G, R or S move, and its context menu is still swallowed (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const menu = ui.root.querySelector('#crucible-studio-pop-object');
+  ui.selectRow('hero');
+  ui.tool('translate').click();
+  ui.studio.renderNow();
+  const handles = ui.controller.gizmoHandles();
+  const tip = ui.controller.projectWorldPoint(handles.pivot.map((value, index) => value + handles.basis.x[index] * handles.handleLength));
+
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(tip));
+  assert.equal(ui.controller.dragging, true);
+  const duringDrag = dispatch(ui.gizmo, 'contextmenu', { clientX: 300, clientY: 200 });
+  assert.equal(duringDrag.defaultPrevented, true);
+  assert.notEqual(menu.popoverOpen, true, 'no menu over a handle drag');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(tip));
+
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  dispatch(ui.dom.document, 'keydown', { key: 'g' });
+  assert.equal(ui.root.dataset.modal !== undefined, true);
+  const duringMove = dispatch(ui.gizmo, 'contextmenu', { clientX: 300, clientY: 200 });
+  assert.equal(duringMove.defaultPrevented, true);
+  assert.notEqual(menu.popoverOpen, true, 'no menu over a G move');
+  dispatch(ui.dom.document, 'keydown', { key: 'Escape' });
+
+  dispatch(ui.gizmo, 'contextmenu', { clientX: 300, clientY: 200 });
+  assert.equal(menu.popoverOpen, true, 'with nothing in hand the menu opens as before');
+});
+
+test('the window losing focus during a handle drag lets go of Ctrl, and a cancel with Ctrl held puts the object back (#3342)', testContext => {
+  const dom = installStudioDom();
+  const windowListeners = new Map();
+  dom.document.defaultView.addEventListener = (type, listener) => windowListeners.set(type, listener);
+  dom.document.defaultView.removeEventListener = type => windowListeners.delete(type);
+  testContext.after(() => dom.uninstall());
+  const ui = mountStudio(testContext, { sharedDom: dom });
+  ui.selectRow('hero');
+  ui.tool('translate').click();
+  ui.studio.renderNow();
+  const handles = ui.controller.gizmoHandles();
+  const along = distance => ui.controller.projectWorldPoint(handles.pivot.map((value, index) => value + handles.basis.x[index] * distance));
+  const heroX = () => ui.node('hero').translation[0];
+  const onStep = value => Math.abs(value / 0.25 - Math.round(value / 0.25)) < 1e-6;
+  const start = heroX();
+
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(along(handles.handleLength + 0.83)));
+  const free = heroX();
+  dispatch(ui.dom.document, 'keydown', { key: 'Control', ctrlKey: true });
+  assert.equal(onStep(heroX()), true, 'Ctrl held: on the step');
+  windowListeners.get('blur')();
+  assert.equal(heroX(), free, 'blur lets go of Ctrl: the free move is back');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength + 0.83)));
+
+  ui.controller.updateNodeTransform('hero', { translation: [start, 0.5, 0] });
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(along(handles.handleLength + 0.83)));
+  dispatch(ui.dom.document, 'keydown', { key: 'Control', ctrlKey: true });
+  assert.equal(ui.controller.cancelGizmoDrag(), true);
+  assert.equal(heroX(), start, 'cancel with Ctrl held puts the object back');
+  dispatch(ui.dom.document, 'keyup', { key: 'Control', ctrlKey: false });
+  windowListeners.get('blur')();
+  assert.equal(heroX(), start, 'a later Ctrl release or blur moves nothing');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength)));
+  assert.equal(heroX(), start);
+});
+
+test('the target button always shows the icon of the active target, open or closed (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const { targetButton, popover } = snapParts(ui);
+  assert.equal(targetButton.dataset.icon, 'grid');
+  popover.showPopover();
+  assert.equal(targetButton.dataset.icon, 'grid', 'opening the menu is not a different glyph');
+  byDataset(popover, 'snapTarget', 'vertex').click();
+  assert.equal(targetButton.dataset.icon, 'meshVertex', 'choosing a target changes it for good');
+});
+
+function makeFiveEdits(ui) {
+  ui.controller.updateNodeTransform('hero', { translation: [1, 0.5, 0] });
+  ui.controller.updateNodeTransform('hero', { rotationDegrees: [0, 45, 0] });
+  ui.controller.updateNodeTransform('orb', { scale: [0.8, 0.8, 0.8] });
+  ui.controller.addPrimitive('box');
+  ui.controller.updateNodeTransform('hero', { visible: false });
+}
+
+const historyPanelOf = ui => ui.root.querySelector('.crucible-studio-history');
+const historyRows = ui => historyPanelOf(ui).querySelectorAll('.crucible-studio-history-row');
+const historyRow = (ui, name) => historyRows(ui).find(row => row.dataset.label === name);
+const historyStates = ui => historyRows(ui).map(row => row.dataset.state);
+const editPopoverOf = ui => ui.root.querySelector('#crucible-studio-pop-edit');
+const viewPopoverOf = ui => ui.root.querySelector('#crucible-studio-pop-view');
+const showHistoryFromViewMenu = ui => byText(viewPopoverOf(ui), 'History').click();
+const mountWithStorage = (testContext, options = {}) => {
+  const saved = new Map();
+  const preferenceStorage = { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) };
+  return { saved, preferenceStorage, ui: mountStudio(testContext, { preferenceStorage, ...options }) };
+};
+
+test('the Edit menu shows Undo, Redo, History and Settings with an icon, and Undo and Redo show their keys', testContext => {
+  const ui = mountStudio(testContext);
+  const editMenu = editPopoverOf(ui);
+  const rowNames = editMenu.querySelectorAll('button').map(row => row.textContent);
+  assert.deepEqual(rowNames.slice(0, 3), ['Undo', 'Redo', 'History']);
+  assert.ok(rowNames.includes('Settings…'));
+  for (const name of ['Undo', 'Redo', 'History', 'Settings…']) {
+    assert.match(String(byText(editMenu, name).children[0].getAttribute('class')), /crucible-studio-icon/, name);
+  }
+  assert.equal(byText(editMenu, 'Undo').dataset.shortcut, 'Ctrl+Z');
+  assert.equal(byText(editMenu, 'Redo').dataset.shortcut, 'Ctrl+Shift+Z');
+  byText(editMenu, 'Settings…').click();
+  assert.ok(ui.root.querySelectorAll('dialog').some(dialog => dialog.open), 'Settings opens');
+});
+
+test('Copy, Paste, Duplicate and Deselect each have their own icon', testContext => {
+  const ui = mountStudio(testContext);
+  const iconPath = name => byText(editPopoverOf(ui), name).children[0].descendants().find(element => element.getAttribute('d'))?.getAttribute('d');
+  const paths = ['Copy', 'Paste', 'Duplicate', 'Deselect'].map(iconPath);
+  assert.ok(paths.every(Boolean), 'every row draws an icon');
+  assert.equal(new Set(paths).size, 4);
+});
+
+test('Undo and Redo in the Edit menu are disabled until the stack has something to step to, and History is always there', testContext => {
+  const ui = mountStudio(testContext);
+  const editMenu = editPopoverOf(ui);
+  const disabled = name => byText(editMenu, name).getAttribute('aria-disabled');
+  assert.deepEqual(['Undo', 'Redo'].map(disabled), ['true', 'true']);
+  assert.notEqual(disabled('History'), 'true');
+
+  ui.controller.updateNodeTransform('hero', { translation: [1, 0.5, 0] });
+  assert.deepEqual(['Undo', 'Redo'].map(disabled), ['false', 'true']);
+
+  ui.controller.undo();
+  assert.deepEqual(['Undo', 'Redo'].map(disabled), ['true', 'false']);
+});
+
+test('a dimmed menu row uses the muted token, which is over 3:1 on the menu surface in both themes', () => {
+  const rule = STUDIO_CSS.slice(STUDIO_CSS.indexOf('.crucible-studio .crucible-studio-popover button[aria-disabled="true"] {'));
+  assert.match(rule.slice(0, 120), /opacity: 1;\s+color: var\(--studio-muted\);/);
+});
+
+test('the History panel starts hidden and an empty history shows just Start', testContext => {
+  const ui = mountStudio(testContext);
+  assert.equal(ui.root.dataset.historyCollapsed, 'true');
+  showHistoryFromViewMenu(ui);
+  assert.equal(ui.root.dataset.historyCollapsed, 'false');
+  assert.deepEqual(historyRows(ui).map(row => row.dataset.label), ['Start']);
+  assert.equal(historyRows(ui)[0].getAttribute('aria-current'), 'step');
+  assert.equal(historyPanelOf(ui).querySelector('.crucible-studio-dock-head').textContent, 'History');
+  assert.equal(historyPanelOf(ui).querySelectorAll('button').some(button => button.getAttribute('aria-label') === 'Close'), false, 'a panel has no close button');
+});
+
+test('History rows follow edits live, oldest first, with the kind icon, the name and the target', testContext => {
+  const ui = mountStudio(testContext);
+  showHistoryFromViewMenu(ui);
+  makeFiveEdits(ui);
+  assert.deepEqual(historyRows(ui).map(row => row.dataset.label), ['Start', 'Move', 'Rotate', 'Scale', 'Add box', 'Hide']);
+  assert.deepEqual(historyRows(ui).map(row => row.querySelector('.crucible-studio-history-detail')?.textContent ?? ''), ['', 'hero', 'hero', 'orb', '', 'hero']);
+  assert.deepEqual(historyStates(ui), ['done', 'done', 'done', 'done', 'done', 'current']);
+  const iconPaths = historyRows(ui).map(row => row.descendants().find(element => element.getAttribute('d'))?.getAttribute('d'));
+  assert.ok(iconPaths.every(Boolean), 'every row draws an icon');
+  assert.equal(new Set(iconPaths).size, 6, 'start, move, rotate, scale, add and hide each have their own icon');
+  ui.controller.updateNodeTransform('orb', { translation: [3, 0.5, 0] });
+  assert.equal(historyRows(ui).length, 7, 'a new edit adds its row at once');
+  assert.equal(historyRows(ui)[6].dataset.state, 'current');
+  assert.equal(historyRows(ui)[6].tabIndex, 0, 'the current row is the one Tab reaches');
+});
+
+test('a long name or target is cut with an ellipsis and its full text is in the title', testContext => {
+  const ui = mountStudio(testContext);
+  showHistoryFromViewMenu(ui);
+  const longLabel = 'A very long object name that cannot fit in the panel';
+  ui.controller.updateNodeTransform('hero', { label: longLabel });
+  ui.controller.updateNodeTransform('hero', { translation: [1, 0.5, 0] });
+  assert.equal(historyRow(ui, 'Move').title.includes(longLabel), true);
+  assert.match(STUDIO_CSS, /\.crucible-studio-history-name,\s*\.crucible-studio-history-detail \{[^}]*text-overflow: ellipsis;/);
+});
+
+test('a History row steps the scene to that edit in both directions', testContext => {
+  const ui = mountStudio(testContext);
+  const original = ui.studio.exportRecipe();
+  showHistoryFromViewMenu(ui);
+  ui.controller.updateNodeTransform('hero', { translation: [1, 0.5, 0] });
+  const afterMove = ui.studio.exportRecipe();
+  ui.controller.updateNodeTransform('orb', { scale: [0.8, 0.8, 0.8] });
+  ui.controller.addPrimitive('box');
+  const afterAdd = ui.studio.exportRecipe();
+
+  historyRow(ui, 'Move').click();
+  assert.deepEqual(ui.studio.exportRecipe(), afterMove, 'back to the move');
+  assert.deepEqual(historyStates(ui), ['done', 'current', 'undone', 'undone']);
+  assert.equal(ui.dom.document.activeElement, historyRow(ui, 'Move'));
+  assert.equal(ui.status(), 'Went to Move');
+
+  historyRow(ui, 'Add box').click();
+  assert.deepEqual(ui.studio.exportRecipe(), afterAdd, 'forward again to the add');
+  assert.deepEqual(historyStates(ui), ['done', 'done', 'done', 'current']);
+
+  historyRow(ui, 'Start').click();
+  assert.deepEqual(ui.studio.exportRecipe(), original);
+  assert.equal(ui.controller.canUndo, false);
+  assert.equal(ui.status(), 'Back to the start');
+  assert.deepEqual(historyStates(ui), ['current', 'undone', 'undone', 'undone']);
+});
+
+test('undoing marks the rows after the current one as undone and a new edit removes them', testContext => {
+  const ui = mountStudio(testContext);
+  showHistoryFromViewMenu(ui);
+  makeFiveEdits(ui);
+  ui.controller.undo();
+  ui.controller.undo();
+  assert.deepEqual(historyStates(ui), ['done', 'done', 'done', 'current', 'undone', 'undone']);
+  assert.equal(historyRows(ui).length, 6, 'the undone rows stay listed');
+  ui.controller.updateNodeTransform('orb', { translation: [3, 0.5, 0] });
+  assert.deepEqual(historyRows(ui).map(row => row.dataset.label), ['Start', 'Move', 'Rotate', 'Scale', 'Move']);
+  assert.deepEqual(historyStates(ui), ['done', 'done', 'done', 'done', 'current']);
+});
+
+test('the dimmed History rows use the muted token and the current row the strong text token with a filled mark', () => {
+  const ruleOf = selector => STUDIO_CSS.slice(STUDIO_CSS.indexOf(selector), STUDIO_CSS.indexOf('}', STUDIO_CSS.indexOf(selector)));
+  assert.match(ruleOf('.crucible-studio .crucible-studio-history-row[data-state="undone"],'), /color: var\(--studio-muted\)/);
+  assert.match(ruleOf('.crucible-studio .crucible-studio-history-row {'), /color: var\(--studio-text\)/);
+  assert.match(ruleOf('.crucible-studio-history-row[data-state="current"] .crucible-studio-history-mark'), /background: var\(--studio-accent\)/);
+  assert.doesNotMatch(ruleOf('.crucible-studio .crucible-studio-history-row[data-state="undone"],'), /opacity/);
+});
+
+test('History rows are reached with Tab once, moved with Up and Down, and pressed with Enter or Space', testContext => {
+  const ui = mountStudio(testContext);
+  showHistoryFromViewMenu(ui);
+  makeFiveEdits(ui);
+  assert.deepEqual(historyRows(ui).map(row => row.tabIndex), [-1, -1, -1, -1, -1, 0]);
+  historyRows(ui)[5].focus();
+  assert.equal(dispatch(historyRows(ui)[5], 'keydown', { key: 'ArrowUp' }).defaultPrevented, true);
+  assert.equal(ui.dom.document.activeElement, historyRows(ui)[4]);
+  dispatch(historyRows(ui)[4], 'keydown', { key: 'ArrowDown' });
+  assert.equal(ui.dom.document.activeElement, historyRows(ui)[5]);
+  dispatch(historyRows(ui)[5], 'keydown', { key: 'Home' });
+  assert.equal(ui.dom.document.activeElement, historyRows(ui)[0]);
+  assert.equal(historyRows(ui)[0].tagName, 'BUTTON', 'a button, so Enter and Space press it');
+  historyRows(ui)[0].click();
+  assert.equal(ui.controller.history.position, 0);
+});
+
+test('History keeps no more rows than the undo depth', testContext => {
+  const ui = mountStudio(testContext);
+  showHistoryFromViewMenu(ui);
+  for (let step = 0; step < 40; step += 1) {
+    ui.controller.updateNodeTransform('hero', { translation: [step, 0.5, 0] });
+  }
+  assert.equal(historyRows(ui).length, 32, 'the controller keeps its 32 newest edits');
+  assert.equal(historyRows(ui).some(row => row.dataset.label === 'Start'), false, 'the opened scene is no longer reachable');
+  assert.equal(historyRows(ui)[31].dataset.state, 'current');
+});
+
+test('whether the History panel is shown is remembered with the other view preferences', testContext => {
+  const first = mountWithStorage(testContext);
+  showHistoryFromViewMenu(first.ui);
+  assert.equal(JSON.parse(first.saved.get('crucible-studio-preferences')).historyVisible, true);
+  const second = mountStudio(testContext, { preferenceStorage: first.preferenceStorage });
+  assert.equal(second.root.dataset.historyCollapsed, 'false', 'a new Studio opens with the panel shown');
+  showHistoryFromViewMenu(second);
+  assert.equal(second.root.dataset.historyCollapsed, 'true');
+  assert.equal(JSON.parse(first.saved.get('crucible-studio-preferences')).historyVisible, false);
+});
+
+test('Edit > History shows the panel and puts focus on the current row', testContext => {
+  const ui = mountStudio(testContext);
+  makeFiveEdits(ui);
+  ui.controller.undo();
+  assert.equal(ui.root.dataset.historyCollapsed, 'true');
+  byText(editPopoverOf(ui), 'History').click();
+  assert.equal(ui.root.dataset.historyCollapsed, 'false');
+  assert.equal(ui.dom.document.activeElement, historyRows(ui).find(row => row.dataset.state === 'current'));
+  assert.equal(historyRows(ui).length, 6);
+});
+
+test('a compact window starts with the History panel closed, and History and Properties take turns there', testContext => {
+  const ui = mountStudio(testContext, { containerWidth: 600, preferences: { historyVisible: true } });
+  assert.equal(ui.root.dataset.compact, 'true');
+  assert.equal(ui.root.dataset.historyCollapsed, 'true');
+  showHistoryFromViewMenu(ui);
+  assert.equal(ui.root.dataset.historyCollapsed, 'false');
+  assert.equal(ui.root.dataset.inspectorCollapsed, 'true', 'showing History puts Properties away');
+  ui.label('Show or hide the panels').click();
+  assert.equal(ui.root.dataset.inspectorCollapsed, 'false', 'the panels button brings Properties back');
+  assert.equal(ui.root.dataset.historyCollapsed, 'true', 'and puts History away');
+  assert.equal(ui.studio.preferences.historyVisible, true, 'the remembered choice is untouched');
+});
+
+test('the History card minimizes to its title row like the Scene and Properties cards and remembers it', testContext => {
+  const { saved, preferenceStorage, ui } = mountWithStorage(testContext);
+  showHistoryFromViewMenu(ui);
+  const minimize = historyPanelOf(ui).querySelector('.crucible-studio-dock-head').querySelectorAll('button')[0];
+  assert.equal(minimize.getAttribute('aria-label'), 'Minimize History');
+  assert.equal(ui.root.dataset.historyMinimized, 'false');
+  minimize.click();
+  assert.equal(ui.root.dataset.historyMinimized, 'true');
+  assert.equal(minimize.getAttribute('aria-label'), 'Expand History');
+  assert.equal(JSON.parse(saved.get('crucible-studio-preferences')).historyMinimized, true);
+  assert.ok(STUDIO_CSS.includes('[data-history-minimized="true"] .crucible-studio-history > :not(.crucible-studio-dock-head) { display: none; }'));
+  const second = mountStudio(testContext, { preferenceStorage });
+  assert.equal(second.root.dataset.historyMinimized, 'true', 'a new Studio opens with it minimized');
+  minimize.click();
+  assert.equal(ui.root.dataset.historyMinimized, 'false');
+});
+
+test('the column rule keeps Properties at 240 px or more and History to a third of the column', () => {
+  const flat = STUDIO_CSS.replace(/\s+/g, ' ');
+  assert.ok(flat.includes('.crucible-studio-dock.crucible-studio-history { flex: 0 1 auto; min-block-size: 0; max-block-size: 34%;'));
+  assert.ok(flat.includes('.crucible-studio-side > .crucible-studio-inspector { min-block-size: 240px; }'));
+});
+
+test('the History position is validated and names every kind of edit', testContext => {
+  const ui = mountStudio(testContext);
+  assert.throws(() => ui.controller.goToHistoryPosition(1), /from 0 to 0/);
+  ui.controller.updateNodeTransform('hero', { label: 'Boss' });
+  ui.controller.updateNodeTransform('hero', { translation: [0, 1, 0], scale: [2, 2, 2] });
+  ui.controller.updateNodeTransform('hero', { visible: false });
+  ui.controller.updateNodeTransform('hero', { visible: true });
+  ui.controller.beginUndoGroup();
+  ui.controller.updateNodeTransform('orb', { translation: [3, 0.5, 0] });
+  ui.controller.updateNodeTransform('orb', { rotationDegrees: [0, 10, 0] });
+  ui.controller.endUndoGroup();
+  assert.deepEqual(ui.controller.history.labels, ['Rename', 'Transform', 'Hide', 'Show', 'Move']);
+  assert.deepEqual(ui.controller.history.details, ['hero', 'Boss', 'Boss', 'Boss', 'orb']);
+  assert.throws(() => ui.controller.goToHistoryPosition(1.5), /whole number/);
+  assert.equal(ui.controller.goToHistoryPosition(0), 0);
+  assert.equal(ui.controller.goToHistoryPosition(3), 3);
+  assert.equal(ui.controller.history.position, 3);
 });

@@ -96,7 +96,11 @@ export function canopyStreetParts(options) {
 
 /** A binary glTF of the street, one mesh and one material per named piece. */
 export function buildCanopyStreetGlb(options) {
-  const meshes = canopyStreetMeshes(options);
+  return buildGlbFromMeshes(canopyStreetMeshes(options));
+}
+
+/** A binary glTF of named meshes ({ name, color, positions, indices }), one mesh and one material per piece. */
+export function buildGlbFromMeshes(meshes) {
   const buffers = [];
   const bufferViews = [];
   const accessors = [];

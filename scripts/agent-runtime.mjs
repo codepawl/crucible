@@ -73,7 +73,7 @@ import { writeReviewBuild } from './review-page.mjs';
 import { normalizeReview, reviewDeadlineMessage, REVIEW_LIMITS } from './agent-review.mjs';
 import { normalizeWedge } from './agent-wedge.mjs';
 import { WEDGE_LIMITS } from '../src/agent-wedge.js';
-import { mergeFrameDiagnostics, pathTracerFindingsLimit, pathTracerSkippedPassesWarning } from '../src/frame-checks.js';
+import { mergeFrameDiagnostics, pathTracerFindingsLimit, pathTracerReflectionHdriWarning, pathTracerSkippedPassesWarning } from '../src/frame-checks.js';
 import { BRANCH_LIMITS, validateBranchName } from '../src/agent-branches.js';
 import { createSharedGpuCard } from './agent-gpu-queue.mjs';
 import { isBrowserLoss, describeBrowserLoss } from './agent-browser-loss.mjs';
@@ -1172,7 +1172,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
           if (kernelCompile) metrics.kernelCompile = kernelCompile;
           if (frame === 0) {
             const looked = await jobPage.evaluate(input => window.__agentPreview.findings(input), frameInput);
-            mergeFrameDiagnostics(metrics, [pathTracerFindingsLimit(), pathTracerSkippedPassesWarning(snapshot.recipe.postPasses), ...looked.diagnostics].filter(Boolean));
+            mergeFrameDiagnostics(metrics, [pathTracerFindingsLimit(), pathTracerSkippedPassesWarning(snapshot.recipe.postPasses), pathTracerReflectionHdriWarning(snapshot.recipe.environment), ...looked.diagnostics].filter(Boolean));
           }
           if (traced.report.nativeSession) (metrics.nativeSessionRoutes ??= []).push(traced.report.nativeSession.path);
           const tracedBytes = Buffer.from(traced.data, 'base64');

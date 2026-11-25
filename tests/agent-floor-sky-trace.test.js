@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { createAgentScene } from '../src/agent-scene.js';
-import { applyDefaultFloorSky, stageFloorSky } from '../src/floor-sky-visibility.js';
+import { applyDefaultFloorSky, lastDefaultFloorSkyReport, stageFloorSky } from '../src/floor-sky-visibility.js';
 
 // A closed room: a floor, four walls and a closed roof, lit by a sun.
 function room(environment = {}) {
@@ -115,4 +115,105 @@ test('the floor search runs once for the same parts and the same sun, however of
   assert.equal(geometryReads, readsForFirstSearch, 'a copy of the same environment reads no geometry');
   stageFloorSky({ ...environment, lightDirection: [1, 1, 0] }, parts, matrixOf);
   assert.ok(geometryReads > readsForFirstSearch, 'a turned sun is searched again');
+});
+
+// #3389: the demo room is a set open on one side. Its trace once cost 4.9 million rays and 109 thousand texels (now 1.56 million and 66 thousand), which ran past the 20 second
+// limit on a slow machine and silently left the ground plain. The bound pins the cost, so the cliff cannot come back unseen.
+test('the demo room is traced as an open-sided room within a ray bound that leaves room under the time limit', () => {
+  const recipe = JSON.parse(readFileSync(new URL('./fixtures/demo-room.recipe.json', import.meta.url), 'utf8'));
+  delete recipe.bake;
+  recipe.nodes = recipe.nodes.filter(node => node.id !== 'organiser');
+  recipe.geometries = recipe.geometries.filter(geometry => geometry.id !== 'organiser');
+  recipe.nodes.find(node => node.id === 'pendant-bulb').translation = [0.3, 1.7, 0.2];
+  createAgentScene(recipe);
+  const report = lastDefaultFloorSkyReport();
+  assert.equal(report.branch, 'open-sided room, every surface traced');
+  assert.equal(report.reason, null);
+  assert.ok(report.rays <= 1_700_000, `the trace shot ${report.rays} rays`);
+  assert.ok(report.texels <= 75_000, `the trace cut ${report.texels} texels`);
+});
+
+test('a sky trace that stops at its time limit says so and what to change', () => {
+  const { parts } = createAgentScene(room({ keyColor: [3, 3, 3], floorSkyTrace: false }));
+  const result = applyDefaultFloorSky(parts, { keyColor: [3, 3, 3] }, { maximumTexels: 400, maxSeconds: 0 });
+  assert.equal(result.report.reason, 'passed maxSeconds');
+  assert.equal(result.report.warnings.length, 1);
+  assert.match(result.report.warnings[0], /time limit.*ground.*plain.*maxSeconds/s);
+  assert.equal(result.parts.find(part => part.name === 'floor').geometry.skyVisibility, undefined);
+});
+
+// A set open on one side whose walls are 2.5 m high: a long low wall and a wall split into panels. The prop rule once read "no second side over 3 m", which made any wall under 3 m
+// high a prop, whatever its length, and gave it the coarse cut and half the rays that drew stripes on a wall.
+function lowOpenSet({ panels }) {
+  const slab = (id, translation, scale) => ({ id, geometry: 'box', material: 'stone', translation, scale });
+  const nodes = [
+    slab('floor', [0, -0.1, 0], [8, 0.2, 10]),
+    slab('wall-back', [0, 1.25, -5], [8, 2.5, 0.2]),
+    slab('wall-left', [-4, 1.25, 0], [0.2, 2.5, 10]),
+    slab('ceiling', [0, 2.6, 0], [8.2, 0.2, 10.2]),
+    slab('stool', [1, 0.25, -1], [0.4, 0.5, 0.4]),
+  ];
+  if (panels) {
+    for (let panel = 0; panel < 5; panel++) nodes.push(slab(`wall-right-${panel}`, [4, 1.25, -4 + panel * 2], [0.2, 2.5, 2]));
+  } else {
+    nodes.push(slab('wall-right', [4, 1.25, 0], [0.2, 2.5, 10]));
+  }
+  const recipe = { ...room({ keyColor: [3, 3, 3], floorSkyTrace: false }), nodes };
+  recipe.camera = { eye: [0, 1.5, 9], target: [0, 1.5, 0], fov: 60, near: 0.05, far: 40 };
+  return recipe;
+}
+
+for (const panels of [false, true]) {
+  test(`a low wall ${panels ? 'split into panels' : 'of one piece'} keeps the fine cut and all its rays while a stool is a prop`, () => {
+    const { parts } = createAgentScene(lowOpenSet({ panels }));
+    const { report } = applyDefaultFloorSky(parts, { keyColor: [3, 3, 3] }, { maximumTexels: 4000 });
+    assert.equal(report.branch, 'open-sided room, every surface traced');
+    assert.ok(report.reducedParts.includes('stool'), 'the stool is a prop');
+    const walls = parts.filter(part => part.name.startsWith('wall-')).map(part => part.name);
+    assert.ok(walls.length >= 3);
+    for (const wall of walls) assert.ok(!report.reducedParts.includes(wall), `${wall} is not a prop`);
+    assert.ok(!report.reducedParts.includes('floor') && !report.reducedParts.includes('ceiling'));
+    // The cut edge and the rays per point of each part, as the trace used them: the stool is cut at four times the walls' edge with half the rays.
+    const perPart = new Map(report.floors.map(floor => [floor.name, floor]));
+    const stool = perPart.get('stool');
+    const fullRayParts = [...walls, 'floor', 'ceiling'];
+    for (const name of fullRayParts) {
+      assert.equal(perPart.get(name).raysPerPoint, 64, `${name} keeps all its rays`);
+      assert.equal(perPart.get(name).maximumEdge, perPart.get('floor').maximumEdge, `${name} keeps the fine cut`);
+    }
+    assert.equal(stool.raysPerPoint, 32);
+    assert.equal(stool.maximumEdge, perPart.get('floor').maximumEdge * 4);
+  });
+}
+
+test('a sky trace that stops at its time limit shows in the scene diagnostics of an open-sided set', () => {
+  const recipe = JSON.parse(readFileSync(new URL('./fixtures/demo-room.recipe.json', import.meta.url), 'utf8'));
+  delete recipe.bake;
+  recipe.nodes = recipe.nodes.filter(node => node.id !== 'organiser');
+  recipe.geometries = recipe.geometries.filter(geometry => geometry.id !== 'organiser');
+  recipe.nodes.find(node => node.id === 'pendant-bulb').translation = [0.3, 1.7, 0.2];
+  const hasStoppedTrace = scene => (scene.inspect().diagnostics ?? []).some(diagnostic => diagnostic.kind === 'sky-trace-stopped');
+  const normal = createAgentScene(structuredClone(recipe));
+  assert.equal(lastDefaultFloorSkyReport().branch, 'open-sided room, every surface traced');
+  assert.deepEqual(lastDefaultFloorSkyReport().warnings, []);
+  assert.equal(hasStoppedTrace(normal), false);
+  // A clock that jumps 30 s per read stands in for a slow machine, so the limit of 20 s is passed on the first vertex.
+  const realNow = performance.now;
+  let fakeNow = 0;
+  performance.now = () => (fakeNow += 30_000);
+  let stopped;
+  try {
+    stopped = createAgentScene(structuredClone(recipe));
+  } finally {
+    performance.now = realNow;
+  }
+  assert.equal(lastDefaultFloorSkyReport().reason, 'passed maxSeconds');
+  const diagnostic = stopped.inspect().diagnostics.find(entry => entry.kind === 'sky-trace-stopped');
+  assert.ok(diagnostic, 'scene_inspect names the stopped trace');
+  assert.equal(diagnostic.severity, 'warning');
+  assert.match(diagnostic.message, /time limit of 20 s.*plain/);
+  assert.match(diagnostic.fix, /maxSeconds.*maximumTexels.*floorSkyTrace/);
+  // The next build that finishes in time clears it.
+  const again = createAgentScene(structuredClone(recipe));
+  assert.equal(hasStoppedTrace(again), false);
 });

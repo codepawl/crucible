@@ -33,10 +33,10 @@ function resolveEmissionRampOnDemand(input, shape, label) {
 const MAX_LOOK_ARRAY_ENTRIES = Math.max(MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS);
 
 const ENVIRONMENT_FIELDS = [
-  'world', 'ground', 'setup', 'hdri', 'keyFromHdri', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity', 'ambientColor', 'ambientMix', 'fillColor', 'environmentDiffuseScale', 'skybox',
+  'world', 'ground', 'setup', 'hdri', 'reflectionHdri', 'keyFromHdri', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity', 'ambientColor', 'ambientMix', 'fillColor', 'environmentDiffuseScale', 'skybox',
   'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'localVolumes', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'wind', 'sky', 'wetness', 'puddles',
 ];
-const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom', 'depthOfField', 'motionBlur'];
+const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'dither', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom', 'depthOfField', 'motionBlur'];
 const SHADOW_FIELDS = ['target', 'extent', 'distance', 'near', 'far', 'hard'];
 const POINT_LIGHT_FIELDS = ['position', 'color', 'intensity', 'radius', 'range', 'castShadow', 'softFalloff', 'affects', 'parent'];
 const SPOT_LIGHT_FIELDS = ['position', 'direction', 'angle', 'penumbra', 'color', 'intensity', 'radius', 'range', 'castShadow', 'softFalloff', 'ies', 'affects', 'parent'];
@@ -379,6 +379,10 @@ function environmentFrom(input = {}) {
   if (input.environmentDiffuseScale !== undefined) {
     environment.environmentDiffuseScale = numberInRange(input.environmentDiffuseScale, 0, 100, 'environment.environmentDiffuseScale');
   }
+  // A second HDRI that only the reflections read (src/reflection-environment.js, loaded on demand); the diffuse light stays the lighting map's.
+  if (input.reflectionHdri !== undefined && input.reflectionHdri !== null) {
+    environment.reflectionHdri = agentSceneModule('reflectionEnvironment').resolveReflectionHdri(input.reflectionHdri, input.skybox, invalidField, { isReference: isEnvironmentReference, names: BUNDLED_ENVIRONMENT_NAMES });
+  }
   // Six face images as the sky (src/skybox.js); the module checks the faces and loads on demand. null clears it.
   if (input.skybox !== undefined && input.skybox !== null) {
     if (input.hdri || input.sky) {
@@ -514,8 +518,21 @@ export function agentEnvironmentKey(environment) {
   return keysFromHdri(environment) ? { ...environment, ...hdriSunSplit(environment).environment } : environment;
 }
 
-/** The procedural environment map that lights a normalized environment; the same object returns while inputs hold. */
-export function agentEnvironmentMap(environment) {
+/**
+ * The environment map that lights a normalized environment; the same object returns while inputs hold. With `reflectionHdri`
+ * the specular light and the sky drawn come from that HDRI and the diffuse light from the lighting map. `withReflection: false`
+ * returns the lighting map alone, for the path tracer, which has one map for every bounce.
+ */
+export function agentEnvironmentMap(environment, { withReflection = true } = {}) {
+  const lightingMap = agentLightingMap(environment);
+  if (!withReflection || !environment.reflectionHdri) {
+    return lightingMap;
+  }
+  const reflectionMap = createCatalogEnvironmentMap(environment.reflectionHdri, { intensity: environment.environmentIntensity, rotation: environment.environmentRotation, showBackground: environment.world });
+  return agentSceneModule('reflectionEnvironment').withReflectionEnvironment(lightingMap, reflectionMap);
+}
+
+function agentLightingMap(environment) {
   if (environment.skybox) {
     return agentSceneModule('skybox').createSkyboxMap(environment);
   }
@@ -539,7 +556,7 @@ function effectsFrom(input = {}) {
   knownKeys(input, [...EFFECT_FIELDS, ...postStepSupport.fields], 'effects');
   const groupFields = { bloom: BLOOM_FIELDS, depthOfField: DEPTH_OF_FIELD_FIELDS, motionBlur: MOTION_BLUR_FIELDS };
   for (const field of EFFECT_FIELDS) {
-    if (!(field in groupFields) && Object.hasOwn(input, field)) {
+    if (!(field in groupFields) && field !== 'dither' && Object.hasOwn(input, field)) {
       numberInRange(input[field], -Number.MAX_VALUE, Number.MAX_VALUE, `effects.${field}`);
     }
   }

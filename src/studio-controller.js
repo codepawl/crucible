@@ -5,6 +5,7 @@ import { createAgentScene } from './agent-scene.js';
 import { createSceneQuery } from './scene-query.js';
 import { agentSceneModule } from './agent-scene-modules.js';
 import { operationsBetweenRecipes, sameRecipeValue } from './studio-history-diff.js';
+import { EDIT_LABEL_FALLBACK, GIZMO_EDIT_LABELS, nameEditOperations, nameEditTarget, nodeLabelIn } from './studio-edit-names.js';
 import { MAX_POINT_LIGHTS, MAX_AREA_LIGHTS, MAX_SPOT_LIGHTS } from './light-limits.js';
 import {
   STUDIO_MATERIAL_PRESETS,
@@ -16,10 +17,24 @@ import {
   STUDIO_VIEW_PRESETS,
   primitiveGeometrySpec,
 } from './studio-templates.js';
+import {
+  OWN_VERTEX_LIMIT,
+  SNAP_TARGET_IDS,
+  SCALE_SNAP_STEP,
+  findVertexUnderPointer,
+  moveToLandVertex,
+  sampleVertices,
+  snapDegrees,
+  snapIsActive,
+  snapScaleFactor,
+  snapToStep,
+} from './studio-snapping.js';
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
+// The furthest a typed move may go in metres: the coordinate limit the recipe keeps for positions.
+const MAX_TYPED_TRAVEL = 1e6;
 const PLANE_AXES = Object.freeze(['xy', 'xz', 'yz']);
-const GIZMO_AXES = Object.freeze(['x', 'y', 'z', 'xy', 'xz', 'yz', 'screen', 'uniform', 'surface']);
+const GIZMO_AXES = Object.freeze(['x', 'y', 'z', 'xy', 'xz', 'yz', 'screen', 'uniform']);
 // The property panels that show one record of the recipe instead of one scene object, and the motion kind that animates it.
 const SCENE_RECORD_PANELS = Object.freeze({
   world: Object.freeze({ kind: 'world', record: 'environment', motionKind: 'environment' }),
@@ -654,6 +669,8 @@ export function createStudioController({
   showEditsBeforeTheirBake(currentScene);
   let moveSnapStep = TRANSLATION_SNAP_STEP;
   let rotateSnapDegrees = ROTATION_SNAP_DEGREES;
+  let snapEnabled = false;
+  let snapTarget = SNAP_TARGET_IDS[0];
   let gizmoPixels = GIZMO_SCREEN_PIXELS;
   let width = assertPositiveFinite(viewportWidth, 'viewportWidth');
   let height = assertPositiveFinite(viewportHeight, 'viewportHeight');
@@ -759,7 +776,7 @@ export function createStudioController({
 
   // A step that did not touch the camera keeps the viewport where the person left it when it is undone:
   // orbiting is navigation, not an edit, so it must not be rolled back with the edit before it.
-  function pushUndoSnapshot(recipe, { restoresCamera = false } = {}) {
+  function pushUndoSnapshot(recipe, { restoresCamera = false, label = EDIT_LABEL_FALLBACK, detail = '' } = {}) {
     if (undoGroupOpen) {
       if (undoGroupRecorded) {
         const groupEntry = undoStack[undoStack.length - 1];
@@ -768,7 +785,7 @@ export function createStudioController({
       }
       undoGroupRecorded = true;
     }
-    undoStack.push({ recipe, restoresCamera, selection: currentSelection() });
+    undoStack.push({ recipe, restoresCamera, selection: currentSelection(), label, detail });
     while (undoStack.length > maxHistory) {
       undoStack.shift();
     }
@@ -807,7 +824,7 @@ export function createStudioController({
     currentScene.apply(operations, { expectedRevision: currentScene.revision });
     if (before) {
       const restoresCamera = operations.some(operation => operation.type === 'set-camera');
-      pushUndoSnapshot(before, { restoresCamera });
+      pushUndoSnapshot(before, { restoresCamera, label: nameEditOperations(operations), detail: nameEditTarget(operations, before) });
     }
   }
 
@@ -828,7 +845,7 @@ export function createStudioController({
     endUndoGroup();
     const entry = sourceStack.pop();
     const currentRecipe = currentScene.exportRecipe();
-    targetStack.push({ recipe: currentRecipe, restoresCamera: entry.restoresCamera, selection: currentSelection() });
+    targetStack.push({ recipe: currentRecipe, restoresCamera: entry.restoresCamera, selection: currentSelection(), label: entry.label, detail: entry.detail });
     // The step brings back what was selected with it, so an object that returns is the one in hand again;
     // settleSelectionAndMotion drops a selection the restored recipe no longer holds.
     commitNodeSelection([...(entry.selection.nodeIds ?? (entry.selection.nodeId ? [entry.selection.nodeId] : []))], entry.selection.nodeId);
@@ -1175,24 +1192,36 @@ export function createStudioController({
   }
 
   /**
-   * How the handles behave for this person: the step a Shift drag snaps a move to (scene units), the angle it snaps a
-   * turn to (degrees) and how long the handles are drawn (screen pixels). A field left out keeps its value.
+   * How the handles behave for this person: the step a move snaps to (scene units), the angle a turn snaps to (degrees),
+   * how long the handles are drawn (screen pixels), whether snapping is on and what it snaps to ('increment', 'vertex' or
+   * 'face'). A field left out keeps its value.
    */
   function setInteractionSettings(settings = {}) {
     const next = {
       moveSnapStep: settings.moveSnapStep ?? moveSnapStep,
       rotateSnapDegrees: settings.rotateSnapDegrees ?? rotateSnapDegrees,
       gizmoPixels: settings.gizmoPixels ?? gizmoPixels,
+      snapEnabled: settings.snapEnabled ?? snapEnabled,
+      snapTarget: settings.snapTarget ?? snapTarget,
     };
-    for (const [name, value] of Object.entries(next)) {
+    if (typeof next.snapEnabled !== 'boolean') {
+      throw new TypeError(`snapEnabled must be true or false, got ${JSON.stringify(next.snapEnabled)}.`);
+    }
+    if (!SNAP_TARGET_IDS.includes(next.snapTarget)) {
+      throw new RangeError(`snapTarget must be one of ${SNAP_TARGET_IDS.join(', ')}, got ${JSON.stringify(next.snapTarget)}.`);
+    }
+    for (const [name, value] of Object.entries({ moveSnapStep: next.moveSnapStep, rotateSnapDegrees: next.rotateSnapDegrees, gizmoPixels: next.gizmoPixels })) {
       if (!Number.isFinite(value) || value <= 0) {
         throw new RangeError(`${name} must be a positive number, got ${JSON.stringify(value)}.`);
       }
     }
-    const changed = next.moveSnapStep !== moveSnapStep || next.rotateSnapDegrees !== rotateSnapDegrees || next.gizmoPixels !== gizmoPixels;
+    const changed = next.moveSnapStep !== moveSnapStep || next.rotateSnapDegrees !== rotateSnapDegrees || next.gizmoPixels !== gizmoPixels
+      || next.snapEnabled !== snapEnabled || next.snapTarget !== snapTarget;
     moveSnapStep = next.moveSnapStep;
     rotateSnapDegrees = next.rotateSnapDegrees;
     gizmoPixels = next.gizmoPixels;
+    snapEnabled = next.snapEnabled;
+    snapTarget = next.snapTarget;
     if (changed) {
       notify({ kind: 'tool' });
     }
@@ -1540,14 +1569,15 @@ export function createStudioController({
     return triangles.length ? triangles : null;
   }
 
-  function computeSnapTranslation(nodeId, pixelX, pixelY) {
+  // `alsoExcluded`: ids of other nodes (the rest of a selection) that are no surface to land on.
+  function computeSnapTranslation(nodeId, pixelX, pixelY, alsoExcluded = null) {
     const recipe = currentScene.exportRecipe();
     const targetNode = recipe.nodes.find(node => node.id === nodeId);
     if (!targetNode) {
       return null;
     }
     const excluded = descendantIdsOf(recipe.nodes, nodeId);
-    const supportParts = currentScene.parts.filter(part => !ownsPart(excluded, part));
+    const supportParts = currentScene.parts.filter(part => !ownsPart(excluded, part) && !(alsoExcluded && ownsPart(alsoExcluded, part)));
     if (supportParts.length === 0) {
       return null;
     }
@@ -1643,7 +1673,10 @@ export function createStudioController({
       ringStartVector = ringHit ? vec3.subtract(vec3.create(), ringHit, basePivot) : null;
     }
     const worldPerPixel = worldLengthPerPixel(basePivot);
-    const toolMode = elementSession ? 'translate' : axis === 'surface' ? 'snap' : activeTool === 'select' ? 'translate' : activeTool;
+    const toolMode = elementSession ? 'translate' : activeTool === 'select' ? 'translate' : activeTool;
+    const selectionIds = descendantIdsOfMany(recipe.nodes, selectedNodeIds);
+    const ownParts = currentScene.parts.filter(part => ownsPart(descendantIdsOf(recipe.nodes, selectedNodeId), part));
+    const sampledOwnPoints = !elementSession && snapTarget === 'vertex' && toolMode === 'translate' ? sampleVertices(ownParts, OWN_VERTEX_LIMIT) : [];
     // An animated node shows its sampled pose, not its authored one, so with auto-key on the drag starts from what is shown.
     const authoredPose = authoredNodePose(node);
     const startPose = autoKey ? sampledNodePose(recipe, node, motionTime) : authoredPose;
@@ -1663,6 +1696,11 @@ export function createStudioController({
       baseScale: startPose.scale,
       authoredPose: { ...authoredPose, rotation: normalizeQuaternion(authoredPose.rotation) },
       parentInverse: parentWorld ? mat4.invert(mat4.create(), parentWorld) : null,
+      parentWorld: parentWorld ?? null,
+      companions: elementSession ? [] : moveCompanionsOf(recipe, node.id, worldMatrices),
+      selectionIds,
+      ownPoints: sampledOwnPoints,
+      snapMarker: null,
       axisScreen,
       axisWorld,
       axisStartParameter,
@@ -1673,6 +1711,10 @@ export function createStudioController({
       changed: false,
       deltaLabel: '',
       baseOutline: nodeOutline(selectedNodeId),
+      basis,
+      typedAmount: null,
+      lastX: pixelX,
+      lastY: pixelY,
       wrappedDegrees: 0,
       turnedDegrees: 0,
       sweepDegrees: 0,
@@ -1688,7 +1730,7 @@ export function createStudioController({
     if (!dragState || !dragState.changed || dragState.elementDrag) {
       return null;
     }
-    const moves = dragState.tool === 'translate' || dragState.tool === 'snap';
+    const moves = dragState.tool === 'translate';
     const pivot = moves ? selectedPivotWorld() : null;
     return {
       tool: dragState.tool,
@@ -1740,6 +1782,9 @@ export function createStudioController({
   // moves; built from the motion the drag began with, so each move replaces the last and cancel can put the motion back.
   function writeDraggedPose(pose) {
     const operations = [{ type: 'set-node', id: dragState.nodeId, ...pose }];
+    if (pose.translation) {
+      operations.push(...companionMoveOperations(pose.translation));
+    }
     if (autoKey) {
       const motion = motionWithPoseKeys(dragState.baseMotion, dragState.nodeId, pose, motionTime);
       if (motion) {
@@ -1750,9 +1795,104 @@ export function createStudioController({
     applySceneOperations(operations, { recordUndo: false });
   }
 
+  // A move in a plane puts the position on the grid along the plane only: the component across it stays where the drag
+  // found it, so an XZ move on a raised object does not drop it to the grid height.
+  function snapPlaneTranslation(rawTranslation) {
+    const snapped = snapVector(rawTranslation, moveSnapStep);
+    const acrossPlane = PLANE_AXES.includes(dragState.axis) ? AXIS_NAMES.findIndex(name => !dragState.axis.includes(name)) : -1;
+    if (acrossPlane >= 0) {
+      snapped[acrossPlane] = rawTranslation[acrossPlane];
+    }
+    return snapped;
+  }
+
+  // The other selected objects that move with the dragged one: the selection's roots, minus what already moves with it
+  // (its own children) and what carries it (its selected ancestors).
+  // They start from the pose the dragged node starts from: the sampled pose under auto-key, the authored one otherwise.
+  function moveCompanionsOf(recipe, activeId, worldMatrices) {
+    const recipeNodes = recipe.nodes;
+    const carriedByActive = descendantIdsOf(recipeNodes, activeId);
+    return selectionRootsIn(recipeNodes)
+      .filter(nodeId => !carriedByActive.has(nodeId) && !descendantIdsOf(recipeNodes, nodeId).has(activeId))
+      .map(nodeId => {
+        const node = recipeNodes.find(candidate => candidate.id === nodeId);
+        const parentWorld = node.parent ? worldMatrices.get(node.parent) : null;
+        const authored = authoredNodePose(node);
+        const startPose = autoKey ? sampledNodePose(recipe, node, motionTime) : authored;
+        return {
+          nodeId,
+          authoredPose: { ...authored, rotation: normalizeQuaternion(authored.rotation) },
+          baseTranslation: startPose.translation,
+          parentInverse: parentWorld ? mat4.invert(mat4.create(), parentWorld) : null,
+        };
+      });
+  }
+
+  // The dragged node's move, as a world move, applied to every companion so the selection keeps its offsets.
+  function companionMoveOperations(translation) {
+    if (dragState.companions.length === 0) {
+      return [];
+    }
+    const localDelta = translation.map((component, axis) => component - dragState.baseTranslation[axis]);
+    const worldDelta = dragState.parentWorld ? directionThroughMatrix(localDelta, dragState.parentWorld) : localDelta;
+    return dragState.companions.map(({ nodeId, baseTranslation, parentInverse }) => {
+      const companionDelta = toNodeLocalDelta(worldDelta, parentInverse);
+      const moved = baseTranslation.map((component, axis) => component + companionDelta[axis]);
+      return { type: 'set-node', id: nodeId, translation: roundVector(moved) };
+    });
+  }
+
+  function directionThroughMatrix(direction, matrix) {
+    return [
+      matrix[0] * direction[0] + matrix[4] * direction[1] + matrix[8] * direction[2],
+      matrix[1] * direction[0] + matrix[5] * direction[1] + matrix[9] * direction[2],
+      matrix[2] * direction[0] + matrix[6] * direction[1] + matrix[10] * direction[2],
+    ];
+  }
+
+  // The world point a vertex target would land on: the vertex of another object nearest the pointer within reach, or null.
+  function vertexUnderPointer(pixelX, pixelY) {
+    const candidateParts = currentScene.parts.filter(part => !ownsPart(dragState.selectionIds, part));
+    const projectPoint = worldPointProjector();
+    const found = findVertexUnderPointer({
+      parts: candidateParts,
+      pointer: { x: pixelX, y: pixelY },
+      project: worldPoint => {
+        const projected = projectPoint(worldPoint);
+        return projected.visible ? projected : null;
+      },
+    });
+    return found ? found.point : null;
+  }
+
+  // The world move that snapping a free move onto a vertex or a surface makes of it, or null when nothing is in reach: the
+  // move is then left free. `freeWorldDelta` is the free move from where the drag began.
+  function snappedWorldDelta(target, pixelX, pixelY, freeWorldDelta) {
+    if (target === 'vertex') {
+      const landing = vertexUnderPointer(pixelX, pixelY);
+      dragState.snapMarker = landing;
+      return landing ? moveToLandVertex(dragState.ownPoints, freeWorldDelta, landing) : null;
+    }
+    const translation = computeSnapTranslation(dragState.nodeId, pixelX, pixelY, dragState.selectionIds);
+    if (!translation) {
+      return null;
+    }
+    const localDelta = translation.map((component, axis) => component - dragState.baseTranslation[axis]);
+    return dragState.parentWorld ? directionThroughMatrix(localDelta, dragState.parentWorld) : localDelta;
+  }
+
+  /** The world point a drag is snapping to, in screen points, while a vertex target holds one. Null otherwise. */
+  function snapMarker() {
+    if (!dragState || !dragState.snapMarker) {
+      return null;
+    }
+    const projected = projectWorldPoint(dragState.snapMarker);
+    return projected.visible ? { x: projected.x, y: projected.y } : null;
+  }
+
   // A drag in edit mode hands the world move to the session instead of writing a node pose.
-  function moveElementSelection(worldDelta, shiftKey, deltaLabel) {
-    const snapped = shiftKey ? snapVector(worldDelta, moveSnapStep) : worldDelta;
+  function moveElementSelection(worldDelta, incrementSnap, deltaLabel) {
+    const snapped = incrementSnap ? snapVector(worldDelta, moveSnapStep) : worldDelta;
     elementSession.move(snapped);
     dragState.changed = true;
     dragState.deltaLabel = deltaLabel;
@@ -1760,59 +1900,110 @@ export function createStudioController({
     return { elementDelta: snapped };
   }
 
-  function updateGizmoDrag(pixelX, pixelY, { shiftKey = false } = {}) {
+  function clampTypedTravel(amount) {
+    return Math.max(-MAX_TYPED_TRAVEL, Math.min(MAX_TYPED_TRAVEL, amount));
+  }
+
+  /** The world move a typed amount makes: that far along each axis of a plane, or to the right of the view. */
+  function typedPlaneDelta(axis, typedAmount) {
+    const amount = clampTypedTravel(typedAmount);
+    if (PLANE_AXES.includes(axis)) {
+      const delta = vec3.create();
+      for (const letter of axis) {
+        vec3.scaleAndAdd(delta, delta, dragState.basis[letter], amount);
+      }
+      return [delta[0], delta[1], delta[2]];
+    }
+    const camera = viewCamera();
+    const forward = vec3.subtract(vec3.create(), camera.target, camera.eye);
+    const right = vec3.cross(vec3.create(), forward, [0, 1, 0]);
+    if (vec3.length(right) < 1e-6) {
+      return [amount, 0, 0];
+    }
+    vec3.normalize(right, right);
+    return [right[0] * amount, right[1] * amount, right[2] * amount];
+  }
+
+  function signedAmountLabel(prefix, amount, unit) {
+    return `${prefix} ${amount >= 0 ? '+' : ''}${amount.toFixed(2)}${unit}`;
+  }
+
+  /**
+   * Sets the exact amount of the drag in progress, as when numbers are typed while G, R or S holds an object: metres to
+   * move, degrees to turn, a factor to scale. Null hands the amount back to the pointer. The drag is still one undo step.
+   */
+  function setGizmoTypedAmount(amount) {
+    if (amount !== null && !Number.isFinite(amount)) {
+      throw new TypeError('setGizmoTypedAmount takes a finite number, or null to follow the pointer again.');
+    }
+    if (!dragState) {
+      return false;
+    }
+    dragState.typedAmount = amount;
+    updateGizmoDrag(dragState.lastX, dragState.lastY, { ctrlKey: dragState.lastCtrlKey });
+    return true;
+  }
+
+  // Ctrl flips the snapping state for this move: held with snapping off it snaps, held with snapping on it moves free.
+  function updateGizmoDrag(pixelX, pixelY, { ctrlKey = false } = {}) {
     if (!dragState) {
       return null;
     }
     if (!Number.isFinite(pixelX) || !Number.isFinite(pixelY)) {
       throw new TypeError('updateGizmoDrag requires finite pixel coordinates.');
     }
+    dragState.lastX = pixelX;
+    dragState.lastY = pixelY;
+    dragState.lastCtrlKey = ctrlKey;
+    const typedAmount = dragState.typedAmount;
+    const isTyped = typedAmount !== null;
     const deltaX = pixelX - dragState.startX;
     const deltaY = pixelY - dragState.startY;
     const axisIndex = AXIS_NAMES.indexOf(dragState.axis);
-    if (dragState.tool === 'snap' || dragState.axis === 'surface') {
-      const translation = computeSnapTranslation(dragState.nodeId, pixelX, pixelY);
-      if (!translation) {
-        return null;
-      }
-      writeDraggedPose({ translation });
-      dragState.changed = true;
-      dragState.deltaLabel = 'Snapped to surface';
-      notify({ kind: 'transform', nodeId: dragState.nodeId, live: true, deltaLabel: dragState.deltaLabel });
-      return { translation };
-    }
+    // A typed amount is exact: it is never snapped.
+    const snapping = !isTyped && snapIsActive(snapEnabled, ctrlKey);
+    const incrementSnap = snapping && snapTarget === 'increment';
+    // Vertex and Face place a free move; a move kept to an axis or a plane has no free place to land, so it stays free.
+    const landingTarget = snapping && dragState.axis === 'screen' && !dragState.elementDrag && snapTarget !== 'increment' ? snapTarget : null;
+    dragState.snapMarker = null;
     if (dragState.tool === 'translate' && dragState.planeNormal) {
       const ray = screenRay(pixelX, pixelY);
       const hitPoint = rayPlaneIntersection(ray.origin, ray.direction, dragState.basePivot, dragState.planeNormal);
-      if (!hitPoint) {
+      if (!hitPoint && !isTyped) {
         return null;
       }
-      const rawWorldDelta = [
-        hitPoint[0] - dragState.planeStartPoint[0],
-        hitPoint[1] - dragState.planeStartPoint[1],
-        hitPoint[2] - dragState.planeStartPoint[2],
-      ];
+      const planeDeltaLabel = () => (isTyped
+        ? signedAmountLabel(dragState.axis.toUpperCase(), clampTypedTravel(typedAmount), ' m')
+        : `${dragState.axis.toUpperCase()} ${Math.hypot(...rawWorldDelta).toFixed(2)} m`);
+      const rawWorldDelta = isTyped
+        ? typedPlaneDelta(dragState.axis, typedAmount)
+        : [
+          hitPoint[0] - dragState.planeStartPoint[0],
+          hitPoint[1] - dragState.planeStartPoint[1],
+          hitPoint[2] - dragState.planeStartPoint[2],
+        ];
       const maxJump = Math.max(12, vec3.distance(viewCamera().eye, dragState.basePivot) * 4);
       const deltaLength = Math.hypot(...rawWorldDelta);
-      if (deltaLength > maxJump) {
+      if (deltaLength > maxJump && !isTyped) {
         const factor = maxJump / deltaLength;
         rawWorldDelta[0] *= factor;
         rawWorldDelta[1] *= factor;
         rawWorldDelta[2] *= factor;
       }
       if (dragState.elementDrag) {
-        return moveElementSelection(rawWorldDelta, shiftKey, `${dragState.axis.toUpperCase()} ${deltaLength.toFixed(2)} m`);
+        return moveElementSelection(rawWorldDelta, incrementSnap, planeDeltaLabel());
       }
-      const localDelta = toNodeLocalDelta(rawWorldDelta, dragState.parentInverse);
+      const landedDelta = landingTarget ? snappedWorldDelta(landingTarget, pixelX, pixelY, rawWorldDelta) : null;
+      const localDelta = toNodeLocalDelta(landedDelta ?? rawWorldDelta, dragState.parentInverse);
       const rawTranslation = [
         dragState.baseTranslation[0] + localDelta[0],
         dragState.baseTranslation[1] + localDelta[1],
         dragState.baseTranslation[2] + localDelta[2],
       ];
-      const translation = roundVector(shiftKey ? snapVector(rawTranslation, moveSnapStep) : rawTranslation);
+      const translation = roundVector(incrementSnap ? snapPlaneTranslation(rawTranslation) : rawTranslation);
       writeDraggedPose({ translation });
       dragState.changed = true;
-      dragState.deltaLabel = `${dragState.axis.toUpperCase()} ${deltaLength.toFixed(2)} m`;
+      dragState.deltaLabel = planeDeltaLabel();
       notify({ kind: 'transform', nodeId: dragState.nodeId, live: true, deltaLabel: dragState.deltaLabel });
       return { translation };
     }
@@ -1823,8 +2014,8 @@ export function createStudioController({
       const maxTravel = Math.max(12, vec3.distance(viewCamera().eye, dragState.basePivot) * 4);
       const pixelTravel = (deltaX * dragState.axisScreen[0] + deltaY * dragState.axisScreen[1]) * dragState.worldPerPixel;
       const exactTravel = axisParameter === null ? pixelTravel : axisParameter - dragState.axisStartParameter;
-      const steppedTravel = shiftKey ? Math.round(exactTravel / moveSnapStep) * moveSnapStep : exactTravel;
-      const travel = Math.max(-maxTravel, Math.min(maxTravel, steppedTravel));
+      const steppedTravel = incrementSnap ? snapToStep(exactTravel, moveSnapStep) : exactTravel;
+      const travel = isTyped ? clampTypedTravel(typedAmount) : Math.max(-maxTravel, Math.min(maxTravel, steppedTravel));
       const worldDelta = [dragState.axisWorld[0] * travel, dragState.axisWorld[1] * travel, dragState.axisWorld[2] * travel];
       if (dragState.elementDrag) {
         return moveElementSelection(worldDelta, false, `${dragState.axis.toUpperCase()} ${travel >= 0 ? '+' : ''}${travel.toFixed(2)} m`);
@@ -1857,7 +2048,7 @@ export function createStudioController({
           rawDegrees = dragState.turnedDegrees;
         }
       }
-      const degrees = shiftKey ? Math.round(rawDegrees / rotateSnapDegrees) * rotateSnapDegrees : rawDegrees;
+      const degrees = isTyped ? typedAmount : snapping ? snapDegrees(rawDegrees, rotateSnapDegrees) : rawDegrees;
       dragState.sweepDegrees = degrees;
       const radians = (degrees * Math.PI) / 180;
       const axisVector = axisIndex === 0 ? [1, 0, 0] : axisIndex === 1 ? [0, 1, 0] : [0, 0, 1];
@@ -1883,7 +2074,7 @@ export function createStudioController({
           rawFactor = axisParameter / dragState.axisStartParameter;
         }
       }
-      const factor = Math.max(MINIMUM_SCALE, Math.min(MAXIMUM_SCALE, rawFactor));
+      const factor = Math.max(MINIMUM_SCALE, Math.min(MAXIMUM_SCALE, isTyped ? typedAmount : snapping ? snapScaleFactor(rawFactor, SCALE_SNAP_STEP) : rawFactor));
       const affectsAxis = index => {
         if (dragState.axis === 'uniform' || dragState.axis === 'screen') return true;
         if (index === axisIndex) return true;
@@ -1932,15 +2123,18 @@ export function createStudioController({
     if (!dragState) {
       return false;
     }
-    const { baseRecipe, changed, nodeId, authoredPose, elementDrag } = dragState;
+    const { baseRecipe, changed, nodeId, authoredPose, elementDrag, companions } = dragState;
     dragState = null;
     if (elementDrag) {
       elementSession?.finish(changed);
       return changed;
     }
     if (changed) {
-      const keyed = autoKeyDraggedProperties(nodeId, authoredPose);
-      pushUndoSnapshot(baseRecipe);
+      let keyed = autoKeyDraggedProperties(nodeId, authoredPose);
+      for (const companion of companions) {
+        keyed = autoKeyDraggedProperties(companion.nodeId, companion.authoredPose) || keyed;
+      }
+      pushUndoSnapshot(baseRecipe, { label: GIZMO_EDIT_LABELS[activeTool] ?? EDIT_LABEL_FALLBACK, detail: nodeLabelIn(baseRecipe, nodeId) });
       notify({ kind: 'transformCommit', deltaLabel: '', keyed });
     } else {
       notify({ kind: 'transformCancel', deltaLabel: '' });
@@ -1953,7 +2147,7 @@ export function createStudioController({
     if (!dragState) {
       return false;
     }
-    const { nodeId, authoredPose, changed, keyedLive, baseMotion, elementDrag } = dragState;
+    const { nodeId, authoredPose, changed, keyedLive, baseMotion, elementDrag, companions } = dragState;
     dragState = null;
     if (elementDrag) {
       elementSession?.cancel();
@@ -1962,6 +2156,11 @@ export function createStudioController({
     }
     if (changed && currentScene.exportRecipe().nodes.some(node => node.id === nodeId)) {
       const operations = [{ type: 'set-node', id: nodeId, ...authoredPose }];
+      for (const companion of companions) {
+        if (currentScene.exportRecipe().nodes.some(node => node.id === companion.nodeId)) {
+          operations.push({ type: 'set-node', id: companion.nodeId, ...companion.authoredPose });
+        }
+      }
       if (keyedLive) {
         operations.push({ type: 'set-motion', motion: baseMotion });
       }
@@ -2760,6 +2959,24 @@ export function createStudioController({
     return cameraIsDriven() ? moveView(shot.camera ?? {}) : camera;
   }
 
+  // The shot keeps its place and camera; only its name changes, in one undoable edit. A name another shot has is refused.
+  function renameBookmark(name, newName) {
+    if (typeof newName !== 'string' || !SHOT_NAME_PATTERN.test(newName)) {
+      throw new RangeError('Bookmark name must be 1 to 24 letters, digits, - or _.');
+    }
+    const existingShots = currentScene.exportRecipe().timeline?.shots ?? [];
+    if (!existingShots.some(candidate => candidate.name === name)) {
+      throw new RangeError(`Unknown camera bookmark "${String(name)}".`);
+    }
+    if (newName !== name && existingShots.some(candidate => candidate.name === newName)) {
+      throw new RangeError(`A camera bookmark named "${newName}" already exists.`);
+    }
+    const renamed = existingShots.map(candidate => (candidate.name === name ? { ...candidate, name: newName } : candidate));
+    applySceneOperations([{ type: 'set-timeline', timeline: { shots: renamed } }]);
+    notify({ kind: 'bookmark', renamed: name, name: newName });
+    return structuredClone(renamed);
+  }
+
   function removeBookmark(name) {
     const recipe = currentScene.exportRecipe();
     const existingShots = recipe.timeline?.shots ?? [];
@@ -2903,13 +3120,38 @@ export function createStudioController({
     return true;
   }
 
+  // The edits in the order they were made: the ones behind the scene, then the ones undo has set aside, nearest first.
+  function historyField(field) {
+    return [...undoStack.map(entry => entry[field]), ...redoStack.map(entry => entry[field]).reverse()];
+  }
+
+  /** Steps through undo or redo until `position` edits are applied (0 is before the first one), so the scene is exactly that edit's. */
+  function goToHistoryPosition(position) {
+    const total = undoStack.length + redoStack.length;
+    if (!Number.isInteger(position) || position < 0 || position > total) {
+      throw new RangeError(`History position must be a whole number from 0 to ${total}; pass a position that \`history\` lists.`);
+    }
+    const stepsBack = position < undoStack.length;
+    const startedAt = undoStack.length;
+    while (undoStack.length > position) {
+      stepHistory(undoStack, redoStack);
+    }
+    while (undoStack.length < position) {
+      stepHistory(redoStack, undoStack);
+    }
+    if (undoStack.length !== startedAt) {
+      notify({ kind: stepsBack ? 'undo' : 'redo' });
+    }
+    return undoStack.length;
+  }
+
   function loadRecipe(recipeInput, { recordUndo = true } = {}) {
     const before = recordUndo ? currentScene.exportRecipe() : null;
     endUndoGroup();
     freeViewPose = null;
     loadRecipeKeepingScene(recipeInput);
     if (before) {
-      pushUndoSnapshot(before, { restoresCamera: true });
+      pushUndoSnapshot(before, { restoresCamera: true, label: 'Open scene' });
     }
     notify({ kind: 'load' });
     return currentScene.revision;
@@ -2938,6 +3180,11 @@ export function createStudioController({
     get viewportHeight() { return height; },
     get canUndo() { return undoStack.length > 0; },
     get canRedo() { return redoStack.length > 0; },
+    /** The named edits oldest first (`details` says what each acted on, '' when it has no single target), how many are applied, and whether the list reaches back to the scene as it was opened. */
+    get history() {
+      return { labels: historyField('label'), details: historyField('detail'), position: undoStack.length, reachesStart: undoStack.length < maxHistory };
+    },
+    goToHistoryPosition,
     setViewportSize(nextWidth, nextHeight) {
       width = assertPositiveFinite(nextWidth, 'viewportWidth');
       height = assertPositiveFinite(nextHeight, 'viewportHeight');
@@ -2962,7 +3209,7 @@ export function createStudioController({
     rotationSweep,
     dragTrace,
     setInteractionSettings,
-    get interactionSettings() { return { moveSnapStep, rotateSnapDegrees, gizmoPixels }; },
+    get interactionSettings() { return { moveSnapStep, rotateSnapDegrees, gizmoPixels, snapEnabled, snapTarget }; },
     selectionOutline,
     selectionOutlineLayers,
     selectionSilhouette,
@@ -2973,11 +3220,13 @@ export function createStudioController({
     nodeBounds,
     beginGizmoDrag,
     updateGizmoDrag,
+    setGizmoTypedAmount,
     endGizmoDrag,
     cancelGizmoDrag,
     axisFacingView,
     get dragging() { return Boolean(dragState); },
     snapSelectedToAt,
+    snapMarker,
     updateNodeTransform,
     addPrimitive: timed('add', addPrimitive),
     applyImportOperations: timed('add', applyImportOperations),
@@ -3007,6 +3256,7 @@ export function createStudioController({
     saveBookmark,
     applyBookmark,
     removeBookmark,
+    renameBookmark,
     setMotionTime,
     insertNodeKeyframe,
     moveNodeKeyframe,

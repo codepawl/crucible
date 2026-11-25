@@ -16,8 +16,10 @@ const SHEET_GROUPS = Object.freeze([
   Object.freeze({ title: 'View', icon: 'camera' }),
   Object.freeze({ title: 'Animation', icon: 'keyframe' }),
   Object.freeze({ title: 'Mesh editing', icon: 'meshVertex' }),
+  Object.freeze({ title: 'Mesh tools', icon: 'meshEdge' }),
   Object.freeze({ title: 'Mesh selection', icon: 'meshFace' }),
   Object.freeze({ title: 'Holding an object', icon: 'handle' }),
+  Object.freeze({ title: 'Axis or plane while holding', icon: 'grid' }),
   Object.freeze({ title: 'Help and settings', icon: 'help' }),
 ]);
 
@@ -44,10 +46,26 @@ const GROUP_BY_ACTION = Object.freeze({
   'edit.resetPosition': 'Transform and tools',
   'edit.resetRotation': 'Transform and tools',
   'edit.resetScale': 'Transform and tools',
+  'snap.toggle': 'Transform and tools',
   'mesh.enter': 'Mesh editing',
   'mesh.selectNone': 'Mesh selection',
   'mesh.invertSelection': 'Mesh selection',
   'mesh.circleSelect': 'Mesh selection',
+  'mesh.boxSelect': 'Mesh selection',
+  'mesh.selectLinked': 'Mesh selection',
+  'mesh.selectLinkedSelection': 'Mesh selection',
+  'mesh.growSelection': 'Mesh selection',
+  'mesh.shrinkSelection': 'Mesh selection',
+  'mesh.separate': 'Mesh tools',
+  'mesh.deleteMenu': 'Mesh tools',
+  'mesh.mergeMenu': 'Mesh tools',
+  'mesh.proportional': 'Mesh tools',
+  'modal.axisX': 'Axis or plane while holding',
+  'modal.axisY': 'Axis or plane while holding',
+  'modal.axisZ': 'Axis or plane while holding',
+  'modal.planeX': 'Axis or plane while holding',
+  'modal.planeY': 'Axis or plane while holding',
+  'modal.planeZ': 'Axis or plane while holding',
 });
 
 // Actions that only hold keys back while editing a mesh: Settings gives them no row.

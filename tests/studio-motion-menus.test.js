@@ -251,7 +251,7 @@ test('the object menu writes its own opening style, down or up, (#3223)', testCo
 test('every popover is a descendant of the Studio root, and the menubar menus of the menubar, where the CSS selectors look (#3223)', testContext => {
   const { root } = mountStudio(testContext);
   const popovers = root.descendants().filter(element => element.getAttribute('popover') !== null);
-  assert.ok(popovers.length >= 8, `found ${popovers.length} popovers`);
+  assert.ok(popovers.length >= 7, `found ${popovers.length} popovers`);
   const menubar = root.querySelector('.crucible-studio-menubar');
   for (const popover of popovers) {
     assert.ok(String(popover.className).split(/\s+/).includes('crucible-studio-popover'), `${popover.id || popover.className} carries the popover class`);

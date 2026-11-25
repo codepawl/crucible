@@ -46,6 +46,16 @@ const splatSupport = {};
  */
 export const SPLAT_UNITS = Object.freeze({ splatColor: 11, splatNormal: 12, splatMask: 14, splatPacked: 17 });
 
+/**
+ * The parallax height map sits on the first unit after every registered one: the irradiance grid (a sampler3D) on 16 and the splat array
+ * on 17, so a scene that has both with a height-mapped material never binds two sampler types to one unit. Derived from SPLAT_UNITS, the
+ * highest, so a unit added there moves it (tests/sampler-units.test.js checks it against every unit constant in src/).
+ */
+export const HEIGHT_MAP_UNIT = Math.max(...Object.values(SPLAT_UNITS)) + 1;
+
+/** The name of the parallax relief feature: its code is the lazy height-parallax-shader module. */
+export const HEIGHT_MAP_FEATURE = 'heightMap';
+
 export function registerSplatSupport(functions) {
   Object.assign(splatSupport, functions);
 }
@@ -62,8 +72,18 @@ export function registerShaderFeatureCode(feature, slots) {
   registeredFeatureCode.set(feature, slots);
 }
 
+// height-parallax-shader.js sets rewrite(source), the main fragment shader's own source with every map read through the shifted UV,
+// state(material, proceduralTags), the [heightMap, depth, fade, steps] of a material that draws its heightMap, and bind(context, uniforms, state, texture).
+export const heightParallaxSupport = {};
+
+/** The parallax code, or the error that names the import (the feature's own GLSL registers with it). */
+export function requireHeightParallaxSupport() {
+  requireFeatureCode(HEIGHT_MAP_FEATURE);
+  return heightParallaxSupport;
+}
+
 // The addon that registers each feature's code; a feature not listed here is registered by material-layer-shaders.
-const FEATURE_ADDONS = { splat: 'splat-shader', liquid: 'liquid-shader', worldMaterials: 'world-material-shader', subsurface: 'subsurface-shader', volumeFog: 'fog-shader', linearOutput: 'linear-output-shader', autoExposure: 'post-steps', keepHue: 'post-steps', retro: 'retro-shader', waterGlint: 'glitter-shader', surfaceCover: 'surface-cover' };
+const FEATURE_ADDONS = { heightMap: 'height-parallax-shader', splat: 'splat-shader', liquid: 'liquid-shader', worldMaterials: 'world-material-shader', subsurface: 'subsurface-shader', volumeFog: 'fog-shader', linearOutput: 'linear-output-shader', autoExposure: 'post-steps', keepHue: 'post-steps', retro: 'retro-shader', waterGlint: 'glitter-shader', surfaceCover: 'surface-cover' };
 
 export function requireFeatureCode(feature) {
   if (typeof feature !== 'string' || feature.length === 0) {

@@ -48,6 +48,8 @@ function partsNearTheRest(parts, worldMatrices) {
 const CLOSED_ROOM_WALL_RAYS = 36;
 // A room has walls when this share of the level rays around the origin hit one; a canopy on columns hits a column now and then.
 const CLOSED_ROOM_WALL_SHARE = 0.8;
+// A set open on one side (three walls and a ceiling) has walls on three quarters of the ring: this lower share tells it from a canopy on columns (#3389).
+export const OPEN_SIDED_ROOM_WALL_SHARE = 0.7;
 // A ray only has to test a part whose box it crosses. Boxes grow by this share of the scene's extent plus its largest coordinate, so
 // rounding in the triangle test never lets a hit land outside the box, and a flat wall quad (a box with no thickness) still has a volume.
 const BOX_PADDING_SHARE = 1e-4;
@@ -227,7 +229,7 @@ function roomShareOf(view) {
  * anything, so this tells a room with walls from a canopy or a colonnade. False when the view has no triangles or no free origin. Stops as soon
  * as the share cannot reach the threshold any more.
  */
-function viewHasWalls(view) {
+function viewHasWalls(view, minimumShare) {
   if (view.triangleCount === 0) {
     return false;
   }
@@ -238,7 +240,7 @@ function viewHasWalls(view) {
   const direction = [0, 0, 0];
   let hits = 0;
   for (let ray = 0; ray < CLOSED_ROOM_WALL_RAYS; ray++) {
-    if ((hits + CLOSED_ROOM_WALL_RAYS - ray) / CLOSED_ROOM_WALL_RAYS < CLOSED_ROOM_WALL_SHARE) {
+    if ((hits + CLOSED_ROOM_WALL_RAYS - ray) / CLOSED_ROOM_WALL_RAYS < minimumShare) {
       return false;
     }
     const angle = ((ray + 0.5) / CLOSED_ROOM_WALL_RAYS) * Math.PI * 2;
@@ -249,7 +251,7 @@ function viewHasWalls(view) {
       hits++;
     }
   }
-  return hits / CLOSED_ROOM_WALL_RAYS >= CLOSED_ROOM_WALL_SHARE;
+  return hits / CLOSED_ROOM_WALL_RAYS >= minimumShare;
 }
 
 // The views of all the kept parts and of the ones near the rest; the second is the first itself when no part is left out.
@@ -289,10 +291,10 @@ export function fittedClosedRoomShare(parts, worldMatrices) {
  * Whether the scene has walls all round (at least CLOSED_ROOM_WALL_SHARE of the level rays hit one), tested on the same parts as fittedClosedRoomShare:
  * all of them, or the ones near the rest when a lawn beside the room moves the origin out of it. False when nothing can be tested.
  */
-export function fittedRoomHasWalls(parts, worldMatrices) {
+export function fittedRoomHasWalls(parts, worldMatrices, minimumShare = CLOSED_ROOM_WALL_SHARE) {
   const views = keptAndNearViews(parts, worldMatrices);
   if (!views) {
     return false;
   }
-  return viewHasWalls(views.keptView) || (views.nearView !== views.keptView && viewHasWalls(views.nearView));
+  return viewHasWalls(views.keptView, minimumShare) || (views.nearView !== views.keptView && viewHasWalls(views.nearView, minimumShare));
 }

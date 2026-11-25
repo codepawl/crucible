@@ -96,7 +96,16 @@ node scripts/evidence.mjs --issue 1234 --analyze <folder-of-frames>   # check fr
 
 Issues and pull requests are public. Leave out local paths (a Windows user folder, or a home folder under `/home` or `/Users`), tokens and personal data. Use a path inside the repository instead.
 
+### Keep outside names out
+
+Public text says what Crucible does, not which outside 3D software it was compared with or learned from. The `outside names` check of `npm run preflight` (`npm run check:outside-names`, also with `--skip-tests`) fails when a line your branch adds names such a tool: in `docs/`, `changes/`, `README.md` and `skills/` anywhere on the line, in `src/` only inside a comment. The `PR metadata` check runs the same rules on the files' added lines and on the description. The error gives the file, the line and the word; describe the behaviour instead. Each exception applies to one name, not to the whole line: a keymap preset name passes when "preset", "keymap" or "keys" follows it (one word may sit between), and an import file format passes when "file" follows it or the line has that tool's own extension such as `.blend`. Any other name on the same line is still reported. `docs/studio-blender-parity.md` and the add-on guide are not scanned, and lines already on `main` are never checked. The name list and the exceptions, each with its reason, are in `scripts/check-outside-names.mjs`.
+
+### Do not grow the big source files
+
+The `large file growth` check of `npm run preflight` (`npm run check:large-file-growth`) prints a warning when your branch adds lines to a `src/*.js` file that was over 1500 lines at the merge base, or adds a new one over that size. It names the file and the line counts before and after. Add the feature as its own registered module instead (#3381). Put a new feature in a new `src/` file; if `tests/addon-job-paths.test.js` prints lines for it, paste exactly those lines into the Cook addon workflow (#3415 removes that step). It only warns today and preflight still exits 0; #3405 makes it fail. Files under the limit, and files that shrink or stay the same, print nothing.
 ## Checks
+
+In CI, a pull request that changes only docs, change notes, markdown, site pages or the Studio UI runs light: only the test files that mention a changed file, with no shards, coverage gate, bun smoke or leg without Cook (`scripts/ci-plan.mjs` holds the list; any other path runs everything). Pushes to main cancel an older main run, so a batch of merges is tested once, but a release run is never cancelled.
 
 Run `npm run preflight` before you open a pull request. It runs every check below that applies to the files you changed, plus the size, tool cost and coverage gates, keeps going after a failure and ends with one line per check and how to fix it. Logs go to `artifacts/preflight/`. `--skip-tests` skips the slow test pass while you iterate but still runs the unit tests recorded under half a second (`scripts/fast-tests.mjs`, listed in `config/fast-tests.json`, made by `npm run record:fast-tests`).
 
@@ -104,10 +113,12 @@ Run `npm run preflight` before you open a pull request. It runs every check belo
 
 Between one test file and the full pass there are four commands made for coding agents. Their output is short (one `FAIL file :: test :: first message` line per failure, at most ten, then a count) and the full TAP goes to `artifacts/test-logs/`:
 
-- `npm run test:affected -- <files...>` runs every test file that mentions one of the files, or a module that re-exports it; with no files it uses the files your branch changed.
+- `npm run test:affected -- <files...>` runs every test file that mentions one of the files or reaches it through imports and re-exports of any depth; with no files it uses the files your branch changed.
 - `npm run test:fast` runs a deterministic 10 percent of the test files, seeded by the branch name (`-- --seed <text> --percent <n>` changes it). It does not replace `npm test`.
 - `npm run test:mutation-check -- tests/<name>.test.js` reverts your changes under `src/`, `bin/`, `packages/` and `scripts/`, runs the tests, prints the ones that fail and restores the tree. It exits 1 when none fail, because then the test does not pin your change. Stage unstaged edits outside those folders first and `git add -N` new files under them.
 - `npm test -- --test-reporter=./scripts/test-compact-reporter.mjs` gives the full pass the same short output.
+
+`npm run test:affected` and `npm run preflight` share one machine-wide lock file in the system temp folder, so two local runs go one after the other: the second prints `waiting for <pid> <command>` and starts when the first ends. A lock whose pid no longer runs is cleared, both scripts lower their own priority to below normal so the test processes they start inherit it, a nested run skips the lock when `CRUCIBLE_MACHINE_LOCK_HELD` holds the pid of the live run that owns it, a lock older than 2 hours counts as stale, the waiting line names the lock file so you can delete it, and CI (`CI` set) takes no lock and keeps its priority (`scripts/machine-lock.mjs`, #3455).
 
 `npm test`, `npm run test:coverage`, `test:fast`, `test:affected` and the fast tests in preflight run at most 6 test files at once (`scripts/test-concurrency.mjs`), never more than Node would pick on the machine. Set `CRUCIBLE_TEST_CONCURRENCY` to another whole number to change it, or pass your own `--test-concurrency`.
 

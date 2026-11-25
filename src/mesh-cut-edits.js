@@ -8,7 +8,7 @@ import { bridgeEdgeLoops, gridFill } from './mesh-bridge.js';
 import { subdivideEdges, edgeSplitSize } from './mesh-edgesplit.js';
 import { knifeCut } from './mesh-knife.js';
 import { invalidField } from './field-error.js';
-import { editField, editInteger, editBoolean, editRuleObject } from './mesh-edit-field.js';
+import { editField, editInteger, editBoolean, editRuleObject, editEdgeRule } from './mesh-edit-field.js';
 
 // The cutting edits as recipe operations: validation of their fields and running them on MeshData. The geometry lives
 // in the modules imported above; this file only connects it to the edit log.
@@ -34,16 +34,19 @@ export function normalizeCutEdit(edit, normalized, index, { finiteNumber, vector
     case 'dissolve_faces':
       break;
     case 'dissolve_edges':
+      normalized.edges = editEdgeRule(edit.edges, index, 'edges', EDGE_RULE_HINT);
+      if (edit.removeStraight !== undefined) normalized.removeStraight = booleanField(edit.removeStraight, index, 'removeStraight');
+      break;
     case 'bridge_edge_loops':
     case 'subdivide_edges':
     case 'grid_fill':
-      normalized.edges = editRuleObject(edit.edges, index, 'edges', EDGE_RULE_HINT);
+      normalized.edges = editEdgeRule(edit.edges, index, 'edges', EDGE_RULE_HINT);
       break;
     case 'dissolve_verts':
       normalized.verts = editRuleObject(edit.verts, index, 'verts', 'a vertex rule such as { "all": true }, { "vertices": [0, 1] }, { "valence": 2 } or { "inside": { "min": [x, y, z], "max": [x, y, z] } }');
       break;
     case 'dissolve_limited':
-      normalized.edges = edit.edges === undefined ? { all: true } : editRuleObject(edit.edges, index, 'edges', EDGE_RULE_HINT);
+      normalized.edges = edit.edges === undefined ? { all: true } : editEdgeRule(edit.edges, index, 'edges', EDGE_RULE_HINT);
       normalized.angle = edit.angle === undefined ? 5 : finiteNumber(edit.angle, index, 'angle', { minimum: 0, maximum: 180 });
       break;
     case 'bisect_plane':
@@ -102,8 +105,8 @@ export function runCutEdit(mesh, edit) {
       return { mesh: outcome.mesh, result: { merged: outcome.merged } };
     }
     case 'dissolve_edges': {
-      const outcome = dissolveEdges(mesh, edgeMaskOf(mesh, edit.edges), { name: edit.name });
-      return { mesh: outcome.mesh, result: { merged: outcome.merged, dissolvedEdges: outcome.dissolvedEdges } };
+      const outcome = dissolveEdges(mesh, edgeMaskOf(mesh, edit.edges), { name: edit.name, removeStraight: edit.removeStraight });
+      return { mesh: outcome.mesh, result: { merged: outcome.merged, dissolvedEdges: outcome.dissolvedEdges, ...(edit.removeStraight ? { removedStraight: outcome.removedStraight } : {}) } };
     }
     case 'dissolve_verts': {
       const outcome = dissolveVertices(mesh, selectVertices(mesh, edit.verts), { name: edit.name });
