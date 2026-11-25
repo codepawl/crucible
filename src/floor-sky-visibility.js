@@ -656,9 +656,10 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
       let near = 0;
       for (const [firstUnit, secondUnit] of samples) {
         cosineDirection(worldNormal, firstUnit, secondUnit, direction);
-        const hit = tracer.trace(point[0] + worldNormal[0] * offset, point[1] + worldNormal[1] * offset, point[2] + worldNormal[2] * offset, direction[0], direction[1], direction[2], Infinity, true);
+        // One query for both questions: with every surface traced the nearest hit says whether the ray escapes and whether it ends within the near distance, where two any-hit queries walked the tree twice.
+        const hit = tracer.trace(point[0] + worldNormal[0] * offset, point[1] + worldNormal[1] * offset, point[2] + worldNormal[2] * offset, direction[0], direction[1], direction[2], Infinity, !everySurface);
         if (hit.nearestTriangle < 0) escaped++;
-        else if (everySurface && tracer.trace(point[0] + worldNormal[0] * offset, point[1] + worldNormal[1] * offset, point[2] + worldNormal[2] * offset, direction[0], direction[1], direction[2], nearDistance, true).nearestTriangle >= 0) near++;
+        else if (everySurface && hit.nearestDistance < nearDistance) near++;
       }
       nearShares[vertex] = near / raysPerVertex;
       if (everySurface && sunDirection && isInteriorVertex(escaped / raysPerVertex)) sunlit[vertex] = seesSun(tracer, point, worldNormal, offset, sunDirection) ? 1 : 0;
