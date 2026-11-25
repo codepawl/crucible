@@ -4,6 +4,8 @@ import { BEVEL_RADIUS_SHARE_HIGH, BEVEL_RADIUS_SHARE_LOW, BODY_REACH_PER_THICKNE
 import { glassBodyDepth } from '../src/glass-back-face.js';
 import { liquidFragmentSource } from '../src/shaders.js';
 import '../src/liquid-shader.js';
+import sharp from 'sharp';
+import { compareStills, compareValues } from '../scripts/measure-glass-bevel-bands.mjs';
 
 // Issue #3256: a thick transmissive box has a bevel of small radius (0.156 m) on a body 1.3 m deep. The ball lens exit read that radius as a
 // small glass ball and minified the wall behind the bevel into stripes; next to a deep body the bevel keeps the slab exit instead.
@@ -74,4 +76,21 @@ test('the shader follows the reference: it passes the body depth, found only whe
   const liquid = liquidFragmentSource();
   assert.match(liquid, /glassBackEnabled > 0\.5 \? glassBodyDepth\(worldPosition, normal, thickness\) : 0\.0/);
   assert.ok(liquid.indexOf('glassBodyDepth(worldPosition') < liquid.indexOf('ballLensRay(worldPosition'));
+});
+
+test('comparing two tiny stills gives their RMSE and largest difference', async () => {
+  const pixels = values => sharp(Buffer.from(values), { raw: { width: 2, height: 1, channels: 3 } }).png().toBuffer();
+  const before = await pixels([0, 0, 0, 10, 10, 10]);
+  const after = await pixels([0, 0, 0, 20, 10, 40]);
+  const { writeFile, mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const folder = await mkdtemp(join(tmpdir(), 'crucible-compare-'));
+  await writeFile(join(folder, 'before.png'), before);
+  await writeFile(join(folder, 'after.png'), after);
+  const result = await compareStills(join(folder, 'before.png'), join(folder, 'after.png'));
+  assert.ok(Math.abs(result.rmse - Math.sqrt((100 + 900) / 6)) < 1e-9);
+  assert.equal(result.maxDifference, 30);
+  assert.deepEqual(compareValues([5, 5], [5, 5]), { rmse: 0, maxDifference: 0 });
+  assert.throws(() => compareValues([1], [1, 2]), /differ in size/);
 });

@@ -4,6 +4,7 @@
 //   node scripts/measure-glass-bevel-bands.mjs --out artifacts/3256/after [--shape box|ball|ellipsoid|cube] [--ior 1.3] [--thickness 0.2]
 //        [--width 540] [--height 960] [--worktree <checkout whose bin/crucible-mcp.mjs renders>]
 //   node scripts/measure-glass-bevel-bands.mjs --measure <still.png> [<still.png> ...]   (steps per line of stills you already have)
+//   node scripts/measure-glass-bevel-bands.mjs --compare <before.png> <after.png>   (RMSE and largest difference over the 8 bit RGB values, 0 to 255)
 //
 // Needs `npm run build && node scripts/build-mcp.mjs` in the checkout first. Run it under the GPU queue on a shared machine.
 // The scene: a shape of scale 1.3 (the box has a bevel of 0.12), a camera 6 m away, a checker wall behind. Writes <out>.png and <out>.json
@@ -91,11 +92,44 @@ export async function measureEdgeSteps(file) {
   return { topStepsPerLine: topSteps / 40, leftStepsPerLine: leftSteps / 40 };
 }
 
+/** Root mean square and largest absolute difference of two equally long arrays of 8 bit values. */
+export function compareValues(before, after) {
+  if (before.length !== after.length) throw new Error(`The two pictures differ in size (${before.length} against ${after.length} values). Compare stills rendered at the same width and height.`);
+  let squaredSum = 0;
+  let maxDifference = 0;
+  for (let index = 0; index < before.length; index++) {
+    const difference = Math.abs(before[index] - after[index]);
+    squaredSum += difference * difference;
+    maxDifference = Math.max(maxDifference, difference);
+  }
+  return { rmse: Math.sqrt(squaredSum / Math.max(before.length, 1)), maxDifference };
+}
+
+/** RMSE and largest difference between two stills, over their RGB values (alpha dropped). */
+export async function compareStills(beforeFile, afterFile) {
+  const decode = async file => {
+    const { data, info } = await sharp(file).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    return { data, width: info.width, height: info.height };
+  };
+  const before = await decode(beforeFile);
+  const after = await decode(afterFile);
+  if (before.width !== after.width || before.height !== after.height) {
+    throw new Error(`${beforeFile} is ${before.width}x${before.height} and ${afterFile} is ${after.width}x${after.height}. Compare stills of the same size.`);
+  }
+  return compareValues(before.data, after.data);
+}
+
 function parseArguments(argv) {
   const options = { shape: 'box', ior: '1.3', thickness: '0.2', width: String(REFERENCE_WIDTH), height: String(REFERENCE_HEIGHT), worktree: REPOSITORY_ROOT };
   const measure = [];
+  let compare = null;
   for (let index = 0; index < argv.length; index++) {
     const argument = argv[index];
+    if (argument === '--compare') {
+      compare = argv.slice(index + 1);
+      if (compare.length !== 2) throw new Error('--compare takes two stills: --compare <before.png> <after.png>.');
+      break;
+    }
     if (argument === '--measure') {
       measure.push(...argv.slice(index + 1));
       break;
@@ -106,8 +140,8 @@ function parseArguments(argv) {
     }
     options[name] = argv[++index];
   }
-  if (!measure.length && !options.out) throw new Error('Pass --out <basename> to render, or --measure <still.png> to measure stills you already have.');
-  return { options, measure };
+  if (!measure.length && !compare && !options.out) throw new Error('Pass --out <basename> to render, --measure <still.png> to measure stills you already have, or --compare <before.png> <after.png>.');
+  return { options, measure, compare };
 }
 
 async function renderStill({ options, recipe, settings }) {
@@ -137,10 +171,14 @@ async function renderStill({ options, recipe, settings }) {
 }
 
 async function main() {
-  const { options, measure } = parseArguments(process.argv.slice(2));
+  const { options, measure, compare } = parseArguments(process.argv.slice(2));
   for (const file of measure) {
     const steps = await measureEdgeSteps(file);
     console.log(file, 'top', steps.topStepsPerLine.toFixed(2), 'left', steps.leftStepsPerLine.toFixed(2));
+  }
+  if (compare) {
+    const { rmse, maxDifference } = await compareStills(compare[0], compare[1]);
+    console.log('rmse', rmse.toFixed(3), 'maxDifference', maxDifference);
   }
   if (!options.out) return;
   const recipe = buildBevelBandRecipe({ shape: options.shape, indexOfRefraction: Number(options.ior), thickness: Number(options.thickness) });
