@@ -8,6 +8,7 @@
 // past the triangle budget come back in `unchecked`, and `truncated` says the pair budget ran out.
 
 import { drainSteps } from './flush-search-runner.js';
+import { createTrianglePairSet } from './triangle-pair-set.js';
 import { isLiveGeometry } from './live-geometry.js';
 import { entryContaining, forgetSearch, matchRemembered, partSignature, rememberSearch, rememberedTriangleCount, reusedPairs, subTableOf, triangleIdsNearChanged } from './flush-search-reuse.js';
 
@@ -517,6 +518,22 @@ function* buildCoarsenedCells(table, reach) {
   throw new RangeError(`The coplanar search has ${table.count} triangles in a scene too large to index. Pass environment.resolveCoplanar: false to skip the search, or split the scene into smaller ones.`);
 }
 
+// The axis a triangle's plane is measured along: the one its normal leans on most. The other two are where its shared area is.
+function droppedAxisOf(normals, id) {
+  const absoluteX = Math.abs(normals[id * 3]);
+  const absoluteY = Math.abs(normals[id * 3 + 1]);
+  const absoluteZ = Math.abs(normals[id * 3 + 2]);
+  if (absoluteY > absoluteX && absoluteY >= absoluteZ) return 1;
+  if (absoluteZ > absoluteX && absoluteZ > absoluteY) return 2;
+  return 0;
+}
+
+function droppedAxesOf(table) {
+  const droppedAxes = new Uint8Array(table.count);
+  for (let id = 0; id < table.count; id++) droppedAxes[id] = droppedAxisOf(table.normals, id);
+  return droppedAxes;
+}
+
 const clipFirst = new Float64Array(32);
 const clipSecond = new Float64Array(32);
 const sharedCentre = new Float64Array(2);
@@ -592,7 +609,7 @@ function planeHeight(table, id, dropped, axisU, axisV, u, v) {
 
 function createPairTest(table, entries, reach, pairBudget, testedPairLimit, result) {
   const { corners, normals, boxes, areas, owner } = table;
-  const seen = new Set();
+  const seen = createTrianglePairSet();
   const tolerances = new Map();
   const pairTolerance = (firstPart, secondPart) => {
     const key = Math.min(firstPart, secondPart) * entries.length + Math.max(firstPart, secondPart);
@@ -609,30 +626,20 @@ function createPairTest(table, entries, reach, pairBudget, testedPairLimit, resu
     }
     return tolerance;
   };
-  function testPair(one, other) {
+  // Measures a pair that has passed the box tests of measureCandidates: within reach on every axis, overlapping across the plane's two axes.
+  function measurePair(one, other) {
     // Two cells of one triangle can hash to one key, which lists it twice.
     if (one === other) return;
     const first = Math.min(one, other);
     const second = Math.max(one, other);
-    for (let axis = 0; axis < 3; axis++) {
-      if (boxes[first * 6 + 3 + axis] < boxes[second * 6 + axis] - reach) return;
-      if (boxes[second * 6 + 3 + axis] < boxes[first * 6 + axis] - reach) return;
-    }
     const normalX = normals[first * 3];
     const normalY = normals[first * 3 + 1];
     const normalZ = normals[first * 3 + 2];
-    const absoluteX = Math.abs(normalX);
-    const absoluteY = Math.abs(normalY);
-    const absoluteZ = Math.abs(normalZ);
-    let dropped = 0;
-    if (absoluteY > absoluteX && absoluteY >= absoluteZ) dropped = 1;
-    else if (absoluteZ > absoluteX && absoluteZ > absoluteY) dropped = 2;
+    const dropped = droppedAxisOf(normals, first);
     const axisU = (dropped + 1) % 3;
     const axisV = (dropped + 2) % 3;
-    // Triangles that only touch along an edge share no area: the boxes must overlap across the plane's two axes. This drops the
-    // neighbours of one dense flat mesh before they cost a plane test, a Set entry and a clip (issue #1216).
-    if (boxes[first * 6 + 3 + axisU] <= boxes[second * 6 + axisU] || boxes[second * 6 + 3 + axisU] <= boxes[first * 6 + axisU]) return;
-    if (boxes[first * 6 + 3 + axisV] <= boxes[second * 6 + axisV] || boxes[second * 6 + 3 + axisV] <= boxes[first * 6 + axisV]) return;
+    // A pair measured from another cell has passed every test below, so it is answered before them.
+    if (seen.has(first, second)) return;
     const facing = normalX * normals[second * 3] + normalY * normals[second * 3 + 1] + normalZ * normals[second * 3 + 2];
     if (Math.abs(facing) < SAME_FACING) return;
     const opposite = facing < 0;
@@ -645,15 +652,13 @@ function createPairTest(table, entries, reach, pairBudget, testedPairLimit, resu
         + (corners[second * 9 + corner * 3 + 2] - corners[first * 9 + 2]) * normalZ;
       if (Math.abs(distance) > tolerance) return;
     }
-    const pairKey = first * table.count + second;
-    if (seen.has(pairKey)) return;
-    // A Set holds at most 2^24 keys: a big flat part beside dense props can reach that, so stop the search instead of throwing.
+    // A big flat part beside dense props can have more pairs than fit in memory: stop the search at a limit instead.
     if (seen.size >= testedPairLimit) {
       result.truncated = true;
       result.truncatedAt ??= entries[owner[second]].part.name;
       return;
     }
-    seen.add(pairKey);
+    seen.add(first, second);
     const area = sharedArea(table, first, second, dropped, axisU, axisV);
     if (area < Math.max(FLUSH_MINIMUM_AREA, FLUSH_MINIMUM_AREA_SHARE * Math.min(areas[first], areas[second]))) return;
     if (result.pairs.length >= pairBudget) {
@@ -669,9 +674,9 @@ function createPairTest(table, entries, reach, pairBudget, testedPairLimit, resu
     for (let value = 0; value < 6; value++) largestCoordinate = Math.max(largestCoordinate, Math.abs(boxes[first * 6 + value]), Math.abs(boxes[second * 6 + value]));
     result.pairs.push({ first, second, gap, area, opposite, flush: Math.abs(gap) <= flushTolerance(largestCoordinate) });
   }
-  // How many pairs were measured, which the tested-pair limit counts.
-  testPair.testedCount = () => seen.size;
-  return testPair;
+  // `measure` is what the grid walk calls once a pair has passed its box tests (measureCandidates); `droppedAxes` holds the axis
+  // every triangle's plane drops, which that walk reads. `testedCount` is how many pairs were measured, which the tested-pair limit counts.
+  return { measure: measurePair, droppedAxes: droppedAxesOf(table), testedCount: () => seen.size };
 }
 
 // A triangle never drops an axis its normal barely leans on (the dropped axis has a component of at least 0.577), so that axis
@@ -686,7 +691,7 @@ function inPlaneSweepAxis(normals, id) {
 
 // Natives are swept along one axis against each other; every native is also tested against every guest of the cell. A cell is
 // tested a range of natives at a time, so a cell with a great many natives can be split across checkpoints.
-function* testCells(cells, table, reach, testPair) {
+function* testCells(cells, table, reach, pairTest) {
   const { boxes, normals } = table;
   let workSinceCheckpoint = 0;
   for (const cell of cells) {
@@ -698,7 +703,7 @@ function* testCells(cells, table, reach, testPair) {
     const nativesPerRange = Math.max(1, Math.floor(TEST_CHECKPOINT_WORK / workPerNative));
     for (let from = 0; from < natives.length; from += nativesPerRange) {
       const to = Math.min(natives.length, from + nativesPerRange);
-      testNativeRange(cell, boxes, sweepAxis, from, to, reach, testPair);
+      testNativeRange(cell, boxes, sweepAxis, from, to, reach, pairTest);
       workSinceCheckpoint += (to - from) * workPerNative;
       if (workSinceCheckpoint >= TEST_CHECKPOINT_WORK) {
         workSinceCheckpoint = 0;
@@ -708,18 +713,47 @@ function* testCells(cells, table, reach, testPair) {
   }
 }
 
-function testNativeRange(cell, boxes, sweepAxis, from, to, reach, testPair) {
+const PLANE_AXIS_U = [1, 2, 0];
+const PLANE_AXIS_V = [2, 0, 1];
+
+// Measures `native` against `candidates` from `from` on. Most candidates fail a box test, so those are made here with the native's
+// box in locals: the reach test, then the overlap across the plane's two axes (triangles that only touch along an edge share no
+// area, which drops the neighbours of one dense flat mesh before they cost a plane test, a pair entry and a clip, issue #1216;
+// the plane is the one of the lower triangle, as in measurePair). A native is swept against the natives after it and stops at the first one past `sweepEnd`; a guest list has no such order.
+function measureCandidates(pairTest, boxes, native, candidates, from, reach, sweepFrom, sweepEnd, sweeping) {
+  const { droppedAxes, measure } = pairTest;
+  const nativeBox = native * 6;
+  const lowX = boxes[nativeBox];
+  const lowY = boxes[nativeBox + 1];
+  const lowZ = boxes[nativeBox + 2];
+  const highX = boxes[nativeBox + 3];
+  const highY = boxes[nativeBox + 4];
+  const highZ = boxes[nativeBox + 5];
+  for (let index = from; index < candidates.length; index++) {
+    const candidate = candidates[index];
+    const candidateBox = candidate * 6;
+    if (sweeping && boxes[candidateBox + sweepFrom] > sweepEnd) break;
+    if (highX < boxes[candidateBox] - reach || boxes[candidateBox + 3] < lowX - reach) continue;
+    if (highY < boxes[candidateBox + 1] - reach || boxes[candidateBox + 4] < lowY - reach) continue;
+    if (highZ < boxes[candidateBox + 2] - reach || boxes[candidateBox + 5] < lowZ - reach) continue;
+    const dropped = droppedAxes[native < candidate ? native : candidate];
+    const axisU = PLANE_AXIS_U[dropped];
+    const axisV = PLANE_AXIS_V[dropped];
+    if (boxes[nativeBox + 3 + axisU] <= boxes[candidateBox + axisU] || boxes[candidateBox + 3 + axisU] <= boxes[nativeBox + axisU]) continue;
+    if (boxes[nativeBox + 3 + axisV] <= boxes[candidateBox + axisV] || boxes[candidateBox + 3 + axisV] <= boxes[nativeBox + axisV]) continue;
+    measure(native, candidate);
+  }
+}
+
+function testNativeRange(cell, boxes, sweepAxis, from, to, reach, pairTest) {
   const { natives, guests } = cell;
   const sweepReach = sweepAxis < 0 ? reach : 0;
   const sweepFrom = Math.max(sweepAxis, 0);
   for (let index = from; index < to; index++) {
     const native = natives[index];
-    const end = boxes[native * 6 + 3 + sweepFrom] + sweepReach;
-    for (let other = index + 1; other < natives.length; other++) {
-      if (boxes[natives[other] * 6 + sweepFrom] > end) break;
-      testPair(native, natives[other]);
-    }
-    for (let other = 0; other < guests.length; other++) testPair(native, guests[other]);
+    const sweepEnd = boxes[native * 6 + 3 + sweepFrom] + sweepReach;
+    measureCandidates(pairTest, boxes, native, natives, index + 1, reach, sweepFrom, sweepEnd, true);
+    measureCandidates(pairTest, boxes, native, guests, 0, reach, sweepFrom, sweepEnd, false);
   }
 }
 
@@ -783,10 +817,10 @@ export function* findFlushPairsSteps(parts, options = {}) {
 }
 
 function* searchAllParts(table, entries, reach, { pairBudget, testedPairLimit }, result) {
-  const testPair = createPairTest(table, entries, reach, pairBudget, testedPairLimit, result);
-  yield* testCells(yield* buildCoarsenedCells(table, reach), table, reach, testPair);
+  const pairTest = createPairTest(table, entries, reach, pairBudget, testedPairLimit, result);
+  yield* testCells(yield* buildCoarsenedCells(table, reach), table, reach, pairTest);
   result.searched = table.count;
-  result.testedPairs = testPair.testedCount();
+  result.testedPairs = pairTest.testedCount();
 }
 
 // Keeps the pairs between parts that did not change and searches only the triangles near a part that did. Returns false
@@ -795,16 +829,19 @@ function* searchChangedParts(table, entries, reused, reach, { pairBudget, tested
   const nearIds = yield* triangleIdsNearChanged(table, entries, reused.changed, reach);
   const near = yield* subTableOf(table, nearIds);
   const fresh = { pairs: [], truncated: false };
-  const testPair = createPairTest(near, entries, reach, pairBudget - reused.pairs.length, testedPairLimit, fresh);
-  const testChangedPair = (one, other) => {
-    if (reused.changed[near.owner[one]] || reused.changed[near.owner[other]]) testPair(one, other);
+  const pairTest = createPairTest(near, entries, reach, pairBudget - reused.pairs.length, testedPairLimit, fresh);
+  const changedPairTest = {
+    droppedAxes: pairTest.droppedAxes,
+    measure(one, other) {
+      if (reused.changed[near.owner[one]] || reused.changed[near.owner[other]]) pairTest.measure(one, other);
+    },
   };
   yield;
   if (near.count > 1) {
-    yield* testCells(yield* buildCoarsenedCells(near, reach), near, reach, testChangedPair);
+    yield* testCells(yield* buildCoarsenedCells(near, reach), near, reach, changedPairTest);
   }
   // A cold search counts every pair it measured, also those with no shared area. The earlier count plus this one bounds it.
-  const testedPairs = reused.testedPairs + testPair.testedCount();
+  const testedPairs = reused.testedPairs + pairTest.testedCount();
   if (fresh.truncated || testedPairs >= testedPairLimit || reused.pairs.length + fresh.pairs.length > pairBudget) return false;
   result.testedPairs = testedPairs;
   for (const pair of fresh.pairs) result.pairs.push({ ...pair, first: nearIds[pair.first], second: nearIds[pair.second] });
