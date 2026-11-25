@@ -1227,6 +1227,11 @@ function normalizeRecipe(input, limits, { alreadyCopied = false } = {}) {
     if (definition.type === 'mesh') withFieldPrefix(`geometries[${index}]`, () => checkedCutterDependencies(definition, definitionsById));
   });
   recipe.materials = resources(withDefaultMaterial(recipe), limits.maxMaterials, 'materials', materialFrom);
+  const slottedGeometries = new Set(recipe.geometries.filter(definition => definition.slots !== undefined).map(definition => definition.id));
+  const skinnedSlotted = recipe.nodes.find(node => node.skin !== undefined && slottedGeometries.has(node.geometry));
+  if (skinnedSlotted) {
+    throw invalidField(`nodes.${skinnedSlotted.id}.skin`, skinnedSlotted.skin, `a node whose geometry has no material slots: geometry ${skinnedSlotted.geometry} has slots, and a skin rebuilds the mesh the slots were measured on; remove skin, or remove slots from ${skinnedSlotted.geometry}`);
+  }
   recipe.geometries.forEach((definition, index) => {
     if (definition.type === 'mesh') withFieldPrefix(`geometries[${index}]`, () => agentSceneModule('mesh').checkDisplaceMaterials(definition, heightSourcesOf(recipe).materials));
     if (definition.type === 'mesh') withFieldPrefix(`geometries[${index}]`, () => agentSceneModule('mesh').checkMaterialSlots(definition, new Set(recipe.materials.map(material => material.id))));
@@ -2778,7 +2783,11 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       const bounds = [];
       // A bake or a skin replaces a drawn part's geometry, so the bounds come from the part as built, in the drawn pose.
       const drawnParts = new Map(state.restParts.map(part => [part.name, part]));
+      const measured = new Set();
       for (const sourcePart of state.sourceRestParts) {
+        // A node with material slots is several parts of one name over the same vertices: it is measured once.
+        if (measured.has(sourcePart.name)) continue;
+        measured.add(sourcePart.name);
         const part = drawnParts.get(sourcePart.name);
         if (!part || part.visibility?.visible === false) continue;
         // Measured from the geometry itself: a water part with foam or a wear mask draws a copy the cached local bounds do not list.

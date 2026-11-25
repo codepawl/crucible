@@ -642,6 +642,7 @@ A recipe `mesh` geometry can draw several materials. Name the slots in `slots` (
 - An operation that rebuilds the mesh from its shape cannot keep slots yet and throws instead of dropping them: `decimate`, `remesh`, `wireframe`, `screw`, `convex_hull` and `bounding_box`. Run them before the `material_slot` edits. `join` and `join-meshes` refuse meshes with slots until the slot lists can merge.
 - A slot ID must name a material of the recipe, a `material_slot` edit needs `slots`, and every face must point at a slot the list names. Each error says what to pass.
 - The raster renderer draws one batch per slot (one part per slot, all with the node's name and transform), and the glTF export writes one mesh with one primitive and material per slot. The path tracer does not read slots yet.
+- A node with slots is several parts of one name, so `inspect().counts.parts` counts one per slot; world bounds list the node once; a game physics body is built from every slot's triangles. A node with a `skin` cannot use a geometry with slots: the scene refuses it and says to remove one of them.
 
 ## MCP
 

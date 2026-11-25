@@ -110,3 +110,15 @@ export function geometryOfSlot(geometry, group) {
   }
   return byStart.get(group.start);
 }
+
+/** The geometry a node draws as a whole: the part's own, or, for a node split by slot, the shared vertex arrays with every slot's triangles (the shape physics and bounds need). */
+export function wholeGeometryOfParts(parts) {
+  if (parts.length === 1) return parts[0].geometry;
+  const indices = new Uint32Array(parts.reduce((total, part) => total + part.geometry.indices.length, 0));
+  let offset = 0;
+  for (const part of parts) {
+    indices.set(part.geometry.indices, offset);
+    offset += part.geometry.indices.length;
+  }
+  return { ...parts[0].geometry, indices };
+}

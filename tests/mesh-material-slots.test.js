@@ -82,7 +82,8 @@ test('a recipe without slots builds the same geometry, with no groups and no ext
   assert.deepEqual(Array.from(sameEditsWithoutSlots.parts[0].geometry.positions), Array.from(parts[0].geometry.positions));
 });
 
-test('edits that copy or split faces carry the slot of the face they came from', () => {
+test('edits that copy or split faces carry the slot of the face they came from', async () => {
+  await loadMeshBooleans();
   const expectations = {
     extrusion: [{ op: 'extrude_face_region', select: { tag: 'top' }, offset: 0.3 }, { 0: 5, 1: 5 }],
     individual_extrusion: [{ op: 'extrude_individual', select: { tag: 'top' }, offset: 0.3 }, { 0: 5, 1: 5 }],
@@ -93,8 +94,17 @@ test('edits that copy or split faces carry the slot of the face they came from',
     solidify: [{ op: 'solidify', thickness: 0.1 }, { 0: 10, 1: 2 }],
     delete: [{ op: 'delete', select: { tag: 'bottom' } }, { 0: 4, 1: 1 }],
     triangulate: [{ op: 'triangulate' }, { 0: 10, 1: 2 }],
+    loop_cut: [{ op: 'loop_cut', edges: { along: [0, 1, 0] } }, { 0: 9, 1: 1 }],
+    bevel: [{ op: 'bevel', edges: { all: true }, width: 0.05 }, { 0: 25, 1: 1 }],
+    weld: [{ op: 'weld' }, { 0: 5, 1: 1 }],
+    boolean: [{ op: 'boolean', operation: 'difference', cutter: { type: 'box' }, translation: [0.5, 0.5, 0.5], scale: [0.5, 0.5, 0.5] }, null],
   };
-  for (const [name, [edit, counts]] of Object.entries(expectations)) assert.deepEqual(slotCounts(run(edit)), counts, name);
+  for (const [name, [edit, counts]] of Object.entries(expectations)) {
+    const kept = slotCounts(run(edit));
+    if (counts) assert.deepEqual(kept, counts, name);
+    // A boolean makes new faces for the cut, which start in slot 0; the faces it keeps keep theirs.
+    else assert.ok(kept[1] >= 1 && kept[0] >= 1, name);
+  }
 });
 
 test('an edit that cannot keep slots throws and says what to do instead of dropping them', async () => {
@@ -152,3 +162,16 @@ function withoutSlotsList() {
   delete recipe.geometries[0].slots;
   return recipe;
 }
+
+test('a node with material slots is one body for physics, one entry of world bounds, and refuses a skin', async () => {
+  const scene = createAgentScene(slottedRecipe());
+  const { bodyGeometriesOf } = await import('../src/game-physics.js');
+  const recipe = scene.exportRecipe();
+  const bodyGeometry = bodyGeometriesOf(recipe, scene.parts).get('block');
+  assert.equal(bodyGeometry.indices.length / 3, 12, 'the collider reads every slot, not the last one');
+  assert.equal(scene.worldBounds().filter(entry => entry.name === 'block').length, 1);
+  const skinned = slottedRecipe();
+  skinned.armatures = [{ id: 'rig', bones: [{ name: 'root', parent: null, head: [0, 0, 0], tail: [0, 0.5, 0] }] }];
+  skinned.nodes[0].skin = { armature: 'rig' };
+  assert.throws(() => createAgentScene(skinned), /nodes.block.skin.*no material slots.*remove skin, or remove slots from block/);
+});
