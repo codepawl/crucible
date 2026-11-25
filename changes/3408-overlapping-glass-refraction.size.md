@@ -1,0 +1,4 @@
+- entry:spume: depth-ordered layer planning and mid-pass color/depth resolve so overlapping closed glass refracts shapes behind it
+- entry:liquid-shader: depth-ordered layer planning and mid-pass color/depth resolve so overlapping closed glass refracts shapes behind it
+- scene:gltf-box+lazy: inherits depth-ordered overlapping glass refraction in the lazy liquid pass with 0 B in the core bundle
+- scene:agent-scene+lazy: inherits depth-ordered overlapping glass refraction in the lazy liquid pass with 0 B in the core bundle
