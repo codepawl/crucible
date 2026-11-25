@@ -1,0 +1,1 @@
+- Handle mouse wheel zoom and camera drags over gizmos and scene marks on the viewport, enforce `maxFalloffVisits` on held proportional move previews, keep the View menu reachable below 820 px, and fit the shortcut sheet in `1280x720` with improved light-theme scrollbar contrast (#3464, #3429, #3376, #3446)

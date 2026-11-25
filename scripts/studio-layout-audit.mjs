@@ -615,6 +615,9 @@ async function measureHelpMenu(page, theme, label) {
   screens.push({ name: `shortcut sheet${label} (${theme})`, records: await measure(page, 'dialog.crucible-studio-shortcuts-dialog') });
   const probe = await page.evaluate(probeShortcutSheet);
   console.log(`Shortcut sheet${label} (${theme}): ${JSON.stringify(probe.numbers)}`);
+  if (label === '' && probe.numbers.scrolls) {
+    throw new Error(`In a 1280x720 window the shortcut sheet must fit without scrolling: ${JSON.stringify(probe.numbers)}`);
+  }
   if (probe.problems.length > 0) throw new Error(probe.problems.join(' '));
   await page.keyboard.press('Escape');
   await page.waitForTimeout(100);
@@ -626,6 +629,46 @@ async function measureHelpMenu(page, theme, label) {
     throw new Error(`The shortcut sheet must close on Escape and return the focus to the Help button: it is ${state.sheetOpen ? 'still open' : 'closed'} and the focus is on "${state.focusedLabel}".`);
   }
   return screens;
+}
+
+// Every top bar menu button stays visible, single-line and reachable by pointer and keyboard at 720 px (#3376).
+async function probeNarrowMenus(page, theme) {
+  await waitForSettledLayout(page);
+  const buttonInfo = await page.evaluate(() => {
+    const buttons = Array.from(document.querySelectorAll('.crucible-studio-menus .crucible-studio-menu-button'));
+    return buttons.map(button => {
+      const box = button.getBoundingClientRect();
+      return {
+        label: button.textContent.trim(),
+        target: button.getAttribute('popovertarget'),
+        display: getComputedStyle(button).display,
+        width: box.width,
+        height: box.height,
+        left: box.left,
+        right: box.right,
+        windowWidth: window.innerWidth,
+      };
+    });
+  });
+  for (const item of buttonInfo) {
+    if (item.display === 'none' || item.width <= 0 || item.height <= 0) {
+      throw new Error(`Narrow 720 px top bar (${theme}) hides menu button "${item.label}".`);
+    }
+    if (item.height > 36 || item.left < 0 || item.right > item.windowWidth) {
+      throw new Error(`Narrow 720 px top bar (${theme}) clips or wraps "${item.label}": ${JSON.stringify(item)}.`);
+    }
+    const locator = page.locator(`.crucible-studio-menus .crucible-studio-menu-button[popovertarget="${item.target}"]`);
+    await locator.click();
+    const openedByClick = await page.evaluate(id => document.getElementById(id)?.matches(':popover-open') ?? false, item.target);
+    if (!openedByClick) throw new Error(`Narrow 720 px menu "${item.label}" (${theme}) failed to open on click.`);
+    await page.keyboard.press('Escape');
+    await locator.focus();
+    await page.keyboard.press('Enter');
+    const openedByKey = await page.evaluate(id => document.getElementById(id)?.matches(':popover-open') ?? false, item.target);
+    if (!openedByKey) throw new Error(`Narrow 720 px menu "${item.label}" (${theme}) failed to open from keyboard.`);
+    await page.keyboard.press('Escape');
+  }
+  return { name: `narrow top bar menus 720 (${theme})`, records: await measure(page, '.crucible-studio-menubar'), overlaps: await measureBarOverlaps(page) };
 }
 
 function openSettingsFromMenu(page) {
@@ -1085,6 +1128,11 @@ export async function runAudit({ origin, only, extraCss, viewport = VIEWPORT } =
       screens.push(...await measureScreens(page, theme, only));
       if (!only || only === 'export') screens.push(...await measureExportScreens(page, theme, VIEWPORT));
       await context.close();
+      if (!only || only === 'studio') {
+        const narrowMenus = await openStudio(browser, server.origin, theme, extraCss, { viewport: NARROW_VIEWPORT });
+        screens.push(await probeNarrowMenus(narrowMenus.page, theme));
+        await narrowMenus.context.close();
+      }
       if (!only || only === 'export') {
         const narrow = await openStudio(browser, server.origin, theme, extraCss, { viewport: NARROW_VIEWPORT });
         screens.push(...await measureExportScreens(narrow.page, theme, NARROW_VIEWPORT));

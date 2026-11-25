@@ -5047,7 +5047,15 @@ export function createStudio(container, {
       ctrlKey: false,
     };
     root.dataset.modal = tool;
-    beginModalDrag(modalFreeAxis(tool), false);
+    try {
+      beginModalDrag(modalFreeAxis(tool), false);
+    } catch (error) {
+      modalTransform = null;
+      delete root.dataset.modal;
+      if (!meshEditor?.active) throw error;
+      announceError(error.message);
+      return false;
+    }
     documentReference.addEventListener('pointermove', onModalPointerMove);
     documentReference.addEventListener('pointerdown', onModalPointerDown, true);
     documentReference.defaultView?.addEventListener?.('blur', onModalBlur);
@@ -5168,6 +5176,8 @@ export function createStudio(container, {
   gizmoSvg.addEventListener('pointerout', clearHoveredHandle);
   gizmoSvg.addEventListener('pointerleave', clearHoveredHandle);
 
+  let suppressGizmoContextMenu = false;
+
   // First among the handle listeners: in Maya and Cinema 4D Alt and a button navigate even over a handle.
   gizmoSvg.addEventListener('pointerdown', event => {
     const mode = findMouseNavigation(keymap, event);
@@ -5179,7 +5189,7 @@ export function createStudio(container, {
 
   gizmoSvg.addEventListener('pointerdown', event => {
     const axis = event.target?.getAttribute?.('data-gizmo-axis');
-    if (!axis || (event.button ?? 0) !== 0) return;
+    if (!axis || (event.button ?? 0) !== 0 || event.shiftKey || event.altKey) return;
     event.preventDefault();
     event.stopPropagation();
     const coordinates = localCoordinates(event);
@@ -5196,9 +5206,13 @@ export function createStudio(container, {
     viewportElement.setPointerCapture?.(event.pointerId);
   });
 
-  // The handles lie over the selected object, so a right click on one is a right click on that object.
+  // The handles lie over the selected object, so a right click on one opens that object's menu unless a right-drag pan just ran.
   gizmoSvg.addEventListener('contextmenu', event => {
     event.preventDefault();
+    if (suppressGizmoContextMenu) {
+      suppressGizmoContextMenu = false;
+      return;
+    }
     if (findMouseNavigation(keymap, { button: 2, altKey: event.altKey }) !== null) return;
     if (controller.selectedNodeId) {
       openObjectMenu(event.clientX, event.clientY);
@@ -5208,7 +5222,7 @@ export function createStudio(container, {
   // A press on a light or the sun selects it; with the move tool a light then follows the pointer in the plane through it that faces the view.
   gizmoSvg.addEventListener('pointerdown', event => {
     const key = event.target?.getAttribute?.('data-scene-object');
-    if (!key || (event.button ?? 0) !== 0) return;
+    if (!key || (event.button ?? 0) !== 0 || event.shiftKey || event.altKey) return;
     event.preventDefault();
     event.stopPropagation();
     selectSceneObjectAndShowItsPanel(key);
@@ -5249,12 +5263,31 @@ export function createStudio(container, {
     captureElement.setPointerCapture?.(event.pointerId);
   }
 
-  canvas.addEventListener('pointerdown', event => {
+  function targetPassesThroughViewport(target, { checkScroll = false } = {}) {
+    for (let node = target; node && node !== viewportElement && node.tagName; node = node.parentNode) {
+      const tag = node.tagName.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || tag === 'a' || tag === 'dialog') return false;
+      if (node.getAttribute?.('popover') !== null || node.getAttribute?.('data-view') !== null) return false;
+      const classes = String(node.className ?? '').split(/\s+/);
+      if (classes.some(name => name === 'crucible-studio-dock' || name === 'crucible-studio-popover' || name === 'crucible-studio-view-widget' || name === 'crucible-studio-paused' || name === 'crucible-studio-draft' || name === 'crucible-studio-pass-notice')) {
+        return false;
+      }
+      if (checkScroll) {
+        const style = documentReference.defaultView?.getComputedStyle?.(node);
+        const overflow = `${style?.overflowX ?? ''}${style?.overflowY ?? ''}`;
+        if (/auto|scroll/.test(overflow) && (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth)) return false;
+      }
+    }
+    return true;
+  }
+
+  viewportElement.addEventListener('pointerdown', event => {
     if (viewingShot()) return;
     if (event.button !== 0 && event.button !== 1 && event.button !== 2) return;
+    if (!targetPassesThroughViewport(event.target)) return;
     const keymapMode = findMouseNavigation(keymap, event);
     const defaultMode = event.shiftKey || event.button === 2 || event.button === 1 ? 'pan' : 'orbit';
-    beginCameraDrag(event, keymapMode ?? defaultMode, keymapMode !== null, canvas);
+    beginCameraDrag(event, keymapMode ?? defaultMode, keymapMode !== null, event.target === canvas ? canvas : viewportElement);
   });
 
   viewportElement.addEventListener('pointermove', event => {
@@ -5306,6 +5339,9 @@ export function createStudio(container, {
     if (!pointerState) return;
     const finished = pointerState;
     pointerState = null;
+    if (finished.moved && event.button === 2) {
+      suppressGizmoContextMenu = true;
+    }
     if (finished.mode === 'light') {
       controller.endUndoGroup();
       return;
@@ -5351,8 +5387,9 @@ export function createStudio(container, {
   documentReference.addEventListener('pointerdown', onAnyPointerDown, true);
   viewportElement.addEventListener('pointerup', finishPointer);
   viewportElement.addEventListener('pointercancel', finishPointer);
-  canvas.addEventListener('contextmenu', event => event.preventDefault());
-  canvas.addEventListener('wheel', event => {
+  viewportElement.addEventListener('contextmenu', event => event.preventDefault());
+  viewportElement.addEventListener('wheel', event => {
+    if (!targetPassesThroughViewport(event.target, { checkScroll: true })) return;
     event.preventDefault();
     if (viewingShot()) return;
     if (meshEditor?.circleSelecting) {
@@ -5360,17 +5397,12 @@ export function createStudio(container, {
       requestFrame();
       return;
     }
-    if (proportionalHoldsWheel()) return;
+    if (proportionalHoldsWheel()) {
+      meshEditor.proportional.resize(event.deltaY < 0 ? 1 : -1);
+      return;
+    }
     stopFlight();
     controller.orbitCamera({ zoomScale: 1 + Math.max(-0.35, Math.min(0.35, event.deltaY * 0.0012 * (preferences.zoomDirection === 'inverted' ? -1 : 1))) });
-  }, { passive: false });
-
-  // While a move is held with proportional editing on, the wheel sets how far it reaches instead of zooming. It listens on the
-  // viewport, not the canvas, because the pointer of a held move often sits on a move handle drawn over the canvas.
-  viewportElement.addEventListener('wheel', event => {
-    if (!proportionalHoldsWheel()) return;
-    event.preventDefault();
-    meshEditor.proportional.resize(event.deltaY < 0 ? 1 : -1);
   }, { passive: false });
 
   viewportElement.addEventListener('dragover', event => {

@@ -1122,7 +1122,9 @@ export const STUDIO_CSS = `
 .crucible-studio button.crucible-studio-menu-button:has(+ *):focus-visible {
   background: color-mix(in srgb, var(--studio-text) 7%, transparent);
 }
-.crucible-studio[data-compact="true"] .crucible-studio-menu-button[popovertarget="crucible-studio-pop-view"],
+.crucible-studio[data-compact="true"] button.crucible-studio-menu-button {
+  padding: var(--studio-space-4);
+}
 .crucible-studio[data-compact="true"] .crucible-studio-primary-btn span {
   display: none;
 }
@@ -3470,12 +3472,22 @@ export const STUDIO_CSS = `
   border-radius: 4px;
   background: color-mix(in srgb, var(--studio-text) 38%, transparent);
 }
+.crucible-studio[data-theme="light"] .crucible-studio-fade-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--studio-text) 54%, transparent);
+}
 .crucible-studio-shortcuts::-webkit-scrollbar-button { display: none; }
 @supports not selector(::-webkit-scrollbar) {
   .crucible-studio-shortcuts {
     scrollbar-width: thin;
     scrollbar-color: color-mix(in srgb, var(--studio-text) 38%, transparent) transparent;
   }
+  .crucible-studio[data-theme="light"] .crucible-studio-shortcuts {
+    scrollbar-color: color-mix(in srgb, var(--studio-text) 54%, transparent) transparent;
+  }
+}
+.crucible-studio-shortcuts-dialog[data-columns="4"] .crucible-studio-shortcuts {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--studio-space-16);
 }
 .crucible-studio-shortcuts-dialog[data-columns="3"] .crucible-studio-shortcuts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .crucible-studio-shortcuts-dialog[data-columns="1"] .crucible-studio-shortcuts { grid-template-columns: minmax(0, 1fr); }
@@ -3487,12 +3499,12 @@ export const STUDIO_CSS = `
 .crucible-studio-shortcut-group {
   display: flex;
   flex-direction: column;
-  gap: var(--studio-space-8);
+  gap: var(--studio-space-4);
 }
 .crucible-studio-shortcut-group h3 {
   display: flex;
   align-items: center;
-  gap: var(--studio-space-8);
+  gap: var(--studio-space-4);
   margin: 0;
   font-family: var(--studio-font-heading);
   font-size: 13px;
@@ -3507,7 +3519,7 @@ export const STUDIO_CSS = `
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: var(--studio-space-8);
+  gap: var(--studio-space-4);
   font-weight: 400;
   color: color-mix(in srgb, var(--studio-text) 84%, var(--studio-muted));
 }
@@ -3529,6 +3541,9 @@ export const STUDIO_CSS = `
 .crucible-studio dialog.crucible-studio-shortcuts-dialog {
   width: min(680px, calc(100vw - 32px));
   padding: var(--studio-space-24);
+}
+.crucible-studio dialog.crucible-studio-shortcuts-dialog[data-columns="4"] {
+  width: min(1248px, calc(100vw - 32px));
 }
 .crucible-studio dialog.crucible-studio-shortcuts-dialog[data-columns="3"] {
   width: min(960px, calc(100vw - 32px));

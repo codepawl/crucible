@@ -11,7 +11,7 @@ import { roundVector } from './studio-controller.js';
 import { isLiveGeometry, unmarkLiveGeometry } from './live-geometry.js';
 import { updatePartVertices } from './update-part-vertices.js';
 import { edgeLoop, edgeRing, faceLoop, growSelection, selectLinked, shrinkSelection } from './mesh-select-topology.js';
-import { spatialFalloffWeights } from './mesh-ops.js';
+import { DEFAULT_MAX_FALLOFF_VISITS, spatialFalloffWeights } from './mesh-ops.js';
 import { proportionalCirclePath } from './studio-proportional.js';
 import { MAX_SELECTED_ELEMENTS, MERGE_TARGETS } from './mesh-operations.js';
 import { CONVERTIBLE_PRIMITIVES, meshGeometryOfPrimitive, planOwnMesh } from './studio-own-mesh.js';
@@ -294,7 +294,7 @@ function logsShareTheirPrefix(first, second) {
  * controller (this editor installs an element session on it), `leave()`. `updatePart` writes a drag preview into the GPU
  * buffers of the part; `getRenderer` returns the renderer it needs, or null for a headless Studio (the cage still moves).
  */
-export function createMeshEditor({ controller, announce = () => {}, getRenderer = () => null, updatePart = updatePartVertices, proportional = null } = {}) {
+export function createMeshEditor({ controller, announce = () => {}, getRenderer = () => null, updatePart = updatePartVertices, proportional = null, maxFalloffVisits = DEFAULT_MAX_FALLOFF_VISITS } = {}) {
   let state = null;
   let drag = null;
   // True while this editor writes its own entry: the mesh it reads back has the same topology, so the pick stays.
@@ -1040,7 +1040,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     let vertices = seeds;
     let weights = null;
     if (falloff) {
-      const weightOf = spatialFalloffWeights(state.positions, state.mesh.vertexCount, new Set(seeds), falloff);
+      const weightOf = spatialFalloffWeights(state.positions, state.mesh.vertexCount, new Set(seeds), falloff, { maxFalloffVisits });
       vertices = [...weightOf.keys()];
       weights = Float32Array.from(weightOf.values());
     }
@@ -1147,14 +1147,21 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
    * the move, and the move already made is applied to them, so the hill widens under the pointer.
    */
   function reweighDrag() {
-    if (!drag || !drag.falloff) return;
+    if (!drag || !drag.falloff) return true;
     const { vertices, basePositions } = drag;
     vertices.forEach((vertex, slot) => {
       for (let axis = 0; axis < 3; axis += 1) state.positions[vertex * 3 + axis] = basePositions[slot * 3 + axis];
     });
     drag.falloff = proportional.falloff() ?? drag.falloff;
-    Object.assign(drag, dragTargets(drag.seeds, drag.falloff));
+    try {
+      Object.assign(drag, dragTargets(drag.seeds, drag.falloff));
+    } catch (error) {
+      cancelDrag();
+      announce(error);
+      return false;
+    }
     moveDrag(drag.worldDelta);
+    return true;
   }
 
   const session = {
