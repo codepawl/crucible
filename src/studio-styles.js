@@ -1107,6 +1107,7 @@ export const STUDIO_CSS = `
 .crucible-studio-popover button[role="menuitemcheckbox"][aria-checked="true"]::before {
   background: var(--studio-text);
 }
+#crucible-studio-pop-snap button { padding-inline-end: var(--studio-space-24); }
 .crucible-studio-menus {
   display: flex;
   align-items: center;
@@ -1160,9 +1161,14 @@ export const STUDIO_CSS = `
   margin-block: 10px;
   gap: 2px;
 }
-.crucible-studio-group[data-mesh-group] button[aria-pressed="true"] {
+.crucible-studio-group[data-mesh-group] button[aria-pressed="true"],
+.crucible-studio button[data-snap-toggle][aria-pressed="true"] {
   background: color-mix(in srgb, var(--studio-accent) 28%, transparent);
   color: var(--studio-accent);
+}
+/* The magnet is filled while snapping is on, so the state is a shape and not only a colour. */
+.crucible-studio button[data-snap-toggle][aria-pressed="true"] svg {
+  fill: currentColor;
 }
 /* What the three mode icons draw over their square. */
 .crucible-studio-icon-dot {
