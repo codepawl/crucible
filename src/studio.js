@@ -41,6 +41,7 @@ import { createShapeSettings } from './studio-shape-settings.js';
 import { createKeyMarkers } from './studio-timeline-keys.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
 import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, describeBounds, describeCamera, describeGridStep, gridLayout, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart } from './studio-viewport-aids.js';
+import { formatLengthInputValue, lengthFromUnit, parseLengthInput } from './studio-units.js';
 // The grid is textured, and replaceParts takes a textured part only with this module loaded.
 import './replace-textured-parts.js';
 import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
@@ -260,15 +261,25 @@ function wireRovingFocusFallback(container, items, { vertical = false, followFoc
   });
 }
 
-function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02, minimumComponent = -Infinity, lockToggle = null, axisNames = AXIS_NAMES, accessibleTitle = title, onGestureStart, onGestureEnd } = {}) {
+function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02, minimumComponent = -Infinity, lockToggle = null, axisNames = AXIS_NAMES, accessibleTitle = title, getLengthUnit = null, onGestureStart, onGestureEnd } = {}) {
   let latestValues = axisNames.map(() => 0);
   let locked = false;
   let disabled = false;
   const inputs = axisNames.map(axis => createElement(documentReference, 'input', {
-    type: 'number',
-    step: '0.05',
-    attributes: { 'aria-label': `${accessibleTitle} ${axis.toUpperCase()}` },
+    type: getLengthUnit ? 'text' : 'number',
+    ...(getLengthUnit ? { dataset: { length: 'true' } } : { step: '0.05' }),
+    attributes: getLengthUnit
+      ? { 'aria-label': `${accessibleTitle} ${axis.toUpperCase()}`, inputmode: 'decimal' }
+      : { 'aria-label': `${accessibleTitle} ${axis.toUpperCase()}` },
   }));
+
+  function readAxisInput(field) {
+    if (getLengthUnit) {
+      return parseLengthInput(field.value, getLengthUnit());
+    }
+    const numeric = Number(field.value);
+    return Number.isFinite(numeric) ? numeric : null;
+  }
 
   function emitEditedAxis(axisIndex, rawNumeric) {
     const clamped = Math.max(minimumComponent, rawNumeric);
@@ -278,16 +289,16 @@ function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02
       onInput(scaled, axisIndex);
       return;
     }
-    const parsed = inputs.map((field, index) => (index === axisIndex ? clamped : Number(field.value)));
-    if (parsed.every(Number.isFinite)) {
+    const parsed = inputs.map((field, index) => (index === axisIndex ? clamped : readAxisInput(field)));
+    if (parsed.every(component => component !== null && Number.isFinite(component))) {
       onInput(parsed, axisIndex);
     }
   }
 
   inputs.forEach((input, axisIndex) => {
     input.addEventListener('change', () => {
-      const numeric = Number(input.value);
-      if (Number.isFinite(numeric)) {
+      const numeric = readAxisInput(input);
+      if (numeric !== null && Number.isFinite(numeric)) {
         emitEditedAxis(axisIndex, numeric);
       }
     });
@@ -305,7 +316,7 @@ function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02
       event.preventDefault();
       if (disabled) return;
       onGestureStart?.();
-      scrubState = { startX: event.clientX, startValue: Number(inputs[axisIndex].value) || 0 };
+      scrubState = { startX: event.clientX, startValue: getLengthUnit ? (latestValues[axisIndex] ?? 0) : (Number(inputs[axisIndex].value) || 0) };
       badge.setPointerCapture?.(event.pointerId);
     });
     badge.addEventListener('pointermove', event => {
@@ -371,7 +382,9 @@ function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02
     setValues(values, precision = ROUND_PRECISION) {
       latestValues = Array.from(values, component => Number(component) || 0);
       inputs.forEach((input, index) => {
-        input.value = String(roundValue(values[index] ?? 0, precision));
+        input.value = getLengthUnit
+          ? formatLengthInputValue(values[index] ?? 0, getLengthUnit())
+          : String(roundValue(values[index] ?? 0, precision));
       });
     },
   };
@@ -2367,7 +2380,7 @@ export function createStudio(container, {
 
   const positionRow = createVectorRow(documentReference, 'Position', values => {
     if (controller.selectedNodeId) controller.updateNodeTransform(controller.selectedNodeId, { translation: values });
-  }, { sensitivity: 0.015 });
+  }, { sensitivity: 0.015, getLengthUnit: () => preferences.lengthUnit });
   const rotationRow = createVectorRow(documentReference, 'Rotation °', values => {
     if (controller.selectedNodeId) controller.updateNodeTransform(controller.selectedNodeId, { rotationDegrees: values });
   }, { sensitivity: 0.5 });
@@ -2515,7 +2528,7 @@ export function createStudio(container, {
     isOpen: (groupId, openByDefault) => preferences.propertyGroupsOpen[groupId] ?? openByDefault,
     setOpen: (groupId, open) => setPreference('propertyGroupsOpen', { ...preferences.propertyGroupsOpen, [groupId]: open }),
   };
-  const createLookPanel = (resolveKey, panelOptions = {}) => createPropertyPanel({ documentReference, controller, announce, builders: propertyBuilders, resolveKey, groups: propertyGroups, prepareRecipe, catalogNames: catalog.names, ...panelOptions });
+  const createLookPanel = (resolveKey, panelOptions = {}) => createPropertyPanel({ documentReference, controller, announce, builders: propertyBuilders, resolveKey, groups: propertyGroups, prepareRecipe, catalogNames: catalog.names, getLengthUnit: () => preferences.lengthUnit, ...panelOptions });
   const selectedLightKey = () => (/^(point|spot|area):/u.test(controller.selectedObjectKey ?? '') ? controller.selectedObjectKey : null);
   // Only the first group of a tab starts open, so the tab opens on one screen of rows.
   const lightPanel = createLookPanel(() => selectedLightKey() ?? 'sun', { opensFirstGroup: true });
@@ -3013,9 +3026,13 @@ export function createStudio(container, {
     shell: globalThis.crucibleShell,
     onChange: (name, value) => setPreference(name, value),
     onReset: () => {
+      const previousLengthUnit = preferences.lengthUnit;
       preferences = normalizeStudioPreferences({ setupDone: preferences.setupDone });
       storePreferences();
       applyPreferences();
+      if (preferences.lengthUnit !== previousLengthUnit) {
+        refreshLengthUnits();
+      }
       announce('Settings reset');
     },
     onRunSetup: () => {
@@ -3076,6 +3093,7 @@ export function createStudio(container, {
       gizmoPixels: STUDIO_GIZMO_PIXELS[preferences.gizmoSize],
       snapEnabled: preferences.snapEnabled,
       snapTarget: preferences.snapTarget,
+      lengthUnit: preferences.lengthUnit,
     });
     syncSnapUi();
     applyTheme();
@@ -3186,6 +3204,15 @@ export function createStudio(container, {
     }
   }
 
+  function refreshLengthUnits() {
+    selectionReadoutStale = true;
+    syncUi();
+    cameraPanel.sync();
+    syncLookPanels();
+    syncViewportAids();
+    syncHintBar();
+  }
+
   // Saves several preferences as one change, so a drag that resizes two cards is one write.
   function setPreferences(changes) {
     for (const name of Object.keys(changes)) {
@@ -3193,9 +3220,13 @@ export function createStudio(container, {
         throw new RangeError(`Unknown Studio preference "${String(name)}". Use one of ${Object.keys(STUDIO_PREFERENCE_DEFAULTS).join(', ')}.`);
       }
     }
+    const previousLengthUnit = preferences.lengthUnit;
     preferences = normalizeStudioPreferences({ ...preferences, ...changes });
     storePreferences();
     applyPreferences();
+    if (preferences.lengthUnit !== previousLengthUnit) {
+      refreshLengthUnits();
+    }
   }
 
   function setPreference(name, value) {
@@ -3316,7 +3347,7 @@ export function createStudio(container, {
       return '';
     }
     const selectedNode = controller.exportRecipe().nodes.find(node => node.id === selectedId);
-    return `${selectedNode?.label ?? selectedId} · ${describeBounds(bounds)}`;
+    return `${selectedNode?.label ?? selectedId} · ${describeBounds(bounds, preferences.lengthUnit)}`;
   }
 
   function syncViewportAids() {
@@ -4947,9 +4978,10 @@ export function createStudio(container, {
       key.setAttribute('aria-pressed', lockedAxes.includes(axis) ? 'true' : 'false');
       return key;
     });
+    const typedUnit = modalTransform.tool === 'translate' ? ` ${preferences.lengthUnit}` : MODAL_TYPED_UNITS[modalTransform.tool];
     const typedReadout = modalTransform.typed === ''
       ? []
-      : [createElement(documentReference, 'span', { className: 'crucible-studio-hint-typed', textContent: `= ${modalTransform.typed}${MODAL_TYPED_UNITS[modalTransform.tool]}` })];
+      : [createElement(documentReference, 'span', { className: 'crucible-studio-hint-typed', textContent: `= ${modalTransform.typed}${typedUnit}` })];
     hintBar.replaceChildren(
       createElement(documentReference, 'span', { className: 'crucible-studio-hint-delta', textContent: (liveDeltaLabel || MODAL_TOOL_WORDS[modalTransform.tool]).replace(/^SCREEN/, MODAL_TOOL_WORDS.translate) }),
       ...typedReadout,
@@ -5108,7 +5140,10 @@ export function createStudio(container, {
   // The number typed so far, or null while it is not one yet (nothing, "-" or "."): the pointer then sets the amount.
   function typedModalAmount() {
     const amount = Number(modalTransform.typed);
-    return modalTransform.typed === '' || !Number.isFinite(amount) ? null : amount;
+    if (modalTransform.typed === '' || !Number.isFinite(amount)) {
+      return null;
+    }
+    return modalTransform.tool === 'translate' ? lengthFromUnit(amount, preferences.lengthUnit) : amount;
   }
 
   // Numeric input: digits, a point and a minus sign build the amount, Backspace takes the last one back.

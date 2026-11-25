@@ -2019,18 +2019,18 @@ export const STUDIO_CSS = `
   white-space: nowrap;
 }
 .crucible-studio-prop > :is(input, select, button, svg) { min-inline-size: 0; }
-.crucible-studio-prop > input[type="number"],
+.crucible-studio-prop > input:is([type="number"], [data-length="true"]),
 .crucible-studio-prop > select,
 .crucible-studio-prop > input[type="color"],
 .crucible-studio-prop > .crucible-studio-switch,
 .crucible-studio-prop > .crucible-studio-sun-control,
 .crucible-studio-prop-unit { grid-column: 2; grid-row: 1; }
-.crucible-studio-prop > input[type="number"],
+.crucible-studio-prop > input:is([type="number"], [data-length="true"]),
 .crucible-studio-prop > select {
   min-block-size: 28px;
   padding-block: 4px;
 }
-.crucible-studio-prop > input[type="number"] {
+.crucible-studio-prop > input:is([type="number"], [data-length="true"]) {
   padding-inline-end: var(--studio-number-inset);
   text-align: end;
   appearance: textfield;

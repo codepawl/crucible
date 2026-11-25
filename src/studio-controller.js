@@ -34,6 +34,7 @@ import {
   collectDescendantIds as descendantIdsOfMany,
   reparentOperationsFor,
 } from './studio-parenting.js';
+import { formatLength, STUDIO_LENGTH_UNITS } from './studio-units.js';
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
 // The furthest a typed move may go in metres: the coordinate limit the recipe keeps for positions.
@@ -630,6 +631,7 @@ export function createStudioController({
   showEditsBeforeTheirBake(currentScene);
   let moveSnapStep = TRANSLATION_SNAP_STEP;
   let rotateSnapDegrees = ROTATION_SNAP_DEGREES;
+  let lengthUnit = 'm';
   let snapEnabled = false;
   let snapTarget = SNAP_TARGET_IDS[0];
   let gizmoPixels = GIZMO_SCREEN_PIXELS;
@@ -1164,6 +1166,7 @@ export function createStudioController({
       gizmoPixels: settings.gizmoPixels ?? gizmoPixels,
       snapEnabled: settings.snapEnabled ?? snapEnabled,
       snapTarget: settings.snapTarget ?? snapTarget,
+      lengthUnit: settings.lengthUnit ?? lengthUnit,
     };
     if (typeof next.snapEnabled !== 'boolean') {
       throw new TypeError(`snapEnabled must be true or false, got ${JSON.stringify(next.snapEnabled)}.`);
@@ -1171,18 +1174,22 @@ export function createStudioController({
     if (!SNAP_TARGET_IDS.includes(next.snapTarget)) {
       throw new RangeError(`snapTarget must be one of ${SNAP_TARGET_IDS.join(', ')}, got ${JSON.stringify(next.snapTarget)}.`);
     }
+    if (!STUDIO_LENGTH_UNITS.includes(next.lengthUnit)) {
+      throw new RangeError(`lengthUnit must be one of ${STUDIO_LENGTH_UNITS.join(', ')}, got ${JSON.stringify(next.lengthUnit)}.`);
+    }
     for (const [name, value] of Object.entries({ moveSnapStep: next.moveSnapStep, rotateSnapDegrees: next.rotateSnapDegrees, gizmoPixels: next.gizmoPixels })) {
       if (!Number.isFinite(value) || value <= 0) {
         throw new RangeError(`${name} must be a positive number, got ${JSON.stringify(value)}.`);
       }
     }
     const changed = next.moveSnapStep !== moveSnapStep || next.rotateSnapDegrees !== rotateSnapDegrees || next.gizmoPixels !== gizmoPixels
-      || next.snapEnabled !== snapEnabled || next.snapTarget !== snapTarget;
+      || next.snapEnabled !== snapEnabled || next.snapTarget !== snapTarget || next.lengthUnit !== lengthUnit;
     moveSnapStep = next.moveSnapStep;
     rotateSnapDegrees = next.rotateSnapDegrees;
     gizmoPixels = next.gizmoPixels;
     snapEnabled = next.snapEnabled;
     snapTarget = next.snapTarget;
+    lengthUnit = next.lengthUnit;
     if (changed) {
       notify({ kind: 'tool' });
     }
@@ -1887,10 +1894,6 @@ export function createStudioController({
     return [right[0] * amount, right[1] * amount, right[2] * amount];
   }
 
-  function signedAmountLabel(prefix, amount, unit) {
-    return `${prefix} ${amount >= 0 ? '+' : ''}${amount.toFixed(2)}${unit}`;
-  }
-
   /**
    * Sets the exact amount of the drag in progress, as when numbers are typed while G, R or S holds an object: metres to
    * move, degrees to turn, a factor to scale. Null hands the amount back to the pointer. The drag is still one undo step.
@@ -1936,8 +1939,8 @@ export function createStudioController({
         return null;
       }
       const planeDeltaLabel = () => (isTyped
-        ? signedAmountLabel(dragState.axis.toUpperCase(), clampTypedTravel(typedAmount), ' m')
-        : `${dragState.axis.toUpperCase()} ${Math.hypot(...rawWorldDelta).toFixed(2)} m`);
+        ? `${dragState.axis.toUpperCase()} ${formatLength(clampTypedTravel(typedAmount), lengthUnit, { signed: true, fixedDecimals: 2 })}`
+        : `${dragState.axis.toUpperCase()} ${formatLength(Math.hypot(...rawWorldDelta), lengthUnit, { fixedDecimals: 2 })}`);
       const rawWorldDelta = isTyped
         ? typedPlaneDelta(dragState.axis, typedAmount)
         : [
@@ -1981,7 +1984,7 @@ export function createStudioController({
       const travel = isTyped ? clampTypedTravel(typedAmount) : Math.max(-maxTravel, Math.min(maxTravel, steppedTravel));
       const worldDelta = [dragState.axisWorld[0] * travel, dragState.axisWorld[1] * travel, dragState.axisWorld[2] * travel];
       if (dragState.elementDrag) {
-        return moveElementSelection(worldDelta, false, `${dragState.axis.toUpperCase()} ${travel >= 0 ? '+' : ''}${travel.toFixed(2)} m`);
+        return moveElementSelection(worldDelta, false, `${dragState.axis.toUpperCase()} ${formatLength(travel, lengthUnit, { signed: true, fixedDecimals: 2 })}`);
       }
       const localDelta = toNodeLocalDelta(worldDelta, dragState.parentInverse);
       const rawTranslation = [
@@ -1992,7 +1995,7 @@ export function createStudioController({
       const translation = roundVector(rawTranslation);
       writeDraggedPose({ translation });
       dragState.changed = true;
-      dragState.deltaLabel = `${dragState.axis.toUpperCase()} ${travel >= 0 ? '+' : ''}${travel.toFixed(2)} m`;
+      dragState.deltaLabel = `${dragState.axis.toUpperCase()} ${formatLength(travel, lengthUnit, { signed: true, fixedDecimals: 2 })}`;
       notify({ kind: 'transform', nodeId: dragState.nodeId, live: true, deltaLabel: dragState.deltaLabel });
       return { translation };
     }
@@ -3235,7 +3238,7 @@ export function createStudioController({
     rotationSweep,
     dragTrace,
     setInteractionSettings,
-    get interactionSettings() { return { moveSnapStep, rotateSnapDegrees, gizmoPixels, snapEnabled, snapTarget }; },
+    get interactionSettings() { return { moveSnapStep, rotateSnapDegrees, gizmoPixels, snapEnabled, snapTarget, lengthUnit }; },
     selectionOutline,
     selectionOutlineLayers,
     selectionSilhouette,

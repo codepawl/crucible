@@ -7,6 +7,7 @@ import { createAccountSection, STUDIO_SETTINGS_ACTION_ICONS } from './studio-acc
 import { leadWithActionIcon } from './studio-icons.js';
 import { createKeyboardSection } from './studio-keyboard-settings.js';
 import { watchScrollFades } from './studio-help.js';
+import { STUDIO_LENGTH_UNIT_LABELS } from './studio-units.js';
 
 const capitalised = value => value[0].toUpperCase() + value.slice(1);
 const MOTION_LABELS = Object.freeze({ system: 'Follow system', reduced: 'Reduced' });
@@ -46,6 +47,7 @@ export const STUDIO_SETTING_SECTIONS = Object.freeze([
     rows: [
       ['moveSnapStep', 'Move snap step', value => `${value} m`],
       ['rotateSnapDegrees', 'Rotate snap angle', value => `${value}°`],
+      ['lengthUnit', 'Units', value => STUDIO_LENGTH_UNIT_LABELS[value]],
     ],
   },
   {
