@@ -406,6 +406,7 @@ on:
       - 'src/subsurface-shader.js'
       - 'src/sun-bounce.js'
       - 'src/sun-clock.js'
+      - 'src/surface-cover.js'
       - 'src/surface-nets.js'
       - 'src/tangent-encoding.js'
       - 'src/terrain-hole-cells.js'

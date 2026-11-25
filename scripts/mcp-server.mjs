@@ -218,6 +218,7 @@ const materialFields = {
   subsurface: listed('subsurface', subsurface, 'Subsurface scattering (skin, wax, leaves): weight, radius [r,g,b], scale, color [r,g,b]; ranges in scene_capabilities materialSubsurface.').optional(),
   snippet: z.record(z.string(), z.unknown()).nullable().optional().describe('GLSL fragment hook; scene_capabilities materialSnippet.'),
   wear: z.record(z.string(), z.unknown()).nullable().optional().describe('Metal showing through paint and dirt, from vertex groups; scene_capabilities materialWear.'),
+  surfaceCover: z.record(z.string(), z.unknown()).nullable().optional().describe('Layer (snow, dust) over a surface that faces up or sits high, masked per pixel so the edge stays sharp on huge meshes; scene_capabilities materialSurfaceCover.'),
   text: z.record(z.string(), z.unknown()).optional().describe('Text drawn as the colour map; scene_capabilities textPanel.'),
   retro: z.record(z.string(), z.unknown()).nullable().optional().describe('PS1 look, raster only: vertexSnap [w, h] and affineUV; scene_capabilities materialRetro.'),
   waterGlint: z.record(z.string(), z.unknown()).nullable().optional().describe('Water tag only, raster only: stylized highlights, edge { threshold } and sparkle { density, size, shape dot or star }; scene_capabilities materialWaterGlint.'),
@@ -248,7 +249,7 @@ const materialFields = {
 };
 const materialTag = z.enum(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass', 'water']).optional().describe('Surface kind; liquid, foam, foliage, grass and water change how it renders: see scene_capabilities materialTags and water.');
 const materialCore = coreOf(materialFields, ['color', 'metallic', 'roughness', 'emission', 'opacity']);
-const materialMore = 'More fields: tag, alphaMode, alphaCutoff, doubleSided, depthTest, emissiveColor, map, pattern, subsurface, snippet, wear, retro, waterPreset, absorption, turbidity, caustics, foamEdge, foamWidth, foamVeins, contactFoam, waterRamp and the layers clearcoat, clearcoatRoughness, transmission, thickness, ior, dispersion, attenuationColor, attenuationDistance, sheenColor, sheenRoughness, specular, specularColor, anisotropy, anisotropyRotation, iridescence, iridescenceIor, iridescenceThickness, toon, toonColors, toonEdge; see scene_capabilities materialFields.';
+const materialMore = 'More fields: tag, alphaMode, alphaCutoff, doubleSided, depthTest, emissiveColor, map, pattern, subsurface, snippet, wear, surfaceCover, retro, waterPreset, absorption, turbidity, caustics, foamEdge, foamWidth, foamVeins, contactFoam, waterRamp and the layers clearcoat, clearcoatRoughness, transmission, thickness, ior, dispersion, attenuationColor, attenuationDistance, sheenColor, sheenRoughness, specular, specularColor, anisotropy, anisotropyRotation, iridescence, iridescenceIor, iridescenceThickness, toon, toonColors, toonEdge; see scene_capabilities materialFields.';
 const materialListed = (strictSchema, description, extraCore) => listed('materialFields', strictSchema, `${description} ${materialMore}`, { ...extraCore, ...materialCore });
 const liquidOptics = z.strictObject({
   thickness: z.number().min(0).max(100).optional().describe('Metres of liquid where it faces the camera.'),
