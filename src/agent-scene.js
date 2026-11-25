@@ -11,7 +11,7 @@ import { cameraFieldsToClear, splitClearedLookFields, mergeGroupPatch } from './
 import { postStepSupport } from './shader-registry.js';
 import { agentSceneModule, agentSceneModuleActive, agentSceneModuleLoaded, defaultStageModulesNamed } from './agent-scene-modules.js';
 import { CURVE_TEXT_LIMITS, AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
-import { TEXTURE_SET_RECIPE_FIELDS, TEXTURE_MAP_FIELDS, UV_TRANSFORM_FIELDS } from './texture-set-fields.js';
+import { TEXTURE_SET_RECIPE_FIELDS, TEXTURE_MAP_FIELDS, UV_TRANSFORM_FIELDS, HEIGHT_PARALLAX_FIELDS } from './texture-set-fields.js';
 import { normalizeMaterialWear, geometryWithSurfaceMasks } from './material-wear.js';
 import { ALL_LIGHTS_MASK, MATERIAL_LAYER_FIELDS, validateMaterialLayers } from './material-layers.js';
 import { recipeDiagnostics, closedRoomDiagnostic, droppedVertexAlphaDiagnostics } from './agent-diagnostics.js';
@@ -1358,7 +1358,7 @@ function materialHandle(snapshot, sequence, images) {
   const holder = { snapshot, sequence, images };
   holder.catalogTextures = catalogTexturesOf(holder);
   const output = {};
-  for (const field of ['id', 'tag', ...MATERIAL_FIELDS]) {
+  for (const field of ['id', 'tag', ...MATERIAL_FIELDS, ...HEIGHT_PARALLAX_FIELDS]) {
     Object.defineProperty(output, field, {
       enumerable: true,
       configurable: true,
