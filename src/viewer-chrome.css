@@ -6,7 +6,7 @@
 .viewer-screen { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 .viewer-main { position: relative; flex: 1; min-height: 0; }
 
-.viewer h1, .viewer h2 { margin: 0; font-family: var(--display); font-weight: var(--heading-weight); line-height: 1.1; }
+.viewer h1, .viewer h2 { margin: 0; font-family: var(--display); font-weight: var(--heading-weight); letter-spacing: var(--display-tracking); line-height: 1.1; }
 .viewer h1 { font-size: clamp(24px, 2.4vw, 34px); }
 .viewer h2 { font-size: 20px; }
 .viewer p { margin: 0; }

@@ -126,3 +126,13 @@ test('every page wears the shared theme class and loads the shared styles', () =
     assert.match(source, /site-chrome\.(css|js)'/, `src/${name}.js must load the shared chrome`);
   }
 });
+
+test('shared chrome uses the brand kit font stack and lowercase bold wordmark with no Pixelify Sans', () => {
+  const chromeStyles = readFileSync(new URL('../src/site-chrome.css', import.meta.url), 'utf8');
+  assert.match(chromeStyles, /--display:\s*'Plus Jakarta Sans'/);
+  assert.match(chromeStyles, /--wordmark:\s*'Plus Jakarta Sans'/);
+  assert.match(chromeStyles, /--body:\s*'Inter'/);
+  assert.match(chromeStyles, /--mono:\s*'JetBrains Mono'/);
+  assert.match(chromeStyles, /\.themed\s+\.brand\s*\{[^}]*font:\s*700\s+22px\/1\s+var\(--wordmark\)[^}]*letter-spacing:\s*-0\.035em[^}]*text-transform:\s*lowercase/);
+  assert.doesNotMatch(chromeStyles, /pixelify/i);
+});

@@ -20,8 +20,8 @@
 .landing .words { display: grid; align-content: center; min-height: 0; }
 .landing .beat { grid-area: 1 / 1; display: grid; gap: 16px; align-content: center; justify-items: start; visibility: hidden; opacity: 0; transform: translateY(12px); }
 .landing .beat.on { visibility: visible; opacity: 1; transform: none; transition: opacity 260ms ease, transform 340ms var(--ease-out); }
-.landing .beat h1 { font: var(--heading-weight) clamp(32px, 4.3vw, 62px)/1.02 var(--display); letter-spacing: -0.01em; text-wrap: balance; }
-.landing .beat h2 { font: var(--heading-weight) clamp(44px, 6.4vw, 92px)/0.95 var(--display); }
+.landing .beat h1 { font: var(--heading-weight) clamp(32px, 4.3vw, 62px)/1.02 var(--display); letter-spacing: var(--display-tracking); text-wrap: balance; }
+.landing .beat h2 { font: var(--heading-weight) clamp(44px, 6.4vw, 92px)/0.95 var(--display); letter-spacing: var(--display-tracking); }
 .landing .beat p { font-size: clamp(15px, 1.25vw, 18px); max-width: 40ch; color: var(--fg); }
 .landing .beat p.explain { font-size: 14px; max-width: 44ch; color: var(--soft); }
 .landing .beat p.rename-note { font-size: 13px; max-width: none; color: var(--soft); }
@@ -64,8 +64,8 @@
 
 .landing .section { padding: clamp(56px, 8vw, 112px) var(--side-right) 0 var(--side-left); scroll-margin-top: var(--nav-height); }
 .landing .inner { max-width: 1180px; margin: 0 auto; display: grid; gap: 24px; }
-.landing .section h2 { font: var(--heading-weight) clamp(30px, 3.6vw, 48px)/1.05 var(--display); }
-.landing .section h3 { font: var(--heading-weight) 20px/1.2 var(--display); }
+.landing .section h2 { font: var(--heading-weight) clamp(30px, 3.6vw, 48px)/1.05 var(--display); letter-spacing: var(--display-tracking); }
+.landing .section h3 { font: 600 20px/1.2 var(--display); letter-spacing: -0.015em; }
 .landing .heading-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap; }
 .landing .heading-row nav { display: flex; gap: 18px; font-size: 14px; text-underline-offset: 4px; }
 .landing .split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 40px; align-items: start; }
@@ -88,7 +88,7 @@
 .landing .chips li { padding: 7px 9px; border-radius: var(--round); background: var(--card); border: var(--edge-width) solid var(--edge); }
 .landing .gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
 .landing .work { display: grid; gap: 10px; text-decoration: none; }
-.landing .work b { display: block; font: var(--heading-weight) 18px/1.2 var(--display); }
+.landing .work b { display: block; font: 600 18px/1.2 var(--display); letter-spacing: -0.015em; }
 .landing .work span { color: var(--soft); font-size: 14px; }
 .landing .work:hover b { text-decoration: underline; text-underline-offset: 4px; }
 .landing .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
@@ -133,7 +133,7 @@
 .landing .leader rect { fill: var(--accent); }
 .landing .callout { position: absolute; top: 20px; right: max(16px, 4%); width: min(280px, 44%); display: grid; gap: 6px; visibility: hidden; }
 .landing .callout.on { visibility: visible; }
-.landing .callout h2 { font: var(--heading-weight) 26px/1 var(--display); }
+.landing .callout h2 { font: var(--heading-weight) 26px/1.05 var(--display); letter-spacing: var(--display-tracking); }
 .landing .callout p { font-size: 14px; line-height: 1.4; color: var(--fg); clip-path: inset(0 100% 0 0); }
 .landing .callout.on p { clip-path: inset(0); transition: clip-path 480ms steps(12, jump-none); }
 .landing .callout p.tools { font: 500 12px/1.4 var(--mono); color: var(--soft); }
