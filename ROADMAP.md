@@ -144,6 +144,7 @@ Ideas that nobody is working on live here instead of as open issues, so the issu
 - Studio: choose the pivot point and a global or local transform orientation
 - Studio edit mode: knife, edge slide, vertex slide and recalculate normals
 - Studio: a ruler, hide unselected and lasso select
+- Fit the studio shadow view to the casters of a file scene outside world mode by default (#3284): a set far from the origin casts no shadows until `renderer.shadowBounds` is set; a warning names it today, but a fitted view would change the look of existing scenes.
 
 ## Package size
 

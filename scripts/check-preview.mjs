@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 // Usage: node scripts/check-preview.mjs <candidate> [--reference <still>] [--at <seconds>] [--from <seconds>]
-//        [--frames <count>] [--width <pixels>] [--min-similarity <0..1>] [--json]
+//        [--frames <count>] [--width <pixels>] [--min-similarity <0..1>] [--lossless <frames-folder>] [--json]
 // Measures a look preview before it goes to review: exposure (against a Cook or Cycles still of the same scene and
 // camera when given), texels that shimmer between frames, and the camera passing into a wall. PNG stills are read
 // directly; JPEG, WebP and clips are decoded with ffmpeg. Exits 1 when a check fails.
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { extname } from 'node:path';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { extname, join } from 'node:path';
 import { decodePng } from './agent-icon-png.mjs';
 import { checkPreview, luminanceFromPixels, resizePlane } from './preview-checks.mjs';
 
 const CLIP_EXTENSIONS = new Set(['.mp4', '.webm', '.mov', '.mkv', '.gif']);
 
 function parseArguments(argv) {
-  const options = { width: 640, frames: 240, from: 0, at: null, json: false, minimumSimilarity: null, reference: null, candidate: null };
+  const options = { width: 640, frames: 240, from: 0, at: null, json: false, minimumSimilarity: null, reference: null, lossless: null, candidate: null };
   for (let index = 0; index < argv.length; index++) {
     const argument = argv[index];
     const value = () => {
@@ -27,8 +27,9 @@ function parseArguments(argv) {
     else if (argument === '--frames') options.frames = Math.round(positiveNumber(argument, value()));
     else if (argument === '--width') options.width = Math.round(positiveNumber(argument, value()));
     else if (argument === '--min-similarity') options.minimumSimilarity = positiveNumber(argument, value(), true);
+    else if (argument === '--lossless') options.lossless = value();
     else if (argument === '--json') options.json = true;
-    else if (argument.startsWith('--')) throw new Error(`Unknown option ${argument}. Options: --reference, --at, --from, --frames, --width, --min-similarity, --json.`);
+    else if (argument.startsWith('--')) throw new Error(`Unknown option ${argument}. Options: --reference, --at, --from, --frames, --width, --min-similarity, --lossless, --json.`);
     else if (!options.candidate) options.candidate = argument;
     else throw new Error(`Only one candidate is checked at a time; got ${options.candidate} and ${argument}.`);
   }
@@ -64,6 +65,19 @@ function analysisSize(width, height, targetWidth) {
   return { width: scaledWidth, height: Math.max(1, Math.round((height * scaledWidth) / width)) };
 }
 
+/** Luminance planes of the numbered PNG frames in a folder (render-media --kind stills --frames), in name order. */
+function readLosslessFrames(folder, { width: targetWidth, frames: frameCount }) {
+  if (!statSync(folder, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`--lossless needs a folder of PNG frames such as the output of render-media --kind stills --frames 0-71; got ${folder}.`);
+  const names = readdirSync(folder).filter(name => extname(name).toLowerCase() === '.png').sort().slice(0, frameCount);
+  if (!names.length) throw new Error(`--lossless folder ${folder} has no PNG frames. Render the same camera path with --kind stills --frames first.`);
+  const frames = names.map(name => {
+    const image = decodePng(readFileSync(join(folder, name)));
+    const size = analysisSize(image.width, image.height, targetWidth);
+    return resizePlane(luminanceFromPixels(image), size.width, size.height);
+  });
+  return { frames, fps: 0 };
+}
+
 /** Decoded luminance planes of a still or of consecutive clip frames, at the analysis width. */
 function readFrames(path, { width: targetWidth, frames: frameCount, from }) {
   const extension = extname(path).toLowerCase();
@@ -91,12 +105,13 @@ function readFrames(path, { width: targetWidth, frames: frameCount, from }) {
 
 function main() {
   const options = parseArguments(process.argv.slice(2));
-  const candidate = readFrames(options.candidate, options);
+  // Lossless frames, when given, are what the checks measure, so the encoder's loss is not blamed on the renderer.
+  const candidate = options.lossless ? readLosslessFrames(options.lossless, options) : readFrames(options.candidate, options);
   const reference = options.reference ? readFrames(options.reference, { ...options, frames: 1, from: 0, width: 4096 }).frames[0] : null;
   const referenceFrame = options.at !== null && candidate.fps ? Math.round((options.at - options.from) * candidate.fps) : 0;
   const report = checkPreview({ frames: candidate.frames, reference, referenceFrame, minimumSimilarity: options.minimumSimilarity });
   if (options.json) {
-    console.log(JSON.stringify({ candidate: options.candidate, reference: options.reference, frames: candidate.frames.length, ...report }, null, 2));
+    console.log(JSON.stringify({ candidate: options.candidate, reference: options.reference, frames: candidate.frames.length, framesFrom: options.lossless ? 'lossless' : 'candidate', ...report }, null, 2));
   } else {
     for (const result of report.results) {
       const status = result.skipped ? 'SKIP' : result.pass ? 'PASS' : 'FAIL';
@@ -105,7 +120,8 @@ function main() {
       console.log(`${status} ${result.name}: ${detail}${referenceDetail}`);
       for (const problem of result.problems) console.log(`  - ${problem}`);
     }
-    console.log(report.pass ? `PASS ${options.candidate} (${candidate.frames.length} frame${candidate.frames.length === 1 ? '' : 's'})` : `FAIL ${options.candidate}: fix the checks above before sending this preview for review.`);
+    const frameSummary = `${candidate.frames.length} frame${candidate.frames.length === 1 ? '' : 's'}${options.lossless ? ` read from ${options.lossless}` : ''}`;
+    console.log(report.pass ? `PASS ${options.candidate} (${frameSummary})` : `FAIL ${options.candidate}: fix the checks above before sending this preview for review.`);
   }
   process.exitCode = report.pass ? 0 : 1;
 }

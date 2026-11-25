@@ -1,6 +1,7 @@
 import { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS, shadowAtlasOverflowMessage } from './light-limits.js';
 import { lightShapeSupport } from './shader-registry.js';
 import { wetnessUniformValues } from './wetness.js';
+import { DEFAULT_FILL_COLORS, fillColorsFrom, ambientColorsFrom, ambientMixFrom } from './ambient-light.js';
 
 export { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS };
 export const DEFAULT_SPECULAR_ANTI_ALIASING = 1;
@@ -131,6 +132,10 @@ export function createLightingState() {
     ambientIntensity: 1,
     // environment.ambientColor and environment.environmentDiffuseScale: flat diffuse light added to the environment's and a scale on the environment's diffuse light.
     ambientColor: new Float32Array(3),
+    // environment.fillColor, as two rows for the LightData block, and environment.ambientColor's ground colour as its difference from the sky colour.
+    fillColors: Float32Array.from([...DEFAULT_FILL_COLORS[0], 0, ...DEFAULT_FILL_COLORS[1], 0]),
+    ambientGroundDelta: new Float32Array(3),
+    ambientMix: 0,
     environmentDiffuseScale: 1,
     specularAntiAliasing: DEFAULT_SPECULAR_ANTI_ALIASING,
     wetness: 0,
@@ -208,6 +213,15 @@ function writeAreaLights(state, areaLights) {
   }
 }
 
+function writeFillAndAmbientColors(state, environment) {
+  const fills = environment.fillColor === undefined ? DEFAULT_FILL_COLORS : fillColorsFrom(environment.fillColor, 'Fill color', vectorInRange);
+  state.fillColors.set([...fills[0], 0, ...fills[1], 0]);
+  const ambient = environment.ambientColor === undefined ? { sky: [0, 0, 0], ground: null } : ambientColorsFrom(environment.ambientColor, 'Ambient color', vectorInRange);
+  state.ambientColor.set(ambient.sky);
+  for (let axis = 0; axis < 3; axis++) state.ambientGroundDelta[axis] = ambient.ground ? ambient.ground[axis] - ambient.sky[axis] : 0;
+  state.ambientMix = ambientMixFrom(environment.ambientMix ?? 0, 'Ambient mix', environment.ambientColor !== undefined);
+}
+
 // Preflight before publishing so malformed later lights cannot corrupt retained uniforms.
 export function updateLightingState(state, environment, { world = false } = {}) {
   const pointLights = lightList(environment, 'pointLights', MAX_POINT_LIGHTS);
@@ -235,7 +249,7 @@ export function updateLightingState(state, environment, { world = false } = {}) 
   state.areaCount = areaLights.length;
   state.fillIntensity = fillIntensity;
   state.ambientIntensity = ambientIntensity;
-  state.ambientColor.set(environment.ambientColor ?? [0, 0, 0]);
+  writeFillAndAmbientColors(state, environment);
   state.environmentDiffuseScale = numberInRange(environment.environmentDiffuseScale ?? 1, 0, 100, 'Environment diffuse scale');
   state.specularAntiAliasing = specularAntiAliasing;
   state.wetnessState.set(wetnessUniformValues(environment));

@@ -6,11 +6,12 @@ import { createTree } from '../src/vegetation.js';
 
 await loadAllAgentSceneModules();
 
-function geometryHash(trees, keys, levelCount = 4) {
+function geometryHash(trees, keys, levelCount = 4, roles = ['bark', 'foliage']) {
   const hash = createHash('sha256');
   for (const tree of trees) {
     for (const level of tree.levels.slice(0, levelCount)) {
       for (const part of level.parts) {
+        if (!roles.includes(part.role)) continue;
         for (const key of keys) {
           const values = part.geometry[key];
           if (values) hash.update(Buffer.from(values.buffer, values.byteOffset, values.byteLength));
@@ -25,10 +26,14 @@ const triangleCount = geometry => geometry.indices.length / 3;
 
 test('trees in leaf keep the geometry they had before bare twigs existed (#2826)', () => {
   const trees = [['broadleaf', 'mesh', 21], ['broadleaf', 'cards', 3], ['birch', 'mesh', 5]].map(([species, leaves, seed]) => createTree({ species, leaves, height: 8 }, seed));
-  // The shape of these trees on main before the twigs were added: they draw from their own random stream.
-  assert.equal(geometryHash(trees, ['positions', 'normals', 'uvs', 'indices'], 2), '42e73d813563db98bb2ca053a281b03d5992470d3f33255d0910006bb8fc0ef9');
-  // Colours are pinned apart, so a deliberate tint change (#2991 leaf clump tint) updates this line only.
-  assert.equal(geometryHash(trees, ['colors'], 2), '28cc763b41f571b33f951eef934e47813be3bb52d187f786e667f5dbf0eda7fa');
+  // The shape of these trees on main before the twigs were added: they draw from their own random stream. Positions, uvs, indices
+  // and the bark's normals are the same on main before #2991 foliage shading (hash f8992dc8... and 8b4d41f1...).
+  assert.equal(geometryHash(trees, ['positions', 'uvs', 'indices'], 2), 'f8992dc883baa4533128d9d051cd529f30f24d7d37f93425871e7ea64d540148');
+  assert.equal(geometryHash(trees, ['normals'], 2, ['bark']), '8b4d41f189acd9ef10638eb13eed6824e80554f8f5f9c02b22d03d2b5ce9bf1b');
+  // The foliage's shading normals and colours are pinned apart, so a deliberate shading change (#2991 rounded crown normals, crown
+  // depth, clump tint) updates these lines only.
+  assert.equal(geometryHash(trees, ['normals'], 2, ['foliage']), '30d034f67c2327faa70ae428dbdc7be1e707b37f508c181dfaece4e97ba718e4');
+  assert.equal(geometryHash(trees, ['colors'], 2), 'db629b0801c4874bd840f10d2fc1e9db9d3421692e1ce7a264bd71e197081d4e');
 });
 
 test('a bare broadleaf grows twigs past its last branch level, near the triangles of the tree in leaf', () => {
