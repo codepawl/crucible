@@ -1,0 +1,1 @@
+- The Agent card shows, when the host reports it, the model, effort and mode under the message field and a small ring beside it for the credit that is left, with the numbers on hover or focus; places that show credits now carry a small coin mark (#3460)
