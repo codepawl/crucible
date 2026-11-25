@@ -15,7 +15,7 @@ The scene fills the window and the controls float on top of it.
 | Top left | The menus. **File**: New scene, Open, Open recent, Save, Save as, the three exports and the recipe JSON (see [New scene and recent scenes](#new-scene-and-recent-scenes)). **Edit**: undo, redo, copy, paste, duplicate, delete, deselect and Settings. **View**: front, right and top view, perspective or orthographic, frame the selection, the grid and the panels. **Agent**: copy a prompt for an AI agent and reload when it edits the file. **Help**: the keyboard shortcuts. Each row shows its key. |
 | Top centre | The workspaces, in the order the work runs: **Build** (objects and their place), **Look** (materials, lighting, sun, exposure, fog) and **Animate** (camera, lens, shots and the timeline). Each one shows only the panels its step needs. Opening a panel from anywhere, or adding a keyframe, brings its workspace forward. A workspace is a way of looking at the scene: it is not saved in the recipe and undo does not touch it. |
 | Top right | The file name (click it to rename the scene), and **Export** (PNG image, GLB model, web pack). A green dot beside the name means Studio reloads the file when an agent edits it. |
-| Left rail | The tools that change the scene come first: select, move, rotate, scale, snap to a surface, then add an object or a light, undo and redo. Under one line sit the switches that only change what you see: show or hide the grid, show or hide the panels. |
+| Left rail | The tools that change the scene come first: select, move, rotate, scale, snap to a surface, then add an object or a light, undo and redo. Under one line sit the switches that only change what you see: show or hide the grid, see through the surface (edit mode, **Alt+Z**), show or hide the panels. |
 | Scene card | At the top of the right column, across from the rail. The list shows whole rows only: it scrolls a row at a time and the rows stretch by a pixel or two so a whole number of them fills it. The materials are one row of swatches that scrolls sideways, with the add button fixed beside it. Its head has a search button, which opens a box that filters the list as you type (Esc closes it and clears the filter), and an add button with the same menu as the rail. Every object in the scene, drawn as the shape of its geometry (cube, sphere, cylinder, cone, torus, plane, or a stack for a group) in the colour of its material, an eye to hide each one, and the scene materials as swatches. |
 | Properties | Under the Scene card, in the same column. The panels of the open workspace: the object in Build, material and look in Look, the camera (views, lens, shots) in Animate, with the object one tab away: picking an object there opens its panel and stays in Animate. |
 | Bottom, in Animate | Play, add a keyframe, switch Auto-key, scrub the time, jump to a saved shot. The selected object's keys are diamonds on the scrub track: click one to select it and move the playhead there, drag it or press Left and Right (Shift for finer) to retime it, Delete to remove that key. The readout moves up to make room for it, and floating panels stop above it. |
@@ -61,6 +61,8 @@ Not there yet, and said so on screen when you reach it:
 - **L** selects everything joined to the element under the pointer, and **Ctrl+L** everything joined to the selection; parts that share a vertex count as joined.
 - **]** grows the selection by one step and **[** shrinks it by one, in the mode you are in: vertices step along edges, edges and faces step to the ones that share a vertex. **Ctrl+Numpad +** and **Ctrl+Numpad -** do the same. The brackets come first because Ctrl with plus or minus zooms the page and a laptop has no numpad.
 - **C** starts circle select. A circle follows the pointer: drag with the left button to select what it passes over, drag with the middle button (or hold **Shift**) to deselect, turn the wheel to make the circle bigger or smaller (4 to 400 pixels, 25 to start; one step per 100 pixels of wheel travel, so a trackpad swipe and a mouse wheel resize alike), and press **Esc** or right click to stop. Switching to another window or tab stops it too. In vertex mode it takes the vertices inside the circle, in edge mode the edges it touches, in face mode the faces it overlaps. Only what faces the camera is taken. The circle keeps its size until you change it.
+- **B** starts box select: drag one rectangle with the left button and everything of the mode that lies wholly inside it is selected (**Shift** adds to the selection instead of replacing it). The key is spent after one rectangle, and **Esc** drops it.
+- **Alt+Z** turns **see-through** on or off, and so does the button in the rail's lower group. While it is on, the surface of the object you edit is drawn faint, the far side of the cage is drawn as strongly as the near side, and a click, the circle and a box reach the far side too: from the front, a box over a cube takes all 8 vertices instead of the 4 facing you. It is a view setting, kept while Studio is open and for the next edit session: it changes nothing in the recipe, adds no undo step, and `studio.setSeeThrough(true)` sets it from code. In face mode a click takes the face whose centre is nearest the pointer among those drawn under it.
 - Rotate, scale, box select, extrude and the other tools come next.
 
 If another object uses the same geometry, entering edit mode gives this object a geometry of its own (the same conversion step), so the other one keeps its shape and does not move with it.
@@ -150,10 +152,11 @@ While an input method composes text (Japanese, Chinese, Korean), Enter picks the
 | A, Alt+A, Ctrl+I | Select all, select none, invert the selection |
 | Tab | Edit the mesh of the selected object; Tab again leaves |
 | 1, 2, 3 | In edit mode: select vertices, edges or faces |
-| Alt+A, Ctrl+I, C | In edit mode: select none, invert the selection, circle select (Esc or right click ends it) |
+| Alt+A, Ctrl+I, C, B | In edit mode: select none, invert the selection, circle select (Esc or right click ends it), box select |
 | L, Ctrl+L | In edit mode: select what is linked under the pointer, or linked to the selection |
 | ], Ctrl+Numpad + | In edit mode: grow the selection by one step |
 | [, Ctrl+Numpad - | In edit mode: shrink the selection by one step |
+| Alt+Z | See through the surface |
 | H, Alt+H | Hide the selection, show everything that is hidden |
 | Alt+G, Alt+R, Alt+S | Reset the position, rotation or scale of the selection |
 | Right click | Menu of the object under the pointer |
@@ -201,6 +204,8 @@ A right click on an object, in the viewport or in the Scene list, selects it and
 | Invert the selection | Ctrl+I | Ctrl+I | Ctrl+I |
 | Frame the selection | F, . | F | O, S |
 | Show or hide Properties | N | Ctrl+A | Shift+F5 |
+| See through the surface | Alt+Z | Alt+Z | Alt+Z |
+| Box select (edit mode) | B | B | B |
 | Insert a keyframe | I, K | S | F9 |
 | Play | Space | Alt+V | F8 |
 
