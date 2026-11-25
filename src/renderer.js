@@ -1822,6 +1822,7 @@ export class CrucibleRenderer {
     this.sceneParts = parts;
     this.fitParts = renderParts;
     this.fitBounds = undefined;
+    this.receiverBox = undefined;
     this.densityParts = parts;
     // A scene that gained or lost triangles can cross the density threshold with no size change; resize() judges it again and rebuilds the targets.
     const resampled = this.denseSamples != null && this.chooseMultisampleSamples(this.densityParts) !== this.multisampleSamples;
@@ -2061,6 +2062,7 @@ export class CrucibleRenderer {
     // A part moved toward the camera may leave the box the near plane is fitted to, and the plane would cut it (#2403). Growing the
     // box by the moved parts costs only them; it never shrinks, so the plane stays safe if not as tight.
     if (this.fitBounds) this.fitBounds = boundsGrownByParts(this.fitBounds, parts);
+    if (this.receiverBox) this.receiverBox = boundsGrownByParts(this.receiverBox, parts, { includeMoving: true });
     // A part that crossed a mirror (a flip animation, a toggled billboard) belongs to the other winding batch: regroup every part once.
     // replaceParts packs all parts again, so the rest of this update is done.
     if (mirrorChanged) {
@@ -2467,6 +2469,12 @@ export class CrucibleRenderer {
     const far = frame.far ?? (this.world ? 600 : 100);
     const near = fittedNearPlane(this.fitBounds, this.view, far);
     return near === 0.1 ? frame : { ...frame, near };
+  }
+
+  /** The box around every part where it rests, skinned parts included: where the sun's receivers end, which the cascaded shadows read. */
+  receiverBounds() {
+    if (this.receiverBox === undefined) this.receiverBox = sceneBoundsOfParts(this.fitParts, { includeMoving: true });
+    return this.receiverBox;
   }
 
   /** Every GPU render target this renderer holds: name, size, format, samples and bytes, largest first, with the total. */
