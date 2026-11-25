@@ -172,6 +172,36 @@ const RENAME_WIDTHS = [1280, 921, 919, 720];
 const LONG_NAME = 'a-scene-name-that-is-as-long-as-sixty-characters-in-all-ok-1234';
 const BESIDE_ERROR_MIN_WIDTH = 1180;
 
+const SETTLED_FRAMES = 3;
+const SETTLE_TIMEOUT_MS = 10000;
+
+// Runs inside the page: one signature of the top bar that changes when anything about its layout changes. The compact layout
+// is applied by a ResizeObserver on the frame after a resize, so a bar read before that frame still has the wide layout
+// (its islands reach past the window), and a loaded machine can make that frame late.
+function readTopBarSignature() {
+  const bar = document.querySelector('.crucible-studio-menubar');
+  const boxes = Array.from(bar.querySelectorAll(':scope > .crucible-studio-island, .crucible-studio-filepill, .crucible-studio-name-editor')).map(element => {
+    const { left, right, top, bottom } = element.getBoundingClientRect();
+    return [element.className, left, right, top, bottom];
+  });
+  return JSON.stringify({ width: window.innerWidth, compact: document.querySelector('.crucible-studio').dataset.compact, boxes });
+}
+
+// Resolves once the top bar has the same signature on SETTLED_FRAMES animation frames in a row. Each read waits for a frame
+// of its own, so a late frame makes it wait longer instead of reading early as a fixed wait does.
+export async function waitForSettledLayout(page, { framesNeeded = SETTLED_FRAMES, timeoutMs = SETTLE_TIMEOUT_MS } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let previous = null;
+  let unchangedFrames = 1;
+  while (Date.now() < deadline) {
+    const signature = await page.evaluate(`new Promise(resolveFrame => requestAnimationFrame(() => resolveFrame((${readTopBarSignature.toString()})())))`);
+    unchangedFrames = signature === previous ? unchangedFrames + 1 : 1;
+    if (unchangedFrames >= framesNeeded) return;
+    previous = signature;
+  }
+  throw new Error(`The top bar was still changing size after ${timeoutMs} ms, so it cannot be measured.`);
+}
+
 // Runs inside the page: what the name (or its editor) and its reason do to the rest of the top bar. Returns sentences, empty when fine.
 function collectBarOverlaps(besideErrorMinWidth) {
   const problems = [];
@@ -223,7 +253,7 @@ async function measureRenameScreens(page, theme) {
   };
   for (const width of RENAME_WIDTHS) {
     await page.setViewportSize({ width, height: VIEWPORT.height });
-    await page.waitForTimeout(400);
+    await waitForSettledLayout(page);
     await openEditor();
     screens.push({ name: `rename editing ${width} (${theme})`, records: await measure(page, '.crucible-studio'), overlaps: await measureBarOverlaps(page) });
     await page.fill('.crucible-studio-name-editor input', 'bad|name');
@@ -232,13 +262,14 @@ async function measureRenameScreens(page, theme) {
     await page.keyboard.press('Escape');
   }
   await page.setViewportSize({ width: RENAME_WIDTHS[0], height: VIEWPORT.height });
-  await page.waitForTimeout(300);
+  await waitForSettledLayout(page);
   await openEditorWithName(page, LONG_NAME);
   for (const width of RENAME_WIDTHS) {
     await page.setViewportSize({ width, height: VIEWPORT.height });
-    await page.waitForTimeout(400);
+    await waitForSettledLayout(page);
     const closedOverlaps = await measureBarOverlaps(page);
     await openEditor();
+    await waitForSettledLayout(page);
     const overlaps = [...closedOverlaps.map(problem => `(name shown) ${problem}`), ...await measureBarOverlaps(page)];
     screens.push({ name: `rename long ${width} (${theme})`, records: await measure(page, '.crucible-studio'), overlaps });
     await page.fill('.crucible-studio-name-editor input', `bad|${LONG_NAME}`);
