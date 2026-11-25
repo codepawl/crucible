@@ -1666,6 +1666,8 @@ export function createStudioController({
       baseScale: startPose.scale,
       authoredPose: { ...authoredPose, rotation: normalizeQuaternion(authoredPose.rotation) },
       parentInverse: parentWorld ? mat4.invert(mat4.create(), parentWorld) : null,
+      parentWorld,
+      companions: toolMode === 'translate' && !elementSession ? movingCompanions(recipe, worldMatrices) : [],
       axisScreen,
       axisWorld,
       axisStartParameter,
@@ -1745,8 +1747,55 @@ export function createStudioController({
 
   // A keyed node shows its sampled pose, so with auto-key on the dragged pose is also keyed at the playhead as the pointer
   // moves; built from the motion the drag began with, so each move replaces the last and cancel can put the motion back.
+  // The other selected objects that follow the active one when it is moved, each with its own parent's inverse so a world
+  // move lands the same on all of them. A selected ancestor of the active object is left out: it carries the active one along.
+  function movingCompanions(recipe, worldMatrices) {
+    const nodesById = new Map(recipe.nodes.map(node => [node.id, node]));
+    const ancestorsOfActive = new Set();
+    for (let ancestor = nodesById.get(selectedNodeId)?.parent; ancestor !== undefined && !ancestorsOfActive.has(ancestor); ancestor = nodesById.get(ancestor)?.parent) {
+      ancestorsOfActive.add(ancestor);
+    }
+    return selectionRootsIn(recipe.nodes)
+      .filter(nodeId => nodeId !== selectedNodeId && !ancestorsOfActive.has(nodeId) && nodesById.has(nodeId))
+      .map(nodeId => {
+        const node = nodesById.get(nodeId);
+        const parentMatrix = node.parent ? worldMatrices.get(node.parent) : null;
+        return {
+          nodeId,
+          baseTranslation: Array.from(node.translation ?? [0, 0, 0]),
+          parentInverse: parentMatrix ? mat4.invert(mat4.create(), parentMatrix) : null,
+        };
+      });
+  }
+
+  // The move the active object just made, as a world move, repeated on each companion in its own parent space.
+  function companionOperations(translation) {
+    const localDelta = translation.map((component, index) => component - dragState.baseTranslation[index]);
+    const worldDelta = dragState.parentWorld ? worldDeltaOfLocal(localDelta, dragState.parentWorld) : localDelta;
+    return dragState.companions.map(companion => {
+      const companionDelta = toNodeLocalDelta(worldDelta, companion.parentInverse);
+      return {
+        type: 'set-node',
+        id: companion.nodeId,
+        translation: roundVector(companion.baseTranslation.map((component, index) => component + companionDelta[index])),
+      };
+    });
+  }
+
+  function worldDeltaOfLocal(localDelta, parentWorld) {
+    const linear = mat4.clone(parentWorld);
+    linear[12] = 0;
+    linear[13] = 0;
+    linear[14] = 0;
+    const rotated = vec3.transformMat4(vec3.create(), vec3.fromValues(localDelta[0], localDelta[1], localDelta[2]), linear);
+    return [rotated[0], rotated[1], rotated[2]];
+  }
+
   function writeDraggedPose(pose) {
     const operations = [{ type: 'set-node', id: dragState.nodeId, ...pose }];
+    if (pose.translation && dragState.companions.length > 0) {
+      operations.push(...companionOperations(pose.translation));
+    }
     if (autoKey) {
       const motion = motionWithPoseKeys(dragState.baseMotion, dragState.nodeId, pose, motionTime);
       if (motion) {
@@ -2013,7 +2062,7 @@ export function createStudioController({
     if (!dragState) {
       return false;
     }
-    const { nodeId, authoredPose, changed, keyedLive, baseMotion, elementDrag } = dragState;
+    const { nodeId, authoredPose, changed, keyedLive, baseMotion, elementDrag, companions } = dragState;
     dragState = null;
     if (elementDrag) {
       elementSession?.cancel();
@@ -2022,6 +2071,12 @@ export function createStudioController({
     }
     if (changed && currentScene.exportRecipe().nodes.some(node => node.id === nodeId)) {
       const operations = [{ type: 'set-node', id: nodeId, ...authoredPose }];
+      const knownIds = new Set(currentScene.exportRecipe().nodes.map(node => node.id));
+      for (const companion of companions) {
+        if (knownIds.has(companion.nodeId)) {
+          operations.push({ type: 'set-node', id: companion.nodeId, translation: companion.baseTranslation });
+        }
+      }
       if (keyedLive) {
         operations.push({ type: 'set-motion', motion: baseMotion });
       }
@@ -2425,11 +2480,10 @@ export function createStudioController({
     return source;
   }
 
-  // One undo step that adds a copy of `source`, shifted aside by `offsetSteps` offsets, and selects it.
-  function addNodeCopy(source, offsetSteps) {
-    const recipe = currentScene.exportRecipe();
-    const existingIds = new Set(recipe.nodes.map(node => node.id));
+  // A copy of `source` shifted aside by `offsetSteps` offsets, with an id and label of its own. `existingIds` gains the new id.
+  function buildNodeCopy(source, offsetSteps, existingIds) {
     const copyId = uniqueIdentifier(existingIds, `${source.id}-copy`);
+    existingIds.add(copyId);
     const cloned = structuredClone(source);
     cloned.id = copyId;
     cloned.label = `${source.label ?? source.id} copy`;
@@ -2438,19 +2492,34 @@ export function createStudioController({
       source.translation?.[1] ?? 0,
       (source.translation?.[2] ?? 0) + COPY_OFFSET[2] * offsetSteps,
     ]);
-    // The parent may be gone by the time a copy is pasted.
-    if (cloned.parent !== undefined && !existingIds.has(cloned.parent)) {
-      delete cloned.parent;
-    }
-    applySceneOperations([{ type: 'add-node', node: cloned }]);
-    commitNodeSelection([copyId], copyId);
-    selectedObjectKey = null;
-    notify({ kind: 'topology', nodeId: copyId });
     return cloned;
   }
 
+  // One undo step that adds a copy of each source and selects the copies; the copy of `activeSourceId` is the active one.
+  function addNodeCopies(sources, offsetSteps, activeSourceId) {
+    const recipe = currentScene.exportRecipe();
+    const existingIds = new Set(recipe.nodes.map(node => node.id));
+    const copies = sources.map(source => buildNodeCopy(source, offsetSteps, existingIds));
+    for (const cloned of copies) {
+      // The parent may be gone by the time a copy is pasted.
+      if (cloned.parent !== undefined && !recipe.nodes.some(node => node.id === cloned.parent)) {
+        delete cloned.parent;
+      }
+    }
+    applySceneOperations(copies.map(node => ({ type: 'add-node', node })));
+    const activeIndex = Math.max(0, sources.findIndex(source => source.id === activeSourceId));
+    commitNodeSelection(copies.map(node => node.id), copies[activeIndex].id);
+    selectedObjectKey = null;
+    notify({ kind: 'topology', nodeId: copies[activeIndex].id });
+    return copies[activeIndex];
+  }
+
+  /** Adds a copy of every selected object as one undo step and selects the copies; returns the copy of the active one. */
   function duplicateSelected() {
-    return addNodeCopy(selectedSourceNode('duplicating'), 1);
+    const activeSource = selectedSourceNode('duplicating');
+    const nodesById = new Map(currentScene.exportRecipe().nodes.map(node => [node.id, node]));
+    const sources = selectedNodeIds.map(nodeId => nodesById.get(nodeId)).filter(Boolean);
+    return addNodeCopies(sources.length > 0 ? sources : [activeSource], 1, activeSource.id);
   }
 
   /** Remembers the selected node, as it is now, for pasteCopy. The scene is not touched. */
@@ -2466,9 +2535,10 @@ export function createStudioController({
       throw new RangeError('Copy a node before pasting: select one and use copySelected().');
     }
     pasteCount += 1;
-    return addNodeCopy(copiedNode, pasteCount);
+    return addNodeCopies([copiedNode], pasteCount, copiedNode.id);
   }
 
+  /** Removes every selected object (and what hangs below it) as one undo step. */
   function deleteSelected() {
     if (!selectedNodeId) {
       throw new RangeError('Select a node before deleting it.');
@@ -2477,7 +2547,9 @@ export function createStudioController({
     if (!recipe.nodes.some(node => node.id === selectedNodeId)) {
       throw new RangeError(`Unknown node "${selectedNodeId}".`);
     }
-    const removed = descendantIdsOf(recipe.nodes, selectedNodeId);
+    const knownIds = new Set(recipe.nodes.map(node => node.id));
+    const roots = selectionRootsIn(recipe.nodes).filter(nodeId => knownIds.has(nodeId));
+    const removed = descendantIdsOfMany(recipe.nodes, roots);
     const operations = [];
     if (recipe.motion?.tracks?.some(track => track.kind === 'node' && removed.has(track.id))) {
       const remainingTracks = recipe.motion.tracks.filter(track => !(track.kind === 'node' && removed.has(track.id)));
@@ -2488,7 +2560,9 @@ export function createStudioController({
       const nextLineNodes = Object.fromEntries(Object.entries(recipe.environment.lines.nodes).filter(([id]) => !removed.has(id)));
       operations.push({ type: 'set-environment', environment: { lines: { ...recipe.environment.lines, nodes: nextLineNodes } } });
     }
-    operations.push({ type: 'remove-node', id: selectedNodeId, recursive: true });
+    for (const rootId of roots) {
+      operations.push({ type: 'remove-node', id: rootId, recursive: true });
+    }
     applySceneOperations(operations);
     // Nothing is selected afterwards, so a second Delete cannot remove an object nobody picked.
     commitNodeSelection([], null);
