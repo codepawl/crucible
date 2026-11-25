@@ -3,11 +3,13 @@
 // studio-layout-rules.mjs: unequal insets around the content of a padded container, a gap or padding off the spacing
 // scale, or a gap between groups smaller than the gap inside one. Every failure names the selector, the numbers and the fix.
 //
-//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history|helpmenu] [--width pixels] [--records file.json]
+//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history|agent|helpmenu] [--width pixels] [--records file.json]
 //
 // Without --origin it starts a Vite dev server on a free port and stops it (by its own PID) at the end. Screens: the Studio
 // page, each of its popover menus, the five steps of the setup dialog, and the New scene chooser with its unsaved-changes
 // question, each in the dark and the light theme at 1280 by 720 (--width changes the width, for example 720).
+// The Agent card is measured with a sample chat host (clearly sample data, a scripted reply with two steps): empty, streaming,
+// replied, with a notice and minimized.
 // The History panel is measured at 1280 and 720 after six edits with two undone, and the Edit menu with its History row beside it.
 // The notices (a draft found in storage, the paused picture after a lost context) and the recipe, settings and shortcuts
 // dialogs are measured at 1280 and at 720 pixels wide, because their buttons wrap first when the window narrows.
@@ -35,7 +37,7 @@ const DIALOG_SELECTORS = Object.freeze({
   'shortcuts dialog': 'dialog.crucible-studio-shortcuts-dialog',
 });
 const SERVER_START_TIMEOUT_MS = 60000;
-const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history|helpmenu] [--width pixels] [--records file.json]';
+const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history|agent|helpmenu] [--width pixels] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
 // A signed-in host with every optional field, so the Account section of Settings is on screen and measured.
@@ -43,6 +45,42 @@ const SAMPLE_ACCOUNT_HOST = `globalThis.crucibleShell = { account: {
   get: async () => ({ signedIn: true, name: 'Sample Person', email: 'sample.person@example.com', remainingText: '1,240 credits left', planText: 'Studio plan' }),
   signIn: async () => {}, signOut: async () => {}, buyCredits: () => {}, manageBilling: () => {},
 } };`;
+// A host that offers an agent chat, only for the screens of the Agent card: the reply is scripted, with two steps, and
+// window.__sampleChat.emit lets the audit push an event of its own.
+const SAMPLE_CHAT_HOST = `(() => {
+  let listener = null;
+  let timers = [];
+  let endRun = null;
+  const emit = event => listener?.(event);
+  const script = [
+    [150, { type: 'text', text: 'Sure. I will lift the cube ' }],
+    [300, { type: 'text', text: 'and make it a little larger.' }],
+    [500, { type: 'step', label: 'Moved the cube up', nodeId: 'cube' }],
+    [900, { type: 'step', label: 'Scaled the cube', nodeId: 'cube' }],
+    [1300, { type: 'text', text: 'It is done: the cube now sits higher.' }],
+    [1500, { type: 'done' }],
+  ];
+  window.__sampleChat = { emit };
+  globalThis.crucibleShell = {
+    ...(globalThis.crucibleShell ?? {}),
+    agentChat: {
+      subscribe: next => { listener = next; return () => { listener = null; }; },
+      stop: () => {
+        timers.forEach(clearTimeout);
+        timers = [];
+        emit({ type: 'stopped' });
+        endRun?.();
+      },
+      send: () => new Promise(resolve => {
+        endRun = resolve;
+        timers = script.map(([delay, event]) => setTimeout(() => {
+          emit(event);
+          if (event.type === 'done') resolve();
+        }, delay));
+      }),
+    },
+  };
+})();`;
 const SOFTWARE_ARGUMENTS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'];
 
 // An uneven inset or an off-scale value that is meant. Each entry names the kind, the selector (a substring of the
@@ -313,10 +351,11 @@ export async function launchBrowser() {
   return chromium.launch(options).catch(() => chromium.launch({ ...options, channel: 'chrome' }));
 }
 
-export async function openStudio(browser, origin, theme, extraCss = '', { viewport = VIEWPORT, draft = false, savedDraft = null } = {}) {
+export async function openStudio(browser, origin, theme, extraCss = '', { viewport = VIEWPORT, draft = false, savedDraft = null, chatHost = false } = {}) {
   const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
   await context.addInitScript(FAKE_POINTER_LOCK_SCRIPT);
   await context.addInitScript(SAMPLE_ACCOUNT_HOST);
+  if (chatHost) await context.addInitScript(SAMPLE_CHAT_HOST);
   await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [PREFERENCES_KEY, JSON.stringify({ theme, setupDone: true })]);
   if (draft) await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [DRAFT_STORAGE_KEY, SEEDED_DRAFT]);
   if (savedDraft) await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [DRAFT_KEY, JSON.stringify(savedDraft)]);
@@ -746,6 +785,7 @@ async function checkScrollCue(page, step) {
   const found = await page.evaluate(() => [
     '.crucible-studio-panels',
     '.crucible-studio-history-list',
+    '.crucible-studio-agent-list',
     '.crucible-studio-tree',
   ].map(selector => {
     const body = document.querySelector(selector);
@@ -867,6 +907,73 @@ async function measureHistoryPanel(page, theme, label) {
   return capture.screens;
 }
 
+// The column rule for the Agent card, measured: it stays inside the column, Properties keeps 240 px or more beside it, the Scene
+// card keeps room for its title row and a few rows, and the list and the field fit the card without a sideways scroll.
+async function checkAgentLayout(page, step) {
+  const found = await page.evaluate(() => {
+    const box = selector => document.querySelector(selector)?.getBoundingClientRect();
+    const root = document.querySelector('.crucible-studio');
+    const card = box('.crucible-studio-agent');
+    const column = box('.crucible-studio-side');
+    const list = document.querySelector('.crucible-studio-agent-list');
+    return {
+      compact: root.dataset.compact === 'true',
+      cardHeight: card.height,
+      cardBottom: card.bottom,
+      columnBottom: root.dataset.compact === 'true' ? window.innerHeight : column.bottom,
+      sceneHeight: box('.crucible-studio-outliner')?.height ?? 0,
+      propertiesHeight: box('.crucible-studio-inspector')?.height ?? 0,
+      sidewaysScroll: list.scrollWidth > list.clientWidth + 1,
+      fieldFits: box('.crucible-studio-agent-field').right <= card.right,
+    };
+  });
+  const expect = (condition, message) => {
+    if (!condition) throw new Error(`Agent card layout (${step}): ${message}: ${JSON.stringify(found)}`);
+  };
+  expect(found.cardBottom <= found.columnBottom + 1, 'the card runs past the column or the window');
+  expect(!found.sidewaysScroll, 'the list scrolls sideways');
+  expect(found.fieldFits, 'the message field runs past the card');
+  if (!found.compact) {
+    expect(found.propertiesHeight >= 240 - 1, 'Properties has less than 240 px');
+    expect(found.sceneHeight >= 96, 'the Scene card is under its least height');
+  }
+  return found;
+}
+
+// The Agent card with a sample host: empty, a run streaming with its steps, the reply, a notice outside the list, and minimized.
+// A compact window starts with the card closed, and the View menu is not in the bar there, so the key shows it.
+async function measureAgentCard(page, theme, label) {
+  const capture = createCapture(page, theme, label);
+  const shown = await page.evaluate(() => document.querySelector('.crucible-studio').dataset.agentCollapsed === 'false');
+  if (!shown) {
+    await page.evaluate(() => document.querySelector('.crucible-studio canvas').dispatchEvent(new KeyboardEvent('keydown', { key: 'µ', code: 'KeyM', altKey: true, bubbles: true })));
+  }
+  await page.waitForSelector('.crucible-studio-agent');
+  await capture('agent card empty', '.crucible-studio-agent');
+  await checkAgentLayout(page, 'empty');
+  await page.locator('.crucible-studio-agent-field').fill('Lift the cube and make it a little larger');
+  await page.locator('.crucible-studio-agent-field').press('Enter');
+  await page.waitForSelector('.crucible-studio-agent-step');
+  await capture('agent card streaming', '.crucible-studio-agent');
+  const streaming = await page.evaluate(() => document.querySelector('.crucible-studio-agent-send').textContent);
+  if (streaming !== 'Stop') throw new Error(`Agent card behavior: the Send button reads "${streaming}" while a run goes on, not "Stop"`);
+  await page.waitForSelector('.crucible-studio-agent-outcome');
+  await checkAgentLayout(page, 'replied');
+  await checkScrollCue(page, 'Agent replied');
+  await capture('agent card replied', '.crucible-studio-agent');
+  await page.evaluate(() => window.__sampleChat.emit({ type: 'notice', kind: 'quota', message: 'No credits left for this month', actionLabel: 'Buy credits', action: () => {} }));
+  await capture('agent card notice', '.crucible-studio-agent');
+  const noticeInsideList = await page.evaluate(() => Boolean(document.querySelector('.crucible-studio-agent-list .crucible-studio-agent-notice')));
+  if (noticeInsideList) throw new Error('Agent card behavior: a notice shows inside the message list');
+  await checkAgentLayout(page, 'notice');
+  await page.locator('.crucible-studio-agent button[aria-label="Minimize Agent"]').click();
+  await capture('agent card minimized', '.crucible-studio-agent');
+  const minimizedHeight = await page.evaluate(() => document.querySelector('.crucible-studio-agent').getBoundingClientRect().height);
+  if (minimizedHeight > 60) throw new Error(`Agent card layout: it does not fold to its title row: ${minimizedHeight}px`);
+  await page.locator('.crucible-studio-agent button[aria-label="Expand Agent"]').click();
+  return capture.screens;
+}
+
 // Runs on a page loaded with a seeded draft, so the draft notice is there on its own and the paused notice comes from a real
 // lost WebGL context. The dialogs are opened the way the menu opens them, with showModal.
 async function measureNoticesAndDialogs(page, theme, label) {
@@ -911,6 +1018,13 @@ export async function runAudit({ origin, only, extraCss, viewport = VIEWPORT } =
         for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
           const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport });
           screens.push(...await measureHistoryPanel(opened.page, theme, label));
+          await opened.context.close();
+        }
+      }
+      if (!only || only === 'agent') {
+        for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
+          const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport, chatHost: true });
+          screens.push(...await measureAgentCard(opened.page, theme, label));
           await opened.context.close();
         }
       }

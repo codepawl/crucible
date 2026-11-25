@@ -30,6 +30,9 @@ export const STUDIO_SCENE_SHARE = Object.freeze({ least: 15, most: 75, automatic
 // column width and the Scene share (or the rest of the column for Properties) that the docked column uses.
 export const STUDIO_CARD_SIZE = Object.freeze({ automatic: 0, leastHeight: 96, mostHeight: 1600 });
 
+// The Agent card sits at the foot of the column. Automatic is this tall; it never takes more than this share of the column.
+export const STUDIO_AGENT_CARD = Object.freeze({ automaticHeight: 240, mostShare: 0.55 });
+
 function panelWidthInRange(value) {
   return Math.round(Math.min(STUDIO_PANEL_WIDTH.most, Math.max(STUDIO_PANEL_WIDTH.least, value)));
 }
@@ -63,6 +66,7 @@ const STUDIO_PREFERENCE_SIZES = Object.freeze({
   propertiesWidth: cardWidthInRange,
   sceneHeight: cardHeightInRange,
   propertiesHeight: cardHeightInRange,
+  agentHeight: cardHeightInRange,
 });
 
 export const STUDIO_PREFERENCE_DEFAULTS = Object.freeze({
@@ -72,10 +76,14 @@ export const STUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   propertiesWidth: STUDIO_CARD_SIZE.automatic,
   sceneHeight: STUDIO_CARD_SIZE.automatic,
   propertiesHeight: STUDIO_CARD_SIZE.automatic,
+  agentHeight: STUDIO_CARD_SIZE.automatic,
   sceneMinimized: false,
   propertiesMinimized: false,
   historyVisible: false,
   historyMinimized: false,
+  // The Agent card exists only when a host offers a chat; these remember how the person left it.
+  agentVisible: true,
+  agentMinimized: false,
   propertyGroupsOpen: Object.freeze({}),
   panelsFloating: false,
   moveSnapStep: 0.25,

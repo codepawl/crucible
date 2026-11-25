@@ -90,10 +90,10 @@ function mouseRows(keymap) {
 }
 
 /** The sheet as `[{ title, icon, rows: [{ label, keys }] }]`: every action of the keymap that has a key, grouped by what a person is doing. */
-export function shortcutSheetGroups(keymap) {
+export function shortcutSheetGroups(keymap, { omittedActionIds = [] } = {}) {
   const rowsByGroup = new Map(SHEET_GROUPS.map(group => [group.title, []]));
   for (const item of keymap.actions) {
-    if (item.bindings.length === 0) continue;
+    if (item.bindings.length === 0 || omittedActionIds.includes(item.id)) continue;
     const title = sheetGroupOf(item.id);
     if (!rowsByGroup.has(title)) throw new RangeError(`Keymap action "${item.id}" has no group in the shortcut sheet: add its id or prefix to studio-help.js.`);
     const label = keymap.toolKeysGrab ? item.label : TOOL_LABELS_WITHOUT_GRAB[item.id] ?? item.label;

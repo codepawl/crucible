@@ -14,6 +14,7 @@ import { packedSkyOf } from './scene-pack-sky.js';
 import { encodePackOrRefuse } from './studio-pack-refusal.js';
 import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shaders.js';
 import { STUDIO_CSS } from './studio-styles.js';
+import { AGENT_CHAT_CSS, createAgentChatCard } from './studio-agent-chat.js';
 import { createApplyMenus } from './studio-apply-menu.js';
 import { findKeymapAction, findMouseNavigation, keyLabel, lastKeyLabel, resolveKeymapPreset } from './studio-keymap.js';
 import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
@@ -152,7 +153,7 @@ function injectStudioStyles(documentReference) {
     style.id = STUDIO_STYLE_ID;
     documentReference.head.append(style);
   }
-  style.textContent = STUDIO_CSS;
+  style.textContent = STUDIO_CSS + AGENT_CHAT_CSS;
 }
 
 function createElement(documentReference, tagName, properties = {}, ...children) {
@@ -1402,6 +1403,35 @@ export function createStudio(container, {
     item.addEventListener('click', onChoose);
     return giveMenuIcon(item, iconName);
   };
+  // The Agent card: a host that offers a chat fills it (studio-agent-chat.js). Without one there is no card, no menu row and no data attribute.
+  const agentChat = createAgentChatCard({
+    documentReference,
+    createElement,
+    createIcon,
+    createIconButton,
+    watchScrollFade,
+    host: globalThis.crucibleShell?.agentChat,
+    onStep: nodeId => showAgentEdit({ nodeIds: [nodeId] }),
+    onMinimize: () => setPreference('agentMinimized', !preferences.agentMinimized),
+  });
+  let agentShown = false;
+  function syncAgentCard() {
+    if (!agentChat) return;
+    root.dataset.agentCollapsed = agentShown ? 'false' : 'true';
+    showPanelMinimized(agentChat.minimizeButton, 'agentMinimized', 'Agent', preferences.agentMinimized);
+  }
+  // In a compact window the cards would cover each other, so the Agent card takes turns with Properties and History.
+  function setAgentShown(shown, { remember = true } = {}) {
+    if (!agentChat) return;
+    agentShown = shown;
+    if (shown && root.dataset.compact === 'true') {
+      setInspectorCollapsed(true);
+      setHistoryShown(false, { remember: false });
+    }
+    if (remember) setPreference('agentVisible', shown);
+    syncAgentCard();
+    syncMenuToggles();
+  }
   // Whether the History panel is shown, and the edits it last drew, so a notification that changed no edit draws nothing.
   let historyShown = false;
   let renderedHistoryKey = '';
@@ -1584,6 +1614,7 @@ export function createStudio(container, {
     sceneCameraToggle,
     createMenuToggle('Scene and Properties', '', () => toggleDocksButton.click(), () => root.dataset.outlinerCollapsed !== 'true' || root.dataset.inspectorCollapsed !== 'true', 'panels'),
     createMenuToggle('History', '', () => setHistoryShown(!historyShown), () => historyShown, 'history'),
+    ...(agentChat ? [createMenuToggle('Agent', 'view.agent', () => setAgentShown(!agentShown), () => agentShown, 'chat')] : []),
     createMenuToggle('Properties', 'view.properties', () => setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true'), () => root.dataset.inspectorCollapsed !== 'true', 'settings'),
   );
   // A row that switches something shows whether it is on each time its menu opens.
@@ -2739,7 +2770,10 @@ export function createStudio(container, {
     renderedHistoryKey = '';
     // In a compact window the two cards would cover each other, so showing one puts the other away; the panels button or
     // View > Properties brings Properties back and puts History away.
-    if (shown && root.dataset.compact === 'true') setInspectorCollapsed(true);
+    if (shown && root.dataset.compact === 'true') {
+      setInspectorCollapsed(true);
+      setAgentShown(false, { remember: false });
+    }
     if (remember) setPreference('historyVisible', shown);
     syncHistoryPanel();
     syncMenuToggles();
@@ -2876,7 +2910,7 @@ export function createStudio(container, {
   function fillShortcutsGrid() {
     const columnCount = sheetColumnCount(documentReference.defaultView?.innerWidth ?? 1280);
     shortcutsDialog.dataset.columns = String(columnCount);
-    const columns = balanceSheetColumns(shortcutSheetGroups(keymap), columnCount);
+    const columns = balanceSheetColumns(shortcutSheetGroups(keymap, { omittedActionIds: agentChat ? [] : ['view.agent'] }), columnCount);
     shortcutsGrid.replaceChildren(...columns.map(columnGroups => createElement(
       documentReference,
       'div',
@@ -2988,6 +3022,7 @@ export function createStudio(container, {
     showPanelMinimized(propertiesMinimizeButton, 'inspectorMinimized', 'Properties', preferences.propertiesMinimized);
     showPanelMinimized(historyMinimizeButton, 'historyMinimized', 'History', preferences.historyMinimized);
     refitHistoryList();
+    syncAgentCard();
     for (const [name, control] of settings.controls) {
       if (STUDIO_PREFERENCE_CHOICES[name]) control.value = String(preferences[name]);
       else control.checked = preferences[name];
@@ -3106,6 +3141,7 @@ export function createStudio(container, {
     root,
     outlinerDock,
     inspectorElement,
+    agentDock: agentChat?.dock,
     readPreferences: () => preferences,
     changePreferences: setPreferences,
   });
@@ -3118,6 +3154,10 @@ export function createStudio(container, {
 
   sideColumn.append(historyDock);
   setHistoryShown(preferences.historyVisible, { remember: false });
+  if (agentChat) {
+    sideColumn.append(agentChat.dock);
+    setAgentShown(preferences.agentVisible, { remember: false });
+  }
   applyPreferences();
   root.append(viewportElement, menubarElement, toolbarElement, sideColumn, bottomElement, fileInput, importInput, recipeDialog, shortcutsDialog, settingsDialog, setup.dialog);
   container.append(root);
@@ -5520,7 +5560,7 @@ export function createStudio(container, {
   }
 
   // In edit mode these keys of the normal context still work; every other one would act on the whole object.
-  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'view.frame', 'view.top', 'view.projection', 'view.properties', 'view.seeThrough']);
+  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'view.frame', 'view.top', 'view.projection', 'view.properties', 'view.agent', 'view.seeThrough']);
   const meshKeyHandlers = {
     'mesh.leave': event => {
       event.preventDefault();
@@ -5681,6 +5721,11 @@ export function createStudio(container, {
       event.preventDefault();
       setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true');
     },
+    'view.agent': event => {
+      if (!agentChat) return;
+      event.preventDefault();
+      setAgentShown(!agentShown);
+    },
     'animate.keyframe': () => keyframeButton.click(),
     'animate.play': event => {
       event.preventDefault();
@@ -5808,6 +5853,7 @@ export function createStudio(container, {
   function setInspectorCollapsed(collapsed) {
     root.dataset.inspectorCollapsed = collapsed ? 'true' : 'false';
     if (!collapsed && root.dataset.compact === 'true' && historyShown) setHistoryShown(false, { remember: false });
+    if (!collapsed && root.dataset.compact === 'true' && agentShown) setAgentShown(false, { remember: false });
     toggleDocksButton.setAttribute('aria-pressed', root.dataset.outlinerCollapsed === 'false' || root.dataset.inspectorCollapsed === 'false' ? 'true' : 'false');
     requestFrame();
   }
@@ -5914,6 +5960,7 @@ export function createStudio(container, {
     setOutlinerCollapsed(compact);
     setInspectorCollapsed(compact);
     setHistoryShown(compact ? false : preferences.historyVisible, { remember: false });
+    setAgentShown(compact ? false : preferences.agentVisible, { remember: false });
   }
   syncCompactLayout();
 
@@ -6025,6 +6072,7 @@ export function createStudio(container, {
       clearTimeout(statusExitTimer);
       clearTimeout(awaitedProgramTimer);
       agentPresence.dispose();
+      agentChat?.dispose();
       settings.dispose();
       systemSchemeQuery?.removeEventListener?.('change', onSystemSchemeChange);
       if (frameHandle) cancelAnimationFrame(frameHandle);
