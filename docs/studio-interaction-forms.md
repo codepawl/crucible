@@ -81,6 +81,7 @@ Pick the form by how a person reaches the feature:
 | Studio feature | Form | Where | Reason |
 | --- | --- | --- | --- |
 | Move picked vertices, edges and faces | tool | `src/studio-mesh-edit.js:562`, `src/studio.js:1943` | The Move tool shows handles on the pick and owns the pointer, the same tool as in object mode. At most 19 loose vertices at a time. |
+| Proportional editing | toggle | `src/studio-proportional.js:36`, `src/studio.js:4706`, `src/studio-keymap.js:65` | A state the held move obeys: O or the rail button turns it on, a popover sets the falloff curve and size, and the wheel sets the size while a move is held. It is not a tool of its own. |
 
 ## Panels, animation and keys
 
@@ -96,4 +97,8 @@ Pick the form by how a person reaches the feature:
 | Keymap | setting | `src/studio-keymap.js:319` | A stored choice made once in Settings: the default keys or another keymap preset. |
 | Keyboard shortcuts | panel | Help menu, the ? key; src/studio-help.js | A sheet to read, built from the active keymap. |
 | Documentation | operator | Help menu | One action that opens the guide. |
+| Settings | panel | Edit menu > Settings, Ctrl+, `src/studio-keymap.js:55` | One place for preferences, in sections with an icon each, so a person finds a choice by its section. |
+| Motion | setting | `src/studio-preferences.js`, `src/studio-settings.js` | A stored choice made once: follow the system or reduce Studio's own motion. |
+| Zoom direction | setting | `src/studio-preferences.js`, `src/studio-settings.js` | A stored choice made once for which way the wheel and a pinch zoom. |
+| Account | panel | Settings > Account, `src/studio-account.js` | Shows who is signed in and the host's sign-in and sign-out actions in one section; Studio holds no token. |
 | History | panel | `src/studio.js` (the History card in the right column), View > History, Edit > History | A log of the edits that stays on screen beside Properties: a viewer of a recording follows it downward, and the person editing steps back or forward from it. A tab of Properties would be swapped out when the selection changes tabs, so it is its own card, shown and hidden by a toggle. |

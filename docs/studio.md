@@ -40,6 +40,12 @@ Each tool has its own handle shape, so the shape says what a drag will do: arrow
 
 One drag is one undo step, and undo leaves the viewport camera where you put it. Undo and redo of an edit, of adding or duplicating an object, and of deleting one change the scene already built instead of building it again, so a large scene stays responsive. That holds for putting a deleted object back into the middle of the list and for undoing a lens change too.
 
+## Apply transforms and set the origin
+
+Stretch a cube to a plank and its **Scale** reads 2, 0.5, 3. Ctrl+A (or **Apply…** in the right-click menu) opens the Apply menu: **Location**, **Rotation**, **Scale** or **All transforms**. The object looks the same and the chosen rows read 0, no turn and 1, so a mirror, bevel or array added later works on the real size. **Set origin…** in the same menu moves the point the object turns and scales about: **Origin to geometry** puts it in the middle of the bounds, **Origin to bottom centre** under the object, and, in edit mode with something picked, **Origin to selection** at the middle of the picked vertices. After the move, a turn swings the object about the new point and nothing moves on screen; objects parented to it stay where they are. Each choice is one undo step.
+
+Apply turns a basic shape (box, sphere, cylinder and the rest) into a mesh, so its shape settings are gone until you undo, and Studio says so. A geometry that other objects use is copied for the selected object only, so the others keep theirs. Studio refuses, and says what to do, for an object that has children (apply them first), a mesh with modifiers (apply or remove them), text, an imported file, an object a motion track moves, and a mesh whose edit log is full. Rotation alone is refused on an object stretched unevenly, because it would shear: apply Scale as well. The bottom is the lowest point of the bounds in the object's own space, not in the world. In code, `controller.applyImportOperations([{ type: 'apply-transform', node, parts }])` and `{ type: 'set-origin', node, to }` do the same.
+
 ## Edit a mesh
 
 The form of each Studio feature (tool, toggle, mode, operator, modifier, setting or panel) and the reason for it are listed in [Studio interaction forms](https://github.com/codepawl/crucible/blob/main/docs/studio-interaction-forms.md).
@@ -48,7 +54,7 @@ Select an object and press **Tab**. A shape from the Add menu's Mesh group (plan
 
 In edit mode **X**, **Delete** or **Backspace** opens the Delete menu, with Dissolve Vertices, Dissolve Edges and Dissolve Faces. Each acts on what you picked in any mode: edges between picked vertices, the edges around a picked face, the faces whose every corner is picked. Dissolve Edges also removes the vertices it leaves with two edges, so dissolving a loop leaves clean quads. **M** opens the Merge menu: At Center, At First, At Last and Collapse. At First and At Last keep the vertex you picked first or last, so they work in vertex mode only; Collapse joins each connected group of picked vertices at its own centre. There is no At Cursor, because Studio has no 3D cursor. Each choice is one edit-log entry and one undo step, and the pick is cleared afterwards because the vertex numbers change.
 
-A mesh is the shape of the edit log in the recipe (`type: "mesh"`, a `base` shape and `edits`), so what you do is written there, and undo, redo, save and agents all see it. One drag is one entry of the log: a `translate` of faces when what you moved is exactly some faces, else a `set_position` of the picked vertices. Moves are in the object's own space, so a turned or stretched object moves the way its mesh does. While you drag, the surface follows the pointer for a mesh that Studio can rewrite in place (no skin, shape keys or level-of-detail set); the edit is written when you let go.
+A mesh is the shape of the edit log in the recipe (`type: "mesh"`, a `base` shape and `edits`), so what you do is written there, and undo, redo, save and agents all see it. One drag is one entry of the log: a `translate` of faces when what you moved is exactly some faces, else a `set_position` of the picked vertices. With proportional editing on, the same drag is a `translate` with a `falloff` (below). Moves are in the object's own space, so a turned or stretched object moves the way its mesh does. While you drag, the surface follows the pointer for a mesh that Studio can rewrite in place (no skin, shape keys or level-of-detail set); the edit is written when you let go.
 
 The conversion keeps the object where it is, its size, material, name, parent, children and animation. A box and a cylinder lose their small bevel on the way, so their edges turn sharp and the cage is the plain shape: a box is 6 faces (1,482 with the bevel), a cylinder 96 (672). The other shapes keep every segment they had: plane 64 faces, circle 37, sphere 864, icosphere 320, cone 72, torus 1,344 (the Add menu's torus, 56 by 24 segments; a torus in a recipe with no segments given has 48 by 48, 2,304 faces). The conversion is one undo step that gives the shape back and leaves edit mode; redo makes the mesh again.
 
@@ -59,10 +65,18 @@ Not there yet, and said so on screen when you reach it:
 - A move of more than 19 vertices that are not whole faces cannot be written yet; pick whole faces, or fewer vertices.
 - A mesh with a modifier stack is refused. A mesh of more than 8,000 triangles draws only the picked elements, with a notice.
 - **Alt+A** selects none and **Ctrl+I** inverts the selection, in the mode you are in (vertices, edges or faces); the object stays selected. Inverting nothing selects everything of that mode. Like a pick, neither is an undo step.
+- **Alt+click** selects a loop: in edge mode (or vertex mode) the loop of edges through the edge nearest the pointer, in face mode the band of faces that crosses the face edge nearest the pointer. **Ctrl+Alt+click** selects the ring of edges, or in face mode the band across the next edge round the face. **Shift** with either adds to the selection. A loop goes straight on through a vertex with four edges and four quads around it, and stops at a corner where 3 or 5 or more edges meet, at the border of the mesh and at a triangle or a larger polygon. A ring crosses quads only. In keymap presets that orbit the view with Alt and the left button, Alt+click and Ctrl+Alt+click orbit instead, so loop and ring selection is not reachable by click there.
+- **L** selects everything joined to the element under the pointer, and **Ctrl+L** everything joined to the selection; parts that share a vertex count as joined.
+- **]** grows the selection by one step and **[** shrinks it by one, in the mode you are in: vertices step along edges, edges and faces step to the ones that share a vertex. **Ctrl+Numpad +** and **Ctrl+Numpad -** do the same. The brackets come first because Ctrl with plus or minus zooms the page and a laptop has no numpad.
 - **C** starts circle select. A circle follows the pointer: drag with the left button to select what it passes over, drag with the middle button (or hold **Shift**) to deselect, turn the wheel to make the circle bigger or smaller (4 to 400 pixels, 25 to start; one step per 100 pixels of wheel travel, so a trackpad swipe and a mouse wheel resize alike), and press **Esc** or right click to stop. Switching to another window or tab stops it too. In vertex mode it takes the vertices inside the circle, in edge mode the edges it touches, in face mode the faces it overlaps. Only what faces the camera is taken. The circle keeps its size until you change it.
 - **B** starts box select: drag one rectangle with the left button and everything of the mode that lies wholly inside it is selected (**Shift** adds to the selection instead of replacing it). The key is spent after one rectangle, and **Esc** drops it.
 - **Alt+Z** turns **see-through** on or off, and so does the button in the rail's lower group. While it is on, the surface of the object you edit is drawn faint, the far side of the cage is drawn as strongly as the near side, and a click, the circle and a box reach the far side too: from the front, a box over a cube takes all 8 vertices instead of the 4 facing you. It is a view setting, kept while Studio is open and for the next edit session: it changes nothing in the recipe, adds no undo step, and `studio.setSeeThrough(true)` sets it from code. In face mode a click takes the face whose centre is nearest the pointer among those drawn under it.
+- **O** turns proportional editing on or off, from the button at the foot of the edit mode group (it lights while on). While it is on, a move also takes the vertices around the picked ones along, by a curve that fades to nothing at a radius, and a circle around the pick shows that radius. Turn the wheel while you hold a move to widen or narrow it (a factor of 1.15 a notch, from 0.01 to 100 in the mesh's own units, 0.5 to start). The button beside it opens a popover with the curve (smooth, round, root, sharp, linear or flat, each drawn) and a size slider. The move is written as one `translate` with a `falloff` of `{ radius, curve }`, the falloff a recipe or an agent writes, so an undo, a save and a replay give the same hill. A pick that is not whole faces is named by its vertices (`verts: { "vertices": [..] }`, up to 4096) because it has no face to select. In a keymap preset where O frames the object, O is proportional editing inside edit mode and S still frames.
 - Rotate, scale, box select, extrude and the other tools come next.
+
+**P** in edit mode opens a small menu at the middle of the viewport with **Selection**: the picked faces (in vertex or edge mode, the faces whose vertices are all picked) become a new object named `<name>-part`, with the same position, size, parent and material, so nothing moves. The object keeps its other faces and stays in edit mode; with nothing picked, or every face picked, it says what to do and changes nothing. It is one undo step.
+
+**Ctrl+J** (or **Edit ▸ Join**) joins the selected objects into the one picked last: each mesh is added to it where it stood in the scene, and the other objects go. Select two or more first (Shift or Ctrl with a click, or the Scene list). A shape joins as a mesh, and a joined object that has children, motion or a physics body is refused with the reason. The objects must share one material, since a mesh draws with one; if they differ, give them the same material first or keep them apart. It is one undo step.
 
 If another object uses the same geometry, entering edit mode gives this object a geometry of its own (the same conversion step), so the other one keeps its shape and does not move with it.
 
@@ -158,6 +172,7 @@ While an input method composes text (Japanese, Chinese, Korean), Enter picks the
 | Shift+A | Add an object or a light |
 | Ctrl+C, Ctrl+V | Copy the selected object, paste a copy of it (one undo step, still works after the original is deleted) |
 | Shift+D or Ctrl+D | Duplicate |
+| Ctrl+J | Join the selected objects into the one picked last |
 | F2 | Rename the active object, in its Scene row |
 | X, Delete or Backspace | Delete |
 | Esc | Deselect |
@@ -166,9 +181,15 @@ While an input method composes text (Japanese, Chinese, Korean), Enter picks the
 | 1, 2, 3 | In edit mode: select vertices, edges or faces |
 | X or Delete, M | In edit mode: the Delete menu (dissolve), the Merge menu |
 | Alt+A, Ctrl+I, C, B | In edit mode: select none, invert the selection, circle select (Esc or right click ends it), box select |
+| P | In edit mode: separate the picked faces into their own object |
+| L, Ctrl+L | In edit mode: select what is linked under the pointer, or linked to the selection |
+| ], Ctrl+Numpad + | In edit mode: grow the selection by one step |
+| [, Ctrl+Numpad - | In edit mode: shrink the selection by one step |
+| O | In edit mode: proportional editing on or off (see Proportional editing) |
 | Alt+Z | See through the surface |
 | H, Alt+H | Hide the selection, show everything that is hidden |
 | Alt+G, Alt+R, Alt+S | Reset the position, rotation or scale of the selection |
+| Ctrl+A | Open the Apply menu: fold the selection's location, rotation or scale into its geometry |
 | Right click | Menu of the object under the pointer |
 | F or . | Fly to the selection, or to the whole scene when nothing is selected |
 | 1, 3, 7 | Front, right and top view |
@@ -222,6 +243,7 @@ The last menu of the top bar, **Help**, has four rows, each with an icon.
 | Invert the selection | Ctrl+I | Ctrl+I | Ctrl+I |
 | Frame the selection | F, . | F | O, S |
 | Show or hide Properties | N | Ctrl+A | Shift+F5 |
+| Apply transforms | Ctrl+A | Ctrl+Alt+A | Ctrl+A |
 | See through the surface | Alt+Z | Alt+Z | Alt+Z |
 | Box select (edit mode) | B | B | B |
 | Insert a keyframe | I, K | S | F9 |
@@ -233,7 +255,46 @@ Maya and Cinema 4D also take **Alt** with a mouse button on the viewport: Alt an
 
 ## Settings
 
-**Edit ▸ Settings** (Ctrl+,) opens Settings: the step and the angle a Shift drag snaps to, the size of the handles, the workspace Studio opens in, the theme (System, Light or Dark), the performance tier, the keys (Blender, Maya or Cinema 4D), and whether the grid, the readout, the axis widget and the agent cursor show. They are kept in the browser (`localStorage`, key `crucible-studio-preferences`), not in the scene recipe, so a scene looks the same for everyone and each person keeps their own setup. **Reset** brings back the defaults. An app can pass `preferences` to `createStudio` to start from other values, `preferenceStorage: null` to keep nothing, and call `studio.setPreference(name, value)`.
+**Edit ▸ Settings** (Ctrl+,) opens Settings. A short list of sections stands on the left, each with an icon, and the rows of the chosen section are beside it; the dialog keeps the height of the tallest section, so it does not jump when you switch. On a narrow window the list shows only the icons.
+
+| Section | Rows |
+| --- | --- |
+| Interface | Theme (System, Light or Dark), Open in (the workspace Studio opens in), Floating panels, Motion |
+| Viewport | Performance tier, Grid, Camera and size readout, Axis widget, Agent cursor, Handle size, Zoom direction |
+| Editing | Move snap step and Rotate snap angle for a Shift drag |
+| Keys | The key preset and a button that opens the shortcuts list |
+| Account | Only when the host page offers an account, see below |
+
+They are kept in the browser (`localStorage`, key `crucible-studio-preferences`), not in the scene recipe, so a scene looks the same for everyone and each person keeps their own setup. **Reset** brings back the defaults of every row. **Run setup again** opens the first-run setup. An app can pass `preferences` to `createStudio` to start from other values, `preferenceStorage: null` to keep nothing, and call `studio.setPreference(name, value)`.
+
+**Motion** is `motion`: `'system'` (the default) follows the system's reduced-motion setting, and `'reduced'` turns off Studio's own motion whatever the system says: menus, hover fades and the agent pointer's glide take no time, the bake pulse stops, and F frames the selection with a jump instead of a flight. Both ways go through one switch, so the system setting and the preference never disagree. Showing full motion over a system that asks for less is not offered: the motion rules are written as `prefers-reduced-motion` media queries, which a preference cannot turn back on.
+
+**Zoom direction** is `zoomDirection`: `'normal'` (the default) moves the camera away when the wheel scrolls down, `'inverted'` brings it closer. A trackpad pinch arrives as a wheel with Ctrl held and follows the same choice.
+
+**Units** (metres, centimetres, millimetres, feet and inches) are not a setting yet: the readout, the drag labels and the number fields each format lengths on their own, so a display unit needs one shared length formatter first.
+
+### Account
+
+When the host page provides `globalThis.crucibleShell.account`, Settings gets an **Account** section. Studio holds no token and makes no network call: it shows what the object reports and calls the functions it offers.
+
+```js
+globalThis.crucibleShell = {
+  account: {
+    // Required. Every optional field may be missing; text fields are shown as plain text.
+    async get() {
+      return { signedIn: true, name: 'Sample Person', email: 'sample.person@example.com', remainingText: '1,240 credits left', planText: 'Studio plan' };
+    },
+    async signIn() {},        // resolves when the sign-in is done; rejecting shows its message under the status
+    async signOut() {},       // resolves when done; Sign out is shown only when this exists
+    buyCredits() {},          // optional: "Buy more" is shown only when this exists
+    manageBilling() {},       // optional: "Manage billing" is shown only when this exists
+  },
+};
+// When the account changes, tell Studio and it reads get() again:
+document.dispatchEvent(new Event('crucible-shell:account-changed'));
+```
+
+Signed out, the section shows a lock mark, "Signed out" and one **Sign in** button; while `signIn()` runs the button reads "Waiting" and is disabled. Signed in, it shows a check mark, the person in a round avatar with an initial (no remote images), then `remainingText` as "Left to use" and `planText` as "Plan" when given, and the buttons. A host that has only the older `crucibleShell.builtInAgent` (`isSignedIn()`, `signIn()`) gets the section with the state and Sign in. With neither, there is no Account section.
 
 **Theme** forces the Studio light or dark whatever the system says; System follows the system. The dialogs and menus follow it too. An app that wants to theme its own frame passes `onThemeChange(theme)` to `createStudio`; it is called with `'light'` or `'dark'` at the start and on each change.
 
@@ -243,7 +304,7 @@ Maya and Cinema 4D also take **Alt** with a mouse button on the viewport: Alt an
 
 Studio spaces everything on one scale: 4, 8, 12, 16 and 24 px, as `--studio-space-4` to `--studio-space-24` on the Studio root, and 0. A 2 px step is allowed only between touching controls of one group (the buttons of a tool row); 6, 10, 14 and 18 px are not, because every use turned out to be a 4, 8, 12 or 16. Inside a group the gap is small (4 or 8), between groups it is larger (16 in a card), and the gap between groups is never smaller than the gap inside one. A card has the same inset on all four sides, measured from its real children.
 
-`node scripts/studio-layout-audit.mjs [--json] [--only setup|studio|popover|newscene|dialog|notice|notices]` checks this on the real DOM in headless Chrome: the Studio page, each of its menus, the three dialogs (the Settings dialog for selection only until #3317 redesigns it), the notices (an error toast, a plain toast, the paused notice with and without Reload, the draft notice), the five steps of the setup dialog, the New scene chooser, its unsaved-changes question and the File menu with Open recent expanded, in the dark and the light theme at 1280 by 720 (`--width 720` checks a narrow window). It fails with the selector, the measured numbers and the token to use when a container with a visible edge shows unequal insets (more than 2 px apart), when a gap or padding is off the scale, or when the gap between groups is smaller than the gap inside them. A container with no gap is not held to the last rule, since it keeps its parts apart with padding or is one surface. The few insets that are meant to differ (the tool rail, the end of an outliner row, a menu row) are declared with a reason in `ALLOWLIST` of `scripts/studio-layout-audit.mjs`; fix a real finding in the CSS instead of listing it. The rules are plain functions in `scripts/studio-layout-rules.mjs`, tested without a browser in `tests/studio-layout-rules.test.js`; `tests/studio-layout-audit.test.js` runs the audit in Chrome with the unit tests and seeds a mistake it must catch.
+`node scripts/studio-layout-audit.mjs [--json] [--only setup|settings|studio|popover|newscene|dialog|notice|notices]` checks this on the real DOM in headless Chrome: the Studio page, each of its menus, the dialogs (Settings is measured section by section, with a sample signed-in host so Account is included), the notices (an error toast, a plain toast, the paused notice with and without Reload, the draft notice), the five steps of the setup dialog, the New scene chooser, its unsaved-changes question and the File menu with Open recent expanded, in the dark and the light theme at 1280 by 720 (`--width 720` checks a narrow window). It fails with the selector, the measured numbers and the token to use when a container with a visible edge shows unequal insets (more than 2 px apart), when a gap or padding is off the scale, or when the gap between groups is smaller than the gap inside them. A container with no gap is not held to the last rule, since it keeps its parts apart with padding or is one surface. The few insets that are meant to differ (the tool rail, the end of an outliner row, a menu row) are declared with a reason in `ALLOWLIST` of `scripts/studio-layout-audit.mjs`; fix a real finding in the CSS instead of listing it. The rules are plain functions in `scripts/studio-layout-rules.mjs`, tested without a browser in `tests/studio-layout-rules.test.js`; `tests/studio-layout-audit.test.js` runs the audit in Chrome with the unit tests and seeds a mistake it must catch.
 
 ## Selecting text
 

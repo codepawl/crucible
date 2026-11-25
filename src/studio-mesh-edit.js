@@ -10,6 +10,9 @@ import { meshEditSourceOf } from './agent-mesh.js';
 import { roundVector } from './studio-controller.js';
 import { isLiveGeometry, unmarkLiveGeometry } from './live-geometry.js';
 import { updatePartVertices } from './update-part-vertices.js';
+import { edgeLoop, edgeRing, faceLoop, growSelection, selectLinked, shrinkSelection } from './mesh-select-topology.js';
+import { spatialFalloffWeights } from './mesh-ops.js';
+import { proportionalCirclePath } from './studio-proportional.js';
 import { MAX_SELECTED_ELEMENTS, MERGE_TARGETS } from './mesh-operations.js';
 
 export const MESH_SELECTION_MODES = Object.freeze(['vertex', 'edge', 'face']);
@@ -23,6 +26,7 @@ const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
 const NEEDS_A_MESH = 'Edit mode needs a mesh geometry or a shape of the Add menu.';
 const NEEDS_NO_MODIFIERS = 'Edit mode does not work on a mesh with modifiers yet. Add a plain shape from the Mesh group and edit that, or have the modifiers applied first.';
+const TOO_MANY_SEEDS = `Proportional editing moves at most ${MAX_SELECTED_ELEMENTS} vertices that are not whole faces; select fewer, or whole faces.`;
 const LOG_IS_FULL = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take another move.`;
 const LOG_IS_FULL_FOR_EDIT = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take a dissolve or a merge.`;
 const TOO_MANY_VERTICES = `Moving more than ${MAX_MASK_VERTICES} vertices that are not whole faces is not possible yet; select whole faces or fewer vertices.`;
@@ -76,14 +80,22 @@ function facesInsideVertexSet(mesh, vertexSet) {
 
 /**
  * The log entry that moves `vertices` of `mesh` by `localDelta`: a face `translate` when the vertices are exactly those of
- * some faces, else a `set_position` over an index mask. Throws a sentence that says why when the move cannot be written.
+ * some faces, else a `set_position` over an index mask. With a `falloff` ({ radius, curve }, proportional editing) the move is
+ * a `translate` either way, naming the vertices when they are not whole faces. Throws a sentence that says why when the move cannot be written.
  */
-export function planMeshMove(mesh, vertices, localDelta) {
+export function planMeshMove(mesh, vertices, localDelta, falloff = null) {
   const offset = roundVector(localDelta);
   const vertexSet = new Set(vertices);
   const { faces, covered } = facesInsideVertexSet(mesh, vertexSet);
+  const falloffField = falloff ? { falloff: { radius: falloff.radius, curve: falloff.curve } } : {};
   if (faces.length > 0 && covered.size === vertexSet.size) {
-    return { op: 'translate', select: { faces }, offset };
+    return { op: 'translate', select: { faces }, offset, ...falloffField };
+  }
+  if (falloff) {
+    // The recipe's falloff moves the vertices around a selection, so a vertex that is no whole face is named in the edit (`verts`).
+    if (vertexSet.size > MAX_SELECTED_ELEMENTS) throw new RangeError(TOO_MANY_SEEDS);
+    const sortedSeeds = [...vertexSet].sort((first, second) => first - second);
+    return { op: 'translate', verts: { vertices: sortedSeeds }, offset, ...falloffField };
   }
   if (vertexSet.size > MAX_MASK_VERTICES) throw new RangeError(TOO_MANY_VERTICES);
   const sorted = [...vertexSet].sort((first, second) => first - second);
@@ -301,7 +313,7 @@ function uniqueGeometryId(recipe, wanted) {
  * controller (this editor installs an element session on it), `leave()`. `updatePart` writes a drag preview into the GPU
  * buffers of the part; `getRenderer` returns the renderer it needs, or null for a headless Studio (the cage still moves).
  */
-export function createMeshEditor({ controller, announce = () => {}, getRenderer = () => null, updatePart = updatePartVertices } = {}) {
+export function createMeshEditor({ controller, announce = () => {}, getRenderer = () => null, updatePart = updatePartVertices, proportional = null } = {}) {
   let state = null;
   let drag = null;
   // True while this editor writes its own entry: the mesh it reads back has the same topology, so the pick stays.
@@ -871,13 +883,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   /** Picks the element of the current mode under the pixel; `additive` (Shift) toggles it, a click on nothing clears. */
   function pick(pixelX, pixelY, { additive = false } = {}) {
     if (!state || drag) return null;
-    let hit;
-    if (state.mode === 'face') {
-      hit = seeThrough ? faceBehindPointer(pixelX, pixelY) : faceUnderPointer(pixelX, pixelY);
-    } else {
-      const projected = projectCage();
-      hit = state.mode === 'vertex' ? nearestVertex(pixelX, pixelY, projected) : nearestEdge(pixelX, pixelY, projected);
-    }
+    const { hit } = elementUnderPointer(pixelX, pixelY);
     if (hit === null) {
       if (!additive) state.selected = new Set();
     } else if (!additive) {
@@ -895,6 +901,114 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return hit;
   }
 
+  // The element of the current mode under the pixel, as pick() finds it, with the projected cage the hit was found on.
+  function elementUnderPointer(pixelX, pixelY) {
+    const projected = projectCage();
+    if (state.mode === 'face') {
+      return { hit: seeThrough ? faceBehindPointer(pixelX, pixelY) : faceUnderPointer(pixelX, pixelY), projected };
+    }
+    const hit = state.mode === 'vertex' ? nearestVertex(pixelX, pixelY, projected) : nearestEdge(pixelX, pixelY, projected);
+    return { hit, projected };
+  }
+
+  // The edge of a face whose screen segment is nearest the pixel.
+  function nearestEdgeOfFace(face, pixelX, pixelY, projected) {
+    const { mesh } = state;
+    let best = mesh.cornerEdges[mesh.faceOffsets[face]];
+    let bestDistance = Infinity;
+    for (let corner = mesh.faceOffsets[face]; corner < mesh.faceOffsets[face + 1]; corner += 1) {
+      const edge = mesh.cornerEdges[corner];
+      const start = mesh.edgeVertices[edge * 2];
+      const end = mesh.edgeVertices[edge * 2 + 1];
+      const distance = distanceToSegmentSquared(pixelX, pixelY, projected.screenX[start], projected.screenY[start], projected.screenX[end], projected.screenY[end]);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = edge;
+      }
+    }
+    return best;
+  }
+
+  // The next edge round a quad, which a face ring crosses instead of the nearest one; any other face has only its nearest.
+  function neighbouringEdgeOfFace(face, edge) {
+    const { mesh } = state;
+    const first = mesh.faceOffsets[face];
+    if (mesh.faceOffsets[face + 1] - first !== 4) return edge;
+    for (let offset = 0; offset < 4; offset += 1) {
+      if (mesh.cornerEdges[first + offset] === edge) return mesh.cornerEdges[first + (offset + 1) % 4];
+    }
+    return edge;
+  }
+
+  function verticesOfEdges(edges) {
+    const vertices = new Set();
+    for (const edge of edges) {
+      vertices.add(state.mesh.edgeVertices[edge * 2]);
+      vertices.add(state.mesh.edgeVertices[edge * 2 + 1]);
+    }
+    return [...vertices];
+  }
+
+  function applySelection(elements, additive) {
+    state.selected = additive ? new Set([...state.selected, ...elements]) : new Set(elements);
+    noteSelectionChanged();
+  }
+
+  /**
+   * Alt+click: the loop under the pixel. An edge (or a vertex, by its edges) picks the loop of the nearest edge; a face picks the band of faces
+   * that crosses the edge nearest the pixel. `ring` (Ctrl+Alt+click) picks the ring of edges, or in face mode the band across
+   * the next edge round the face. Returns how many elements are selected, or null when nothing is under the pixel.
+   */
+  function pickLoop(pixelX, pixelY, { ring = false, additive = false } = {}) {
+    if (!state || drag) return null;
+    const { mesh } = state;
+    let found = null;
+    if (state.mode === 'face') {
+      const { hit, projected } = elementUnderPointer(pixelX, pixelY);
+      if (hit !== null) {
+        const nearest = nearestEdgeOfFace(hit, pixelX, pixelY, projected);
+        found = faceLoop(mesh, hit, ring ? neighbouringEdgeOfFace(hit, nearest) : nearest);
+      }
+    } else {
+      const projected = projectCage();
+      const edge = nearestEdge(pixelX, pixelY, projected);
+      if (edge !== null) {
+        const edges = ring ? edgeRing(mesh, edge) : edgeLoop(mesh, edge);
+        found = state.mode === 'vertex' ? verticesOfEdges(edges) : edges;
+      }
+    }
+    if (found === null) {
+      if (!additive) state.selected = new Set();
+      return null;
+    }
+    applySelection(found, additive);
+    return found.length;
+  }
+
+  /** L: everything joined to the element under the pixel joins the selection. Returns how many are selected, or null when nothing is there. */
+  function selectLinkedAt(pixelX, pixelY) {
+    if (!state || drag) return null;
+    const { hit } = elementUnderPointer(pixelX, pixelY);
+    if (hit === null) return null;
+    applySelection(selectLinked(state.mesh, state.mode, [hit]), true);
+    return state.selected.size;
+  }
+
+  /** Ctrl+L: everything joined to the selection joins it. Returns how many are selected. */
+  function selectLinkedFromSelection() {
+    if (!state || drag || state.selected.size === 0) return 0;
+    applySelection(selectLinked(state.mesh, state.mode, [...state.selected]), false);
+    return state.selected.size;
+  }
+
+  /** One step of adjacency outward (direction 1) or inward (direction -1) in the current mode. Returns how many are selected. */
+  function stepSelection(direction) {
+    if (!state || drag || state.selected.size === 0) return 0;
+    const step = direction > 0 ? growSelection : shrinkSelection;
+    applySelection(step(state.mesh, state.mode, [...state.selected]), false);
+    return state.selected.size;
+  }
+
   function selectionCentreWorld() {
     const vertices = selectedVertices();
     if (vertices.size === 0) return null;
@@ -903,6 +1017,17 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       for (let axis = 0; axis < 3; axis += 1) sum[axis] += state.positions[vertex * 3 + axis];
     }
     return transformPoint(state.part.matrix, sum[0] / vertices.size, sum[1] / vertices.size, sum[2] / vertices.size);
+  }
+
+  /** The mean of the picked vertices in the object's own space, or null when nothing is picked. */
+  function selectionCentreLocal() {
+    const vertices = selectedVertices();
+    if (!state || vertices.size === 0) return null;
+    const sum = [0, 0, 0];
+    for (const vertex of vertices) {
+      for (let axis = 0; axis < 3; axis += 1) sum[axis] += state.positions[vertex * 3 + axis];
+    }
+    return sum.map(component => component / vertices.size);
   }
 
   function writePreview() {
@@ -939,22 +1064,38 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     drag = null;
   }
 
+  // The vertices a move changes with their weights (1 for the picked ones, the falloff curve for the ones around them), and where
+  // each of them stands before the move.
+  function dragTargets(seeds, falloff) {
+    let vertices = seeds;
+    let weights = null;
+    if (falloff) {
+      const weightOf = spatialFalloffWeights(state.positions, state.mesh.vertexCount, new Set(seeds), falloff);
+      vertices = [...weightOf.keys()];
+      weights = Float32Array.from(weightOf.values());
+    }
+    const basePositions = new Float32Array(vertices.length * 3);
+    vertices.forEach((vertex, slot) => {
+      for (let axis = 0; axis < 3; axis += 1) basePositions[slot * 3 + axis] = state.positions[vertex * 3 + axis];
+    });
+    return { vertices, weights, basePositions };
+  }
+
   function beginDrag() {
     if (!state) throw new RangeError('Enter edit mode before moving the selection.');
     const vertices = [...selectedVertices()];
     if (vertices.length === 0) throw new RangeError('Pick a vertex, edge or face to move first.');
     if (state.editCount >= MAX_LOG_ENTRIES) throw new RangeError(LOG_IS_FULL);
+    const falloff = proportional?.falloff() ?? null;
     // Refused here, before the pointer moves: a finished drag is never thrown away.
-    planMeshMove(state.mesh, vertices, [0, 0, 0]);
-    const basePositions = new Float32Array(vertices.length * 3);
-    vertices.forEach((vertex, slot) => {
-      for (let axis = 0; axis < 3; axis += 1) basePositions[slot * 3 + axis] = state.positions[vertex * 3 + axis];
-    });
+    planMeshMove(state.mesh, vertices, [0, 0, 0], falloff);
     const previewing = state.previewable && getRenderer() !== null;
     drag = {
-      vertices,
-      basePositions,
+      seeds: vertices,
+      falloff,
+      ...dragTargets(vertices, falloff),
       localDelta: [0, 0, 0],
+      worldDelta: [0, 0, 0],
       previewing,
       wasLive: isLiveGeometry(state.part.geometry),
       renderPositions: previewing ? new Float32Array(state.part.geometry.positions.length) : null,
@@ -972,21 +1113,23 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     if (!inverse) return;
     const localDelta = transformDirection(inverse, worldDelta[0], worldDelta[1], worldDelta[2]);
     drag.localDelta = localDelta;
+    drag.worldDelta = worldDelta;
     drag.vertices.forEach((vertex, slot) => {
-      for (let axis = 0; axis < 3; axis += 1) state.positions[vertex * 3 + axis] = drag.basePositions[slot * 3 + axis] + localDelta[axis];
+      const weight = drag.weights ? drag.weights[slot] : 1;
+      for (let axis = 0; axis < 3; axis += 1) state.positions[vertex * 3 + axis] = drag.basePositions[slot * 3 + axis] + localDelta[axis] * weight;
     });
     writePreview();
   }
 
   function finishDrag(changed) {
     if (!drag) return;
-    const { vertices, localDelta } = drag;
+    const { seeds, falloff, localDelta } = drag;
     restoreDraggedPositions();
     drag = null;
     // A move below the rounding step would be an entry that moves nothing and takes one of the 64 slots.
     if (!changed || roundVector(localDelta).every(component => component === 0)) return;
     try {
-      writeEntry(planMeshMove(state.mesh, vertices, localDelta));
+      writeEntry(planMeshMove(state.mesh, seeds, localDelta, falloff));
     } catch (error) {
       announce(error);
     }
@@ -1027,6 +1170,21 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   /** Merges the selected vertices at "center", "first", "last" or "collapse" (the Merge menu): one undo step. */
   function merge(at) {
     return runTopologyEdit(() => planMeshMerge(state.mesh, state.mode, state.selected, at), `Merged the vertices ${at === 'collapse' ? 'by collapse' : `at ${at}`}`);
+  }
+
+  /**
+   * The radius or the curve changed while a move is held: the vertices it reaches are chosen again from where they stood before
+   * the move, and the move already made is applied to them, so the hill widens under the pointer.
+   */
+  function reweighDrag() {
+    if (!drag || !drag.falloff) return;
+    const { vertices, basePositions } = drag;
+    vertices.forEach((vertex, slot) => {
+      for (let axis = 0; axis < 3; axis += 1) state.positions[vertex * 3 + axis] = basePositions[slot * 3 + axis];
+    });
+    drag.falloff = proportional.falloff() ?? drag.falloff;
+    Object.assign(drag, dragTargets(drag.seeds, drag.falloff));
+    moveDrag(drag.worldDelta);
   }
 
   const session = {
@@ -1095,6 +1253,20 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
 
   // The stroke and fill of these paths come from the stylesheet (`--studio-*` tokens), so the cage follows the theme. `layer` says
   // whether a path goes under the move handles or over them: picked vertices and edges go over, or the handles' centre dot hides them.
+  // The circle of the proportional radius around the picked elements, facing the camera. The radius is in the mesh's own units,
+  // so the node's scale turns it into a world length.
+  function proportionalReachPath() {
+    const falloff = proportional?.falloff();
+    const centre = falloff ? selectionCentreWorld() : null;
+    if (!centre) return '';
+    const matrix = state.part.matrix;
+    const scale = (Math.hypot(matrix[0], matrix[1], matrix[2]) + Math.hypot(matrix[4], matrix[5], matrix[6]) + Math.hypot(matrix[8], matrix[9], matrix[10])) / 3;
+    const project = controller.worldPointProjector();
+    const middle = project(centre);
+    if (!middle.visible) return '';
+    return proportionalCirclePath(centre, falloff.radius * scale, controller.screenRay(middle.x, middle.y).direction, project);
+  }
+
   function cagePaths() {
     if (!state) return [];
     const { screenX, screenY, visible, nearVertex, nearEdge } = projectCage();
@@ -1147,6 +1319,8 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       paths.push({ className: `crucible-studio-cage-selected-halo crucible-studio-cage-selected-halo-${state.mode}`, pathData: selectedShape, layer: 'over' });
       paths.push({ className: `crucible-studio-cage-selected crucible-studio-cage-selected-${state.mode}`, pathData: selectedShape, layer: 'over' });
     }
+    const reach = proportionalReachPath();
+    if (reach) paths.push({ className: 'crucible-studio-proportional-reach', pathData: reach, layer: 'over' });
     if (boxRectangle) {
       const { left, top, right, bottom } = boxRectangle;
       paths.push({ className: 'crucible-studio-cage-box', pathData: `M${left.toFixed(1)} ${top.toFixed(1)}H${right.toFixed(1)}V${bottom.toFixed(1)}H${left.toFixed(1)}Z`, layer: 'over' });
@@ -1175,6 +1349,41 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     svg.append(...over);
   }
 
+  // The faces a pick stands for: the picked faces, or in vertex and edge mode every face whose vertices are all picked.
+  function selectedFaces() {
+    if (!state) return [];
+    if (state.mode === 'face') return [...state.selected].sort((first, second) => first - second);
+    const vertices = selectedVertices();
+    const { mesh } = state;
+    const faces = [];
+    for (let face = 0; face < mesh.faceCount; face += 1) {
+      let covered = true;
+      for (let corner = mesh.faceOffsets[face]; corner < mesh.faceOffsets[face + 1]; corner += 1) covered &&= vertices.has(mesh.cornerVertices[corner]);
+      if (covered) faces.push(face);
+    }
+    return faces;
+  }
+
+  // The picked faces become a node of their own, in one scene change (one undo step); the object keeps the rest and edit mode stays on it.
+  function separateSelection() {
+    if (!state || drag) return refuse('Enter edit mode on a mesh to separate part of it.');
+    const faces = selectedFaces();
+    if (faces.length === 0) return refuse('Pick the faces to separate first.');
+    if (faces.length === state.mesh.faceCount) return refuse('Pick part of the mesh: separating every face would leave this object empty.');
+    const { nodeId } = state;
+    const takenIds = new Set(controller.exportRecipe().nodes.map(node => node.id));
+    let partId = `${nodeId}-part`;
+    for (let suffix = 2; takenIds.has(partId); suffix += 1) partId = `${nodeId}-part-${suffix}`;
+    try {
+      controller.applyImportOperations([{ type: 'separate-faces', node: nodeId, faces, id: partId }], { detail: { kind: 'topology', nodeId } });
+    } catch (error) {
+      return refuse(error.message);
+    }
+    refresh();
+    announce(`Separated ${faces.length} ${faces.length === 1 ? 'face' : 'faces'} into ${partId}`);
+    return { ok: true, nodeId: partId };
+  }
+
   return Object.freeze({
     get active() { return state !== null; },
     get mode() { return state?.mode ?? null; },
@@ -1187,6 +1396,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     leave,
     setMode,
     clearSelection,
+    separateSelection,
     dissolve,
     merge,
     selectNone,
@@ -1208,9 +1418,18 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     get circleSelecting() { return circle !== null; },
     get brushRadius() { return brushRadius; },
     pick,
+    pickLoop,
+    selectLinkedAt,
+    selectLinkedFromSelection,
+    growSelection: () => stepSelection(1),
+    shrinkSelection: () => stepSelection(-1),
     refresh,
     cagePaths,
     selectionScreenRadius,
+    selectionCentreLocal,
+    reweighDrag,
+    get holdingMove() { return drag !== null; },
+    proportional,
     draw,
   });
 }

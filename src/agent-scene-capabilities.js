@@ -8,6 +8,10 @@ import {
   FIELD_OPERATOR_NAMES, FIELD_ATTRIBUTES, MAX_FIELD_NODES, MAX_FIELD_DEPTH, MAX_FIELD_ELEMENTS, INSTANCE_SOURCES, MAX_INSTANCE_CANDIDATES,
   IMPORTED_MESH_EDIT_LIMITS,
 } from './mesh-operations.js';
+import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS, MESH_MAP_NAMES, SURFACE_OUTPUTS, SURFACE_SPACES, MATERIAL_GRAPH_LIMITS } from './material-name-lists.js';
+import { CURVE_TEXT_LIMITS } from './curve-text-limits.js';
+import { LIGHTING_SETUP_NAMES } from './lighting-setup-names.js';
+export { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS, MESH_MAP_NAMES, SURFACE_OUTPUTS, SURFACE_SPACES, MATERIAL_GRAPH_LIMITS, CURVE_TEXT_LIMITS, LIGHTING_SETUP_NAMES };
 import { MATERIAL_LAYER_FIELDS, MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from './material-layers.js';
 
 // What agent scenes support and their default limits, as plain data. The MCP server reads these without bundling
@@ -53,33 +57,13 @@ const MATERIAL_LAYER_NOTES = Object.freeze({
 
 // Recipe physics body shapes, the one list the validator, the MCP schema and scene_capabilities share.
 export const PHYSICS_BODY_SHAPES = Object.freeze(['box', 'ball', 'capsule', 'cylinder', 'cone', 'convex', 'trimesh', 'compound']);
-export const MATERIAL_PATTERN_TYPES =Object.freeze(['noise', 'wood', 'planks', 'bricks', 'tiles', 'marble', 'stone', 'concrete', 'metal', 'rust', 'fabric']);
 export const MAX_MATERIAL_PATTERNS = 16;
-// A material graph bakes to textures on the CPU and never becomes shader text. Its node and depth limits are the field
-// expression limits; maxWork is work units per pixel times pixels, so a costly graph needs a smaller texture.
-export const MATERIAL_GRAPH_OUTPUTS = Object.freeze(['color', 'roughness', 'metallic', 'emission', 'height', 'opacity', 'clearcoat', 'transmission', 'aov']);
-export const MATERIAL_GRAPH_OPERATORS = Object.freeze([
-  'uv', 'coord', 'mapping', 'vec', 'ramp', 'image', 'noise', 'whiteNoise', 'brick', 'voronoi', 'wave', 'checker', 'gradient',
-  'add', 'sub', 'mul', 'div', 'min', 'max', 'pow', 'abs', 'floor', 'fract', 'sqrt', 'invert', 'clamp', 'smoothstep', 'mix',
-  'layer', 'hue', 'curve', 'fresnel', 'vertexGroup', 'meshMap', 'surface', 'base',
-]);
-export const MESH_MAP_NAMES = Object.freeze(['curvature', 'ao', 'thickness']);
-export const SURFACE_OUTPUTS = Object.freeze(['slope', 'normalY', 'height']);
-export const SURFACE_SPACES = Object.freeze(['object', 'world']);
-export const MATERIAL_GRAPH_LIMITS = Object.freeze({ maxNodes: MAX_FIELD_NODES, maxDepth: MAX_FIELD_DEPTH, maxStops: 8, maxWork: 60_000_000 });
-// Curve and text geometry. A text geometry is bounded by vertices per curve segment: the bundled font stays under
-// 640 per character and a registered font is held to 128 outline points per glyph (2400).
-export const CURVE_TEXT_LIMITS = Object.freeze({
-  maxCurvePoints: 1024, maxProfilePoints: 256, maxTextCharacters: 256, maxTextLines: 16,
-  verticesPerCharacterSegment: 640, verticesPerCustomCharacterSegment: 2400, maxPointsPerGlyph: 128,
-});
 export const CURVE_TEXT_DETAILS = Object.freeze({
   curve: 'bends along path, 2-64 points [x,y,z] (Catmull-Rom); the coordinate along axis (x) is the distance from the path start, so model from 0.',
   splines: 'Geometry curve takes points (kind bezier|poly|nurbs, closed; nurbs also weights, order 2-8 default 4, and for open splines knotMode clamped|uniform or knots: point count plus order values that never decrease), or shape {type arc|spiral|star} (arc: radius, startAngle, sweep radians, segments; spiral: rotations, startRadius, endRadius, height, pointsPerRotation, reverse; star: points, innerRadius, outerRadius, innerTwist), or splines: up to 64 of those in one mesh. trim {start, end, length}: factors 0-1 of the arc length, or lengths when length is true; a trimmed curve is open. grow {name, steps 2-16, value}: morph targets of the curve grown step by step; animate with a motion track { kind: "morph", id: <name>, property: "weight", keyframes 0-1 } so a vine grows. See docs/modeling.md.',
   sdf: 'Geometry sdf: root is a tree meshed by surface nets, resolution 4-128 cells along the longest side (default 32). Primitive {shape sphere|box|roundBox|capsule|cylinder|torus, radius, size, height, tubeRadius, position, rotation (Euler radians), scale (uniform)}. Operation {op union|subtract|intersect, smooth (blend radius), children: 2-16} (subtract removes the rest from the first) or {op offset, distance, child}. At most 64 nodes, 8 levels. See docs/modeling.md.',
   text: 'Extruded text, baseline y=0 along +X, facing +Z. text (\n for lines), size (1), depth (0.2), align left|center|right, curveSegments, font. See docs/modeling.md.',
 });
-export const MATERIAL_MAPPINGS = Object.freeze(['box', 'uv']);
 export const MATERIAL_GRAPH_NODES = Object.freeze({
   outputs: 'color (linear RGB; a number is grey), roughness, metallic, emission (defaults to 1), height (normal map), opacity (alpha), clearcoat, transmission (masks), aov (linear RGB or scalar).',
   textures: Object.freeze({
@@ -110,7 +94,6 @@ export const MATERIAL_GRAPH_NODES = Object.freeze({
 export const RECIPE_ALPHA_MODES = Object.freeze(['opaque', 'mask', 'blend', 'add']);
 
 // Named lighting setups (see lighting-setups.js) and the occlusion strength that recipes get when they set none.
-export const LIGHTING_SETUP_NAMES = Object.freeze(['daylight', 'overcast', 'sunset', 'studio']);
 export const DEFAULT_LIGHTING_SETUP = 'daylight';
 export const DEFAULT_AMBIENT_OCCLUSION = 0;
 
@@ -231,6 +214,7 @@ export const MESH_MODIFIER_NOTES = Object.freeze({
   wave: 'a gaussian ripple of height 0.5 along z (normal true: along the vertex normal) travelling from start [0,0] over axes xy (default), x or y; width 1.5, narrowness 0-50 (1.5), speed 0.25 per frame, time 0 (a frame), timeOffset 0, cyclic true repeats it. Matches Blender Wave.',
   weighted_normal: 'corner normals weighted by face area ^ (weight/50), weight 1-100 (50), smoothed across edges under angle 30 that are not sharp. Put it last in the stack.',
   smooth_by_angle: 'edges bending over angle 30 (0-180) become sharp, others smooth, over smoothAngle; ignoreSharp true also clears hand-made sharp edges.',
+  join: 'geometry (ID of a recipe geometry), matrix (16 numbers, column-major, from that geometry space into this mesh space; the identity if left out): adds its faces as a separate shell. Not in the stack.',
   bounding_box: 'becomes its axis-aligned box.',
   convex_hull: 'becomes its convex hull, up to 8192 vertices.',
   build: 'shows faces one by one as frame runs from start 0 over length 60 frames (frame 0; give the current frame, e.g. from your film clock): order index (default), random (seed 0) or axis (axis y, lowest centroid first); reverse true unbuilds. Unused vertices drop; while none shows, one zero-area triangle stays.',
@@ -304,7 +288,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   operations: Object.freeze([
     'set-node', 'set-material', 'set-camera', 'add-node', 'remove-node',
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
-    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'set-particles', 'set-bake', 'set-post-passes', 'set-pixel-grid', 'set-game', 'bake-motion', 'fracture-node', 'add-explosion', 'settle',
+    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'set-particles', 'set-bake', 'set-post-passes', 'set-pixel-grid', 'set-game', 'bake-motion', 'fracture-node', 'add-explosion', 'settle', 'separate-faces', 'join-meshes', 'apply-transform', 'set-origin',
   ]),
   materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass', 'water']),
   materialPresets: Object.freeze({

@@ -2,7 +2,7 @@
 // (printable ASCII only). This module loads on demand because its font data is the heaviest part of the engine.
 import { extrude } from './modeling.js';
 import { DEFAULT_FONT_DATA } from './font-default.js';
-import { CURVE_TEXT_LIMITS } from './agent-scene-capabilities.js';
+import { CURVE_TEXT_LIMITS } from './curve-text-limits.js';
 
 export const DEFAULT_FONT_NAME = 'default';
 const MAX_TEXT_CHARACTERS = CURVE_TEXT_LIMITS.maxTextCharacters;

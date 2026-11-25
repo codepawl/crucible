@@ -133,6 +133,12 @@ function describeOperation(working, operation, maxText) {
   if (type === 'add-explosion') {
     return { changed: `blast ${operation.id}: flash, ring, fireball, smoke, sparks, dust, rubble, scorch${operation.debris ? `, ${operation.debris.node} thrown apart` : ''}` };
   }
+  if (type === 'apply-transform') {
+    return { changed: `applied ${Array.isArray(operation.parts) ? operation.parts.join(', ') : 'location, rotation, scale'} of ${operation.node} into its geometry` };
+  }
+  if (type === 'set-origin') {
+    return { changed: `moved the origin of ${operation.node} to ${operation.to}` };
+  }
   if (type === 'settle') {
     return { changed: `settled props under ${operation.settle?.id}; scene_inspect lists them` };
   }

@@ -261,6 +261,7 @@ Normals stay those of the base mesh. Test: `tests/mesh-shape-keys.test.js`.
 
 | op | fields | does |
 | --- | --- | --- |
+| `join` | `geometry` (ID of a recipe geometry), `matrix` (16 numbers, column-major, from that geometry's space into this mesh's space; identity when left out) | Adds the faces of another recipe geometry as a separate shell, nothing welded; tags, uv and colours carry over, a mirroring matrix flips the faces so they still face outward. An edit of a recipe mesh only, not a stack node. The other geometry is part of the cache key, so editing it updates this mesh. |
 | `weld` | `distance` (0.001) | Merges vertices closer than the distance, as Merge by Distance; faces that collapse go. |
 | `triangulate` | `minVertices` (4) | Cuts faces with that many corners or more into triangles; tags, uv and winding carry over. |
 | `edge_split` | `angle` (30) | Gives each smooth fan of faces its own vertex, so edges bending more than `angle` degrees, and edges shared by three faces, come apart. |
@@ -618,6 +619,13 @@ cylinder three islands with no distortion, a 48 x 24 sphere six charts with 0.09
 unwraps in about 0.3 s. There is no angle-based (ABF) or SLIM solver and no packing into an existing layout.
 
 Cutting by a plane or a path is in the edit table: `bisect_plane` and `knife_project`.
+
+### Separate and join
+
+Two `scene_apply` operations split a mesh object in two or merge several into one. Both write ordinary recipe data, so the result saves, replays and undoes as one revision.
+
+- `separate-faces { node, faces, id }`: `faces` are face numbers of the mesh the edit log builds (the numbers edit mode and `mesh_inspect` use). They become a new node `id` (default `<node>-part`) with the same parent, transform and material, so nothing moves in the world. The new node's geometry is a copy of the mesh with a `delete` edit on every face but the picked ones; the node keeps the rest through a `delete` edit on the picked ones. A geometry another node uses is copied for the node first. Needs a mesh geometry; no faces, a repeated or missing face number, or every face is refused with the fix.
+- `join-meshes { node, nodes }`: the meshes of `nodes` (1 to 32) are added to the mesh of `node` with one `join` edit each, placed by the matrix that takes them from their world position into the space of `node`, and the nodes go. They need the same material as `node` (a mesh draws with one material); a node with children, motion or a physics body is refused. `node` needs a mesh geometry, which is copied first when another node uses it.
 
 ## MCP
 
