@@ -1,5 +1,5 @@
 import { invalidField } from './field-error.js';
-import { MESH_MAP_NAMES } from './agent-scene-capabilities.js';
+import { MESH_MAP_NAMES } from './material-name-lists.js';
 import { createMeshQueryIndex, withoutDegenerateTriangles } from './mesh-query.js';
 import { dilateTexels } from './material-vertex-group-map.js';
 import { CURVATURE_GRID_CELLS_PER_AXIS, surfaceCurvature } from './mesh-map-curvature.js';

@@ -3,7 +3,7 @@ import { applyProjection } from './camera.js';
 import { createAgentScene, loadAgentSceneModules, loadMeshBooleans, meshBooleansLoaded, needsMeshBooleans } from './agent-scene.js';
 import { agentEnvironmentMap, fitAgentShadow, resolveAgentShadow } from './agent-look.js';
 import { agentSceneModulesNeeded } from './agent-scene-modules.js';
-import { LIGHTING_SETUP_NAMES } from './agent-scene-capabilities.js';
+import { LIGHTING_SETUP_NAMES } from './lighting-setup-names.js';
 import { VIEW_TRANSFORM_NAMES } from './view-transform-names.js';
 import { CrucibleRenderer, studioFloorHeight } from './renderer.js';
 import { ProgramNotReady, isLinkComplete, setPreparing } from './gl-program.js';
