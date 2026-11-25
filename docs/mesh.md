@@ -453,7 +453,7 @@ boundary edges whose midpoint is in a box, which picks one hole among several.
 | --- | --- | --- | --- |
 | `fill_holes` | `sides` | `fill` | Caps each closed boundary loop with one polygon; `sides` skips loops with more edges. |
 | `dissolve_faces` | `select` | `merged` | Merges connected selected faces into one polygon each. |
-| `dissolve_edges` | `edges` | `merged` | Merges the two faces beside each selected edge. Boundary edges are ignored. |
+| `dissolve_edges` | `edges`, `removeStraight` (default false) | `merged` | Merges the two faces beside each selected edge. Boundary edges are ignored. With `removeStraight` a vertex the dissolve leaves with two edges goes too, so a dissolved loop leaves clean polygons; the result lists `removedStraight`. |
 | `dissolve_verts` | `verts` | `merged` | Removes vertices: a vertex with two edges just leaves its faces, one with more merges the faces around it. |
 | `dissolve_limited` | `edges` (default all), `angle` (default 5) | `merged` | Dissolves edges whose faces bend by at most `angle` degrees, then the straight vertices left behind. |
 | `bisect_plane` | `point`, `normal`, `distance`, `clearInner`, `clearOuter`, `fill` | `inner`, `outer`, `cap` | Cuts at a plane. `clearInner` removes the side behind the normal, `clearOuter` the side in front. `fill` caps the cut; with both sides kept the halves separate into two closed shells. |
@@ -461,6 +461,7 @@ boundary edges whose midpoint is in a box, which picks one hole among several.
 | `subdivide_edges` | `edges`, `cuts` | `split` | Splits each selected edge into `cuts` + 1 pieces. Quads with two opposite edges split become bands, with four split a grid, and any other face keeps one n-gon with the new points inserted. |
 | `grid_fill` | `edges` | `fill` | Fills each closed boundary loop of an even number of edges (4 or more) with a grid of quads, up to 65,536 grid vertices. |
 | `knife_project` | `path`, `direction` | `cut` | Cuts along a polyline of object-space points projected along `direction`, through front and back faces. |
+| `merge_verts` | `vertices` (2 to 4096 distinct indices, in pick order), `at` (`center`, `first`, `last` or `collapse`, default `center`) | none | Merges the picked vertices into one: at their centre, at the first or at the last one listed, or with `collapse` each group joined by edges between picked vertices into one vertex at its own centre. Faces left with fewer than three corners or a repeated vertex, and faces that repeat another face, are removed; it throws when no face is left. The result lists `mergedVertices` and `removedFaces`. |
 
 `dissolve_verts` rules: `{ "all": true }`, `{ "vertices": [indices] }`, `{ "valence": 2 }` (vertices with exactly that many
 neighbours) or `{ "inside": { "min", "max" } }`. `dissolve_edges`, `dissolve_verts` and `dissolve_faces` refuse a merge

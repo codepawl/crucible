@@ -63,11 +63,18 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('mesh.edgeMode', 'Select edges', 'Edit mode', 'mesh', binding('2')),
   action('mesh.faceMode', 'Select faces', 'Edit mode', 'mesh', binding('3')),
   action('mesh.separate', 'Separate the selection', 'Edit mode', 'mesh', binding('p')),
+  action('mesh.deleteMenu', 'Delete menu: dissolve the selection', 'Edit mode', 'mesh', binding('x'), binding('Delete'), binding('Backspace')),
+  action('mesh.mergeMenu', 'Merge menu: join the picked vertices', 'Edit mode', 'mesh', binding('m')),
   action('mesh.selectNone', 'Select none', 'Edit mode', 'mesh', { code: 'KeyA', alt: true }),
   action('mesh.invertSelection', 'Invert the selection', 'Edit mode', 'mesh', binding('i', { ctrl: true })),
   action('mesh.circleSelect', 'Circle select', 'Edit mode', 'mesh', binding('c')),
+  action('mesh.selectLinked', 'Select what is linked under the pointer', 'Edit mode', 'mesh', binding('l', { ctrl: false })),
+  action('mesh.selectLinkedSelection', 'Select what is linked to the selection', 'Edit mode', 'mesh', binding('l', { ctrl: true })),
+  // Ctrl+Plus and Ctrl+Minus zoom the page in a browser and there is no numpad on a laptop, so the brackets are the first keys.
+  action('mesh.growSelection', 'Grow the selection', 'Edit mode', 'mesh', binding(']'), { code: 'NumpadAdd', ctrl: true }),
+  action('mesh.shrinkSelection', 'Shrink the selection', 'Edit mode', 'mesh', binding('['), { code: 'NumpadSubtract', ctrl: true }),
+  action('mesh.proportional', 'Proportional editing', 'Edit mode', 'mesh', binding('o')),
   action('mesh.boxSelect', 'Box select', 'Edit mode', 'mesh', binding('b')),
-  action('mesh.noop', 'Keys that act on the whole object', 'Edit mode', 'mesh', binding('x'), binding('Delete'), binding('Backspace')),
   action('modal.place', 'Place', 'Holding an object', 'modal', binding('Enter'), binding(' ')),
   action('modal.cancel', 'Put back', 'Holding an object', 'modal', binding('Escape')),
   action('modal.axisX', 'Keep to the X axis', 'Holding an object', 'modal', binding('x', { shift: false })),
@@ -116,7 +123,12 @@ export const SHORTCUT_ROWS = Object.freeze([
   Object.freeze({ keys: '{mesh.enter}', label: 'Edit the mesh / leave edit mode' }),
   Object.freeze({ keys: '{mesh.vertexMode} / {mesh.edgeMode} / {mesh.faceMode}', label: 'In edit mode: select vertices / edges / faces' }),
   Object.freeze({ keys: '{mesh.separate}', label: 'In edit mode: separate the picked faces into their own object' }),
+  Object.freeze({ keys: '{mesh.deleteMenu} / {mesh.mergeMenu}', label: 'In edit mode: dissolve menu / merge menu' }),
   Object.freeze({ keys: '{mesh.selectNone} / {mesh.invertSelection} / {mesh.circleSelect} / {mesh.boxSelect}', label: 'In edit mode: select none / invert / circle select / box select' }),
+  Object.freeze({ keys: '{mesh.growSelection} / {mesh.shrinkSelection}', label: 'In edit mode: grow / shrink the selection' }),
+  Object.freeze({ keys: '{mesh.selectLinked} / {mesh.selectLinkedSelection}', label: 'In edit mode: select linked under the pointer / from the selection' }),
+  Object.freeze({ keys: 'Alt + click / Ctrl + Alt + click', label: 'In edit mode: select a loop / a ring' }),
+  Object.freeze({ keys: '{mesh.proportional}', label: 'In edit mode: proportional editing on or off; the wheel sets its size while a move is held' }),
   Object.freeze({ keys: '{view.seeThrough}', label: 'See through the surface' }),
   Object.freeze({ keys: '{help.shortcuts}', label: 'This list' }),
 ]);
@@ -232,6 +244,8 @@ export function findKeymapAction(keymap, event, context = 'normal') {
 }
 
 function formatKeyName(value) {
+  if (value.code === 'NumpadAdd') return 'Numpad +';
+  if (value.code === 'NumpadSubtract') return 'Numpad -';
   if (value.code !== undefined) return value.code.replace(/^(Key|Digit)/, '');
   if (value.key === ' ') return 'Space';
   if (value.key === 'Escape') return 'Esc';

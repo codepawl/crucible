@@ -543,16 +543,10 @@ function connectedDistances(edit, seeds, radius) {
   return distances;
 }
 
-/** Straight-line distance from the nearest seed vertex, up to `radius`, for every live vertex. */
-function spatialDistances(edit, seeds, radius, maxVisits) {
-  const seedList = [...seeds];
-  const liveCount = edit.vertexCount;
-  if (seedList.length * liveCount > maxVisits) {
-    throw new RangeError('Proportional falloff exceeds its distance budget. Use connected: true or a smaller selection.');
-  }
+/** Straight-line distance from the nearest seed vertex, up to `radius`, for each candidate vertex. */
+function nearestSeedDistances(position, candidates, seedList, radius) {
   const distances = new Map();
-  const position = edit.vertices.arrays.position;
-  for (const vertex of edit.liveIndices('point')) {
+  for (const vertex of candidates) {
     let best = Infinity;
     for (const seed of seedList) {
       const distance = Math.hypot(
@@ -565,6 +559,32 @@ function spatialDistances(edit, seeds, radius, maxVisits) {
     if (best <= radius) distances.set(vertex, best);
   }
   return distances;
+}
+
+function spatialDistances(edit, seeds, radius, maxVisits) {
+  const seedList = [...seeds];
+  const liveCount = edit.vertexCount;
+  if (seedList.length * liveCount > maxVisits) {
+    throw new RangeError('Proportional falloff exceeds its distance budget. Use connected: true or a smaller selection.');
+  }
+  return nearestSeedDistances(edit.vertices.arrays.position, edit.liveIndices('point'), seedList, radius);
+}
+
+/**
+ * The weight of every vertex a straight-line falloff moves: 1 on the seeds, then `curve` of distance over `radius` out to
+ * the radius. Studio previews a held move with this, and `translate` applies the same numbers when the log replays.
+ */
+export function spatialFalloffWeights(positions, vertexCount, seeds, { radius, curve = 'smooth' }) {
+  const candidates = Array.from({ length: vertexCount }, (_, vertex) => vertex);
+  const distances = nearestSeedDistances(positions, candidates, [...seeds], radius);
+  return weightsFromDistances(distances, seeds, radius, curve);
+}
+
+function weightsFromDistances(distances, seeds, radius, curveName) {
+  const curve = FALLOFF_CURVES[curveName ?? 'smooth'];
+  const weights = new Map();
+  for (const [vertex, distance] of distances) weights.set(vertex, seeds.has(vertex) ? 1 : curve(distance / radius));
+  return weights;
 }
 
 /**
@@ -590,13 +610,10 @@ export function translateVertices(edit, seeds, { offset, falloff }, { maxFalloff
 /** Weight of every vertex a selection moves: 1 on the selected vertices, then the falloff curve out to its radius. */
 function selectionWeights(edit, seeds, falloff, maxFalloffVisits) {
   if (!falloff) return new Map([...seeds].map(vertex => [vertex, 1]));
-  const curve = FALLOFF_CURVES[falloff.curve ?? 'smooth'];
   const distances = falloff.connected
     ? connectedDistances(edit, seeds, falloff.radius)
     : spatialDistances(edit, seeds, falloff.radius, maxFalloffVisits);
-  const weights = new Map();
-  for (const [vertex, distance] of distances) weights.set(vertex, seeds.has(vertex) ? 1 : curve(distance / falloff.radius));
-  return weights;
+  return weightsFromDistances(distances, seeds, falloff.radius, falloff.curve);
 }
 
 /** Live vertex indices picked by a mask over the vertices. */
@@ -675,6 +692,25 @@ export function transformVertices(edit, seeds, { pivot, rotation, scale, falloff
  */
 export function mergeByDistance(mesh, distance) {
   const { weldMap, representatives } = weldVertices(mesh.positions, distance);
+  return weldMesh(mesh, weldMap, representatives, { emptyMessage: 'merge_by_distance removed every face. Use a smaller distance.' });
+}
+
+function faceCycleKey(vertices) {
+  let start = 0;
+  for (let index = 1; index < vertices.length; index++) {
+    if (vertices[index] < vertices[start]) start = index;
+  }
+  return vertices.map((_, offset) => vertices[(start + offset) % vertices.length]).join(',');
+}
+
+/**
+ * Rebuild `mesh` with every vertex replaced by its welded vertex: `weldMap[vertex]` is the welded index and
+ * `representatives[welded]` the source vertex whose position and point data it keeps. A face that repeats a vertex or
+ * shrinks below three corners is dropped. `positionOverrides` maps a welded index to the position it takes instead, and
+ * `dropDuplicateFaces` also drops a face that repeats an earlier face's corners in the same winding.
+ */
+export function weldMesh(mesh, weldMap, representatives, { emptyMessage, positionOverrides = new Map(), dropDuplicateFaces = false }) {
+  const seenFaces = new Set();
   const keptCorners = [];
   const keptFaces = [];
   const faceOffsets = [0];
@@ -691,11 +727,16 @@ export function mergeByDistance(mesh, distance) {
     while (corners.length > 1 && weldMap[mesh.cornerVertices[corners[0]]] === weldMap[mesh.cornerVertices[corners.at(-1)]]) corners.pop();
     const unique = new Set(corners.map(corner => weldMap[mesh.cornerVertices[corner]]));
     if (corners.length < 3 || unique.size !== corners.length) continue;
+    if (dropDuplicateFaces) {
+      const key = faceCycleKey(corners.map(corner => weldMap[mesh.cornerVertices[corner]]));
+      if (seenFaces.has(key)) continue;
+      seenFaces.add(key);
+    }
     keptCorners.push(...corners);
     keptFaces.push(face);
     faceOffsets.push(keptCorners.length);
   }
-  if (!keptFaces.length) throw new RangeError('merge_by_distance removed every face. Use a smaller distance.');
+  if (!keptFaces.length) throw new RangeError(emptyMessage);
   const usedWelded = new Int32Array(representatives.length).fill(-1);
   const keptVertices = [];
   for (const corner of keptCorners) {
@@ -707,6 +748,9 @@ export function mergeByDistance(mesh, distance) {
   }
   const positions = new Float32Array(keptVertices.length * 3);
   keptVertices.forEach((vertex, index) => positions.set(mesh.positions.subarray(vertex * 3, vertex * 3 + 3), index * 3));
+  for (const [welded, position] of positionOverrides) {
+    if (usedWelded[welded] !== -1) positions.set(position, usedWelded[welded] * 3);
+  }
   const cornerVertices = Uint32Array.from(keptCorners, corner => usedWelded[weldMap[mesh.cornerVertices[corner]]]);
   const offsets = Uint32Array.from(faceOffsets);
   const edges = deriveEdges(keptVertices.length, offsets, cornerVertices);
