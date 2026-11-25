@@ -1331,6 +1331,8 @@ export function createStudio(container, {
   // Edit mode (src/studio-mesh-edit.js) is loaded on the first Tab, so the core entry carries none of it.
   let meshEditor = null;
   let meshEditorLoad = null;
+  // The held E and I of edit mode (src/studio-mesh-tool.js); set when the editor loads.
+  let faceToolInput = null;
   let modalTransform = null;
   let swallowContextMenu = false;
   let swallowClick = false;
@@ -5253,7 +5255,7 @@ export function createStudio(container, {
   }
 
   function loadMeshEditor() {
-    meshEditorLoad ??= Promise.all([import('./studio-mesh-edit.js'), import('./studio-proportional.js')]).then(([{ createMeshEditor }, { createProportionalSettings, createProportionalPopover }]) => {
+    meshEditorLoad ??= Promise.all([import('./studio-mesh-edit.js'), import('./studio-proportional.js'), import('./studio-mesh-tool.js')]).then(([{ createMeshEditor }, { createProportionalSettings, createProportionalPopover }, { createFaceToolInput }]) => {
       let proportionalPopover = null;
       const proportional = createProportionalSettings({
         onChange: () => {
@@ -5269,6 +5271,7 @@ export function createStudio(container, {
       bindPopoverAnchor(proportionalMenuButton, proportionalPopover.popover, { beside: true });
       meshEditor = createMeshEditor({ controller, announce, getRenderer: () => renderer, proportional });
       meshEditor.setSeeThrough(seeThrough);
+      faceToolInput = createFaceToolInput({ documentReference, editor: meshEditor, localCoordinates, onChange: updateMeshSelectionView });
       return meshEditor;
     });
     return meshEditorLoad;
@@ -5339,6 +5342,7 @@ export function createStudio(container, {
   }
 
   function leaveMeshEdit() {
+    faceToolInput?.cancel();
     if (controller.dragging) pointerState = null;
     stopWatchingCircleFocus();
     meshEditor?.leave();
@@ -5496,6 +5500,12 @@ export function createStudio(container, {
     endCircleSelect();
   }, true);
 
+  // E and I hold the picked faces at the pointer; with the pointer outside the viewport the middle of it stands in.
+  function startFaceTool(kind) {
+    const bounds = viewportElement.getBoundingClientRect();
+    faceToolInput.start(kind, viewportPointer ?? { x: bounds.width / 2, y: bounds.height / 2 });
+  }
+
   function updateMeshSelectionView() {
     syncUi();
     requestFrame();
@@ -5590,6 +5600,14 @@ export function createStudio(container, {
     'mesh.separate': event => {
       event.preventDefault();
       openSeparateMenu();
+    },
+    'mesh.extrude': event => {
+      event.preventDefault();
+      startFaceTool('extrude');
+    },
+    'mesh.inset': event => {
+      event.preventDefault();
+      startFaceTool('inset');
     },
   };
 
@@ -5721,6 +5739,9 @@ export function createStudio(container, {
 
   const onWindowKeyDown = async event => {
     if (!root.isConnected) {
+      return;
+    }
+    if (faceToolInput?.handleKey(event)) {
       return;
     }
     if (modalTransform) {
