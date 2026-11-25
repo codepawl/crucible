@@ -89,7 +89,7 @@ export function stripComments(sourceText) {
   return output;
 }
 
-function resolveLocalFile(importerPath, specifier, fileExists) {
+export function resolveLocalFile(importerPath, specifier, fileExists) {
   const resolved = posix.normalize(posix.join(posix.dirname(importerPath), specifier));
   return EXTENSIONS.map(extension => resolved + extension).find(candidate => FOLLOWED_FOLDERS.test(candidate) && fileExists(candidate));
 }

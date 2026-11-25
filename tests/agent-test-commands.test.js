@@ -4,7 +4,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { findAffectedTests, findReexporters } from '../scripts/test-affected.mjs';
+import { buildImportGraph } from '../scripts/import-graph.mjs';
+import { findAffectedTests } from '../scripts/test-affected.mjs';
 import { sampleTestFiles } from '../scripts/test-fast.mjs';
 import { buildCompactReport } from '../scripts/test-compact-reporter.mjs';
 import { findBlockingChanges, parseArguments, runMutationCheck } from '../scripts/test-mutation-check.mjs';
@@ -48,9 +49,26 @@ test('affected tests equal a manual grep over tests/ for a one-file change', () 
 test('affected tests follow one level of re-export and skip unrelated tests', () => {
   const folder = makeRepository();
   try {
-    assert.deepEqual(findReexporters('src/value.js', folder), ['src/index.js']);
+    assert.deepEqual(buildImportGraph(folder).importersOf('src/value.js').sort(), ['src/index.js', 'tests/value.test.js']);
     assert.deepEqual(findAffectedTests(['src/value.js'], folder), ['tests/index.test.js', 'tests/value.test.js']);
     assert.deepEqual(findAffectedTests(['tests/other.test.js'], folder), ['tests/other.test.js']);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+});
+
+test('affected tests reach a changed file through a two-step import chain', () => {
+  const folder = makeRepository();
+  try {
+    write(folder, 'src/leaf.js', 'export const leaf = 1;\n');
+    write(folder, 'src/middle.js', "import { leaf } from './leaf.js';\nexport const middle = leaf + 1;\n");
+    write(folder, 'src/top.js', "export * from './middle.js';\n");
+    write(folder, 'tests/top.test.js', "import test from 'node:test';\nimport { middle } from '../src/top.js';\ntest('top', () => middle);\n");
+    write(folder, 'tests/spawns.test.js', "import test from 'node:test';\ntest('spawns', () => ['scripts/run-leaf.mjs']);\n");
+    write(folder, 'scripts/run-leaf.mjs', "import { leaf } from '../src/leaf.js';\nconsole.log(leaf);\n");
+    assert.deepEqual(findAffectedTests(['src/leaf.js'], folder), ['tests/spawns.test.js', 'tests/top.test.js']);
+    assert.deepEqual(findAffectedTests(['src/middle.js'], folder), ['tests/top.test.js']);
+    assert.deepEqual(findAffectedTests(['src/top.js'], folder), ['tests/top.test.js']);
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
