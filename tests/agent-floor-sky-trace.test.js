@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { createAgentScene } from '../src/agent-scene.js';
-import { applyDefaultFloorSky, stageFloorSky } from '../src/floor-sky-visibility.js';
+import { applyDefaultFloorSky, lastDefaultFloorSkyReport, stageFloorSky } from '../src/floor-sky-visibility.js';
 
 // A closed room: a floor, four walls and a closed roof, lit by a sun.
 function room(environment = {}) {
@@ -115,4 +115,29 @@ test('the floor search runs once for the same parts and the same sun, however of
   assert.equal(geometryReads, readsForFirstSearch, 'a copy of the same environment reads no geometry');
   stageFloorSky({ ...environment, lightDirection: [1, 1, 0] }, parts, matrixOf);
   assert.ok(geometryReads > readsForFirstSearch, 'a turned sun is searched again');
+});
+
+// #3389: the demo room is a set open on one side. Its trace once cost 4.9 million rays and 109 thousand texels (now 1.4 million and 66 thousand), which ran past the 20 second
+// limit on a slow machine and silently left the ground plain. The bound pins the cost, so the cliff cannot come back unseen.
+test('the demo room is traced as an open-sided room within a ray bound that leaves room under the time limit', () => {
+  const recipe = JSON.parse(readFileSync(new URL('./fixtures/demo-room.recipe.json', import.meta.url), 'utf8'));
+  delete recipe.bake;
+  recipe.nodes = recipe.nodes.filter(node => node.id !== 'organiser');
+  recipe.geometries = recipe.geometries.filter(geometry => geometry.id !== 'organiser');
+  recipe.nodes.find(node => node.id === 'pendant-bulb').translation = [0.3, 1.7, 0.2];
+  createAgentScene(recipe);
+  const report = lastDefaultFloorSkyReport();
+  assert.equal(report.branch, 'open-sided room, every surface traced');
+  assert.equal(report.reason, null);
+  assert.ok(report.rays <= 1_500_000, `the trace shot ${report.rays} rays`);
+  assert.ok(report.texels <= 75_000, `the trace cut ${report.texels} texels`);
+});
+
+test('a sky trace that stops at its time limit says so and what to change', () => {
+  const { parts } = createAgentScene(room({ keyColor: [3, 3, 3], floorSkyTrace: false }));
+  const result = applyDefaultFloorSky(parts, { keyColor: [3, 3, 3] }, { maximumTexels: 400, maxSeconds: 0 });
+  assert.equal(result.report.reason, 'passed maxSeconds');
+  assert.equal(result.report.warnings.length, 1);
+  assert.match(result.report.warnings[0], /time limit.*ground.*plain.*maxSeconds/s);
+  assert.equal(result.parts.find(part => part.name === 'floor').geometry.skyVisibility, undefined);
 });

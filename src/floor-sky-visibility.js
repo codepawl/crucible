@@ -23,6 +23,16 @@ export const FLOOR_SKY_MAXIMUM_SECONDS = 20;
 export const FLOOR_SKY_MAXIMUM_RAYS = 6_000_000;
 // Both faces and the edges of every slab are traced when the whole room is, so its cut is coarser than a floor's: about a quarter of the vertices for the same area.
 const ROOM_SURFACE_EDGE_SCALE = 2.8;
+// In a set open on one side the walls, ceiling and floor are cut twice as fine to keep their edges smooth, but a prop is not: its rounded edges are a few texels long
+// and a coarse cut there shows no scallop, while the fine cut of the 50 or so props of a furnished set cost 4.9 million rays and ran past the time limit on a slow machine (#3389).
+// A prop is a part with no face larger than this many metres on both sides (a lamp, a stool leg, a bar, a ball, a plug; a wall, a floor or a ceiling is not); its edges are this many times the fine cut (twice a closed room cut).
+export const PROP_MAXIMUM_FACE_SIDE = 3;
+const PROP_EDGE_FACTOR = 4;
+// In a set open on one side a prop and a ground slab get half the default rays per point: a prop is small and the ground is smooth and far from the walls, while the walls, ceiling and floor keep all of
+// theirs (with half, the back wall showed vertical stripes). The trace then stays well under the time limit on a slow machine (#3389).
+const REDUCED_RAYS_PER_TEXEL = 32;
+
+const SKY_TIME_LIMIT_WARNING = maxSeconds => `The sky trace passed its time limit of ${maxSeconds} s, so the ground and walls keep the sky they had (plain). Raise maxSeconds, lower maximumTexels, or turn the trace off with environment.floorSkyTrace false.`;
 export const FLOOR_SKY_STRENGTH = 1;
 // How much of the sky the grid hides on every surface of an open scene (#2771).
 export const OPEN_SCENE_GRID_STRENGTH = 1;
@@ -177,6 +187,23 @@ function upwardAreaShare(part) {
 }
 
 // The world area of a part's triangles, to size the cut of every surface of a room.
+function isProp(part) {
+  const { minimum, maximum } = worldBounds(part);
+  const sides = [maximum[0] - minimum[0], maximum[1] - minimum[1], maximum[2] - minimum[2]].sort((first, second) => second - first);
+  return sides[1] < PROP_MAXIMUM_FACE_SIDE;
+}
+
+// A ground slab (wider than this and thin) has its top face seen and its underside and rim buried, so an open-sided set traces only the top (#3389): on a 60 m ground
+// the buried faces were half of the texels.
+const GROUND_SLAB_MINIMUM_WIDTH = 10;
+const GROUND_SLAB_MAXIMUM_THICKNESS_SHARE = 0.15;
+
+function isGroundSlab(part) {
+  const { minimum, maximum } = worldBounds(part);
+  const width = Math.min(maximum[0] - minimum[0], maximum[2] - minimum[2]);
+  return width > GROUND_SLAB_MINIMUM_WIDTH && maximum[1] - minimum[1] < width * GROUND_SLAB_MAXIMUM_THICKNESS_SHARE;
+}
+
 function worldSurfaceArea(part) {
   const { positions, indices } = part.geometry;
   let doubleArea = 0;
@@ -488,7 +515,7 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
     yield;
     started += performance.now() - pausedAt;
   }
-  const unchanged = (reason, fallbackReason = null) => ({ parts, report: { floors: [], texels: 0, rays: 0, seconds: (performance.now() - started) / 1000, method: null, fallbackReason, reason, branch: `${reason}, skipped` } });
+  const unchanged = (reason, fallbackReason = null, warnings = []) => ({ parts, report: { floors: [], texels: 0, rays: 0, seconds: (performance.now() - started) / 1000, method: null, fallbackReason, reason, warnings, branch: `${reason}, skipped` } });
   // A scene the triangle trace cannot take is left as it is ('skip', the default: the grid alone darkened the classroom against Cycles, #2771) or traced through the grid ('proxy').
   const tooLarge = (reason, detail) => (largeScenes === 'proxy' ? applyProxySkyVisibility(proxyInput, detail) : unchanged(reason, detail));
   let proxyInput = null;
@@ -538,7 +565,8 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
   const maximumEdge = Math.sqrt(footprint / maximumTexels) * (everySurface ? (openSided ? ROOM_SURFACE_EDGE_SCALE / 2 : ROOM_SURFACE_EDGE_SCALE) : 1.4);
   const tracer = createTracer(world);
   const offset = sceneScale(world.positions) * 1e-4;
-  const samples = fixedSamples(raysPerTexel);
+  const reducedRays = Math.min(raysPerTexel, REDUCED_RAYS_PER_TEXEL);
+  const samplesOfRayCount = new Map([[raysPerTexel, fixedSamples(raysPerTexel)], [reducedRays, fixedSamples(reducedRays)]]);
   const direction = [0, 0, 0];
   const worldNormal = [0, 0, 0];
   const nearDistance = everySurface ? nearDistanceOf(parts, cutPartIndices) : 0;
@@ -549,8 +577,12 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
   for (const index of cutPartIndices) {
     const part = parts[index];
     const { geometry, matrix } = part;
-    const { builder, indices, tracedVertices } = yield* cutGeometrySteps(geometry, matrix, maximumEdge, !everySurface, checkpoint);
-    if (totalRays + tracedVertices.size * raysPerTexel > maximumRays) return tooLarge('too many rays', `more than ${maximumRays} rays for ${cutPartIndices.length} parts`);
+    const isReducedPart = openSided && (isProp(part) || isGroundSlab(part));
+    const raysPerVertex = isReducedPart ? reducedRays : raysPerTexel;
+    const samples = samplesOfRayCount.get(raysPerVertex);
+    const partEdge = openSided && isProp(part) ? maximumEdge * PROP_EDGE_FACTOR : maximumEdge;
+    const { builder, indices, tracedVertices } = yield* cutGeometrySteps(geometry, matrix, partEdge, !everySurface || (openSided && isGroundSlab(part)), checkpoint);
+    if (totalRays + tracedVertices.size * raysPerVertex > maximumRays) return tooLarge('too many rays', `more than ${maximumRays} rays for ${cutPartIndices.length} parts`);
     const vertexCount = builder.positions.length / 3;
     const skyVisibility = new Float32Array(vertexCount).fill(1);
     const escapedShares = new Float32Array(vertexCount);
@@ -559,7 +591,7 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
     const centres = everySurface ? incidentCentres(builder.positions, indices, vertexCount) : null;
     let verticesSinceCheckpoint = 0;
     for (const vertex of tracedVertices) {
-      if (performance.now() - started > maxSeconds * 1000) return unchanged('passed maxSeconds');
+      if (performance.now() - started > maxSeconds * 1000) return unchanged('passed maxSeconds', null, [SKY_TIME_LIMIT_WARNING(maxSeconds)]);
       if (++verticesSinceCheckpoint === VERTICES_PER_CHECKPOINT) {
         verticesSinceCheckpoint = 0;
         yield* checkpoint();
@@ -584,11 +616,11 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
         if (hit.nearestTriangle < 0) escaped++;
         else if (everySurface && tracer.trace(point[0] + worldNormal[0] * offset, point[1] + worldNormal[1] * offset, point[2] + worldNormal[2] * offset, direction[0], direction[1], direction[2], nearDistance, true).nearestTriangle >= 0) near++;
       }
-      nearShares[vertex] = near / raysPerTexel;
-      if (everySurface && sunDirection && isInteriorVertex(escaped / raysPerTexel)) sunlit[vertex] = seesSun(tracer, point, worldNormal, offset, sunDirection) ? 1 : 0;
-      skyVisibility[vertex] = 1 - strength * (1 - escaped / raysPerTexel);
-      escapedShares[vertex] = escaped / raysPerTexel;
-      totalRays += raysPerTexel;
+      nearShares[vertex] = near / raysPerVertex;
+      if (everySurface && sunDirection && isInteriorVertex(escaped / raysPerVertex)) sunlit[vertex] = seesSun(tracer, point, worldNormal, offset, sunDirection) ? 1 : 0;
+      skyVisibility[vertex] = 1 - strength * (1 - escaped / raysPerVertex);
+      escapedShares[vertex] = escaped / raysPerVertex;
+      totalRays += raysPerVertex;
     }
     const cutGeometryResult = {
       ...geometry,
@@ -604,7 +636,10 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
     nextParts[index] = Object.freeze({ ...part, geometry: Object.freeze(cutGeometryResult) });
     const floor = { name: part.name, texels: tracedVertices.size, triangles: indices.length / 3, meanVisibility: 1 };
     floors.push(floor);
+    // A pattern texture is baked once for its mean colour and the renderer needs it anyway, so the bake does not count against maxSeconds.
+    const albedoStartedAt = performance.now();
     const albedo = partDiffuseAlbedo(part.material ?? {});
+    started += performance.now() - albedoStartedAt;
     tracedParts.push({ floor, skyVisibility, escapedShares, nearShares, sunlit, colors: cutGeometryResult.colors, tracedVertices, albedo });
     yield* checkpoint();
   }
@@ -645,7 +680,16 @@ export function applyDefaultFloorSky(parts, environment, options = {}) {
 /** applyDefaultFloorSky as steps (#3052). */
 export function* applyDefaultFloorSkySteps(parts, environment, options = {}) {
   if (environment?.floorSkyTrace === false || !environmentHasSun(environment)) return { parts, report: null };
-  return yield* applyFloorSkyVisibilitySteps(parts, { onlyClosedRooms: true, surfaces: 'all', sunDirection: unitSunDirection(environment), ...options });
+  const traced = yield* applyFloorSkyVisibilitySteps(parts, { onlyClosedRooms: true, surfaces: 'all', sunDirection: unitSunDirection(environment), ...options });
+  latestDefaultReport = traced.report;
+  return traced;
+}
+
+let latestDefaultReport = null;
+
+/** The report of the most recent default trace in this process, for tests that pin what a scene build cost. */
+export function lastDefaultFloorSkyReport() {
+  return latestDefaultReport;
 }
 
 // Kept per parts list and per what the default reads from the environment (the sun's strength and direction), not per
@@ -698,7 +742,9 @@ export function* stageFloorSkySteps(environment, parts, worldMatrixOf) {
   const sunKey = skyInputsKey(environment);
   const kept = bySun.get(sunKey);
   if (kept && sameMatrices(kept.matrices, matrices)) return kept.result;
-  const traced = (yield* applyDefaultFloorSkySteps(views, environment)).parts;
+  const defaultTrace = yield* applyDefaultFloorSkySteps(views, environment);
+  for (const warning of defaultTrace.report?.warnings ?? []) console.warn(warning);
+  const traced = defaultTrace.parts;
   const result = traced === views ? parts : Object.freeze(withOwnMatrices(traced, views, parts));
   if (bySun.size >= DEFAULT_RESULTS_PER_PARTS) bySun.delete(bySun.keys().next().value);
   bySun.set(sunKey, { matrices, result });
