@@ -309,6 +309,7 @@ export function shaderFeaturesOfParts(parts) {
     if ((material.alphaMode ?? 'opaque') !== 'opaque') features.add('alphaMode');
     if (material.subsurface?.weight > 0) features.add('subsurface');
     if (material.wear) features.add('surfaceWear');
+    if (material.surfaceCover) features.add('surfaceCover');
     if (material.snippet) {
       features.add(material.snippet.feature);
       // A water hook reads the water values the world material code declares, so that code is compiled in.
@@ -409,7 +410,7 @@ function materialMapState(material) {
   const occlusionStrength = material.occlusionStrength ?? 1;
   if (material.layers || material.splat) requireSplatSupport().validate(material);
   if (material.layers && PROCEDURAL_MATERIAL_TAGS.has(material.tag)) throw new Error('Splat layers require a standard PBR material tag.');
-  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), material.layers ?? null, material.splat ?? null, material.layerMaps ?? null, material.environmentProbe ?? null, material.waterReflection ?? null, material.irradianceGrid ?? null, material.wear ?? null, material.foamEdge ?? null, material.foamWidth ?? null, material.foamColor ?? null, material.foamVeins ?? null, material.contactFoam ?? null, material.waterRamp ?? null, material.ripples ?? null];
+  return [...MATERIAL_MAPS.map(field => material[field] ?? null), normalScale[0], normalScale[1], occlusionStrength, ...mossState(material), material.boxMapScale ?? 0, material.boxMapAxis ?? 1, ...lightMapState(material), material.layers ?? null, material.splat ?? null, material.layerMaps ?? null, material.environmentProbe ?? null, material.waterReflection ?? null, material.irradianceGrid ?? null, material.wear ?? null, material.surfaceCover ?? null, material.foamEdge ?? null, material.foamWidth ?? null, material.foamColor ?? null, material.foamVeins ?? null, material.contactFoam ?? null, material.waterRamp ?? null, material.ripples ?? null];
 }
 
 // A baked light map reads the second UV set, so it is only drawn for parts that cannot be skinned or morphed.
