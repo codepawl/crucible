@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GRASS_LEVELS, GRASS_PRESETS, createGrass } from '../src/grass.js';
 import { createFragmentShader, createVertexShader } from '../src/shaders.js';
+import { exportGlb } from '../src/export.js';
+import { readGlb } from '../scripts/recode-glb-textures.mjs';
+import { bladeAnglesToUp, meanOf } from './support/grass-stance.mjs';
 
 const smallArea = { minX: -6, maxX: 6, minZ: -6, maxZ: 6 };
 // A light density keeps the suite fast; blade shape and level rules do not depend on it.
@@ -12,7 +15,7 @@ function bladeRoots(part) {
   const roots = [];
   for (let vertex = 0; vertex < positions.length / 3; vertex++) {
     // The two root vertices are consecutive; their midpoint is the blade's root whatever its width.
-    if (uvs[vertex * 2 + 1] === 1 && uvs[vertex * 2] === 0) {
+    if (uvs[vertex * 2 + 1] === 1 && uvs[vertex * 2] % 2 === 0) {
       const x = (positions[vertex * 3] + positions[vertex * 3 + 3]) / 2 + part.matrix[12];
       const z = (positions[vertex * 3 + 2] + positions[vertex * 3 + 5]) / 2 + part.matrix[14];
       roots.push([x, z]);
@@ -133,5 +136,52 @@ test('grass wind bends by blade height (uv) and rolls across the field as gusts'
   assert.match(createVertexShader(['grass']), /vec3 grassWind\(/);
   assert.match(createVertexShader(['grass']), /if \(surfaceTag == 7\.0 && leafUv\.x > -0\.5\) return grassWind\(/, 'grass without UVs keeps the height-based sway');
   assert.match(createVertexShader(['grass']), /float gust = /);
+  assert.match(createVertexShader(['grass']), /float lengthShare = leafUv\.x < 2\.0 \? 1\.0 : floor\(leafUv\.x \* 0\.5\) \* 0\.001 \/ GRASS_WIND_REFERENCE_LENGTH;/, 'the tip bends by a share of the blade length carried in uv.x, and a part with ordinary uv keeps the full offset');
+  assert.match(createVertexShader(['grass']), /const float GRASS_WIND_REFERENCE_LENGTH = 0\.6;/);
+  assert.match(createVertexShader(['grass']), /float bendWeight = tip \* tip \* lengthShare;/);
   assert.match(createFragmentShader(['grass']), /float towardSun = pow\(max\(dot\(-viewDirection, normalize\(lightDirection\)\)/, 'blades glow when backlit');
+});
+
+test('one wind bends 0.12 m and 0.6 m blades to the same angle from vertical', () => {
+  const meanAngleAt = (length, strength) => {
+    const grass = createGrass({ preset: 'lawn', area: { minX: -4, maxX: 4, minZ: -4, maxZ: 4 }, density: 200, height: [length * 0.6, length], bend: [0.05, 0.25], eye: [0, 1.5, 0], seed: 9 });
+    return meanOf(bladeAnglesToUp(grass.parts, { strength }));
+  };
+  const defaultWind = 0.3;
+  const shortAngle = meanAngleAt(0.12, defaultWind);
+  const tallAngle = meanAngleAt(0.6, defaultWind);
+  assert.ok(Math.abs(shortAngle - tallAngle) < 5, `0.12 m blades lean ${shortAngle} degrees and 0.6 m blades ${tallAngle} at wind ${defaultWind}`);
+  assert.ok(shortAngle < 30 && tallAngle < 30, `the default wind sways the blades instead of laying them flat (${shortAngle}, ${tallAngle})`);
+  assert.ok(shortAngle > meanAngleAt(0.12, 0) + 1, 'the wind still moves the blades');
+});
+
+test('every grass vertex carries its blade length in millimetres in uv.x', () => {
+  const grass = createGrass({ ...quick, height: [0.2, 0.2], seed: 3, eye: [0, 1.5, 0] });
+  const { uvs } = grass.parts[0].geometry;
+  for (let vertex = 0; vertex < uvs.length / 2; vertex++) {
+    const millimetres = Math.floor(uvs[vertex * 2] / 2);
+    assert.ok(millimetres >= 1 && millimetres <= 400, `vertex ${vertex} carries ${millimetres} mm`);
+  }
+});
+
+test('a grass-tag part with ordinary 0..1 uv has no length code and keeps the full wind', () => {
+  const grass = createGrass({ preset: 'lawn', area: { minX: -4, maxX: 4, minZ: -4, maxZ: 4 }, density: 200, height: [0.07, 0.14], eye: [0, 1.5, 0], seed: 9 });
+  const ordinaryUv = grass.parts.map(part => {
+    const uvs = Float32Array.from(part.geometry.uvs, (value, index) => (index % 2 === 0 ? value % 2 : value));
+    return { ...part, geometry: { ...part.geometry, uvs } };
+  });
+  const coded = meanOf(bladeAnglesToUp(grass.parts, { strength: 0.3 }));
+  const plain = meanOf(bladeAnglesToUp(ordinaryUv, { strength: 0.3 }));
+  assert.ok(plain > 40, `a part without a length code bends like the grass on main, ${plain} degrees`);
+  assert.ok(coded < 25, `the same blades with the code lean ${coded} degrees`);
+});
+
+test('exported grass keeps only the side coordinate in TEXCOORD_0', () => {
+  const grass = createGrass({ ...quick, height: [0.2, 0.2], seed: 3, eye: [0, 1.5, 0] });
+  const { json, binary } = readGlb(Buffer.from(exportGlb(grass.parts.slice(0, 1))));
+  const accessor = json.accessors[json.meshes[0].primitives[0].attributes.TEXCOORD_0];
+  const view = json.bufferViews[accessor.bufferView];
+  const values = new Float32Array(binary.buffer.slice(binary.byteOffset + (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0), binary.byteOffset + (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0) + accessor.count * 8));
+  assert.ok(Math.max(...values) <= 1, `TEXCOORD_0 reaches ${Math.max(...values)}`);
+  assert.ok(grass.parts[0].geometry.uvs.some(value => value > 2), 'the part itself still carries the length code');
 });

@@ -103,10 +103,10 @@ test('the page keeps its rows, each with every column', () => {
 });
 
 test('a rail tool without a row is reported by name', () => {
-  const withoutSnapRow = REAL_PAGE.split('\n').filter(line => !line.includes('`tool:snap`')).join('\n');
-  const problems = checkFormsPage(withoutSnapRow, STUDIO_TOOLS);
+  const withoutTranslateRow = REAL_PAGE.split('\n').filter(line => !line.includes('`tool:translate`')).join('\n');
+  const problems = checkFormsPage(withoutTranslateRow, STUDIO_TOOLS);
   assert.equal(problems.length, 1);
-  assert.match(problems[0], /"snap" has no row/);
+  assert.match(problems[0], /"translate" has no row/);
 });
 
 test('a rail tool whose form is not a tool is reported', () => {

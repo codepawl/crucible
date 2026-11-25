@@ -161,11 +161,14 @@ test('tool buttons, tab buttons and tool keys switch the active tool and inspect
       assert.equal(ui.tool(other).getAttribute('aria-pressed'), other === tool ? 'true' : 'false');
     }
   }
-  const keyToTool = { q: 'select', g: 'translate', r: 'rotate', s: 'scale', t: 'snap', G: 'translate' };
+  const keyToTool = { q: 'select', g: 'translate', r: 'rotate', s: 'scale', G: 'translate' };
   for (const [key, tool] of Object.entries(keyToTool)) {
     dispatch(ui.dom.document, 'keydown', { key });
     assert.equal(ui.controller.tool, tool, `key ${key}`);
   }
+  assert.equal(ui.dom.document.querySelector('[data-tool="snap"]'), null, 'snapping is no longer a tool on the rail');
+  dispatch(ui.dom.document, 'keydown', { key: 't' });
+  assert.equal(ui.controller.tool, 'translate', 'T, the old Snap key, is free');
 
   for (const tab of STUDIO_TABS) {
     ui.tab(tab).click();
@@ -887,9 +890,6 @@ test('the gizmo draws handles for each tool and clears them when nothing is sele
   ui.studio.renderNow();
   assert.deepEqual([...axesDrawn()].sort(), ['uniform', 'x', 'y', 'z']);
   assert.equal(ui.gizmo.querySelectorAll('rect').length, 3);
-  ui.tool('snap').click();
-  ui.studio.renderNow();
-  assert.deepEqual([...axesDrawn()].sort(), ['surface', 'x', 'y', 'z']);
 });
 
 test('dragging a gizmo handle with the pointer moves the node, and undo puts it back', testContext => {
@@ -923,7 +923,7 @@ test('dragging a gizmo handle with the pointer moves the node, and undo puts it 
   assert.deepEqual(ui.node('hero').translation, [0, 0.5, 0]);
 });
 
-test('rotate and scale handles turn and stretch the node, and shift snaps the turn', testContext => {
+test('rotate and scale handles turn and stretch the node, and Ctrl snaps the turn', testContext => {
   const ui = mountStudio(testContext);
   ui.selectRow('hero');
   ui.tool('rotate').click();
@@ -935,7 +935,7 @@ test('rotate and scale handles turn and stretch the node, and shift snaps the tu
     handles.pivot[2] - Math.sin((degrees * Math.PI) / 180),
   ]);
   dispatch(ui.gizmoPart('y'), 'pointerdown', ui.clientPoint(ringPoint(0)));
-  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(ringPoint(33)), shiftKey: true });
+  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(ringPoint(33)), ctrlKey: true });
   dispatch(ui.canvas, 'pointerup', ui.clientPoint(ringPoint(33)));
   assert.ok(Math.abs(ui.node('hero').rotation[1] - Math.sin((15 * Math.PI) / 180)) < 1e-3);
   assert.ok(Math.abs(ui.label('Rotation ° Y').value - 30) < 0.5);
@@ -1004,14 +1004,16 @@ test('the mouse wheel zooms the camera and the page does not scroll', testContex
   assert.ok(distance() / beforeHuge <= 1.35 + 1e-3, 'one wheel step is limited to 35 percent');
 });
 
-test('alt-clicking with the snap tool drops the selection onto the surface under the pointer', testContext => {
-  const ui = mountStudio(testContext);
+test('Move with the Face target drops the selection onto the surface under the pointer', testContext => {
+  const ui = mountStudio(testContext, { preferences: { snapEnabled: true, snapTarget: 'face' } });
   ui.selectRow('hero');
   ui.controller.updateNodeTransform('hero', { translation: [0, 5, 0] });
-  ui.tool('snap').click();
+  ui.tool('translate').click();
+  ui.studio.renderNow();
   const floorPoint = ui.controller.projectWorldPoint([0, 0, -2]);
-  dispatch(ui.canvas, 'pointerdown', ui.clientPoint(floorPoint));
-  dispatch(ui.canvas, 'pointerup', { ...ui.clientPoint(floorPoint), altKey: true });
+  dispatch(ui.gizmoPart('screen'), 'pointerdown', ui.clientPoint(ui.controller.gizmoHandles().origin));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(floorPoint));
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(floorPoint));
   assert.ok(ui.node('hero').translation[1] < 1.2, `y ${ui.node('hero').translation[1]}`);
   assert.equal(ui.controller.selectedNodeId, 'hero');
 
@@ -1202,7 +1204,8 @@ test('Ctrl+C and Ctrl+V copy and paste the selected object as one undo step, eve
   assert.ok(byText(editMenu, 'Copy'));
   assert.ok(byText(editMenu, 'Paste'));
   const labels = ui.root.querySelector('.crucible-studio-shortcuts-dialog').querySelectorAll('.crucible-studio-shortcut-item').map(item => item.textContent);
-  assert.ok(labels.some(label => label.includes('Ctrl+C / Ctrl+V')));
+  assert.ok(labels.includes('CopyCtrl+C'));
+  assert.ok(labels.includes('PasteCtrl+V'));
 });
 
 test('Ctrl+C and Ctrl+V are left to the browser while typing or while text is selected', testContext => {
@@ -1290,7 +1293,7 @@ test('the Recipe JSON dialog shows the recipe, applies edits and reports bad JSO
   assert.equal(recipeDialog.open, false);
   assert.equal(fileInput.clicks, clicksBefore + 1);
 
-  byText(ui.root, 'Keyboard shortcuts').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-help'), 'Keyboard shortcuts').click();
   assert.equal(shortcutsDialog.open, true);
   assert.ok(shortcutsDialog.querySelectorAll('.crucible-studio-shortcut-item').length >= 8);
   shortcutsDialog.close('close');
@@ -1306,7 +1309,7 @@ test('Save downloads the recipe in the browser and clears the unsaved mark', asy
   const filePill = ui.root.querySelector('.crucible-studio-filepill');
   assert.equal(filePill.dataset.dirty, 'true');
 
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(ui.status(), 'Downloaded untitled.scene.json');
   assert.equal(filePill.dataset.dirty, 'false');
@@ -1361,7 +1364,7 @@ test('a click on the scene name edits its name part in place and keeps the type 
   assert.equal(filePill.dataset.dirty, 'false', 'the name is not part of the recipe, so a rename is not a change of the scene');
   assert.equal(ui.status(), 'Renamed. Saved under this name next time.');
   assert.notEqual(ui.root.querySelector('.crucible-studio-status svg'), null, 'the toast starts with a mark');
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(ui.dom.document.downloads.at(-1).filename, 'lounge.scene.json');
 });
@@ -1455,7 +1458,7 @@ test('a host that can rename is asked, never overwrites and reports a taken name
   assert.equal(filePill.textContent, 'fresh.scene.json');
   assert.equal(filePill.title, 'C:/scenes/fresh.scene.json');
   assert.deepEqual(desktop.calls.filter(call => call.name === 'renameScene').map(call => call.argument.fileName), ['taken.scene.json', 'fresh.scene.json']);
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(desktop.calls.at(-1).name, 'saveFile', 'the file already moved, so Save writes to its new path');
   assert.equal(desktop.calls.at(-1).argument.filePath, 'C:/scenes/fresh.scene.json');
@@ -1493,11 +1496,11 @@ test('a host without a rename method sends the next Save through Save as with th
   ui.studio.setFileContext({ filePath: 'C:/scenes/old.scene.json', fileName: 'old.scene.json', dirty: false });
   await renameSceneTo(ui, 'newer');
   assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, 'newer.scene.json');
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(desktop.calls.at(-1).name, 'saveFileAs');
   assert.equal(desktop.calls.at(-1).argument.suggestedName, 'newer.scene.json');
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(desktop.calls.at(-1).name, 'saveFile', 'after the file exists under the new name, Save is plain again');
 });
@@ -1810,7 +1813,7 @@ test('Save, Save as and Open go through the desktop shell when there is one', as
   const watchPill = ui.root.querySelector('.crucible-studio-watch-pill');
   assert.equal(watchPill.hidden, true);
 
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(desktop.calls[0].name, 'saveFileAs');
   assert.equal(desktop.calls[0].argument.suggestedName, 'untitled.scene.json');
@@ -1822,7 +1825,7 @@ test('Save, Save as and Open go through the desktop shell when there is one', as
   assert.deepEqual(changes.at(-1), { filePath: 'C:/scenes/saved.scene.json', fileName: 'saved.scene.json', dirty: false });
   assert.match(ui.root.querySelector('#crucible-studio-pop-sync .crucible-studio-popover-note').textContent, /Watching C:\/scenes\/saved.scene.json \(auto-reload on\)\./);
 
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(desktop.calls[1].name, 'saveFile');
   assert.equal(desktop.calls[1].argument.filePath, 'C:/scenes/saved.scene.json');
@@ -1835,7 +1838,7 @@ test('Save, Save as and Open go through the desktop shell when there is one', as
   const nameBeforeCancel = ui.root.querySelector('.crucible-studio-filepill').textContent;
   byText(ui.root, 'Save as\u2026').click();
   await ui.dom.settle();
-  byText(ui.root, 'Save').click();
+  byText(ui.root.querySelector('#crucible-studio-pop-new'), 'Save').click();
   await ui.dom.settle();
   assert.equal(ui.root.querySelector('.crucible-studio-filepill').textContent, nameBeforeCancel);
 
@@ -2539,7 +2542,7 @@ test('turning a ring shows where the turn began, how far it has gone and hides t
   }
   sweep = ui.controller.rotationSweep();
   assert.ok(Math.abs(sweep.degrees - 230) < 0.5, 'a turn past half a circle keeps counting');
-  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(ringPoint(228)), shiftKey: true });
+  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(ringPoint(228)), ctrlKey: true });
   assert.equal(ui.controller.rotationSweep().degrees, 225);
 
   dispatch(ui.canvas, 'pointerup', ui.clientPoint(ringPoint(228)));
@@ -2634,8 +2637,8 @@ test('workspaces run Build, Look, Animate, Export and each shows only the panels
 
   assert.equal(ui.root.dataset.workspace, 'build');
   assert.equal(workspaceTab('build').getAttribute('aria-selected'), 'true');
-  assert.deepEqual(shownTabs(), ['node']);
-  assert.ok(tabList.hasAttribute('hidden'), 'one panel needs no tab row');
+  assert.deepEqual(shownTabs(), ['node', 'modifiers']);
+  assert.equal(tabList.hasAttribute('hidden'), false, 'Build holds the Object and Modifiers tabs');
 
   const recipeBefore = JSON.stringify(ui.studio.exportRecipe());
   workspaceTab('look').click();
@@ -2951,7 +2954,7 @@ test('Settings change the snap, the handles and what the viewport shows, and are
     control(name).checked = checked;
     dispatch(control(name), 'change');
   };
-  assert.deepEqual(ui.controller.interactionSettings, { moveSnapStep: 0.25, rotateSnapDegrees: 15, gizmoPixels: 74 });
+  assert.deepEqual(ui.controller.interactionSettings, { moveSnapStep: 0.25, rotateSnapDegrees: 15, gizmoPixels: 74, snapEnabled: false, snapTarget: 'increment' });
   assert.equal(control('moveSnapStep').value, '0.25');
   assert.equal(control('gridVisible').checked, true);
 
@@ -2960,7 +2963,7 @@ test('Settings change the snap, the handles and what the viewport shows, and are
   choose('moveSnapStep', 1);
   choose('rotateSnapDegrees', 45);
   choose('gizmoSize', 'large');
-  assert.deepEqual(ui.controller.interactionSettings, { moveSnapStep: 1, rotateSnapDegrees: 45, gizmoPixels: 92 });
+  assert.deepEqual(ui.controller.interactionSettings, { moveSnapStep: 1, rotateSnapDegrees: 45, gizmoPixels: 92, snapEnabled: false, snapTarget: 'increment' });
   toggle('gridVisible', false);
   assert.equal(ui.studio.gridVisible, false);
   assert.equal(ui.label('Show or hide the grid').getAttribute('aria-pressed'), 'false');
@@ -2979,15 +2982,21 @@ test('Settings change the snap, the handles and what the viewport shows, and are
     propertiesHeight: 0,
     sceneMinimized: false,
     propertiesMinimized: false,
+    historyVisible: false,
+    historyMinimized: false,
     propertyGroupsOpen: {},
     panelsFloating: false,
     moveSnapStep: 1,
     rotateSnapDegrees: 45,
+    snapEnabled: false,
+    snapTarget: 'increment',
     gizmoSize: 'large',
     startWorkspace: 'animate',
     theme: 'system',
     performance: 'automatic',
     keymap: 'crucible',
+    motion: 'system',
+    zoomDirection: 'normal',
     setupDone: false,
     gridVisible: false,
     readoutVisible: false,
@@ -3004,13 +3013,13 @@ test('Settings change the snap, the handles and what the viewport shows, and are
   assert.equal(next.root.dataset.readout, 'off');
 
   next.button('Reset').click();
-  assert.deepEqual(next.controller.interactionSettings, { moveSnapStep: 0.25, rotateSnapDegrees: 15, gizmoPixels: 74 });
+  assert.deepEqual(next.controller.interactionSettings, { moveSnapStep: 0.25, rotateSnapDegrees: 15, gizmoPixels: 74, snapEnabled: false, snapTarget: 'increment' });
   assert.equal(next.root.dataset.readout, 'on');
   assert.equal(JSON.parse(saved.get('crucible-studio-preferences')).startWorkspace, 'build');
   assert.throws(() => next.studio.setPreference('colour', 'pink'), /Unknown Studio preference/);
 });
 
-test('a Shift drag snaps a move to the step chosen in Settings', testContext => {
+test('a Ctrl drag snaps a move to the step chosen in Settings while snapping is off', testContext => {
   const ui = mountStudio(testContext, { preferences: { moveSnapStep: 1 } });
   ui.selectRow('hero');
   ui.tool('translate').click();
@@ -3019,7 +3028,7 @@ test('a Shift drag snaps a move to the step chosen in Settings', testContext => 
   const along = distance => ui.controller.projectWorldPoint(handles.pivot.map((value, index) => value + handles.basis.x[index] * distance));
   const startX = ui.node('hero').translation[0];
   dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
-  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(along(handles.handleLength + 1.3)), shiftKey: true });
+  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(along(handles.handleLength + 1.3)), ctrlKey: true });
   dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength + 1.3)));
   const travelled = ui.node('hero').translation[0] - startX;
   assert.ok(Math.abs(travelled - Math.round(travelled)) < 1e-6 && Math.abs(travelled) >= 1, `moved ${travelled} m in whole metres`);
@@ -3029,7 +3038,7 @@ test('Scene and Properties share one column and the Scene head carries its icons
   const ui = mountStudio(testContext);
   const side = ui.root.querySelector('.crucible-studio-side');
   const docks = side.children.map(child => child.getAttribute('aria-label'));
-  assert.deepEqual(docks, ['Panel width', 'Scene outliner', 'Scene card height', 'Scene inspector']);
+  assert.deepEqual(docks, ['Panel width', 'Scene outliner', 'Scene card height', 'Scene inspector', 'History']);
   const head = side.querySelector('.crucible-studio-dock-head');
   assert.ok(head.querySelector('.crucible-studio-dock-title').querySelector('svg'));
   const sideRule = STUDIO_CSS.slice(STUDIO_CSS.indexOf('.crucible-studio-side {'), STUDIO_CSS.indexOf('.crucible-studio-side > .crucible-studio-dock {'));
@@ -3100,7 +3109,7 @@ test('the top bar has File, Edit, View, Agent and Help menus that do what their 
   assert.equal(popover('new').popoverOpen, false, 'a row closes its menu');
 
   menuButton('Edit').click();
-  assert.deepEqual(rows('edit'), ['Undo', 'Redo', 'Copy', 'Paste', 'Duplicate', 'Delete', 'Rename', 'Deselect', 'Hide', 'Show all', 'Reset position', 'Reset rotation', 'Reset scale', 'Settings…']);
+  assert.deepEqual(rows('edit'), ['Undo', 'Redo', 'History', 'Copy', 'Paste', 'Duplicate', 'Join', 'Delete', 'Rename', 'Deselect', 'Hide', 'Show all', 'Reset position', 'Reset rotation', 'Reset scale', 'Settings…']);
   ui.selectRow('hero');
   const countBefore = ui.studio.exportRecipe().nodes.length;
   byText(popover('edit'), 'Duplicate').click();
@@ -3135,11 +3144,11 @@ test('the rail keeps scene tools above one line and the show and hide switches b
   const toolbar = ui.root.querySelector('.crucible-studio-toolbar');
   const rows = toolbar.children.map(child => child.getAttribute('role') === 'separator' ? 'line' : child.getAttribute('aria-label'));
   // The mesh selection modes are in the rail but hidden until edit mode starts.
-  assert.deepEqual(rows, ['Transform tool', 'Mesh selection', 'Edit the scene', 'line', 'Show or hide']);
-  assert.equal(toolbar.children[1].hidden, true);
+  assert.deepEqual(rows, ['Transform tool', 'Snapping', 'Mesh selection', 'Edit the scene', 'line', 'Show or hide']);
+  assert.equal(toolbar.children[2].hidden, true);
   const below = toolbar.children.at(-1).children.map(button => button.getAttribute('aria-label'));
   assert.deepEqual(below, ['Show or hide the grid', 'See through the surface (Alt+Z)', 'Show or hide the panels']);
-  const above = toolbar.children[2].children.map(button => button.dataset.icon);
+  const above = toolbar.children[3].children.map(button => button.dataset.icon);
   assert.deepEqual(above, ['add', 'undo', 'redo']);
 });
 
@@ -3460,7 +3469,7 @@ test('the axis widget stands at the top right of the viewport, beside the panel 
   assert.ok(!floating.includes('inset-block-end'), 'no longer in the bottom corner');
   assert.ok(STUDIO_CSS.includes('.crucible-studio {\n  --studio-gizmo-clear: calc(var(--studio-scene-width, 284px) + var(--studio-edge));\n}'), 'it follows the Scene card width');
   assert.ok(STUDIO_CSS.includes('[data-outliner-minimized="true"]:not([data-inspector-collapsed="true"]) {\n  --studio-gizmo-clear: calc(max(var(--studio-scene-width, 284px), var(--studio-properties-width, 284px))'), 'a short minimized Scene card leaves a wider Properties card the room under the widget');
-  assert.ok(rule('.crucible-studio[data-outliner-collapsed="true"][data-inspector-collapsed="true"]').includes('--studio-gizmo-clear: 0px;'), 'with both cards away it takes the corner');
+  assert.ok(rule('.crucible-studio[data-outliner-collapsed="true"][data-inspector-collapsed="true"][data-history-collapsed="true"]').includes('--studio-gizmo-clear: 0px;'), 'with both cards away it takes the corner');
   const docked = rule('.crucible-studio[data-floating="false"]:not([data-compact="true"]) .crucible-studio-view-widget');
   assert.ok(docked.includes('inset-inline-end: var(--studio-edge);') && docked.includes('inset-block-start: var(--studio-edge);'), 'docked, the viewport already ends at the column, so the widget takes its corner');
   assert.ok(rule('.crucible-studio[data-compact="true"] .crucible-studio-view-widget').includes('inset-inline-end: var(--studio-edge);'), 'a compact window keeps it in the corner under the bar, clear of the cards');
@@ -3605,7 +3614,7 @@ test('a right click on an object opens its menu; H hides, Alt+H shows all and Al
   const menu = ui.root.querySelector('#crucible-studio-pop-object');
   const heroNode = () => ui.controller.exportRecipe().nodes.find(node => node.id === 'hero');
   const press = (key, modifiers = {}) => dispatch(ui.dom.document, 'keydown', { key, ...modifiers });
-  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Rename', 'Duplicate', 'Hide', 'Reset position', 'Reset rotation', 'Reset scale', 'Delete']);
+  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Rename', 'Duplicate', 'Hide', 'Reset position', 'Reset rotation', 'Reset scale', 'Apply…', 'Set origin…', 'Delete']);
 
   // In the Scene list the row is selected first, then the menu opens on it.
   const heroRow = ui.rows().find(row => row.textContent.includes(heroNode().label ?? 'hero'));
@@ -4523,7 +4532,8 @@ test('the Look tab shows the lighting presets on one row and the sun direction p
 test('the stylesheet fades rows under a pinned group title and at the bottom of the panels, and keeps the label column wide enough', () => {
   assert.ok(STUDIO_CSS.includes('container-type: scroll-state;'), 'a group title can tell when it is pinned');
   assert.ok(STUDIO_CSS.includes('@container scroll-state(stuck: top)'), 'the fade under a title shows only while it is pinned');
-  assert.ok(STUDIO_CSS.includes('.crucible-studio-panels::after'), 'the panels fade at the bottom edge');
+  assert.ok(STUDIO_CSS.includes('.crucible-studio-scroll[data-fade-bottom="true"]'), 'a scrolling card body fades at the edges that hide content');
+  assert.ok(STUDIO_CSS.includes('scrollbar-gutter: stable'), 'the scrollbar gutter stays so content does not shift');
   assert.ok(STUDIO_CSS.includes('grid-template-columns: minmax(min-content, 45%) minmax(0, 1fr);'), 'a label column grows to its label');
   assert.ok(STUDIO_CSS.includes('scroll-snap-type: y mandatory;'), 'the Scene list scrolls a whole row at a time');
 });
@@ -5415,7 +5425,7 @@ test('the Cinema 4D keymap: E, R and T choose the tool, 9 selects and F9 keys', 
   press('9');
   assert.equal(ui.controller.tool, 'select');
   press('S', { shiftKey: true });
-  assert.equal(ui.controller.tool, 'snap');
+  assert.equal(ui.studio.preferences.snapEnabled, true, 'Shift+S, the Cinema 4D snapping key, turns snapping on');
   press('F9');
   await ui.dom.settle();
   assert.equal(ui.studio.exportRecipe().motion.tracks.length > 0, true, 'F9 sets a key');
@@ -5451,7 +5461,7 @@ test('choosing a keymap rewrites the menu keys, the tooltips and the shortcuts d
   assert.ok(ui.label('Redo (Ctrl+Y)'));
   assert.ok(ui.label('Play (Alt+V)'));
   assert.ok(ui.label('Add a keyframe here (S)'));
-  assert.match(shortcutsText(), /W \/ E \/ R/);
+  assert.match(shortcutsText(), /MoveW.*RotateE.*ScaleR/);
   assert.match(shortcutsText(), /Alt \+ left drag/);
   assert.doesNotMatch(shortcutsText(), /While holding/);
 
@@ -5546,6 +5556,147 @@ test('Maya and Cinema 4D navigate with Alt and a mouse button, and the Blender k
   targetBefore = ui.controller.scene.camera.target.slice();
   drag(2, { x: 420, y: 300 });
   assert.notDeepEqual(ui.controller.scene.camera.target, targetBefore, 'the default right drag still pans, whatever the keymap');
+});
+
+// Snapping is a state on the rail, not a tool (#3342).
+function snapParts(ui) {
+  return {
+    toggle: byDataset(ui.root, 'snapToggle', 'true'),
+    targetButton: byDataset(ui.root, 'snapTargetButton', 'true'),
+    popover: ui.root.querySelector('#crucible-studio-pop-snap'),
+  };
+}
+
+test('the magnet toggle and its target menu sit on the rail, lit when on, and are kept for the next visit (#3342)', testContext => {
+  const saved = new Map();
+  const preferenceStorage = { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) };
+  const ui = mountStudio(testContext, { preferenceStorage });
+  const { toggle, targetButton, popover } = snapParts(ui);
+  assert.equal(toggle.dataset.icon, 'snap');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+  assert.match(toggle.getAttribute('aria-label'), /^Snapping off \(Shift\+Tab\)$/);
+  assert.equal(targetButton.getAttribute('aria-label'), 'Snap to Increment');
+  assert.deepEqual(popover.querySelectorAll('button').map(item => [item.textContent, item.dataset.snapTarget, item.querySelector('svg') !== null]), [
+    ['Increment', 'increment', true],
+    ['Vertex', 'vertex', true],
+    ['Face', 'face', true],
+  ]);
+  assert.deepEqual(popover.querySelectorAll('button').map(item => item.getAttribute('aria-checked')), ['true', 'false', 'false']);
+  assert.ok(STUDIO_CSS.includes('button[data-snap-toggle][aria-pressed="true"] svg'), 'the lit magnet is filled, not only tinted');
+
+  toggle.click();
+  assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+  assert.equal(ui.controller.interactionSettings.snapEnabled, true);
+  assert.match(toggle.getAttribute('aria-label'), /^Snapping on/);
+  assert.equal(ui.status(), 'Snapping on, to Increment');
+
+  byText(popover, 'Vertex').click();
+  assert.equal(ui.controller.interactionSettings.snapTarget, 'vertex');
+  assert.equal(targetButton.dataset.icon, 'meshVertex');
+  assert.equal(targetButton.getAttribute('aria-label'), 'Snap to Vertex');
+  assert.deepEqual(popover.querySelectorAll('button').map(item => item.getAttribute('aria-checked')), ['false', 'true', 'false']);
+
+  const next = mountStudio(testContext, { preferenceStorage, sharedDom: ui.dom });
+  const nextParts = snapParts(next);
+  assert.equal(nextParts.toggle.getAttribute('aria-pressed'), 'true', 'the state comes back');
+  assert.equal(nextParts.targetButton.getAttribute('aria-label'), 'Snap to Vertex', 'and so does the target');
+  assert.deepEqual([next.controller.interactionSettings.snapEnabled, next.controller.interactionSettings.snapTarget], [true, 'vertex']);
+
+  next.button('Reset').click();
+  assert.equal(nextParts.toggle.getAttribute('aria-pressed'), 'false', 'Reset turns snapping off');
+  assert.equal(nextParts.targetButton.getAttribute('aria-label'), 'Snap to Increment', 'and back to Increment');
+});
+
+test('Shift+Tab toggles snapping from the page or the canvas, and leaves Tab to the browser anywhere else (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const { toggle } = snapParts(ui);
+  const shiftTab = target => dispatch(target, 'keydown', { key: 'Tab', shiftKey: true });
+
+  assert.equal(shiftTab(ui.dom.document).defaultPrevented, true);
+  assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  shiftTab(ui.canvas);
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false', 'from the canvas too, with the pointer over the viewport');
+
+  const onButton = shiftTab(ui.label('Delete (Del)'));
+  assert.equal(onButton.defaultPrevented, false, 'a focused control keeps Shift+Tab as the way back');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+  const inField = shiftTab(ui.root.querySelector('input'));
+  assert.equal(inField.defaultPrevented, false);
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+
+  byText(ui.root, 'Settings…').click();
+  shiftTab(ui.dom.document);
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false', 'nothing happens behind an open dialog');
+});
+
+test('Shift+Tab does not enter edit mode (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  const meshBefore = ui.root.dataset.meshEdit;
+  dispatch(ui.dom.document, 'keydown', { key: 'Tab', shiftKey: true });
+  assert.equal(ui.root.dataset.meshEdit, meshBefore, 'Shift+Tab only toggled snapping');
+  assert.equal(snapParts(ui).toggle.getAttribute('aria-pressed'), 'true');
+});
+
+test('holding or letting go of Ctrl flips snapping for a handle drag at once, in both directions (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  ui.tool('translate').click();
+  ui.studio.renderNow();
+  const handles = ui.controller.gizmoHandles();
+  const along = distance => ui.controller.projectWorldPoint(handles.pivot.map((value, index) => value + handles.basis.x[index] * distance));
+  const heroX = () => ui.node('hero').translation[0];
+  const onStep = value => Math.abs(value / 0.25 - Math.round(value / 0.25)) < 1e-6;
+
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(along(handles.handleLength + 0.83)));
+  const free = heroX();
+  assert.equal(onStep(free), false, 'snapping is off: the move is free');
+  dispatch(ui.dom.document, 'keydown', { key: 'Control', ctrlKey: true });
+  assert.equal(onStep(heroX()), true, 'Ctrl down snaps the move in hand without the pointer moving');
+  dispatch(ui.dom.document, 'keyup', { key: 'Control', ctrlKey: false });
+  assert.equal(heroX(), free, 'Ctrl up gives the free move back');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength + 0.83)));
+
+  snapParts(ui).toggle.click();
+  ui.controller.updateNodeTransform('hero', { translation: [0, 0.5, 0] });
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(along(handles.handleLength + 0.83)));
+  assert.equal(onStep(heroX()), true, 'snapping is on: the move is on the step');
+  dispatch(ui.dom.document, 'keydown', { key: 'Control', ctrlKey: true });
+  assert.equal(onStep(heroX()), false, 'Ctrl down frees it');
+  dispatch(ui.dom.document, 'keyup', { key: 'Control', ctrlKey: false });
+  assert.equal(onStep(heroX()), true, 'Ctrl up snaps it again');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength + 0.83)));
+});
+
+test('G and R obey the snapping state, and Ctrl flips it while the object is held (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const press = (key, modifiers = {}) => dispatch(ui.dom.document, 'keydown', { key, ...modifiers });
+  const heroX = () => ui.node('hero').translation[0];
+  const onStep = value => Math.abs(value / 0.25 - Math.round(value / 0.25)) < 1e-6;
+  ui.controller.selectNode('hero');
+  snapParts(ui).toggle.click();
+
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  press('g');
+  press('x');
+  dispatch(ui.dom.document, 'pointermove', { clientX: 377, clientY: 200 });
+  assert.equal(onStep(heroX()) && heroX() !== 0, true, `G with snapping on lands on the step: ${heroX()}`);
+  press('Control', { ctrlKey: true });
+  assert.equal(onStep(heroX()), false, 'Ctrl while holding frees the move');
+  dispatch(ui.dom.document, 'keyup', { key: 'Control', ctrlKey: false });
+  assert.equal(onStep(heroX()), true);
+  press('Escape');
+
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  press('r');
+  dispatch(ui.dom.document, 'pointermove', { clientX: 333, clientY: 200 });
+  const turned = ui.node('hero').rotation;
+  const degrees = (2 * Math.asin(Math.max(Math.abs(turned[0]), Math.abs(turned[1]), Math.abs(turned[2]))) * 180) / Math.PI;
+  assert.ok(Math.abs(degrees / 15 - Math.round(degrees / 15)) < 1e-3 && degrees > 1, `R turns in 15 degree steps: ${degrees}`);
+  press('Escape');
 });
 
 test('select all belongs to Studio only when the event comes from Studio (#3328)', testContext => {
@@ -5668,4 +5819,355 @@ test('in Export the controls that do nothing look disabled, a save draws no toas
 
   byDataset(ui.root, 'workspace', 'build').click();
   for (const control of [gridButton, ...blockedRows]) assert.equal(control.getAttribute('aria-disabled'), 'false', 'live again in Build');
+});
+
+test('Shift+Tab on the focused canvas is the browser reverse tab while the pointer is off the viewport (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const { toggle } = snapParts(ui);
+  const shiftTab = target => dispatch(target, 'keydown', { key: 'Tab', shiftKey: true });
+
+  const withoutPointer = shiftTab(ui.canvas);
+  assert.equal(withoutPointer.defaultPrevented, false, 'no pointer over the viewport: the browser takes it');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  assert.equal(shiftTab(ui.canvas).defaultPrevented, true, 'pointer over the viewport: snapping takes it');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+
+  dispatch(ui.viewport, 'pointerleave');
+  const afterLeaving = shiftTab(ui.canvas);
+  assert.equal(afterLeaving.defaultPrevented, false, 'the pointer left: the browser takes it again');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+
+  assert.equal(shiftTab(ui.dom.document).defaultPrevented, true, 'with nothing focused it still toggles');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+});
+
+test('no object menu opens over a handle drag or a G, R or S move, and its context menu is still swallowed (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const menu = ui.root.querySelector('#crucible-studio-pop-object');
+  ui.selectRow('hero');
+  ui.tool('translate').click();
+  ui.studio.renderNow();
+  const handles = ui.controller.gizmoHandles();
+  const tip = ui.controller.projectWorldPoint(handles.pivot.map((value, index) => value + handles.basis.x[index] * handles.handleLength));
+
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(tip));
+  assert.equal(ui.controller.dragging, true);
+  const duringDrag = dispatch(ui.gizmo, 'contextmenu', { clientX: 300, clientY: 200 });
+  assert.equal(duringDrag.defaultPrevented, true);
+  assert.notEqual(menu.popoverOpen, true, 'no menu over a handle drag');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(tip));
+
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  dispatch(ui.dom.document, 'keydown', { key: 'g' });
+  assert.equal(ui.root.dataset.modal !== undefined, true);
+  const duringMove = dispatch(ui.gizmo, 'contextmenu', { clientX: 300, clientY: 200 });
+  assert.equal(duringMove.defaultPrevented, true);
+  assert.notEqual(menu.popoverOpen, true, 'no menu over a G move');
+  dispatch(ui.dom.document, 'keydown', { key: 'Escape' });
+
+  dispatch(ui.gizmo, 'contextmenu', { clientX: 300, clientY: 200 });
+  assert.equal(menu.popoverOpen, true, 'with nothing in hand the menu opens as before');
+});
+
+test('the window losing focus during a handle drag lets go of Ctrl, and a cancel with Ctrl held puts the object back (#3342)', testContext => {
+  const dom = installStudioDom();
+  const windowListeners = new Map();
+  dom.document.defaultView.addEventListener = (type, listener) => windowListeners.set(type, listener);
+  dom.document.defaultView.removeEventListener = type => windowListeners.delete(type);
+  testContext.after(() => dom.uninstall());
+  const ui = mountStudio(testContext, { sharedDom: dom });
+  ui.selectRow('hero');
+  ui.tool('translate').click();
+  ui.studio.renderNow();
+  const handles = ui.controller.gizmoHandles();
+  const along = distance => ui.controller.projectWorldPoint(handles.pivot.map((value, index) => value + handles.basis.x[index] * distance));
+  const heroX = () => ui.node('hero').translation[0];
+  const onStep = value => Math.abs(value / 0.25 - Math.round(value / 0.25)) < 1e-6;
+  const start = heroX();
+
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(along(handles.handleLength + 0.83)));
+  const free = heroX();
+  dispatch(ui.dom.document, 'keydown', { key: 'Control', ctrlKey: true });
+  assert.equal(onStep(heroX()), true, 'Ctrl held: on the step');
+  windowListeners.get('blur')();
+  assert.equal(heroX(), free, 'blur lets go of Ctrl: the free move is back');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength + 0.83)));
+
+  ui.controller.updateNodeTransform('hero', { translation: [start, 0.5, 0] });
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(along(handles.handleLength + 0.83)));
+  dispatch(ui.dom.document, 'keydown', { key: 'Control', ctrlKey: true });
+  assert.equal(ui.controller.cancelGizmoDrag(), true);
+  assert.equal(heroX(), start, 'cancel with Ctrl held puts the object back');
+  dispatch(ui.dom.document, 'keyup', { key: 'Control', ctrlKey: false });
+  windowListeners.get('blur')();
+  assert.equal(heroX(), start, 'a later Ctrl release or blur moves nothing');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength)));
+  assert.equal(heroX(), start);
+});
+
+test('the target button always shows the icon of the active target, open or closed (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const { targetButton, popover } = snapParts(ui);
+  assert.equal(targetButton.dataset.icon, 'grid');
+  popover.showPopover();
+  assert.equal(targetButton.dataset.icon, 'grid', 'opening the menu is not a different glyph');
+  byDataset(popover, 'snapTarget', 'vertex').click();
+  assert.equal(targetButton.dataset.icon, 'meshVertex', 'choosing a target changes it for good');
+});
+
+function makeFiveEdits(ui) {
+  ui.controller.updateNodeTransform('hero', { translation: [1, 0.5, 0] });
+  ui.controller.updateNodeTransform('hero', { rotationDegrees: [0, 45, 0] });
+  ui.controller.updateNodeTransform('orb', { scale: [0.8, 0.8, 0.8] });
+  ui.controller.addPrimitive('box');
+  ui.controller.updateNodeTransform('hero', { visible: false });
+}
+
+const historyPanelOf = ui => ui.root.querySelector('.crucible-studio-history');
+const historyRows = ui => historyPanelOf(ui).querySelectorAll('.crucible-studio-history-row');
+const historyRow = (ui, name) => historyRows(ui).find(row => row.dataset.label === name);
+const historyStates = ui => historyRows(ui).map(row => row.dataset.state);
+const editPopoverOf = ui => ui.root.querySelector('#crucible-studio-pop-edit');
+const viewPopoverOf = ui => ui.root.querySelector('#crucible-studio-pop-view');
+const showHistoryFromViewMenu = ui => byText(viewPopoverOf(ui), 'History').click();
+const mountWithStorage = (testContext, options = {}) => {
+  const saved = new Map();
+  const preferenceStorage = { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) };
+  return { saved, preferenceStorage, ui: mountStudio(testContext, { preferenceStorage, ...options }) };
+};
+
+test('the Edit menu shows Undo, Redo, History and Settings with an icon, and Undo and Redo show their keys', testContext => {
+  const ui = mountStudio(testContext);
+  const editMenu = editPopoverOf(ui);
+  const rowNames = editMenu.querySelectorAll('button').map(row => row.textContent);
+  assert.deepEqual(rowNames.slice(0, 3), ['Undo', 'Redo', 'History']);
+  assert.ok(rowNames.includes('Settings…'));
+  for (const name of ['Undo', 'Redo', 'History', 'Settings…']) {
+    assert.match(String(byText(editMenu, name).children[0].getAttribute('class')), /crucible-studio-icon/, name);
+  }
+  assert.equal(byText(editMenu, 'Undo').dataset.shortcut, 'Ctrl+Z');
+  assert.equal(byText(editMenu, 'Redo').dataset.shortcut, 'Ctrl+Shift+Z');
+  byText(editMenu, 'Settings…').click();
+  assert.ok(ui.root.querySelectorAll('dialog').some(dialog => dialog.open), 'Settings opens');
+});
+
+test('Copy, Paste, Duplicate and Deselect each have their own icon', testContext => {
+  const ui = mountStudio(testContext);
+  const iconPath = name => byText(editPopoverOf(ui), name).children[0].descendants().find(element => element.getAttribute('d'))?.getAttribute('d');
+  const paths = ['Copy', 'Paste', 'Duplicate', 'Deselect'].map(iconPath);
+  assert.ok(paths.every(Boolean), 'every row draws an icon');
+  assert.equal(new Set(paths).size, 4);
+});
+
+test('Undo and Redo in the Edit menu are disabled until the stack has something to step to, and History is always there', testContext => {
+  const ui = mountStudio(testContext);
+  const editMenu = editPopoverOf(ui);
+  const disabled = name => byText(editMenu, name).getAttribute('aria-disabled');
+  assert.deepEqual(['Undo', 'Redo'].map(disabled), ['true', 'true']);
+  assert.notEqual(disabled('History'), 'true');
+
+  ui.controller.updateNodeTransform('hero', { translation: [1, 0.5, 0] });
+  assert.deepEqual(['Undo', 'Redo'].map(disabled), ['false', 'true']);
+
+  ui.controller.undo();
+  assert.deepEqual(['Undo', 'Redo'].map(disabled), ['true', 'false']);
+});
+
+test('a dimmed menu row uses the muted token, which is over 3:1 on the menu surface in both themes', () => {
+  const rule = STUDIO_CSS.slice(STUDIO_CSS.indexOf('.crucible-studio .crucible-studio-popover button[aria-disabled="true"] {'));
+  assert.match(rule.slice(0, 120), /opacity: 1;\s+color: var\(--studio-muted\);/);
+});
+
+test('the History panel starts hidden and an empty history shows just Start', testContext => {
+  const ui = mountStudio(testContext);
+  assert.equal(ui.root.dataset.historyCollapsed, 'true');
+  showHistoryFromViewMenu(ui);
+  assert.equal(ui.root.dataset.historyCollapsed, 'false');
+  assert.deepEqual(historyRows(ui).map(row => row.dataset.label), ['Start']);
+  assert.equal(historyRows(ui)[0].getAttribute('aria-current'), 'step');
+  assert.equal(historyPanelOf(ui).querySelector('.crucible-studio-dock-head').textContent, 'History');
+  assert.equal(historyPanelOf(ui).querySelectorAll('button').some(button => button.getAttribute('aria-label') === 'Close'), false, 'a panel has no close button');
+});
+
+test('History rows follow edits live, oldest first, with the kind icon, the name and the target', testContext => {
+  const ui = mountStudio(testContext);
+  showHistoryFromViewMenu(ui);
+  makeFiveEdits(ui);
+  assert.deepEqual(historyRows(ui).map(row => row.dataset.label), ['Start', 'Move', 'Rotate', 'Scale', 'Add box', 'Hide']);
+  assert.deepEqual(historyRows(ui).map(row => row.querySelector('.crucible-studio-history-detail')?.textContent ?? ''), ['', 'hero', 'hero', 'orb', '', 'hero']);
+  assert.deepEqual(historyStates(ui), ['done', 'done', 'done', 'done', 'done', 'current']);
+  const iconPaths = historyRows(ui).map(row => row.descendants().find(element => element.getAttribute('d'))?.getAttribute('d'));
+  assert.ok(iconPaths.every(Boolean), 'every row draws an icon');
+  assert.equal(new Set(iconPaths).size, 6, 'start, move, rotate, scale, add and hide each have their own icon');
+  ui.controller.updateNodeTransform('orb', { translation: [3, 0.5, 0] });
+  assert.equal(historyRows(ui).length, 7, 'a new edit adds its row at once');
+  assert.equal(historyRows(ui)[6].dataset.state, 'current');
+  assert.equal(historyRows(ui)[6].tabIndex, 0, 'the current row is the one Tab reaches');
+});
+
+test('a long name or target is cut with an ellipsis and its full text is in the title', testContext => {
+  const ui = mountStudio(testContext);
+  showHistoryFromViewMenu(ui);
+  const longLabel = 'A very long object name that cannot fit in the panel';
+  ui.controller.updateNodeTransform('hero', { label: longLabel });
+  ui.controller.updateNodeTransform('hero', { translation: [1, 0.5, 0] });
+  assert.equal(historyRow(ui, 'Move').title.includes(longLabel), true);
+  assert.match(STUDIO_CSS, /\.crucible-studio-history-name,\s*\.crucible-studio-history-detail \{[^}]*text-overflow: ellipsis;/);
+});
+
+test('a History row steps the scene to that edit in both directions', testContext => {
+  const ui = mountStudio(testContext);
+  const original = ui.studio.exportRecipe();
+  showHistoryFromViewMenu(ui);
+  ui.controller.updateNodeTransform('hero', { translation: [1, 0.5, 0] });
+  const afterMove = ui.studio.exportRecipe();
+  ui.controller.updateNodeTransform('orb', { scale: [0.8, 0.8, 0.8] });
+  ui.controller.addPrimitive('box');
+  const afterAdd = ui.studio.exportRecipe();
+
+  historyRow(ui, 'Move').click();
+  assert.deepEqual(ui.studio.exportRecipe(), afterMove, 'back to the move');
+  assert.deepEqual(historyStates(ui), ['done', 'current', 'undone', 'undone']);
+  assert.equal(ui.dom.document.activeElement, historyRow(ui, 'Move'));
+  assert.equal(ui.status(), 'Went to Move');
+
+  historyRow(ui, 'Add box').click();
+  assert.deepEqual(ui.studio.exportRecipe(), afterAdd, 'forward again to the add');
+  assert.deepEqual(historyStates(ui), ['done', 'done', 'done', 'current']);
+
+  historyRow(ui, 'Start').click();
+  assert.deepEqual(ui.studio.exportRecipe(), original);
+  assert.equal(ui.controller.canUndo, false);
+  assert.equal(ui.status(), 'Back to the start');
+  assert.deepEqual(historyStates(ui), ['current', 'undone', 'undone', 'undone']);
+});
+
+test('undoing marks the rows after the current one as undone and a new edit removes them', testContext => {
+  const ui = mountStudio(testContext);
+  showHistoryFromViewMenu(ui);
+  makeFiveEdits(ui);
+  ui.controller.undo();
+  ui.controller.undo();
+  assert.deepEqual(historyStates(ui), ['done', 'done', 'done', 'current', 'undone', 'undone']);
+  assert.equal(historyRows(ui).length, 6, 'the undone rows stay listed');
+  ui.controller.updateNodeTransform('orb', { translation: [3, 0.5, 0] });
+  assert.deepEqual(historyRows(ui).map(row => row.dataset.label), ['Start', 'Move', 'Rotate', 'Scale', 'Move']);
+  assert.deepEqual(historyStates(ui), ['done', 'done', 'done', 'done', 'current']);
+});
+
+test('the dimmed History rows use the muted token and the current row the strong text token with a filled mark', () => {
+  const ruleOf = selector => STUDIO_CSS.slice(STUDIO_CSS.indexOf(selector), STUDIO_CSS.indexOf('}', STUDIO_CSS.indexOf(selector)));
+  assert.match(ruleOf('.crucible-studio .crucible-studio-history-row[data-state="undone"],'), /color: var\(--studio-muted\)/);
+  assert.match(ruleOf('.crucible-studio .crucible-studio-history-row {'), /color: var\(--studio-text\)/);
+  assert.match(ruleOf('.crucible-studio-history-row[data-state="current"] .crucible-studio-history-mark'), /background: var\(--studio-accent\)/);
+  assert.doesNotMatch(ruleOf('.crucible-studio .crucible-studio-history-row[data-state="undone"],'), /opacity/);
+});
+
+test('History rows are reached with Tab once, moved with Up and Down, and pressed with Enter or Space', testContext => {
+  const ui = mountStudio(testContext);
+  showHistoryFromViewMenu(ui);
+  makeFiveEdits(ui);
+  assert.deepEqual(historyRows(ui).map(row => row.tabIndex), [-1, -1, -1, -1, -1, 0]);
+  historyRows(ui)[5].focus();
+  assert.equal(dispatch(historyRows(ui)[5], 'keydown', { key: 'ArrowUp' }).defaultPrevented, true);
+  assert.equal(ui.dom.document.activeElement, historyRows(ui)[4]);
+  dispatch(historyRows(ui)[4], 'keydown', { key: 'ArrowDown' });
+  assert.equal(ui.dom.document.activeElement, historyRows(ui)[5]);
+  dispatch(historyRows(ui)[5], 'keydown', { key: 'Home' });
+  assert.equal(ui.dom.document.activeElement, historyRows(ui)[0]);
+  assert.equal(historyRows(ui)[0].tagName, 'BUTTON', 'a button, so Enter and Space press it');
+  historyRows(ui)[0].click();
+  assert.equal(ui.controller.history.position, 0);
+});
+
+test('History keeps no more rows than the undo depth', testContext => {
+  const ui = mountStudio(testContext);
+  showHistoryFromViewMenu(ui);
+  for (let step = 0; step < 40; step += 1) {
+    ui.controller.updateNodeTransform('hero', { translation: [step, 0.5, 0] });
+  }
+  assert.equal(historyRows(ui).length, 32, 'the controller keeps its 32 newest edits');
+  assert.equal(historyRows(ui).some(row => row.dataset.label === 'Start'), false, 'the opened scene is no longer reachable');
+  assert.equal(historyRows(ui)[31].dataset.state, 'current');
+});
+
+test('whether the History panel is shown is remembered with the other view preferences', testContext => {
+  const first = mountWithStorage(testContext);
+  showHistoryFromViewMenu(first.ui);
+  assert.equal(JSON.parse(first.saved.get('crucible-studio-preferences')).historyVisible, true);
+  const second = mountStudio(testContext, { preferenceStorage: first.preferenceStorage });
+  assert.equal(second.root.dataset.historyCollapsed, 'false', 'a new Studio opens with the panel shown');
+  showHistoryFromViewMenu(second);
+  assert.equal(second.root.dataset.historyCollapsed, 'true');
+  assert.equal(JSON.parse(first.saved.get('crucible-studio-preferences')).historyVisible, false);
+});
+
+test('Edit > History shows the panel and puts focus on the current row', testContext => {
+  const ui = mountStudio(testContext);
+  makeFiveEdits(ui);
+  ui.controller.undo();
+  assert.equal(ui.root.dataset.historyCollapsed, 'true');
+  byText(editPopoverOf(ui), 'History').click();
+  assert.equal(ui.root.dataset.historyCollapsed, 'false');
+  assert.equal(ui.dom.document.activeElement, historyRows(ui).find(row => row.dataset.state === 'current'));
+  assert.equal(historyRows(ui).length, 6);
+});
+
+test('a compact window starts with the History panel closed, and History and Properties take turns there', testContext => {
+  const ui = mountStudio(testContext, { containerWidth: 600, preferences: { historyVisible: true } });
+  assert.equal(ui.root.dataset.compact, 'true');
+  assert.equal(ui.root.dataset.historyCollapsed, 'true');
+  showHistoryFromViewMenu(ui);
+  assert.equal(ui.root.dataset.historyCollapsed, 'false');
+  assert.equal(ui.root.dataset.inspectorCollapsed, 'true', 'showing History puts Properties away');
+  ui.label('Show or hide the panels').click();
+  assert.equal(ui.root.dataset.inspectorCollapsed, 'false', 'the panels button brings Properties back');
+  assert.equal(ui.root.dataset.historyCollapsed, 'true', 'and puts History away');
+  assert.equal(ui.studio.preferences.historyVisible, true, 'the remembered choice is untouched');
+});
+
+test('the History card minimizes to its title row like the Scene and Properties cards and remembers it', testContext => {
+  const { saved, preferenceStorage, ui } = mountWithStorage(testContext);
+  showHistoryFromViewMenu(ui);
+  const minimize = historyPanelOf(ui).querySelector('.crucible-studio-dock-head').querySelectorAll('button')[0];
+  assert.equal(minimize.getAttribute('aria-label'), 'Minimize History');
+  assert.equal(ui.root.dataset.historyMinimized, 'false');
+  minimize.click();
+  assert.equal(ui.root.dataset.historyMinimized, 'true');
+  assert.equal(minimize.getAttribute('aria-label'), 'Expand History');
+  assert.equal(JSON.parse(saved.get('crucible-studio-preferences')).historyMinimized, true);
+  assert.ok(STUDIO_CSS.includes('[data-history-minimized="true"] .crucible-studio-history > :not(.crucible-studio-dock-head) { display: none; }'));
+  const second = mountStudio(testContext, { preferenceStorage });
+  assert.equal(second.root.dataset.historyMinimized, 'true', 'a new Studio opens with it minimized');
+  minimize.click();
+  assert.equal(ui.root.dataset.historyMinimized, 'false');
+});
+
+test('the column rule keeps Properties at 240 px or more and History to a third of the column', () => {
+  const flat = STUDIO_CSS.replace(/\s+/g, ' ');
+  assert.ok(flat.includes('.crucible-studio-dock.crucible-studio-history { flex: 0 1 auto; min-block-size: 0; max-block-size: 34%;'));
+  assert.ok(flat.includes('.crucible-studio-side > .crucible-studio-inspector { min-block-size: 240px; }'));
+});
+
+test('the History position is validated and names every kind of edit', testContext => {
+  const ui = mountStudio(testContext);
+  assert.throws(() => ui.controller.goToHistoryPosition(1), /from 0 to 0/);
+  ui.controller.updateNodeTransform('hero', { label: 'Boss' });
+  ui.controller.updateNodeTransform('hero', { translation: [0, 1, 0], scale: [2, 2, 2] });
+  ui.controller.updateNodeTransform('hero', { visible: false });
+  ui.controller.updateNodeTransform('hero', { visible: true });
+  ui.controller.beginUndoGroup();
+  ui.controller.updateNodeTransform('orb', { translation: [3, 0.5, 0] });
+  ui.controller.updateNodeTransform('orb', { rotationDegrees: [0, 10, 0] });
+  ui.controller.endUndoGroup();
+  assert.deepEqual(ui.controller.history.labels, ['Rename', 'Transform', 'Hide', 'Show', 'Move']);
+  assert.deepEqual(ui.controller.history.details, ['hero', 'Boss', 'Boss', 'Boss', 'orb']);
+  assert.throws(() => ui.controller.goToHistoryPosition(1.5), /whole number/);
+  assert.equal(ui.controller.goToHistoryPosition(0), 0);
+  assert.equal(ui.controller.goToHistoryPosition(3), 3);
+  assert.equal(ui.controller.history.position, 3);
 });

@@ -2,6 +2,7 @@
 // same scene keep their own snap steps and their own panels.
 
 import { KEYMAP_PRESET_IDS } from './studio-keymap.js';
+import { SNAP_TARGET_IDS } from './studio-snapping.js';
 
 export const STUDIO_PREFERENCES_KEY = 'crucible-studio-preferences';
 
@@ -10,11 +11,16 @@ export const STUDIO_GIZMO_PIXELS = Object.freeze({ small: 58, medium: 74, large:
 export const STUDIO_PREFERENCE_CHOICES = Object.freeze({
   moveSnapStep: Object.freeze([0.05, 0.1, 0.25, 0.5, 1]),
   rotateSnapDegrees: Object.freeze([5, 10, 15, 30, 45, 90]),
+  snapTarget: SNAP_TARGET_IDS,
   gizmoSize: Object.freeze(Object.keys(STUDIO_GIZMO_PIXELS)),
   startWorkspace: Object.freeze(['build', 'look', 'animate']),
   theme: Object.freeze(['system', 'light', 'dark']),
   performance: Object.freeze(['automatic', 'light', 'balanced', 'sharp']),
   keymap: KEYMAP_PRESET_IDS,
+  // Motion: follow the system's reduced-motion setting, or reduce Studio's own motion whatever the system says.
+  motion: Object.freeze(['system', 'reduced']),
+  // Which way the wheel and a pinch zoom: normal brings the scene closer when the wheel scrolls up.
+  zoomDirection: Object.freeze(['normal', 'inverted']),
 });
 
 export const STUDIO_PANEL_WIDTH = Object.freeze({ least: 240, most: 520, initial: 284 });
@@ -70,15 +76,21 @@ export const STUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   propertiesHeight: STUDIO_CARD_SIZE.automatic,
   sceneMinimized: false,
   propertiesMinimized: false,
+  historyVisible: false,
+  historyMinimized: false,
   propertyGroupsOpen: Object.freeze({}),
   panelsFloating: false,
   moveSnapStep: 0.25,
   rotateSnapDegrees: 15,
+  snapEnabled: false,
+  snapTarget: 'increment',
   gizmoSize: 'medium',
   startWorkspace: 'build',
   theme: 'system',
   performance: 'automatic',
   keymap: 'crucible',
+  motion: 'system',
+  zoomDirection: 'normal',
   setupDone: false,
   gridVisible: true,
   readoutVisible: true,
