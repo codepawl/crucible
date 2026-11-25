@@ -17,6 +17,10 @@ export const STUDIO_CSS = `
   --studio-border: var(--site-border, #fefefd1f);
   --studio-accent: var(--site-focus, #fc9132);
   --studio-ok: #5fc48a;
+  /* A refused name or value: the mark and the border, never colour alone. The dark theme lightens it below. */
+  --studio-warning: #c4262d;
+  /* The corner of a button and of a field. */
+  --studio-radius-control: 8px;
   /* A label's icon: the text colour one step toward the panel, clearly visible in both themes. */
   --studio-icon: color-mix(in srgb, var(--studio-text) 78%, var(--studio-panel));
   /* Drawn over the viewport, which is dark in both themes: these two do not follow the theme. */
@@ -226,7 +230,7 @@ export const STUDIO_CSS = `
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.crucible-studio-gizmo .crucible-studio-cage-brush {
+.crucible-studio-gizmo :is(.crucible-studio-cage-brush, .crucible-studio-cage-box) {
   fill: color-mix(in srgb, var(--studio-accent) 14%, transparent);
   stroke: var(--studio-accent);
   stroke-width: 1.5;
@@ -550,7 +554,6 @@ export const STUDIO_CSS = `
 .crucible-studio-menubar > .crucible-studio-island:first-child { justify-self: start; }
 .crucible-studio-menubar > .crucible-studio-spacer { display: none; }
 .crucible-studio-menubar > .crucible-studio-spacer + .crucible-studio-island { justify-self: end; }
-.crucible-studio[data-tight="true"] .crucible-studio-filepill { display: none; }
 .crucible-studio[data-desktop="true"] .crucible-studio-menubar {
   -webkit-app-region: drag;
   pointer-events: auto;
@@ -591,7 +594,8 @@ export const STUDIO_CSS = `
 .crucible-studio-mark-face { fill: #fefefd; }
 .crucible-studio-mark-eye { fill: #111114; }
 .crucible-studio button.crucible-studio-filepill {
-  display: inline-block;
+  display: inline-flex;
+  gap: 0;
   max-inline-size: 220px;
   padding: 4px 8px;
   font-family: var(--studio-font-heading);
@@ -600,7 +604,207 @@ export const STUDIO_CSS = `
   letter-spacing: -0.01em;
   line-height: 22px;
   overflow: hidden;
+}
+.crucible-studio-filepill-name {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crucible-studio-filepill-suffix {
+  flex: none;
+  white-space: pre;
+  color: var(--studio-name-suffix-color);
+}
+.crucible-studio button.crucible-studio-filepill { cursor: text; }
+.crucible-studio button.crucible-studio-filepill:hover,
+.crucible-studio button.crucible-studio-filepill:focus-visible {
+  background: color-mix(in srgb, var(--studio-text) 7%, transparent);
+}
+.crucible-studio [data-renaming="true"] { display: none !important; }
+/* The editor of a name. In the top bar it has the box of the name it replaces (same padding, border and line height), holds the
+   field, then the type of the file as plain text that cannot be edited, so nothing moves when it opens. */
+.crucible-studio-name-editor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  padding: var(--studio-space-4) var(--studio-space-8);
+  border: 1px solid var(--studio-accent);
+  border-radius: var(--studio-radius-control);
+  background: color-mix(in srgb, var(--studio-text) 7%, transparent);
+  font-family: var(--studio-font-heading);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  line-height: 22px;
+}
+/* The name is at most as wide as the name button it replaces. */
+.crucible-studio-filename-editor { max-inline-size: 220px; }
+.crucible-studio[data-compact="true"] .crucible-studio-filename-editor { max-inline-size: 190px; }
+/* In the top bar the ring surrounds only the name that can be edited. The type after it sits outside the ring, in the dim colour,
+   and the whole editor is the size of the name button it replaces: the field has the button's padding, the editor has none. */
+.crucible-studio-filename-editor {
+  padding: 0 var(--studio-space-4) 0 0;
+  border: 0;
+  background: none;
+}
+.crucible-studio-filename-editor .crucible-studio-name-field {
+  padding: var(--studio-space-4) var(--studio-space-4) var(--studio-space-4) var(--studio-space-8);
+  border: 1px solid var(--studio-accent);
+  border-radius: var(--studio-radius-control);
+  background: color-mix(in srgb, var(--studio-text) 7%, transparent);
+}
+.crucible-studio-filename-editor[data-invalid="true"] .crucible-studio-name-field {
+  border-color: var(--studio-warning);
+  background: color-mix(in srgb, var(--studio-warning) 12%, transparent);
+}
+.crucible-studio-filename-editor[data-busy="true"] .crucible-studio-name-field {
+  border-color: var(--studio-border);
+  background: none;
+}
+.crucible-studio .crucible-studio-filename-editor .crucible-studio-name-field input.crucible-studio-name-input {
+  /* The text starts where the name button's did (the 8px padding of the field). A name that scrolls fades out at both edges, so
+     the ring never cuts a letter in half. */
+  inset: var(--studio-space-4) 0;
+  inline-size: auto;
+  padding-inline: var(--studio-space-8) var(--studio-space-4);
+  mask-image: linear-gradient(to right, transparent 0, #000 8px, #000 calc(100% - 4px), transparent 100%);
+}
+.crucible-studio-name-editor[data-invalid="true"] {
+  border-color: var(--studio-warning);
+  background: color-mix(in srgb, var(--studio-warning) 12%, transparent);
+}
+.crucible-studio-filename-editor[data-invalid="true"] { border: 0; background: none; }
+/* Busy: a neutral ring, dimmed text and a turning mark. Nothing here is green, which reads as done. */
+.crucible-studio-name-editor[data-busy="true"] { border-color: var(--studio-border); cursor: progress; }
+.crucible-studio-name-editor[data-busy="true"] input.crucible-studio-name-input { color: var(--studio-muted); cursor: progress; }
+.crucible-studio-name-busy {
+  display: inline-flex;
+  flex: none;
+  margin-inline-start: var(--studio-space-4);
+}
+.crucible-studio-name-busy[hidden] { display: none; }
+.crucible-studio-name-busy .crucible-studio-icon {
+  inline-size: 14px;
+  block-size: 14px;
+  stroke: var(--studio-muted);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .crucible-studio-name-busy .crucible-studio-icon { animation: crucible-studio-name-turn 900ms linear infinite; }
+  @keyframes crucible-studio-name-turn {
+    to { rotate: 360deg; }
+  }
+}
+.crucible-studio-name-field {
+  position: relative;
+  display: block;
+  flex: 0 1 auto;
+  min-inline-size: 0;
+}
+.crucible-studio-name-mirror {
+  display: block;
+  visibility: hidden;
+  overflow: hidden;
+  white-space: pre;
+}
+.crucible-studio .crucible-studio-name-editor input.crucible-studio-name-input {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  outline: none;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  font-variant-numeric: normal;
+}
+.crucible-studio {
+  /* The type of the file, dimmer than the name and above 4.5:1 on the bar in both themes. */
+  --studio-name-suffix-color: var(--studio-muted);
+}
+.crucible-studio-name-suffix {
+  flex: none;
+  /* Dimmer than the name, and still above 4.5:1 on the field in both themes (the plain muted colour is 4.4:1 in the light one). */
+  color: var(--studio-name-suffix-color);
+  user-select: none;
+}
+.crucible-studio-name-error {
+  position: absolute;
+  inset-block-start: calc(100% + var(--studio-space-8));
+  inset-inline-end: var(--studio-name-reason-shift, 0px);
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  inline-size: max-content;
+  /* About two short lines: it also fits the gap between the workspace tabs and the file name at 1280 wide. */
+  max-inline-size: 240px;
+  padding: var(--studio-space-8);
+  border: 1px solid var(--studio-warning);
+  border-radius: var(--studio-radius-control);
+  background: var(--studio-panel);
+  box-shadow: var(--studio-shadow);
+  color: var(--studio-text);
+  font-family: var(--studio-font);
+  font-weight: 500;
+  font-size: 12.5px;
+  letter-spacing: 0;
+  line-height: 16px;
+  white-space: normal;
+}
+/* Beside the name, on the free part of the bar, so the reason covers no panel. */
+.crucible-studio-name-editor[data-placement="beside"] .crucible-studio-name-error {
+  inset-block-start: 50%;
+  inset-inline-end: calc(100% + var(--studio-space-8));
+  translate: 0 -50%;
+}
+.crucible-studio-name-error[hidden] { display: none; }
+.crucible-studio-name-error .crucible-studio-icon {
+  flex: none;
+  inline-size: 16px;
+  block-size: 16px;
+  stroke: var(--studio-warning);
+}
+/* In the Scene list the field is laid over the label alone, from the label's own start (placed by studio.js) to the eye button.
+   Its text starts where the label's did: the field's own inset is taken back by the negative margin. */
+.crucible-studio-tree-row { position: relative; }
+.crucible-studio-tree-select[data-renaming="label"] .crucible-studio-tree-label { visibility: hidden; }
+.crucible-studio-tree-row .crucible-studio-name-editor {
+  /* The room between the field's edge and its text: small, so the ring stops short of the icon before the label. */
+  --studio-name-row-inset: 2px;
+  position: absolute;
+  inset-block: 0;
+  margin-inline-start: calc(-1 * (1px + var(--studio-name-row-inset)));
+  padding: 0 var(--studio-name-row-inset);
+  font-family: var(--studio-font);
+  font-weight: 400;
+  font-size: 12.5px;
+  letter-spacing: 0;
+  line-height: 18px;
+}
+.crucible-studio-tree-row .crucible-studio-name-field { flex: 1 1 auto; align-self: stretch; }
+/* The field text sits on the label baseline: measured one pixel high without this (ink rows 181 to 191 against 182 to 192). */
+.crucible-studio-tree-row .crucible-studio-name-editor input.crucible-studio-name-input { padding-block-start: 2px; }
+.crucible-studio-bookmark-row .crucible-studio-name-editor {
+  flex: 1 1 auto;
+  font-family: var(--studio-font);
+  font-weight: 400;
+  font-size: 12.5px;
+  letter-spacing: 0;
+  line-height: 18px;
+}
+.crucible-studio-bookmark-row .crucible-studio-name-field { flex: 1 1 auto; }
+.crucible-studio[data-theme="dark"] { --studio-warning: #ff7b72; }
+@media (prefers-color-scheme: dark) {
+  .crucible-studio:not([data-theme]) { --studio-warning: #ff7b72; }
 }
 .crucible-studio-filepill[data-dirty="true"]::after {
   content: "";
@@ -623,6 +827,8 @@ export const STUDIO_CSS = `
   flex-shrink: 0;
 }
 .crucible-studio-watch-pill[hidden] { display: none; }
+/* After the dot's own rule: the contrast test reads the first rule that names the dot. */
+.crucible-studio-menubar:has(.crucible-studio-name-editor[data-busy="true"]) .crucible-studio-watch-pill { visibility: hidden; }
 .crucible-studio-spacer { flex: 1 1 auto; }
 .crucible-studio button.crucible-studio-primary-btn {
   padding-inline: 12px 16px;
@@ -777,7 +983,6 @@ export const STUDIO_CSS = `
   background: color-mix(in srgb, var(--studio-text) 7%, transparent);
 }
 .crucible-studio[data-compact="true"] .crucible-studio-menu-button[popovertarget="crucible-studio-pop-view"],
-.crucible-studio[data-compact="true"] .crucible-studio-filepill,
 .crucible-studio[data-compact="true"] .crucible-studio-primary-btn span {
   display: none;
 }
