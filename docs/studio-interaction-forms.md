@@ -98,3 +98,4 @@ Pick the form by how a person reaches the feature:
 | Motion | setting | `src/studio-preferences.js`, `src/studio-settings.js` | A stored choice made once: follow the system or reduce Studio's own motion. |
 | Zoom direction | setting | `src/studio-preferences.js`, `src/studio-settings.js` | A stored choice made once for which way the wheel and a pinch zoom. |
 | Account | panel | Settings > Account, `src/studio-account.js` | Shows who is signed in and the host's sign-in and sign-out actions in one section; Studio holds no token. |
+| History | panel | `src/studio.js` (the History card in the right column), View > History, Edit > History | A log of the edits that stays on screen beside Properties: a viewer of a recording follows it downward, and the person editing steps back or forward from it. A tab of Properties would be swapped out when the selection changes tabs, so it is its own card, shown and hidden by a toggle. |
