@@ -87,12 +87,15 @@ test('an event is checked at the boundary and keeps only the fields it defines',
   const notice = parseAgentChatEvent({ type: 'notice', kind: 'signedOut', message: 'Signed out', actionLabel: 'Sign in', action });
   assert.equal(notice.action, action);
   assert.throws(() => parseAgentChatEvent(null), /is an object such as/);
-  assert.throws(() => parseAgentChatEvent({ type: 'shout' }), /Unknown agent chat event type "shout"/);
+  assert.equal(parseAgentChatEvent({ type: 'shout' }), null);
+  assert.throws(() => parseAgentChatEvent({ kind: 'quota' }), /needs type as a non-empty string/);
+  assert.throws(() => parseAgentChatEvent({ type: 7 }), /needs type as a non-empty string/);
   assert.throws(() => parseAgentChatEvent({ type: 'text', text: '' }), /needs text as a non-empty string/);
   assert.throws(() => parseAgentChatEvent({ type: 'text', text: 7 }), /needs text as a non-empty string/);
   assert.throws(() => parseAgentChatEvent({ type: 'step', label: 'x'.repeat(AGENT_CHAT_LIMITS.labelLength + 1) }), /most is 120/);
   assert.throws(() => parseAgentChatEvent({ type: 'step', label: 'Moved', nodeId: 4 }), /needs nodeId/);
-  assert.throws(() => parseAgentChatEvent({ type: 'notice', kind: 'weather', message: 'Rain' }), /kind "weather" is not known/);
+  assert.equal(parseAgentChatEvent({ type: 'notice', kind: 'weather', message: 'Rain' }), null);
+  assert.throws(() => parseAgentChatEvent({ type: 'notice', message: 'Rain' }), /needs kind as a non-empty string/);
   assert.throws(() => parseAgentChatEvent({ type: 'notice', kind: 'quota', message: 'Out', actionLabel: 'Buy' }), /no action function/);
 });
 
@@ -213,6 +216,17 @@ test('reply text is shown as text, never as markup', testContext => {
   const reply = ui.rows()[0];
   assert.equal(reply.textContent, '<img src=x onerror=alert(1)>');
   assert.equal(reply.querySelectorAll('img').length, 0);
+});
+
+test('an event type or notice kind from a newer host is skipped without a notice or a row', testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  sample.emit({ type: 'usage', used: 3, limit: 10 });
+  sample.emit({ type: 'notice', kind: 'quota-warning', message: 'Half of the credits are used' });
+  assert.equal(ui.notices().textContent, '');
+  assert.equal(ui.rows().length, 0);
+  sample.emit({ type: 'text', text: 'Still here' });
+  assert.equal(ui.rows()[0].textContent, 'Still here');
 });
 
 test('a malformed event shows an error notice that says what was wrong and the card carries on', testContext => {

@@ -38,9 +38,11 @@ function boundedText(event, field, longest, { required = true } = {}) {
 }
 
 function parseNotice(event) {
-  if (!AGENT_NOTICE_KINDS.includes(event.kind)) {
-    throw new RangeError(`Agent chat notice kind ${JSON.stringify(event.kind)} is not known. Use one of ${AGENT_NOTICE_KINDS.join(', ')}.`);
+  if (typeof event.kind !== 'string' || event.kind === '') {
+    throw new TypeError(`Agent chat notice needs kind as a non-empty string such as ${AGENT_NOTICE_KINDS.join(', ')}; got ${JSON.stringify(event.kind)}.`);
   }
+  // A kind this card does not know comes from a newer host: it is skipped, not reported.
+  if (!AGENT_NOTICE_KINDS.includes(event.kind)) return null;
   const notice = { type: 'notice', kind: event.kind, message: boundedText(event, 'message', AGENT_CHAT_LIMITS.noticeTextLength) };
   const actionLabel = boundedText(event, 'actionLabel', AGENT_CHAT_LIMITS.actionLabelLength, { required: false });
   if (actionLabel !== undefined) {
@@ -56,6 +58,8 @@ function parseNotice(event) {
 /**
  * The event as Studio keeps it, or an error that says what was wrong. Unknown fields are dropped.
  * The events: text, step, done, stopped, error and notice (see docs/studio.md, "Agent chat").
+ * An event type or a notice kind this card does not know returns null, so a newer host can send more
+ * than an older Studio shows; a known event that is malformed still throws.
  */
 export function parseAgentChatEvent(event) {
   if (!event || typeof event !== 'object' || Array.isArray(event)) {
@@ -78,7 +82,10 @@ export function parseAgentChatEvent(event) {
     case 'notice':
       return parseNotice(event);
     default:
-      throw new RangeError(`Unknown agent chat event type ${JSON.stringify(event.type)}. Use one of text, step, done, stopped, error, notice.`);
+      if (typeof event.type !== 'string' || event.type === '') {
+        throw new TypeError(`An agent chat event needs type as a non-empty string such as text, step, done, stopped, error or notice; got ${JSON.stringify(event.type)}.`);
+      }
+      return null;
   }
 }
 
@@ -296,6 +303,7 @@ export function createAgentChatCard({ documentReference, createElement, createIc
     } catch (error) {
       parsed = { type: 'notice', kind: 'error', message: `The host sent an agent event Studio could not read. ${errorText(error)}`.slice(0, AGENT_CHAT_LIMITS.noticeTextLength) };
     }
+    if (parsed === null) return;
     const nodeId = conversation.apply(parsed);
     render();
     if (nodeId) onStep(nodeId);

@@ -332,7 +332,7 @@ globalThis.crucibleShell = {
 };
 ```
 
-The listener takes plain JSON events, checked at this boundary (a bad one shows as an error notice that says what was wrong, and the rest carry on):
+The listener takes plain JSON events, checked at this boundary (a bad one shows as an error notice that says what was wrong, and the rest carry on). An event type or a notice kind this Studio does not know is skipped without a notice, so a newer host can send more than an older Studio shows:
 
 | Event | Shows |
 | --- | --- |
