@@ -194,10 +194,10 @@ export function registerModifierRunner(operation, runner) {
   REGISTERED_RUNNERS[operation] = runner;
 }
 
-export function runModifierEdit(mesh, edit, { maxVertices, maxFaces }) {
+export function runModifierEdit(mesh, edit, { maxVertices, maxFaces, resolveJoinMesh }) {
   if (Object.hasOwn(GENERATOR_RUNNERS, edit.op)) return GENERATOR_RUNNERS[edit.op](mesh, edit, { maxVertices, maxFaces });
   if (Object.hasOwn(NORMAL_RUNNERS, edit.op)) return { mesh: NORMAL_RUNNERS[edit.op](mesh, edit), result: {} };
-  if (Object.hasOwn(REGISTERED_RUNNERS, edit.op)) return REGISTERED_RUNNERS[edit.op](mesh, edit);
+  if (Object.hasOwn(REGISTERED_RUNNERS, edit.op)) return REGISTERED_RUNNERS[edit.op](mesh, edit, { maxVertices, maxFaces, resolveJoinMesh });
   if (isDeformModifier(edit.op)) return runDeformEdit(mesh, edit);
   switch (edit.op) {
     case 'weld': {

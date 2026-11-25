@@ -113,7 +113,7 @@ Run `npm run preflight` before you open a pull request. It runs every check belo
 
 Between one test file and the full pass there are four commands made for coding agents. Their output is short (one `FAIL file :: test :: first message` line per failure, at most ten, then a count) and the full TAP goes to `artifacts/test-logs/`:
 
-- `npm run test:affected -- <files...>` runs every test file that mentions one of the files, or a module that re-exports it; with no files it uses the files your branch changed.
+- `npm run test:affected -- <files...>` runs every test file that mentions one of the files or reaches it through imports and re-exports of any depth; with no files it uses the files your branch changed.
 - `npm run test:fast` runs a deterministic 10 percent of the test files, seeded by the branch name (`-- --seed <text> --percent <n>` changes it). It does not replace `npm test`.
 - `npm run test:mutation-check -- tests/<name>.test.js` reverts your changes under `src/`, `bin/`, `packages/` and `scripts/`, runs the tests, prints the ones that fail and restores the tree. It exits 1 when none fail, because then the test does not pin your change. Stage unstaged edits outside those folders first and `git add -N` new files under them.
 - `npm test -- --test-reporter=./scripts/test-compact-reporter.mjs` gives the full pass the same short output.

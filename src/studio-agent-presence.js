@@ -114,7 +114,7 @@ function createPointerIcon(documentReference) {
  * Creates the pointer and the outline it draws. `controller` supplies `nodeOutline`, `viewportWidth` and `viewportHeight`;
  * `requestDraw` asks the Studio for a frame so the outline appears. Returns the elements to mount and the calls that drive them.
  */
-export function createAgentPresence(documentReference, { controller, requestDraw }) {
+export function createAgentPresence(documentReference, { controller, requestDraw, isReducedMotion = () => false }) {
   const pointer = documentReference.createElement('div');
   pointer.className = 'crucible-studio-agent-cursor';
   pointer.hidden = true;
@@ -153,7 +153,7 @@ export function createAgentPresence(documentReference, { controller, requestDraw
     const view = documentReference.defaultView;
     const style = view?.getComputedStyle?.(pointer);
     // A missing or unreadable token must not play a glide for someone who asked for reduced motion.
-    const reducedMotion = view?.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+    const reducedMotion = isReducedMotion() || view?.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
     return {
       duration: reducedMotion ? 0 : parseDurationMilliseconds(style?.getPropertyValue(TRAVEL_TOKEN), DEFAULT_TRAVEL_MILLISECONDS),
       easing: style?.getPropertyValue(EASE_TOKEN)?.trim() || DEFAULT_EASING,
