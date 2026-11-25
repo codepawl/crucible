@@ -182,7 +182,7 @@ const POST_STEP_CONDITIONS = {
 // The program with every step is the one a frame draws while a variant builds. It leaves out the steps below: the fog sky grid,
 // field and lights exist only inside a fog, and the volume fog and explosion code load from fog-shader.js and explosion-shader.js
 // only for a renderer that draws them.
-export const POST_STEPS_WITH_OPTIONAL_CODE = Object.freeze(['volume', 'sky', 'field', 'detail', 'lights', 'local', 'explosion', 'linearOutput', 'autoExposure']);
+export const POST_STEPS_WITH_OPTIONAL_CODE = Object.freeze(['volume', 'sky', 'field', 'detail', 'lights', 'local', 'explosion', 'linearOutput', 'autoExposure', 'dither']);
 export const POST_STEPS = Object.freeze(Object.keys(POST_STEP_CONDITIONS).filter(step => !POST_STEPS_WITH_OPTIONAL_CODE.includes(step)));
 
 const EXPLOSION_STUB = 'vec3 explosion(vec3 background) { return background; }';
@@ -262,14 +262,33 @@ export function createLocalVolumeCompositeFragment(motion = false, kind = 'both'
   return postFragmentSource(definitions, explosionFunctionFor(enabled), fogCode.declarations, fogCode.functions, LOCAL_VOLUME_COMPOSITE_MAIN);
 }
 
+// Output dither (#3258): interleaved gradient noise (Jimenez 2014) of one 8-bit step peak to peak and centred on zero, added as the last thing
+// the post pass does, so the rounding to 8 bits turns a smooth ramp into steps that alternate by pixel instead of flat bands. All three channels
+// get the same offset (no colour noise); it depends on the pixel and the frame time only, so the same frame gives the same bytes. 64 patterns, one
+// per millisecond of frame time. Only a program with the dither step holds this code; every other program keeps the text it had.
+const OUTPUT_DITHER_FUNCTION = `float outputDither(vec2 pixel, float frameTime) {
+  float slot = mod(floor(frameTime * 1000.0 + 0.5), 64.0);
+  return (fract(52.9829189 * fract(dot(pixel + 5.588238 * slot, vec2(0.06711056, 0.00583715)))) - 0.5) / 255.0;
+}
+`;
+const FINAL_COLOR_LINE = ['  outputColor = vec4(color * (1.0 - fade) * alpha, alpha);', ''].join('\n');
+const DITHER_LINE = ['  outputColor.rgb += outputDither(gl_FragCoord.xy, time) * alpha;', ''].join('\n');
+
+function withOutputDither(mainBody) {
+  if (!mainBody.includes(FINAL_COLOR_LINE)) throw new Error('The post shader no longer holds the line that dither is added after.');
+  return OUTPUT_DITHER_FUNCTION + mainBody.replace(FINAL_COLOR_LINE, () => FINAL_COLOR_LINE + DITHER_LINE);
+}
+
 // The post main with the code of the optional steps that change it; undefined leaves the main as it was.
 function postMainFor(enabledSteps) {
-  if (!enabledSteps.has('linearOutput') && !enabledSteps.has('autoExposure') && !enabledSteps.has(KEEP_HUE_STEP)) return undefined;
+  if (!enabledSteps.has('linearOutput') && !enabledSteps.has('autoExposure') && !enabledSteps.has(KEEP_HUE_STEP) && !enabledSteps.has('dither')) return undefined;
   let mainBody = POST_MAIN;
   if (enabledSteps.has('autoExposure')) mainBody = requireFeatureCode('autoExposure').post(mainBody);
   if (enabledSteps.has('linearOutput')) mainBody = requireFeatureCode('linearOutput').post(mainBody);
-  // Last, because it matches the bloom and tone map lines that the two steps above leave in place.
+  // After the two steps above, because it matches the bloom and tone map lines they leave in place.
   if (enabledSteps.has(KEEP_HUE_STEP)) mainBody = requireFeatureCode('keepHue').post(mainBody);
+  // Dither goes after keepHue: it is added after the final colour line, which keepHue leaves in place.
+  if (enabledSteps.has('dither')) mainBody = withOutputDither(mainBody);
   return mainBody;
 }
 

@@ -19,6 +19,8 @@ import {
 } from './studio-templates.js';
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
+// The furthest a typed move may go in metres: the coordinate limit the recipe keeps for positions.
+const MAX_TYPED_TRAVEL = 1e6;
 const PLANE_AXES = Object.freeze(['xy', 'xz', 'yz']);
 const GIZMO_AXES = Object.freeze(['x', 'y', 'z', 'xy', 'xz', 'yz', 'screen', 'uniform', 'surface']);
 // The property panels that show one record of the recipe instead of one scene object, and the motion kind that animates it.
@@ -1674,6 +1676,10 @@ export function createStudioController({
       changed: false,
       deltaLabel: '',
       baseOutline: nodeOutline(selectedNodeId),
+      basis,
+      typedAmount: null,
+      lastX: pixelX,
+      lastY: pixelY,
       wrappedDegrees: 0,
       turnedDegrees: 0,
       sweepDegrees: 0,
@@ -1761,6 +1767,50 @@ export function createStudioController({
     return { elementDelta: snapped };
   }
 
+  function clampTypedTravel(amount) {
+    return Math.max(-MAX_TYPED_TRAVEL, Math.min(MAX_TYPED_TRAVEL, amount));
+  }
+
+  /** The world move a typed amount makes: that far along each axis of a plane, or to the right of the view. */
+  function typedPlaneDelta(axis, typedAmount) {
+    const amount = clampTypedTravel(typedAmount);
+    if (PLANE_AXES.includes(axis)) {
+      const delta = vec3.create();
+      for (const letter of axis) {
+        vec3.scaleAndAdd(delta, delta, dragState.basis[letter], amount);
+      }
+      return [delta[0], delta[1], delta[2]];
+    }
+    const camera = viewCamera();
+    const forward = vec3.subtract(vec3.create(), camera.target, camera.eye);
+    const right = vec3.cross(vec3.create(), forward, [0, 1, 0]);
+    if (vec3.length(right) < 1e-6) {
+      return [amount, 0, 0];
+    }
+    vec3.normalize(right, right);
+    return [right[0] * amount, right[1] * amount, right[2] * amount];
+  }
+
+  function signedAmountLabel(prefix, amount, unit) {
+    return `${prefix} ${amount >= 0 ? '+' : ''}${amount.toFixed(2)}${unit}`;
+  }
+
+  /**
+   * Sets the exact amount of the drag in progress, as when numbers are typed while G, R or S holds an object: metres to
+   * move, degrees to turn, a factor to scale. Null hands the amount back to the pointer. The drag is still one undo step.
+   */
+  function setGizmoTypedAmount(amount) {
+    if (amount !== null && !Number.isFinite(amount)) {
+      throw new TypeError('setGizmoTypedAmount takes a finite number, or null to follow the pointer again.');
+    }
+    if (!dragState) {
+      return false;
+    }
+    dragState.typedAmount = amount;
+    updateGizmoDrag(dragState.lastX, dragState.lastY);
+    return true;
+  }
+
   function updateGizmoDrag(pixelX, pixelY, { shiftKey = false } = {}) {
     if (!dragState) {
       return null;
@@ -1768,6 +1818,10 @@ export function createStudioController({
     if (!Number.isFinite(pixelX) || !Number.isFinite(pixelY)) {
       throw new TypeError('updateGizmoDrag requires finite pixel coordinates.');
     }
+    dragState.lastX = pixelX;
+    dragState.lastY = pixelY;
+    const typedAmount = dragState.typedAmount;
+    const isTyped = typedAmount !== null;
     const deltaX = pixelX - dragState.startX;
     const deltaY = pixelY - dragState.startY;
     const axisIndex = AXIS_NAMES.indexOf(dragState.axis);
@@ -1785,24 +1839,29 @@ export function createStudioController({
     if (dragState.tool === 'translate' && dragState.planeNormal) {
       const ray = screenRay(pixelX, pixelY);
       const hitPoint = rayPlaneIntersection(ray.origin, ray.direction, dragState.basePivot, dragState.planeNormal);
-      if (!hitPoint) {
+      if (!hitPoint && !isTyped) {
         return null;
       }
-      const rawWorldDelta = [
-        hitPoint[0] - dragState.planeStartPoint[0],
-        hitPoint[1] - dragState.planeStartPoint[1],
-        hitPoint[2] - dragState.planeStartPoint[2],
-      ];
+      const planeDeltaLabel = () => (isTyped
+        ? signedAmountLabel(dragState.axis.toUpperCase(), clampTypedTravel(typedAmount), ' m')
+        : `${dragState.axis.toUpperCase()} ${Math.hypot(...rawWorldDelta).toFixed(2)} m`);
+      const rawWorldDelta = isTyped
+        ? typedPlaneDelta(dragState.axis, typedAmount)
+        : [
+          hitPoint[0] - dragState.planeStartPoint[0],
+          hitPoint[1] - dragState.planeStartPoint[1],
+          hitPoint[2] - dragState.planeStartPoint[2],
+        ];
       const maxJump = Math.max(12, vec3.distance(viewCamera().eye, dragState.basePivot) * 4);
       const deltaLength = Math.hypot(...rawWorldDelta);
-      if (deltaLength > maxJump) {
+      if (deltaLength > maxJump && !isTyped) {
         const factor = maxJump / deltaLength;
         rawWorldDelta[0] *= factor;
         rawWorldDelta[1] *= factor;
         rawWorldDelta[2] *= factor;
       }
       if (dragState.elementDrag) {
-        return moveElementSelection(rawWorldDelta, shiftKey, `${dragState.axis.toUpperCase()} ${deltaLength.toFixed(2)} m`);
+        return moveElementSelection(rawWorldDelta, shiftKey && !isTyped, planeDeltaLabel());
       }
       const localDelta = toNodeLocalDelta(rawWorldDelta, dragState.parentInverse);
       const rawTranslation = [
@@ -1810,10 +1869,10 @@ export function createStudioController({
         dragState.baseTranslation[1] + localDelta[1],
         dragState.baseTranslation[2] + localDelta[2],
       ];
-      const translation = roundVector(shiftKey ? snapVector(rawTranslation, moveSnapStep) : rawTranslation);
+      const translation = roundVector(shiftKey && !isTyped ? snapVector(rawTranslation, moveSnapStep) : rawTranslation);
       writeDraggedPose({ translation });
       dragState.changed = true;
-      dragState.deltaLabel = `${dragState.axis.toUpperCase()} ${deltaLength.toFixed(2)} m`;
+      dragState.deltaLabel = planeDeltaLabel();
       notify({ kind: 'transform', nodeId: dragState.nodeId, live: true, deltaLabel: dragState.deltaLabel });
       return { translation };
     }
@@ -1825,7 +1884,7 @@ export function createStudioController({
       const pixelTravel = (deltaX * dragState.axisScreen[0] + deltaY * dragState.axisScreen[1]) * dragState.worldPerPixel;
       const exactTravel = axisParameter === null ? pixelTravel : axisParameter - dragState.axisStartParameter;
       const steppedTravel = shiftKey ? Math.round(exactTravel / moveSnapStep) * moveSnapStep : exactTravel;
-      const travel = Math.max(-maxTravel, Math.min(maxTravel, steppedTravel));
+      const travel = isTyped ? clampTypedTravel(typedAmount) : Math.max(-maxTravel, Math.min(maxTravel, steppedTravel));
       const worldDelta = [dragState.axisWorld[0] * travel, dragState.axisWorld[1] * travel, dragState.axisWorld[2] * travel];
       if (dragState.elementDrag) {
         return moveElementSelection(worldDelta, false, `${dragState.axis.toUpperCase()} ${travel >= 0 ? '+' : ''}${travel.toFixed(2)} m`);
@@ -1858,7 +1917,7 @@ export function createStudioController({
           rawDegrees = dragState.turnedDegrees;
         }
       }
-      const degrees = shiftKey ? Math.round(rawDegrees / rotateSnapDegrees) * rotateSnapDegrees : rawDegrees;
+      const degrees = isTyped ? typedAmount : shiftKey ? Math.round(rawDegrees / rotateSnapDegrees) * rotateSnapDegrees : rawDegrees;
       dragState.sweepDegrees = degrees;
       const radians = (degrees * Math.PI) / 180;
       const axisVector = axisIndex === 0 ? [1, 0, 0] : axisIndex === 1 ? [0, 1, 0] : [0, 0, 1];
@@ -1884,7 +1943,7 @@ export function createStudioController({
           rawFactor = axisParameter / dragState.axisStartParameter;
         }
       }
-      const factor = Math.max(MINIMUM_SCALE, Math.min(MAXIMUM_SCALE, rawFactor));
+      const factor = Math.max(MINIMUM_SCALE, Math.min(MAXIMUM_SCALE, isTyped ? typedAmount : rawFactor));
       const affectsAxis = index => {
         if (dragState.axis === 'uniform' || dragState.axis === 'screen') return true;
         if (index === axisIndex) return true;
@@ -2761,6 +2820,24 @@ export function createStudioController({
     return cameraIsDriven() ? moveView(shot.camera ?? {}) : camera;
   }
 
+  // The shot keeps its place and camera; only its name changes, in one undoable edit. A name another shot has is refused.
+  function renameBookmark(name, newName) {
+    if (typeof newName !== 'string' || !SHOT_NAME_PATTERN.test(newName)) {
+      throw new RangeError('Bookmark name must be 1 to 24 letters, digits, - or _.');
+    }
+    const existingShots = currentScene.exportRecipe().timeline?.shots ?? [];
+    if (!existingShots.some(candidate => candidate.name === name)) {
+      throw new RangeError(`Unknown camera bookmark "${String(name)}".`);
+    }
+    if (newName !== name && existingShots.some(candidate => candidate.name === newName)) {
+      throw new RangeError(`A camera bookmark named "${newName}" already exists.`);
+    }
+    const renamed = existingShots.map(candidate => (candidate.name === name ? { ...candidate, name: newName } : candidate));
+    applySceneOperations([{ type: 'set-timeline', timeline: { shots: renamed } }]);
+    notify({ kind: 'bookmark', renamed: name, name: newName });
+    return structuredClone(renamed);
+  }
+
   function removeBookmark(name) {
     const recipe = currentScene.exportRecipe();
     const existingShots = recipe.timeline?.shots ?? [];
@@ -3004,6 +3081,7 @@ export function createStudioController({
     nodeBounds,
     beginGizmoDrag,
     updateGizmoDrag,
+    setGizmoTypedAmount,
     endGizmoDrag,
     cancelGizmoDrag,
     axisFacingView,
@@ -3038,6 +3116,7 @@ export function createStudioController({
     saveBookmark,
     applyBookmark,
     removeBookmark,
+    renameBookmark,
     setMotionTime,
     insertNodeKeyframe,
     moveNodeKeyframe,

@@ -30,6 +30,8 @@ export const STUDIO_ICON_PATHS = Object.freeze({
   expand: 'M6 9l6 6 6-6',
   chevron: 'M9 6l6 6-6 6',
   grid: 'M4 4h16v16H4zM9.33 4v16M14.67 4v16M4 9.33h16M4 14.67h16',
+  // A box seen through: the near square whole, the far one drawn behind it.
+  seeThrough: 'M4 9h11v11H4zM9 4h11v11h-5M9 4v5M4 9l5-5M15 9l5-5M15 20l5-5',
   link: 'M9.5 14.5l5-5M11 6.5l1.2-1.2a4.2 4.2 0 0 1 6 6L17 12.5M13 17.5l-1.2 1.2a4.2 4.2 0 0 1-6-6L7 11.5',
   settings: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4',
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4.2-4.2',

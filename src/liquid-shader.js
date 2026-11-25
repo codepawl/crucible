@@ -130,7 +130,7 @@ void main() {
   if (waterClip.y > 0.5 && worldPosition.y < waterClip.x + 0.05) discard;
   vec3 normal = normalize(worldNormal);
   if (glassBackPass > 0.5) {
-    outputColor = vec4(normal * 0.5 + 0.5, 1.0);
+    outputColor = vec4(normal * 0.5 + 0.5, glassBackIdentifier() / 255.0);
     return;
   }
   // Screen-space steps of the position and the normal give the radius of curvature the ball lens model needs.

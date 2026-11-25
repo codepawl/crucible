@@ -9,6 +9,8 @@
 // A contributor fix is something the author can change. Labels and the milestone are the maintainer's job, so a gap there
 // becomes a maintainer todo and the `needs-triage` label, and never counts against the author.
 
+import { addedLinesFromPatch, findOutsideNames, findOutsideNamesInBody } from './check-outside-names.mjs';
+
 export const LOOK_HOLD_LABEL = 'hold:look-approval';
 export const NEEDS_TRIAGE_LABEL = 'needs-triage';
 export const NEEDS_AUTHOR_LABEL = 'status:needs-author';
@@ -195,6 +197,17 @@ function contributorFixesFor(pr, files, light) {
       'local-path',
       'The description has a path from your computer. Issues and pull requests are public, so swap it for a path inside the repository, or remove it.',
       'keep-private-data-out',
+    ));
+  }
+  const outsideNames = [
+    ...findOutsideNamesInBody(body),
+    ...findOutsideNames(files.flatMap(file => addedLinesFromPatch(normalizePath(file.filename), file.patch))),
+  ];
+  if (outsideNames.length > 0) {
+    fixes.push(fix(
+      'outside-names',
+      outsideNames.map(finding => finding.message).join(' '),
+      'keep-outside-names-out',
     ));
   }
   if (light) return fixes;
