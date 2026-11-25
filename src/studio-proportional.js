@@ -19,8 +19,6 @@ export const PROPORTIONAL_MIN_RADIUS = 0.01;
 export const PROPORTIONAL_MAX_RADIUS = 100;
 // One wheel notch grows or shrinks the radius by this factor.
 export const PROPORTIONAL_WHEEL_FACTOR = 1.15;
-// A move that is not whole faces names its vertices in the edit, so the list stays short enough to read in a recipe.
-export const MAX_PROPORTIONAL_SEEDS = 256;
 
 const CIRCLE_SEGMENTS = 64;
 const CURVE_IDS = PROPORTIONAL_CURVES.map(curve => curve.id);

@@ -39,6 +39,7 @@ import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, des
 import './replace-textured-parts.js';
 import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
 import { createBakeMark } from './studio-bake-mark.js';
+import { extensionOf, openNameEditor, splitFileName, validateFileStem, validateNodeLabel, validateShotName } from './studio-name-editor.js';
 import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, frameFailureReason, watchContextLoss } from './studio-context-loss.js';
@@ -78,6 +79,9 @@ export {
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
 const STATUS_DEFAULT_MILLISECONDS = 3400;
+// The reason of a bad scene name sits beside the name when the free gap between the workspace tabs and the name holds it (the reason
+// is at most 240 px wide, plus 8 px of air on each side); otherwise it drops under the name.
+const ERROR_BESIDE_NAME_MIN_GAP = 256;
 // Past the exit transition, in case the browser never sends its transitionend.
 const STATUS_EXIT_SLACK_MILLISECONDS = 40;
 const DEGREE_PRECISION = 100;
@@ -104,7 +108,6 @@ function matchingViewChip(camera) {
 }
 const STUDIO_STYLE_ID = 'crucible-studio-styles';
 const COMPACT_WIDTH = 820;
-const TIGHT_WIDTH = 920;
 // The work runs left to right: build the scene, give it its look, then set it in motion. Each workspace shows only the
 // panels its step needs.
 const STUDIO_WORKSPACES = Object.freeze([
@@ -1281,6 +1284,8 @@ export function createStudio(container, {
 
   let activeFilePath = initialWatchedPath;
   let activeFileName = initialFileName;
+  // The extension of the file a host opened or saved, when it is not one Studio knows: it stays the type of the name on a rename.
+  let activeFileSuffix = '';
   let isDirty = false;
   let autoReloadWatch = true;
   let renderer = suppliedRenderer ?? null;
@@ -1341,7 +1346,7 @@ export function createStudio(container, {
   });
 
   // Top Workspace Header Bar
-  const filePill = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-filepill', textContent: activeFileName, attributes: { popovertarget: 'crucible-studio-pop-new' } });
+  const filePill = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-filepill', attributes: { 'aria-label': 'Rename scene' } });
   const watchPill = createElement(documentReference, 'span', {
     className: 'crucible-studio-watch-pill',
     hidden: !activeFilePath,
@@ -1432,6 +1437,7 @@ export function createStudio(container, {
     createMenuItem('Paste', 'edit.paste', () => pasteCopy(), 'duplicate'),
     createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicate'),
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
+    createMenuItem('Rename', 'edit.rename', () => renameActiveObjectFromMenu()),
     createMenuItem('Deselect', 'edit.deselect', () => controller.selectNode(null)),
     createMenuItem('Hide', 'edit.hide', () => hideSelection(), 'eyeOff'),
     createMenuItem('Show all', 'edit.showAll', () => showAllHidden(), 'eye'),
@@ -1445,6 +1451,7 @@ export function createStudio(container, {
   const objectPopover = createMenuPopover(
     'crucible-studio-pop-object',
     createMenuItem('Frame', 'view.frame', () => flyToSelection(), 'frame'),
+    createMenuItem('Rename', 'edit.rename', () => renameActiveObjectFromMenu()),
     createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicate'),
     createMenuItem('Hide', 'edit.hide', () => hideSelection(), 'eyeOff'),
     createMenuItem('Reset position', 'edit.resetPosition', () => resetSelectionTransform('translation'), 'translate'),
@@ -1778,14 +1785,10 @@ export function createStudio(container, {
     menuButton.addEventListener('pointerenter', () => {
       const openPair = menuPairs.find(([, otherPopover]) => otherPopover !== menuPopover && otherPopover.matches?.(':popover-open'));
       if (openPair) {
-        fileMenuAnchor = menuButton === fileMenuButton ? fileMenuButton : fileMenuAnchor;
         switchMenubarMenu(openPair[1], menuPopover, () => menuPopover.showPopover?.());
       }
     });
   }
-  let fileMenuAnchor = filePill;
-  filePill.addEventListener('click', () => { fileMenuAnchor = filePill; });
-  fileMenuButton.addEventListener('click', () => { fileMenuAnchor = fileMenuButton; });
 
   function bindPopoverAnchor(triggerButton, popoverElement, { beside = false } = {}) {
     popoverElement.addEventListener('beforetoggle', event => {
@@ -1811,7 +1814,7 @@ export function createStudio(container, {
       popoverElement.style.setProperty('--studio-popover-shift', opening.shift);
     });
   }
-  bindPopoverAnchor(() => fileMenuAnchor, newPopover);
+  bindPopoverAnchor(fileMenuButton, newPopover);
   bindPopoverAnchor(editMenuButton, editPopover);
   bindPopoverAnchor(viewMenuButton, viewPopover);
   bindPopoverAnchor(helpMenuButton, helpPopover);
@@ -2159,7 +2162,14 @@ export function createStudio(container, {
   const receiveShadowToggle = createElement(documentReference, 'button', { type: 'button', textContent: 'Receives shadow', attributes: { 'aria-pressed': 'true' } });
 
   nodeLabelInput.addEventListener('change', () => {
-    if (controller.selectedNodeId) controller.updateNodeTransform(controller.selectedNodeId, { label: nodeLabelInput.value });
+    if (!controller.selectedNodeId) return;
+    const checked = validateNodeLabel(nodeLabelInput.value);
+    if (!checked.ok) {
+      announce(checked.reason);
+      nodeLabelInput.value = selectedNodeLabel();
+      return;
+    }
+    controller.updateNodeTransform(controller.selectedNodeId, { label: checked.value });
   });
   nodeParentSelect.addEventListener('change', () => {
     if (!controller.selectedNodeId) return;
@@ -2853,8 +2863,17 @@ export function createStudio(container, {
       : 'Save the scene to a file and the agent can edit it while you watch.';
   }
 
+  // The name shrinks with an ellipsis at its end; the type after it never does, so a long name still shows what kind of file it is.
+  function renderFilePillName() {
+    const { stem, suffix } = splitFileName(activeFileName, activeFileSuffix);
+    filePill.replaceChildren(
+      createElement(documentReference, 'span', { className: 'crucible-studio-filepill-name', textContent: stem }),
+      createElement(documentReference, 'span', { className: 'crucible-studio-filepill-suffix', textContent: suffix }),
+    );
+  }
+
   function syncFileBanner() {
-    filePill.textContent = activeFileName;
+    renderFilePillName();
     filePill.dataset.dirty = isDirty ? 'true' : 'false';
     filePill.title = activeFilePath ?? activeFileName;
     watchPill.hidden = !activeFilePath;
@@ -2983,8 +3002,11 @@ export function createStudio(container, {
     } else {
       agentPresence.hide();
     }
+    cancelNameEditing();
     activeFilePath = filePath;
     activeFileName = fileName;
+    activeFileSuffix = extensionOf(fileName);
+    renameWaitsForSave = false;
     isDirty = false;
     syncFileBanner();
     if (replacedUnsavedChanges) announce('Replaced unsaved changes. Undo brings them back.');
@@ -3023,6 +3045,20 @@ export function createStudio(container, {
     }
   }
 
+  // A scene that is in the recent list keeps showing under its current name after a rename. A scene that never was in the list stays out of it.
+  async function renameRecentEntry(previousFileName) {
+    try {
+      const recentScenes = await loadRecentScenes();
+      const previousEntries = (await recentScenes.list()).filter(entry => entry.name === previousFileName);
+      if (previousEntries.length === 0) return;
+      await recentScenes.remember({ name: activeFileName, text: `${JSON.stringify(controller.exportRecipe(), null, 2)}
+`, filePath: activeFilePath });
+      for (const entry of previousEntries) await recentScenes.remove(entry.id);
+    } catch {
+      // The recent list is a convenience: a rename that cannot be listed is still done.
+    }
+  }
+
   /** Asks what to do with unsaved changes before a scene is replaced. Resolves true when it is safe to go on. */
   async function confirmReplaceScene() {
     if (!isDirty) return true;
@@ -3054,8 +3090,11 @@ export function createStudio(container, {
       const recipe = buildTemplateRecipe(templateKey);
       await prepareRecipe(recipe);
       controller.loadRecipe(recipe);
+      cancelNameEditing();
       activeFilePath = null;
       activeFileName = `${templateKey}.scene.json`;
+      renameWaitsForSave = false;
+      activeFileSuffix = '';
       isDirty = false;
       discardDraft();
       syncFileBanner();
@@ -3133,6 +3172,105 @@ export function createStudio(container, {
     }
   }
 
+  // One name is edited at a time; opening another, or loading another file, closes the one that is open without applying it.
+  let activeNameEditor = null;
+  let renameWaitsForSave = false;
+  let renameNoticeShown = false;
+
+  function cancelNameEditing() {
+    activeNameEditor?.cancel();
+  }
+
+  // A list that rebuilt the row of an open field answers the field as a click away would. Not inside the rebuild itself:
+  // the answer may change the scene, which syncs the list again.
+  function closeDetachedNameEditor() {
+    queueMicrotask(() => activeNameEditor?.closeIfDetached());
+  }
+
+  function startNameEditing(options) {
+    if (activeNameEditor?.isBusy) return null;
+    cancelNameEditing();
+    const editor = openNameEditor({
+      documentReference,
+      createElement,
+      createIcon,
+      ...options,
+      onClose: detail => {
+        if (activeNameEditor === editor) activeNameEditor = null;
+        options.onClose?.(detail);
+      },
+    });
+    activeNameEditor = editor;
+    return editor;
+  }
+
+  // The name is not part of the recipe, so a rename does not mark the scene as changed. It goes to the next save and to the draft.
+  // A host that can rename the file on disk is asked to, and it must refuse to overwrite; without one the old file stays as it is.
+  async function applySceneRename(newFileName) {
+    if (newFileName === activeFileName) return null;
+    const pathAtStart = activeFilePath;
+    const previousFileName = activeFileName;
+    if (activeFilePath && desktop?.renameScene) {
+      const response = await desktop.renameScene({ filePath: activeFilePath, fileName: newFileName });
+      // Another file was opened while the host worked: its answer is about the old one.
+      if (activeFilePath !== pathAtStart) return null;
+      if (response?.exists) return { error: 'A file with this name already exists' };
+      if (response?.error) return { error: String(response.error) };
+      if (response?.canceled) return null;
+      activeFilePath = response?.filePath ?? activeFilePath;
+      activeFileName = response?.fileName ?? newFileName;
+      announceSuccess('Renamed');
+    } else {
+      activeFileName = newFileName;
+      renameWaitsForSave = Boolean(activeFilePath);
+      if (!renameNoticeShown) {
+        renameNoticeShown = true;
+        announceSuccess('Renamed. Saved under this name next time.');
+      }
+    }
+    activeFileSuffix = splitFileName(activeFileName, activeFileSuffix).suffix;
+    if (isDirty) {
+      clearTimeout(draftTimer);
+      writeDraftNow();
+    }
+    syncFileBanner();
+    await renameRecentEntry(previousFileName);
+    return null;
+  }
+
+  // Under the name the reason would cover the top of the Scene panel when that panel sits below the name: it moves left, by the
+  // width of the overlap and 8 px of air, onto the viewport.
+  function reasonShiftClearOfScenePanel() {
+    const outliner = root.querySelector('.crucible-studio-outliner');
+    const outlinerBox = outliner?.getBoundingClientRect();
+    if (!outlinerBox || outlinerBox.width === 0) return 0;
+    return Math.max(0, Math.ceil(filePill.getBoundingClientRect().right - outlinerBox.left + 8));
+  }
+
+  // The reason sits beside the name when the bar has room between the workspace tabs and the name, and under it otherwise.
+  function startSceneRename({ byKeyboard = false } = {}) {
+    const { stem, suffix } = splitFileName(activeFileName, activeFileSuffix);
+    const openedAs = { filePath: activeFilePath, fileName: activeFileName };
+    startNameEditing({
+      anchor: filePill,
+      text: stem,
+      suffix,
+      className: 'crucible-studio-filename-editor',
+      placement: filePill.getBoundingClientRect().left - workspaceList.getBoundingClientRect().right >= ERROR_BESIDE_NAME_MIN_GAP ? 'beside' : 'below',
+      reasonShift: reasonShiftClearOfScenePanel(),
+      label: 'Rename scene',
+      validate: text => validateFileStem(text, suffix),
+      isStale: () => activeFilePath !== openedAs.filePath || activeFileName !== openedAs.fileName,
+      onCommit: value => applySceneRename(`${value}${suffix}`),
+      // Focus goes back to the name for a person on the keyboard; after a click it would only draw a ring.
+      onClose: ({ trigger }) => {
+        if (byKeyboard && (trigger === 'enter' || trigger === 'escape')) filePill.focus();
+      },
+    });
+  }
+  // A click made by Enter or Space on the focused name has no detail; a mouse click has one.
+  filePill.addEventListener('click', event => startSceneRename({ byKeyboard: event.detail === 0 }));
+
   async function performOpenFile() {
     if (desktop?.openFile) {
       const picked = await desktop.openFile();
@@ -3157,12 +3295,14 @@ export function createStudio(container, {
   async function performSaveFile({ forceAs = false } = {}) {
     const recipeText = `${JSON.stringify(controller.exportRecipe(), null, 2)}\n`;
     if (desktop?.saveFile && desktop?.saveFileAs) {
-      const response = forceAs || !activeFilePath
+      const response = forceAs || !activeFilePath || renameWaitsForSave
         ? await desktop.saveFileAs({ text: recipeText, suggestedName: activeFileName })
         : await desktop.saveFile({ filePath: activeFilePath, text: recipeText });
       if (!response || response.canceled) return;
       activeFilePath = response.filePath;
       activeFileName = response.fileName;
+      activeFileSuffix = extensionOf(response.fileName);
+      renameWaitsForSave = false;
       isDirty = false;
       discardDraft();
       syncFileBanner();
@@ -3701,6 +3841,84 @@ export function createStudio(container, {
   const outlinerRows = new Map();
   let lastTreeStructureKey = '';
 
+  function selectedNodeLabel() {
+    const selectedNode = controller.exportRecipe().nodes.find(node => node.id === controller.selectedNodeId);
+    return selectedNode ? (selectedNode.label ?? selectedNode.id) : '';
+  }
+
+  // Renames one node's label from its row. The id stays, so labels may repeat; the change is one undo step like any edit.
+  function startNodeRename(nodeId, { byKeyboard = false } = {}) {
+    const node = controller.exportRecipe().nodes.find(candidate => candidate.id === nodeId);
+    const row = outlinerRows.get(`node:${nodeId}`);
+    if (!node || !row) return;
+    const anchor = row.element.children[0];
+    const eyeButton = row.element.children[1];
+    const editor = startNameEditing({
+      anchor,
+      coverOnly: true,
+      // The field is laid over the label alone, from the label's own start to the eye button, so the icon and the eye stay.
+      onOpen: opened => {
+        const rowBox = row.element.getBoundingClientRect();
+        const labelBox = anchor.querySelector('.crucible-studio-tree-label').getBoundingClientRect();
+        const eyeBox = eyeButton.getBoundingClientRect();
+        opened.element.style.insetInlineStart = `${labelBox.left - rowBox.left}px`;
+        opened.element.style.insetInlineEnd = `${Math.max(0, rowBox.right - eyeBox.left)}px`;
+      },
+      text: node.label ?? node.id,
+      label: `Rename ${node.label ?? node.id}`,
+      validate: validateNodeLabel,
+      isStale: () => !controller.exportRecipe().nodes.some(candidate => candidate.id === nodeId),
+      onCommit: value => {
+        if (value !== (node.label ?? node.id)) controller.updateNodeTransform(nodeId, { label: value });
+        return null;
+      },
+      onClose: ({ trigger }) => {
+        if (byKeyboard && (trigger === 'enter' || trigger === 'escape')) outlinerRows.get(`node:${nodeId}`)?.element.children[0]?.focus({ preventScroll: true });
+      },
+    });
+    if (!editor) return;
+  }
+
+  // F2 and the Rename rows of the menus: the active object. The camera, the sun and the lights keep the names Studio gives them.
+  function renameActiveObject({ byKeyboard = false } = {}) {
+    const nodeId = controller.selectedNodeId;
+    if (!nodeId) {
+      if (controller.selectedObjectKey) announce('The camera, the sun and lights keep their names.');
+      return;
+    }
+    if (root.dataset.outlinerCollapsed === 'true') setOutlinerCollapsed(false);
+    if (!outlinerRows.has(`node:${nodeId}`)) {
+      outlinerSearch.value = '';
+      syncUi();
+    }
+    outlinerRows.get(`node:${nodeId}`)?.element.scrollIntoView?.({ block: 'nearest' });
+    startNodeRename(nodeId, { byKeyboard });
+  }
+
+  // A menu row closes its menu after its own handler, and closing gives focus back to the menu button, which would end a field
+  // opened by then. The field opens once the menu is closed and the focus has settled.
+  function renameActiveObjectFromMenu() {
+    setTimeout(() => renameActiveObject(), 0);
+  }
+
+  // A shot is keyed by its name, so the rename goes through the controller, which refuses a name that is taken.
+  function startShotRename(shotName, anchor) {
+    startNameEditing({
+      anchor,
+      text: shotName,
+      label: `Rename shot ${shotName}`,
+      validate: text => validateShotName(text, controller.listBookmarks().map(shot => shot.name).filter(name => name !== shotName)),
+      isStale: () => !controller.listBookmarks().some(shot => shot.name === shotName),
+      onCommit: value => {
+        if (value !== shotName) controller.renameBookmark(shotName, value);
+        return null;
+      },
+      onClose: ({ trigger }) => {
+        if (trigger === 'escape') anchor.focus();
+      },
+    });
+  }
+
   function createNodeRow(node, depth, iconName) {
     const badge = createIcon(documentReference, iconName);
     badge.setAttribute('class', 'crucible-studio-icon crucible-studio-tree-badge');
@@ -3725,9 +3943,7 @@ export function createStudio(container, {
     });
     selectButton.addEventListener('dblclick', () => {
       controller.selectNode(node.id);
-      selectInspectorTab('node');
-      nodeLabelInput.focus();
-      nodeLabelInput.select();
+      startNodeRename(node.id);
     });
     const hidden = node.visible === false;
     const eyeButton = createIconButton(documentReference, hidden ? 'eyeOff' : 'eye', `${hidden ? 'Show' : 'Hide'} ${node.label ?? node.id}`, {
@@ -3892,6 +4108,7 @@ export function createStudio(container, {
     }
     lastTreeStructureKey = structureKey;
     placeOutlinerRows([...outlinerRows.values()].map(row => row.element));
+    closeDetachedNameEditor();
     restoreOutlinerFocus(focused);
     fitTreeToWholeRows();
     // Rows added or removed above the one the browser snapped to would move the list; it stays where the person left it.
@@ -4193,10 +4410,16 @@ export function createStudio(container, {
       bookmarkListElement.replaceChildren(...bookmarks.map(shot => {
         const applyButton = createElement(documentReference, 'button', { type: 'button', textContent: shot.name });
         const removeButton = createElement(documentReference, 'button', { type: 'button', textContent: '×', attributes: { 'aria-label': `Remove bookmark ${shot.name}` } });
-        applyButton.addEventListener('click', () => controller.applyBookmark(shot.name));
+        // The second click of a double click only starts the rename: the shot is applied once.
+        applyButton.addEventListener('click', event => {
+          if (event.detail > 1) return;
+          controller.applyBookmark(shot.name);
+        });
+        applyButton.addEventListener('dblclick', () => startShotRename(shot.name, applyButton));
         removeButton.addEventListener('click', () => controller.removeBookmark(shot.name));
         return createElement(documentReference, 'div', { className: 'crucible-studio-bookmark-row' }, applyButton, removeButton);
       }));
+      closeDetachedNameEditor();
       quickBookmarksRow.replaceChildren(...bookmarks.slice(0, 5).map(shot => {
         const pill = createElement(documentReference, 'button', { type: 'button', textContent: shot.name, title: `Jump to shot ${shot.name}` });
         pill.addEventListener('click', () => controller.applyBookmark(shot.name));
@@ -4611,7 +4834,7 @@ export function createStudio(container, {
   canvas.addEventListener('wheel', event => {
     event.preventDefault();
     if (meshEditor?.circleSelecting) {
-      meshEditor.resizeCircleBrush(event.deltaY < 0 ? 1 : -1);
+      meshEditor.wheelCircleBrush(event.deltaY, event.deltaMode);
       requestFrame();
       return;
     }
@@ -4763,6 +4986,7 @@ export function createStudio(container, {
 
   function leaveMeshEdit() {
     if (controller.dragging) pointerState = null;
+    stopWatchingCircleFocus();
     meshEditor?.leave();
     syncUi();
     requestFrame();
@@ -4776,6 +5000,7 @@ export function createStudio(container, {
     } else if (meshEditor.circleSelecting) {
       endCircleSelect();
     } else if (!meshEditor.clearSelection()) {
+      stopWatchingCircleFocus();
       meshEditor.leave();
     }
     syncUi();
@@ -4786,7 +5011,38 @@ export function createStudio(container, {
   // resizes the brush, right click or Esc ends it. The brush owns the viewport pointer until then, so the camera keys it.
   let circlePaint = null;
 
+  // The brush also ends when the window loses focus or the page is hidden, so it is not still armed on return.
+  const circleFocusWindow = documentReference.defaultView;
+  let watchingCircleFocus = false;
+
+  function endCircleSelectWhenAway() {
+    if (!meshEditor?.circleSelecting) {
+      stopWatchingCircleFocus();
+      return;
+    }
+    endCircleSelect();
+  }
+
+  function endCircleSelectWhenHidden() {
+    if (documentReference.hidden) endCircleSelectWhenAway();
+  }
+
+  function startWatchingCircleFocus() {
+    if (watchingCircleFocus) return;
+    watchingCircleFocus = true;
+    circleFocusWindow?.addEventListener?.('blur', endCircleSelectWhenAway);
+    documentReference.addEventListener('visibilitychange', endCircleSelectWhenHidden);
+  }
+
+  function stopWatchingCircleFocus() {
+    if (!watchingCircleFocus) return;
+    watchingCircleFocus = false;
+    circleFocusWindow?.removeEventListener?.('blur', endCircleSelectWhenAway);
+    documentReference.removeEventListener('visibilitychange', endCircleSelectWhenHidden);
+  }
+
   function endCircleSelect() {
+    stopWatchingCircleFocus();
     circlePaint = null;
     meshEditor.endCircleSelect();
     syncUi();
@@ -4886,7 +5142,7 @@ export function createStudio(container, {
         endCircleSelect();
         return;
       }
-      meshEditor.beginCircleSelect();
+      if (meshEditor.beginCircleSelect()) startWatchingCircleFocus();
       syncUi();
       requestFrame();
     },
@@ -4918,6 +5174,10 @@ export function createStudio(container, {
       if (!controller.selectedNodeId && !selectedObjectIsDeletable()) return;
       event.preventDefault();
       deleteSelection();
+    },
+    'edit.rename': event => {
+      event.preventDefault();
+      renameActiveObject({ byKeyboard: true });
     },
     'edit.deselect': () => {
       if (controller.selectedNodeId || controller.selectedObjectKey) controller.selectNode(null);
@@ -5149,6 +5409,7 @@ export function createStudio(container, {
       meshEditor.refresh();
     }
     selectionReadoutStale = true;
+    if (activeNameEditor?.isStale()) cancelNameEditing();
     if (detail.kind === 'load') {
       sceneLoadedSinceFloorFit = true;
     }
@@ -5159,7 +5420,7 @@ export function createStudio(container, {
     if (detail.deltaLabel !== undefined) {
       liveDeltaLabel = detail.deltaLabel;
     }
-    if (['topology', 'transform', 'transformCommit', 'motion', 'material', 'look', 'undo', 'redo'].includes(detail.kind) || (detail.kind === 'camera' && detail.edited)) {
+    if (['topology', 'transform', 'transformCommit', 'motion', 'material', 'look', 'bookmark', 'undo', 'redo'].includes(detail.kind) || (detail.kind === 'camera' && detail.edited)) {
       isDirty = true;
       scheduleDraftSave();
     }
@@ -5170,9 +5431,6 @@ export function createStudio(container, {
 
   // Below the compact width the panels start closed, so the scene keeps the screen.
   function syncCompactLayout() {
-    // Between the compact width and this one the menus, the tabs and the file name do not fit on one row, so the file
-    // name leaves: it is also the title of the File menu's own rows.
-    root.dataset.tight = root.clientWidth > 0 && root.clientWidth < TIGHT_WIDTH ? 'true' : 'false';
     const compact = root.clientWidth > 0 && root.clientWidth < COMPACT_WIDTH;
     if ((root.dataset.compact === 'true') === compact) {
       return;
@@ -5267,8 +5525,15 @@ export function createStudio(container, {
       return autoReloadWatch;
     },
     setFileContext({ filePath, fileName, dirty }) {
+      if (filePath !== undefined || fileName !== undefined) {
+        cancelNameEditing();
+        renameWaitsForSave = false;
+      }
       if (filePath !== undefined) activeFilePath = filePath;
-      if (fileName !== undefined) activeFileName = fileName;
+      if (fileName !== undefined) {
+        activeFileName = fileName;
+        activeFileSuffix = extensionOf(fileName);
+      }
       if (dirty !== undefined) isDirty = Boolean(dirty);
       syncFileBanner();
     },
@@ -5285,6 +5550,7 @@ export function createStudio(container, {
       if (frameHandle) cancelAnimationFrame(frameHandle);
       stopFlight();
       finishModalTransform(false);
+      stopWatchingCircleFocus();
       documentReference.removeEventListener('contextmenu', onModalContextMenu, true);
       documentReference.removeEventListener('click', onModalClick, true);
       documentReference.removeEventListener('pointerdown', onAnyPointerDown, true);

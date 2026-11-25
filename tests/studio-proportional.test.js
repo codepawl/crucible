@@ -6,7 +6,8 @@ import { meshEditSourceOf } from '../src/agent-mesh.js';
 import { markLiveGeometry } from '../src/live-geometry.js';
 import { createStudio, createStudioController } from '../src/studio.js';
 import { byDataset, createFakeRenderer, dispatch, installStudioDom } from './support/studio-dom.mjs';
-import { MAX_PROPORTIONAL_SEEDS, PROPORTIONAL_CURVES, createProportionalSettings, proportionalCirclePath } from '../src/studio-proportional.js';
+import { MAX_SELECTED_ELEMENTS } from '../src/mesh-operations.js';
+import { PROPORTIONAL_CURVES, createProportionalSettings, proportionalCirclePath } from '../src/studio-proportional.js';
 import { createMeshEditor, planMeshMove } from '../src/studio-mesh-edit.js';
 import { FALLOFF_CURVES } from '../src/mesh-ops.js';
 import { meshFromGeometry } from '../src/mesh.js';
@@ -85,7 +86,7 @@ test('a held move with proportional on writes one translate with the radius and 
   assert.equal(logOf(controller).length, 1);
   const [entry] = logOf(controller);
   assert.equal(entry.op, 'translate');
-  assert.deepEqual(entry.select, { vertices: [vertex] });
+  assert.deepEqual(entry.verts, { vertices: [vertex] });
   assert.deepEqual(entry.falloff, { radius: 0.3, curve: 'linear' });
 });
 
@@ -153,10 +154,10 @@ test('planMeshMove: whole faces keep their face selection, other picks name thei
   assert.deepEqual(face.select, { faces: [0] });
   assert.deepEqual(face.falloff, falloff);
   const single = planMeshMove(mesh, [7], [0, 0, 0.2], falloff);
-  assert.deepEqual(single.select, { vertices: [7] });
+  assert.deepEqual(single.verts, { vertices: [7] });
   assert.equal(planMeshMove(mesh, [7], [0, 0, 0.2]).op, 'set_position');
-  const many = Array.from({ length: MAX_PROPORTIONAL_SEEDS + 1 }, (_, vertex) => vertex);
-  assert.throws(() => planMeshMove({ ...mesh, vertexCount: 1000 }, many, [0, 0, 1], falloff), /at most 256 vertices/);
+  const many = Array.from({ length: MAX_SELECTED_ELEMENTS + 1 }, (_, vertex) => vertex);
+  assert.throws(() => planMeshMove({ ...mesh, vertexCount: 1000 }, many, [0, 0, 1], falloff), /at most 4096 vertices/);
 });
 
 test('the settings validate what they are given and the wheel step scales the radius', () => {

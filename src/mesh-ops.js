@@ -591,13 +591,13 @@ function weightsFromDistances(distances, seeds, radius, curveName) {
  * Move the vertices of the selected faces by `offset`. With `falloff: { radius, curve, connected }`, nearby
  * vertices follow with a weight from Blender's proportional-editing curves (distance along edges when connected).
  */
-export function translateFaces(edit, mask, { offset, falloff }, { maxFalloffVisits = 50_000_000 } = {}) {
-  return translateVertices(edit, faceVertexSet(edit, maskedFaces(edit, mask)), { offset, falloff }, { maxFalloffVisits });
+export function translateFaces(edit, mask, move, limits) {
+  return translateVertices(edit, faceVertexSet(edit, maskedFaces(edit, mask)), move, limits);
 }
 
-/** Move the given vertices by `offset`; with `falloff` the vertices around them follow, as translateFaces does for a face selection. */
+/** The same move for an explicit set of vertices (a vertex or edge selection); each vertex moves once. */
 export function translateVertices(edit, seeds, { offset, falloff }, { maxFalloffVisits = 50_000_000 } = {}) {
-  const weights = seedWeights(edit, seeds, falloff, maxFalloffVisits);
+  const weights = selectionWeights(edit, seeds, falloff, maxFalloffVisits);
   const position = edit.vertices.arrays.position;
   for (const [vertex, weight] of weights) {
     position[vertex * 3] += offset[0] * weight;
@@ -608,11 +608,7 @@ export function translateVertices(edit, seeds, { offset, falloff }, { maxFalloff
 }
 
 /** Weight of every vertex a selection moves: 1 on the selected vertices, then the falloff curve out to its radius. */
-function selectionWeights(edit, mask, falloff, maxFalloffVisits) {
-  return seedWeights(edit, faceVertexSet(edit, maskedFaces(edit, mask)), falloff, maxFalloffVisits);
-}
-
-function seedWeights(edit, seeds, falloff, maxFalloffVisits) {
+function selectionWeights(edit, seeds, falloff, maxFalloffVisits) {
   if (!falloff) return new Map([...seeds].map(vertex => [vertex, 1]));
   const distances = falloff.connected
     ? connectedDistances(edit, seeds, falloff.radius)
@@ -620,9 +616,29 @@ function seedWeights(edit, seeds, falloff, maxFalloffVisits) {
   return weightsFromDistances(distances, seeds, falloff.radius, falloff.curve);
 }
 
-/** Mean position of the vertices of the selected faces: the default pivot of transformFaces. */
-function selectionCentre(edit, mask) {
-  const vertices = faceVertexSet(edit, maskedFaces(edit, mask));
+/** Live vertex indices picked by a mask over the vertices. */
+export function maskedVertices(edit, mask) {
+  const vertices = new Set();
+  for (let vertex = 0; vertex < mask.length; vertex++) {
+    if (mask[vertex] && edit.vertices.isLive(vertex)) vertices.add(vertex);
+  }
+  return vertices;
+}
+
+/** Both ends of every live edge picked by a mask over the edges; a vertex shared by two edges is listed once. */
+export function maskedEdgeVertices(edit, mask) {
+  const vertices = new Set();
+  const edgeVertex = edit.edges.arrays.vertex;
+  for (let edge = 0; edge < mask.length; edge++) {
+    if (!mask[edge] || !edit.edges.isLive(edge)) continue;
+    vertices.add(edgeVertex[edge * 2]);
+    vertices.add(edgeVertex[edge * 2 + 1]);
+  }
+  return vertices;
+}
+
+/** Mean position of a vertex set: the default pivot of transformVertices. */
+function selectionCentre(edit, vertices) {
   const position = edit.vertices.arrays.position;
   const centre = [0, 0, 0];
   for (const vertex of vertices) {
@@ -650,9 +666,14 @@ function rotateAboutAxis(point, axis, angle) {
  * rotation. With `falloff`, nearby vertices follow by the curve weight: they turn by weight * angle and scale by
  * 1 + weight * (scale - 1), so the edit fades to nothing at the radius.
  */
-export function transformFaces(edit, mask, { pivot, rotation, scale, falloff }, { maxFalloffVisits = 50_000_000 } = {}) {
-  const weights = selectionWeights(edit, mask, falloff, maxFalloffVisits);
-  const centre = pivot ?? selectionCentre(edit, mask);
+export function transformFaces(edit, mask, transform, limits) {
+  return transformVertices(edit, faceVertexSet(edit, maskedFaces(edit, mask)), transform, limits);
+}
+
+/** The same turn and scale for an explicit set of vertices (a vertex or edge selection). */
+export function transformVertices(edit, seeds, { pivot, rotation, scale, falloff }, { maxFalloffVisits = 50_000_000 } = {}) {
+  const weights = selectionWeights(edit, seeds, falloff, maxFalloffVisits);
+  const centre = pivot ?? selectionCentre(edit, seeds);
   const axis = rotation ? normalize(rotation.axis) : null;
   const factors = scale === undefined ? [1, 1, 1] : (Array.isArray(scale) ? scale : [scale, scale, scale]);
   const position = edit.vertices.arrays.position;
