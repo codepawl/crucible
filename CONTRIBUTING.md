@@ -74,13 +74,13 @@ Under **Evidence**, show what changed from old to new. This applies to every pul
 - For a change that can be measured, give the numbers before and after: frame time, load time, bundle bytes, memory, a quality score or the bench table.
 - If nothing can be seen or measured, write one line that says so, such as "Nothing to see or measure: an internal rename."
 
-Drag pictures and clips into the description box on GitHub. A coding agent that cannot upload pushes them to a branch named `evidence-pr-<number>` and links the raw file URLs. One command does it without touching your working tree, index or branch, and prints the Markdown image lines to paste:
+Drag pictures and clips into the description box on GitHub. A coding agent that cannot upload pushes them to the one branch named `evidence` and links the raw file URLs (`https://raw.githubusercontent.com/codepawl/crucible/evidence/pr-<number>/<name>`). One command does it without touching your working tree, index or branch, and prints the Markdown image lines to paste:
 
 ```sh
 node scripts/push-evidence.mjs 1234 artifacts/before.png artifacts/after.png
 ```
 
-Files land at `pr-1234/<name>` on `evidence-pr-1234`; files already there stay. Pictures and clips (png, jpg, gif, webp, mp4, webm) up to 20 MB, from inside the repository or the temp folder. Add `--dry-run` to see the links first. Put the same picture or clip in the change note when the change is visible.
+Files land at `pr-1234/<name>` on `evidence`; the first push creates the branch, later pushes add on top of its tip (a push that loses a race is rebuilt and retried), and other pull requests' folders and files already there stay. The old `evidence-pr-<number>` branches stay as they are. Pictures and clips (png, jpg, gif, webp, mp4, webm) up to 20 MB, from inside the repository or the temp folder. Add `--dry-run` to see the links first. Put the same picture or clip in the change note when the change is visible.
 
 For a look or feature change, one command renders the scene on the branch (and on `origin/main` with `--base`), writes labelled side-by-side stills and a clip with a JSON sidecar per file under `artifacts/<issue>/`, measures every frame and prints a PASS or FAIL checklist (also in `checks.json`): subject fully in frame with a margin, no blown highlights or crushed shadows, and no single-frame jump over 5 levels in luma or saturation over every frame of a clip (a smaller step above 3 times the median is printed as a note, not a failure). Paste the checklist into the pull request and push the pictures with the command above:
 
