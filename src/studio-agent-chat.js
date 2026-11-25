@@ -400,9 +400,8 @@ export const AGENT_CHAT_CSS = `
 }
 .crucible-studio[data-agent-minimized="true"] .crucible-studio-grip-agent-height,
 .crucible-studio[data-agent-tight="true"] .crucible-studio-grip-agent-height { display: none; }
-/* The list clips at its own box. The fade of the scroll cue is the padding wide, so no glyph is cut half way under the title. */
+/* The list fades at an edge with more to scroll, over the same depth as the Properties body, so a cut row never reads as the end. */
 .crucible-studio-agent-list {
-  --studio-scroll-fade: var(--studio-space-8);
   flex: 1 1 0;
   display: flex;
   flex-direction: column;
@@ -502,6 +501,8 @@ export const AGENT_CHAT_CSS = `
   resize: none;
   field-sizing: content;
 }
+/* The focus ring sits inside the box, as in the Settings fields, so the field stays as tall as Send beside it. */
+.crucible-studio-agent textarea.crucible-studio-agent-field:focus-visible { outline-offset: -2px; }
 .crucible-studio-agent textarea.crucible-studio-agent-field::placeholder {
   color: color-mix(in srgb, var(--studio-text) 76%, var(--studio-surface));
   opacity: 1;
