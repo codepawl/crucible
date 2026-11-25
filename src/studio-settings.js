@@ -152,6 +152,7 @@ export function createStudioSettings({ documentReference, createElement, createI
     ),
   );
   dialog.addEventListener('close', () => {
+    account?.discardPending();
     dialog.returnValue = '';
   });
 
@@ -163,7 +164,7 @@ export function createStudioSettings({ documentReference, createElement, createI
     // Every opening looks the same: the first section, with focus on the dialog itself, so no control carries a focus ring and the
     // first Tab lands on the first section in the list (the way the setup dialog opens).
     open() {
-      account?.refresh();
+      account?.refresh({ showLoading: true });
       showSection(sections[0].id);
       dialog.showModal();
       dialog.focus();
