@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ALLOWLIST, runAudit, summarize } from '../scripts/studio-layout-audit.mjs';
+import { ALLOWLIST, runAudit, summarize, waitForSettledLayout } from '../scripts/studio-layout-audit.mjs';
 
 // The audit measures the real DOM of the setup dialog in headless Chrome, as the CI runners have it. Without a browser the
 // test skips, like the other Chrome tests.
@@ -72,4 +72,24 @@ test('a Save button taller than Cancel and Discard fails the audit (#3327)', { t
   if (!screens) return;
   const { findings } = summarize(screens);
   assert.ok(findings.some(finding => finding.kind === 'uneven-height' && finding.message.includes('39 px')), 'the uneven button height is reported');
+});
+
+function pageShowing(signatures) {
+  let frame = 0;
+  return { frames: () => frame, evaluate: async () => signatures[Math.min(frame++, signatures.length - 1)] };
+}
+
+test('the audit measures the top bar only after its layout is the same on three frames in a row (#3443)', async () => {
+  const lateCompactLayout = pageShowing(['wide', 'wide', 'compact', 'compact', 'compact']);
+  await waitForSettledLayout(lateCompactLayout);
+  assert.equal(lateCompactLayout.frames(), 5, 'a layout that changes on the third frame is not read before the fifth');
+  const alreadySettled = pageShowing(['compact']);
+  await waitForSettledLayout(alreadySettled);
+  assert.equal(alreadySettled.frames(), 3, 'a steady layout needs three frames, not a fixed time');
+});
+
+test('a top bar that keeps changing makes the audit fail instead of measuring it (#3443)', async () => {
+  let frame = 0;
+  const neverSettles = { evaluate: async () => `frame ${frame++}` };
+  await assert.rejects(() => waitForSettledLayout(neverSettles, { timeoutMs: 50 }), /still changing size/);
 });

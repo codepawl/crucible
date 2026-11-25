@@ -59,6 +59,7 @@ const OP_CASES = {
   flatten: { prelude: [{ op: 'translate', select: { tag: 'top' }, offset: [0, 0.3, 0.1] }], edit: { op: 'flatten', verts: { all: true }, normal: [0, 1, 0] } },
   circularize: { prelude: [{ op: 'loop_cut', name: 'ring', edges: { along: [0, 1, 0] } }], edit: { op: 'circularize', verts: { inside: { min: [-1, -0.01, -1], max: [1, 0.01, 1] } } } },
   unsubdivide: { prelude: [{ op: 'subdivide', levels: 1 }], edit: { op: 'unsubdivide' } },
+  merge_verts: { prelude: [], edit: { op: 'merge_verts', vertices: [0, 1], at: 'center' } },
   delete_loose: { prelude: [], edit: { op: 'delete_loose' }, engineError: /no loose vertex/ },
   transform_selection: { prelude: [], edit: { op: 'transform_selection', select: { tag: 'top' }, rotation: { axis: [0, 0, 1], angle: 0.5 }, scale: [1, 2, 1], falloff: { radius: 2, curve: 'linear' } } },
 };

@@ -39,6 +39,8 @@ const EXPECTED_PRESET_KEYS = {
     'edit.showAll': ['Ctrl+Shift+H'],
     'view.frame': ['F'],
     'view.properties': ['Ctrl+A'],
+    // Not a vendor key: Ctrl+A is taken above, so Apply moves to the nearest free key.
+    'edit.apply': ['Ctrl+Alt+A'],
     'animate.keyframe': ['S'],
     'animate.play': ['Alt+V'],
     'modal.translate': ['W'],
