@@ -1228,7 +1228,7 @@ function normalizeRecipe(input, limits, { alreadyCopied = false } = {}) {
   });
   recipe.materials = resources(withDefaultMaterial(recipe), limits.maxMaterials, 'materials', materialFrom);
   const slottedGeometries = new Set(recipe.geometries.filter(definition => definition.slots !== undefined).map(definition => definition.id));
-  const skinnedSlotted = recipe.nodes.find(node => node.skin !== undefined && slottedGeometries.has(node.geometry));
+  const skinnedSlotted = (recipe.nodes ?? []).find(node => node.skin !== undefined && slottedGeometries.has(node.geometry));
   if (skinnedSlotted) {
     throw invalidField(`nodes.${skinnedSlotted.id}.skin`, skinnedSlotted.skin, `a node whose geometry has no material slots: geometry ${skinnedSlotted.geometry} has slots, and a skin rebuilds the mesh the slots were measured on; remove skin, or remove slots from ${skinnedSlotted.geometry}`);
   }
