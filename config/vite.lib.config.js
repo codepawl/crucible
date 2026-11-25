@@ -133,6 +133,7 @@ export default defineConfig({
         'update-part-vertices':'src/update-part-vertices.js',
         'replace-textured-parts': 'src/replace-textured-parts.js',
         'reflection-probes': 'src/reflection-probes.js',
+        rain: 'src/rain.js',
         fracture: 'src/fracture.js',
         morph: 'src/morph.js',
         skinning: 'src/skinning.js',

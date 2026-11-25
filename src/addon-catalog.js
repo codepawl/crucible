@@ -108,6 +108,7 @@ export const ADDON_CATALOG = [
   { name: 'vegetation', area: 'world', summary: 'Trees, bushes and scattering on terrain.', doc: true },
   { name: 'grass', area: 'world', summary: 'Grass fields made of real blades.', doc: true },
   { name: 'clutter', area: 'world', summary: 'Pebbles, twigs and leaves scattered in streamable tiles.', doc: true },
+  { name: 'rain', area: 'world', summary: 'Camera-local falling rain streaks, ground splashes and wet surfaces.', doc: true },
   { name: 'gaussian-splats', area: 'world', summary: 'Gaussian splat scenes and objects.', doc: true },
 ];
 
