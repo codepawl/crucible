@@ -231,6 +231,7 @@ export const MESH_MODIFIER_NOTES = Object.freeze({
   wave: 'a gaussian ripple of height 0.5 along z (normal true: along the vertex normal) travelling from start [0,0] over axes xy (default), x or y; width 1.5, narrowness 0-50 (1.5), speed 0.25 per frame, time 0 (a frame), timeOffset 0, cyclic true repeats it. Matches Blender Wave.',
   weighted_normal: 'corner normals weighted by face area ^ (weight/50), weight 1-100 (50), smoothed across edges under angle 30 that are not sharp. Put it last in the stack.',
   smooth_by_angle: 'edges bending over angle 30 (0-180) become sharp, others smooth, over smoothAngle; ignoreSharp true also clears hand-made sharp edges.',
+  join: 'geometry (ID of a recipe geometry), matrix (16 numbers, column-major, from that geometry space into this mesh space; the identity if left out): adds its faces as a separate shell. Not in the stack.',
   bounding_box: 'becomes its axis-aligned box.',
   convex_hull: 'becomes its convex hull, up to 8192 vertices.',
   build: 'shows faces one by one as frame runs from start 0 over length 60 frames (frame 0; give the current frame, e.g. from your film clock): order index (default), random (seed 0) or axis (axis y, lowest centroid first); reverse true unbuilds. Unused vertices drop; while none shows, one zero-area triangle stays.',
@@ -304,7 +305,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   operations: Object.freeze([
     'set-node', 'set-material', 'set-camera', 'add-node', 'remove-node',
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
-    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'set-particles', 'set-bake', 'set-post-passes', 'set-pixel-grid', 'set-game', 'bake-motion', 'fracture-node', 'add-explosion', 'settle',
+    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'set-particles', 'set-bake', 'set-post-passes', 'set-pixel-grid', 'set-game', 'bake-motion', 'fracture-node', 'add-explosion', 'settle', 'separate-faces', 'join-meshes', 'apply-transform', 'set-origin',
   ]),
   materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass', 'water']),
   materialPresets: Object.freeze({

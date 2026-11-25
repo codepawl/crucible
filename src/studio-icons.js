@@ -65,6 +65,8 @@ export const STUDIO_ICON_PATHS = Object.freeze({
   history: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7.5V12l3 2',
   // Edit mode selection: the same square each time; what is picked is drawn on top of it (STUDIO_ICON_ACCENTS).
   meshVertex: 'M5 5h14v14H5z',
+  // A hill: the weight a move gives the vertices around the picked one.
+  proportional: 'M3 19h18M4 19c3 0 5-13 8-13s5 13 8 13',
   meshEdge: 'M19 5v14H5V5z',
   meshFace: 'M5 19V5h14v14z',
   tierLight: 'M4 4h6.5v6.5H4zM13.5 4H20v6.5h-6.5zM4 13.5h6.5V20H4zM13.5 13.5H20V20h-6.5z',

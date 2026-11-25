@@ -13,9 +13,11 @@ const MODULE_LOADERS = {
   springs: () => import('./spring-bones.js'),
   face: () => import('./face-animation.js'),
   settle: () => import('./agent-settle.js'),
+  applyTransform: () => import('./agent-apply-transform.js'),
   drive: () => import('./agent-drive.js'),
   physics: () => import('./agent-physics.js'),
   fracture: () => import('./agent-fracture.js'),
+  meshParts: () => import('./agent-mesh-parts.js'),
   explosion: () => import('./agent-explosion.js'),
   vehicleDamage: () => import('./vehicle-damage.js'),
   cloth: () => import('./agent-cloth.js'),
@@ -89,7 +91,9 @@ const DEFAULT_STAGE_MARKERS = {
 
 // Each test errs on the side of loading: a false positive costs a chunk, a false negative a clear error.
 const MODULE_MARKERS = {
-  mesh: ['"type":"mesh"', '"instances"'],
+  mesh: ['"type":"mesh"', '"instances"', '"separate-faces"', '"join-meshes"', '"apply-transform"', '"set-origin"'],
+  meshParts: ['"separate-faces"', '"join-meshes"'],
+  applyTransform: ['"apply-transform"', '"set-origin"'],
   modeling: ['"type":"lathe"', '"type":"extrude"', '"type":"tube"', '"type":"curve"', '"type":"sdf"', '"type":"cloud"'],
   text: ['"type":"text"'],
   motion: ['"motion":{', '"bake-motion"', '"add-explosion"'],

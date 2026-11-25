@@ -2889,7 +2889,7 @@ test('the top bar has File, Edit, View, Agent and Help menus that do what their 
   assert.equal(byText(popover('new'), 'Save').dataset.shortcut, 'Ctrl+S');
 
   menuButton('Edit').click();
-  assert.deepEqual(rows('edit'), ['Undo', 'Redo', 'History', 'Copy', 'Paste', 'Duplicate', 'Delete', 'Rename', 'Deselect', 'Hide', 'Show all', 'Reset position', 'Reset rotation', 'Reset scale', 'Settings…']);
+  assert.deepEqual(rows('edit'), ['Undo', 'Redo', 'History', 'Copy', 'Paste', 'Duplicate', 'Join', 'Delete', 'Rename', 'Deselect', 'Hide', 'Show all', 'Reset position', 'Reset rotation', 'Reset scale', 'Settings…']);
   ui.selectRow('hero');
   const countBefore = ui.studio.exportRecipe().nodes.length;
   byText(popover('edit'), 'Duplicate').click();
@@ -3394,7 +3394,7 @@ test('a right click on an object opens its menu; H hides, Alt+H shows all and Al
   const menu = ui.root.querySelector('#crucible-studio-pop-object');
   const heroNode = () => ui.controller.exportRecipe().nodes.find(node => node.id === 'hero');
   const press = (key, modifiers = {}) => dispatch(ui.dom.document, 'keydown', { key, ...modifiers });
-  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Rename', 'Duplicate', 'Hide', 'Reset position', 'Reset rotation', 'Reset scale', 'Delete']);
+  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Rename', 'Duplicate', 'Hide', 'Reset position', 'Reset rotation', 'Reset scale', 'Apply…', 'Set origin…', 'Delete']);
 
   // In the Scene list the row is selected first, then the menu opens on it.
   const heroRow = ui.rows().find(row => row.textContent.includes(heroNode().label ?? 'hero'));
