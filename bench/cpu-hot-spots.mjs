@@ -86,8 +86,9 @@ function meshLabel(sizes) {
   return `${(sizes.meshSegments * sizes.meshRings).toLocaleString('en-US')}-face sphere`;
 }
 
-// Faces whose normal is within 37 degrees of straight up: the cap holds (1 - cos 37) / 2, about 10 percent, of a sphere.
-const TENTH_OF_FACES_RULE = { normal: [0, 1, 0], maxAngle: 37 };
+// Faces whose normal is within 37 degrees of straight up: the cap covers (1 - cos 37) / 2, about 10 percent, of the surface,
+// but holds about 20% of the faces of a latitude and longitude sphere, whose faces crowd near the poles (1664 of 8192 at 128x64).
+const CAP_OF_FACES_RULE = { normal: [0, 1, 0], maxAngle: 37 };
 
 function terrainOptions(sizes) {
   return {
@@ -124,10 +125,10 @@ export const CANDIDATES = [
   },
   {
     id: 'mesh-extrude', group: 'mesh edit', frequency: 'every Studio extrude and every extrude_face_region edit',
-    describe: sizes => `extrude the faces in a cap holding about 10% of a ${meshLabel(sizes)}`,
+    describe: sizes => `extrude the faces in a cap holding about 20% of the faces of a ${meshLabel(sizes)}`,
     prepare: sizes => {
       const mesh = heavyMesh(sizes);
-      const edits = [{ op: 'extrude_face_region', select: TENTH_OF_FACES_RULE, offset: 0.2 }];
+      const edits = [{ op: 'extrude_face_region', select: CAP_OF_FACES_RULE, offset: 0.2 }];
       return () => applyMeshEdits(mesh, edits);
     },
   },
@@ -163,7 +164,7 @@ export const CANDIDATES = [
     describe: sizes => `select the faces within 37 degrees of up on a ${meshLabel(sizes)}`,
     prepare: sizes => {
       const mesh = heavyMesh(sizes);
-      return () => selectFaces(mesh, TENTH_OF_FACES_RULE);
+      return () => selectFaces(mesh, CAP_OF_FACES_RULE);
     },
   },
   {
@@ -176,11 +177,11 @@ export const CANDIDATES = [
   },
   {
     id: 'mesh-select-grow-shrink', group: 'mesh edit', frequency: 'every Studio grow or shrink of a selection; one of each is timed',
-    describe: sizes => `grow then shrink a face selection of about 10% of a ${meshLabel(sizes)}`,
+    describe: sizes => `grow then shrink a face selection (one grow, one shrink) of about 20% of the faces of a ${meshLabel(sizes)}`,
     prepare: sizes => {
       const mesh = heavyMesh(sizes);
       const selected = [];
-      selectFaces(mesh, TENTH_OF_FACES_RULE).forEach((isSelected, face) => { if (isSelected) selected.push(face); });
+      selectFaces(mesh, CAP_OF_FACES_RULE).forEach((isSelected, face) => { if (isSelected) selected.push(face); });
       return () => {
         const grown = growSelection(mesh, 'face', selected);
         shrinkSelection(mesh, 'face', grown);
