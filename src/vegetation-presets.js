@@ -37,12 +37,40 @@ export const TREE_PARAMETERS = Object.freeze({
 
 const CROWN_PROFILES = Object.freeze({ round: 'crown', cone: 'cone', column: 'column', umbrella: 'umbrella' });
 
-// The leaves of a tree preset with broad leaves (#3041): twig cards of real-sized leaves, on the last two branch levels, kept more
-// often toward the crown's outside and turned up and outward. A plain species keeps its sprig cards and its sites on the last level.
-const TWIG_CROWN_LEAF = Object.freeze({
+// `tree.leafCount` of a crowned tree is the twig density of the base species at 1: oak and ash grow the `bareTwigs` of broadleaf.
+export const LEAF_COUNT_REFERENCE = 5;
+
+// The leaves of a tree preset with broad leaves (#3041, #3057): twig cards of real-sized leaves on the twig generations, kept more
+// often toward the crown's outside, each pointing along its twig, turned outward and up (down for a birch). Oak and ash carry
+// them on the species `bareTwigs`; birch and aspen list their own twigs, since the birch species has none. A plain species keeps
+// its sprig cards and its sites on the last branch level.
+const BROADLEAF_CROWN_LEAF = Object.freeze({
   texture: 'twig',
-  placement: Object.freeze({ depth: 2, interiorKeep: 0.35, outwardTilt: 0.8, upTilt: 0.6, cardFan: 1 }),
-  farPair: true,
+  placement: Object.freeze({ interiorKeep: 0, outwardTilt: 0.45, upTilt: 0.3 }),
+  // Twig tips sit in a shell, so more of the crown reaches the hull than a filled ball would: a steeper fall-off keeps the inside as
+  // dark as it was (#3420; the plain species keeps 5.5).
+  crownLight: Object.freeze({ core: 0.14, hull: 3.1, exponent: 8.5 }),
+});
+
+// Each species paints its own spray atlas (#3057): the oak's lobed leaves are the default, the others are their own kind.
+const ASH_CROWN_LEAF = Object.freeze({ ...BROADLEAF_CROWN_LEAF, texture: 'twig-ash' });
+
+const BIRCH_TWIGS = Object.freeze([
+  Object.freeze({ count: [3, 5], start: 0.2, end: 1, angle: [0.5, 0.9], lengthRatio: [0.9, 1.3], radiusRatio: 0.9, segments: 3, gnarl: 0.15, tropism: -0.3, tipRadius: 0.7 }),
+  Object.freeze({ count: [2, 3], start: 0.3, end: 1, angle: [0.5, 0.9], lengthRatio: [0.7, 1], radiusRatio: 0.85, segments: 2, gnarl: 0.15, tropism: -0.3, tipRadius: 0.6 }),
+  // Pendulous end shoots: thin, short and pulled hard down, the hanging twigs a birch is known by.
+  Object.freeze({ count: [3, 5], start: 0.3, end: 1, angle: [0.4, 0.8], lengthRatio: [0.7, 1.1], radiusRatio: 0.7, segments: 4, gnarl: 0.1, tropism: -0.6, tipRadius: 0.5 }),
+]);
+
+// An aspen keeps the first two generations: its crown is open, and the hanging shoots would fill it.
+const ASPEN_CROWN_LEAF = Object.freeze({
+  texture: 'twig-aspen',
+  placement: Object.freeze({ interiorKeep: 0.1, outwardTilt: 0.2, upTilt: -0.1, twigs: BIRCH_TWIGS.slice(0, 2) }),
+});
+
+const BIRCH_CROWN_LEAF = Object.freeze({
+  texture: 'twig-birch',
+  placement: Object.freeze({ interiorKeep: 0.1, outwardTilt: 0.2, upTilt: -0.35, droop: 0.95, twigs: BIRCH_TWIGS }),
 });
 
 // Tufted Scots pine clusters on layered crown shoots, sharing the fanned crown placement cleanly at far levels (#3051).
@@ -58,18 +86,30 @@ const PINE_CROWN_LEAF = Object.freeze({
 // Each preset is a small JSON object: the base species, an optional height range in metres and growth overrides.
 export const TREE_PRESETS = Object.freeze({
   oak: Object.freeze({
-    label: 'Oak', species: 'broadleaf', height: [9, 13], leaf: TWIG_CROWN_LEAF,
-    tree: { crownShape: 'round', branches: [7, 4, 3], branchAngle: [68, 55, 50], lengthFalloff: [0.58, 0.5], gnarliness: [0.1, 0.22, 0.26, 0.28], leafCount: 6 },
+    label: 'Oak', species: 'broadleaf', height: [9, 13], leaf: BROADLEAF_CROWN_LEAF,
+    // Half the height of trunk, then limbs that leave it nearly level at the bottom and steepen to the top, inside a rounded dome
+    // envelope (the high half bends with a power under 1, so the top is a shoulder, not a cone) that is widest in the lower third.
+    habit: { trunkLength: 0.5, angleTop: 30, profile: 'spreading', split: { count: 3, angle: 42, lengthRatio: 1.05, radiusRatio: 0.85 }, envelope: { base: 0.2, peak: 0.14, width: 0.56, powerLow: 0.4, powerHigh: 0.55 } },
+    tree: { branches: [12, 5, 3], branchAngle: [86, 55, 50], branchStart: [0.3], lengthFalloff: [1.1, 0.6], gnarliness: [0.1, 0.22, 0.26, 0.28], tropism: [0.02, -0.08, 0.04, 0], leafSize: 1, leafCount: 3.15 },
   }),
   ash: Object.freeze({
-    label: 'Ash', species: 'broadleaf', height: [12, 16], leaf: TWIG_CROWN_LEAF,
-    tree: { crownShape: 'round', branches: [9, 3, 3], branchAngle: [40, 42, 45], branchStart: [0.42], lengthFalloff: [0.44, 0.55], gnarliness: [0.05, 0.1, 0.14, 0.18], tropism: [0.02, 0.12, 0.06, 0], leafSize: 0.85, leafCount: 5 },
+    label: 'Ash', species: 'broadleaf', height: [12, 16], leaf: ASH_CROWN_LEAF,
+    // A spreading, decurrent habit: the trunk ends early in three wide limbs (no central leader), the lowest branches are as long as the
+    // trunk, and a wide rounded envelope keeps the crown wider than tall.
+    habit: { profile: 'spreading', trunkLength: 0.4, angleTop: 45, split: { count: 3, angle: 58, lengthRatio: 1.3, radiusRatio: 0.85 }, envelope: { base: 0.08, peak: 0.28, width: 0.74, powerLow: 0.5, powerHigh: 0.6 } },
+    tree: { branches: [12, 4, 3], branchAngle: [80, 50, 45], branchStart: [0.25], lengthFalloff: [1.0, 0.5], gnarliness: [0.05, 0.1, 0.14, 0.18], tropism: [0.02, 0.12, 0.06, 0], leafSize: 1.2, leafCount: 4.6 },
   }),
   aspen: Object.freeze({
-    label: 'Aspen', species: 'birch', height: [11, 15], leaf: TWIG_CROWN_LEAF,
-    tree: { crownShape: 'column', branches: [14, 3, 3], branchAngle: [38, 45, 50], branchStart: [0.45], lengthFalloff: [0.18, 0.5], gnarliness: [0.03, 0.1, 0.12, 0.14], tropism: [0.02, 0.1, 0, -0.08], leafSize: 0.75, leafCount: 6 },
+    label: 'Aspen', species: 'birch', height: [11, 15], leaf: ASPEN_CROWN_LEAF,
+    // A full crown that starts low on the trunk: many limbs from a quarter of the way up, the longest ones in the middle.
+    habit: { profile: 'spreading', angleTop: 30, envelope: { base: 0.2, peak: 0.3, width: 0.43, powerLow: 0.6, powerHigh: 0.7 } },
+    tree: { branches: [20, 3, 3], branchAngle: [62, 45, 50], branchStart: [0.25], lengthFalloff: [0.4, 0.5], gnarliness: [0.03, 0.1, 0.12, 0.14], tropism: [0.02, 0.1, 0, -0.08], leafSize: 1.15, leafCount: 5.5 },
   }),
-  birch: Object.freeze({ label: 'Birch', species: 'birch', tree: {}, leaf: TWIG_CROWN_LEAF }),
+  // A narrow ovoid; the twigs hang because the birch leaf placement points them down.
+  birch: Object.freeze({
+    label: 'Birch', species: 'birch', tree: { leafSize: 0.55, leafCount: 3 }, leaf: BIRCH_CROWN_LEAF,
+    habit: { profile: 'spreading', angleTop: 30, envelope: { base: 0.25, peak: 0.06, width: 0.35, powerLow: 0.5, powerHigh: 1.1 } },
+  }),
   pine: Object.freeze({
     label: 'Pine', species: 'conifer', height: [12, 17], leaf: PINE_CROWN_LEAF,
     tree: { crownShape: 'round', branches: [30, 5], branchAngle: [78, 52], branchStart: [0.34, 0.18], lengthFalloff: [0.42, 0.44], gnarliness: [0.03, 0.14, 0.14], tropism: [0, -0.02, 0.01], leafStart: 0.2, leafCount: 2.8 },
@@ -206,6 +246,9 @@ function applyLeaves(leaf, tree) {
   const result = { ...leaf };
   if (tree.leafCount !== undefined) result.sitesPerMeter = tree.leafCount;
   if (tree.leafStart !== undefined) result.start = tree.leafStart;
+  // A crowned tree carries its leaves on twigs (#3057): leafCount scales the twigs per parent, leafStart is where they begin.
+  if (leaf.placement && tree.leafCount !== undefined) result.placement = { ...result.placement, twigScale: tree.leafCount / LEAF_COUNT_REFERENCE };
+  if (leaf.placement && tree.leafStart !== undefined) result.placement = { ...result.placement, twigStart: tree.leafStart };
   if (tree.leafSize !== undefined) {
     result.meshLength = leaf.meshLength * tree.leafSize;
     result.meshWidth = leaf.meshWidth * tree.leafSize;
@@ -243,18 +286,30 @@ export function maximumBranchCount(levels) {
   return total;
 }
 
+// A preset's habit (#3057) is what the public growth parameters do not reach: how far up the trunk runs (`trunkLength`, a fraction of
+// the height), how the first branches' angle changes from the lowest to the highest (`angleTop`, degrees), their length profile
+// the `split` of the trunk into limbs (`count`, `angle` in degrees, `lengthRatio`, `radiusRatio`) and the `envelope` that prunes the crown. Keeping it in the preset leaves `scene_capabilities` as it was.
+function applyHabit(levels, { trunkLength, angleTop, profile, split }) {
+  if (trunkLength !== undefined) levels[0].lengthScale = trunkLength;
+  if (split !== undefined) levels[0].split = { ...split, angle: split.angle * DEGREES };
+  if (angleTop !== undefined) levels[0].children.angleTop = angleTop * DEGREES;
+  if (profile !== undefined) levels[0].children.profile = profile;
+}
+
 /**
  * A species preset with growth overrides applied: a new object, the base left untouched. `tree` must have passed
  * checkTreeGrowth; `height` is an optional [min, max] that replaces the species height range.
  */
-export function applyTreeGrowth(base, tree, height, leafOverride) {
+export function applyTreeGrowth(base, tree, height, leafOverride, habit) {
   const levels = resizeLevels(base.levels, tree.levels ?? base.levels.length - 1);
   levels.forEach((level, index) => {
     if (level.children) applySprouting(level.children, tree, index);
     applyShape(level, tree, index);
   });
+  if (habit) applyHabit(levels, habit);
+  // An explicit crown shape wins over the habit's own length profile.
   if (tree.crownShape) levels[0].children.profile = CROWN_PROFILES[tree.crownShape];
-  return { ...base, ...(height ? { height: [...height] } : {}), levels, leaf: applyLeaves(leafOverride ? { ...base.leaf, ...leafOverride } : base.leaf, tree), leafSiteLimit: MAX_TREE_LEAF_SITES };
+  return { ...base, ...(height ? { height: [...height] } : {}), levels, leaf: applyLeaves(leafOverride ? { ...base.leaf, ...leafOverride } : base.leaf, tree), leafSiteLimit: MAX_TREE_LEAF_SITES, ...(habit?.envelope ? { envelope: habit.envelope } : {}) };
 }
 
 /** What scene_capabilities lists for tree growth: presets with their base species, and every parameter with its range. */

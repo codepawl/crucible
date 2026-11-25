@@ -63,7 +63,7 @@ export function registerShaderFeatureCode(feature, slots) {
 }
 
 // The addon that registers each feature's code; a feature not listed here is registered by material-layer-shaders.
-const FEATURE_ADDONS = { splat: 'splat-shader', liquid: 'liquid-shader', worldMaterials: 'world-material-shader', subsurface: 'subsurface-shader', volumeFog: 'fog-shader', linearOutput: 'linear-output-shader', autoExposure: 'post-steps', retro: 'retro-shader', waterGlint: 'glitter-shader' };
+const FEATURE_ADDONS = { splat: 'splat-shader', liquid: 'liquid-shader', worldMaterials: 'world-material-shader', subsurface: 'subsurface-shader', volumeFog: 'fog-shader', linearOutput: 'linear-output-shader', autoExposure: 'post-steps', keepHue: 'post-steps', retro: 'retro-shader', waterGlint: 'glitter-shader', surfaceCover: 'surface-cover' };
 
 export function requireFeatureCode(feature) {
   if (typeof feature !== 'string' || feature.length === 0) {

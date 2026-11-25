@@ -226,6 +226,12 @@ export const STUDIO_CSS = `
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+.crucible-studio-gizmo .crucible-studio-cage-brush {
+  fill: color-mix(in srgb, var(--studio-accent) 14%, transparent);
+  stroke: var(--studio-accent);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
 .crucible-studio-gizmo .crucible-studio-cage-selected-vertex { stroke-width: 12; }
 .crucible-studio-gizmo .crucible-studio-cage-selected-edge { stroke-width: 4; }
 .crucible-studio-gizmo .crucible-studio-cage-selected-face {
@@ -698,6 +704,12 @@ export const STUDIO_CSS = `
 .crucible-studio-tree-section { display: grid; }
 .crucible-studio-tree-section[hidden], .crucible-studio-tree-controls[hidden] { display: none; }
 .crucible-studio-tree-controls { display: grid; gap: 12px; }
+.crucible-studio-shape-settings { display: grid; gap: var(--studio-space-8); }
+.crucible-studio-shape-settings[hidden], .crucible-studio-shape-reason[hidden] { display: none; }
+.crucible-studio-shape-rows { display: grid; gap: var(--studio-space-8); }
+/* No unit follows a shape number, so its inset is the 8 px edge plus 2 px, 12 px, a step of the spacing scale. */
+.crucible-studio-shape-rows .crucible-studio-prop { --studio-unit-slot: 2px; }
+.crucible-studio-shape-reason { margin: 0; color: var(--studio-muted, inherit); font-size: 12px; line-height: 1.4; }
 .crucible-studio-tree-controls > .crucible-studio-field-head { margin-block-end: -8px; }
 .crucible-studio-tree-seed {
   display: grid;
@@ -2525,43 +2537,98 @@ export const STUDIO_CSS = `
 .crucible-studio-setup-handle[data-size="small"]::before { inline-size: 8px; block-size: 8px; }
 .crucible-studio-setup-handle[data-size="medium"]::before { inline-size: 12px; block-size: 12px; }
 .crucible-studio-setup-handle[data-size="large"]::before { inline-size: 18px; block-size: 18px; }
-/* The chat mark stands beside the prompt box, which is as tall as its text; the block rests in the middle of the step. */
+/* The AI agent step is one or two cards 24px apart, twice the 12px inside a card. A card has one inset on all
+   four sides and a head row: its icon, its title and, for the built-in AI, its one control. The own agent's one action, the copy
+   button, sits on the prompt box, so the text and the way to copy it are one thing. */
 .crucible-studio-setup-agent {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-content: center;
-  align-items: start;
-  gap: 12px;
+  align-content: start;
+  gap: var(--studio-space-24);
 }
-.crucible-studio-setup-agent > button,
-.crucible-studio-setup-agent > textarea { grid-column: 2; justify-self: start; }
-.crucible-studio-setup-agent > textarea { justify-self: stretch; }
-.crucible-studio-setup-agent-mark {
+.crucible-studio-setup-agent-card {
   display: grid;
-  place-items: center;
-  inline-size: 40px;
-  block-size: 40px;
-  border: 1px solid var(--studio-border);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--studio-space-12);
+  min-inline-size: 0;
+  padding: var(--studio-space-16);
   border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--studio-border);
   background: color-mix(in srgb, var(--studio-text) 6%, transparent);
 }
-.crucible-studio-setup-agent-mark .crucible-studio-icon {
-  inline-size: 22px;
-  block-size: 22px;
+/* The card's own button is a button on the card: the dialog's 7% wash is as light as the card, so it takes the prompt box's
+   fill and a muted outline, which stay clear of the card in both themes. */
+.crucible-studio dialog .crucible-studio-setup-agent-card button {
+  border: 1px solid var(--studio-muted);
+  background: var(--studio-bg);
+  color: var(--studio-text);
+}
+.crucible-studio-setup-agent-head {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+}
+.crucible-studio-setup-agent-head > .crucible-studio-icon {
+  flex: none;
+  inline-size: 20px;
+  block-size: 20px;
+}
+.crucible-studio-setup-agent-title {
+  flex: none;
+  font-weight: 600;
+  white-space: nowrap;
+  line-height: 20px;
+}
+.crucible-studio-setup-sign-in {
+  display: inline-flex;
+  margin-inline-start: auto;
+  align-items: center;
+  gap: var(--studio-space-8);
+  min-inline-size: 0;
+}
+/* The signed-in status keeps the height of the button it replaces, so the card does not shrink at the moment of signing in. */
+.crucible-studio-setup-sign-in[data-state="signed-in"] {
+  min-block-size: 32px;
+  font-weight: 600;
+}
+.crucible-studio-setup-sign-in[data-state="signed-in"] > .crucible-studio-icon {
+  flex: none;
+  /* Mixed toward the text colour, so the mark stays clear on the pale card of the light theme. */
+  color: color-mix(in srgb, var(--studio-ok) 60%, var(--studio-text));
+}
+.crucible-studio-setup-sign-in[data-state="signed-in"] > span {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crucible-studio-setup-prompt-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--studio-space-12);
+  padding: var(--studio-space-12);
+  border: 1px solid var(--studio-border);
+  border-radius: 6px;
+  background: var(--studio-bg);
+}
+.crucible-studio-setup-prompt-box > button { inline-size: 10em; }
+@media (max-width: 520px) {
+  .crucible-studio-setup-prompt-box { grid-template-columns: minmax(0, 1fr); }
+  .crucible-studio-setup-prompt-box > button { justify-self: start; }
 }
 .crucible-studio textarea.crucible-studio-setup-prompt {
   inline-size: 100%;
   field-sizing: content;
   max-block-size: 160px;
-  padding: 12px;
-  border: 1px solid var(--studio-border);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--studio-text) 6%, transparent);
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--studio-text);
   font-family: var(--studio-font-mono);
   font-size: 12px;
   line-height: 1.5;
   overflow: auto;
+  overflow-wrap: anywhere;
   resize: none;
 }
 .crucible-studio-setup-actions { align-items: center; margin-top: 10px; }

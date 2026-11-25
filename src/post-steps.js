@@ -1,5 +1,6 @@
 import { postStepSupport } from './shader-registry.js';
 import { resolveAutoExposure } from './auto-exposure.js';
+import './bloom-keep-hue.js';
 import { createStage, createTarget, sharedFragmentHeader } from './camera-effects.js';
 import { compileProgram, fullscreenVertex } from './gl-program.js';
 import { numberInRange, groupOf, onlyKeys, triple } from './post-fields.js';
