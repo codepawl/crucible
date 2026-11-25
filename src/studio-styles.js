@@ -1459,6 +1459,16 @@ export const STUDIO_CSS = `
 .crucible-studio-tree-row[data-active="true"] {
   background: color-mix(in srgb, var(--studio-accent) 16%, transparent);
 }
+.crucible-studio-tree-row[data-drop-target="true"] {
+  background: color-mix(in srgb, var(--studio-accent) 22%, transparent);
+  outline: 1px solid var(--studio-accent);
+  outline-offset: -1px;
+}
+.crucible-studio-tree-row[data-dragging="true"] { opacity: 0.55; }
+.crucible-studio-tree[data-drop-root="true"] {
+  outline: 1px dashed var(--studio-accent);
+  outline-offset: -2px;
+}
 @media (hover: hover) {
   .crucible-studio-tree-row:not([data-selected="true"]):hover {
     background: color-mix(in srgb, var(--studio-text) 6%, transparent);

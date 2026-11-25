@@ -29,6 +29,11 @@ import {
   snapScaleFactor,
   snapToStep,
 } from './studio-snapping.js';
+import {
+  buildNodeWorldMatrices,
+  collectDescendantIds as descendantIdsOfMany,
+  reparentOperationsFor,
+} from './studio-parenting.js';
 import { formatLength, STUDIO_LENGTH_UNITS } from './studio-units.js';
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
@@ -264,37 +269,6 @@ function projectPointWithMatrix(viewProjection, point, width, height) {
   };
 }
 
-function buildNodeWorldMatrices(nodes) {
-  const byId = new Map(nodes.map(node => [node.id, node]));
-  const worldMatrices = new Map();
-  function resolveWorldMatrix(nodeId, stack) {
-    if (worldMatrices.has(nodeId)) {
-      return worldMatrices.get(nodeId);
-    }
-    const node = byId.get(nodeId);
-    if (!node || stack.has(nodeId)) {
-      return mat4.create();
-    }
-    stack.add(nodeId);
-    const localMatrix = mat4.fromRotationTranslationScale(
-      mat4.create(),
-      node.rotation ?? [0, 0, 0, 1],
-      node.translation ?? [0, 0, 0],
-      node.scale ?? [1, 1, 1],
-    );
-    const worldMatrix = node.parent
-      ? mat4.multiply(mat4.create(), resolveWorldMatrix(node.parent, stack), localMatrix)
-      : localMatrix;
-    stack.delete(nodeId);
-    worldMatrices.set(nodeId, worldMatrix);
-    return worldMatrix;
-  }
-  for (const node of nodes) {
-    resolveWorldMatrix(node.id, new Set());
-  }
-  return worldMatrices;
-}
-
 // Andrew's monotone chain over [x, y] points, returned counter-clockwise without the repeated first point.
 function convexHull(points) {
   const sorted = [...points].sort((first, second) => first[0] - second[0] || first[1] - second[1]);
@@ -318,22 +292,6 @@ function convexHull(points) {
 
 function descendantIdsOf(nodes, rootId) {
   return descendantIdsOfMany(nodes, [rootId]);
-}
-
-// Every id in `rootIds` with all the nodes below them, from one walk of the node list however many roots there are.
-function descendantIdsOfMany(nodes, rootIds) {
-  const descendants = new Set(rootIds);
-  let added = true;
-  while (added) {
-    added = false;
-    for (const node of nodes) {
-      if (node.parent && descendants.has(node.parent) && !descendants.has(node.id)) {
-        descendants.add(node.id);
-        added = true;
-      }
-    }
-  }
-  return descendants;
 }
 
 // A placed catalog scan draws as parts named `<node id>/<index>`, one per mesh of the file; they belong to that node.
@@ -2208,16 +2166,18 @@ export function createStudioController({
       operation.label = patch.label.trim() || nodeId;
     }
     if (patch.parent !== undefined) {
-      if (patch.parent !== null) {
-        const recipe = currentScene.exportRecipe();
-        if (!recipe.nodes.some(node => node.id === patch.parent)) {
-          throw new RangeError(`Unknown parent node "${String(patch.parent)}".`);
-        }
-        if (descendantIdsOf(recipe.nodes, nodeId).has(patch.parent)) {
-          throw new RangeError('Cannot parent a node under itself or its descendant.');
-        }
+      const hasExplicitTransform = patch.translation !== undefined || patch.rotationDegrees !== undefined || patch.rotation !== undefined || patch.scale !== undefined;
+      const keepWorld = patch.keepWorld !== false && !hasExplicitTransform;
+      const [reparented] = reparentOperationsFor(currentScene.exportRecipe(), [nodeId], patch.parent, {
+        keepWorld,
+        roundVector,
+        normalizeQuaternion,
+      });
+      if (reparented) {
+        Object.assign(operation, reparented);
+      } else {
+        operation.parent = patch.parent;
       }
-      operation.parent = patch.parent;
     }
     if (patch.translation !== undefined) {
       operation.translation = roundVector(assertFiniteVector(patch.translation, 3, 'translation'));
@@ -2253,6 +2213,25 @@ export function createStudioController({
     const changesTopology = patch.parent !== undefined || patch.vegetation !== undefined;
     notify({ kind: changesTopology ? 'topology' : 'transform', nodeId, keyed });
     return operation;
+  }
+
+  /** Reparents `nodeIds` to `parentId` (or `null` for root) as one undo step, keeping each node's world transform. */
+  function reparentNodes(nodeIds, parentId, { keepWorld = true } = {}) {
+    if (!Array.isArray(nodeIds)) {
+      throw new TypeError('reparentNodes expects an array of node ids.');
+    }
+    const recipe = currentScene.exportRecipe();
+    const operations = reparentOperationsFor(recipe, nodeIds, parentId, {
+      keepWorld,
+      roundVector,
+      normalizeQuaternion,
+    });
+    if (operations.length === 0) {
+      return { changed: 0 };
+    }
+    applySceneOperations(operations);
+    notify({ kind: 'topology', nodeId: operations[0].id });
+    return { changed: operations.length };
   }
 
   function addPrimitive(primitiveType, options = {}) {
@@ -3278,6 +3257,7 @@ export function createStudioController({
     snapSelectedToAt,
     snapMarker,
     updateNodeTransform,
+    reparentNodes,
     addPrimitive: timed('add', addPrimitive),
     applyImportOperations: timed('add', applyImportOperations),
     addSceneLight: timed('add', addSceneLight),

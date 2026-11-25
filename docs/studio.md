@@ -90,6 +90,8 @@ Not there yet, and said so on screen when you reach it:
 
 **Ctrl+J** (or **Edit ▸ Join**) joins the selected objects into the one picked last: each mesh is added to it where it stood in the scene, and the other objects go. Select two or more first (Shift or Ctrl with a click, or the Scene list). A shape joins as a mesh, and a joined object that has children, motion or a physics body is refused with the reason. The objects must share one material, since a mesh draws with one; if they differ, give them the same material first or keep them apart. It is one undo step.
 
+**Ctrl+P** (or **Edit ▸ Parent**) makes every selected object a child of the last one picked, and **Alt+P** (or **Edit ▸ Clear parent**) moves selected children back to the scene root, each as one undo step. Dragging a row onto another row in the Scene list sets its parent, and dragging it onto empty space in the Scene list clears its parent. Setting or clearing a parent through any of these or the **Parent** dropdown keeps each object where it already stands in world space.
+
 If another object uses the same geometry, entering edit mode gives this object a geometry of its own (the same conversion step), so the other one keeps its shape and does not move with it.
 
 ## Add an object or a light
@@ -186,6 +188,7 @@ While an input method composes text (Japanese, Chinese, Korean), Enter picks the
 | Ctrl+C, Ctrl+V | Copy the selected object, paste a copy of it (one undo step, still works after the original is deleted) |
 | Shift+D or Ctrl+D | Duplicate |
 | Ctrl+J | Join the selected objects into the one picked last |
+| Ctrl+P, Alt+P | Parent the selected objects to the last one picked, clear parent |
 | F2 | Rename the active object, in its Scene row |
 | X, Delete or Backspace | Delete |
 | Esc | Deselect |

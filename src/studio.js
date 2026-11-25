@@ -50,6 +50,7 @@ import { watchScrollFade } from './studio-scroll-cue.js';
 import { extensionOf, openNameEditor, splitFileName, validateFileStem, validateNodeLabel, validateShotName } from './studio-name-editor.js';
 import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
 import { SNAP_TARGETS } from './studio-snapping.js';
+import { createOutlinerParentDrag } from './studio-parenting.js';
 import { editIconName } from './studio-edit-names.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, frameFailureReason, watchContextLoss } from './studio-context-loss.js';
@@ -1535,6 +1536,8 @@ export function createStudio(container, {
     createMenuItem('Paste', 'edit.paste', () => pasteCopy(), 'clipboard'),
     createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicateObject'),
     createMenuItem('Join', 'edit.join', () => joinSelection(), 'duplicate'),
+    createMenuItem('Parent', 'edit.parent', () => parentSelection(), 'node'),
+    createMenuItem('Clear parent', 'edit.clearParent', () => clearParentSelection(), 'deselect'),
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
     createMenuItem('Rename', 'edit.rename', () => renameActiveObjectFromMenu(), 'text'),
     createMenuItem('Deselect', 'edit.deselect', () => controller.selectNode(null), 'deselect'),
@@ -1983,6 +1986,13 @@ export function createStudio(container, {
   const sceneAddButton = createIconButton(documentReference, 'add', 'Add to the scene', { attributes: { popovertarget: 'crucible-studio-pop-add' } });
   sceneAddButton.addEventListener('click', () => { addMenuAnchor = sceneAddButton; });
   const outlinerTree = createElement(documentReference, 'div', { className: 'crucible-studio-tree crucible-studio-scroll', attributes: { role: 'tree', 'aria-label': 'Scene hierarchy' } });
+  const outlinerDrag = createOutlinerParentDrag({
+    outlinerTree,
+    controller,
+    announce: message => announceSuccess(message),
+    announceError: message => announceError(message),
+    isEditingName: () => Boolean(activeNameEditor),
+  });
   watchScrollFade(outlinerTree);
   const swatchContainer = createElement(documentReference, 'div', { className: 'crucible-studio-swatches crucible-studio-scroll' });
   const newMaterialQuickButton = createIconButton(documentReference, 'add', 'New material', { className: 'crucible-studio-swatch-add' });
@@ -4402,6 +4412,7 @@ export function createStudio(container, {
       selectButton,
       eyeButton,
     );
+    outlinerDrag.bindRow(element, node.id);
     return { element, badge, appliedFill: '' };
   }
 
@@ -5592,6 +5603,37 @@ export function createStudio(container, {
     }
   }
 
+  function parentSelection() {
+    const activeId = controller.selectedNodeId;
+    const childIds = controller.selectedNodeIds.filter(nodeId => nodeId !== activeId);
+    if (!activeId || childIds.length === 0) {
+      announce('Select two or more objects to parent. The one picked last becomes the parent.');
+      return;
+    }
+    try {
+      const result = controller.reparentNodes(childIds, activeId);
+      if (result.changed > 0) announceSuccess(`Parented ${result.changed} ${result.changed === 1 ? 'object' : 'objects'} to ${activeId}`);
+    } catch (error) {
+      announceError(error.message);
+    }
+  }
+
+  function clearParentSelection() {
+    const recipe = controller.exportRecipe();
+    const byId = new Map(recipe.nodes.map(node => [node.id, node]));
+    const parentedIds = controller.selectedNodeIds.filter(nodeId => byId.get(nodeId)?.parent);
+    if (parentedIds.length === 0) {
+      announce('Select an object with a parent to clear first.');
+      return;
+    }
+    try {
+      const result = controller.reparentNodes(parentedIds, null);
+      if (result.changed > 0) announceSuccess(`Cleared parent for ${result.changed} ${result.changed === 1 ? 'object' : 'objects'}`);
+    } catch (error) {
+      announceError(error.message);
+    }
+  }
+
   function separateMeshSelection() {
     meshEditor?.separateSelection();
     syncUi();
@@ -5908,6 +5950,14 @@ export function createStudio(container, {
     'edit.join': event => {
       event.preventDefault();
       joinSelection();
+    },
+    'edit.parent': event => {
+      event.preventDefault();
+      parentSelection();
+    },
+    'edit.clearParent': event => {
+      event.preventDefault();
+      clearParentSelection();
     },
     'edit.delete': event => {
       if (!controller.selectedNodeId && !selectedObjectIsDeletable()) return;
