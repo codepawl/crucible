@@ -17,6 +17,7 @@ import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shad
 import { STUDIO_CSS } from './studio-styles.js';
 import { createApplyMenus } from './studio-apply-menu.js';
 import { findKeymapAction, findMouseNavigation, keyLabel, lastKeyLabel, resolveKeymapPreset } from './studio-keymap.js';
+import { overlayCameraMode, targetOwnsWheel } from './studio-viewport-input.js';
 import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
@@ -5158,13 +5159,17 @@ export function createStudio(container, {
   gizmoSvg.addEventListener('pointerout', clearHoveredHandle);
   gizmoSvg.addEventListener('pointerleave', clearHoveredHandle);
 
-  // First among the handle listeners: in Maya and Cinema 4D Alt and a button navigate even over a handle.
+  // First among the handle listeners: a press the handle or the mark has no use for steers the camera as it would over the canvas.
+  // In Maya and Cinema 4D Alt and a button navigate even over a handle; the middle and right buttons and Shift pan in every keymap.
+  let panStartedOnOverlayMoved = false;
   gizmoSvg.addEventListener('pointerdown', event => {
-    const mode = findMouseNavigation(keymap, event);
+    panStartedOnOverlayMoved = false;
+    const mode = findMouseNavigation(keymap, event) ?? overlayCameraMode(event);
     if (mode === null) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     beginCameraDrag(event, mode, true, viewportElement);
+    pointerState.startedOnOverlay = true;
   });
 
   gizmoSvg.addEventListener('pointerdown', event => {
@@ -5189,6 +5194,7 @@ export function createStudio(container, {
   // The handles lie over the selected object, so a right click on one is a right click on that object.
   gizmoSvg.addEventListener('contextmenu', event => {
     event.preventDefault();
+    if (panStartedOnOverlayMoved) return;
     if (findMouseNavigation(keymap, { button: 2, altKey: event.altKey }) !== null) return;
     if (controller.selectedNodeId) {
       openObjectMenu(event.clientX, event.clientY);
@@ -5296,6 +5302,7 @@ export function createStudio(container, {
     if (!pointerState) return;
     const finished = pointerState;
     pointerState = null;
+    panStartedOnOverlayMoved = Boolean(finished.startedOnOverlay && finished.moved);
     if (finished.mode === 'light') {
       controller.endUndoGroup();
       return;
@@ -5342,7 +5349,10 @@ export function createStudio(container, {
   viewportElement.addEventListener('pointerup', finishPointer);
   viewportElement.addEventListener('pointercancel', finishPointer);
   canvas.addEventListener('contextmenu', event => event.preventDefault());
-  canvas.addEventListener('wheel', event => {
+  // One wheel handler for the whole view, because the handles and the marks are drawn over the canvas. While a move is held with
+  // proportional editing on, the wheel sets how far it reaches instead of zooming.
+  viewportElement.addEventListener('wheel', event => {
+    if (targetOwnsWheel(event.target, viewportElement)) return;
     event.preventDefault();
     if (viewingShot()) return;
     if (meshEditor?.circleSelecting) {
@@ -5350,17 +5360,12 @@ export function createStudio(container, {
       requestFrame();
       return;
     }
-    if (proportionalHoldsWheel()) return;
+    if (proportionalHoldsWheel()) {
+      meshEditor.proportional.resize(event.deltaY < 0 ? 1 : -1);
+      return;
+    }
     stopFlight();
     controller.orbitCamera({ zoomScale: 1 + Math.max(-0.35, Math.min(0.35, event.deltaY * 0.0012 * (preferences.zoomDirection === 'inverted' ? -1 : 1))) });
-  }, { passive: false });
-
-  // While a move is held with proportional editing on, the wheel sets how far it reaches instead of zooming. It listens on the
-  // viewport, not the canvas, because the pointer of a held move often sits on a move handle drawn over the canvas.
-  viewportElement.addEventListener('wheel', event => {
-    if (!proportionalHoldsWheel()) return;
-    event.preventDefault();
-    meshEditor.proportional.resize(event.deltaY < 0 ? 1 : -1);
   }, { passive: false });
 
   viewportElement.addEventListener('dragover', event => {

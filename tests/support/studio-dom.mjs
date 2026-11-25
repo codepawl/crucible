@@ -251,6 +251,7 @@ export class FakeNode {
         if (!atTarget && entry.capture !== capturePhase) continue;
         if (atTarget && capturePhase) continue;
         entry.listener.call(node, event);
+        if (event.immediatePropagationStopped) break;
       }
     };
     for (const node of [...path].reverse().slice(0, -1)) {
@@ -405,6 +406,10 @@ export class FakeDocument extends FakeNode {
       },
       stopPropagation() {
         this.propagationStopped = true;
+      },
+      stopImmediatePropagation() {
+        this.propagationStopped = true;
+        this.immediatePropagationStopped = true;
       },
       ...properties,
     };

@@ -1,0 +1,1 @@
+- The mouse wheel zooms Studio anywhere over the view, including with the pointer on a gizmo handle or a light or sun mark, and the middle, right and Shift drags pan from there too (#3464)
