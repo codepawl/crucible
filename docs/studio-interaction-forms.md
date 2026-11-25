@@ -74,7 +74,7 @@ Pick the form by how a person reaches the feature:
 | Delete | operator | `src/studio-keymap.js:30` | A single action on the selection. It deletes at once and undo brings it back. |
 | Clear location, rotation, scale | operator | `src/studio-keymap.js:38-40` | Three single actions, Alt+G, Alt+R and Alt+S. |
 | Parent and clear parent | panel | `src/studio.js:2113`, `src/studio.js:2121` | A dropdown in the Object panel: parent is a value of the object, so it is edited where the other values are. |
-| Rename | panel | `src/studio.js:3522` | The name is a field. A double click on a Scene row focuses it. |
+| Rename | operator | F2, double click on a list row, one click on the file name; `src/studio-name-editor.js` | One action that turns the name into an edit field in place. |
 | Copy and paste | operator | `src/studio-keymap.js:27-28` | Two single actions on the selection, Ctrl+C and Ctrl+V. |
 
 ## Edit mode
