@@ -118,6 +118,8 @@ Between one test file and the full pass there are four commands made for coding 
 - `npm run test:mutation-check -- tests/<name>.test.js` reverts your changes under `src/`, `bin/`, `packages/` and `scripts/`, runs the tests, prints the ones that fail and restores the tree. It exits 1 when none fail, because then the test does not pin your change. Stage unstaged edits outside those folders first and `git add -N` new files under them.
 - `npm test -- --test-reporter=./scripts/test-compact-reporter.mjs` gives the full pass the same short output.
 
+`npm run test:affected` and `npm run preflight` share one machine-wide lock file in the system temp folder, so two local runs go one after the other: the second prints `waiting for <pid> <command>` and starts when the first ends. A lock whose pid no longer runs is cleared, both scripts lower their own priority to below normal so the test processes they start inherit it, and CI (`CI` set) takes no lock (`scripts/machine-lock.mjs`, #3455).
+
 `npm test`, `npm run test:coverage`, `test:fast`, `test:affected` and the fast tests in preflight run at most 6 test files at once (`scripts/test-concurrency.mjs`), never more than Node would pick on the machine. Set `CRUCIBLE_TEST_CONCURRENCY` to another whole number to change it, or pass your own `--test-concurrency`.
 
 The checks it runs, if you want one alone:
