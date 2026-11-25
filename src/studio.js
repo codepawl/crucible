@@ -6044,6 +6044,7 @@ export function createStudio(container, {
       stopFlight();
       finishModalTransform(false);
       stopWatchingCircleFocus();
+      faceToolInput?.dispose();
       documentReference.removeEventListener('contextmenu', onModalContextMenu, true);
       documentReference.removeEventListener('click', onModalClick, true);
       documentReference.removeEventListener('pointerdown', onAnyPointerDown, true);

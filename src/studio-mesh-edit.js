@@ -1219,8 +1219,8 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     let frame;
     try {
       frame = faceToolFrame(state.mesh, kind, faces);
-    } catch (error) {
-      return refuse(error.message);
+    } catch {
+      return refuse(tool.cannotStart);
     }
     const vertices = [...verticesOfSelection(state.mesh, 'face', new Set(faces))];
     drag = { ...createDrag(vertices, null), tool: { kind, faces, frame, start: { x: pointerX, y: pointerY }, amount: 0 } };
@@ -1235,14 +1235,15 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     const project = local => controller.worldPointProjector()(transformPoint(state.part.matrix, local[0], local[1], local[2]));
     const rawAmount = faceToolAmount(kind, frame, project, start, { x: pixelX, y: pixelY });
     const amount = roundAmount(kind === 'inset' ? Math.max(0, rawAmount) : rawAmount);
-    let targets;
+    let result;
     try {
-      targets = faceToolTargets(state.mesh, kind, faces, amount);
+      result = faceToolTargets(state.mesh, kind, faces, amount);
     } catch {
-      // An inset past what the faces hold keeps the last amount that worked.
       return;
     }
-    drag.tool.amount = amount;
+    const { targets, usedAmount } = result;
+    // The log keeps the amount the engine used, so an inset the pointer pushed past the limit is written at the limit.
+    drag.tool.amount = roundAmount(usedAmount);
     drag.vertices.forEach(vertex => {
       const target = targets.get(vertex);
       for (let axis = 0; axis < 3; axis += 1) state.positions[vertex * 3 + axis] = target[axis];

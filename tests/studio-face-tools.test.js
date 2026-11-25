@@ -225,3 +225,45 @@ test('a held tool refuses nothing else: keys other than Enter and Esc do not rea
   ui.press('Escape');
   assert.equal(logOf(ui).length, 0);
 });
+
+test('I on the band of side faces of a cylinder insets all 8 as one region; E says the faces cancel out and writes nothing', async testContext => {
+  const ui = await editing(testContext, { type: 'cylinder', segments: 8, bevel: 0 });
+  const mesh = meshOf(ui);
+  const sideFace = faceToward(mesh, [1, 0, 0]);
+  const centre = faceCentre(mesh, sideFace);
+  const at = ui.controller.projectWorldPoint(centre);
+  const point = { clientX: VIEWPORT_BOX.left + at.x, clientY: VIEWPORT_BOX.top + at.y };
+  dispatch(ui.root.querySelector('canvas'), 'pointerdown', { ...point, button: 0, altKey: true });
+  dispatch(ui.root.querySelector('.crucible-studio-viewport'), 'pointerup', { ...point, altKey: true });
+  ui.studio.renderNow();
+  ui.hover(point);
+  ui.press('e');
+  assert.match(ui.status(), /cannot extrude as one region/);
+  assert.equal(logOf(ui).length, 0);
+  ui.press('i');
+  ui.movePointer({ clientX: point.clientX + 18, clientY: point.clientY });
+  ui.pressButton(0);
+  const [entry] = logOf(ui);
+  assert.equal(entry.op, 'inset_region');
+  assert.ok(entry.select.faces.length > 1, 'the whole band is one region');
+  assert.equal(logOf(ui).length, 1);
+});
+
+test('the four corners of a face picked in vertex mode extrude as that face', async testContext => {
+  const ui = await editing(testContext, { type: 'box', bevel: 0 });
+  ui.press('1');
+  const mesh = meshOf(ui);
+  const top = faceToward(mesh, [0, 1, 0]);
+  const corners = Array.from(mesh.cornerVertices).slice(mesh.faceOffsets[top], mesh.faceOffsets[top + 1]);
+  corners.forEach(vertex => {
+    const at = ui.controller.projectWorldPoint([0, 1, 2].map(axis => mesh.positions[vertex * 3 + axis]));
+    const point = { clientX: VIEWPORT_BOX.left + at.x, clientY: VIEWPORT_BOX.top + at.y };
+    dispatch(ui.root.querySelector('canvas'), 'pointerdown', { ...point, button: 0, shiftKey: true });
+    dispatch(ui.root.querySelector('.crucible-studio-viewport'), 'pointerup', { ...point, shiftKey: true });
+    ui.studio.renderNow();
+  });
+  holdTool(ui, 'e', faceCentre(mesh, top), 70)();
+  const [entry] = logOf(ui);
+  assert.equal(entry.op, 'extrude_face_region');
+  assert.deepEqual(entry.select.faces, [top]);
+});

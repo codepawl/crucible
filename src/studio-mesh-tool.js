@@ -1,15 +1,16 @@
 // Studio edit mode, the held face tools: E extrudes the picked faces and I insets them. The pointer sets the amount while the key
 // is held; a click or Enter confirms it as one entry of the mesh edit log, Esc or a right click puts everything back.
 //
-// This file holds the parts that need no editor state: which faces a pick stands for, what the engine does to them at a given
-// amount (the same `extrude_face_region` and `inset_region` an agent writes, so the preview is the result), and the pointer wiring.
+// This file holds the parts that need no editor state: what the engine does to the picked faces at a given amount (the same
+// `extrude_face_region` and `inset_region` an agent writes), and the pointer wiring. While the tool is held the preview moves the
+// existing corners of the faces to where the cap will stand; the new side faces appear when the tool is confirmed.
 import { editMesh } from './mesh-edit.js';
 import { selectFaces } from './mesh-select.js';
 import { connectedRegions, extrudeFaceRegion, insetRegion } from './mesh-ops.js';
 
 export const FACE_TOOLS = Object.freeze({
-  extrude: Object.freeze({ verb: 'extrude', past: 'Extruded', hint: 'Extrude: move the pointer to set the distance, click or Enter to confirm, Esc or right click to cancel.' }),
-  inset: Object.freeze({ verb: 'inset', past: 'Inset', hint: 'Inset: move the pointer to set the thickness, click or Enter to confirm, Esc or right click to cancel.' }),
+  extrude: Object.freeze({ verb: 'extrude', past: 'Extruded', cannotStart: 'These faces cannot extrude as one region: their normals cancel out, as on a ring of faces round a cylinder. Pick faces that face one way.', hint: 'Extrude: move the pointer to set the distance, click or Enter to confirm, Esc or right click to cancel.' }),
+  inset: Object.freeze({ verb: 'inset', past: 'Inset', cannotStart: 'These faces are too small to inset. Pick larger faces.', hint: 'Inset: move the pointer to set the thickness, click or Enter to confirm, Esc or right click to cancel.' }),
 });
 
 export const PICK_FACES_FIRST = verb => `Pick whole faces to ${verb}: press 3 for face mode, then click the faces.`;
@@ -30,7 +31,8 @@ export function faceToolEdit(kind, faces, amount) {
 }
 
 /**
- * Where the corners of the picked faces end up after the tool at `amount`: a map from vertex of the mesh to its new local position.
+ * Where the corners of the picked faces end up after the tool at `amount`: `targets` maps each vertex of the mesh to its new local
+ * position, and `usedAmount` is the amount the engine kept (an inset past what the faces hold is clamped to the largest that works).
  * The engine runs on a copy; the cap of each face keeps the corner order of the face, which pairs the corners.
  */
 export function faceToolTargets(mesh, kind, faces, amount) {
@@ -48,7 +50,7 @@ export function faceToolTargets(mesh, kind, faces, amount) {
     const capCorners = after.faceVertices(result.capFaces[index]);
     corners.forEach((vertex, corner) => targets.set(vertex, after.vertexPosition(capCorners[corner])));
   });
-  return targets;
+  return { targets, usedAmount: kind === 'inset' ? result.thickness : amount };
 }
 
 /**
@@ -57,7 +59,7 @@ export function faceToolTargets(mesh, kind, faces, amount) {
  * (for example faces that face opposite ways, whose normals cancel).
  */
 export function faceToolFrame(mesh, kind, faces) {
-  const unit = faceToolTargets(mesh, kind, faces, kind === 'extrude' ? 1 : 1e-4);
+  const { targets: unit } = faceToolTargets(mesh, kind, faces, kind === 'extrude' ? 1 : 1e-4);
   const cornerPoints = [...unit.keys()].map(vertex => [0, 1, 2].map(axis => mesh.positions[vertex * 3 + axis]));
   const centre = [0, 1, 2].map(axis => cornerPoints.reduce((sum, point) => sum + point[axis], 0) / cornerPoints.length);
   const radius = Math.max(1e-6, ...cornerPoints.map(point => Math.hypot(...[0, 1, 2].map(axis => point[axis] - centre[axis]))));
@@ -105,7 +107,14 @@ export function createFaceToolInput({ documentReference, editor, localCoordinate
   let swallowContextMenu = false;
   const windowReference = documentReference.defaultView;
 
+  // The scene can change under a held tool (a reload, an undo from outside): the editor has put the faces away, so the tool is over.
+  function stopWhenEditorLetGo() {
+    if (held && !editor.holdingFaceTool) stop(false);
+    return !held;
+  }
+
   function onPointerMove(event) {
+    if (stopWhenEditorLetGo()) return;
     const { x, y } = localCoordinates(event);
     editor.moveFaceTool(x, y);
     onChange();
@@ -170,7 +179,7 @@ export function createFaceToolInput({ documentReference, editor, localCoordinate
     },
     /** Enter confirms, Esc cancels; every other key is spent so it cannot act on the object meanwhile. */
     handleKey(event) {
-      if (!held) return false;
+      if (stopWhenEditorLetGo()) return false;
       if (event.key !== 'Shift') event.preventDefault();
       if (event.repeat) return true;
       if (event.key === 'Enter') stop(true);
@@ -179,6 +188,12 @@ export function createFaceToolInput({ documentReference, editor, localCoordinate
     },
     cancel() {
       stop(false);
+    },
+    /** Takes every listener off the page, for when Studio is disposed. */
+    dispose() {
+      stop(false);
+      documentReference.removeEventListener('contextmenu', onContextMenu, true);
+      documentReference.removeEventListener('click', onClick, true);
     },
   });
 }
