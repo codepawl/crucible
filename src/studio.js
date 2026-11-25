@@ -39,8 +39,10 @@ import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, des
 import './replace-textured-parts.js';
 import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
 import { createBakeMark } from './studio-bake-mark.js';
+import { watchScrollFade } from './studio-scroll-cue.js';
 import { extensionOf, openNameEditor, splitFileName, validateFileStem, validateNodeLabel, validateShotName } from './studio-name-editor.js';
 import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
+import { editIconName } from './studio-edit-names.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, frameFailureReason, watchContextLoss } from './studio-context-loss.js';
 import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgentEdit, diffRecipeNodes } from './studio-agent-presence.js';
@@ -1170,7 +1172,14 @@ function depthSortedNodes(nodes) {
 }
 
 const MODAL_AXES = Object.freeze(['x', 'y', 'z']);
-const MODAL_AXIS_BY_ACTION = Object.freeze({ 'modal.axisX': 'x', 'modal.axisY': 'y', 'modal.axisZ': 'z' });
+const MODAL_AXIS_BY_ACTION = Object.freeze({
+  'modal.axisX': 'x', 'modal.axisY': 'y', 'modal.axisZ': 'z',
+  // Shift keeps the object on the plane across the axis, so Shift+Y is the ground in Y-up space.
+  'modal.planeX': 'yz', 'modal.planeY': 'xz', 'modal.planeZ': 'xy',
+});
+const MODAL_AXIS_ACROSS_PLANE = Object.freeze({ yz: 'x', xz: 'y', xy: 'z' });
+const MODAL_TYPED_UNITS = Object.freeze({ translate: ' m', rotate: '°', scale: '×' });
+const MODAL_TYPED_PATTERN = /^-?\d*\.?\d*$/;
 const MODAL_TOOL_BY_ACTION = Object.freeze({ 'modal.translate': 'translate', 'modal.rotate': 'rotate', 'modal.scale': 'scale' });
 const TOOL_ACTION_BY_TOOL = Object.freeze({ select: 'tool.select', translate: 'tool.translate', rotate: 'tool.rotate', scale: 'tool.scale', snap: 'tool.snap' });
 const PICK_UP_TOOL_BY_ACTION = Object.freeze({ 'tool.translate': 'translate', 'tool.rotate': 'rotate', 'tool.scale': 'scale' });
@@ -1404,6 +1413,9 @@ export function createStudio(container, {
     item.addEventListener('click', onChoose);
     return giveMenuIcon(item, iconName);
   };
+  // Whether the History panel is shown, and the edits it last drew, so a notification that changed no edit draws nothing.
+  let historyShown = false;
+  let renderedHistoryKey = '';
   const menuToggles = [];
   const syncMenuToggles = () => menuToggles.forEach(({ item, isOn }) => item.setAttribute('aria-checked', isOn() ? 'true' : 'false'));
   const createMenuToggle = (label, actionId, onChoose, isOn, iconName) => {
@@ -1429,16 +1441,21 @@ export function createStudio(container, {
     controller.setCameraViewPreset(presetName);
     announce(`${presetName[0].toUpperCase()}${presetName.slice(1)} view`);
   };
+  const editUndoItem = createMenuItem('Undo', 'edit.undo', () => undoButton.click(), 'undo');
+  const editRedoItem = createMenuItem('Redo', 'edit.redo', () => redoButton.click(), 'redo');
+  // History is a panel in the right column; this row shows it and moves focus to the edit the scene shows.
+  const historyItem = createMenuItem('History', '', () => showHistoryPanel(), 'history');
   const editPopover = createMenuPopover(
     'crucible-studio-pop-edit',
-    createMenuItem('Undo', 'edit.undo', () => undoButton.click(), 'undo'),
-    createMenuItem('Redo', 'edit.redo', () => redoButton.click(), 'redo'),
+    editUndoItem,
+    editRedoItem,
+    historyItem,
     createMenuItem('Copy', 'edit.copy', () => copySelection(), 'duplicate'),
-    createMenuItem('Paste', 'edit.paste', () => pasteCopy(), 'duplicate'),
-    createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicate'),
+    createMenuItem('Paste', 'edit.paste', () => pasteCopy(), 'clipboard'),
+    createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicateObject'),
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
-    createMenuItem('Rename', 'edit.rename', () => renameActiveObjectFromMenu()),
-    createMenuItem('Deselect', 'edit.deselect', () => controller.selectNode(null)),
+    createMenuItem('Rename', 'edit.rename', () => renameActiveObjectFromMenu(), 'text'),
+    createMenuItem('Deselect', 'edit.deselect', () => controller.selectNode(null), 'deselect'),
     createMenuItem('Hide', 'edit.hide', () => hideSelection(), 'eyeOff'),
     createMenuItem('Show all', 'edit.showAll', () => showAllHidden(), 'eye'),
     createMenuItem('Reset position', 'edit.resetPosition', () => resetSelectionTransform('translation'), 'translate'),
@@ -1451,29 +1468,71 @@ export function createStudio(container, {
   const objectPopover = createMenuPopover(
     'crucible-studio-pop-object',
     createMenuItem('Frame', 'view.frame', () => flyToSelection(), 'frame'),
-    createMenuItem('Rename', 'edit.rename', () => renameActiveObjectFromMenu()),
-    createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicate'),
+    createMenuItem('Rename', 'edit.rename', () => renameActiveObjectFromMenu(), 'text'),
+    createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicateObject'),
     createMenuItem('Hide', 'edit.hide', () => hideSelection(), 'eyeOff'),
     createMenuItem('Reset position', 'edit.resetPosition', () => resetSelectionTransform('translation'), 'translate'),
     createMenuItem('Reset rotation', 'edit.resetRotation', () => resetSelectionTransform('rotation'), 'rotate'),
     createMenuItem('Reset scale', 'edit.resetScale', () => resetSelectionTransform('scale'), 'scale'),
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
   );
-  function openObjectMenu(clientX, clientY) {
+  // Edit mode's Delete and Merge menus (X and M). Dissolve acts on the selection of any mode; the merges need picked
+  // vertices, and At First and At Last follow the order of the picks, which only vertex mode keeps.
+  const dissolveSelection = kind => {
+    meshEditor.dissolve(kind);
+    syncUi();
+    requestFrame();
+  };
+  const mergeSelection = target => {
+    meshEditor.merge(target);
+    syncUi();
+    requestFrame();
+  };
+  const meshDeletePopover = createMenuPopover(
+    'crucible-studio-pop-mesh-delete',
+    createMenuItem('Dissolve Vertices', '', () => dissolveSelection('vertices'), 'meshVertex'),
+    createMenuItem('Dissolve Edges', '', () => dissolveSelection('edges'), 'meshEdge'),
+    createMenuItem('Dissolve Faces', '', () => dissolveSelection('faces'), 'meshFace'),
+  );
+  const meshMergeCenterItem = createMenuItem('At Center', '', () => mergeSelection('center'), 'meshVertex');
+  const meshMergeFirstItem = createMenuItem('At First', '', () => mergeSelection('first'), 'meshVertex');
+  const meshMergeLastItem = createMenuItem('At Last', '', () => mergeSelection('last'), 'meshVertex');
+  const meshMergeCollapseItem = createMenuItem('Collapse', '', () => mergeSelection('collapse'), 'meshVertex');
+  const meshMergePopover = createMenuPopover('crucible-studio-pop-mesh-merge', meshMergeCenterItem, meshMergeFirstItem, meshMergeLastItem, meshMergeCollapseItem);
+  function openPopoverAt(popover, clientX, clientY) {
     const windowWidth = documentReference.defaultView?.innerWidth ?? 1280;
     const windowHeight = documentReference.defaultView?.innerHeight ?? 800;
-    objectPopover.togglePopover?.(false);
-    objectPopover.style.left = `${Math.round(Math.max(8, Math.min(clientX, windowWidth - 256)))}px`;
-    objectPopover.style.right = 'auto';
+    popover.togglePopover?.(false);
+    popover.style.left = `${Math.round(Math.max(8, Math.min(clientX, windowWidth - 256)))}px`;
+    popover.style.right = 'auto';
     // In the lower half the menu hangs from the pointer and grows upward, so it stays on screen at any height.
     const opensUpward = clientY > windowHeight / 2;
-    objectPopover.style.top = opensUpward ? 'auto' : `${Math.round(clientY)}px`;
-    objectPopover.style.bottom = opensUpward ? `${Math.round(Math.max(8, windowHeight - clientY))}px` : 'auto';
+    popover.style.top = opensUpward ? 'auto' : `${Math.round(clientY)}px`;
+    popover.style.bottom = opensUpward ? `${Math.round(Math.max(8, windowHeight - clientY))}px` : 'auto';
     const opening = popoverOpeningStyle({ opensUpward });
-    objectPopover.style.setProperty('--studio-popover-origin', opening.origin);
-    objectPopover.style.setProperty('--studio-popover-shift', opening.shift);
-    objectPopover.showPopover?.();
+    popover.style.setProperty('--studio-popover-origin', opening.origin);
+    popover.style.setProperty('--studio-popover-shift', opening.shift);
+    popover.showPopover?.();
   }
+  function openObjectMenu(clientX, clientY) {
+    openPopoverAt(objectPopover, clientX, clientY);
+  }
+  // The keys open these menus at the middle of the selection, as the pointer is not tracked between clicks.
+  function openMeshMenu(popover) {
+    const bounds = canvas.getBoundingClientRect();
+    const centre = meshEditor.selectionCentre;
+    const pixel = centre ? controller.projectWorldPoint(centre) : null;
+    const isAtFirstOrLastAvailable = meshEditor.mode === 'vertex';
+    for (const item of [meshMergeFirstItem, meshMergeLastItem]) item.setAttribute('aria-disabled', isAtFirstOrLastAvailable ? 'false' : 'true');
+    openPopoverAt(popover, bounds.left + (pixel?.x ?? bounds.width / 2), bounds.top + (pixel?.y ?? bounds.height / 2));
+  }
+  const meshMenuIsOpen = () => [meshDeletePopover, meshMergePopover].some(popover => {
+    try {
+      return popover.matches(':popover-open');
+    } catch {
+      return false;
+    }
+  });
   function hideSelection() {
     if (!controller.selectedNodeId) return;
     controller.updateNodeTransform(controller.selectedNodeId, { visible: false });
@@ -1516,6 +1575,7 @@ export function createStudio(container, {
     createMenuToggle('Grid', '', () => gridButton.click(), () => gridVisible, 'grid'),
     sceneCameraToggle,
     createMenuToggle('Scene and Properties', '', () => toggleDocksButton.click(), () => root.dataset.outlinerCollapsed !== 'true' || root.dataset.inspectorCollapsed !== 'true', 'panels'),
+    createMenuToggle('History', '', () => setHistoryShown(!historyShown), () => historyShown, 'history'),
     createMenuToggle('Properties', 'view.properties', () => setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true'), () => root.dataset.inspectorCollapsed !== 'true', 'settings'),
   );
   // A row that switches something shows whether it is on each time its menu opens.
@@ -1701,7 +1761,7 @@ export function createStudio(container, {
     startMenuGroup(importAndExportRows[0]),
     ...importAndExportRows.slice(1),
   );
-  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, viewPopover, helpPopover]) {
+  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, meshDeletePopover, meshMergePopover, viewPopover, helpPopover]) {
     popoverElement.addEventListener('click', event => {
       const clickedButton = event.target.closest?.('button');
       if (clickedButton && !clickedButton.dataset.keepsMenu) popoverElement.hidePopover?.();
@@ -1765,6 +1825,8 @@ export function createStudio(container, {
     exportPopover,
     editPopover,
     objectPopover,
+    meshDeletePopover,
+    meshMergePopover,
     viewPopover,
     helpPopover,
   );
@@ -1831,6 +1893,7 @@ export function createStudio(container, {
   const sceneAddButton = createIconButton(documentReference, 'add', 'Add to the scene', { attributes: { popovertarget: 'crucible-studio-pop-add' } });
   sceneAddButton.addEventListener('click', () => { addMenuAnchor = sceneAddButton; });
   const outlinerTree = createElement(documentReference, 'div', { className: 'crucible-studio-tree crucible-studio-scroll', attributes: { role: 'tree', 'aria-label': 'Scene hierarchy' } });
+  watchScrollFade(outlinerTree);
   const swatchContainer = createElement(documentReference, 'div', { className: 'crucible-studio-swatches crucible-studio-scroll' });
   const newMaterialQuickButton = createIconButton(documentReference, 'add', 'New material', { className: 'crucible-studio-swatch-add' });
   newMaterialQuickButton.addEventListener('click', () => {
@@ -2005,9 +2068,17 @@ export function createStudio(container, {
   // Shown only while edit mode is on, so the group itself says which mode the viewport is in.
   const meshModeGroup = createElement(documentReference, 'div', { className: 'crucible-studio-group', hidden: true, dataset: { meshGroup: 'true' }, attributes: { role: 'group', 'aria-label': 'Mesh selection' } }, meshObjectButton, ...meshModeButtons);
 
+  // Proportional editing: the toggle and the popover that sets its curve and size. They sit in the mesh group, shown while editing; the
+  // settings and the popover are made with the editor (studio-proportional.js loads on the first Tab).
+  const PROPORTIONAL_POPOVER_ID = 'crucible-studio-pop-proportional';
+  const proportionalButton = createKeyedIconButton('proportional', () => `Proportional editing (${keyLabel(keymap, 'mesh.proportional')})`, { dataset: { proportional: 'toggle' }, attributes: { 'aria-pressed': 'false' } });
+  const proportionalMenuButton = createIconButton(documentReference, 'chevron', 'Falloff and size of proportional editing', { dataset: { proportional: 'menu' }, attributes: { popovertarget: PROPORTIONAL_POPOVER_ID } });
+  proportionalButton.addEventListener('click', () => toggleProportional());
+  meshModeGroup.append(proportionalButton, proportionalMenuButton);
+
   const undoButton = createKeyedIconButton('undo', () => `Undo (${keyLabel(keymap, 'edit.undo')})`, { attributes: { 'aria-disabled': 'true' } });
   const redoButton = createKeyedIconButton('redo', () => `Redo (${keyLabel(keymap, 'edit.redo')})`, { attributes: { 'aria-disabled': 'true' } });
-  const duplicateButton = createKeyedIconButton('duplicate', () => `Duplicate (${lastKeyLabel(keymap, 'edit.duplicate')})`);
+  const duplicateButton = createKeyedIconButton('duplicateObject', () => `Duplicate (${lastKeyLabel(keymap, 'edit.duplicate')})`);
   const deleteButton = createIconButton(documentReference, 'remove', 'Delete (Del)');
   const frameButton = createKeyedIconButton('frame', () => `Frame in view (${keyLabel(keymap, 'view.frame')})`);
   const toggleDocksButton = createIconButton(documentReference, 'panels', 'Show or hide the panels', { attributes: { 'aria-pressed': 'true' } });
@@ -2487,6 +2558,8 @@ export function createStudio(container, {
     onSelect: button => selectInspectorTab(button.dataset.tab),
   });
 
+  const panelsElement = createElement(documentReference, 'div', { className: 'crucible-studio-panels crucible-studio-scroll' }, panelsByTab.node, panelsByTab.material, panelsByTab.look, panelsByTab.camera);
+  watchScrollFade(panelsElement);
   const inspectorElement = createElement(
     documentReference,
     'aside',
@@ -2501,8 +2574,165 @@ export function createStudio(container, {
       propertiesMinimizeButton,
     ),
     tabListElement,
-    createElement(documentReference, 'div', { className: 'crucible-studio-panels crucible-studio-scroll' }, panelsByTab.node, panelsByTab.material, panelsByTab.look, panelsByTab.camera),
+    panelsElement,
   );
+
+  // The History panel: the edits in the order they were made, oldest at the top, so a recording reads downward. The row of the
+  // edit the scene shows is filled and strong; the edits after it (undone, still redoable) are dimmed and stay clickable.
+  const historyMinimizeButton = createIconButton(documentReference, 'minimize', 'Minimize History', { attributes: { 'aria-expanded': 'true' } });
+  historyMinimizeButton.addEventListener('click', () => setPreference('historyMinimized', !preferences.historyMinimized));
+  const historyList = createElement(documentReference, 'div', { className: 'crucible-studio-history-list crucible-studio-scroll', attributes: { role: 'list', 'aria-label': 'Edits' } });
+  watchScrollFade(historyList);
+  const historyDock = createElement(
+    documentReference,
+    'aside',
+    { className: 'crucible-studio-dock crucible-studio-history', attributes: { 'aria-label': 'History' } },
+    createElement(
+      documentReference,
+      'div',
+      { className: 'crucible-studio-dock-head' },
+      createElement(documentReference, 'span', { className: 'crucible-studio-dock-title' }, createIcon(documentReference, 'history'), createElement(documentReference, 'span', { textContent: 'History' })),
+      createElement(documentReference, 'span', { className: 'crucible-studio-spacer' }),
+      historyMinimizeButton,
+    ),
+    historyList,
+  );
+  const historyRowButtons = () => Array.from(historyList.children);
+  const currentHistoryRow = () => historyRowButtons().find(row => row.getAttribute('aria-current') === 'step');
+
+  function createHistoryRow({ name, detail, position, state }) {
+    const row = createElement(documentReference, 'button', {
+      type: 'button',
+      className: 'crucible-studio-history-row',
+      dataset: { label: name, state, position: String(position) },
+      tabIndex: state === 'current' ? 0 : -1,
+      attributes: { role: 'listitem', ...(state === 'current' ? { 'aria-current': 'step' } : {}), ...(state === 'undone' ? { 'aria-description': 'Undone' } : {}) },
+    },
+    createElement(documentReference, 'span', { className: 'crucible-studio-history-mark', attributes: { 'aria-hidden': 'true' } }),
+    createIcon(documentReference, name === 'Start' ? 'history' : editIconName(name)),
+    createElement(documentReference, 'span', { className: 'crucible-studio-history-name', textContent: name }));
+    if (detail) {
+      row.append(createElement(documentReference, 'span', { className: 'crucible-studio-history-detail', textContent: detail }));
+    }
+    row.title = detail ? `${name}  ${detail}` : name;
+    row.addEventListener('click', () => {
+      controller.goToHistoryPosition(position);
+      syncHistoryPanel();
+      currentHistoryRow()?.focus?.({ preventScroll: true });
+      revealHistoryRow(historyRowButtons().indexOf(currentHistoryRow()));
+      announce(position === 0 ? 'Back to the start' : `Went to ${name}`);
+    });
+    return row;
+  }
+
+  function syncHistoryPanel() {
+    if (!historyShown) return;
+    const { labels, details, position, reachesStart } = controller.history;
+    const renderKey = JSON.stringify([position, labels, details, reachesStart]);
+    if (renderKey === renderedHistoryKey) return;
+    renderedHistoryKey = renderKey;
+    const stateOf = editPosition => (editPosition === position ? 'current' : editPosition < position ? 'done' : 'undone');
+    const rows = [];
+    if (reachesStart) {
+      rows.push({ name: 'Start', detail: '', position: 0, state: stateOf(0) });
+    }
+    labels.forEach((name, index) => rows.push({ name, detail: details[index], position: index + 1, state: stateOf(index + 1) }));
+    const hadFocus = historyList.contains(documentReference.activeElement);
+    historyList.replaceChildren(...rows.map(createHistoryRow));
+    fitHistoryListToWholeRows();
+    const current = currentHistoryRow();
+    revealHistoryRow(historyRowButtons().indexOf(current), { preferLast: true });
+    if (hadFocus) current?.focus?.({ preventScroll: true });
+  }
+
+  // The list is as tall as a whole number of rows and scrolls a whole row at a time, so no row is ever cut in half. It shows at
+  // most six rows, and at most a third of the column, so Properties keeps the rest; a compact window shows four.
+  const HISTORY_MOST_ROWS = 6;
+  const HISTORY_COMPACT_ROWS = 4;
+  function historyRowMetrics() {
+    const firstRow = historyList.firstElementChild;
+    const rowHeight = firstRow?.getBoundingClientRect().height ?? 0;
+    if (!(rowHeight > 0)) return null;
+    const style = documentReference.defaultView.getComputedStyle(historyList);
+    const gap = parseFloat(style.rowGap) || 0;
+    return { gap, padding: parseFloat(style.paddingTop) || 0, pitch: rowHeight + gap };
+  }
+  function fitHistoryListToWholeRows() {
+    const metrics = historyRowMetrics();
+    if (!metrics) {
+      historyList.style.maxBlockSize = '';
+      return;
+    }
+    const { gap, padding, pitch } = metrics;
+    let rows = HISTORY_MOST_ROWS;
+    if (root.dataset.compact === 'true') {
+      rows = HISTORY_COMPACT_ROWS;
+    } else {
+      const columnStyle = documentReference.defaultView.getComputedStyle(sideColumn);
+      const columnHeight = sideColumn.getBoundingClientRect().height - (parseFloat(columnStyle.paddingTop) || 0) - (parseFloat(columnStyle.paddingBottom) || 0);
+      const headHeight = historyDock.querySelector('.crucible-studio-dock-head').getBoundingClientRect().height;
+      const borders = 2;
+      // A third of the column at most, and what is left after the Scene card (30% at most) and the 240 px Properties keeps.
+      const sceneHeight = Math.min(outlinerDock.getBoundingClientRect().height, columnHeight * 0.3);
+      const propertiesHeight = root.dataset.inspectorCollapsed === 'true' ? 0 : root.dataset.inspectorMinimized === 'true' ? inspectorElement.getBoundingClientRect().height : 240;
+      const cardGaps = (parseFloat(columnStyle.rowGap) || 0) * 2;
+      const cardRoom = Math.min(columnHeight / 3, columnHeight - sceneHeight - propertiesHeight - cardGaps);
+      const room = cardRoom - headHeight - borders - padding * 2;
+      rows = Math.max(1, Math.min(rows, Math.floor((room + gap) / pitch)));
+    }
+    historyList.style.maxBlockSize = `${rows * pitch - gap + padding * 2}px`;
+  }
+  // The room changed (a resize, a card minimized): cut the list to whole rows again and keep the current row in view.
+  function refitHistoryList() {
+    fitHistoryListToWholeRows();
+    revealHistoryRow(historyRowButtons().indexOf(currentHistoryRow()), { preferLast: true });
+  }
+  // Scrolls to a row boundary that keeps the row at `index` in view: the newest rows when `preferLast` and the current row fits with them.
+  function revealHistoryRow(index, { preferLast = false } = {}) {
+    const metrics = historyRowMetrics();
+    if (!metrics || index < 0) return;
+    const { gap, padding, pitch } = metrics;
+    const visibleRows = Math.max(1, Math.round((historyList.clientHeight - padding * 2 + gap) / pitch));
+    let firstVisible = Math.round(historyList.scrollTop / pitch);
+    if (preferLast) firstVisible = Math.max(0, historyRowButtons().length - visibleRows);
+    if (index < firstVisible) firstVisible = index;
+    if (index > firstVisible + visibleRows - 1) firstVisible = index - visibleRows + 1;
+    historyList.scrollTop = firstVisible * pitch;
+  }
+
+  // Up and Down move between rows, Home and End go to the ends; Enter and Space press the focused row like any button.
+  historyList.addEventListener('keydown', event => {
+    const step = { ArrowUp: -1, ArrowDown: 1 }[event.key];
+    const rows = historyRowButtons();
+    const index = rows.indexOf(documentReference.activeElement);
+    let target = null;
+    if (step !== undefined && index >= 0) target = rows[Math.max(0, Math.min(rows.length - 1, index + step))];
+    if (event.key === 'Home') target = rows[0];
+    if (event.key === 'End') target = rows[rows.length - 1];
+    if (!target) return;
+    event.preventDefault();
+    for (const row of rows) row.tabIndex = row === target ? 0 : -1;
+    target.focus?.({ preventScroll: true });
+    revealHistoryRow(rows.indexOf(target));
+  });
+
+  // Showing is remembered with the other view preferences. In a compact window the panel starts closed like the others.
+  function setHistoryShown(shown, { remember = true } = {}) {
+    historyShown = shown;
+    root.dataset.historyCollapsed = shown ? 'false' : 'true';
+    renderedHistoryKey = '';
+    // In a compact window the two cards would cover each other, so showing one puts the other away; the panels button or
+    // View > Properties brings Properties back and puts History away.
+    if (shown && root.dataset.compact === 'true') setInspectorCollapsed(true);
+    if (remember) setPreference('historyVisible', shown);
+    syncHistoryPanel();
+    syncMenuToggles();
+  }
+  function showHistoryPanel() {
+    setHistoryShown(true);
+    currentHistoryRow()?.focus?.();
+  }
+  root.dataset.historyCollapsed = 'true';
 
   // Bottom Timeline & Telemetry Bar
   const playTooltip = isPlaying => `${isPlaying ? 'Pause' : 'Play'} (${keyLabel(keymap, 'animate.play')})`;
@@ -2730,6 +2960,8 @@ export function createStudio(container, {
     showPanelSizes(preferences);
     showPanelMinimized(sceneMinimizeButton, 'outlinerMinimized', 'Scene', preferences.sceneMinimized);
     showPanelMinimized(propertiesMinimizeButton, 'inspectorMinimized', 'Properties', preferences.propertiesMinimized);
+    showPanelMinimized(historyMinimizeButton, 'historyMinimized', 'History', preferences.historyMinimized);
+    refitHistoryList();
     for (const [name, control] of settingControls) {
       if (STUDIO_PREFERENCE_CHOICES[name]) control.value = String(preferences[name]);
       else control.checked = preferences[name];
@@ -2858,6 +3090,8 @@ export function createStudio(container, {
     button.setAttribute('aria-expanded', minimized ? 'false' : 'true');
   }
 
+  sideColumn.append(historyDock);
+  setHistoryShown(preferences.historyVisible, { remember: false });
   applyPreferences();
   root.append(viewportElement, menubarElement, toolbarElement, sideColumn, bottomElement, fileInput, importInput, recipeDialog, shortcutsDialog, settingsDialog, setup.dialog);
   container.append(root);
@@ -4305,6 +4539,7 @@ export function createStudio(container, {
     const editingMesh = Boolean(meshEditor?.active);
     root.dataset.meshEdit = editingMesh ? 'true' : 'false';
     meshModeGroup.hidden = !editingMesh;
+    proportionalButton.setAttribute('aria-pressed', editingMesh && meshEditor.proportional?.enabled ? 'true' : 'false');
     const meshMode = editingMesh ? meshEditor.mode : null;
     if (meshMode !== shownMeshMode) {
       shownMeshMode = meshMode;
@@ -4313,6 +4548,9 @@ export function createStudio(container, {
     meshModeButtons.forEach(button => button.setAttribute('aria-pressed', editingMesh && button.dataset.meshMode === meshEditor.mode ? 'true' : 'false'));
     undoButton.setAttribute('aria-disabled', controller.canUndo ? 'false' : 'true');
     redoButton.setAttribute('aria-disabled', controller.canRedo ? 'false' : 'true');
+    editUndoItem.setAttribute('aria-disabled', controller.canUndo ? 'false' : 'true');
+    editRedoItem.setAttribute('aria-disabled', controller.canRedo ? 'false' : 'true');
+    syncHistoryPanel();
     const selectedNode = recipe.nodes.find(node => node.id === controller.selectedNodeId) ?? null;
     const hasNode = Boolean(selectedNode);
     const selectedCount = controller.selectedNodeIds.length;
@@ -4478,14 +4716,18 @@ export function createStudio(container, {
       createElement(documentReference, 'kbd', { textContent: keys }),
       word,
     );
-    const lockedAxis = modalTransform.locked ? modalTransform.axis : null;
+    const lockedAxes = (modalTransform.locked && modalTransform.axis) || '';
     const axisChips = MODAL_AXES.map(axis => {
       const key = createElement(documentReference, 'kbd', { textContent: keyLabel(keymap, `modal.axis${axis.toUpperCase()}`), dataset: { axis } });
-      key.setAttribute('aria-pressed', lockedAxis === axis ? 'true' : 'false');
+      key.setAttribute('aria-pressed', lockedAxes.includes(axis) ? 'true' : 'false');
       return key;
     });
+    const typedReadout = modalTransform.typed === ''
+      ? []
+      : [createElement(documentReference, 'span', { className: 'crucible-studio-hint-typed', textContent: `= ${modalTransform.typed}${MODAL_TYPED_UNITS[modalTransform.tool]}` })];
     hintBar.replaceChildren(
       createElement(documentReference, 'span', { className: 'crucible-studio-hint-delta', textContent: (liveDeltaLabel || MODAL_TOOL_WORDS[modalTransform.tool]).replace(/^SCREEN/, MODAL_TOOL_WORDS.translate) }),
+      ...typedReadout,
       createElement(documentReference, 'span', { className: 'crucible-studio-hint-chip' }, ...axisChips, 'axis'),
       chip('Click', 'place'),
       chip(keyLabel(keymap, 'modal.cancel'), 'cancel'),
@@ -4502,7 +4744,10 @@ export function createStudio(container, {
     controller.beginGizmoDrag(axis, modalTransform.startX, modalTransform.startY);
     modalTransform.axis = axis;
     modalTransform.locked = locked;
-    if (modalTransform.lastX !== modalTransform.startX || modalTransform.lastY !== modalTransform.startY) {
+    const typedAmount = typedModalAmount();
+    if (typedAmount !== null) {
+      controller.setGizmoTypedAmount(typedAmount);
+    } else if (modalTransform.lastX !== modalTransform.startX || modalTransform.lastY !== modalTransform.startY) {
       controller.updateGizmoDrag(modalTransform.lastX, modalTransform.lastY, { shiftKey: modalTransform.shiftKey });
     }
   }
@@ -4563,6 +4808,7 @@ export function createStudio(container, {
       tool,
       axis: null,
       locked: false,
+      typed: '',
       startX: viewportPointer.x,
       startY: viewportPointer.y,
       lastX: viewportPointer.x,
@@ -4598,13 +4844,43 @@ export function createStudio(container, {
 
   // The same axis key again lets the object go free; another one moves the lock there. The move restarts from where
   // the key picked the object up, so a placed move is still one undo step.
-  function lockModalAxis(axis) {
+  function lockModalAxis(requestedAxis) {
+    // A turn goes around one axis, so the plane across an axis means that axis.
+    const axis = modalTransform.tool === 'rotate' ? MODAL_AXIS_ACROSS_PLANE[requestedAxis] ?? requestedAxis : requestedAxis;
     const release = modalTransform.locked && modalTransform.axis === axis;
     // No axis while the drag is swapped: the change this cancel reports must not read as the object being let go.
     modalTransform.axis = null;
     controller.cancelGizmoDrag();
     beginModalDrag(release ? modalFreeAxis(modalTransform.tool) : axis, !release);
     syncHintBar();
+  }
+
+  // The number typed so far, or null while it is not one yet (nothing, "-" or "."): the pointer then sets the amount.
+  function typedModalAmount() {
+    const amount = Number(modalTransform.typed);
+    return modalTransform.typed === '' || !Number.isFinite(amount) ? null : amount;
+  }
+
+  // Numeric input: digits, a point and a minus sign build the amount, Backspace takes the last one back.
+  function typeModalAmount(event) {
+    const current = modalTransform.typed;
+    let next = current;
+    if (event.key === 'Backspace') {
+      next = current.slice(0, -1);
+    } else if (event.key === '-') {
+      next = current.startsWith('-') ? current.slice(1) : `-${current}`;
+    } else if (/^[0-9.]$/.test(event.key)) {
+      next = current + event.key;
+    } else {
+      return false;
+    }
+    if (!MODAL_TYPED_PATTERN.test(next) || next.split('.').length > 2 || next.length > 12) {
+      return true;
+    }
+    modalTransform.typed = next;
+    controller.setGizmoTypedAmount(typedModalAmount());
+    syncHintBar();
+    return true;
   }
 
   function handleModalKey(event) {
@@ -4615,6 +4891,9 @@ export function createStudio(container, {
     // A key held down repeats: it may not flip the lock or swap the tool. Ctrl+Z is not the Z axis because the
     // modal bindings carry no Ctrl.
     if (event.repeat) {
+      return;
+    }
+    if (!event.ctrlKey && !event.metaKey && !event.altKey && typeModalAmount(event)) {
       return;
     }
     const match = findKeymapAction(keymap, event, 'modal');
@@ -4847,8 +5126,17 @@ export function createStudio(container, {
       requestFrame();
       return;
     }
+    if (proportionalHoldsWheel()) return;
     stopFlight();
     controller.orbitCamera({ zoomScale: 1 + Math.max(-0.35, Math.min(0.35, event.deltaY * 0.0012)) });
+  }, { passive: false });
+
+  // While a move is held with proportional editing on, the wheel sets how far it reaches instead of zooming. It listens on the
+  // viewport, not the canvas, because the pointer of a held move often sits on a move handle drawn over the canvas.
+  viewportElement.addEventListener('wheel', event => {
+    if (!proportionalHoldsWheel()) return;
+    event.preventDefault();
+    meshEditor.proportional.resize(event.deltaY < 0 ? 1 : -1);
   }, { passive: false });
 
   viewportElement.addEventListener('dragover', event => {
@@ -4930,9 +5218,33 @@ export function createStudio(container, {
     return Boolean(selection && !selection.isCollapsed && selection.toString() !== '');
   }
 
+  function proportionalHoldsWheel() {
+    return Boolean(meshEditor?.holdingMove && meshEditor.proportional?.enabled);
+  }
+
+  function toggleProportional() {
+    const settings = meshEditor?.proportional;
+    if (!settings) return;
+    settings.toggle();
+    announce(settings.enabled ? 'Proportional editing on' : 'Proportional editing off');
+  }
+
   function loadMeshEditor() {
-    meshEditorLoad ??= import('./studio-mesh-edit.js').then(({ createMeshEditor }) => {
-      meshEditor = createMeshEditor({ controller, announce, getRenderer: () => renderer });
+    meshEditorLoad ??= Promise.all([import('./studio-mesh-edit.js'), import('./studio-proportional.js')]).then(([{ createMeshEditor }, { createProportionalSettings, createProportionalPopover }]) => {
+      let proportionalPopover = null;
+      const proportional = createProportionalSettings({
+        onChange: () => {
+          proportionalPopover?.sync();
+          // A radius or curve changed while a move is held: the hill follows it under the pointer.
+          meshEditor?.reweighDrag();
+          syncUi();
+          requestFrame();
+        },
+      });
+      proportionalPopover = createProportionalPopover({ documentReference, settings: proportional, popoverId: PROPORTIONAL_POPOVER_ID });
+      root.append(proportionalPopover.popover);
+      bindPopoverAnchor(proportionalMenuButton, proportionalPopover.popover, { beside: true });
+      meshEditor = createMeshEditor({ controller, announce, getRenderer: () => renderer, proportional });
       meshEditor.setSeeThrough(seeThrough);
       return meshEditor;
     });
@@ -5149,6 +5461,14 @@ export function createStudio(container, {
     'mesh.vertexMode': () => chooseMeshMode('vertex'),
     'mesh.edgeMode': () => chooseMeshMode('edge'),
     'mesh.faceMode': () => chooseMeshMode('face'),
+    'mesh.deleteMenu': event => {
+      event.preventDefault();
+      openMeshMenu(meshDeletePopover);
+    },
+    'mesh.mergeMenu': event => {
+      event.preventDefault();
+      openMeshMenu(meshMergePopover);
+    },
     // Alt+A and Ctrl+I have browser actions of their own (the menu bar, page info).
     'mesh.selectNone': event => {
       event.preventDefault();
@@ -5191,6 +5511,7 @@ export function createStudio(container, {
       meshEditor.shrinkSelection();
       updateMeshSelectionView();
     },
+    'mesh.proportional': () => toggleProportional(),
     'mesh.boxSelect': () => {
       if (meshEditor.boxSelecting) {
         cancelBoxSelect();
@@ -5201,7 +5522,6 @@ export function createStudio(container, {
       syncUi();
       requestFrame();
     },
-    'mesh.noop': event => event.preventDefault(),
   };
 
   // Handlers of the normal context by action id. A handler calls preventDefault for the keys the browser would
@@ -5328,6 +5648,10 @@ export function createStudio(container, {
     if (isEditableTarget(event.target, event.key)) {
       return;
     }
+    // Esc or a key pressed over an open Delete or Merge menu belongs to the menu, not to edit mode.
+    if (meshMenuIsOpen()) {
+      return;
+    }
     const editingMesh = Boolean(meshEditor?.active);
     const meshMatch = editingMesh ? findKeymapAction(keymap, event, 'mesh') : null;
     const match = meshMatch ?? findKeymapAction(keymap, event, 'normal');
@@ -5391,6 +5715,7 @@ export function createStudio(container, {
 
   function setInspectorCollapsed(collapsed) {
     root.dataset.inspectorCollapsed = collapsed ? 'true' : 'false';
+    if (!collapsed && root.dataset.compact === 'true' && historyShown) setHistoryShown(false, { remember: false });
     toggleDocksButton.setAttribute('aria-pressed', root.dataset.outlinerCollapsed === 'false' || root.dataset.inspectorCollapsed === 'false' ? 'true' : 'false');
     requestFrame();
   }
@@ -5496,12 +5821,14 @@ export function createStudio(container, {
     root.dataset.compact = compact ? 'true' : 'false';
     setOutlinerCollapsed(compact);
     setInspectorCollapsed(compact);
+    setHistoryShown(compact ? false : preferences.historyVisible, { remember: false });
   }
   syncCompactLayout();
 
   if (typeof ResizeObserver === 'function') {
     resizeObserver = new ResizeObserver(() => {
       syncCompactLayout();
+      refitHistoryList();
       refitTreeToWholeRows();
       requestFrame();
     });
