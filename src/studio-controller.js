@@ -1698,6 +1698,7 @@ export function createStudioController({
       parentInverse: parentWorld ? mat4.invert(mat4.create(), parentWorld) : null,
       parentWorld: parentWorld ?? null,
       companions: elementSession ? [] : moveCompanionsOf(recipe, node.id, worldMatrices),
+      activeCarried: !elementSession && !selectionRootsIn(recipe.nodes).includes(node.id),
       selectionIds,
       ownPoints: sampledOwnPoints,
       snapMarker: null,
@@ -1781,11 +1782,11 @@ export function createStudioController({
   // A keyed node shows its sampled pose, so with auto-key on the dragged pose is also keyed at the playhead as the pointer
   // moves; built from the motion the drag began with, so each move replaces the last and cancel can put the motion back.
   function writeDraggedPose(pose) {
-    const operations = [{ type: 'set-node', id: dragState.nodeId, ...pose }];
+    const operations = dragState.activeCarried ? [] : [{ type: 'set-node', id: dragState.nodeId, ...pose }];
     if (pose.translation) {
       operations.push(...companionMoveOperations(pose.translation));
     }
-    if (autoKey) {
+    if (autoKey && !dragState.activeCarried) {
       const motion = motionWithPoseKeys(dragState.baseMotion, dragState.nodeId, pose, motionTime);
       if (motion) {
         operations.push({ type: 'set-motion', motion });
@@ -1807,13 +1808,14 @@ export function createStudioController({
   }
 
   // The other selected objects that move with the dragged one: the selection's roots, minus what already moves with it
-  // (its own children) and what carries it (its selected ancestors).
+  // (its own children). A selected ancestor of the dragged object is one of them and carries it along, so the dragged
+  // object is then not written itself (`activeCarried`).
   // They start from the pose the dragged node starts from: the sampled pose under auto-key, the authored one otherwise.
   function moveCompanionsOf(recipe, activeId, worldMatrices) {
     const recipeNodes = recipe.nodes;
     const carriedByActive = descendantIdsOf(recipeNodes, activeId);
     return selectionRootsIn(recipeNodes)
-      .filter(nodeId => !carriedByActive.has(nodeId) && !descendantIdsOf(recipeNodes, nodeId).has(activeId))
+      .filter(nodeId => !carriedByActive.has(nodeId))
       .map(nodeId => {
         const node = recipeNodes.find(candidate => candidate.id === nodeId);
         const parentWorld = node.parent ? worldMatrices.get(node.parent) : null;
