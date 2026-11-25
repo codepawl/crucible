@@ -4,10 +4,14 @@ import { BUNDLED_ENVIRONMENT_NAMES, BUNDLED_CUBE_LOOK_NAMES } from './look-catal
 import { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './light-limits.js';
 import { BVH_LIMITS } from './bvh-limits.js';
 import {
-  MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES,
+  MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, MAX_SELECTED_ELEMENTS, STACK_OPERATIONS, MAX_STACK_NODES,
   FIELD_OPERATOR_NAMES, FIELD_ATTRIBUTES, MAX_FIELD_NODES, MAX_FIELD_DEPTH, MAX_FIELD_ELEMENTS, INSTANCE_SOURCES, MAX_INSTANCE_CANDIDATES,
   IMPORTED_MESH_EDIT_LIMITS,
 } from './mesh-operations.js';
+import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS, MESH_MAP_NAMES, SURFACE_OUTPUTS, SURFACE_SPACES, MATERIAL_GRAPH_LIMITS } from './material-name-lists.js';
+import { CURVE_TEXT_LIMITS } from './curve-text-limits.js';
+import { LIGHTING_SETUP_NAMES } from './lighting-setup-names.js';
+export { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, MATERIAL_GRAPH_OUTPUTS, MATERIAL_GRAPH_OPERATORS, MESH_MAP_NAMES, SURFACE_OUTPUTS, SURFACE_SPACES, MATERIAL_GRAPH_LIMITS, CURVE_TEXT_LIMITS, LIGHTING_SETUP_NAMES };
 import { MATERIAL_LAYER_FIELDS, MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES } from './material-layers.js';
 
 // What agent scenes support and their default limits, as plain data. The MCP server reads these without bundling
@@ -53,33 +57,13 @@ const MATERIAL_LAYER_NOTES = Object.freeze({
 
 // Recipe physics body shapes, the one list the validator, the MCP schema and scene_capabilities share.
 export const PHYSICS_BODY_SHAPES = Object.freeze(['box', 'ball', 'capsule', 'cylinder', 'cone', 'convex', 'trimesh', 'compound']);
-export const MATERIAL_PATTERN_TYPES =Object.freeze(['noise', 'wood', 'planks', 'bricks', 'tiles', 'marble', 'stone', 'concrete', 'metal', 'rust', 'fabric']);
 export const MAX_MATERIAL_PATTERNS = 16;
-// A material graph bakes to textures on the CPU and never becomes shader text. Its node and depth limits are the field
-// expression limits; maxWork is work units per pixel times pixels, so a costly graph needs a smaller texture.
-export const MATERIAL_GRAPH_OUTPUTS = Object.freeze(['color', 'roughness', 'metallic', 'emission', 'height', 'opacity', 'clearcoat', 'transmission', 'aov']);
-export const MATERIAL_GRAPH_OPERATORS = Object.freeze([
-  'uv', 'coord', 'mapping', 'vec', 'ramp', 'image', 'noise', 'whiteNoise', 'brick', 'voronoi', 'wave', 'checker', 'gradient',
-  'add', 'sub', 'mul', 'div', 'min', 'max', 'pow', 'abs', 'floor', 'fract', 'sqrt', 'invert', 'clamp', 'smoothstep', 'mix',
-  'layer', 'hue', 'curve', 'fresnel', 'vertexGroup', 'meshMap', 'surface', 'base',
-]);
-export const MESH_MAP_NAMES = Object.freeze(['curvature', 'ao', 'thickness']);
-export const SURFACE_OUTPUTS = Object.freeze(['slope', 'normalY', 'height']);
-export const SURFACE_SPACES = Object.freeze(['object', 'world']);
-export const MATERIAL_GRAPH_LIMITS = Object.freeze({ maxNodes: MAX_FIELD_NODES, maxDepth: MAX_FIELD_DEPTH, maxStops: 8, maxWork: 60_000_000 });
-// Curve and text geometry. A text geometry is bounded by vertices per curve segment: the bundled font stays under
-// 640 per character and a registered font is held to 128 outline points per glyph (2400).
-export const CURVE_TEXT_LIMITS = Object.freeze({
-  maxCurvePoints: 1024, maxProfilePoints: 256, maxTextCharacters: 256, maxTextLines: 16,
-  verticesPerCharacterSegment: 640, verticesPerCustomCharacterSegment: 2400, maxPointsPerGlyph: 128,
-});
 export const CURVE_TEXT_DETAILS = Object.freeze({
   curve: 'bends along path, 2-64 points [x,y,z] (Catmull-Rom); the coordinate along axis (x) is the distance from the path start, so model from 0.',
   splines: 'Geometry curve takes points (kind bezier|poly|nurbs, closed; nurbs also weights, order 2-8 default 4, and for open splines knotMode clamped|uniform or knots: point count plus order values that never decrease), or shape {type arc|spiral|star} (arc: radius, startAngle, sweep radians, segments; spiral: rotations, startRadius, endRadius, height, pointsPerRotation, reverse; star: points, innerRadius, outerRadius, innerTwist), or splines: up to 64 of those in one mesh. trim {start, end, length}: factors 0-1 of the arc length, or lengths when length is true; a trimmed curve is open. grow {name, steps 2-16, value}: morph targets of the curve grown step by step; animate with a motion track { kind: "morph", id: <name>, property: "weight", keyframes 0-1 } so a vine grows. See docs/modeling.md.',
   sdf: 'Geometry sdf: root is a tree meshed by surface nets, resolution 4-128 cells along the longest side (default 32). Primitive {shape sphere|box|roundBox|capsule|cylinder|torus, radius, size, height, tubeRadius, position, rotation (Euler radians), scale (uniform)}. Operation {op union|subtract|intersect, smooth (blend radius), children: 2-16} (subtract removes the rest from the first) or {op offset, distance, child}. At most 64 nodes, 8 levels. See docs/modeling.md.',
   text: 'Extruded text, baseline y=0 along +X, facing +Z. text (\n for lines), size (1), depth (0.2), align left|center|right, curveSegments, font. See docs/modeling.md.',
 });
-export const MATERIAL_MAPPINGS = Object.freeze(['box', 'uv']);
 export const MATERIAL_GRAPH_NODES = Object.freeze({
   outputs: 'color (linear RGB; a number is grey), roughness, metallic, emission (defaults to 1), height (normal map), opacity (alpha), clearcoat, transmission (masks), aov (linear RGB or scalar).',
   textures: Object.freeze({
@@ -110,7 +94,6 @@ export const MATERIAL_GRAPH_NODES = Object.freeze({
 export const RECIPE_ALPHA_MODES = Object.freeze(['opaque', 'mask', 'blend', 'add']);
 
 // Named lighting setups (see lighting-setups.js) and the occlusion strength that recipes get when they set none.
-export const LIGHTING_SETUP_NAMES = Object.freeze(['daylight', 'overcast', 'sunset', 'studio']);
 export const DEFAULT_LIGHTING_SETUP = 'daylight';
 export const DEFAULT_AMBIENT_OCCLUSION = 0;
 
@@ -231,6 +214,7 @@ export const MESH_MODIFIER_NOTES = Object.freeze({
   wave: 'a gaussian ripple of height 0.5 along z (normal true: along the vertex normal) travelling from start [0,0] over axes xy (default), x or y; width 1.5, narrowness 0-50 (1.5), speed 0.25 per frame, time 0 (a frame), timeOffset 0, cyclic true repeats it. Matches Blender Wave.',
   weighted_normal: 'corner normals weighted by face area ^ (weight/50), weight 1-100 (50), smoothed across edges under angle 30 that are not sharp. Put it last in the stack.',
   smooth_by_angle: 'edges bending over angle 30 (0-180) become sharp, others smooth, over smoothAngle; ignoreSharp true also clears hand-made sharp edges.',
+  join: 'geometry (ID of a recipe geometry), matrix (16 numbers, column-major, from that geometry space into this mesh space; the identity if left out): adds its faces as a separate shell. Not in the stack.',
   bounding_box: 'becomes its axis-aligned box.',
   convex_hull: 'becomes its convex hull, up to 8192 vertices.',
   build: 'shows faces one by one as frame runs from start 0 over length 60 frames (frame 0; give the current frame, e.g. from your film clock): order index (default), random (seed 0) or axis (axis y, lowest centroid first); reverse true unbuilds. Unused vertices drop; while none shows, one zero-area triangle stays.',
@@ -248,6 +232,9 @@ export const MESH_UV_NOTES = Object.freeze({
   uv_project: 'mode cube (each face by its dominant axis), cylinder (sides wrap around axis, caps flat) or sphere (longitude and latitude); axis x|y|z (y) for the last two, measured from the bounds centre; wrapped faces cut opposite the first radial axis. pack true (default) packs into 0..1 with one scale for every island so texel density is even; false leaves uv in mesh units for a later uv_pack. margin 0-0.2 (0.01); rotate true lays tall islands on their side. Reports islands. Texel density: cube exact, cylinder within about 15 percent, sphere stretches toward the poles.',
   uv_pack: 'repacks the islands already in uv (faces joined across edges whose two ends share uv) into 0..1 with one scale. margin 0-0.2 (0.01), rotate true. Needs uv from uv_unwrap or uv_project. Reports islands.',
 });
+
+// What an edit can select. Details stay here so the tool schemas stay small.
+export const MESH_SELECTION_NOTES = `translate and transform_selection take one of select (a face rule, default every face), verts (a vertex rule such as {"vertices":[0,5]}, {"all":true} or {"inside":{min,max}}) or edges (an edge rule): the selected vertices, or both ends of the selected edges, move once each in the mesh's local space, with the same falloff. Every edge rule also takes {"edges":[[a,b],...]}: an edge named by the two vertices it joins (either order, boundary edges too). Pairs are stable where edge numbers are not. Vertex indices, in verts and in pairs, are those of the mesh just before that edit: after earlier edits, before the modifier stack. An earlier edit that adds or removes vertices (subdivide, merge_by_distance, dissolve, delete) changes the count and can renumber them, and a wrong but valid index moves another corner: after a subdivide of a box, 0 to 7 are still the corners but 8 and up are new midpoints. Out-of-range indices throw with the vertex count. A vertex or pair named twice counts once. At most ${MAX_SELECTED_ELEMENTS} vertices or pairs per selection.`;
 
 // Shape keys on a recipe mesh. Details stay here so the tool schemas stay small.
 export const MESH_SHAPE_KEY_NOTES = Object.freeze({
@@ -278,7 +265,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   profile: 'scene_inspect profile:true draws profileFrames (1-120, default 30) real frames at the preview size and returns profile:{frames, millisecondsPerFrame (median, CPU submit plus GPU wait), millisecondsMinimum, millisecondsMaximum, drawCalls and triangles per frame (shadow and post passes included), textureBytes (all textures, splatBytes included), splatBytes, width, height, heaviestNodes:[{id,triangles,parts}] top 5}. It needs a GPU preview; without profile the answer is unchanged. Cut the heaviest nodes or textures first; read ms as a range, other work on the machine moves it.',
   askUser: 'scene_ask_user opens the current view in their browser; they pin up to maxMarks (16) points, each with a note, and press Send. Ask when a change is hard to say in words ("warmer here", "this bit"), not for facts you can inspect. Each mark returns partId, point, normal, note, distance and material (null on sky), plus view.camera and a PNG with numbered pins. Apply the change the note names to that partId, then to similar parts (same material or name prefix) when the note says so. A mark with kind "lasso" is an outline around a region: apply the note to every part in its parts list (partId, coverage, material, most covered first), and skip a part with a tiny coverage that the note does not fit. A part with materialSharedWith has that material on parts outside the mark: give it its own material before you change it. A part with edge true only grazes the outline. outcome cancelled or timeout returns no marks: ask in text. For a film scene pass motionTime to mark one moment; view.motionTime names it. Edits made while they mark change revision; the result warns.',
   navigation: 'scene_inspect path:{ground,from:[x,z],to:[x,z]} returns a route over the ground node around its holes, steep slopes and the nodes in avoid:[ids] (box footprints), as keyframes [{time,value:[x,y,z]}] for a translation track with interpolation LINEAR. radius 0.3 m; maxSlope 40 degrees; cellSize defaults to radius; seconds or speed (1.4 m/s); lift adds y.',
-  meshEdits: Object.freeze({ operations: Object.freeze(Object.keys(MESH_EDIT_OPERATIONS)), maxEdits: MAX_MESH_EDITS }),
+  meshEdits: Object.freeze({ operations: Object.freeze(Object.keys(MESH_EDIT_OPERATIONS)), maxEdits: MAX_MESH_EDITS, selections: MESH_SELECTION_NOTES }),
   meshStack: Object.freeze({ operations: STACK_OPERATIONS, maxNodes: MAX_STACK_NODES }),
   meshModifiers: MESH_MODIFIER_NOTES,
   meshSculpt: MESH_SCULPT_NOTES,
@@ -301,9 +288,14 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   operations: Object.freeze([
     'set-node', 'set-material', 'set-camera', 'add-node', 'remove-node',
     'add-geometry', 'remove-geometry', 'add-material', 'remove-material',
-    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'set-particles', 'set-bake', 'set-post-passes', 'set-pixel-grid', 'set-game', 'bake-motion', 'fracture-node', 'add-explosion', 'settle',
+    'set-environment', 'set-effects', 'set-shadow', 'set-motion', 'set-armatures', 'set-physics', 'set-cloth', 'set-timeline', 'set-particles', 'set-bake', 'set-post-passes', 'set-pixel-grid', 'set-game', 'bake-motion', 'fracture-node', 'add-explosion', 'settle', 'separate-faces', 'join-meshes', 'apply-transform', 'set-origin',
   ]),
   materialTags: Object.freeze(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass', 'water']),
+  materialPresets: Object.freeze({
+    field: 'material.preset',
+    names: Object.freeze(['smoothPlastic', 'wood', 'grass', 'glass', 'brick']),
+    rule: 'Fills unset fields, color tints it, your fields win; docs/agent-scene.md Material presets. Glass is a blended pane (opacity 0.8, no refraction) with a thin bright rim, and grass is sparse upright blades.',
+  }),
   // A flat water sheet; the largest sets the level. A bed d metres down keeps exp(-absorption * d) per channel (RGB per metre).
   water: Object.freeze({ presets: WATER_PRESETS_SUMMARY, default: 'lake', note: 'absorption 0..20, turbidity 0..1 softens shadows below; opacity under 1 shows the bed. caustics {scale m 0.05-50, speed 0-10, intensity 0-10, depthFade 0-10} adds a moving sun net on surfaces below (off unless given, raster only). waterRamp {colors [3-5 display colours, deep to bright: #rrggbb shows as that hex, rgb numbers as their sRGB encoding], drivers {height, facing, sun: weights 0-1; default height 1}, heightRange [low, high] world y (-1, 1), steps hard|soft (hard), crestTint {color, strength 0-1}} paints flat tones that own the colour (no sky reflection; foam and glint stay), off by default.' }),
   materialLayers: Object.freeze(Object.fromEntries(MATERIAL_LAYER_FIELDS.map(field => [field, Object.freeze({

@@ -1,0 +1,1 @@
+- Circle select in Studio edit mode ends when the window loses focus or the page is hidden, and the wheel adds up its travel (lines and pages count as pixels) so a trackpad swipe no longer jumps through many radius steps (#3363)

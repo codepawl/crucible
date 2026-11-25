@@ -1,4 +1,5 @@
 import { bakeChangedParts, traceGridKernel } from './agent-bake.js';
+import { groundCoverParts } from './ground-cover.js';
 import { bakeClothWithFields } from './cloth-fields.js';
 import { bakeMaterialPattern } from './material-patterns.js';
 import { traceProbes } from './probe-trace.js';
@@ -13,6 +14,7 @@ const KERNELS = Object.assign(Object.create(null), {
   cloth: bakeClothWithFields,
   pattern: bakeMaterialPattern,
   uvUnwrap: unwrapUv,
+  groundCover: groundCoverParts,
 });
 
 function collectBuffers(value, buffers) {

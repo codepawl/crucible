@@ -123,7 +123,7 @@ Modeling point inputs have a maximum of 4096 points.
 An extrusion has at most 128 holes and 4096 total contour points.
 Shared resource IDs generate geometry once, regardless of the number of mesh nodes.
 
-Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, optional `emissiveColor`, `opacity`, `alphaMode`, `alphaCutoff`, `doubleSided`, `pattern` and `map`.
+Materials contain `id`, `tag`, `color`, `metallic`, `roughness`, `emission`, optional `preset`, `emissiveColor`, `opacity`, `alphaMode`, `alphaCutoff`, `doubleSided`, `pattern` and `map`.
 The defaults are `surface`, `[0.5, 0.5, 0.5]`, `0`, `0.5`, `0`, opacity `1`, `opaque` and `false`.
 The tag can be `surface`, `unlit`, `liquid`, `foam`, `water`, `foliage` or `grass` (the last two sway in `environment.wind`) and remains fixed during editing.
 `liquid` refracts and tints what lies behind it: its color is the light one metre lets through, so `[0.56, 0.84, 0.88]` is clear water. `foam` draws soft blended droplets.
@@ -148,6 +148,24 @@ Their component products must also remain finite at Float32 precision.
 Unlit emissive radiance is capped at 65500 per component to fit the half-float HDR target.
 Image textures come from catalog images (a colour map sequence, and scanned texture sets under "Scanned texture sets" below); the other procedural material tags are outside this version.
 
+
+### Material presets
+
+`preset` names a ready look for blocky scenes, such as parts exported from Roblox Studio that carry a material name and a colour: `smoothPlastic`, `wood`, `grass`, `glass` or `brick`. The preset fills only the fields the material leaves out, so any field you set (`roughness`, `pattern`, `opacity`) wins.
+
+```json
+{ "id": "roof", "preset": "brick", "color": [0.75, 0.2, 0.15] }
+```
+
+| Preset | What it fills |
+| --- | --- |
+| `smoothPlastic` | roughness 0.28, no pattern |
+| `wood` | dark-ringed `wood` pattern, 0.8 m per repeat, roughness 0.8 |
+| `grass` | a `graph` pattern of sparse upright blades, bright at the core and dark at the rim, over a slow mottle, a repeat every 1.25 m across, so a part under 1.2 m shows none, roughness 1; reads as turf on any part colour, and the `grass` tag is for swaying blades |
+| `glass` | pale cyan tint, opacity 0.8, roughness 0.03, clear coat, no transmission, and a thin bright rim at the silhouette: `emission` 7 (every channel stays under 255) times the Fresnel of `ior` 1.01 (about 0 face on, rising within a few pixels of the edge), blended. Glaze drops emission on a material with `transmission` above 0 (#3279), and a blended transmissive material does not refract (`transmission-blended`), so the preset leaves transmission out; set it yourself for a bend and the rim goes away. Over bloom the rim glows: lower `emission` for a quieter edge. A coloured pane over a dark backdrop looks dark, since it tints what is behind it. Its tinted shadow is drawn only by the default shadow map: `environment.sunAngularRadius` (soft sun) drops it (#3259) |
+| `brick` | `bricks` pattern, 1 m per repeat, roughness 0.9 |
+
+`color` is the part colour and tints the base: the patterns are grey ramps, so a red `wood` part is red wood. Without `color`, each preset uses its own tint. Pattern `size` is in metres after node scale, so a 4 m part and a 40 m part show the same grain size. Shadow edges on a pane and on its neighbours come from the shadow map, not the preset: under a large backdrop with the default shadow coverage they show stair steps, and a tighter `shadow.extent` around the parts removes them. An unknown name fails with the list of valid ones. `scene_capabilities` topic `materialPresets` lists the values.
 ### Material patterns
 
 `pattern` gives a `surface` material a procedural texture, baked once and shared by every material with the same definition:
@@ -534,6 +552,12 @@ Final resource references and hierarchy must be valid before publication.
 | `add-node` | `node`, containing a complete node record |
 | `remove-node` | `id`, optional boolean `recursive`, default `false` |
 | `add-explosion` | `id`, `center`, `size`, optional `start`, `seed`, `fuel`, `debris`, `shake`, `ground`, `sparks`, `motionBlur` (see Explosions below) |
+
+### Apply transforms and move the origin
+
+`{ "type": "apply-transform", "node": "plank", "parts": ["scale"] }` folds the node's location, rotation and scale (all three when `parts` is left out) into its geometry: the node then reads 0, no turn and 1, and every vertex stays where it was in the world. The change is written into the node's mesh edit log (`transform_selection` and `translate`), so a basic shape becomes a mesh under its own ID and a geometry other nodes use is copied for this node only. `{ "type": "set-origin", "node": "plank", "to": "bottom" }` moves the point the node turns and scales about, in the object's own space: `geometry` is the middle of the bounds, `bottom` the middle of the lowest face, `point` takes `point: [x, y, z]`. The geometry shifts the other way and the node moves with it, so nothing moves; children keep their world position.
+
+Both refuse, with the fix in the message, a node with children (apply only), a mesh with a modifier stack, text and other geometries that are not a mesh or basic shape, an imported or placed node, a node a motion track moves, a rotation-only apply on an unevenly scaled node (it would shear), and a mesh whose edit log already holds 64 entries. A scale factor of `transform_selection` may now be negative: it mirrors the selection and turns its faces back outward (not together with a falloff).
 
 ### Explosions
 

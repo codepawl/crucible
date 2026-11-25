@@ -19,6 +19,7 @@ Crucible makes 3D easy to understand and easy to do. The agent carries the heavy
 - `tests/` holds the Node tests, one `*.test.js` per area. `scripts/` holds the build, smoke and gate scripts.
 - `docs/` holds one guide per feature. `skills/` holds the agent skills that ship with the package.
 - `changes/` holds one changelog note per pull request. `artifacts/` is ignored output for screenshots and logs.
+- `.claude/rules/` holds the Studio, look and agent tool surface rules. Each loads only when you touch a file its `paths:` filter matches.
 
 ## Set up
 
@@ -44,11 +45,13 @@ Run the full preflight once before you push. A green preflight covers the PR gat
 `npm ci` installs a pre-push hook that runs `npm run preflight -- --skip-tests`, which includes those fast tests, and stops a push that would fail those gates.
 `SKIP_PREFLIGHT=1 git push` skips it once; use that only for a push you know the gates do not cover.
 
+CI runs a pull request light when it changes only docs, change notes, markdown, site pages or the Studio UI: the affected tests, with no shards or coverage gate (`scripts/ci-plan.mjs`). Anything else runs the full set.
+
 For one test file: `node --test tests/<area>.test.js`.
 
 Between one file and the full pass, while you iterate (each prints at most about 20 lines for 10 failures and writes the full TAP to `artifacts/test-logs/`):
 
-- `npm run test:affected -- src/foo.js`: every test file that mentions the file, or a module that re-exports it. With no files it uses what your branch changed.
+- `npm run test:affected -- src/foo.js`: every test file that mentions the file or reaches it through imports and re-exports of any depth. With no files it uses what your branch changed.
 - `npm run test:fast`: a deterministic 10 percent of the test files, seeded by the branch name (`-- --seed <text> --percent <n>`).
 - `npm run test:mutation-check -- tests/foo.test.js`: reverts your `src/`, `bin/`, `packages/` and `scripts/` changes, runs the tests, lists the ones that fail and restores the tree. It exits 1 when every test still passes, which means the test does not pin your fix. Stage unstaged edits outside those folders first, and `git add -N` new files under them.
 - `npm test -- --test-reporter=./scripts/test-compact-reporter.mjs` gives the full pass the same short output.
