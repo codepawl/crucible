@@ -29,6 +29,8 @@ const MESH_CHANGED = 'Edit mode ended because this object uses a different mesh 
 export const CIRCLE_BRUSH_DEFAULT_PIXELS = 25;
 export const CIRCLE_BRUSH_MIN_PIXELS = 4;
 export const CIRCLE_BRUSH_MAX_PIXELS = 400;
+// How much of the surface stays drawn while the see-through view is on.
+export const SEE_THROUGH_SURFACE_OPACITY = 0.1;
 const CIRCLE_BRUSH_STEP_FACTOR = 1.15;
 // A wheel step is 100 pixels of travel; a line is a third of a notch and a page is three notches (the wheel's deltaMode).
 const WHEEL_PIXELS_PER_STEP = 100;
@@ -221,6 +223,11 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   // Circle select: null when off, else where the brush circle is drawn (centre is null until the pointer is over the viewport).
   let circle = null;
   let brushRadius = CIRCLE_BRUSH_DEFAULT_PIXELS;
+  // See-through is view state: it outlives one edit session, and while it is on every element counts as reachable.
+  let seeThrough = false;
+  // Box select: `armed` from the key until one rectangle is dragged; `rectangle` is the one being dragged, in pixels, or null.
+  let boxArmed = false;
+  let boxRectangle = null;
   let wheelTravel = 0;
 
   function refuse(message) {
@@ -279,6 +286,8 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     // shorter one: an undo or a redo of a move keeps it, an edit that replaced an entry may have renumbered everything.
     const sameMesh = previous && previous.nodeId === nodeId && previous.geometryId === geometrySpec.id
       && previous.mesh.vertexCount === mesh.vertexCount && previous.mesh.edgeCount === mesh.edgeCount && previous.mesh.faceCount === mesh.faceCount;
+    state.ghostPart = previous?.part === part ? previous.ghostPart : null;
+    showSurface();
     if (sameMesh && (writingOwnEntry || logsShareTheirPrefix(previous.logEntries, state.logEntries))) state.selected = new Set(selectedBefore);
     return null;
   }
@@ -330,11 +339,50 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     if (!state) return;
     hintShowing = false;
     circle = null;
+    endBoxSelect();
     // The controller drag goes first, through the session, so the cage, the buffers and the pointer state are put back.
     if (controller.dragging) controller.cancelGizmoDrag();
     cancelDrag();
     state = null;
     controller.setElementSession(null);
+  }
+
+  // The surface of the edited part is drawn faint while see-through is on, so the far side shows through it. Parts are frozen
+  // and the scene never changes: Studio draws this copy of the part in its place (`partsToDraw`), so nothing reaches the
+  // recipe or the undo history.
+  function showSurface() {
+    if (!state) return;
+    if (!seeThrough) {
+      state.ghostPart = null;
+      return;
+    }
+    if (state.ghostPart) return;
+    const { part } = state;
+    state.ghostPart = Object.freeze({
+      ...part,
+      material: {
+        ...part.material,
+        alphaMode: 'blend',
+        opacity: Math.min(part.material.opacity ?? 1, SEE_THROUGH_SURFACE_OPACITY),
+        doubleSided: true,
+      },
+    });
+  }
+
+  /** The parts Studio draws: the same list, with the edited part faint while see-through is on. */
+  function partsToDraw(parts) {
+    if (!state?.ghostPart) return parts;
+    return parts.map(part => (part === state.part ? state.ghostPart : part));
+  }
+
+  /** Turns the see-through view on or off. Returns the new value. It changes how the cage draws and what a pick reaches, never the mesh. */
+  function setSeeThrough(enabled) {
+    if (typeof enabled !== 'boolean') {
+      throw new TypeError(`Pass true or false to turn see-through on or off, not ${String(enabled)}.`);
+    }
+    seeThrough = enabled;
+    showSurface();
+    return seeThrough;
   }
 
   function selectedVertices() {
@@ -415,6 +463,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   function beginCircleSelect() {
     if (!state || drag) return false;
     if (circle) return true;
+    endBoxSelect();
     circle = { centre: null };
     wheelTravel = 0;
     hintShowing = false;
@@ -543,14 +592,14 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return { screenX, screenY, visible, nearVertex, nearEdge, nearFace };
   }
 
-  // A vertex or an edge is on the far side when every face that uses it faces away from the camera.
+  // A vertex or an edge is on the far side when every face that uses it faces away from the camera; with see-through on, nothing is.
   function nearSideOf() {
     const { mesh, positions } = state;
     const nearVertex = new Uint8Array(mesh.vertexCount);
     const nearEdge = new Uint8Array(mesh.edgeCount);
     const nearFace = new Uint8Array(mesh.faceCount);
     const inverse = mat4.invert(mat4.create(), state.part.matrix);
-    if (!inverse) {
+    if (!inverse || seeThrough) {
       nearVertex.fill(1);
       nearEdge.fill(1);
       nearFace.fill(1);
@@ -587,6 +636,63 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       }
     }
     return { nearVertex, nearEdge, nearFace };
+  }
+
+  function beginBoxSelect() {
+    if (!state || drag) return false;
+    circle = null;
+    boxArmed = true;
+    return true;
+  }
+
+  function endBoxSelect() {
+    if (boxArmed) announce('');
+    boxArmed = false;
+    boxRectangle = null;
+  }
+
+  /** The rectangle being dragged, drawn until the pointer lets go; null takes it away. */
+  function previewBox(rectangle) {
+    if (boxArmed) boxRectangle = rectangle;
+  }
+
+  /**
+   * Selects every element of the mode that lies wholly inside the rectangle (pixels, any two opposite corners). A far-side element
+   * joins only while see-through is on. `additive` keeps the current selection. Returns how many elements are selected afterwards.
+   */
+  function selectInRectangle(firstX, firstY, secondX, secondY, { additive = false } = {}) {
+    if (!state || drag) return 0;
+    for (const value of [firstX, firstY, secondX, secondY]) {
+      if (!Number.isFinite(value)) throw new RangeError(`Pass the rectangle as four finite pixel values, not ${String(value)}.`);
+    }
+    const left = Math.min(firstX, secondX);
+    const right = Math.max(firstX, secondX);
+    const top = Math.min(firstY, secondY);
+    const bottom = Math.max(firstY, secondY);
+    const projected = projectCage();
+    const { mesh } = state;
+    const inside = vertex => projected.visible[vertex] 
+      && projected.screenX[vertex] >= left && projected.screenX[vertex] <= right && projected.screenY[vertex] >= top && projected.screenY[vertex] <= bottom;
+    const hits = [];
+    if (state.mode === 'vertex') {
+      for (let vertex = 0; vertex < mesh.vertexCount; vertex += 1) {
+        if (projected.nearVertex[vertex] && inside(vertex)) hits.push(vertex);
+      }
+    } else if (state.mode === 'edge') {
+      for (let edge = 0; edge < mesh.edgeCount; edge += 1) {
+        if (projected.nearEdge[edge] && inside(mesh.edgeVertices[edge * 2]) && inside(mesh.edgeVertices[edge * 2 + 1])) hits.push(edge);
+      }
+    } else {
+      for (let face = 0; face < mesh.faceCount; face += 1) {
+        if (!projected.nearFace[face]) continue;
+        let wholly = true;
+        for (let corner = mesh.faceOffsets[face]; corner < mesh.faceOffsets[face + 1]; corner += 1) wholly = wholly && inside(mesh.cornerVertices[corner]);
+        if (wholly) hits.push(face);
+      }
+    }
+    state.selected = additive ? new Set([...state.selected, ...hits]) : new Set(hits);
+    noteSelectionChanged();
+    return state.selected.size;
   }
 
   function nearestVertex(pixelX, pixelY, projected) {
@@ -649,12 +755,37 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return best;
   }
 
+  // With see-through on, a click reaches every face drawn under the pointer, front or back: the one whose centre is nearest wins.
+  function faceBehindPointer(pixelX, pixelY) {
+    const projected = projectCage();
+    const { mesh } = state;
+    let best = null;
+    let bestDistance = Infinity;
+    for (let face = 0; face < mesh.faceCount; face += 1) {
+      if (!faceTouchesCircle(face, projected, pixelX, pixelY, 0)) continue;
+      const first = mesh.faceOffsets[face];
+      const end = mesh.faceOffsets[face + 1];
+      let centreX = 0;
+      let centreY = 0;
+      for (let corner = first; corner < end; corner += 1) {
+        centreX += projected.screenX[mesh.cornerVertices[corner]];
+        centreY += projected.screenY[mesh.cornerVertices[corner]];
+      }
+      const distance = (centreX / (end - first) - pixelX) ** 2 + (centreY / (end - first) - pixelY) ** 2;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = face;
+      }
+    }
+    return best;
+  }
+
   /** Picks the element of the current mode under the pixel; `additive` (Shift) toggles it, a click on nothing clears. */
   function pick(pixelX, pixelY, { additive = false } = {}) {
     if (!state || drag) return null;
     let hit;
     if (state.mode === 'face') {
-      hit = faceUnderPointer(pixelX, pixelY);
+      hit = seeThrough ? faceBehindPointer(pixelX, pixelY) : faceUnderPointer(pixelX, pixelY);
     } else {
       const projected = projectCage();
       hit = state.mode === 'vertex' ? nearestVertex(pixelX, pixelY, projected) : nearestEdge(pixelX, pixelY, projected);
@@ -691,7 +822,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     try {
       gatherRenderPositions({ positions: state.positions }, state.renderVertexSource, drag.renderPositions);
       previewNormalsOf(state.part.geometry.indices, drag.renderPositions, drag.renderNormals);
-      updatePart(getRenderer(), state.part, drag.renderPositions, drag.renderNormals);
+      updatePart(getRenderer(), state.ghostPart ?? state.part, drag.renderPositions, drag.renderNormals);
     } catch {
       // A part the renderer cannot rewrite in place (skinned, morphed, LOD) keeps its look; only the cage moves.
       drag.previewing = false;
@@ -705,7 +836,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     });
     if (drag.previewing) {
       try {
-        updatePart(getRenderer(), state.part, drag.originalRenderPositions, drag.originalRenderNormals);
+        updatePart(getRenderer(), state.ghostPart ?? state.part, drag.originalRenderPositions, drag.originalRenderNormals);
       } catch {
         drag.previewing = false;
       }
@@ -896,6 +1027,10 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       paths.push({ className: `crucible-studio-cage-selected-halo crucible-studio-cage-selected-halo-${state.mode}`, pathData: selectedShape, layer: 'over' });
       paths.push({ className: `crucible-studio-cage-selected crucible-studio-cage-selected-${state.mode}`, pathData: selectedShape, layer: 'over' });
     }
+    if (boxRectangle) {
+      const { left, top, right, bottom } = boxRectangle;
+      paths.push({ className: 'crucible-studio-cage-box', pathData: `M${left.toFixed(1)} ${top.toFixed(1)}H${right.toFixed(1)}V${bottom.toFixed(1)}H${left.toFixed(1)}Z`, layer: 'over' });
+    }
     if (circle?.centre) {
       const { x, y } = circle.centre;
       const diameter = brushRadius * 2;
@@ -933,6 +1068,14 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     clearSelection,
     selectNone,
     invertSelection,
+    selectInRectangle,
+    beginBoxSelect,
+    endBoxSelect,
+    previewBox,
+    get boxSelecting() { return boxArmed; },
+    setSeeThrough,
+    partsToDraw,
+    get seeThrough() { return seeThrough; },
     beginCircleSelect,
     endCircleSelect,
     resizeCircleBrush,
