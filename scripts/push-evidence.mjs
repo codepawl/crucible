@@ -1,5 +1,7 @@
-// Pushes pictures and clips to the `evidence-pr-<number>` branch with git plumbing, so a pull request can link them.
+// Pushes pictures and clips to the single `evidence` branch with git plumbing, so a pull request can link them.
 // The working tree, the index and HEAD are never touched: the commit is built in a temporary index file.
+// The first push creates the branch as an orphan commit; later pushes add to its tip and retry when another push lands first.
+// Older `evidence-pr-<number>` branches stay as they are.
 // Usage: node scripts/push-evidence.mjs <pr> <files...> [--remote origin] [--dry-run]
 //        Each file lands at pr-<number>/<basename>. Files already on the branch stay; a file with the same name is replaced.
 import { spawnSync } from 'node:child_process';
@@ -10,6 +12,9 @@ import { pathToFileURL } from 'node:url';
 
 export const ALLOWED_EXTENSIONS = Object.freeze(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.mp4', '.webm']);
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
+export const EVIDENCE_BRANCH = 'evidence';
+export const MAX_PUSH_ATTEMPTS = 5;
+const RETRY_BACKOFF_MILLISECONDS = 300;
 const USAGE = 'Usage: node scripts/push-evidence.mjs <pr> <files...> [--remote origin] [--dry-run]';
 
 export function parseArguments(argv) {
@@ -81,7 +86,7 @@ export function parseRemoteUrl(remoteUrl) {
 }
 
 export function rawUrl({ owner, repository }, prNumber, name) {
-  return `https://raw.githubusercontent.com/${owner}/${repository}/evidence-pr-${prNumber}/pr-${prNumber}/${name}`;
+  return `https://raw.githubusercontent.com/${owner}/${repository}/${EVIDENCE_BRANCH}/pr-${prNumber}/${name}`;
 }
 
 function fetchExistingBranchCommit(remote, branch, cwd) {
@@ -107,21 +112,37 @@ function buildEvidenceCommit({ entries, prNumber, parentCommit, cwd }) {
   }
 }
 
-export function pushEvidence({ prNumber, files, remote = 'origin', dryRun = false, cwd = process.cwd() }) {
+export function pushEvidence({ prNumber, files, remote = 'origin', dryRun = false, cwd = process.cwd(), wait = sleepSynchronously }) {
   const repositoryRoot = runGit(['rev-parse', '--show-toplevel'], { cwd });
   const entries = validateFiles(files.map((file) => resolve(cwd, file)), repositoryRoot);
-  const branch = `evidence-pr-${prNumber}`;
   const repository = parseRemoteUrl(runGit(['remote', 'get-url', remote], { cwd }));
   const links = entries.map(({ name }) => ({
     name,
     url: repository ? rawUrl(repository, prNumber, name) : null,
   }));
-  if (!dryRun) {
-    const parentCommit = fetchExistingBranchCommit(remote, branch, cwd);
+  if (!dryRun) pushWithRetries({ entries, prNumber, remote, cwd, wait });
+  return { branch: EVIDENCE_BRANCH, links, dryRun };
+}
+
+// Another worker may push first. Rebuild on the new tip and try again, so no PR folder is ever dropped.
+function pushWithRetries({ entries, prNumber, remote, cwd, wait }) {
+  let lastError;
+  for (let attempt = 1; attempt <= MAX_PUSH_ATTEMPTS; attempt += 1) {
+    const parentCommit = fetchExistingBranchCommit(remote, EVIDENCE_BRANCH, cwd);
     const commit = buildEvidenceCommit({ entries, prNumber, parentCommit, cwd });
-    runGit(['push', '--quiet', remote, `${commit}:refs/heads/${branch}`], { cwd, env: { SKIP_PREFLIGHT: '1' } });
+    try {
+      runGit(['push', '--quiet', remote, `${commit}:refs/heads/${EVIDENCE_BRANCH}`], { cwd, env: { SKIP_PREFLIGHT: '1' } });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < MAX_PUSH_ATTEMPTS) wait(attempt * RETRY_BACKOFF_MILLISECONDS);
+    }
   }
-  return { branch, links, dryRun };
+  throw new Error(`Could not push to the ${EVIDENCE_BRANCH} branch after ${MAX_PUSH_ATTEMPTS} attempts, because other pushes kept landing first or the remote refused. Run the command again. Last error: ${lastError.message}`);
+}
+
+function sleepSynchronously(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
 export function formatReport({ branch, links, dryRun }) {

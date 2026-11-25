@@ -1,0 +1,1 @@
+- Studio's File menu has one New scene entry that opens a chooser of Blank and the ready scenes with pictures, asks before unsaved changes are replaced, and keeps an Open recent list; the Clean stage starting scene is now called Blank and holds only the floor and the light (#3327)

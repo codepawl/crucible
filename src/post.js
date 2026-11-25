@@ -2,6 +2,9 @@ import { registeredFeatureCode, requireFeatureCode } from './shader-registry.js'
 
 export { fullscreenVertex } from './gl-program.js';
 
+// A marker step for a frame whose bloom asks for keepHue (#3326). Its code lives in bloom-keep-hue.js, so a program without the step has the source it had before.
+export const KEEP_HUE_STEP = 'keepHue';
+
 // The main function of the post pass; the local volume composite before bloom swaps it for a smaller one.
 const POST_MAIN = `void main() {
   vec2 texel = 1.0 / resolution;
@@ -261,10 +264,12 @@ export function createLocalVolumeCompositeFragment(motion = false, kind = 'both'
 
 // The post main with the code of the optional steps that change it; undefined leaves the main as it was.
 function postMainFor(enabledSteps) {
-  if (!enabledSteps.has('linearOutput') && !enabledSteps.has('autoExposure')) return undefined;
+  if (!enabledSteps.has('linearOutput') && !enabledSteps.has('autoExposure') && !enabledSteps.has(KEEP_HUE_STEP)) return undefined;
   let mainBody = POST_MAIN;
   if (enabledSteps.has('autoExposure')) mainBody = requireFeatureCode('autoExposure').post(mainBody);
   if (enabledSteps.has('linearOutput')) mainBody = requireFeatureCode('linearOutput').post(mainBody);
+  // Last, because it matches the bloom and tone map lines that the two steps above leave in place.
+  if (enabledSteps.has(KEEP_HUE_STEP)) mainBody = requireFeatureCode('keepHue').post(mainBody);
   return mainBody;
 }
 
