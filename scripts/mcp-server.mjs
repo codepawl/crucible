@@ -407,6 +407,7 @@ const effects = z.strictObject({
   temperature: bounded(-1, 1).optional(),
   vignette: unit.optional(),
   grain: bounded(0, 0.1).optional(),
+  dither: z.boolean().optional().describe('true adds one 8-bit step of noise so smooth light falloff and sky gradients do not band; default false (flat colour, smaller files).'),
   ambientOcclusion: unit.optional().describe('Screen-space contact darkening, 0 off to 1 full. Default 0 (off) when unset; above 0 turns the pass on.'),
   ambientOcclusionRadius: bounded(0.01, 100).optional().describe('World-space reach of the occlusion; default 0.5.'),
   bloom: z.strictObject({
@@ -430,7 +431,7 @@ const effects = z.strictObject({
   colorCorrection: looseField,
   autoExposure: looseField,
 });
-const effectsListed = listed('effects', effects, 'Post effects: exposure, saturation, contrast, temperature, vignette, grain, ambientOcclusion, ambientOcclusionRadius, bloom {strength, threshold, radius}, depthOfField {blur, focusDistance}, motionBlur {shutter}, colorBalance, colorCorrection {brightness, contrast, saturation, tint}, sunRays {intensity, spread}, glare, lensDistortion, stylize, composite, localToneMapping, autoExposure {metering, key, minimum, maximum, speed}; see scene_capabilities effects.', coreOf(effects.shape, ['exposure']));
+const effectsListed = listed('effects', effects, 'Post effects: exposure, saturation, contrast, temperature, vignette, grain, dither, ambientOcclusion, ambientOcclusionRadius, bloom {strength, threshold, radius}, depthOfField {blur, focusDistance}, motionBlur {shutter}, colorBalance, colorCorrection {brightness, contrast, saturation, tint}, sunRays {intensity, spread}, glare, lensDistortion, stylize, composite, localToneMapping, autoExposure {metering, key, minimum, maximum, speed}; see scene_capabilities effects.', coreOf(effects.shape, ['exposure']));
 const shadow = z.strictObject({
   target: boundedVector(-1e6, 1e6).optional(),
   extent: bounded(0.01, 1e5).optional(),
