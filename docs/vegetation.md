@@ -161,7 +161,7 @@ A recipe node with a `vegetation` field grows and scatters these trees, with win
 
 ### Scanned bark and leaves from the pack
 
-With the first-party `vegetation-scans` pack installed (`crucible-mcp --packs <folder>`, see [MCP](/mcp.md)), the server fills `vegetation.scans` on every tree node that has none, so recipe trees draw scanned bark and leaf cards with no change to the recipe. Without the pack they keep the procedural textures. `scene_capabilities` topic `packs` reports `vegetationScans: on` or `off`.
+With the first-party `vegetation-scans` pack installed (`npx crucible packs add vegetation-scans`, or `crucible-mcp --packs <folder>`; see [Packs](/packs.md)), the server fills `vegetation.scans` on every tree node that has none, so recipe trees draw scanned bark and leaf cards with no change to the recipe. Without the pack they keep the procedural textures. `scene_capabilities` topic `packs` reports `vegetationScans: on` or `off`.
 
 | Species | Bark | Leaves |
 | --- | --- | --- |
