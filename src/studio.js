@@ -1170,7 +1170,14 @@ function depthSortedNodes(nodes) {
 }
 
 const MODAL_AXES = Object.freeze(['x', 'y', 'z']);
-const MODAL_AXIS_BY_ACTION = Object.freeze({ 'modal.axisX': 'x', 'modal.axisY': 'y', 'modal.axisZ': 'z' });
+const MODAL_AXIS_BY_ACTION = Object.freeze({
+  'modal.axisX': 'x', 'modal.axisY': 'y', 'modal.axisZ': 'z',
+  // Shift keeps the object on the plane across the axis, so Shift+Y is the ground in Y-up space.
+  'modal.planeX': 'yz', 'modal.planeY': 'xz', 'modal.planeZ': 'xy',
+});
+const MODAL_AXIS_ACROSS_PLANE = Object.freeze({ yz: 'x', xz: 'y', xy: 'z' });
+const MODAL_TYPED_UNITS = Object.freeze({ translate: ' m', rotate: '°', scale: '×' });
+const MODAL_TYPED_PATTERN = /^-?\d*\.?\d*$/;
 const MODAL_TOOL_BY_ACTION = Object.freeze({ 'modal.translate': 'translate', 'modal.rotate': 'rotate', 'modal.scale': 'scale' });
 const TOOL_ACTION_BY_TOOL = Object.freeze({ select: 'tool.select', translate: 'tool.translate', rotate: 'tool.rotate', scale: 'tool.scale', snap: 'tool.snap' });
 const PICK_UP_TOOL_BY_ACTION = Object.freeze({ 'tool.translate': 'translate', 'tool.rotate': 'rotate', 'tool.scale': 'scale' });
@@ -4488,14 +4495,18 @@ export function createStudio(container, {
       createElement(documentReference, 'kbd', { textContent: keys }),
       word,
     );
-    const lockedAxis = modalTransform.locked ? modalTransform.axis : null;
+    const lockedAxes = (modalTransform.locked && modalTransform.axis) || '';
     const axisChips = MODAL_AXES.map(axis => {
       const key = createElement(documentReference, 'kbd', { textContent: keyLabel(keymap, `modal.axis${axis.toUpperCase()}`), dataset: { axis } });
-      key.setAttribute('aria-pressed', lockedAxis === axis ? 'true' : 'false');
+      key.setAttribute('aria-pressed', lockedAxes.includes(axis) ? 'true' : 'false');
       return key;
     });
+    const typedReadout = modalTransform.typed === ''
+      ? []
+      : [createElement(documentReference, 'span', { className: 'crucible-studio-hint-typed', textContent: `= ${modalTransform.typed}${MODAL_TYPED_UNITS[modalTransform.tool]}` })];
     hintBar.replaceChildren(
       createElement(documentReference, 'span', { className: 'crucible-studio-hint-delta', textContent: (liveDeltaLabel || MODAL_TOOL_WORDS[modalTransform.tool]).replace(/^SCREEN/, MODAL_TOOL_WORDS.translate) }),
+      ...typedReadout,
       createElement(documentReference, 'span', { className: 'crucible-studio-hint-chip' }, ...axisChips, 'axis'),
       chip('Click', 'place'),
       chip(keyLabel(keymap, 'modal.cancel'), 'cancel'),
@@ -4512,7 +4523,10 @@ export function createStudio(container, {
     controller.beginGizmoDrag(axis, modalTransform.startX, modalTransform.startY);
     modalTransform.axis = axis;
     modalTransform.locked = locked;
-    if (modalTransform.lastX !== modalTransform.startX || modalTransform.lastY !== modalTransform.startY) {
+    const typedAmount = typedModalAmount();
+    if (typedAmount !== null) {
+      controller.setGizmoTypedAmount(typedAmount);
+    } else if (modalTransform.lastX !== modalTransform.startX || modalTransform.lastY !== modalTransform.startY) {
       controller.updateGizmoDrag(modalTransform.lastX, modalTransform.lastY, { shiftKey: modalTransform.shiftKey });
     }
   }
@@ -4573,6 +4587,7 @@ export function createStudio(container, {
       tool,
       axis: null,
       locked: false,
+      typed: '',
       startX: viewportPointer.x,
       startY: viewportPointer.y,
       lastX: viewportPointer.x,
@@ -4608,13 +4623,43 @@ export function createStudio(container, {
 
   // The same axis key again lets the object go free; another one moves the lock there. The move restarts from where
   // the key picked the object up, so a placed move is still one undo step.
-  function lockModalAxis(axis) {
+  function lockModalAxis(requestedAxis) {
+    // A turn goes around one axis, so the plane across an axis means that axis.
+    const axis = modalTransform.tool === 'rotate' ? MODAL_AXIS_ACROSS_PLANE[requestedAxis] ?? requestedAxis : requestedAxis;
     const release = modalTransform.locked && modalTransform.axis === axis;
     // No axis while the drag is swapped: the change this cancel reports must not read as the object being let go.
     modalTransform.axis = null;
     controller.cancelGizmoDrag();
     beginModalDrag(release ? modalFreeAxis(modalTransform.tool) : axis, !release);
     syncHintBar();
+  }
+
+  // The number typed so far, or null while it is not one yet (nothing, "-" or "."): the pointer then sets the amount.
+  function typedModalAmount() {
+    const amount = Number(modalTransform.typed);
+    return modalTransform.typed === '' || !Number.isFinite(amount) ? null : amount;
+  }
+
+  // Numeric input: digits, a point and a minus sign build the amount, Backspace takes the last one back.
+  function typeModalAmount(event) {
+    const current = modalTransform.typed;
+    let next = current;
+    if (event.key === 'Backspace') {
+      next = current.slice(0, -1);
+    } else if (event.key === '-') {
+      next = current.startsWith('-') ? current.slice(1) : `-${current}`;
+    } else if (/^[0-9.]$/.test(event.key)) {
+      next = current + event.key;
+    } else {
+      return false;
+    }
+    if (!MODAL_TYPED_PATTERN.test(next) || next.split('.').length > 2 || next.length > 12) {
+      return true;
+    }
+    modalTransform.typed = next;
+    controller.setGizmoTypedAmount(typedModalAmount());
+    syncHintBar();
+    return true;
   }
 
   function handleModalKey(event) {
@@ -4625,6 +4670,9 @@ export function createStudio(container, {
     // A key held down repeats: it may not flip the lock or swap the tool. Ctrl+Z is not the Z axis because the
     // modal bindings carry no Ctrl.
     if (event.repeat) {
+      return;
+    }
+    if (!event.ctrlKey && !event.metaKey && !event.altKey && typeModalAmount(event)) {
       return;
     }
     const match = findKeymapAction(keymap, event, 'modal');

@@ -174,6 +174,31 @@ test('switching the mode keeps what the new mode can still say: the vertices of 
   assert.throws(() => editor.setMode('loop'), /Unknown selection mode/);
 });
 
+test('a typed amount moves the selected face by exactly that far along the locked axis, in one log entry', () => {
+  const { controller, editor } = mount(recipeOf());
+  editor.enter();
+  const front = faceOf(controller, point => point[2] > 0.49);
+  const centre = pixelOfFaceCentre(controller, front.corners);
+  editor.pick(centre.x, centre.y);
+  const origin = controller.gizmoHandles().origin;
+  controller.beginGizmoDrag('x', origin.x, origin.y);
+  controller.updateGizmoDrag(origin.x + 30, origin.y);
+  assert.equal(controller.setGizmoTypedAmount(0.25), true);
+  controller.updateGizmoDrag(origin.x + 90, origin.y + 10);
+  controller.endGizmoDrag();
+  const log = logOf(controller);
+  assert.equal(log.length, 1);
+  assert.deepEqual(log[0].offset.map(value => Number(value.toFixed(4))), [0.25, 0, 0]);
+  assert.throws(() => controller.setGizmoTypedAmount(Number.NaN), /finite number/);
+  assert.equal(controller.setGizmoTypedAmount(1), false, 'nothing is held after the release');
+
+  // A typed move stops at the coordinate limit instead of following twelve typed digits to 1e11 metres.
+  controller.beginGizmoDrag('x', origin.x, origin.y);
+  controller.setGizmoTypedAmount(99999999999);
+  const [limitedOffset] = controller.endGizmoDrag() ? logOf(controller).at(-1).offset : [null];
+  assert.equal(limitedOffset, 1e6);
+});
+
 test('dragging a face writes one translate entry; the evaluated mesh moves by the drag in the node space, scale and rotation included', () => {
   const recipe = recipeOf({ nodes: [{ id: 'hero', geometry: 'shape', material: 'grey', scale: [2, 1, 1], rotation: [0, 0.2588, 0, 0.9659] }] });
   const { controller, editor, previews } = mount(recipe);
