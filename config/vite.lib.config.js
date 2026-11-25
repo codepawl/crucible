@@ -37,7 +37,7 @@ export default defineConfig({
   build: {
     copyPublicDir: false,
     rolldownOptions: {
-      external: ['@dimforge/rapier3d-compat', 'jolt-physics', 'manifold-3d', 'playwright-core', /^node:/],
+      external: ['@dimforge/rapier3d-compat', 'jolt-physics', 'manifold-3d', 'meshoptimizer', 'playwright-core', /^node:/],
       output: { banner: legalBanner },
     },
     outDir: 'build',
@@ -97,6 +97,7 @@ export default defineConfig({
         'line-art': 'src/line-art.js',
         'mesh-blend': 'src/mesh-blend.js',
         'coplanar-overlap': 'src/coplanar-overlap.js',
+        meshlets: 'src/meshlets.js',
         'reversed-depth': 'src/reversed-depth.js',
         'material-layer-shaders': 'src/material-layer-shaders.js',
         'view-transform-shader': 'src/view-transform-shader.js',
