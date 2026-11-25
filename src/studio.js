@@ -5160,7 +5160,7 @@ export function createStudio(container, {
   gizmoSvg.addEventListener('pointerleave', clearHoveredHandle);
 
   // First among the handle listeners: a press the handle or the mark has no use for steers the camera as it would over the canvas.
-  // In Maya and Cinema 4D Alt and a button navigate even over a handle; the middle and right buttons and Shift pan in every keymap.
+  // A keymap that asks for Alt and a button navigates even over a handle; the middle and right buttons and Shift pan in every keymap.
   let panStartedOnOverlayMoved = false;
   gizmoSvg.addEventListener('pointerdown', event => {
     panStartedOnOverlayMoved = false;

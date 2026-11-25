@@ -264,7 +264,9 @@ The last menu of the top bar, **Help**, has four rows, each with an icon.
 
 In Maya and Cinema 4D a tool key only selects the tool and its handles appear; it does not pick the object up under the pointer the way G, R and S do in Blender, so the shortcuts dialog has no "while holding" rows there. Studio's **Show all** shows everything that is hidden; Maya's own Ctrl+Shift+H is "Show Last Hidden", the nearest key it lists. The keys of the Holding-an-object context (X, Y and Z for an axis, Enter, Esc) do not change, and the keys that switch between Move, Rotate and Scale while holding follow the preset.
 
-Maya and Cinema 4D also take **Alt** with a mouse button on the viewport: Alt and the left button orbit, Alt and the middle button pan, Alt and the right button zoom (drag right or up to come closer). It works over the objects and the handles, and it never selects or drags a handle. Plain left drag orbits, Shift, middle or right drag pan and the wheel keep working in every preset. The wheel and the middle, right and Shift drags work anywhere over the view, including on the handles and on the marks of the lights and the sun, while a field, a list or a menu keeps its own wheel.
+Maya and Cinema 4D also take **Alt** with a mouse button on the viewport: Alt and the left button orbit, Alt and the middle button pan, Alt and the right button zoom (drag right or up to come closer). It works over the objects and the handles, and it never selects or drags a handle. Plain left drag orbits, Shift, middle or right drag pan and the wheel keep working in every preset.
+
+The wheel and the middle, right and Shift drags work anywhere over the view, including on the handles and on the marks of the lights and the sun, while a field, a list or a menu keeps its own wheel.
 
 ## Settings
 
