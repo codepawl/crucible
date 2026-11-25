@@ -302,6 +302,8 @@ A scene file whose GLB has no lights of its own, and whose `renderer.environment
 
 A scene file that lists its own `pointLights`, `spotLights` or emitting `areaLights` in `renderer.environment` (a portal emits nothing) is lit by them alone, as a GLB with `KHR_lights_punctual` is: the renderer's studio fill goes off, and so does the studio key, unless the file writes `keyIntensity`, `fillIntensity`, `lightDirection` or `keyColor` itself, which then wins (#2765). A scene file with no lights of its own keeps the studio key and fill. The HDRI sun of the previous paragraph still becomes the key when the file names no key.
 
+**Effects that read depth (#3388).** A scene file whose `frame.effects` asks for ambient occlusion (`ambientOcclusion` above 0), depth of field (`depthOfField.blur` above 0), motion blur (`motionBlur.shutter` above 0) or sun rays (`sunRays`, intensity above 0) gets a renderer with depth on, so those effects draw without `"renderer": { "depth": true }`. Before, ambient occlusion alone was skipped without a message, and the frame matched one with `ambientOcclusion` 0. The file asking for the effect wins over a `"depth": false` written in the same file. The list is `src/file-scene-depth.js`.
+
 ## Verification
 
 `node --test tests/gltf.test.js` covers generated GLB triangles and the existing `exportGlb` roundtrip.
