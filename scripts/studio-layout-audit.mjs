@@ -3,11 +3,12 @@
 // studio-layout-rules.mjs: unequal insets around the content of a padded container, a gap or padding off the spacing
 // scale, or a gap between groups smaller than the gap inside one. Every failure names the selector, the numbers and the fix.
 //
-//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history|helpmenu] [--width pixels] [--records file.json]
+//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|export|newscene|dialog|notice|notices|editmenu|history|helpmenu] [--width pixels] [--records file.json]
 //
 // Without --origin it starts a Vite dev server on a free port and stops it (by its own PID) at the end. Screens: the Studio
 // page, each of its popover menus, the five steps of the setup dialog, and the New scene chooser with its unsaved-changes
 // question, each in the dark and the light theme at 1280 by 720 (--width changes the width, for example 720).
+// The Export workspace is measured before and after its three actions ran, at 1280 and at 720 pixels wide.
 // The History panel is measured at 1280 and 720 after six edits with two undone, and the Edit menu with its History row beside it.
 // The notices (a draft found in storage, the paused picture after a lost context) and the recipe, settings and shortcuts
 // dialogs are measured at 1280 and at 720 pixels wide, because their buttons wrap first when the window narrows.
@@ -36,7 +37,7 @@ const DIALOG_SELECTORS = Object.freeze({
 });
 const SERVER_START_TIMEOUT_MS = 60000;
 const PANELS_TOGGLE = 'button[title="Show or hide the panels"]';
-const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history|helpmenu] [--width pixels] [--records file.json]';
+const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|export|newscene|dialog|notice|notices|editmenu|history|helpmenu] [--width pixels] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
 // A signed-in host with every optional field, so the Account section of Settings is on screen and measured.
@@ -678,6 +679,27 @@ async function measureNewSceneScreens(page, theme) {
   return screens;
 }
 
+// The Export workspace as a person finds it, then with each export done: the result lines show under the actions.
+export async function measureExportScreens(page, theme, viewport) {
+  const screens = [];
+  // A narrow window starts with the panels closed; the Export panel is what this measures, so it is opened.
+  await page.evaluate(() => {
+    window.__studioPage.setInspectorCollapsed(false);
+    window.__studioPage.setActiveTab('export');
+  });
+  await page.waitForTimeout(300);
+  screens.push({ name: `export workspace ${viewport.width} (${theme})`, records: await measure(page, '.crucible-studio') });
+  await page.evaluate(async () => {
+    for (const kind of ['image', 'model', 'pack']) {
+      document.querySelector(`[data-export="${kind}"]`).click();
+      await new Promise(resolveWait => setTimeout(resolveWait, 400));
+    }
+  });
+  await page.waitForTimeout(300);
+  screens.push({ name: `export results ${viewport.width} (${theme})`, records: await measure(page, '.crucible-studio') });
+  return screens;
+}
+
 export async function runSelectionBehavior({ origin } = {}) {
   const server = origin ? { origin, stop: () => {} } : await startDevServer();
   const browser = await launchBrowser();
@@ -928,7 +950,13 @@ export async function runAudit({ origin, only, extraCss, viewport = VIEWPORT } =
     for (const theme of THEMES) {
       const { context, page } = await openStudio(browser, server.origin, theme, extraCss, { viewport });
       screens.push(...await measureScreens(page, theme, only));
+      if (!only || only === 'export') screens.push(...await measureExportScreens(page, theme, VIEWPORT));
       await context.close();
+      if (!only || only === 'export') {
+        const narrow = await openStudio(browser, server.origin, theme, extraCss, { viewport: NARROW_VIEWPORT });
+        screens.push(...await measureExportScreens(narrow.page, theme, NARROW_VIEWPORT));
+        await narrow.context.close();
+      }
       if (!only || only === 'editmenu') {
         for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
           const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport });

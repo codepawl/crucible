@@ -63,6 +63,7 @@ Pick the form by how a person reaches the feature:
 | Grid | toggle | `toggle:grid`, `src/studio.js:1976`, `src/studio.js:1505` | A state every tool obeys. The rail button, the View menu item and a Settings row show the same state. |
 | Statistics readout | setting | `src/studio.js:1189`, `src/studio.js:2064` | The camera and size readout is a stored choice in Settings. |
 | Show or hide the panels | toggle | `toggle:toggleDocks`, `src/studio.js:1975`, `src/studio-keymap.js:48` | A state of the layout. The rail button and the N key flip the same state. |
+| Export workspace | mode | the Export tab, `src/studio.js`, `src/studio-export.js` | One action per export. The scene is read-only and navigation is off there, because the viewport shows exactly the saved shot. |
 
 ## Object mode operators
 
