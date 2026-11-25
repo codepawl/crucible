@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
-import { bakeMaterialGraph, compileMaterialGraph, graphSurfaceSettings, surfaceMapKey } from '../src/material-graph.js';
+import { bakeMaterialGraph, checkMaterialGraphWork, compileMaterialGraph, graphSurfaceSettings, surfaceMapKey } from '../src/material-graph.js';
+import { MATERIAL_GRAPH_LIMITS } from '../src/material-name-lists.js';
+import { normalMapFromHeightFunction } from '../src/material-texture-kit.js';
 
 const SLOPE = { surface: { output: 'slope' } };
 const MASK = { smoothstep: [0.2, 0.6, { add: [{ noise: { scale: 6, seed: 1, octaves: 3 } }, { mul: [{ uv: 'u' }, 0.3] }] }] };
@@ -17,11 +19,11 @@ const costOf = graph => compileMaterialGraph(graph).cost;
 // Every graph pays the fixed per-pixel cost once (2.5 units).
 const PIXEL_COST = 2.5;
 
-test('a mask used by colour and roughness is costed once, and the bump still pays for each of its four reads', () => {
+test('a mask used by colour and roughness is costed once, and the bump still pays for each of its two reads', () => {
   const full = gatedByMask(MASK);
   const separate = ['color', 'roughness', 'height'].map(output => costOf({ [output]: full[output] }));
   const maskCost = costOf({ roughness: MASK }) - PIXEL_COST;
-  // Colour and roughness share one evaluation of the mask. The height does not: its four shifted reads each work the mask out again.
+  // Colour and roughness share one evaluation of the mask. The height does not: its two shifted reads each work the mask out again.
   const expected = separate.reduce((sum, cost) => sum + cost, 0) - maskCost - 2 * PIXEL_COST;
   assert.ok(Math.abs(costOf(full) - expected) < 1e-9, `${costOf(full)} against ${expected}`);
 });
@@ -92,3 +94,53 @@ for (const [name, [graph, digest]] of Object.entries(GOLDEN_GRAPHS)) {
     assert.equal(bakedDigest(graph), digest);
   });
 }
+
+test('snow gated fits within the 1024 work budget with two-read bump caching (#3147)', () => {
+  for (const mask of [MASK, MASK_WITH_SLOPE]) {
+    const compiled = compileMaterialGraph(gatedByMask(mask));
+    assert.ok(compiled.cost * 1024 * 1024 <= MATERIAL_GRAPH_LIMITS.maxWork, `${compiled.cost * 1024 * 1024} over ${MATERIAL_GRAPH_LIMITS.maxWork}`);
+    assert.doesNotThrow(() => checkMaterialGraphWork(compiled, 1024));
+  }
+});
+
+test('normalMapFromHeightFunction caches adjacent edges and matches four-read golden hashes (#3147)', () => {
+  const compiled = compileMaterialGraph({ height: gatedByMask(MASK).height });
+  const goldenNormalDigests = {
+    64: '2f9186a00342511459f2eef8107d1f060f52b5865c9ba4df62226164b84790aa',
+    256: 'd9cc864ad410837d81828d8f58552e178cda3004caef52db8c211dba85931e6c',
+    512: '56dfd8d32769347c7e99578f1b41960c83240c8ad2e5fabb47592d3dc7a9af77',
+  };
+  for (const [resolutionText, expectedDigest] of Object.entries(goldenNormalDigests)) {
+    const resolution = Number(resolutionText);
+    let calls = 0;
+    const bytes = normalMapFromHeightFunction((u, v) => {
+      calls++;
+      return compiled.outputs.height.evaluate(u, v);
+    }, resolution, 3);
+    assert.equal(calls, 2 * resolution * resolution + 2 * resolution);
+    const digest = createHash('sha256').update(Buffer.from(bytes)).digest('hex');
+    assert.equal(digest, expectedDigest);
+  }
+});
+
+test('height shares cost and node count symmetrically with outputs before and after it (#3147)', () => {
+  const colorAndHeight = compileMaterialGraph({ color: MASK, height: MASK });
+  for (const other of ['roughness', 'metallic', 'opacity', 'clearcoat', 'transmission']) {
+    const paired = compileMaterialGraph({ height: MASK, [other]: MASK });
+    assert.ok(Math.abs(paired.cost - colorAndHeight.cost) < 1e-9, `${other}: ${paired.cost} against ${colorAndHeight.cost}`);
+    assert.equal(paired.nodeCount, colorAndHeight.nodeCount, `${other} nodeCount`);
+  }
+  const nestedBefore = compileMaterialGraph({ color: MASK, height: { mix: [MASK, MASK, 0.5] } });
+  const nestedAfter = compileMaterialGraph({ height: { mix: [MASK, MASK, 0.5] }, clearcoat: MASK });
+  assert.ok(Math.abs(nestedAfter.cost - nestedBefore.cost) < 1e-9, `${nestedAfter.cost} against ${nestedBefore.cost}`);
+  assert.equal(nestedAfter.nodeCount, nestedBefore.nodeCount);
+});
+
+test('plain objects with the same keys in a different order share one subgraph (#3147)', () => {
+  const sameOrder = compileMaterialGraph({ color: { noise: { scale: 6, seed: 1 } }, roughness: { noise: { scale: 6, seed: 1 } } });
+  const swappedOrder = compileMaterialGraph({ color: { noise: { scale: 6, seed: 1 } }, roughness: { noise: { seed: 1, scale: 6 } } });
+  assert.equal(swappedOrder.cost, sameOrder.cost);
+  assert.equal(swappedOrder.nodeCount, sameOrder.nodeCount);
+  const single = compileMaterialGraph({ roughness: { noise: { scale: 6, seed: 1 } } });
+  assert.equal(swappedOrder.nodeCount, single.nodeCount);
+});
