@@ -1,4 +1,5 @@
 import { SCRUB_THUMB_WIDTH } from './studio-timeline-keys.js';
+import { MODIFIER_CSS } from './studio-modifier-styles.js';
 
 // Studio is one full-bleed viewport with floating islands on top: the scene keeps the screen.
 export const STUDIO_CSS = `
@@ -3327,4 +3328,4 @@ export const STUDIO_CSS = `
     outline: 2px solid Highlight;
   }
 }
-`;
+${MODIFIER_CSS}`;
