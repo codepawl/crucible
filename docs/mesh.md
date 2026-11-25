@@ -352,6 +352,22 @@ Uses:
   and expect faint terraces on a gentle slope, because an 8 bit image has 256 height steps.
   Displace when the silhouette or the shadow must change (a rock edge against the sky, a wall that casts relief). Bump is
   enough for fine grain on a flat or distant surface, and parallax for relief that is only seen from the front.
+
+Cracks. On a grid sheet, a voronoi field with `output: "f2MinusF1"` and a negative `strength` gives a cracked surface:
+
+```json
+{ "format": "crucible.scene", "schemaVersion": 1,
+  "geometries": [ { "id": "cracks", "type": "mesh", "base": { "type": "grid", "segments": 48 }, "edits": [
+    { "op": "displace", "field": { "voronoi": { "scale": 4, "seed": 5, "output": "f2MinusF1" } }, "strength": -0.3 }
+  ] } ],
+  "materials": [ { "id": "clay", "color": [0.55, 0.45, 0.38], "roughness": 0.9 } ],
+  "nodes": [ { "id": "slab", "geometry": "cracks", "material": "clay" } ],
+  "camera": { "eye": [0, 1.1, 1.4], "target": [0, 0, 0], "fov": 45 } }
+```
+
+`f2MinusF1` is 1 at the cell centres and 0 on the borders, so the default positive `strength` raises a spike in every
+cell; the negative `strength` inverts that value and sinks the centres, leaving the border network standing out as
+cracks. Set `strength: 0.3` instead to see the default spikes next to them.
 - Both are also stack nodes, so a late change reuses the cached earlier nodes.
 - `vertex_group` (`name`, `select`, and one of `weight`, `field`, `gradient` or `measure`) writes the weights, 0 to 1, of a named group for the
   vertices of the selected faces; the others keep theirs (0 in a new group). `gradient` is `{ "axis": "y", "range": [0, 1], "weights": [0, 1] }`,
