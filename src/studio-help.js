@@ -18,6 +18,7 @@ const SHEET_GROUPS = Object.freeze([
   Object.freeze({ title: 'Mesh editing', icon: 'meshVertex' }),
   Object.freeze({ title: 'Mesh selection', icon: 'meshFace' }),
   Object.freeze({ title: 'Holding an object', icon: 'handle' }),
+  Object.freeze({ title: 'Axis or plane while holding', icon: 'grid' }),
   Object.freeze({ title: 'Help and settings', icon: 'help' }),
 ]);
 
@@ -48,6 +49,13 @@ const GROUP_BY_ACTION = Object.freeze({
   'mesh.selectNone': 'Mesh selection',
   'mesh.invertSelection': 'Mesh selection',
   'mesh.circleSelect': 'Mesh selection',
+  'mesh.boxSelect': 'Mesh selection',
+  'modal.axisX': 'Axis or plane while holding',
+  'modal.axisY': 'Axis or plane while holding',
+  'modal.axisZ': 'Axis or plane while holding',
+  'modal.planeX': 'Axis or plane while holding',
+  'modal.planeY': 'Axis or plane while holding',
+  'modal.planeZ': 'Axis or plane while holding',
 });
 
 // A keymap whose tool keys do not pick an object up names its tools by the move they start.

@@ -128,11 +128,28 @@ export function dissolveFaces(mesh, faceMask, { name = 'dissolve' } = {}) {
   return { mesh: buildPolygonMesh(mesh, outcome.polygons), merged: outcome.merged };
 }
 
-/** Merge the two faces beside each selected edge. Boundary edges cannot dissolve and are ignored. */
-export function dissolveEdges(mesh, edgeMask, { name = 'dissolve' } = {}) {
+/**
+ * Merge the two faces beside each selected edge. Boundary edges cannot dissolve and are ignored. With `removeStraight`,
+ * a vertex the dissolve leaves with only two edges is removed too, so dissolving a loop leaves clean polygons; a vertex whose removal would shrink a face below three corners stays.
+ */
+export function dissolveEdges(mesh, edgeMask, { name = 'dissolve', removeStraight = false } = {}) {
   const outcome = mergeAcrossEdges(mesh, edgeMask, name);
   if (outcome.merged === 0) throw new RangeError('The rule selects no edge with a face on each side, so nothing dissolves.');
-  return { mesh: buildPolygonMesh(mesh, outcome.polygons), merged: outcome.merged, dissolvedEdges: outcome.dissolvedEdges };
+  let removedStraight = 0;
+  if (removeStraight) {
+    const ends = new Set();
+    const table = edgeFaces(mesh);
+    for (let edge = 0; edge < mesh.edgeCount; edge++) {
+      if (!edgeMask[edge] || table.faces[edge].length !== 2) continue;
+      ends.add(mesh.edgeVertices[edge * 2]);
+      ends.add(mesh.edgeVertices[edge * 2 + 1]);
+    }
+    const neighbors = vertexNeighbors(outcome.polygons);
+    const straight = new Set([...ends].filter(vertex => neighbors.get(vertex)?.size === 2));
+    removeStraightWherePossible(outcome.polygons, straight);
+    removedStraight = straight.size;
+  }
+  return { mesh: buildPolygonMesh(mesh, outcome.polygons), merged: outcome.merged, dissolvedEdges: outcome.dissolvedEdges, removedStraight };
 }
 
 function removeVertices(polygons, removable) {

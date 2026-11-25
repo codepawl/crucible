@@ -3,11 +3,12 @@
 // studio-layout-rules.mjs: unequal insets around the content of a padded container, a gap or padding off the spacing
 // scale, or a gap between groups smaller than the gap inside one. Every failure names the selector, the numbers and the fix.
 //
-//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|rename|popover|newscene|dialog|notice|notices|helpmenu] [--width pixels] [--records file.json]
+//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history|helpmenu] [--width pixels] [--records file.json]
 //
 // Without --origin it starts a Vite dev server on a free port and stops it (by its own PID) at the end. Screens: the Studio
 // page, each of its popover menus, the five steps of the setup dialog, and the New scene chooser with its unsaved-changes
 // question, each in the dark and the light theme at 1280 by 720 (--width changes the width, for example 720).
+// The History panel is measured at 1280 and 720 after six edits with two undone, and the Edit menu with its History row beside it.
 // The notices (a draft found in storage, the paused picture after a lost context) and the recipe, settings and shortcuts
 // dialogs are measured at 1280 and at 720 pixels wide, because their buttons wrap first when the window narrows.
 import { spawn } from 'node:child_process';
@@ -37,7 +38,7 @@ const DIALOG_SELECTORS = Object.freeze({
   'shortcuts dialog': 'dialog.crucible-studio-shortcuts-dialog',
 });
 const SERVER_START_TIMEOUT_MS = 60000;
-const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|rename|popover|newscene|dialog|notice|notices|helpmenu] [--width pixels] [--records file.json]';
+const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history|helpmenu] [--width pixels] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
 const SOFTWARE_ARGUMENTS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'];
@@ -272,7 +273,7 @@ const FAKE_POINTER_LOCK_SCRIPT = () => {
 
 export async function launchBrowser() {
   const { chromium } = await import('playwright');
-  // Headless Chrome hides scrollbars by default; a person sees them, so the audit does too.
+  // Headless Chrome hides scrollbars unless told not to; the scroll cue of the panel column has to show in the pictures and the audit.
   const options = { headless: true, ignoreDefaultArgs: ['--hide-scrollbars'], args: process.platform === 'win32' ? GPU_ARGUMENTS : SOFTWARE_ARGUMENTS };
   if (CHROME_PATH && existsSync(CHROME_PATH)) return chromium.launch({ ...options, executablePath: CHROME_PATH });
   return chromium.launch(options).catch(() => chromium.launch({ ...options, channel: 'chrome' }));
@@ -548,6 +549,210 @@ export async function runSelectionBehavior({ origin } = {}) {
   }
 }
 
+// The Edit menu open, with its History row. When STUDIO_AUDIT_STILLS names a folder, each screen is also saved there as a picture.
+async function measureEditMenu(page, theme, label) {
+  const capture = createCapture(page, theme, label);
+  await page.locator('.crucible-studio-menu-button', { hasText: 'Edit' }).click();
+  await capture('edit menu', '#crucible-studio-pop-edit');
+  return capture.screens;
+}
+
+function createCapture(page, theme, label) {
+  const screens = [];
+  const stillsFolder = process.env.STUDIO_AUDIT_STILLS;
+  const capture = async (name, selector, extra = {}) => {
+    // The pointer waits away from the list, so no row shows the highlight of a hover.
+    await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height - 24);
+    await page.waitForTimeout(250);
+    screens.push({ name: `${name}${label} (${theme})`, records: await measure(page, selector), ...extra });
+    if (stillsFolder) await page.screenshot({ path: `${stillsFolder}/${name.replace(/ /g, '-')}${label.replace(/ /g, '-')}-${theme}.png` });
+  };
+  capture.screens = screens;
+  return capture;
+}
+
+// The column rule and the whole-row rule, measured: History is a whole number of rows, at most six (four in a compact window), the
+// first row shown starts at the top of the list, History takes at most a third of the column and leaves Properties 240 px or more,
+// and a dimmed row is the plain muted token with no opacity on top of it. Returns the Properties height for the collapsed check.
+async function checkHistoryLayout(page) {
+  const found = await page.evaluate(() => {
+    const root = document.querySelector('.crucible-studio');
+    const list = document.querySelector('.crucible-studio-history-list');
+    const rows = [...list.children];
+    const style = getComputedStyle(list);
+    const gap = parseFloat(style.rowGap);
+    const padding = parseFloat(style.paddingTop);
+    const pitch = rows[0].getBoundingClientRect().height + gap;
+    const listBox = list.getBoundingClientRect();
+    const wholeRows = (list.clientHeight - padding * 2 + gap) / pitch;
+    const firstShown = rows.find(row => row.getBoundingClientRect().bottom > listBox.top + 1);
+    const inspector = document.querySelector('.crucible-studio-inspector');
+    const undone = rows.find(row => row.dataset.state === 'undone');
+    const lastBox = rows.at(-1).getBoundingClientRect();
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--studio-muted)';
+    root.append(probe);
+    const mutedColor = getComputedStyle(probe).color;
+    probe.remove();
+    return {
+      compact: root.dataset.compact === 'true',
+      wholeRows,
+      lastRowCut: lastBox.bottom - listBox.bottom,
+      firstTopGap: firstShown.getBoundingClientRect().top - listBox.top,
+      columnHeight: document.querySelector('.crucible-studio-side').getBoundingClientRect().height,
+      historyHeight: document.querySelector('.crucible-studio-history').getBoundingClientRect().height,
+      inspectorHeight: inspector.getBoundingClientRect().height,
+      inspectorShown: getComputedStyle(inspector).display !== 'none',
+      undoneOpacity: getComputedStyle(undone).opacity,
+      nameOpacity: getComputedStyle(undone.querySelector('.crucible-studio-history-name')).opacity,
+      nameColor: getComputedStyle(undone.querySelector('.crucible-studio-history-name')).color,
+      mutedColor,
+    };
+  });
+  const expect = (condition, message) => {
+    if (!condition) throw new Error(`History panel layout: ${message}: ${JSON.stringify(found)}`);
+  };
+  expect(Math.abs(found.wholeRows - Math.round(found.wholeRows)) < 0.02, 'the list is not a whole number of rows tall');
+  expect(found.firstTopGap >= -0.5, 'the first row shown starts above the top of the list');
+  expect(found.lastRowCut <= 1, 'the newest row is cut at the bottom of the list');
+  expect(Math.round(found.wholeRows) <= (found.compact ? 4 : 6), 'the list shows more rows than its limit');
+  if (!found.compact) {
+    expect(found.historyHeight <= found.columnHeight / 3 + 1, 'History takes more than a third of the column');
+    expect(found.inspectorShown && found.inspectorHeight >= 239, 'Properties is under 240 px');
+  }
+  expect(found.undoneOpacity === '1' && found.nameOpacity === '1', 'a dimmed row also has an opacity');
+  expect(found.nameColor === found.mutedColor, 'the text of a dimmed row is not the plain muted token');
+  return found;
+}
+
+// The scroll cue of the panel column: a body whose content is taller than its card shows a scrollbar track at least 6 px wide, the
+// fade marker is set on the edge that hides content (top once scrolled down, bottom while more remains) and on no other edge, and
+// the fade is a real mask. A body that does not scroll carries no marker.
+async function checkScrollCue(page, step) {
+  const found = await page.evaluate(() => [
+    '.crucible-studio-panels',
+    '.crucible-studio-history-list',
+    '.crucible-studio-tree',
+  ].map(selector => {
+    const body = document.querySelector(selector);
+    const shown = Boolean(body) && body.getBoundingClientRect().height > 0;
+    if (!shown) return { selector, shown };
+    const hiddenBelow = body.scrollHeight - body.clientHeight - body.scrollTop;
+    return {
+      selector,
+      shown,
+      scrolls: body.scrollHeight - body.clientHeight > 1,
+      trackWidth: body.offsetWidth - body.clientWidth,
+      hiddenAbove: body.scrollTop > 1,
+      hiddenBelow: hiddenBelow > 1,
+      fadeTop: body.dataset.fadeTop === 'true',
+      fadeBottom: body.dataset.fadeBottom === 'true',
+      masked: getComputedStyle(body).maskImage !== 'none',
+    };
+  }));
+  for (const body of found.filter(entry => entry.shown)) {
+    const fail = message => { throw new Error(`Scroll cue (${step}): ${body.selector} ${message}: ${JSON.stringify(body)}`); };
+    if (body.scrolls && body.trackWidth < 6) fail('scrolls but shows no scrollbar track');
+    if (body.scrolls && body.hiddenAbove !== body.fadeTop) fail('has the top fade marker wrong');
+    if (body.scrolls && body.hiddenBelow !== body.fadeBottom) fail('has the bottom fade marker wrong');
+    if (!body.scrolls && (body.fadeTop || body.fadeBottom)) fail('carries a fade marker without scrolling');
+    if ((body.fadeTop || body.fadeBottom) && !body.masked) fail('has a fade marker but no fade');
+  }
+  return found;
+}
+
+// What a person does in the History panel, in a real browser: Edit > History shows it with focus on the current row, a click on
+// an earlier row steps back and dims the rows after it, a click on a dimmed row steps forward, and a new edit drops the dimmed rows.
+async function checkHistoryBehavior(page) {
+  const state = () => page.evaluate(() => {
+    const rows = [...document.querySelectorAll('.crucible-studio-history-row')];
+    const colorOf = state => {
+      const row = rows.find(candidate => candidate.dataset.state === state);
+      return row ? getComputedStyle(row).color : null;
+    };
+    const list = document.querySelector('.crucible-studio-history-list');
+    const listStyle = getComputedStyle(list);
+    return {
+      states: rows.map(row => row.dataset.state),
+      focusedState: document.activeElement?.dataset?.state ?? null,
+      currentColor: colorOf('current'),
+      doneColor: colorOf('done'),
+      undoneColor: colorOf('undone'),
+      listInsets: [listStyle.paddingTop, listStyle.paddingRight, listStyle.paddingBottom, listStyle.paddingLeft],
+      currentVisible: (() => {
+        const current = rows.find(row => row.dataset.state === 'current')?.getBoundingClientRect();
+        const box = list.getBoundingClientRect();
+        return Boolean(current) && current.top >= box.top - 1 && current.bottom <= box.bottom + 1;
+      })(),
+    };
+  });
+  const expect = (condition, message, found) => {
+    if (!condition) throw new Error(`History panel behavior: ${message}: ${JSON.stringify(found)}`);
+  };
+  await page.locator('.crucible-studio-menu-button', { hasText: 'Edit' }).click();
+  await page.locator('#crucible-studio-pop-edit button', { hasText: 'History' }).click();
+  let found = await state();
+  expect(found.states.filter(value => value === 'undone').length === 2, 'two rows are undone', found);
+  expect(found.focusedState === 'current', 'focus starts on the current row', found);
+  expect(found.currentVisible, 'the current row is scrolled into view', found);
+  expect(found.undoneColor !== found.currentColor && found.undoneColor !== found.doneColor, 'dimmed rows differ from the current row and the done rows', found);
+  expect(new Set(found.listInsets).size === 1, 'the list has even insets', found);
+  await page.locator('.crucible-studio-history-row[data-state="undone"]').last().click();
+  found = await state();
+  expect(found.states.at(-1) === 'current' && !found.states.includes('undone'), 'a click on the last dimmed row steps forward to it', found);
+  await page.locator('.crucible-studio-history-row[data-state="done"]').nth(2).click();
+  found = await state();
+  expect(found.states.filter(value => value === 'undone').length >= 1, 'a click on an earlier row dims the rows after it', found);
+  await page.evaluate(() => window.__studioPage.controller.updateNodeTransform('cube', { translation: [2, 0.5, 0] }));
+  found = await state();
+  expect(!found.states.includes('undone') && found.states.at(-1) === 'current', 'a new edit removes the dimmed rows', found);
+}
+
+// The History panel after six edits, two of them undone, shown through Edit > History.
+async function measureHistoryPanel(page, theme, label) {
+  await page.evaluate(() => {
+    const controller = window.__studioPage.controller;
+    controller.updateNodeTransform('cube', { translation: [1, 0.5, 0] });
+    controller.updateNodeTransform('cube', { rotationDegrees: [0, 45, 0] });
+    controller.updateNodeTransform('cube', { scale: [1.2, 1.2, 1.2] });
+    controller.addPrimitive('box');
+    controller.updateNodeTransform('cube', { visible: false });
+    controller.updateNodeTransform('cube', { visible: true });
+    controller.undo();
+    controller.undo();
+  });
+  const capture = createCapture(page, theme, label);
+  await page.locator('.crucible-studio-menu-button', { hasText: 'Edit' }).click();
+  await page.locator('#crucible-studio-pop-edit button', { hasText: 'History' }).click();
+  await page.waitForSelector('.crucible-studio-history:not([hidden])');
+  const menuStillOpen = await page.evaluate(() => document.getElementById('crucible-studio-pop-edit').matches(':popover-open'));
+  if (menuStillOpen) throw new Error('History panel behavior: the Edit menu stays open over the scene after History is chosen');
+  await capture('history panel', '.crucible-studio-history');
+  const layout = await checkHistoryLayout(page);
+  await page.waitForTimeout(100);
+  await checkScrollCue(page, 'History shown');
+  await page.evaluate(() => { document.querySelector('.crucible-studio-history-list').scrollTop = 0; });
+  await page.waitForTimeout(100);
+  await checkScrollCue(page, 'History at the first row');
+  await page.evaluate(() => { const list = document.querySelector('.crucible-studio-history-list'); list.scrollTop = list.scrollHeight; });
+  await page.waitForTimeout(100);
+  await checkScrollCue(page, 'History at the last row');
+  await page.locator('.crucible-studio-history button[aria-label="Minimize History"]').click();
+  await capture('history panel collapsed', '.crucible-studio-history');
+  const collapsed = await page.evaluate(() => ({
+    minimized: document.querySelector('.crucible-studio').dataset.historyMinimized,
+    historyHeight: document.querySelector('.crucible-studio-history').getBoundingClientRect().height,
+    inspectorHeight: document.querySelector('.crucible-studio-inspector').getBoundingClientRect().height,
+  }));
+  await page.waitForTimeout(100);
+  await checkScrollCue(page, 'History minimized');
+  if (collapsed.minimized !== 'true' || collapsed.historyHeight > 60) throw new Error(`History panel layout: it does not collapse to its title row: ${JSON.stringify(collapsed)}`);
+  if (!layout.compact && collapsed.inspectorHeight <= layout.inspectorHeight) throw new Error(`History panel layout: Properties does not get the room back: ${JSON.stringify({ collapsed, layout })}`);
+  await page.locator('.crucible-studio-history button[aria-label="Expand History"]').click();
+  await checkHistoryBehavior(page);
+  return capture.screens;
+}
+
 // Runs on a page loaded with a seeded draft, so the draft notice is there on its own and the paused notice comes from a real
 // lost WebGL context. The dialogs are opened the way the menu opens them, with showModal.
 async function measureNoticesAndDialogs(page, theme, label) {
@@ -581,6 +786,20 @@ export async function runAudit({ origin, only, extraCss, viewport = VIEWPORT } =
       const { context, page } = await openStudio(browser, server.origin, theme, extraCss, { viewport });
       screens.push(...await measureScreens(page, theme, only));
       await context.close();
+      if (!only || only === 'editmenu') {
+        for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
+          const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport });
+          screens.push(...await measureEditMenu(opened.page, theme, label));
+          await opened.context.close();
+        }
+      }
+      if (!only || only === 'history') {
+        for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
+          const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport });
+          screens.push(...await measureHistoryPanel(opened.page, theme, label));
+          await opened.context.close();
+        }
+      }
       if (!only || only === 'notice') screens.push(await measureDraftNotice(browser, server.origin, theme, extraCss));
       if (!only || only === 'helpmenu') {
         for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {

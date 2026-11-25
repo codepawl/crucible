@@ -20,6 +20,9 @@ export const STUDIO_ICON_PATHS = Object.freeze({
   keyframe: 'M12 3l7 9-7 9-7-9z',
   autoKey: 'M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14z',
   duplicate:'M9 9h11v11H9zM5 15H4V4h11v1',
+  duplicateObject: 'M4 4h16v16H4zM12 8v8M8 12h8',
+  clipboard: 'M9 3h6v4H9zM9 5H5v16h14V5h-4',
+  deselect: 'M5 5h2M10.5 5h3M17 5h2M5 19h2M10.5 19h3M17 19h2M5 8.5v2M5 13.5v2M19 8.5v2M19 13.5v2',
   remove: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
   frame: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5',
   panels: 'M3 5h18v14H3zM9 5v14M5.5 9h1M5.5 12h1',
@@ -61,6 +64,7 @@ export const STUDIO_ICON_PATHS = Object.freeze({
   check: 'M5 12.5l4.5 4.5L19 7',
   theme: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 3v18M12 7.5h4.5M12 12h6M12 16.5h4.5',
   speed: 'M4 17a8 8 0 1 1 16 0M12 17l4-5M12 17h.01',
+  history: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7.5V12l3 2',
   // Edit mode selection: the same square each time; what is picked is drawn on top of it (STUDIO_ICON_ACCENTS).
   meshVertex: 'M5 5h14v14H5z',
   meshEdge: 'M19 5v14H5V5z',

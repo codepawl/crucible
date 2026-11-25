@@ -96,3 +96,4 @@ Pick the form by how a person reaches the feature:
 | Keymap | setting | `src/studio-keymap.js:319` | A stored choice made once in Settings: the default keys or another keymap preset. |
 | Keyboard shortcuts | panel | Help menu, the ? key; src/studio-help.js | A sheet to read, built from the active keymap. |
 | Documentation | operator | Help menu | One action that opens the guide. |
+| History | panel | `src/studio.js` (the History card in the right column), View > History, Edit > History | A log of the edits that stays on screen beside Properties: a viewer of a recording follows it downward, and the person editing steps back or forward from it. A tab of Properties would be swapped out when the selection changes tabs, so it is its own card, shown and hidden by a toggle. |
