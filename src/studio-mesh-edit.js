@@ -20,11 +20,17 @@ const VERTEX_PICK_RADIUS_PIXELS = 14;
 const EDGE_PICK_RADIUS_PIXELS = 10;
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
-const NEEDS_A_MESH = 'Edit mode needs a mesh geometry for now; turning a shape into a mesh comes next.';
-const NEEDS_NO_MODIFIERS = 'Edit mode does not work on a mesh with modifiers yet.';
+const NEEDS_A_MESH = 'Edit mode needs a mesh geometry or a shape of the Add menu.';
+const NEEDS_NO_MODIFIERS = 'Edit mode does not work on a mesh with modifiers yet. Add a plain shape from the Mesh group and edit that, or have the modifiers applied first.';
 const LOG_IS_FULL = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take another move.`;
 const TOO_MANY_VERTICES = `Moving more than ${MAX_MASK_VERTICES} vertices that are not whole faces is not possible yet; select whole faces or fewer vertices.`;
 const MESH_CHANGED = 'Edit mode ended because this object uses a different mesh now.';
+// Circle select (C): the brush is in screen pixels, the wheel changes it by a factor per notch, and it stays between sessions.
+export const CIRCLE_BRUSH_DEFAULT_PIXELS = 25;
+export const CIRCLE_BRUSH_MIN_PIXELS = 4;
+export const CIRCLE_BRUSH_MAX_PIXELS = 400;
+const CIRCLE_BRUSH_STEP_FACTOR = 1.15;
+const CIRCLE_SELECT_HINT = 'Circle select: drag to select, middle drag or Shift to deselect, wheel to resize, right click or Esc to leave.';
 const EDIT_MODE_HINT = 'Edit mode: pick a vertex, edge or face.';
 const TOO_LARGE_TO_DRAW = `This mesh has more than ${CAGE_TRIANGLE_BUDGET.toLocaleString('en-US')} triangles, so only the selection is drawn.`;
 
@@ -172,6 +178,21 @@ function logsShareTheirPrefix(first, second) {
   return true;
 }
 
+// The shapes of the Add menu's Mesh group turn into a mesh on the first Tab. A box and a cylinder lose their bevel on the way:
+// as a mesh the bevel is hundreds of tiny faces (a box of 6 faces becomes 1,482), which nobody can pick one by one. A written 0 is
+// needed: without a bevel field the shape builds with its default one.
+// A plane is written back by the recipe as a grid.
+const CONVERTIBLE_PRIMITIVES = new Set(['plane', 'grid', 'box', 'circle', 'sphere', 'icoSphere', 'cylinder', 'cone', 'torus']);
+const PRIMITIVES_WITHOUT_BEVEL = new Set(['box', 'cylinder']);
+
+/** The mesh geometry a shape becomes in edit mode: its own description as the base, or null for a geometry that is no such shape. */
+export function meshGeometryOfPrimitive(geometrySpec) {
+  if (!geometrySpec || !CONVERTIBLE_PRIMITIVES.has(geometrySpec.type)) return null;
+  const { id, ...base } = structuredClone(geometrySpec);
+  if (PRIMITIVES_WITHOUT_BEVEL.has(base.type)) base.bevel = 0;
+  return { type: 'mesh', base };
+}
+
 function uniqueGeometryId(recipe, wanted) {
   const taken = new Set((recipe.geometries ?? []).map(geometry => geometry.id));
   let candidate = wanted;
@@ -191,6 +212,9 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   let writingOwnEntry = false;
   // True from entering edit mode until the first pick selects something: the hint goes away with that pick.
   let hintShowing = false;
+  // Circle select: null when off, else where the brush circle is drawn (centre is null until the pointer is over the viewport).
+  let circle = null;
+  let brushRadius = CIRCLE_BRUSH_DEFAULT_PIXELS;
 
   function refuse(message) {
     announce(message);
@@ -202,16 +226,28 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return recipe.geometries?.find(candidate => candidate.id === node?.geometry) ?? null;
   }
 
-  function refusalFor(geometrySpec) {
-    if (!geometrySpec || geometrySpec.type !== 'mesh') return NEEDS_A_MESH;
+  // What a person can do instead is in each sentence: edit mode runs on a mesh, or on a shape of the Add menu that turns into one.
+  function kindOfObjectWithoutGeometry(recipe, nodeId) {
+    const node = recipe.nodes.find(candidate => candidate.id === nodeId);
+    if (!node) return recipe.lights?.some(light => light.id === nodeId) ? 'a light' : 'not an object of the scene';
+    if (node.asset) return 'an imported file';
+    if (recipe.nodes.some(candidate => candidate.parent === nodeId)) return 'a group';
+    return 'an empty object';
+  }
+
+  function refusalFor(geometrySpec, recipe, nodeId) {
+    if (!geometrySpec) return `This object is ${kindOfObjectWithoutGeometry(recipe, nodeId)}, which has no mesh to edit. Select a shape or a mesh.`;
     if ((geometrySpec.stack ?? []).length > 0) return NEEDS_NO_MODIFIERS;
+    if (geometrySpec.type === 'text') return 'Text cannot be edited as a mesh yet. Change its words in the properties panel, or add a shape from the Mesh group.';
+    if (geometrySpec.type !== 'mesh' && !CONVERTIBLE_PRIMITIVES.has(geometrySpec.type)) return NEEDS_A_MESH;
     return null;
   }
 
   function loadCage(nodeId, selectedBefore) {
     const geometrySpec = geometrySpecOf(controller.exportRecipe(), nodeId);
-    const refusal = refusalFor(geometrySpec);
+    const refusal = refusalFor(geometrySpec, controller.exportRecipe(), nodeId);
     if (refusal) return refusal;
+    if (geometrySpec.type !== 'mesh') return NEEDS_A_MESH;
     const part = controller.scene.parts.find(candidate => candidate.name === nodeId);
     const source = part ? meshEditSourceOf(part.geometry) : null;
     if (!source) return NEEDS_A_MESH;
@@ -240,28 +276,36 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return null;
   }
 
-  // A geometry another node uses is copied for this node first: the preview writes into the geometry's buffers, and the edit
-  // log belongs to the geometry, so the twin would move too.
-  function giveNodeItsOwnGeometry(nodeId) {
+  // The geometry of the node becomes a mesh of its own before the first edit, in one scene change (one undo step). A geometry
+  // another node uses is copied: the preview writes into the geometry's buffers and the edit log belongs to the geometry, so the
+  // twin would move too. A shape becomes the mesh of its own description; the shape itself goes when nothing else uses it.
+  function giveNodeItsOwnMesh(nodeId) {
     const recipe = controller.exportRecipe();
     const node = recipe.nodes.find(candidate => candidate.id === nodeId);
-    const sharing = recipe.nodes.filter(candidate => candidate.geometry === node.geometry).length > 1;
-    if (!sharing) return;
     const spec = recipe.geometries.find(candidate => candidate.id === node.geometry);
-    const ownId = uniqueGeometryId(recipe, `${spec.id}-${nodeId}`);
-    controller.applyImportOperations(
-      [{ type: 'add-geometry', geometry: { ...structuredClone(spec), id: ownId } }, { type: 'set-node', id: nodeId, geometry: ownId }],
-      { detail: { kind: 'topology', nodeId } },
-    );
+    const sharing = recipe.nodes.filter(candidate => candidate.geometry === node.geometry).length > 1;
+    const converted = meshGeometryOfPrimitive(spec);
+    if (!sharing && !converted) return;
+    const ownId = uniqueGeometryId(recipe, converted ? `${spec.id}-mesh` : `${spec.id}-${nodeId}`);
+    const ownGeometry = converted ?? structuredClone(spec);
+    const operations = [{ type: 'add-geometry', geometry: { ...ownGeometry, id: ownId } }, { type: 'set-node', id: nodeId, geometry: ownId }];
+    if (converted && !sharing) operations.push({ type: 'remove-geometry', id: spec.id });
+    controller.applyImportOperations(operations, { detail: { kind: 'topology', nodeId } });
+  }
+
+  // The mesh the node would become on Tab, or null: Studio loads the code that builds it before it calls enter().
+  function conversionOf(nodeId) {
+    return meshGeometryOfPrimitive(geometrySpecOf(controller.exportRecipe(), nodeId));
   }
 
   function enter() {
     if (state) return { ok: true };
     const nodeId = controller.selectedNodeId;
     if (!nodeId) return refuse('Select a mesh to edit it.');
-    const refusal = refusalFor(geometrySpecOf(controller.exportRecipe(), nodeId));
+    const recipe = controller.exportRecipe();
+    const refusal = refusalFor(geometrySpecOf(recipe, nodeId), recipe, nodeId);
     if (refusal) return refuse(refusal);
-    giveNodeItsOwnGeometry(nodeId);
+    giveNodeItsOwnMesh(nodeId);
     const loadFailure = loadCage(nodeId, []);
     if (loadFailure) return refuse(loadFailure);
     controller.setTool('translate');
@@ -278,6 +322,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   function leave() {
     if (!state) return;
     hintShowing = false;
+    circle = null;
     // The controller drag goes first, through the session, so the cage, the buffers and the pointer state are put back.
     if (controller.dragging) controller.cancelGizmoDrag();
     cancelDrag();
@@ -332,6 +377,129 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return true;
   }
 
+  function noteSelectionChanged() {
+    controller.setTool('translate');
+    if (hintShowing && state.selected.size > 0) {
+      hintShowing = false;
+      announce('');
+    }
+  }
+
+  /** Alt+A: nothing selected, in any mode. True when something was selected. */
+  function selectNone() {
+    return clearSelection();
+  }
+
+  /** Ctrl+I: every element of the current mode that was not selected becomes selected, and the selected ones are not. */
+  function invertSelection() {
+    if (!state || drag) return false;
+    const { mesh } = state;
+    const count = state.mode === 'vertex' ? mesh.vertexCount : state.mode === 'edge' ? mesh.edgeCount : mesh.faceCount;
+    const inverted = new Set();
+    for (let element = 0; element < count; element += 1) {
+      if (!state.selected.has(element)) inverted.add(element);
+    }
+    state.selected = inverted;
+    noteSelectionChanged();
+    return true;
+  }
+
+  /** C: the brush. Returns false outside edit mode or in the middle of a drag. */
+  function beginCircleSelect() {
+    if (!state || drag) return false;
+    if (circle) return true;
+    circle = { centre: null };
+    hintShowing = false;
+    announce(CIRCLE_SELECT_HINT);
+    return true;
+  }
+
+  function endCircleSelect() {
+    if (!circle) return false;
+    circle = null;
+    announce('');
+    return true;
+  }
+
+  /** The wheel: one notch up (steps > 0) makes the brush bigger, one down smaller; the result stays inside the brush limits. */
+  function resizeCircleBrush(steps) {
+    if (!Number.isFinite(steps)) {
+      throw new RangeError(`Resize the brush by a finite number of wheel steps, not ${String(steps)}.`);
+    }
+    const resized = brushRadius * CIRCLE_BRUSH_STEP_FACTOR ** steps;
+    brushRadius = Math.min(CIRCLE_BRUSH_MAX_PIXELS, Math.max(CIRCLE_BRUSH_MIN_PIXELS, Math.round(resized)));
+    return brushRadius;
+  }
+
+  function moveCircle(pixelX, pixelY) {
+    if (circle) circle.centre = { x: pixelX, y: pixelY };
+  }
+
+  // The brush reaches only what faces the camera.
+  function circleHits(pixelX, pixelY) {
+    const projected = projectCage();
+    const { mesh } = state;
+    const radiusSquared = brushRadius ** 2;
+    const hits = [];
+    if (state.mode === 'vertex') {
+      for (let vertex = 0; vertex < mesh.vertexCount; vertex += 1) {
+        if (!projected.visible[vertex] || !projected.nearVertex[vertex]) continue;
+        if ((projected.screenX[vertex] - pixelX) ** 2 + (projected.screenY[vertex] - pixelY) ** 2 <= radiusSquared) hits.push(vertex);
+      }
+    } else if (state.mode === 'edge') {
+      for (let edge = 0; edge < mesh.edgeCount; edge += 1) {
+        const start = mesh.edgeVertices[edge * 2];
+        const end = mesh.edgeVertices[edge * 2 + 1];
+        if (!projected.nearEdge[edge] || !projected.visible[start] || !projected.visible[end]) continue;
+        const distance = distanceToSegmentSquared(pixelX, pixelY, projected.screenX[start], projected.screenY[start], projected.screenX[end], projected.screenY[end]);
+        if (distance <= radiusSquared) hits.push(edge);
+      }
+    } else {
+      for (let face = 0; face < mesh.faceCount; face += 1) {
+        if (projected.nearFace[face] && faceTouchesCircle(face, projected, pixelX, pixelY, radiusSquared)) hits.push(face);
+      }
+    }
+    return hits;
+  }
+
+  // A face is under the brush when the circle overlaps its drawn polygon: an edge within reach, or the circle centre inside it.
+  function faceTouchesCircle(face, projected, pixelX, pixelY, radiusSquared) {
+    const { mesh } = state;
+    const first = mesh.faceOffsets[face];
+    const end = mesh.faceOffsets[face + 1];
+    let inside = false;
+    for (let corner = first; corner < end; corner += 1) {
+      const current = mesh.cornerVertices[corner];
+      const following = mesh.cornerVertices[corner + 1 < end ? corner + 1 : first];
+      if (!projected.visible[current] || !projected.visible[following]) return false;
+      const currentX = projected.screenX[current];
+      const currentY = projected.screenY[current];
+      const followingX = projected.screenX[following];
+      const followingY = projected.screenY[following];
+      if (distanceToSegmentSquared(pixelX, pixelY, currentX, currentY, followingX, followingY) <= radiusSquared) return true;
+      const crossesRay = (currentY > pixelY) !== (followingY > pixelY);
+      if (crossesRay && pixelX < ((followingX - currentX) * (pixelY - currentY)) / (followingY - currentY) + currentX) inside = !inside;
+    }
+    return inside;
+  }
+
+  /** One dab of the brush at a pixel: every element of the mode under it joins the selection, or leaves it with `deselect`. Returns how many changed. */
+  function paintCircle(pixelX, pixelY, { deselect = false } = {}) {
+    if (!state || !circle || drag) return 0;
+    circle.centre = { x: pixelX, y: pixelY };
+    let changed = 0;
+    for (const element of circleHits(pixelX, pixelY)) {
+      if (deselect) {
+        if (state.selected.delete(element)) changed += 1;
+      } else if (!state.selected.has(element)) {
+        state.selected.add(element);
+        changed += 1;
+      }
+    }
+    if (changed > 0) noteSelectionChanged();
+    return changed;
+  }
+
   function projectCage() {
     const project = controller.worldPointProjector();
     const matrix = state.part.matrix;
@@ -339,7 +507,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     const screenX = new Float32Array(vertexCount);
     const screenY = new Float32Array(vertexCount);
     const visible = new Uint8Array(vertexCount);
-    const { nearVertex, nearEdge } = nearSideOf();
+    const { nearVertex, nearEdge, nearFace } = nearSideOf();
     for (let vertex = 0; vertex < vertexCount; vertex += 1) {
       const world = transformPoint(matrix, state.positions[vertex * 3], state.positions[vertex * 3 + 1], state.positions[vertex * 3 + 2]);
       const point = project(world);
@@ -347,7 +515,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       screenY[vertex] = point.y;
       visible[vertex] = point.visible ? 1 : 0;
     }
-    return { screenX, screenY, visible, nearVertex, nearEdge };
+    return { screenX, screenY, visible, nearVertex, nearEdge, nearFace };
   }
 
   // A vertex or an edge is on the far side when every face that uses it faces away from the camera.
@@ -355,11 +523,13 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     const { mesh, positions } = state;
     const nearVertex = new Uint8Array(mesh.vertexCount);
     const nearEdge = new Uint8Array(mesh.edgeCount);
+    const nearFace = new Uint8Array(mesh.faceCount);
     const inverse = mat4.invert(mat4.create(), state.part.matrix);
     if (!inverse) {
       nearVertex.fill(1);
       nearEdge.fill(1);
-      return { nearVertex, nearEdge };
+      nearFace.fill(1);
+      return { nearVertex, nearEdge, nearFace };
     }
     const camera = controller.viewCamera;
     const eye = transformPoint(inverse, ...camera.eye);
@@ -385,12 +555,13 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       const towardZ = orthographic ? -forward[2] : eye[2] - positions[anchor + 2];
       const facing = normalX * towardX + normalY * towardY + normalZ * towardZ;
       if (mirrored ? facing >= 0 : facing <= 0) continue;
+      nearFace[face] = 1;
       for (let corner = first; corner < end; corner += 1) {
         nearVertex[mesh.cornerVertices[corner]] = 1;
         nearEdge[mesh.cornerEdges[corner]] = 1;
       }
     }
-    return { nearVertex, nearEdge };
+    return { nearVertex, nearEdge, nearFace };
   }
 
   function nearestVertex(pixelX, pixelY, projected) {
@@ -576,7 +747,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       const edit = planMeshMove(state.mesh, vertices, localDelta);
       controller.applyImportOperations([{ type: 'edit-mesh', geometry: geometryId, edits: [edit] }], { detail: { kind: 'topology', nodeId } });
     } catch (error) {
-      announce(error.message);
+      announce(error);
     }
     refresh();
     writingOwnEntry = false;
@@ -590,9 +761,27 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     cancel: cancelDrag,
   };
 
+  function sceneStillHoldsDraggedPart() {
+    return controller.selectedNodeId === state.nodeId && controller.scene.parts.find(candidate => candidate.name === state.nodeId) === state.part;
+  }
+
+  function cancelRunningDrag() {
+    if (controller.dragging) {
+      controller.cancelGizmoDrag();
+    } else {
+      cancelDrag();
+    }
+  }
+
   /** Reads the cage again after the scene changed under it (undo, redo, a load); the selection stays while its indices still fit. */
   function refresh() {
-    if (!state || drag) return;
+    if (!state) return;
+    if (drag) {
+      // A drag keeps its cage while the scene under it is the same one it began on. An undo, a redo or a load that replaced or
+      // removed the edited geometry puts the drag away first, then the cage is read again (or edit mode ends) below.
+      if (!sceneStillHoldsDraggedPart()) cancelRunningDrag();
+      if (drag) return;
+    }
     if (controller.selectedNodeId !== state.nodeId) {
       leave();
       return;
@@ -607,6 +796,25 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       announce(loadFailure);
       leave();
     }
+  }
+
+  /**
+   * How far the picked element reaches from the move handles' centre on screen, in pixels (0 for one vertex or nothing picked).
+   * The handles read it to leave that much of the middle clear, so the picked element stays in view.
+   */
+  function selectionScreenRadius() {
+    const vertices = selectedVertices();
+    const centre = selectionCentreWorld();
+    if (!centre || vertices.size === 0) return 0;
+    const project = controller.worldPointProjector();
+    const middle = project(centre);
+    let reach = 0;
+    for (const vertex of vertices) {
+      const world = transformPoint(state.part.matrix, state.positions[vertex * 3], state.positions[vertex * 3 + 1], state.positions[vertex * 3 + 2]);
+      const point = project(world);
+      if (point.visible) reach = Math.max(reach, Math.hypot(point.x - middle.x, point.y - middle.y));
+    }
+    return reach;
   }
 
   // The stroke and fill of these paths come from the stylesheet (`--studio-*` tokens), so the cage follows the theme. `layer` says
@@ -663,6 +871,12 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       paths.push({ className: `crucible-studio-cage-selected-halo crucible-studio-cage-selected-halo-${state.mode}`, pathData: selectedShape, layer: 'over' });
       paths.push({ className: `crucible-studio-cage-selected crucible-studio-cage-selected-${state.mode}`, pathData: selectedShape, layer: 'over' });
     }
+    if (circle?.centre) {
+      const { x, y } = circle.centre;
+      const diameter = brushRadius * 2;
+      const outline = `M${(x - brushRadius).toFixed(1)} ${y.toFixed(1)}a${brushRadius} ${brushRadius} 0 1 0 ${diameter} 0a${brushRadius} ${brushRadius} 0 1 0 ${-diameter} 0`;
+      paths.push({ className: 'crucible-studio-cage-brush', pathData: outline, layer: 'over' });
+    }
     return paths;
   }
 
@@ -687,13 +901,24 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     get nodeId() { return state?.nodeId ?? null; },
     get selection() { return state ? { mode: state.mode, indices: [...state.selected].sort((first, second) => first - second) } : null; },
     get cage() { return state ? { positions: state.positions, mesh: state.mesh, tooLarge: state.tooLarge, editCount: state.editCount } : null; },
+    conversionOf,
     enter,
     leave,
     setMode,
     clearSelection,
+    selectNone,
+    invertSelection,
+    beginCircleSelect,
+    endCircleSelect,
+    resizeCircleBrush,
+    moveCircle,
+    paintCircle,
+    get circleSelecting() { return circle !== null; },
+    get brushRadius() { return brushRadius; },
     pick,
     refresh,
     cagePaths,
+    selectionScreenRadius,
     draw,
   });
 }

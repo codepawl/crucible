@@ -75,27 +75,32 @@ test('a bush and a tree of mesh leaves keep their crown clumps at the far levels
   assert.deepEqual([2, 3].map(level => bush.levels[level].parts[FOLIAGE_PART].geometry.indices.length / 3), [126, 126]);
   for (const level of [2, 3]) assert.equal(bush.levels[level].parts[FOLIAGE_PART].material, bush.materials.crown);
   const mesh = createTree({ preset: 'oak', leaves: 'mesh' }, 4);
-  // 26 blobs of 80 triangles each, the same at both far levels.
-  assert.deepEqual([2, 3].map(level => mesh.levels[level].parts[FOLIAGE_PART].geometry.indices.length / 3), [2080, 2080]);
+  // 29 blobs of 80 triangles each at both far levels. The count follows the oak's crown cells, so it moved from 26 when the oak forked
+  // (#3041); the pin moves again with the oak's habit.
+  assert.deepEqual([2, 3].map(level => mesh.levels[level].parts[FOLIAGE_PART].geometry.indices.length / 3), [3360, 3360]);
 });
 
-// Cards of a leaf-card level: six vertices each (three rows of two), base row first.
-const VERTICES_PER_CARD = 6;
+// Cards of a leaf-card level, base row first. A plain species and the pine draw three rows of two vertices (six); a twig crown draws
+// a flat spray card of two rows (four vertices, two triangles, #3057).
+const THREE_ROW_VERTICES = 6;
+const SPRAY_VERTICES = 4;
+const verticesPerCard = preset => (preset === 'pine' ? THREE_ROW_VERTICES : SPRAY_VERTICES);
 
-function cardsOf(tree, level) {
+function cardsOf(tree, level, cardVertices = THREE_ROW_VERTICES) {
   const { positions } = tree.levels[level].parts[FOLIAGE_PART].geometry;
   const cards = [];
-  for (let first = 0; first + VERTICES_PER_CARD * 3 <= positions.length; first += VERTICES_PER_CARD * 3) {
+  for (let first = 0; first + cardVertices * 3 <= positions.length; first += cardVertices * 3) {
     const vertex = index => [0, 1, 2].map(axis => positions[first + index * 3 + axis]);
     const baseLeft = vertex(0);
     const baseRight = vertex(1);
-    const tipLeft = vertex(4);
-    const tipRight = vertex(5);
+    const tipLeft = vertex(cardVertices - 2);
+    const tipRight = vertex(cardVertices - 1);
     const base = baseLeft.map((value, axis) => (value + baseRight[axis]) / 2);
     const tip = tipLeft.map((value, axis) => (value + tipRight[axis]) / 2);
     const along = tip.map((value, axis) => value - base[axis]);
     const length = Math.hypot(...along);
-    cards.push({ base, centre: base.map((value, axis) => (value + tip[axis]) / 2), length, slope: along[1] / length });
+    const width = Math.hypot(...baseLeft.map((value, axis) => value - baseRight[axis]));
+    cards.push({ base, centre: base.map((value, axis) => (value + tip[axis]) / 2), length, width, slope: along[1] / length });
   }
   return cards;
 }
@@ -124,7 +129,7 @@ test('the centre of a far crown holds at least the share of cards it holds at le
       let reach = 0;
       for (let index = 0; index < positions.length; index += 3) reach = Math.max(reach, Math.hypot(positions[index], positions[index + 2]));
       const innerShare = level => {
-        const cards = cardsOf(tree, level);
+        const cards = cardsOf(tree, level, verticesPerCard(preset));
         return cards.filter(card => Math.hypot(card.centre[0], card.centre[2]) < reach * 0.3).length / cards.length;
       };
       for (const level of [2, 3]) {
@@ -143,8 +148,8 @@ test('far cards droop like level 1 on average over eight seeds', () => {
     const differences = { 2: 0, 3: 0 };
     for (const seed of SLOPE_SEEDS) {
       const tree = createTree({ preset }, seed);
-      const nearSlope = meanOf(cardsOf(tree, 1), 'slope');
-      for (const level of [2, 3]) differences[level] += (meanOf(cardsOf(tree, level), 'slope') - nearSlope) / SLOPE_SEEDS.length;
+      const nearSlope = meanOf(cardsOf(tree, 1, verticesPerCard(preset)), 'slope');
+      for (const level of [2, 3]) differences[level] += (meanOf(cardsOf(tree, level, verticesPerCard(preset)), 'slope') - nearSlope) / SLOPE_SEEDS.length;
     }
     for (const level of [2, 3]) {
       assert.ok(Math.abs(differences[level]) <= SLOPE_TOLERANCE, `${preset} level ${level} cards point ${differences[level].toFixed(3)} off level 1 on average`);
@@ -205,16 +210,36 @@ test('a palm draws curved feathery 256 px frond ribbons cleanly across all four 
   }
 });
 
-test('a twig-crown tree keeps its fanned pair at far levels, two cards to a site, so none stands edge-on', () => {
-  for (const preset of ['oak', 'birch', 'ash', 'pine']) {
+test('the pine keeps its fanned pair at far levels, two cards to a site, so none stands edge-on', () => {
+  const tree = createTree({ preset: 'pine' }, 4);
+  for (const level of [2, 3]) {
+    const cards = cardsOf(tree, level);
+    assert.ok(cards.length > 0 && cards.length % 2 === 0, `pine level ${level} has ${cards.length} cards, not whole pairs`);
+    for (let index = 0; index < cards.length; index += 2) {
+      const gap = Math.hypot(...cards[index].base.map((value, axis) => value - cards[index + 1].base[axis]));
+      assert.ok(gap < 1e-6, `pine level ${level} card ${index} is not paired with the next`);
+    }
+  }
+});
+
+// A twig crown draws a flat spray card (two triangles) at every level. Its near level crosses a pair on each site; far away a crossed
+// pair reads as a plus sign, so a far level draws one card to a site and keeps the leaf area of level 1 with a larger, rarer card.
+test('a twig crown draws one spray card to a site at the far levels and keeps the leaf area of level 1', () => {
+  const AREA_TOLERANCE = 0.25;
+  const cardArea = card => card.length * card.width;
+  for (const preset of ['oak', 'birch', 'ash', 'aspen']) {
     const tree = createTree({ preset }, 4);
+    const near = cardsOf(tree, 1, SPRAY_VERTICES);
+    const nearArea = near.reduce((sum, card) => sum + cardArea(card), 0);
     for (const level of [2, 3]) {
-      const cards = cardsOf(tree, level);
-      assert.equal(cards.length % 2, 0, `${preset} level ${level} has an odd number of cards`);
-      for (let index = 0; index < cards.length; index += 2) {
-        const gap = Math.hypot(...cards[index].base.map((value, axis) => value - cards[index + 1].base[axis]));
-        assert.ok(gap < 1e-6, `${preset} level ${level} card ${index} is not paired with the next`);
-      }
+      const geometry = tree.levels[level].parts[FOLIAGE_PART].geometry;
+      assert.equal(geometry.indices.length / 3, 2 * (geometry.positions.length / 3 / SPRAY_VERTICES), `${preset} level ${level} is not made of two-triangle spray cards`);
+      const cards = cardsOf(tree, level, SPRAY_VERTICES);
+      assert.ok(cards.length > 0 && cards.length < near.length, `${preset} level ${level} has ${cards.length} cards against ${near.length} at level 1`);
+      const bases = new Set(cards.map(card => card.base.map(value => value.toFixed(5)).join(',')));
+      assert.equal(bases.size, cards.length, `${preset} level ${level} has two cards on one base`);
+      const area = cards.reduce((sum, card) => sum + cardArea(card), 0);
+      assert.ok(Math.abs(area / nearArea - 1) <= AREA_TOLERANCE, `${preset} level ${level} spray area is ${(area / nearArea).toFixed(2)} times that of level 1`);
     }
   }
 });

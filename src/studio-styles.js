@@ -17,6 +17,11 @@ export const STUDIO_CSS = `
   --studio-border: var(--site-border, #fefefd1f);
   --studio-accent: var(--site-focus, #fc9132);
   --studio-ok: #5fc48a;
+  /* A label's icon: the text colour one step toward the panel, clearly visible in both themes. */
+  --studio-icon: color-mix(in srgb, var(--studio-text) 78%, var(--studio-panel));
+  /* Drawn over the viewport, which is dark in both themes: these two do not follow the theme. */
+  --studio-trace: #f1f0ec;
+  --studio-trace-edge: #17161a;
   --studio-font: Inter, system-ui, sans-serif;
   --studio-font-heading: 'Plus Jakarta Sans', Inter, system-ui, sans-serif;
   --studio-font-mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -50,8 +55,13 @@ export const STUDIO_CSS = `
 .crucible-studio[data-theme="light"] { color-scheme: light; }
 .crucible-studio[data-theme="dark"] { color-scheme: dark; }
 .crucible-studio * { box-sizing: border-box; }
+/* Nothing in Studio is selectable by click or drag. This is the whole list of what is: text fields, and a block that a person
+   copies from, which opts in with the class crucible-studio-selectable. A dialog is named because the browser's own stylesheet
+   makes a modal dialog selectable, which the root's none does not override. */
+.crucible-studio dialog { user-select: none; }
 .crucible-studio input,
-.crucible-studio textarea { user-select: text; }
+.crucible-studio textarea,
+.crucible-studio-selectable { user-select: text; }
 
 .crucible-studio button,
 .crucible-studio select,
@@ -80,10 +90,14 @@ export const STUDIO_CSS = `
   padding: 0;
   flex-shrink: 0;
 }
-.crucible-studio-icon[data-brand] {
+.crucible-studio button[data-action-icon] { gap: 8px; }
+.crucible-studio button[data-action-icon] > .crucible-studio-icon { color: inherit; }
+.crucible-studio-icon[data-brand],
+.crucible-studio-icon[data-filled] {
   fill: currentColor;
   stroke: none;
 }
+.crucible-studio-icon[data-filled] { fill-rule: evenodd; }
 .crucible-studio-icon {
   inline-size: 17px;
   block-size: 17px;
@@ -212,6 +226,12 @@ export const STUDIO_CSS = `
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+.crucible-studio-gizmo .crucible-studio-cage-brush {
+  fill: color-mix(in srgb, var(--studio-accent) 14%, transparent);
+  stroke: var(--studio-accent);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
 .crucible-studio-gizmo .crucible-studio-cage-selected-vertex { stroke-width: 12; }
 .crucible-studio-gizmo .crucible-studio-cage-selected-edge { stroke-width: 4; }
 .crucible-studio-gizmo .crucible-studio-cage-selected-face {
@@ -229,6 +249,8 @@ export const STUDIO_CSS = `
 }
 .crucible-studio-gizmo [data-gizmo-hit="line"] { stroke-width: 22px !important; }
 .crucible-studio-gizmo [data-gizmo-hit="disc"] { stroke-width: 0 !important; }
+.crucible-studio-gizmo [data-gizmo-hit="ring"] { pointer-events: stroke; }
+.crucible-studio-gizmo [data-gizmo-ring] { pointer-events: none; }
 .crucible-studio-gizmo[data-hover-axis="x"] [data-gizmo-axis="x"],
 .crucible-studio-gizmo[data-hover-axis="y"] [data-gizmo-axis="y"],
 .crucible-studio-gizmo[data-hover-axis="z"] [data-gizmo-axis="z"],
@@ -269,10 +291,7 @@ export const STUDIO_CSS = `
 .crucible-studio-gizmo[data-hover-axis="yz"] [data-gizmo-axis="yz"] {
   fill-opacity: 0.6;
 }
-.crucible-studio-gizmo {
-  --studio-trace: #f1f0ec;
-  --studio-trace-edge: #17161a;
-}
+
 .crucible-studio-scene-mark {
   color: var(--studio-text);
   fill: none;
@@ -287,10 +306,12 @@ export const STUDIO_CSS = `
   stroke: none;
 }
 .crucible-studio-scene-mark-ray {
-  stroke: var(--studio-text);
+  /* Drawn over the dark viewport in both themes, so it takes the trace colour, not the theme's text. */
+  stroke: var(--studio-trace);
   stroke-width: 1.6;
   stroke-linecap: round;
   pointer-events: none;
+  filter: drop-shadow(0 0 1px var(--studio-trace-edge));
 }
 .crucible-studio-scene-mark-ray[data-selected="true"] { stroke: var(--studio-accent); }
 .crucible-studio-gizmo [data-scene-object] {
@@ -317,12 +338,32 @@ export const STUDIO_CSS = `
 .crucible-studio-silhouette-colour {
   flood-color: var(--studio-accent);
 }
+/* Both layers use the full accent with a ring of the viewport's own dark outside it, so the outline reads on light and
+   dark surfaces alike. The viewport is dark in both themes, so the ring takes the trace-edge dark and never the UI
+   theme's --studio-bg, which would glow pale on the floor in the light theme. The active object's outline is the
+   wider one (4 px against 2 px: the filters round the thin ring to 2 px, so 3 against 1.5 drew as 3 against 2). */
+.crucible-studio-silhouette-casing {
+  flood-color: var(--studio-trace-edge);
+}
 .crucible-studio-selection-outline {
   fill: none;
   stroke: var(--studio-accent);
-  stroke-width: 1.5;
+  stroke-width: 4;
   stroke-linejoin: round;
   pointer-events: none;
+}
+.crucible-studio-selection-outline[data-layer="others"] {
+  stroke-width: 2;
+}
+.crucible-studio-selection-outline-casing {
+  fill: none;
+  stroke: var(--studio-trace-edge);
+  stroke-width: 6;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.crucible-studio-selection-outline-casing[data-layer="others"] {
+  stroke-width: 4;
 }
 /* The axis widget stands at the top right of the viewport, beside the panel column. Floating, that is left of the
    Scene card, level with its top and one edge gap from it; --studio-gizmo-clear is the room the cards take. */
@@ -426,7 +467,7 @@ export const STUDIO_CSS = `
   inset-block-start: var(--studio-top);
   inset-inline: calc(var(--studio-rail) + 2 * var(--studio-edge)) calc(var(--studio-side-width, 284px) + 2 * var(--studio-edge));
   inline-size: fit-content;
-  max-inline-size: 520px;
+  max-inline-size: 600px;
   margin-inline: auto;
   gap: 8px;
   padding: 12px 12px;
@@ -577,6 +618,8 @@ export const STUDIO_CSS = `
   margin-inline: 2px 8px;
   border-radius: 999px;
   background: var(--studio-ok);
+  /* The green alone is 2.15:1 on the light panel, so the dot is edged in the muted text colour. */
+  box-shadow: 0 0 0 1px var(--studio-muted);
   flex-shrink: 0;
 }
 .crucible-studio-watch-pill[hidden] { display: none; }
@@ -655,12 +698,18 @@ export const STUDIO_CSS = `
   gap: 2px;
 }
 .crucible-studio-popover-grid + .crucible-studio-popover-grid { margin-block-start: 10px; }
-#crucible-studio-pop-add { max-width: 348px; max-block-size: calc(100dvh - 16px); overflow-y: auto; }
-#crucible-studio-pop-add .crucible-studio-popover-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#crucible-studio-pop-add .crucible-studio-popover-grid { grid-template-columns: minmax(0, 1fr); }
+#crucible-studio-pop-add { max-block-size: calc(100dvh - 16px); overflow-y: auto; }
 .crucible-studio-popover button[aria-expanded="true"] { background: color-mix(in srgb, var(--studio-text) 8%, transparent); }
 .crucible-studio-tree-section { display: grid; }
 .crucible-studio-tree-section[hidden], .crucible-studio-tree-controls[hidden] { display: none; }
 .crucible-studio-tree-controls { display: grid; gap: 12px; }
+.crucible-studio-shape-settings { display: grid; gap: var(--studio-space-8); }
+.crucible-studio-shape-settings[hidden], .crucible-studio-shape-reason[hidden] { display: none; }
+.crucible-studio-shape-rows { display: grid; gap: var(--studio-space-8); }
+/* No unit follows a shape number, so its inset is the 8 px edge plus 2 px, 12 px, a step of the spacing scale. */
+.crucible-studio-shape-rows .crucible-studio-prop { --studio-unit-slot: 2px; }
+.crucible-studio-shape-reason { margin: 0; color: var(--studio-muted, inherit); font-size: 12px; line-height: 1.4; }
 .crucible-studio-tree-controls > .crucible-studio-field-head { margin-block-end: -8px; }
 .crucible-studio-tree-seed {
   display: grid;
@@ -675,9 +724,13 @@ export const STUDIO_CSS = `
   padding: 8px 12px;
   text-align: left;
 }
-.crucible-studio-popover > button > .crucible-studio-icon { color: var(--studio-muted); }
+.crucible-studio-popover > button > .crucible-studio-icon,
+.crucible-studio-popover-grid > button > .crucible-studio-icon { color: var(--studio-muted); }
 .crucible-studio-popover > button:hover > .crucible-studio-icon,
-.crucible-studio-popover > button:focus-visible > .crucible-studio-icon { color: inherit; }
+.crucible-studio-popover > button:focus-visible > .crucible-studio-icon,
+.crucible-studio-popover-grid > button:hover > .crucible-studio-icon,
+.crucible-studio-popover-grid > button:focus-visible > .crucible-studio-icon { color: inherit; }
+.crucible-studio-popover-grid > button { gap: 8px; white-space: nowrap; }
 .crucible-studio-menu-gap {
   flex: none;
   inline-size: 17px;
@@ -976,10 +1029,21 @@ export const STUDIO_CSS = `
   align-items: center;
   gap: 4px;
 }
-.crucible-studio-dock-title .crucible-studio-icon {
+.crucible-studio-dock-title .crucible-studio-icon,
+.crucible-studio-selection-count .crucible-studio-icon {
   inline-size: 15px;
   block-size: 15px;
 }
+.crucible-studio-selection-count {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--studio-font);
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--studio-muted);
+}
+.crucible-studio-selection-count[hidden] { display: none; }
 .crucible-studio-filter {
   position: relative;
   flex: none;
@@ -1034,8 +1098,14 @@ export const STUDIO_CSS = `
   padding: 0 2px 0 var(--studio-space-8);
   border-radius: 8px;
 }
+/* Every selected row is tinted in the accent, with its icon in the accent too (3:1 against the panel in both themes, which a tint alone cannot reach; the active tint stays at 16% so the icon keeps 3:1 on it); the active one, which the panels follow, more strongly. No border. */
 .crucible-studio-tree-row[data-selected="true"] {
-  background: color-mix(in srgb, var(--studio-text) 11%, transparent);
+  background: color-mix(in srgb, var(--studio-accent) 10%, transparent);
+}
+.crucible-studio-tree-row[data-selected="true"] .crucible-studio-tree-select .crucible-studio-icon { color: var(--studio-accent); }
+.crucible-studio-tree-row[data-selected="true"] .crucible-studio-tree-badge { stroke: var(--studio-accent); }
+.crucible-studio-tree-row[data-active="true"] {
+  background: color-mix(in srgb, var(--studio-accent) 16%, transparent);
 }
 @media (hover: hover) {
   .crucible-studio-tree-row:not([data-selected="true"]):hover {
@@ -1214,8 +1284,18 @@ export const STUDIO_CSS = `
   text-wrap: balance;
   pointer-events: none;
   z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
 }
 .crucible-studio-status:empty { display: none; }
+/* The toast lets clicks through, except on an error message, which a person may want to copy. */
+.crucible-studio-status .crucible-studio-selectable { pointer-events: auto; }
+/* The mark leads each outcome in its own shape and weight: done in green, a warning as an accent outline, a failure as a solid accent disc, the rest quiet. */
+.crucible-studio-status .crucible-studio-icon { color: var(--studio-icon); }
+.crucible-studio-status[data-outcome="success"] .crucible-studio-icon { color: var(--studio-ok); }
+.crucible-studio-status[data-outcome="warning"] .crucible-studio-icon,
+.crucible-studio-status[data-outcome="error"] .crucible-studio-icon { color: var(--studio-accent); }
 /* The box stays mounted and the script sets data-state: in while a message shows, out while it leaves. The individual
    translate property leaves the centring transform alone. */
 @supports (transition-behavior: allow-discrete) {
@@ -1494,7 +1574,7 @@ export const STUDIO_CSS = `
   inset-block-start: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr);
+  grid-template-columns: 14px 14px minmax(0, 1fr);
   justify-content: stretch;
   justify-items: start;
   align-items: center;
@@ -1538,12 +1618,15 @@ export const STUDIO_CSS = `
 .crucible-studio-property-title .crucible-studio-icon {
   inline-size: 14px;
   block-size: 14px;
+}
+.crucible-studio-property-title .crucible-studio-section-icon { color: var(--studio-icon); stroke-width: 2; }
+.crucible-studio-property-title .crucible-studio-chevron {
   transition: transform var(--studio-motion-quick) var(--studio-ease-out);
 }
 @media (prefers-reduced-motion: reduce) {
-  .crucible-studio-property-title .crucible-studio-icon { transition: none; }
+  .crucible-studio-property-title .crucible-studio-chevron { transition: none; }
 }
-.crucible-studio-property-section[data-open="true"] .crucible-studio-property-title .crucible-studio-icon { transform: rotate(90deg); }
+.crucible-studio-property-section[data-open="true"] .crucible-studio-property-title .crucible-studio-chevron { transform: rotate(90deg); }
 .crucible-studio-property-rows {
   display: grid;
   gap: 4px;
@@ -1638,7 +1721,8 @@ export const STUDIO_CSS = `
   flex: none;
   inline-size: 44px;
   margin-inline-start: auto;
-  border: 0;
+  /* An edge in the muted text colour, so a near-white colour still shows on the soft field (3:1 in both themes). */
+  border: 1px solid var(--studio-muted);
   border-radius: 5px;
 }
 /* A row whose condition fails (the f-stop while depth of field is off) stays readable but dimmed. */
@@ -1980,7 +2064,16 @@ export const STUDIO_CSS = `
   background: var(--studio-panel);
   color: var(--studio-text);
 }
+.crucible-studio dialog h2 .crucible-studio-icon {
+  inline-size: 18px;
+  block-size: 18px;
+  stroke-width: 1.9;
+  translate: 0 1px;
+}
 .crucible-studio dialog h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 0 10px;
   font-family: var(--studio-font-heading);
   font-size: 15px;
@@ -2007,14 +2100,14 @@ export const STUDIO_CSS = `
 }
 .crucible-studio-settings {
   display: grid;
-  gap: 2px;
+  gap: var(--studio-space-4);
   font-size: 12.5px;
 }
 .crucible-studio-setting {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--studio-space-4);
   min-block-size: 34px;
 }
 .crucible-studio-setting select {
@@ -2026,6 +2119,135 @@ export const STUDIO_CSS = `
   margin: 0;
   accent-color: var(--studio-text);
 }
+/* New scene: a chooser of cards, each a rendered picture of its scene over its name. */
+.crucible-studio dialog.crucible-studio-new-dialog {
+  width: min(720px, calc(100vw - 32px));
+  max-block-size: calc(100dvh - 48px);
+}
+.crucible-studio dialog.crucible-studio-new-dialog:focus { outline: none; }
+.crucible-studio dialog.crucible-studio-new-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--studio-space-16);
+  padding: var(--studio-space-24);
+}
+.crucible-studio-new-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--studio-space-16);
+}
+.crucible-studio dialog .crucible-studio-new-head h2 { margin: 0; }
+.crucible-studio dialog button.crucible-studio-new-close {
+  display: grid;
+  place-items: center;
+  flex: none;
+  inline-size: 32px;
+  block-size: 32px;
+  padding: 0;
+  background: transparent;
+  color: var(--studio-muted);
+}
+.crucible-studio dialog button.crucible-studio-new-close { margin-block: -8px; }
+.crucible-studio dialog button.crucible-studio-new-close:hover,
+.crucible-studio dialog button.crucible-studio-new-close:focus-visible { color: var(--studio-text); }
+.crucible-studio-new-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+  gap: var(--studio-space-16);
+  min-block-size: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--studio-muted) transparent;
+}
+.crucible-studio dialog button.crucible-studio-new-card {
+  display: grid;
+  align-content: start;
+  justify-items: stretch;
+  gap: var(--studio-space-8);
+  min-inline-size: 0;
+  block-size: auto;
+  padding: var(--studio-space-8);
+  border: 1px solid var(--studio-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--studio-text) 6%, transparent);
+  text-align: start;
+  cursor: pointer;
+}
+.crucible-studio dialog button.crucible-studio-new-card:hover { border-color: var(--studio-muted); }
+/* Keyboard focus is one inset ring that takes the border's place, so the scrolling grid never clips it. */
+.crucible-studio dialog button.crucible-studio-new-card:focus-visible {
+  outline: none;
+  border-color: var(--studio-accent);
+  box-shadow: inset 0 0 0 1px var(--studio-accent);
+}
+.crucible-studio-new-thumb {
+  display: block;
+  aspect-ratio: 8 / 5;
+  overflow: hidden;
+  border: 1px solid var(--studio-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--studio-text) 8%, transparent);
+}
+.crucible-studio-new-thumb img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+.crucible-studio-new-name { font-weight: 600; }
+/* The question about unsaved changes. */
+.crucible-studio dialog.crucible-studio-confirm-dialog {
+  width: min(420px, calc(100vw - 32px));
+}
+.crucible-studio dialog.crucible-studio-confirm-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--studio-space-16);
+  padding: var(--studio-space-24);
+}
+.crucible-studio dialog.crucible-studio-confirm-dialog h2,
+.crucible-studio-confirm-message { margin: 0; }
+.crucible-studio dialog.crucible-studio-confirm-dialog h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+}
+.crucible-studio dialog.crucible-studio-confirm-dialog h2 .crucible-studio-icon { flex: none; }
+.crucible-studio-confirm-dialog .crucible-studio-dialog-actions { margin-top: 0; }
+/* File menu: the groups are set apart by space, and Open recent opens its list in place. */
+.crucible-studio-popover > [data-group-start="true"] { margin-block-start: var(--studio-space-8); }
+/* A fixed width, so the menu does not change size when the recent list opens; long names are cut with an ellipsis. */
+#crucible-studio-pop-new { inline-size: 264px; max-block-size: calc(100dvh - 16px); overflow-y: auto; }
+/* The scenes are children of Open recent: indented one step, with Clear recent set apart and quieter. */
+.crucible-studio-recent-list {
+  display: grid;
+  gap: 2px;
+  padding-inline-start: var(--studio-space-16);
+}
+.crucible-studio-recent-list > button[data-clear-recent="true"] {
+  margin-block-start: var(--studio-space-8);
+  color: var(--studio-muted);
+}
+.crucible-studio-recent-list[hidden] { display: none; }
+.crucible-studio-recent-list > button { gap: 0; }
+.crucible-studio-recent-list > button > .crucible-studio-icon,
+.crucible-studio-recent-list > button > .crucible-studio-menu-gap { margin-inline-end: var(--studio-space-8); }
+.crucible-studio-recent-name {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The row has three parts (icon, label, chevron), so its spacing is margin: a flex gap of 8 px here would read as a group gap. */
+.crucible-studio-popover > button[data-keeps-menu="true"] { gap: 0; }
+.crucible-studio-popover > button[data-keeps-menu="true"] > .crucible-studio-icon:first-child { margin-inline-end: var(--studio-space-8); }
+.crucible-studio-popover button[data-keeps-menu="true"] > .crucible-studio-icon[data-recent-chevron] {
+  margin-inline-start: auto;
+}
+.crucible-studio-popover button[data-keeps-menu="true"][aria-expanded="true"] > .crucible-studio-icon[data-recent-chevron] { transform: rotate(90deg); }
+.crucible-studio-popover button:disabled { opacity: 0.45; cursor: default; }
 .crucible-studio dialog.crucible-studio-setup-dialog {
   width: min(780px, calc(100vw - 32px));
   max-block-size: calc(100vh - 48px);
@@ -2315,45 +2537,99 @@ export const STUDIO_CSS = `
 .crucible-studio-setup-handle[data-size="small"]::before { inline-size: 8px; block-size: 8px; }
 .crucible-studio-setup-handle[data-size="medium"]::before { inline-size: 12px; block-size: 12px; }
 .crucible-studio-setup-handle[data-size="large"]::before { inline-size: 18px; block-size: 18px; }
-/* The chat mark stands beside the prompt box, which is as tall as its text; the block rests in the middle of the step. */
+/* The AI agent step is one or two cards 24px apart, twice the 12px inside a card. A card has one inset on all
+   four sides and a head row: its icon, its title and, for the built-in AI, its one control. The own agent's one action, the copy
+   button, sits on the prompt box, so the text and the way to copy it are one thing. */
 .crucible-studio-setup-agent {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-content: center;
-  align-items: start;
-  gap: 12px;
+  align-content: start;
+  gap: var(--studio-space-24);
 }
-.crucible-studio-setup-agent > button,
-.crucible-studio-setup-agent > textarea { grid-column: 2; justify-self: start; }
-.crucible-studio-setup-agent > textarea { justify-self: stretch; }
-.crucible-studio-setup-agent-mark {
+.crucible-studio-setup-agent-card {
   display: grid;
-  place-items: center;
-  inline-size: 40px;
-  block-size: 40px;
-  border: 1px solid var(--studio-border);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--studio-space-12);
+  min-inline-size: 0;
+  padding: var(--studio-space-16);
   border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--studio-border);
   background: color-mix(in srgb, var(--studio-text) 6%, transparent);
 }
-.crucible-studio-setup-agent-mark .crucible-studio-icon {
-  inline-size: 22px;
-  block-size: 22px;
+/* The card's own button is a button on the card: the dialog's 7% wash is as light as the card, so it takes the prompt box's
+   fill and a muted outline, which stay clear of the card in both themes. */
+.crucible-studio dialog .crucible-studio-setup-agent-card button {
+  border: 1px solid var(--studio-muted);
+  background: var(--studio-bg);
+  color: var(--studio-text);
+}
+.crucible-studio-setup-agent-head {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+}
+.crucible-studio-setup-agent-head > .crucible-studio-icon {
+  flex: none;
+  inline-size: 20px;
+  block-size: 20px;
+}
+.crucible-studio-setup-agent-title {
+  flex: none;
+  font-weight: 600;
+  white-space: nowrap;
+  line-height: 20px;
+}
+.crucible-studio-setup-sign-in {
+  display: inline-flex;
+  margin-inline-start: auto;
+  align-items: center;
+  gap: var(--studio-space-8);
+  min-inline-size: 0;
+}
+/* The signed-in status keeps the height of the button it replaces, so the card does not shrink at the moment of signing in. */
+.crucible-studio-setup-sign-in[data-state="signed-in"] {
+  min-block-size: 32px;
+  font-weight: 600;
+}
+.crucible-studio-setup-sign-in[data-state="signed-in"] > .crucible-studio-icon {
+  flex: none;
+  /* Mixed toward the text colour, so the mark stays clear on the pale card of the light theme. */
+  color: color-mix(in srgb, var(--studio-ok) 60%, var(--studio-text));
+}
+.crucible-studio-setup-sign-in[data-state="signed-in"] > span {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crucible-studio-setup-prompt-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--studio-space-12);
+  padding: var(--studio-space-12);
+  border: 1px solid var(--studio-border);
+  border-radius: 6px;
+  background: var(--studio-bg);
+}
+.crucible-studio-setup-prompt-box > button { inline-size: 10em; }
+@media (max-width: 520px) {
+  .crucible-studio-setup-prompt-box { grid-template-columns: minmax(0, 1fr); }
+  .crucible-studio-setup-prompt-box > button { justify-self: start; }
 }
 .crucible-studio textarea.crucible-studio-setup-prompt {
   inline-size: 100%;
   field-sizing: content;
   max-block-size: 160px;
-  padding: 12px;
-  border: 1px solid var(--studio-border);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--studio-text) 6%, transparent);
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--studio-text);
   font-family: var(--studio-font-mono);
   font-size: 12px;
   line-height: 1.5;
   overflow: auto;
+  overflow-wrap: anywhere;
   resize: none;
-  user-select: text;
 }
 .crucible-studio-setup-actions { align-items: center; margin-top: 10px; }
 .crucible-studio dialog button.crucible-studio-setup-skip {

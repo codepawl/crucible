@@ -1,7 +1,7 @@
 import '../../src/brand-fonts.css';
 import { loadAllAgentSceneModules } from '../../src/agent-scene.js';
 import { createStudio } from '../../src/studio.js';
-import { revealStudio, showStudioLoadingFailure } from '../../src/studio-boot.js';
+import { reportStudioLoadingProgress, reportStudioModulesLoaded, revealStudio, showStudioLoadingFailure, STUDIO_LOADING_MILESTONES } from '../../src/studio-boot.js';
 import { createCatalogHooks } from './catalog-hooks.js';
 
 // ?catalog=<folder> names a same-origin folder that holds a scene's catalog files by the id the recipe uses:
@@ -35,14 +35,21 @@ function catalogHooksFor(folderParameter, storeParameter) {
   return createCatalogHooks(folder, undefined, { catalogStore: storeParameter === '1' });
 }
 
+function reportProgress(milestone) {
+  reportStudioLoadingProgress(document, STUDIO_LOADING_MILESTONES[milestone]);
+}
+
 async function mountStudioPage() {
   const root = document.querySelector('#studio-root');
   if (!root) {
     return;
   }
+  reportProgress('modulesLoaded');
   const parameters = new URLSearchParams(window.location.search);
-  await loadAllAgentSceneModules();
+  await loadAllAgentSceneModules({ onModuleLoaded: (loaded, total) => reportStudioModulesLoaded(document, loaded, total) });
+  reportProgress('sceneModulesLoaded');
   const studio = createStudio(root, { catalog: catalogHooksFor(parameters.get('catalog'), parameters.get('catalogStore')) });
+  reportProgress('studioCreated');
   studio.selectNode('cube');
   window.__studioPage = studio;
   const sceneParameter = parameters.get('scene');
@@ -53,6 +60,7 @@ async function mountStudioPage() {
       throw new Error(`${scenePath} did not load (HTTP ${response.status}).`);
     }
     await studio.loadExternalTextFile(await response.text(), { fileName: scenePath.split('/').pop(), recordUndo: false, agent: false });
+    reportProgress('sceneFileLoaded');
   }
   await revealStudio({ studio, setupParameter: parameters.get('setup'), documentReference: document, requestFrame: requestAnimationFrame });
 }

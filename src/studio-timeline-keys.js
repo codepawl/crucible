@@ -93,7 +93,7 @@ export function createKeyMarkers({ documentReference, controller, keysElement, t
       controller.setMotionTime(toTime);
     } catch (error) {
       selectedKeyTime = previousSelection;
-      announce(error.message);
+      announce(error);
     }
   }
 
@@ -110,7 +110,7 @@ export function createKeyMarkers({ documentReference, controller, keysElement, t
       selectedKeyTime = null;
       announce(`Deleted key at ${time.toFixed(2)} s`);
     } catch (error) {
-      announce(error.message);
+      announce(error);
     }
   }
 

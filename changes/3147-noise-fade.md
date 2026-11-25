@@ -1,0 +1,1 @@
+- scene:surface-cover: the cover noise fades out where its lattice cell is under a few pixels wide, and a negative noise lobe no longer punches an isolated dark hole into the layer away from its edge (#3147)

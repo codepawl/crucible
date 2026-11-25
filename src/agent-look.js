@@ -1,3 +1,4 @@
+import { fillColorsFrom, ambientColorsFrom, ambientMixFrom } from './ambient-light.js';
 import { lightLimitAdvice } from './light-limit-advice.js';
 import { invalidField, withFieldPrefix } from './field-error.js';
 import { MINIMUM_SPOT_ANGLE, MAXIMUM_SPOT_ANGLE, spotAngleExpectation } from './spot-angle-advice.js';
@@ -32,7 +33,7 @@ function resolveEmissionRampOnDemand(input, shape, label) {
 const MAX_LOOK_ARRAY_ENTRIES = Math.max(MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS);
 
 const ENVIRONMENT_FIELDS = [
-  'world', 'ground', 'setup', 'hdri', 'keyFromHdri', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity', 'ambientColor', 'environmentDiffuseScale', 'skybox',
+  'world', 'ground', 'setup', 'hdri', 'keyFromHdri', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity', 'ambientColor', 'ambientMix', 'fillColor', 'environmentDiffuseScale', 'skybox',
   'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'localVolumes', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'wind', 'sky', 'wetness', 'puddles',
 ];
 const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom', 'depthOfField', 'motionBlur'];
@@ -43,7 +44,9 @@ const AREA_LIGHT_FIELDS = ['position', 'direction', 'up', 'width', 'height', 'co
 const VOLUME_VECTOR_FIELDS = ['minimum', 'maximum', 'color', 'ambient', 'drift'];
 const VOLUME_NUMBER_FIELDS = ['density', 'steps', 'anisotropy', 'noiseAmount', 'noiseScale', 'maxDistance', 'shadowAmbient', 'heightFalloff', 'detailOctaves', 'detailAmount', 'warp', 'contrast', 'profileSoftness', 'keyScattering', 'scatterOctaves', 'multiScatter', 'multiExtinction', 'multiAnisotropy', 'keyTransmittance', 'surfaceTransmittance', 'beamRadius'];
 export const VOLUME_FOG_FIELDS = Object.freeze([...VOLUME_VECTOR_FIELDS, ...VOLUME_NUMBER_FIELDS]);
-const BLOOM_FIELDS = ['strength', 'threshold', 'radius'];
+const BLOOM_FIELDS = ['strength', 'threshold', 'radius', 'keepHue'];
+// Effect group fields that take true or false instead of a number.
+const FLAG_GROUP_FIELDS = new Set(['keepHue']);
 const DEPTH_OF_FIELD_FIELDS = ['blur', 'focusDistance'];
 const MOTION_BLUR_FIELDS = ['shutter', 'objects'];
 /** The nested effect groups set-effects merges field by field, with the fields each accepts. */
@@ -362,7 +365,16 @@ function environmentFrom(input = {}) {
   }
   // Flat diffuse light added to the environment's (a Roblox OutdoorAmbient) and a scale on all of the environment's diffuse light (EnvironmentDiffuseScale); both absent keeps the exported shape and the picture.
   if (input.ambientColor !== undefined) {
-    environment.ambientColor = vectorInRange(input.ambientColor, 0, 10, 'environment.ambientColor');
+    const ambient = ambientColorsFrom(input.ambientColor, 'environment.ambientColor', vectorInRange);
+    environment.ambientColor = ambient.ground ? { sky: ambient.sky, ground: ambient.ground } : ambient.sky;
+  }
+  // ambientMix 0..1 swaps that share of the HDRI's diffuse light for ambientColor; fillColor recolours the two fill lights. Absent keeps the picture.
+  if (input.ambientMix !== undefined) {
+    environment.ambientMix = ambientMixFrom(input.ambientMix, 'environment.ambientMix', input.ambientColor !== undefined);
+  }
+  if (input.fillColor !== undefined) {
+    const fills = fillColorsFrom(input.fillColor, 'environment.fillColor', vectorInRange);
+    environment.fillColor = Array.isArray(input.fillColor[0]) ? fills : fills[0];
   }
   if (input.environmentDiffuseScale !== undefined) {
     environment.environmentDiffuseScale = numberInRange(input.environmentDiffuseScale, 0, 100, 'environment.environmentDiffuseScale');
@@ -536,7 +548,10 @@ function effectsFrom(input = {}) {
     groups[group] = fallback(input[group], {});
     knownKeys(groups[group], fields, group);
     for (const field of fields) {
-      if (Object.hasOwn(groups[group], field)) {
+      if (!Object.hasOwn(groups[group], field)) continue;
+      if (FLAG_GROUP_FIELDS.has(field)) {
+        if (typeof groups[group][field] !== 'boolean') throw new TypeError(`${group}.${field} must be true or false, got ${JSON.stringify(groups[group][field])}.`);
+      } else {
         numberInRange(groups[group][field], -Number.MAX_VALUE, Number.MAX_VALUE, `${group}.${field}`);
       }
     }

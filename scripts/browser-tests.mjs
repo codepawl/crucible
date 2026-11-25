@@ -21,6 +21,74 @@ const SCRIPT_EXTENSION = /\.(?:m?js|cjs)$/;
 const FOLLOWED_FOLDERS = /^(?:tests|scripts|src|bin|bench|packages)\//;
 const EXTENSIONS = ['', '.js', '.mjs', '.cjs'];
 
+const QUOTES = new Set(["'", '"', '`']);
+
+// A `/` starts a regular expression, not a division, after one of these (or at the start of the file).
+const REGEX_MAY_START_AFTER = /(?:^|[(,=:[!&|?{};+\-*%<>~^]|\b(?:return|typeof|case|in|of|void|delete|yield|await))$/;
+
+/** Index just past the regular expression literal that starts at `start`, or `start + 1` when the line ends before it closes. */
+function endOfRegexLiteral(sourceText, start) {
+  let index = start + 1;
+  let insideClass = false;
+  while (index < sourceText.length && sourceText[index] !== '\n') {
+    const character = sourceText[index];
+    if (character === '\\') index += 1;
+    else if (character === '[') insideClass = true;
+    else if (character === ']') insideClass = false;
+    else if (character === '/' && !insideClass) return index + 1;
+    index += 1;
+  }
+  return start + 1;
+}
+
+/**
+ * A comment is only taken to start after whitespace or at the start of the file. A regular expression after `)` cannot be told from a
+ * division without a parser, and `/a\/\//` holds a `//` right after a backslash, so a `//` glued to other text is kept: reading a
+ * comment as code only makes a test run with the browser tests, while reading code as a comment could hide a real launch.
+ */
+function startsComment(sourceText, index) {
+  return index === 0 || /\s/.test(sourceText[index - 1]);
+}
+
+/**
+ * Returns the source with `//` line comments and block comments removed, so a word that appears only in a comment is not a launcher (#3219).
+ * A quote opens a string that the same quote closes (a single or double quote also ends at the line break), so `https://` inside a string stays.
+ * A regular expression literal is kept whole too, so `/a\/\/b/` is not read as the start of a comment, and a comment starts only after whitespace.
+ */
+export function stripComments(sourceText) {
+  let output = '';
+  let index = 0;
+  while (index < sourceText.length) {
+    const character = sourceText[index];
+    const next = sourceText[index + 1];
+    const regexEnd = character === '/' && next !== '/' && next !== '*' && REGEX_MAY_START_AFTER.test(output.slice(-200).trimEnd())
+      ? endOfRegexLiteral(sourceText, index)
+      : index + 1;
+    if (regexEnd > index + 1) {
+      output += sourceText.slice(index, regexEnd);
+      index = regexEnd;
+    } else if (character === '/' && next === '/' && startsComment(sourceText, index)) {
+      while (index < sourceText.length && sourceText[index] !== '\n') index += 1;
+    } else if (character === '/' && next === '*' && startsComment(sourceText, index)) {
+      const end = sourceText.indexOf('*/', index + 2);
+      index = end === -1 ? sourceText.length : end + 2;
+      output += ' ';
+    } else if (QUOTES.has(character)) {
+      const stringStart = index;
+      index += 1;
+      while (index < sourceText.length && sourceText[index] !== character && (character === '`' || sourceText[index] !== '\n')) {
+        index += sourceText[index] === '\\' ? 2 : 1;
+      }
+      index += 1;
+      output += sourceText.slice(stringStart, index);
+    } else {
+      output += character;
+      index += 1;
+    }
+  }
+  return output;
+}
+
 function resolveLocalFile(importerPath, specifier, fileExists) {
   const resolved = posix.normalize(posix.join(posix.dirname(importerPath), specifier));
   return EXTENSIONS.map(extension => resolved + extension).find(candidate => FOLLOWED_FOLDERS.test(candidate) && fileExists(candidate));
@@ -46,7 +114,7 @@ export function createBrowserDetector(readSource) {
   const nodes = new Map();
   function nodeFor(path) {
     if (!nodes.has(path)) {
-      const sourceText = read(path);
+      const sourceText = stripComments(read(path));
       nodes.set(path, {
         reason: LAUNCHER_MARKERS.find(({ pattern }) => pattern.test(sourceText))?.reason ?? null,
         next: localFilesNamedBy(sourceText, path, fileExists),

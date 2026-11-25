@@ -44,7 +44,7 @@ test('an image node matches a bilinear reference at texel centres and halfway be
 
 test('an image node validates its asset and output, and needs the pixels only when baking', () => {
   assert.throws(() => compileMaterialGraph({ color: { image: { asset: 'https://example.com/a.png' } } }), /catalog image asset ID.*Remote URLs/);
-  assert.throws(() => compileMaterialGraph({ color: { image: { asset: IMAGE_ASSET, output: 'red' } } }), /image output must be one of color, alpha/);
+  assert.throws(() => compileMaterialGraph({ color: { image: { asset: IMAGE_ASSET, output: 'red' } } }), /image output must be one of color, alpha, r, g, b, luminance/);
   assert.throws(() => compileMaterialGraph({ color: { image: { asset: IMAGE_ASSET, extra: 1 } } }), /image does not take "extra"/);
   assert.throws(() => bakeMaterialPattern(imagePattern(), new Map()), /image aaaaaaaaaaaa was not loaded/);
 });
@@ -136,4 +136,22 @@ test('sequence frame IDs resolve at the depth of an edit operation, and as befor
   let deep = { type: 'graph', graph };
   for (let level = 0; level < 12; level++) deep = { child: deep };
   assert.deepEqual(sequenceFrameIds(deep), [], 'a graph nested beyond the search depth is ignored, as sequence frames are');
+});
+
+test('an image node reads one channel or the luminance as a number, as stored', () => {
+  const pool = imagePool(2, 2, column => [column * 200, 100, 40, 255]);
+  const read = (output, column) => compileMaterialGraph({ roughness: { image: { asset: IMAGE_ASSET, output } } }, { images: pool }).outputs.roughness.evaluate(column ? 0.75 : 0.25, 0.25);
+  assert.ok(Math.abs(read('r', 1) - 200 / 255) < 1e-9);
+  assert.ok(Math.abs(read('g', 1) - 100 / 255) < 1e-9);
+  assert.ok(Math.abs(read('b', 0) - 40 / 255) < 1e-9);
+  const luminance = (0.2126 * 200 + 0.7152 * 100 + 0.0722 * 40) / 255;
+  assert.ok(Math.abs(read('luminance', 1) - luminance) < 1e-9);
+});
+
+test('a greyscale image drives the baked roughness: rougher where the image is brighter', () => {
+  const pool = imagePool(2, 1, column => (column === 0 ? [40, 40, 40, 255] : [220, 220, 220, 255]));
+  const pattern = normalizeMaterialPattern({ type: 'graph', resolution: 256, graph: { color: 0.5, roughness: { image: { asset: IMAGE_ASSET, output: 'r' } } } });
+  const baked = bakeMaterialPattern(pattern, pool);
+  const roughnessAt = column => baked.metallicRoughnessMap.image.data[(128 * 256 + column) * 4 + 1];
+  assert.ok(roughnessAt(192) > roughnessAt(64) + 100, 'the bright half is rougher');
 });

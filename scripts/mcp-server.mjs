@@ -218,6 +218,7 @@ const materialFields = {
   subsurface: listed('subsurface', subsurface, 'Subsurface scattering (skin, wax, leaves): weight, radius [r,g,b], scale, color [r,g,b]; ranges in scene_capabilities materialSubsurface.').optional(),
   snippet: z.record(z.string(), z.unknown()).nullable().optional().describe('GLSL fragment hook; scene_capabilities materialSnippet.'),
   wear: z.record(z.string(), z.unknown()).nullable().optional().describe('Metal showing through paint and dirt, from vertex groups; scene_capabilities materialWear.'),
+  surfaceCover: z.record(z.string(), z.unknown()).nullable().optional().describe('Layer (snow, dust) over a surface that faces up or sits high, masked per pixel so the edge stays sharp on huge meshes; scene_capabilities materialSurfaceCover.'),
   text: z.record(z.string(), z.unknown()).optional().describe('Text drawn as the colour map; scene_capabilities textPanel.'),
   retro: z.record(z.string(), z.unknown()).nullable().optional().describe('PS1 look, raster only: vertexSnap [w, h] and affineUV; scene_capabilities materialRetro.'),
   waterGlint: z.record(z.string(), z.unknown()).nullable().optional().describe('Water tag only, raster only: stylized highlights, edge { threshold } and sparkle { density, size, shape dot or star }; scene_capabilities materialWaterGlint.'),
@@ -248,7 +249,7 @@ const materialFields = {
 };
 const materialTag = z.enum(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass', 'water']).optional().describe('Surface kind; liquid, foam, foliage, grass and water change how it renders: see scene_capabilities materialTags and water.');
 const materialCore = coreOf(materialFields, ['color', 'metallic', 'roughness', 'emission', 'opacity']);
-const materialMore = 'More fields: tag, alphaMode, alphaCutoff, doubleSided, depthTest, emissiveColor, map, pattern, subsurface, snippet, wear, retro, waterPreset, absorption, turbidity, caustics, foamEdge, foamWidth, foamVeins, contactFoam, waterRamp and the layers clearcoat, clearcoatRoughness, transmission, thickness, ior, dispersion, attenuationColor, attenuationDistance, sheenColor, sheenRoughness, specular, specularColor, anisotropy, anisotropyRotation, iridescence, iridescenceIor, iridescenceThickness, toon, toonColors, toonEdge; see scene_capabilities materialFields.';
+const materialMore = 'More fields: tag, alphaMode, alphaCutoff, doubleSided, depthTest, emissiveColor, map, pattern, subsurface, snippet, wear, surfaceCover, retro, waterPreset, absorption, turbidity, caustics, foamEdge, foamWidth, foamVeins, contactFoam, waterRamp and the layers clearcoat, clearcoatRoughness, transmission, thickness, ior, dispersion, attenuationColor, attenuationDistance, sheenColor, sheenRoughness, specular, specularColor, anisotropy, anisotropyRotation, iridescence, iridescenceIor, iridescenceThickness, toon, toonColors, toonEdge; see scene_capabilities materialFields.';
 const materialListed = (strictSchema, description, extraCore) => listed('materialFields', strictSchema, `${description} ${materialMore}`, { ...extraCore, ...materialCore });
 const liquidOptics = z.strictObject({
   thickness: z.number().min(0).max(100).optional().describe('Metres of liquid where it faces the camera.'),
@@ -327,7 +328,9 @@ const environment = z.strictObject({
   fillIntensity: bounded(0, 100).optional(),
   ambientIntensity: bounded(0, 100).optional().describe('Scales the sky ambient and, with an hdri or setup environment map, that map\'s diffuse light and reflections too. 0 blacks the map out; for an HDRI-only scene keep it above 0 and set key and fill to 0.'),
   skybox: z.record(z.string(), z.string()).nullable().optional(),
-  ambientColor: boundedVector(0, 10).optional(),
+  ambientColor: z.union([boundedVector(0, 10), z.strictObject({ sky: boundedVector(0, 10), ground: boundedVector(0, 10) })]).optional().describe('Flat ambient [r,g,b] or { sky, ground }. With ambientMix above 0 it replaces that share of the HDRI diffuse light.'),
+  ambientMix: bounded(0, 1).optional().describe('0 keeps the HDRI diffuse light, 1 lights with ambientColor alone. Needs ambientColor.'),
+  fillColor: z.union([boundedVector(0, 100), z.tuple([boundedVector(0, 100), boundedVector(0, 100)])]).optional().describe('Colour of both fill lights, or one per light. Default [0.8,2,1.8] and [0.6,0.7,0.8].'),
   environmentDiffuseScale: bounded(0, 100).optional(),
   daylight: bounded(0, 100).optional(),
   keyAffects: affects.describe('Node IDs lit; default all.'),
@@ -394,7 +397,7 @@ const environment = z.strictObject({
   wind: z.strictObject({ strength: bounded(0, 4).optional(), direction: bounded(-360, 360).optional().describe('Degrees: 0 toward +x, 90 toward +z.') }).optional().describe('Sway of foliage and grass materials; strength defaults to 0.3.'),
 });
 // Every tool lists the same short environment; the full schema is served by scene_capabilities topic environment.
-const environmentListed = listed('environment', environment, 'Lighting and sky. More fields: sky (physicalSky), hdri, look, viewTransform, keyColor, keyIntensity, fillIntensity, ambientIntensity, ambientColor, environmentDiffuseScale, daylight, keyAffects, shadowCascades, pointLights, spotLights, areaLights, skyTop, skyBottom, fogColor, fogDensity, volumeFog (density, scatterOctaves, multiScatter, keyTransmittance, surfaceTransmittance and more: scene_capabilities environment), liquid, lines, wind, objectReflections, floorSkyTrace, sunBounce, specularAntiAliasing, wetness, puddles, resolveCoplanar; see scene_capabilities environment.', coreOf(environment.shape, ['setup', 'world', 'ground', 'lightDirection', 'environmentIntensity']));
+const environmentListed = listed('environment', environment, 'Lighting and sky. More fields: sky (physicalSky), hdri, look, viewTransform, keyColor, keyIntensity, fillIntensity, ambientIntensity, ambientColor, ambientMix, fillColor, environmentDiffuseScale, daylight, keyAffects, shadowCascades, pointLights, spotLights, areaLights, skyTop, skyBottom, fogColor, fogDensity, volumeFog (density, scatterOctaves, multiScatter, keyTransmittance, surfaceTransmittance and more: scene_capabilities environment), liquid, lines, wind, objectReflections, floorSkyTrace, sunBounce, specularAntiAliasing, wetness, puddles, resolveCoplanar; see scene_capabilities environment.', coreOf(environment.shape, ['setup', 'world', 'ground', 'lightDirection', 'environmentIntensity']));
 // Named post steps are checked by the engine and listed in docs/agent-look.md; every tool that takes a recipe repeats this schema.
 const looseField = z.unknown().optional();
 const effects = z.strictObject({
@@ -409,6 +412,7 @@ const effects = z.strictObject({
   bloom: z.strictObject({
     strength: bounded(0, 8).optional(),
     threshold: bounded(0, 10).optional(),
+    keepHue: z.boolean().optional().describe('Bloom keeps the hue of emissive parts: a coloured glow stays that colour instead of clipping to white. Default false.'),
     radius: bounded(0.1, 16).optional(),
   }).optional(),
   depthOfField: z.strictObject({ blur: unit.optional(), focusDistance: bounded(0.01, 100000).optional() }).optional().describe('Lens blur: blur 0 to 1, focusDistance metres.'),
