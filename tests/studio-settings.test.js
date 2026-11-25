@@ -57,7 +57,7 @@ test('Settings groups its rows into titled sections that each have an icon, and 
   const rowsOf = id => ui.pane(id).descendants().filter(element => element.dataset?.setting).map(element => element.dataset.setting);
   assert.deepEqual(rowsOf('interface'), ['theme', 'startWorkspace', 'panelsFloating', 'motion']);
   assert.deepEqual(rowsOf('viewport'), ['performance', 'gridVisible', 'readoutVisible', 'viewWidgetVisible', 'agentCursorVisible', 'gizmoSize', 'zoomDirection']);
-  assert.deepEqual(rowsOf('editing'), ['moveSnapStep', 'rotateSnapDegrees']);
+  assert.deepEqual(rowsOf('editing'), ['moveSnapStep', 'rotateSnapDegrees', 'lengthUnit']);
   assert.deepEqual(rowsOf('keys'), ['keymap']);
   const shownRows = STUDIO_SETTING_SECTIONS.flatMap(section => section.rows.map(row => row[0]));
   assert.equal(new Set(shownRows).size, shownRows.length, 'a preference sits in one section only');

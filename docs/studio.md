@@ -285,7 +285,7 @@ Changes are kept in the browser with the other Settings as `keyOverrides`, per p
 | --- | --- |
 | Interface | Theme (System, Light or Dark), Open in (the workspace Studio opens in), Floating panels, Motion |
 | Viewport | Performance tier, Grid, Camera and size readout, Axis widget, Agent cursor, Handle size, Zoom direction |
-| Editing | Move snap step and Rotate snap angle: what a snapping move or turn lands on |
+| Editing | Move snap step, Rotate snap angle and Units (metres, centimetres, millimetres, feet or inches) |
 | Keyboard | The key preset, a field to find an action, and every shortcut of the preset as a button that records a new key ([Change a shortcut](#change-a-shortcut)) |
 | Account | Only when the host page offers an account, see below |
 
@@ -295,7 +295,7 @@ They are kept in the browser (`localStorage`, key `crucible-studio-preferences`)
 
 **Zoom direction** is `zoomDirection`: `'normal'` (the default) moves the camera away when the wheel scrolls down, `'inverted'` brings it closer. A trackpad pinch arrives as a wheel with Ctrl held and follows the same choice.
 
-**Units** (metres, centimetres, millimetres, feet and inches) are not a setting yet: the readout, the drag labels and the number fields each format lengths on their own, so a display unit needs one shared length formatter first.
+**Units** is `lengthUnit`: `'m'` (the default), `'cm'`, `'mm'`, `'ft'` or `'in'`. The viewport size readout, move drag labels, Position vector fields and metre-based property fields show and accept the chosen unit while keeping the scene recipe in metres. Any length field also accepts a number followed by a unit suffix such as `150 cm`, `50 mm`, `2 ft`, `12 in` or `1.5 m` and converts it to metres.
 
 ### Account
 
