@@ -27,6 +27,7 @@ import { describeReceived } from '../src/field-error.js';
 import { LOOK_VIEW_NAMES } from '../src/look-views.js';
 import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS, LIGHTING_SETUP_NAMES, RENDER_PASS_NAMES, RENDER_OUTPUT_FORMATS, MAXIMUM_JOB_FPS, VIDEO_ENCODERS, MAXIMUM_JOB_SIDE, maximumMemoryMiB, memoryRangeError, MAXIMUM_STILLS_FRAMES, RECIPE_ALPHA_MODES, PHYSICS_BODY_SHAPES } from '../src/agent-scene-capabilities.js';
 import { MATERIAL_LAYER_SCALAR_RANGES, MATERIAL_LAYER_COLOR_RANGES, TOON_COLOR_MAXIMUM } from '../src/material-layers.js';
+import { MATERIAL_PRESET_NAMES } from '../src/material-presets.js';
 import { SUBSURFACE_RANGES } from '../src/subsurface-limits.js';
 import { responseFormatField, chosenFormat, conciseReview, conciseJobStatus, conciseJobResult, conciseCapabilities } from './mcp-response-format.mjs';
 import { resolveAddons } from './mcp-addons.mjs';
@@ -245,6 +246,7 @@ const materialFields = {
   alphaCutoff: unit.optional().describe('With alphaMode mask only: alpha below this is cut out (0.5 default).'),
   doubleSided: z.boolean().optional().describe('Draw and light both faces (thin sheets, leaves, cloth).'),
   depthTest: z.boolean().optional().describe('Test against the depth buffer (true default); false draws blend or add materials through opaque geometry.'),
+  preset: z.enum(MATERIAL_PRESET_NAMES).optional().describe('Named look that fills the fields you leave out; color tints it: see scene_capabilities materialPresets.'),
   aov: z.union([unit, color]).optional(),
 };
 const materialTag = z.enum(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass', 'water']).optional().describe('Surface kind; liquid, foam, foliage, grass and water change how it renders: see scene_capabilities materialTags and water.');
@@ -408,6 +410,7 @@ const effects = z.strictObject({
   temperature: bounded(-1, 1).optional(),
   vignette: unit.optional(),
   grain: bounded(0, 0.1).optional(),
+  dither: z.boolean().optional().describe('true adds one 8-bit step of noise so smooth light falloff and sky gradients do not band; default false (flat colour, smaller files).'),
   ambientOcclusion: unit.optional().describe('Screen-space contact darkening, 0 off to 1 full. Default 0 (off) when unset; above 0 turns the pass on.'),
   ambientOcclusionRadius: bounded(0.01, 100).optional().describe('World-space reach of the occlusion; default 0.5.'),
   bloom: z.strictObject({
@@ -431,7 +434,7 @@ const effects = z.strictObject({
   colorCorrection: looseField,
   autoExposure: looseField,
 });
-const effectsListed = listed('effects', effects, 'Post effects: exposure, saturation, contrast, temperature, vignette, grain, ambientOcclusion, ambientOcclusionRadius, bloom {strength, threshold, radius}, depthOfField {blur, focusDistance}, motionBlur {shutter}, colorBalance, colorCorrection {brightness, contrast, saturation, tint}, sunRays {intensity, spread}, glare, lensDistortion, stylize, composite, localToneMapping, autoExposure {metering, key, minimum, maximum, speed}; see scene_capabilities effects.', coreOf(effects.shape, ['exposure']));
+const effectsListed = listed('effects', effects, 'Post effects: exposure, saturation, contrast, temperature, vignette, grain, dither, ambientOcclusion, ambientOcclusionRadius, bloom {strength, threshold, radius}, depthOfField {blur, focusDistance}, motionBlur {shutter}, colorBalance, colorCorrection {brightness, contrast, saturation, tint}, sunRays {intensity, spread}, glare, lensDistortion, stylize, composite, localToneMapping, autoExposure {metering, key, minimum, maximum, speed}; see scene_capabilities effects.', coreOf(effects.shape, ['exposure']));
 const shadow = z.strictObject({
   target: boundedVector(-1e6, 1e6).optional(),
   extent: bounded(0.01, 1e5).optional(),
@@ -469,10 +472,10 @@ function primitiveGeometries(identified) {
 }
 const selectRule = z.record(z.string(), z.unknown()).describe('Face rule: {"all":true}, {"tag":"top"}, {"normal":[0,1,0],"maxAngle":10}, {"inside":{"min":[x,y,z],"max":[x,y,z]}} (centroids), {"faces":[i]}, {"and"|"or":[rules]}, {"not":rule}, {"grow":rule,"steps":1}, {"boundary":rule}, {"field":expr}. Tags: top, bottom, side, left, right, front, back, <name>.cap|side|rim.');
 const editName = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/).optional().describe('Tag prefix. Defaults to <op>-<index>.');
-const edgeRule = z.record(z.string(), z.unknown()).describe('Edge rule: {"all":true}, {"angle":30}, {"along":[x,y,z]}, {"between":[faceRule,faceRule]}, {"boundaryOf":faceRule} or {"open":true} for boundary edges (also {"open":{"inside":{"min":[x,y,z],"max":[x,y,z]}}}).');
+const edgeRule = z.record(z.string(), z.unknown()).describe('Edge rule: {"all":true}, {"angle":30}, {"along":[x,y,z]}, {"between":[faceRule,faceRule]}, {"boundaryOf":faceRule}, {"edges":[[a,b],...]} (vertex pairs) or {"open":true} (boundary edges; also {"open":{"inside":{min,max}}}).');
 const shortSelect = z.record(z.string(), z.unknown()).describe('Face rule, as in set_position.');
 const shortField = z.union([finite, z.record(z.string(), z.unknown())]);
-const vertexRule = z.record(z.string(), z.unknown()).describe('Vertex rule: {"all":true}, {"vertices":[indices]}, {"valence":2} or {"inside":{"min":[x,y,z],"max":[x,y,z]}}.');
+const vertexRule = z.record(z.string(), z.unknown()).describe('Vertex rule: {"all":true}, {"vertices":[indices]}, {"valence":2} or {"inside":{min,max}}.');
 const meshEdit = z.discriminatedUnion('op', [
   z.strictObject({ op: z.literal('extrude_face_region'), select: selectRule.optional(), name: editName, offset: finite.describe('Distance along each connected region\'s average normal (negative pushes in).'), direction: vector3.optional().describe('Move along this direction instead of the normal.'), alongNormals: z.boolean().optional().describe('Move each vertex along its own normal instead, keeping the region joined: use for rings and curved bands.') }),
   z.strictObject({ op: z.literal('extrude_individual'), select: selectRule.optional(), name: editName, offset: finite.describe('Distance along each face\'s own normal.'), direction: vector3.optional() }),
@@ -480,8 +483,8 @@ const meshEdit = z.discriminatedUnion('op', [
   z.strictObject({ op: z.literal('inset_individual'), select: selectRule.optional(), name: editName, thickness: finite, depth: finite.optional() }),
   z.strictObject({ op: z.literal('delete'), select: selectRule }),
   z.strictObject({ op: z.literal('flip_normals'), select: selectRule.optional() }),
-  z.strictObject({ op: z.literal('translate'), select: selectRule.optional(), offset: vector3, falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }),
-  z.strictObject({ op: z.literal('transform_selection'), select: selectRule.optional(), pivot: vector3.optional().describe('Point to turn and scale about. Defaults to the mean of the selected vertices.'), rotation: z.strictObject({ axis: vector3, angle: bounded(-6.283185307179586, 6.283185307179586).describe('Radians, not degrees: 90 degrees is 1.5708.') }).optional(), scale: z.union([signedFactor, z.array(signedFactor).length(3)]).optional().describe('Factor other than 0, or one per axis; applied before the rotation. A negative factor mirrors and keeps faces outward (not with a falloff).'), falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }).describe('Rotate and/or scale the selected vertices about a pivot; falloff fades the move to nothing at its radius.'),
+  z.strictObject({ op: z.literal('translate'), select: selectRule.optional(), verts: vertexRule.optional(), edges: edgeRule.optional(), offset: vector3, falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }).describe('Move the vertices of one of select, verts or edges (at most 4096 each); a shared vertex moves once.'),
+  z.strictObject({ op: z.literal('transform_selection'), select: selectRule.optional(), verts: vertexRule.optional(), edges: edgeRule.optional(), pivot: vector3.optional().describe('Point to turn and scale about. Defaults to the mean of the selected vertices.'), rotation: z.strictObject({ axis: vector3, angle: bounded(-6.283185307179586, 6.283185307179586).describe('Radians, not degrees: 90 degrees is 1.5708.') }).optional(), scale: z.union([signedFactor, z.array(signedFactor).length(3)]).optional().describe('Factor other than 0, or one per axis; applied before the rotation. A negative factor mirrors and keeps faces outward (not with a falloff).'), falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }).describe('Rotate and/or scale the vertices of one of select, verts or edges about a pivot; falloff fades to 0 at its radius.'),
   z.strictObject({ op: z.literal('merge_by_distance'), distance: finite.optional() }),
   z.strictObject({
     op: z.literal('loop_cut'), name: editName,
@@ -511,11 +514,11 @@ const meshEdit = z.discriminatedUnion('op', [
     op: z.literal('knife_project'), name: editName,
     path: z.array(vector3).min(2).max(256).describe('Polyline in the mesh\'s local space.'), direction: vector3.describe('Direction the line is projected along, for example [0,0,-1].'),
   }).describe('Cut along a polyline projected along a direction, through front and back faces. Split faces get <name>.cut.'),
-  z.strictObject({ op: z.literal('poke'), select: selectRule.optional(), name: editName, offset: finite.optional().describe('Move each new centre along the face normal. Defaults to 0.'), relative: z.boolean().optional().describe('Scale offset by the face\'s average corner distance.') }).describe('Replace each selected face with a triangle fan around a centre vertex, tagged <name>.poke.'),
+  z.strictObject({ op: z.literal('poke'), select: selectRule.optional(), name: editName, offset: finite.optional().describe('Move each new centre along the face normal. Defaults to 0.'), relative: z.boolean().optional().describe('Scale offset by the face\'s average corner distance.') }).describe('Triangle fan around a centre vertex per selected face, tagged <name>.poke.'),
   z.strictObject({ op: z.literal('dual'), name: editName }).describe('Dual mesh: a vertex per face centre, a face per vertex, tagged <name>.dual. Needs a closed, consistently wound mesh.'),
   z.strictObject({ op: z.literal('tris_to_quads'), select: selectRule.optional(), name: editName, angle: bounded(0, 180).optional().describe('Largest angle in degrees between the two triangle normals. Defaults to 40.') }).describe('Join adjacent triangles into convex quads, best-shaped first, tagged <name>.merged.'),
-  z.strictObject({ op: z.literal('symmetrize'), name: editName, axis: z.enum(['x', 'y', 'z']).optional(), keep: z.enum(['positive', 'negative']).optional().describe('Side of the plane kept and mirrored. Defaults to positive.'), distance: bounded(0, 1).optional().describe('Vertices this close to the plane count as on it. Defaults to 0.0001.') }).describe('Cut at the plane through the origin, drop the other half and mirror the kept half. Mirrored faces get <name>.mirrored.'),
-  z.strictObject({ op: z.literal('scale_elements'), select: selectRule.optional(), scale: finite.describe('Factor above 0 about each connected group of selected faces.') }).describe('Scale connected groups of selected faces about their own centres.'),
+  z.strictObject({ op: z.literal('symmetrize'), name: editName, axis: z.enum(['x', 'y', 'z']).optional(), keep: z.enum(['positive', 'negative']).optional().describe('Side of the plane kept and mirrored. Defaults to positive.'), distance: bounded(0, 1).optional().describe('Vertices this close to the plane count as on it. Defaults to 0.0001.') }).describe('Cut at the origin plane, drop one half, mirror the kept half. Mirrored faces get <name>.mirrored.'),
+  z.strictObject({ op: z.literal('scale_elements'), select: selectRule.optional(), scale: finite.describe('Factor above 0 about each connected group of selected faces.') }).describe('Scale each connected group of selected faces about its centre.'),
   z.strictObject({ op: z.literal('extrude_edges'), name: editName, edges: edgeRule.describe('Edges to extrude, usually {"open":true} for a boundary.'), offset: vector3.describe('Where the copied vertices move.') }).describe('Extrude edges into quads, tagged <name>.side.'),
   z.strictObject({ op: z.literal('split_edges'), name: editName, edges: edgeRule.describe('Edges to open.') }).describe('Open the surface along these edges.'),
   z.strictObject({ op: z.literal('delete_loose') }).describe('Remove vertices no face uses.'),
@@ -542,21 +545,21 @@ const meshEdit = z.discriminatedUnion('op', [
     target: z.record(z.string(), z.unknown()).describe('Primitive to wrap onto, a record like a boolean cutter ({"type":"sphere"}), placed by translation, rotation and scale.'),
     translation: vector3.optional(), rotation: quaternion.optional(), scale: vector3.optional(),
     mode: z.enum(['nearest', 'project']).optional(), direction: vector3.optional(), offset: finite.optional(), maxDistance: finite.optional(), onMiss: z.enum(['error', 'keep']).optional(),
-  }).describe('Move the selected vertices onto the target surface, like Blender Shrinkwrap. Fields and defaults in scene_capabilities meshSculpt.'),
+  }).describe('Move the selected vertices onto the target surface. Fields and defaults in scene_capabilities meshSculpt.'),
 ]);
 const stackNodes = [
   z.strictObject({
     op: z.literal('set_position'), select: selectRule.optional(),
     position: fieldExpression.optional().describe('Vector expression for the new position of each selected vertex. Defaults to the current position.'),
     offset: fieldExpression.optional().describe('Vector expression added after position, for example {"vec":[0,{"noise":{"scale":3}},0]}. Give position, offset or both.'),
-  }).describe('Blender Set Position with field expressions, evaluated on the input positions, for the vertices of the selected faces.'),
+  }).describe('Set Position with field expressions on the input positions, for the vertices of the selected faces.'),
   z.strictObject({
     op: z.literal('displace'), select: selectRule.optional(),
     field: fieldExpression.describe('Number expression used as the texture.'),
     strength: finite.optional().describe('Defaults to 1.'), midlevel: finite.optional().describe('Field value that does not move. Defaults to 0.5, the middle of noise.'),
     direction: z.enum(['normal', 'x', 'y', 'z']).optional().describe('Defaults to normal.'),
     group: z.string().max(48).optional(),
-  }).describe('Blender Displace with a field as the texture: each vertex moves by (field - midlevel) * strength.'),
+  }).describe('Each vertex moves by (field - midlevel) * strength.'),
   z.strictObject({ op: z.literal('mirror'), name: editName, axis: z.enum(['x', 'y', 'z']).optional().describe('Mirror across the plane through the local origin perpendicular to this axis. Defaults to x.'), merge: bounded(0, 1000).optional().describe('Vertices this close to the plane are shared by both halves. Defaults to 0.001. Faces lying in the plane are removed, so a closed half becomes a closed whole.') }),
   z.strictObject({ op: z.literal('array'), name: editName, count: z.number().int().min(1).max(256).optional(), offset: vector3.optional().describe('Constant step between copies.'), relativeOffset: vector3.optional().describe('Step in bounding-box sizes. Defaults to [1, 0, 0] unless offset is given.'), merge: bounded(0, 1000).optional().describe('Weld touching copies and remove the faces between them.') }),
   z.strictObject({ op: z.literal('solidify'), name: editName, thickness: finite.describe('Wall thickness, positive.'), offset: bounded(-1, 1).optional().describe('-1 grows inward (default), 1 outward, 0 centred.'), evenThickness: z.boolean().optional() }),
@@ -581,16 +584,16 @@ const stackNodes = [
     levels: z.number().int().min(1).max(4).optional().describe('Catmull-Clark levels; each multiplies the faces by about 4 (n-gons become n quads). Defaults to 1.'),
     crease: z.record(z.string(), z.unknown()).optional().describe('Edge rule for creased edges, the same rules as bevel: {"angle":60} keeps the rims of a cylinder sharp. Boundary edges are always sharp.'),
     sharpness: bounded(0, 10).optional().describe('Crease strength, only with crease. A crease stays fully sharp for that many levels and a fraction blends smooth and sharp. Defaults to 10, sharp at every level.'),
-  }).describe('Catmull-Clark subdivision with semi-sharp creases, like the Subdivision Surface modifier of Blender. Faces keep their tags and corner attributes such as uv blend linearly. Put it before uv_unwrap. Check the budget: 3 levels make 64 times the faces.'),
+  }).describe('Catmull-Clark subdivision with semi-sharp creases. Faces keep their tags and corner attributes such as uv blend linearly. Put it before uv_unwrap. Check the budget: 3 levels make 64 times the faces.'),
   z.strictObject({
     op: z.literal('decimate'),
     ratio: z.number().gt(0).max(1).describe('Share of the triangles to keep, counted after triangulation. 0.25 keeps a quarter.'),
-  }).describe('Quadric edge collapse like Blender Decimate. Open boundaries and tag borders stay, tags carry over, uv and colour are dropped, so unwrap after it. Reports triangles and stoppedEarly.'),
+  }).describe('Quadric edge collapse. Open boundaries and tag borders stay, tags carry over, uv and colour are dropped, so unwrap after it. Reports triangles and stoppedEarly.'),
   z.strictObject({
     op: z.literal('remesh'),
     voxelSize: z.number().positive().optional().describe('Edge of one grid cell. Give this or resolution.'),
     resolution: z.number().int().min(4).max(192).optional().describe('Cells along the longest side. Give this or voxelSize.'),
-  }).describe('Voxel remesh like Blender Remesh: a closed quad surface of even cells. The mesh must be closed (fill_holes first); tags and attributes are dropped. Over 192 cells per side is refused.'),
+  }).describe('Voxel remesh: a closed quad surface of even cells. The mesh must be closed (fill_holes first); tags and attributes are dropped. Over 192 cells per side is refused.'),
 ];
 // A whole-mesh modifier is a free record { op, ...fields }: its ops and fields live in scene_capabilities meshModifiers, so
 // the schema does not grow with each modifier, and the backend validates every field.

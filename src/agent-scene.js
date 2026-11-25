@@ -68,7 +68,7 @@ const PART_FLAG_FIELDS = RENDER_FLAG_FIELDS.slice(1);
 // On an asset placement these two flags reach each part it expands to.
 const ASSET_PLACEMENT_FLAG_FIELDS = ['castShadow', 'receiveShadow'];
 const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'vegetation', 'clutter', 'grass', 'decal', 'faceImages', 'depthLayer', 'billboard', 'blend', 'rayVisibility', ...RENDER_FLAG_FIELDS];
-const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'alphaCutoff', 'doubleSided', 'depthTest', 'pattern', 'map', 'text', 'subsurface', 'snippet', 'waterPreset', 'absorption', 'turbidity', 'foamEdge', 'foamWidth', 'foamColor', 'foamVeins', 'contactFoam', 'caustics', 'ripples', 'waterRamp', 'aov', 'wear', 'surfaceCover', 'retro', 'emissionMask', 'toonColors', ...MATERIAL_LAYER_FIELDS];
+const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'alphaCutoff', 'doubleSided', 'depthTest', 'pattern', 'map', 'text', 'subsurface', 'snippet', 'preset', 'waterPreset', 'absorption', 'turbidity', 'foamEdge', 'foamWidth', 'foamColor', 'foamVeins', 'contactFoam', 'caustics', 'ripples', 'waterRamp', 'aov', 'wear', 'surfaceCover', 'retro', 'emissionMask', 'toonColors', ...MATERIAL_LAYER_FIELDS];
 const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'layerMaps', 'transmissionMap', 'aovMap', 'emissionFresnel', 'boxMapScale', 'boxMapAxis'];
 const CAMERA_FIELDS = [...Object.keys(CAMERA_DEFAULTS), ...CAMERA_LENS_FIELDS];
 // Fields of an optional shader module join the list here, so the long list above stays a line each material feature does not rewrite.
@@ -324,8 +324,9 @@ function applyAlphaCutoff(value, result) {
   result.alphaCutoff = value.alphaCutoff;
 }
 
-function materialFrom(value) {
-  knownKeys(value, ['id', 'tag', ...MATERIAL_FIELDS, ...TEXTURE_SET_RECIPE_FIELDS], 'material');
+function materialFrom(recipeValue) {
+  const value = recipeValue.preset === undefined ? recipeValue : agentSceneModule('materialPresets').applyMaterialPreset(recipeValue, (given, expected) => invalidField('preset', given, expected));
+  knownKeys(recipeValue, ['id', 'tag', ...MATERIAL_FIELDS, ...TEXTURE_SET_RECIPE_FIELDS], 'material');
   // A pattern or a catalog colour map brings its own colours, so the color field tints it and leaves it unchanged by default.
   const defaultColor = value.pattern === undefined && value.colorMap === undefined && value.text === undefined ? [0.5, 0.5, 0.5] : [1, 1, 1];
   const graph = value.pattern?.type === 'graph' ? value.pattern.graph : {};

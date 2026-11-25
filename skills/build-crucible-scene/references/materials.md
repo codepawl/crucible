@@ -8,6 +8,7 @@ Then read the task's section: [Glass, coat, sheen and wax](#glass-coat-sheen-and
 
 Calls follow the conventions in `look.md`. `tests/skill-examples.test.js` applies every block, so they stay valid.
 Field lists and ranges: `scene_capabilities` topics `materialFields`, `materialLayers`, `pattern`, `materialSnippet`.
+Blocky parts that carry a material name (Roblox-style): set `preset` (`smoothPlastic`, `wood`, `grass`, `glass`, `brick`) and `color`; the colour tints the preset and any field you set wins. Topic `materialPresets`.
 
 ## Colour and values
 
