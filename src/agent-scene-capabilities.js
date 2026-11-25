@@ -4,7 +4,7 @@ import { BUNDLED_ENVIRONMENT_NAMES, BUNDLED_CUBE_LOOK_NAMES } from './look-catal
 import { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './light-limits.js';
 import { BVH_LIMITS } from './bvh-limits.js';
 import {
-  MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES,
+  MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, MAX_SELECTED_ELEMENTS, STACK_OPERATIONS, MAX_STACK_NODES,
   FIELD_OPERATOR_NAMES, FIELD_ATTRIBUTES, MAX_FIELD_NODES, MAX_FIELD_DEPTH, MAX_FIELD_ELEMENTS, INSTANCE_SOURCES, MAX_INSTANCE_CANDIDATES,
   IMPORTED_MESH_EDIT_LIMITS,
 } from './mesh-operations.js';
@@ -249,6 +249,9 @@ export const MESH_UV_NOTES = Object.freeze({
   uv_pack: 'repacks the islands already in uv (faces joined across edges whose two ends share uv) into 0..1 with one scale. margin 0-0.2 (0.01), rotate true. Needs uv from uv_unwrap or uv_project. Reports islands.',
 });
 
+// What an edit can select. Details stay here so the tool schemas stay small.
+export const MESH_SELECTION_NOTES = `translate and transform_selection take one of select (a face rule, default every face), verts (a vertex rule such as {"vertices":[0,5]}, {"all":true} or {"inside":{min,max}}) or edges (an edge rule): the selected vertices, or both ends of the selected edges, move once each in the mesh's local space, with the same falloff. Every edge rule also takes {"edges":[[a,b],...]}: an edge named by the two vertices it joins (either order, boundary edges too). Pairs are stable where edge numbers are not. Vertex indices, in verts and in pairs, are those of the mesh just before that edit: after earlier edits, before the modifier stack. An earlier edit that adds or removes vertices (subdivide, merge_by_distance, dissolve, delete) changes the count and can renumber them, and a wrong but valid index moves another corner: after a subdivide of a box, 0 to 7 are still the corners but 8 and up are new midpoints. Out-of-range indices throw with the vertex count. A vertex or pair named twice counts once. At most ${MAX_SELECTED_ELEMENTS} vertices or pairs per selection.`;
+
 // Shape keys on a recipe mesh. Details stay here so the tool schemas stay small.
 export const MESH_SHAPE_KEY_NOTES = Object.freeze({
   shapeKeys: 'On a mesh geometry, at most 16: { name, offsets, value } or { name, edits, value }. offsets is a list of { select, offset: [x,y,z], falloff } moves like the translate edit; edits are vertex-moving mesh edits run after the stack. value (0, 0 to 1) is the weight without motion. Each key becomes a glTF morph target. Animate it with a motion track { kind: "morph", id: <key name>, property: "weight", keyframes }.',
@@ -278,7 +281,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   profile: 'scene_inspect profile:true draws profileFrames (1-120, default 30) real frames at the preview size and returns profile:{frames, millisecondsPerFrame (median, CPU submit plus GPU wait), millisecondsMinimum, millisecondsMaximum, drawCalls and triangles per frame (shadow and post passes included), textureBytes (all textures, splatBytes included), splatBytes, width, height, heaviestNodes:[{id,triangles,parts}] top 5}. It needs a GPU preview; without profile the answer is unchanged. Cut the heaviest nodes or textures first; read ms as a range, other work on the machine moves it.',
   askUser: 'scene_ask_user opens the current view in their browser; they pin up to maxMarks (16) points, each with a note, and press Send. Ask when a change is hard to say in words ("warmer here", "this bit"), not for facts you can inspect. Each mark returns partId, point, normal, note, distance and material (null on sky), plus view.camera and a PNG with numbered pins. Apply the change the note names to that partId, then to similar parts (same material or name prefix) when the note says so. A mark with kind "lasso" is an outline around a region: apply the note to every part in its parts list (partId, coverage, material, most covered first), and skip a part with a tiny coverage that the note does not fit. A part with materialSharedWith has that material on parts outside the mark: give it its own material before you change it. A part with edge true only grazes the outline. outcome cancelled or timeout returns no marks: ask in text. For a film scene pass motionTime to mark one moment; view.motionTime names it. Edits made while they mark change revision; the result warns.',
   navigation: 'scene_inspect path:{ground,from:[x,z],to:[x,z]} returns a route over the ground node around its holes, steep slopes and the nodes in avoid:[ids] (box footprints), as keyframes [{time,value:[x,y,z]}] for a translation track with interpolation LINEAR. radius 0.3 m; maxSlope 40 degrees; cellSize defaults to radius; seconds or speed (1.4 m/s); lift adds y.',
-  meshEdits: Object.freeze({ operations: Object.freeze(Object.keys(MESH_EDIT_OPERATIONS)), maxEdits: MAX_MESH_EDITS }),
+  meshEdits: Object.freeze({ operations: Object.freeze(Object.keys(MESH_EDIT_OPERATIONS)), maxEdits: MAX_MESH_EDITS, selections: MESH_SELECTION_NOTES }),
   meshStack: Object.freeze({ operations: STACK_OPERATIONS, maxNodes: MAX_STACK_NODES }),
   meshModifiers: MESH_MODIFIER_NOTES,
   meshSculpt: MESH_SCULPT_NOTES,

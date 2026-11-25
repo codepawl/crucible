@@ -28,6 +28,7 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('edit.paste', 'Paste', 'Edit', 'normal', binding('v', { ctrl: true, shift: false })),
   action('edit.duplicate', 'Duplicate', 'Edit', 'normal', binding('d', { shift: true }), binding('d', { ctrl: true })),
   action('edit.delete', 'Delete', 'Edit', 'normal', binding('x'), binding('Delete'), binding('Backspace')),
+  action('edit.rename', 'Rename', 'Edit', 'normal', binding('F2')),
   action('edit.deselect', 'Deselect', 'Edit', 'normal', binding('Escape')),
   action('select.all', 'Select all', 'Edit', 'normal', binding('a', { shift: false })),
   // By code, because Option+A types a letter of its own on a Mac, so its key is not "a".
