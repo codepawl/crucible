@@ -1337,7 +1337,7 @@ function batchSignature(material) {
   // Textures are fixed per renderer, so a changed pattern rebuilds it like a changed tag does.
   // Transmission moves a material to the pass that sees the opaque scene, which is fixed per renderer.
   // Snippet uniform values bind per draw, so only changing the compiled feature or mask needs a new handle (#3163).
-  return `${material.tag}|${material.alphaMode}|${material.alphaCutoff}|${material.opacity}|${material.transmission > 0}|${material.doubleSided}|${material.depthTest !== false}|${JSON.stringify(material.pattern ?? material.map ?? material.text ?? null)}|${material.snippet?.feature}|${material.snippet?.mask}${textureMapSignature(material)}`;
+  return `${material.tag}|${material.alphaMode}|${material.alphaCutoff}|${material.opacity}|${material.transmission > 0}|${material.doubleSided}|${material.depthTest !== false}|${Boolean(material.map && material.emission > 0)}|${JSON.stringify(material.pattern ?? material.map ?? material.text ?? null)}|${material.snippet?.feature}|${material.snippet?.mask}${textureMapSignature(material)}`;
 }
 
 // A material's uvScale, uvOffset, uvRotation and worldScale are baked into the UVs of the geometry it draws, like glTF KHR_texture_transform.
@@ -1372,7 +1372,7 @@ function materialHandle(snapshot, sequence, images) {
       enumerable: true,
       // Baked on first read, so validating or inspecting a recipe never pays for it.
       get() {
-        if (field === 'map' && holder.sequence) return holder.sequence.descriptor;
+        if ((field === 'map' || (field === 'emissiveMap' && holder.snapshot.emission > 0)) && holder.sequence) return holder.sequence.descriptor;
         if (holder.catalogTextures) return holder.catalogTextures()[field];
         return holder.snapshot.pattern ? agentSceneModule('patterns').materialPatternTextures(holder.snapshot.pattern, holder.images)[field] : undefined;
       },

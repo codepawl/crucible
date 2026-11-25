@@ -121,7 +121,7 @@ function hitNearestLamp(ray) {
 }
 
 async function reviewRuntimeHarness({ failShot, blockShot = false, oversize = false, deadlineMs,
-  failDispose = false, heapSize = 1024, stallPrivatePage = false, blockPrivateCreate = false, resumeDelayMs = 0, suspendDelayMs = 0, failResume = false, hangMethod, failPrivateCreate = false, failPrivateCreateMessage, failSourceCreateMessage, disposeGate, disposeLostBridge = false, disposeWithoutScene = false, hangBrowserClose = false, closeTimeoutMs, failFirstGoto = false, jobRender, sceneBake, exportedRecipe, runtimeOptions = {}, contextOverrides = {}, lookBytesPerPixel = 0, inspection, snapshotRecipe } = {}) {
+  failDispose = false, heapSize = 1024, stallPrivatePage = false, blockPrivateCreate = false, resumeDelayMs = 0, suspendDelayMs = 0, failResume = false, hangMethod, delayMethod, methodDelayMs = 0, failPrivateCreate = false, failPrivateCreateMessage, failSourceCreateMessage, disposeGate, disposeLostBridge = false, disposeWithoutScene = false, hangBrowserClose = false, closeTimeoutMs, failFirstGoto = false, jobRender, sceneBake, exportedRecipe, runtimeOptions = {}, contextOverrides = {}, lookBytesPerPixel = 0, inspection, snapshotRecipe } = {}) {
   const events = [];
   let sourceCreates = 0;
   const sourceCalls = [];
@@ -160,6 +160,7 @@ async function reviewRuntimeHarness({ failShot, blockShot = false, oversize = fa
       events.push(`${this.privateTarget ? 'private' : 'source'}:${method}`);
       if (!this.privateTarget) sourceCalls.push({ method, input });
       if (method === hangMethod && !this.privateTarget) return new Promise(() => {});
+      if (method === delayMethod && methodDelayMs && !this.privateTarget) await new Promise(resolve => setTimeout(resolve, methodDelayMs));
       if (method === 'create' && !this.privateTarget && failSourceCreateMessage && sourceCreates++ > 0) throw new Error(failSourceCreateMessage);
       if (method === 'create' && this.privateTarget && failPrivateCreate) {
         failPrivateCreate = false;
@@ -620,6 +621,23 @@ runTest('a browser start whose page load times out is retried once on a fresh br
   try {
     assert.equal(typeof harness.sessionId, 'string');
   } finally { await harness.runtime.close(); }
+});
+
+runTest('idempotent read-only preview calls survive a transient contention stall without dropping sessions, and gpuQueue scales timeouts (#3462)', async () => {
+  const { runtime, sessionId } = await reviewRuntimeHarness({ delayMethod: 'inspect', methodDelayMs: 65, deadlineMs: 40 });
+  try {
+    const inspected = await runtime.inspect({ sessionId });
+    assert.ok(inspected);
+    assert.equal((await runtime.capabilities()).phase, 'ready');
+    assert.equal((await runtime.apply({ sessionId })).revision, 1);
+  } finally { await runtime.close(); }
+
+  const queue = recordingSerialQueue();
+  const queued = await reviewRuntimeHarness({ runtimeOptions: { gpuQueue: queue }, deadlineMs: 40 });
+  try {
+    await queued.runtime.look({ sessionId: queued.sessionId });
+    assert.equal(queued.deadlines.at(-1), 80, 'shared GPU queue doubles the preview deadline');
+  } finally { await queued.runtime.close(); }
 });
 
 runTest('a job whose page navigates under it fails with the page loss and the budget, then the next scene works (#2198)', async () => {

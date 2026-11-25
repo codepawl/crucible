@@ -6,6 +6,7 @@ import { DRIVER_VARIABLE_KIND_NAMES } from '../src/motion-driver-variable-kinds.
 import { IK_SOLVER_TYPE_NAMES } from '../src/motion-ik-solver-types.js';
 import { MOTION_PROPERTY_KIND_NAMES } from '../src/motion-property-kinds.js';
 import { BRANCH_NAME_PATTERN } from '../src/agent-branches.js';
+import { MAX_KEYS_PER_TRACK } from '../src/motion-validation.js';
 import { TEXTURE_SEQUENCE_LIMITS } from '../src/texture-sequence-limits.js';
 import { HEIGHT_PARALLAX_LIMITS, NORMAL_CONVENTIONS, TEXTURE_MAP_FIELDS, UV_TRANSFORM_LIMITS } from '../src/texture-set-fields.js';
 import { readEnvironmentVariable } from '../src/environment-variable.js';
@@ -225,10 +226,13 @@ const materialFields = {
   waterGlint: z.record(z.string(), z.unknown()).nullable().optional().describe('Water tag only, raster only: stylized highlights, edge { threshold } and sparkle { density, size, shape dot or star }; scene_capabilities materialWaterGlint.'),
   pattern: listed('pattern', materialPattern, 'Procedural texture; box mapping needs no UVs. type is a preset or graph (give graph); also mapping, colors, size, count, bump, seed, axis, resolution; see scene_capabilities pattern.', coreOf(materialPattern.shape, ['type'])).optional(),
   map: z.strictObject({ sequence: z.strictObject({
-    frames: z.array(z.string().regex(/^[a-f0-9]{64}$/)).min(2).max(TEXTURE_SEQUENCE_LIMITS.maxFrames),
-    fps: z.number().positive().max(60),
+    frames: z.array(z.string().regex(/^[a-f0-9]{64}$/i)).min(2).max(TEXTURE_SEQUENCE_LIMITS.maxFrames).optional(),
+    catalog: z.string().min(1).max(256).optional(),
+    fps: z.number().positive().max(TEXTURE_SEQUENCE_LIMITS.maxFps),
     loop: z.boolean().optional(),
-  }) }).optional().describe('Image sequence colour map of catalog images; scene_capabilities textureSequence.'),
+  }).refine(sequence => (sequence.frames !== undefined) !== (sequence.catalog !== undefined), {
+    message: 'Pass frames (asset IDs) or catalog (sequence name), not both or neither.',
+  }) }).optional().describe('Image sequence colour map (frames or catalog); scene_capabilities textureSequence.'),
   textureSet: z.string().max(256).optional().describe('Name of a catalog texture set (scene_asset_catalog textureSets): fills colorMap, normalMap, roughnessMap, metallicMap, occlusionMap and heightMap; scene_capabilities textureSet.'),
   ...Object.fromEntries(TEXTURE_MAP_FIELDS.map(field => [field, catalogImageId.optional()])),
   normalConvention: z.enum(NORMAL_CONVENTIONS).optional().describe('opengl (default) or directx normal map; directx has its green channel flipped on load.'),
@@ -649,7 +653,7 @@ function motionTrack(kind, property, value, tangent) {
       time: z.number().min(0).max(30), value,
       inTangent: tangent.optional(), outTangent: tangent.optional(),
       easing: easingField,
-    })).min(1).max(64),
+    })).min(1).max(MAX_KEYS_PER_TRACK),
     ...trackEffectFields,
   });
 }
@@ -659,12 +663,12 @@ const lookTrack = z.strictObject({
   id: z.string().max(16).optional().describe('Light only: point:0, spot:0, area:0.'),
   property: z.string().max(24),
   interpolation: z.enum(['LINEAR', 'STEP', 'SMOOTH']).optional(),
-  keyframes: z.array(z.strictObject({ time: z.number().min(0).max(30), value: z.union([finite, vector3]), easing: easingField })).min(1).max(64),
+  keyframes: z.array(z.strictObject({ time: z.number().min(0).max(30), value: z.union([finite, vector3]), easing: easingField })).min(1).max(MAX_KEYS_PER_TRACK),
   ...trackEffectFields,
 });
 const ikKeyframes = (value, description) => z.strictObject({
   interpolation: z.enum(['LINEAR', 'STEP', 'SMOOTH']).optional(),
-  keyframes: z.array(z.strictObject({ time: z.number().min(0).max(30), value })).min(1).max(64),
+  keyframes: z.array(z.strictObject({ time: z.number().min(0).max(30), value })).min(1).max(MAX_KEYS_PER_TRACK),
 }).describe(description);
 const ikPoint = z.union([
   vector3,
@@ -729,7 +733,7 @@ const driver = z.strictObject({
     z.strictObject({ kind: z.literal('material'), id: identifier, property: z.enum(['color', 'emissiveColor', 'emission', 'metallic', 'roughness']), component: axisName.optional() }),
     z.strictObject({ kind: z.literal('light'), id: identifier.describe('point:N, spot:N or area:N'), property: z.enum(['intensity', 'color']), component: axisName.optional() }),
     z.strictObject({ kind: z.literal('morph'), id: identifier, property: z.literal('weight') }),
-    z.strictObject({ kind: z.literal('camera'), property: z.enum(['eye', 'target', 'fov', 'roll']), component: axisName.optional() }),
+    z.strictObject({ kind: z.literal('camera'), property: z.enum(['eye', 'target', 'fov', 'roll']), component: axisName.optional() }).describe('fov in degrees, roll in radians.'),
   ]),
   expression,
 });
@@ -759,7 +763,7 @@ const ikSolver = z.discriminatedUnion('type', [
 ]);
 // Properties of the tracks the schema accepts; light, sun, environment and effects take any property name here and the backend checks it.
 const motionTrackProperties = {
-  node: ['translation', 'rotation', 'scale', 'opacity'],
+  node: ['translation', 'rotation', 'scale', 'opacity', 'visible'],
   material: ['color', 'emissiveColor', 'emission', 'metallic', 'roughness'],
   camera: ['eye', 'target', 'fov', 'roll'],
   morph: ['weight'],
@@ -780,6 +784,18 @@ function motionTrackUnionMessage(issue) {
   if (!motionTrackKinds.includes(track.kind)) return `Unknown motion track kind: ${JSON.stringify(track.kind)}. Kinds: ${kindList}.`;
   const properties = motionTrackProperties[track.kind];
   if (properties && !properties.includes(track.property)) return `Unknown ${track.kind} track property: ${JSON.stringify(track.property)}. ${track.kind} properties: ${properties.join(', ')}.`;
+  if (Array.isArray(track.keyframes) && track.keyframes.length === 0) return `A motion track needs 1 to ${MAX_KEYS_PER_TRACK} keyframes.`;
+  if (Array.isArray(track.keyframes) && track.keyframes.length > MAX_KEYS_PER_TRACK) {
+    return `Too many keyframes in ${track.kind} track (${track.keyframes.length}): at most ${MAX_KEYS_PER_TRACK} keyframes per track (2048 total across all tracks).`;
+  }
+  if (track.kind === 'node' && track.property === 'visible') {
+    if (track.interpolation !== undefined && track.interpolation !== 'STEP') {
+      return `A node visible track uses STEP interpolation (got ${JSON.stringify(track.interpolation)}); leave interpolation out or set "STEP".`;
+    }
+    if (Array.isArray(track.keyframes) && track.keyframes.some(keyframe => keyframe && typeof keyframe === 'object' && keyframe.value !== 0 && keyframe.value !== 1)) {
+      return 'A node visible track keyframe value must be 1 (shown) or 0 (hidden).';
+    }
+  }
   return undefined;
 }
 const motion = z.strictObject({
@@ -795,6 +811,7 @@ const motion = z.strictObject({
     motionTrack('node', 'rotation', quaternion, quaternion),
     motionTrack('node', 'scale', z.tuple([positive, positive, positive]), vector3),
     motionTrack('node', 'opacity', unit, finite),
+    motionTrack('node', 'visible', z.union([z.literal(0), z.literal(1)]), finite),
     motionTrack('material', 'color', color, vector3),
     motionTrack('material', 'emissiveColor', z.tuple([nonnegative, nonnegative, nonnegative]), vector3),
     motionTrack('material', 'emission', nonnegative, finite),
@@ -803,7 +820,7 @@ const motion = z.strictObject({
     motionTrack('camera', 'eye', vector3, vector3),
     motionTrack('camera', 'target', vector3, vector3),
     motionTrack('camera', 'fov', finite.gt(0).lt(180), finite),
-    motionTrack('camera', 'roll', finite, finite),
+    motionTrack('camera', 'roll', finite, finite).describe('Camera roll angle in radians (not degrees; pi = 180 deg).'),
     motionTrack('morph', 'weight', unit, finite),
     motionTrack('geometry', 'oceanTime', finite.min(-1e6).max(1e6), finite),
     lookTrack,

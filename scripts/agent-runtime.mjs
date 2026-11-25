@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { loadPreviewPage } from './agent-page-load.mjs';
 import { withSnapshotSkyColors } from './snapshot-sky-colors.mjs';
-import { previewCallTimeoutMs, recipeHasGridVolume, operationsAddGridVolume, assetDataBytes, slowAssetsNote } from './agent-evaluation-timeout.mjs';
+import { previewCallTimeoutMs, recipeHasGridVolume, operationsAddGridVolume, payloadAssetBytes, slowAssetsNote } from './agent-evaluation-timeout.mjs';
 import { createHash, randomUUID, randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { totalmem } from 'node:os';
@@ -108,6 +108,9 @@ const EXPORTED_GLB_NAME = /^[0-9a-f-]{36}\.glb$/;
 const EXPORTED_WEB_BUILD_NAME = /^web-[0-9a-f-]{36}$/;
 // 30 seconds unless a test harness that starts the server asks for longer (#2741).
 const EVALUATION_TIMEOUT_MS = previewDeadlineMilliseconds();
+// Idempotent read-only preview calls tolerate one extra grace window when a shared GPU stalls past the first deadline
+// instead of immediately discarding every open scene (#3462).
+const READ_ONLY_PREVIEW_METHODS = new Set(['inspect', 'inspectMeshes', 'walkMap', 'look', 'exportRecipe', 'snapshot', 'branchRecipe', 'matteTargets', 'wedgeRecipes']);
 // A browser stuck in a long shader compile may never answer the close request; teardown waits this long, then goes on (#2200).
 const BROWSER_CLOSE_TIMEOUT_MS = 5000;
 const RECOVERY_HINT = 'The scenes in this runtime are lost. Call scene_create (or scene_create_asset) to start a fresh runtime; no server restart is needed.';
@@ -910,7 +913,19 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
     await target.evaluate(request => window.__agentPreview.loadSequenceFrames(request), { sessionId, motionTime, sequenceData: Object.fromEntries(entries) });
   }
 
-  async function invoke(method, input, timeoutMs = EVALUATION_TIMEOUT_MS) {
+  function callTimeoutMs({ bakes = false, addsGridVolume = false, assetBytes = 0 } = {}) {
+    return previewCallTimeoutMs({
+      bakes,
+      addsGridVolume,
+      sharedGpu: Boolean(gpuQueue),
+      streamedSequence: streamedSequencesUsed,
+      plainTimeoutMs: EVALUATION_TIMEOUT_MS,
+      bakeTimeoutMs: BAKE_EVALUATION_TIMEOUT_MS,
+      assetBytes,
+    });
+  }
+
+  async function invoke(method, input, timeoutMs = callTimeoutMs()) {
     requireSession(input.sessionId);
     if (streamedSequencesUsed && typeof input.motionTime === 'number') await supplyStreamedFrames(page, input.sessionId, input.motionTime);
     if (!browserInstance?.isConnected() || page.isClosed()) {
@@ -928,21 +943,38 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
 
   async function evaluate(method, input, target = page, timeoutMs = EVALUATION_TIMEOUT_MS) {
     assertCombinedAssetBytes(input);
+    const maxAttempts = target === page && READ_ONLY_PREVIEW_METHODS.has(method) ? 2 : 1;
     let timer;
     let timedOut = false;
+    const evaluation = target.evaluate(({ method, input }) => window.__agentPreview[method](input), { method, input });
+    evaluation.catch(() => {});
     try {
-      return await Promise.race([
-        target.evaluate(({ method, input }) => window.__agentPreview[method](input), { method, input }),
-        new Promise((resolve, reject) => {
-          timer = setTimeout(() => {
-            timedOut = true;
-            if (target === page) phase = 'failed';
-            reject(new Error(target === page
-              ? `The preview operation ${describeOperation(method, input)} exceeded ${timeoutMs / 1000} seconds. ${RECOVERY_HINT}`
-              : `The private render operation ${describeOperation(method, input)} exceeded ${timeoutMs / 1000} seconds.`));
-          }, timeoutMs);
-        }),
-      ]);
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          return await Promise.race([
+            evaluation,
+            new Promise((resolve, reject) => {
+              timer = setTimeout(() => {
+                if (attempt < maxAttempts) {
+                  console.error(`Crucible preview operation ${describeOperation(method, input)} exceeded ${timeoutMs / 1000}s; waiting one grace window for shared-GPU contention.`);
+                  reject(new Error('__CRUCIBLE_RETRY_GRACE__'));
+                  return;
+                }
+                timedOut = true;
+                if (target === page) phase = 'failed';
+                const totalSeconds = (timeoutMs * maxAttempts) / 1000;
+                reject(new Error(target === page
+                  ? `The preview operation ${describeOperation(method, input)} exceeded ${totalSeconds} seconds. ${RECOVERY_HINT}`
+                  : `The private render operation ${describeOperation(method, input)} exceeded ${totalSeconds} seconds.`));
+              }, timeoutMs);
+            }),
+          ]);
+        } catch (error) {
+          clearTimeout(timer);
+          if (error?.message === '__CRUCIBLE_RETRY_GRACE__' && attempt < maxAttempts) continue;
+          throw error;
+        }
+      }
     } catch (error) {
       if (typeof error?.message === 'string') error.message = agentMemoryBudgetMessage(error.message, { memory, maximumMemory });
       if (timedOut) {
@@ -1420,7 +1452,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         await boot();
         const sessionId = randomUUID();
         const createInput ={ recipe, sessionId, memoryBudgetMiB: memory, backend, ...(await placedAssetData(recipe, { transcodeKtx2: Boolean(recipe?.bake) })) };
-        const createTimeoutMs = previewCallTimeoutMs({ bakes: Boolean(recipe?.bake), addsGridVolume: recipeHasGridVolume(recipe), plainTimeoutMs: EVALUATION_TIMEOUT_MS, bakeTimeoutMs: BAKE_EVALUATION_TIMEOUT_MS, assetBytes: assetDataBytes(createInput.assetData) });
+        const createTimeoutMs = callTimeoutMs({ bakes: Boolean(recipe?.bake), addsGridVolume: recipeHasGridVolume(recipe), assetBytes: payloadAssetBytes(createInput) });
         const result = await evaluate('create', createInput, page, createTimeoutMs).catch(async error => {
           if (error?.message?.startsWith('The preview operation')) error.message += slowAssetsNote(await placedAssetSizes(recipe));
           throw error;
@@ -1452,7 +1484,8 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         const bytes = await (await catalog()).read(recipe.assetId);
         await boot();
         const sessionId = randomUUID();
-        const result = await evaluate('createAsset', { recipe, checkMesh, data: bytes.toString('base64'), sessionId, memoryBudgetMiB: memory, backend, ...(await motionSources([recipe.motion])) });
+        const createAssetInput = { recipe, checkMesh, data: bytes.toString('base64'), sessionId, memoryBudgetMiB: memory, backend, ...(await motionSources([recipe.motion])) };
+        const result = await evaluate('createAsset', createAssetInput, page, callTimeoutMs({ assetBytes: payloadAssetBytes(createAssetInput) }));
         registerCreatedScene(sessionId, result, false);
         return result;
       }, { recoversFailedRuntime: true });
@@ -1512,7 +1545,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         const placedValue = gameAssets?.recipe ?? input.operations;
         await assertSceneAssetsFitAfterEdit(input.sessionId, placedValue);
         const applyInput = { ...input, ...(await motionSources(motions, placedValue)), ...(await placedAssetData(placedValue, { transcodeKtx2: rebakes })), ...(gameAssets ? { assetNeeds: gameAssets.recipe } : {}) };
-        const applyTimeout = previewCallTimeoutMs({ bakes: rebakes, addsGridVolume: operationsAddGridVolume(input.operations), plainTimeoutMs: EVALUATION_TIMEOUT_MS, bakeTimeoutMs: BAKE_EVALUATION_TIMEOUT_MS });
+        const applyTimeout = callTimeoutMs({ bakes: rebakes, addsGridVolume: operationsAddGridVolume(input.operations), assetBytes: payloadAssetBytes(applyInput) });
         const applied = await invoke('apply', applyInput, applyTimeout);
         if (bakeAfter ?? hadBake) bakedSessionIds.add(input.sessionId);
         else bakedSessionIds.delete(input.sessionId);
@@ -1680,7 +1713,8 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         let output;
         let deadlineExpired = false;
         let completedShots = 0;
-        const reviewDeadlineText = () => reviewDeadlineMessage({ completedShots, requestedShots: settings.shots.length, deadlineSeconds: EVALUATION_TIMEOUT_MS / 1000 });
+        const reviewTimeoutMs = callTimeoutMs({ addsGridVolume: recipeHasGridVolume(snapshot.recipe) });
+        const reviewDeadlineText = () => reviewDeadlineMessage({ completedShots, requestedShots: settings.shots.length, deadlineSeconds: reviewTimeoutMs / 1000 });
         let cancellationReason;
         const cancellation = new Promise((resolve, reject) => {
           cancelReview = error => {
@@ -1694,14 +1728,14 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         const deadline = setTimeout(() => {
           deadlineExpired = true;
           cancelReview(new Error(reviewDeadlineText()));
-        }, EVALUATION_TIMEOUT_MS);
+        }, reviewTimeoutMs);
         function requireReviewOpen() {
           if (deadlineExpired) throw new Error(reviewDeadlineText());
           if (closing) throw new Error('The agent runtime is closing.');
         }
         async function reviewEvaluate(method, value) {
           requireReviewOpen();
-          const result = await evaluate(method, value, reviewPage);
+          const result = await evaluate(method, value, reviewPage, reviewTimeoutMs);
           requireReviewOpen();
           return result;
         }
