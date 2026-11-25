@@ -51,7 +51,7 @@ function makeServices({ body = GOOD_BODY, changed = 'scripts/open-pr.mjs\ntests/
     currentLogin: () => login,
     pushEvidence(options) {
       calls.push(['pushEvidence', options.prNumber, options.dryRun === true]);
-      return { branch: `evidence-pr-${options.prNumber}`, links: LINKS, dryRun: options.dryRun === true };
+      return { branch: 'evidence', links: LINKS, dryRun: options.dryRun === true };
     },
     writeTempBody(text) {
       sentBody = text;
