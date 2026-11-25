@@ -314,3 +314,49 @@ test('disposing Studio unsubscribes from the host', testContext => {
   ui.studio.dispose();
   assert.equal(sample.subscribed, false);
 });
+
+function mountSized(testContext, { width, height }) {
+  const dom = installStudioDom();
+  dom.container.clientWidth = width;
+  dom.container.clientHeight = height;
+  globalThis.crucibleShell = { agentChat: createSampleHost().host };
+  const studio = createStudio(dom.container, { recipe: RECIPE, renderer: createFakeRenderer() });
+  testContext.after(() => {
+    studio.dispose();
+    dom.uninstall();
+    delete globalThis.crucibleShell;
+  });
+  return dom.container.firstElementChild;
+}
+
+test('in a window too short to stack Scene, Properties and the card, the card takes turns with Properties', testContext => {
+  const root = mountSized(testContext, { width: 1280, height: 720 });
+  const viewMenu = () => root.querySelector('#crucible-studio-pop-view');
+  assert.equal(root.dataset.agentTight, 'true');
+  assert.equal(root.dataset.agentCollapsed, 'true', 'it starts closed, as in a compact window');
+  assert.equal(root.dataset.inspectorCollapsed, 'false');
+  byText(viewMenu(), 'Agent').click();
+  assert.equal(root.dataset.agentCollapsed, 'false');
+  assert.equal(root.dataset.inspectorCollapsed, 'true', 'the card takes Properties place');
+  byText(viewMenu(), 'Agent').click();
+  assert.equal(root.dataset.inspectorCollapsed, 'false', 'Properties comes back when the card leaves');
+  byText(viewMenu(), 'Agent').click();
+  byText(viewMenu(), 'Properties').click();
+  assert.equal(root.dataset.agentCollapsed, 'true', 'showing Properties puts the card away');
+  assert.equal(root.dataset.inspectorCollapsed, 'false');
+});
+
+test('in a tall window the card stacks under Properties', testContext => {
+  const root = mountSized(testContext, { width: 1280, height: 1080 });
+  assert.equal(root.dataset.agentTight, 'false');
+  assert.equal(root.dataset.agentCollapsed, 'false');
+  assert.equal(root.dataset.inspectorCollapsed, 'false');
+});
+
+test('the card is marked while a notice shows, so the stylesheet can keep four rows of the list', testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  assert.equal(ui.card().dataset.notice, 'false');
+  sample.emit({ type: 'notice', kind: 'error', message: 'Not reachable' });
+  assert.equal(ui.card().dataset.notice, 'true');
+});

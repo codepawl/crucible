@@ -1415,18 +1415,36 @@ export function createStudio(container, {
     onMinimize: () => setPreference('agentMinimized', !preferences.agentMinimized),
   });
   let agentShown = false;
+  let agentTight = false;
+  let propertiesHeldForAgent = false;
+  // Below this window height the column cannot hold Scene (192 px), Properties (240 px), the card (up to 288 px with a notice),
+  // the column gaps and the top bar, so the card takes turns with Properties instead of stacking, as it does in a compact window.
+  const AGENT_STACK_MINIMUM_HEIGHT = 820;
+  const agentTakesTurns = () => root.dataset.compact === 'true' || (root.clientHeight > 0 && root.clientHeight < AGENT_STACK_MINIMUM_HEIGHT);
+  function syncAgentRoom() {
+    if (!agentChat) return;
+    const tight = agentTakesTurns();
+    if (tight === agentTight && root.dataset.agentTight) return;
+    agentTight = tight;
+    root.dataset.agentTight = tight ? 'true' : 'false';
+    setAgentShown(tight ? false : preferences.agentVisible, { remember: false });
+  }
   function syncAgentCard() {
     if (!agentChat) return;
     root.dataset.agentCollapsed = agentShown ? 'false' : 'true';
     showPanelMinimized(agentChat.minimizeButton, 'agentMinimized', 'Agent', preferences.agentMinimized);
   }
-  // In a compact window the cards would cover each other, so the Agent card takes turns with Properties and History.
+  // When the cards cannot all fit, the Agent card takes turns with Properties and History; Properties comes back when it leaves.
   function setAgentShown(shown, { remember = true } = {}) {
     if (!agentChat) return;
     agentShown = shown;
-    if (shown && root.dataset.compact === 'true') {
+    if (shown && agentTakesTurns()) {
+      propertiesHeldForAgent ||= root.dataset.inspectorCollapsed !== 'true';
       setInspectorCollapsed(true);
       setHistoryShown(false, { remember: false });
+    } else if (propertiesHeldForAgent) {
+      propertiesHeldForAgent = false;
+      setInspectorCollapsed(false);
     }
     if (remember) setPreference('agentVisible', shown);
     syncAgentCard();
@@ -2770,10 +2788,8 @@ export function createStudio(container, {
     renderedHistoryKey = '';
     // In a compact window the two cards would cover each other, so showing one puts the other away; the panels button or
     // View > Properties brings Properties back and puts History away.
-    if (shown && root.dataset.compact === 'true') {
-      setInspectorCollapsed(true);
-      setAgentShown(false, { remember: false });
-    }
+    if (shown && root.dataset.compact === 'true') setInspectorCollapsed(true);
+    if (shown && agentTakesTurns()) setAgentShown(false, { remember: false });
     if (remember) setPreference('historyVisible', shown);
     syncHistoryPanel();
     syncMenuToggles();
@@ -5853,7 +5869,7 @@ export function createStudio(container, {
   function setInspectorCollapsed(collapsed) {
     root.dataset.inspectorCollapsed = collapsed ? 'true' : 'false';
     if (!collapsed && root.dataset.compact === 'true' && historyShown) setHistoryShown(false, { remember: false });
-    if (!collapsed && root.dataset.compact === 'true' && agentShown) setAgentShown(false, { remember: false });
+    if (!collapsed && agentTakesTurns() && agentShown) setAgentShown(false, { remember: false });
     toggleDocksButton.setAttribute('aria-pressed', root.dataset.outlinerCollapsed === 'false' || root.dataset.inspectorCollapsed === 'false' ? 'true' : 'false');
     requestFrame();
   }
@@ -5960,13 +5976,14 @@ export function createStudio(container, {
     setOutlinerCollapsed(compact);
     setInspectorCollapsed(compact);
     setHistoryShown(compact ? false : preferences.historyVisible, { remember: false });
-    setAgentShown(compact ? false : preferences.agentVisible, { remember: false });
   }
   syncCompactLayout();
+  syncAgentRoom();
 
   if (typeof ResizeObserver === 'function') {
     resizeObserver = new ResizeObserver(() => {
       syncCompactLayout();
+      syncAgentRoom();
       refitHistoryList();
       refitTreeToWholeRows();
       requestFrame();

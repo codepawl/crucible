@@ -181,7 +181,7 @@ export function createAgentChatCard({ documentReference, createElement, createIc
     placeholder: 'Ask for a change',
     attributes: { 'aria-label': 'Message to the agent' },
   });
-  const sendButton = createElement(documentReference, 'button', { type: 'submit', className: 'crucible-studio-agent-send' });
+  const sendButton = createElement(documentReference, 'button', { type: 'submit', className: 'crucible-studio-agent-send crucible-studio-primary-btn' });
   const form = createElement(documentReference, 'form', { className: 'crucible-studio-agent-compose' }, field, sendButton);
   const dock = createElement(
     documentReference,
@@ -247,7 +247,7 @@ export function createAgentChatCard({ documentReference, createElement, createIc
       createIcon(documentReference, NOTICE_ICONS[notice.kind]),
       createElement(documentReference, 'span', { className: 'crucible-studio-agent-notice-text', textContent: notice.message }));
     if (notice.actionLabel) {
-      const button = createElement(documentReference, 'button', { type: 'button', textContent: notice.actionLabel });
+      const button = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-primary-btn', textContent: notice.actionLabel });
       button.addEventListener('click', () => {
         conversation.clearNotice(notice.kind);
         render();
@@ -262,7 +262,11 @@ export function createAgentChatCard({ documentReference, createElement, createIc
     const running = conversation.running;
     dock.dataset.running = running ? 'true' : 'false';
     sendButton.type = running ? 'button' : 'submit';
-    sendButton.replaceChildren(...(running ? [createIcon(documentReference, 'stop')] : []), running ? 'Stop' : 'Send');
+    if (running) sendButton.dataset.actionIcon = 'stop';
+    else delete sendButton.dataset.actionIcon;
+    // Not a span: a primary button hides the spans inside it in a compact window.
+    const label = createElement(documentReference, 'strong', { textContent: running ? 'Stop' : 'Send' });
+    sendButton.replaceChildren(...(running ? [createIcon(documentReference, 'stop')] : []), label);
   }
 
   function render() {
@@ -271,6 +275,7 @@ export function createAgentChatCard({ documentReference, createElement, createIc
     if (stuckToBottom) list.scrollTop = list.scrollHeight;
     noticeArea.replaceChildren(...conversation.notices.map(createNoticeRow));
     noticeArea.hidden = conversation.notices.length === 0;
+    dock.dataset.notice = conversation.notices.length > 0 ? 'true' : 'false';
     syncComposer();
   }
 
@@ -337,18 +342,28 @@ export function createAgentChatCard({ documentReference, createElement, createIc
 
 /** The stylesheet of the card, added to Studio's own. Colours, fonts and spacing come from the --studio tokens. */
 export const AGENT_CHAT_CSS = `
+/* The card at the foot of the column. Its floors (232 px, 288 px with a notice) keep four whole rows in the list; Scene keeps 192 px and
+   Properties 240 px beside it. When the window is too short for all three the card takes turns with Properties (studio.js). */
 .crucible-studio-side > .crucible-studio-dock.crucible-studio-agent {
   flex: 0 1 var(--studio-agent-height, 240px);
-  min-block-size: 0;
+  min-block-size: 232px;
   max-block-size: 55%;
   inline-size: var(--studio-properties-width, 284px);
 }
-.crucible-studio[data-agent-minimized="true"] .crucible-studio-side > .crucible-studio-agent { flex: 0 0 auto; }
+.crucible-studio-side > .crucible-studio-dock.crucible-studio-agent[data-notice="true"] { min-block-size: 288px; }
+.crucible-studio[data-agent-tight="true"] .crucible-studio-side > .crucible-studio-dock.crucible-studio-agent {
+  flex: 1 1 0;
+  max-block-size: none;
+}
+.crucible-studio[data-agent-minimized="true"] .crucible-studio-side > .crucible-studio-dock.crucible-studio-agent {
+  flex: 0 0 auto;
+  min-block-size: 0;
+}
 .crucible-studio[data-agent-minimized="true"] .crucible-studio-agent > :not(.crucible-studio-dock-head) { display: none; }
 .crucible-studio[data-agent-minimized="true"] .crucible-studio-agent > .crucible-studio-dock-head { padding-block-end: 8px; }
 .crucible-studio[data-agent-collapsed="false"]:not([data-agent-minimized="true"]):not([data-compact="true"]) .crucible-studio-side > .crucible-studio-outliner {
   flex-shrink: 1;
-  min-block-size: 0;
+  min-block-size: 192px;
 }
 .crucible-studio[data-floating="false"][data-agent-collapsed="false"]:not([data-agent-minimized="true"]):not([data-compact="true"]):not([data-scene-sized="true"]):not([data-outliner-minimized="true"]) .crucible-studio-side > .crucible-studio-outliner {
   flex-basis: 30%;
@@ -383,13 +398,16 @@ export const AGENT_CHAT_CSS = `
   inset-block-start: 2px;
   block-size: 2px;
 }
-.crucible-studio[data-agent-minimized="true"] .crucible-studio-grip-agent-height { display: none; }
+.crucible-studio[data-agent-minimized="true"] .crucible-studio-grip-agent-height,
+.crucible-studio[data-agent-tight="true"] .crucible-studio-grip-agent-height { display: none; }
+/* The list clips at its own box. The fade of the scroll cue is the padding wide, so no glyph is cut half way under the title. */
 .crucible-studio-agent-list {
-  flex: 1 1 auto;
+  --studio-scroll-fade: var(--studio-space-8);
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
   gap: var(--studio-space-8);
-  min-block-size: 0;
+  min-block-size: 128px;
   padding: var(--studio-space-8);
   overflow-y: auto;
 }
@@ -397,6 +415,7 @@ export const AGENT_CHAT_CSS = `
 .crucible-studio-agent-empty { color: var(--studio-muted); }
 .crucible-studio-agent-empty .crucible-studio-icon { inline-size: 32px; block-size: 32px; }
 .crucible-studio-agent-message {
+  flex: none;
   min-inline-size: 0;
   font-size: 13px;
   line-height: 1.45;
@@ -410,15 +429,17 @@ export const AGENT_CHAT_CSS = `
   border-radius: 8px;
   background: color-mix(in srgb, var(--studio-text) 8%, transparent);
 }
+/* Quiet, but over 4.5:1 on the panel in both themes: the text colour thinned toward the panel. */
 .crucible-studio-agent-step,
 .crucible-studio-agent-outcome {
   display: flex;
   align-items: center;
   gap: var(--studio-space-8);
-  color: var(--studio-muted);
+  color: color-mix(in srgb, var(--studio-text) 76%, var(--studio-panel));
   font-size: 12px;
   white-space: nowrap;
 }
+.crucible-studio-agent-send strong { font-weight: inherit; }
 .crucible-studio-agent-line { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; }
 .crucible-studio-agent-outcome[data-outcome="done"] .crucible-studio-icon { color: var(--studio-ok); }
 .crucible-studio-agent-outcome[data-outcome="failed"] .crucible-studio-icon { color: var(--studio-warning); }
@@ -438,11 +459,20 @@ export const AGENT_CHAT_CSS = `
   font-size: 12px;
 }
 .crucible-studio-agent-notice-text { flex: 1 1 auto; min-inline-size: 0; overflow-wrap: anywhere; }
-.crucible-studio-agent-notice button { flex: none; min-block-size: 28px; }
+/* A button on the notice's own surface needs a stronger fill than one on the panel to read as a button. */
+.crucible-studio-agent button.crucible-studio-primary-btn {
+  flex: none;
+  padding-inline: var(--studio-space-12);
+  background: color-mix(in srgb, var(--studio-text) 7%, transparent);
+}
+.crucible-studio-agent-notice button.crucible-studio-primary-btn {
+  min-block-size: 28px;
+  background: color-mix(in srgb, var(--studio-text) 14%, transparent);
+}
 .crucible-studio-agent-compose {
   flex: none;
   display: flex;
-  align-items: flex-end;
+  align-items: stretch;
   gap: var(--studio-space-8);
   padding: var(--studio-space-8);
 }
@@ -459,5 +489,8 @@ export const AGENT_CHAT_CSS = `
   resize: none;
   field-sizing: content;
 }
-.crucible-studio-agent-send { flex: none; }
+.crucible-studio-agent-field::placeholder {
+  color: color-mix(in srgb, var(--studio-text) 76%, var(--studio-surface));
+  opacity: 1;
+}
 `;

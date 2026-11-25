@@ -907,41 +907,58 @@ async function measureHistoryPanel(page, theme, label) {
   return capture.screens;
 }
 
-// The column rule for the Agent card, measured: it stays inside the column, Properties keeps 240 px or more beside it, the Scene
-// card keeps room for its title row and a few rows, and the list and the field fit the card without a sideways scroll.
+// The column rule for the Agent card, measured. Stacked, it ends inside the column with the same bottom gap as the other cards,
+// Scene keeps 192 px and Properties 240 px beside it. In a window too short for that the card takes Properties' place instead,
+// and in a compact window it lies over the scene inside the window. The list keeps four whole rows (112 px) and nothing scrolls
+// sideways. Returns the rectangles, which the stills report.
 async function checkAgentLayout(page, step) {
   const found = await page.evaluate(() => {
-    const box = selector => document.querySelector(selector)?.getBoundingClientRect();
+    const rectOf = selector => {
+      const element = document.querySelector(selector);
+      const visible = element && getComputedStyle(element).display !== 'none';
+      return visible ? element.getBoundingClientRect() : null;
+    };
+    const rounded = rect => rect && { top: Math.round(rect.top), bottom: Math.round(rect.bottom), height: Math.round(rect.height) };
     const root = document.querySelector('.crucible-studio');
-    const card = box('.crucible-studio-agent');
-    const column = box('.crucible-studio-side');
+    const card = rectOf('.crucible-studio-agent');
+    const column = rectOf('.crucible-studio-side');
+    const scene = rectOf('.crucible-studio-outliner');
+    const properties = rectOf('.crucible-studio-inspector');
     const list = document.querySelector('.crucible-studio-agent-list');
+    const compact = root.dataset.compact === 'true';
+    const above = properties ?? scene;
     return {
-      compact: root.dataset.compact === 'true',
-      cardHeight: card.height,
-      cardBottom: card.bottom,
-      columnBottom: root.dataset.compact === 'true' ? window.innerHeight : column.bottom,
-      sceneHeight: box('.crucible-studio-outliner')?.height ?? 0,
-      propertiesHeight: box('.crucible-studio-inspector')?.height ?? 0,
+      compact,
+      tight: root.dataset.agentTight === 'true',
+      card: rounded(card),
+      scene: rounded(scene),
+      properties: rounded(properties),
+      columnBottom: compact ? window.innerHeight : Math.round(column.bottom),
+      bottomGap: Math.round((compact ? window.innerHeight : column.bottom) - card.bottom),
+      gapAbove: compact || !above ? null : Math.round(card.top - above.bottom),
+      listHeight: Math.round(list.clientHeight),
       sidewaysScroll: list.scrollWidth > list.clientWidth + 1,
-      fieldFits: box('.crucible-studio-agent-field').right <= card.right,
+      fieldFits: document.querySelector('.crucible-studio-agent-field').getBoundingClientRect().right <= card.right,
     };
   });
   const expect = (condition, message) => {
     if (!condition) throw new Error(`Agent card layout (${step}): ${message}: ${JSON.stringify(found)}`);
   };
-  expect(found.cardBottom <= found.columnBottom + 1, 'the card runs past the column or the window');
+  expect(found.bottomGap >= (found.compact ? 0 : 7), 'the card ends past the column bottom or without its bottom gap');
   expect(!found.sidewaysScroll, 'the list scrolls sideways');
   expect(found.fieldFits, 'the message field runs past the card');
+  expect(found.listHeight >= 112 || found.card.height <= 60, 'the list is under four whole rows');
   if (!found.compact) {
-    expect(found.propertiesHeight >= 240 - 1, 'Properties has less than 240 px');
-    expect(found.sceneHeight >= 96, 'the Scene card is under its least height');
+    expect(found.gapAbove >= 3 && found.gapAbove <= 5, 'the gap above the card is not the column gap');
+    expect(found.scene.height >= 191, 'the Scene card is under its floor');
+    expect(found.tight ? found.properties === null : found.properties.height >= 239, 'Properties is under its floor, or is stacked when the card should take its turn');
   }
   return found;
 }
 
-// The Agent card with a sample host: empty, a run streaming with its steps, the reply, a notice outside the list, and minimized.
-// A compact window starts with the card closed, and the View menu is not in the bar there, so the key shows it.
+// The Agent card with a sample host: empty, a run streaming with its steps, the reply, one notice of each kind outside the list,
+// and minimized. A window too short to stack the cards, and a compact one, start with the card closed, and the View menu is not
+// in the bar of a compact window, so the key shows it.
 async function measureAgentCard(page, theme, label) {
   const capture = createCapture(page, theme, label);
   const shown = await page.evaluate(() => document.querySelector('.crucible-studio').dataset.agentCollapsed === 'false');
@@ -949,6 +966,7 @@ async function measureAgentCard(page, theme, label) {
     await page.evaluate(() => document.querySelector('.crucible-studio canvas').dispatchEvent(new KeyboardEvent('keydown', { key: 'µ', code: 'KeyM', altKey: true, bubbles: true })));
   }
   await page.waitForSelector('.crucible-studio-agent');
+  await page.waitForTimeout(300);
   await capture('agent card empty', '.crucible-studio-agent');
   await checkAgentLayout(page, 'empty');
   await page.locator('.crucible-studio-agent-field').fill('Lift the cube and make it a little larger');
@@ -961,15 +979,32 @@ async function measureAgentCard(page, theme, label) {
   await checkAgentLayout(page, 'replied');
   await checkScrollCue(page, 'Agent replied');
   await capture('agent card replied', '.crucible-studio-agent');
-  await page.evaluate(() => window.__sampleChat.emit({ type: 'notice', kind: 'quota', message: 'No credits left for this month', actionLabel: 'Buy credits', action: () => {} }));
-  await capture('agent card notice', '.crucible-studio-agent');
-  const noticeInsideList = await page.evaluate(() => Boolean(document.querySelector('.crucible-studio-agent-list .crucible-studio-agent-notice')));
-  if (noticeInsideList) throw new Error('Agent card behavior: a notice shows inside the message list');
-  await checkAgentLayout(page, 'notice');
+  const notices = [
+    ['signedOut', 'Sign in to keep working', 'Sign in'],
+    ['quota', 'No credits left for this month', 'Buy credits'],
+    ['error', 'The agent could not be reached', 'Try again'],
+  ];
+  for (const [kind, message, actionLabel] of notices) {
+    await page.evaluate(([noticeKind, noticeMessage, noticeAction]) => {
+      window.__sampleChat.emit({ type: 'notice', kind: noticeKind, message: noticeMessage, actionLabel: noticeAction, action: () => {} });
+    }, [kind, message, actionLabel]);
+    await capture(`agent card notice ${kind}`, '.crucible-studio-agent');
+    const noticeInsideList = await page.evaluate(() => Boolean(document.querySelector('.crucible-studio-agent-list .crucible-studio-agent-notice')));
+    if (noticeInsideList) throw new Error('Agent card behavior: a notice shows inside the message list');
+    await checkAgentLayout(page, `notice ${kind}`);
+    await page.locator('.crucible-studio-agent-notice button').click();
+  }
   await page.locator('.crucible-studio-agent button[aria-label="Minimize Agent"]').click();
   await capture('agent card minimized', '.crucible-studio-agent');
-  const minimizedHeight = await page.evaluate(() => document.querySelector('.crucible-studio-agent').getBoundingClientRect().height);
-  if (minimizedHeight > 60) throw new Error(`Agent card layout: it does not fold to its title row: ${minimizedHeight}px`);
+  const minimized = await page.evaluate(() => {
+    const card = document.querySelector('.crucible-studio-agent').getBoundingClientRect();
+    const compact = document.querySelector('.crucible-studio').dataset.compact === 'true';
+    const above = [...document.querySelectorAll('.crucible-studio-inspector, .crucible-studio-outliner')].filter(element => getComputedStyle(element).display !== 'none').map(element => element.getBoundingClientRect().bottom).sort((a, b) => b - a)[0];
+    return { height: card.height, gapAbove: compact ? null : Math.round(card.top - above), label: document.querySelector('.crucible-studio-agent button[aria-label]').getAttribute('aria-label'), title: document.querySelector('.crucible-studio-agent button[aria-label]').title };
+  });
+  if (minimized.height > 60) throw new Error(`Agent card layout: it does not fold to its title row: ${JSON.stringify(minimized)}`);
+  if (minimized.gapAbove !== null && (minimized.gapAbove < 3 || minimized.gapAbove > 5)) throw new Error(`Agent card layout: the gap above the minimized card is not the column gap: ${JSON.stringify(minimized)}`);
+  if (minimized.label !== 'Expand Agent' || minimized.title !== 'Expand Agent') throw new Error(`Agent card behavior: the minimized button does not say what it does: ${JSON.stringify(minimized)}`);
   await page.locator('.crucible-studio-agent button[aria-label="Expand Agent"]').click();
   return capture.screens;
 }
@@ -1022,7 +1057,7 @@ export async function runAudit({ origin, only, extraCss, viewport = VIEWPORT } =
         }
       }
       if (!only || only === 'agent') {
-        for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {
+        for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720'], [{ width: 1920, height: 1080 }, ' 1080']]) {
           const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport, chatHost: true });
           screens.push(...await measureAgentCard(opened.page, theme, label));
           await opened.context.close();
