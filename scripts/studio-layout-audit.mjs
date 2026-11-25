@@ -35,6 +35,7 @@ const DIALOG_SELECTORS = Object.freeze({
   'shortcuts dialog': 'dialog.crucible-studio-shortcuts-dialog',
 });
 const SERVER_START_TIMEOUT_MS = 60000;
+const PANELS_TOGGLE = 'button[title="Show or hide the panels"]';
 const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history|helpmenu] [--width pixels] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
@@ -565,6 +566,9 @@ async function measureScreens(page, theme, only) {
   if (!only || only === 'studio') screens.push({ name: `studio (${theme})`, records: await measure(page, '.crucible-studio') });
   if (!only || only === 'studio') {
     // The Modifiers tab with two blocks, one folded away from the default, so its cards and rows are measured too.
+    // A narrow window starts with the panels put away: they are opened the way a person opens them, and put away again after.
+    const panelsWerePutAway = await page.evaluate(() => document.querySelector('.crucible-studio').dataset.inspectorCollapsed === 'true');
+    if (panelsWerePutAway) await page.click(PANELS_TOGGLE);
     await page.evaluate(() => window.__studioPage.setActiveTab('modifiers'));
     for (const modifier of ['mirror', 'array']) {
       await page.click('.crucible-studio-modifier-add');
@@ -585,6 +589,7 @@ async function measureScreens(page, theme, only) {
     await page.keyboard.press('Control+z');
     await page.waitForFunction(() => document.querySelectorAll('.crucible-studio-modifier-list .crucible-studio-modifier-head').length === 0);
     await page.evaluate(() => window.__studioPage.setActiveTab('node'));
+    if (panelsWerePutAway) await page.click(PANELS_TOGGLE);
   }
   if (!only || only === 'rename') screens.push(...await measureRenameScreens(page, theme));
   if (!only || only === 'popover') {
