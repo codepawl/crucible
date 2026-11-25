@@ -49,4 +49,12 @@ Use `pattern: { "type": "layers", "resolution": 1024, "bump": 1.2, "size": 1.5, 
 
 ## Before and after
 
-One layer (`stone` alone) versus two height-blended layers (rock base + soil with `heightBlend: 0` soft fade and `heightBlend: 0.9` crisp crevice fill). See the pull request evidence comparison and [material maps](material-maps.md).
+One layer (`stone` alone) versus two height-blended layers (rock base + soil with `heightBlend: 0.92` filling lower crevices while rock ridges poke through).
+
+![One layer rock before](https://raw.githubusercontent.com/codepawl/crucible/evidence/pr-3493/material-layers-before.png)
+
+![Two-layer height-blended rock and soil after](https://raw.githubusercontent.com/codepawl/crucible/evidence/pr-3493/material-layers-after.png)
+
+![Comparison: one layer, soft heightBlend 0, and crisp heightBlend 0.92](https://raw.githubusercontent.com/codepawl/crucible/evidence/pr-3493/material-layers-compare.png)
+
+See also [material maps](material-maps.md).
