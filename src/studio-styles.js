@@ -2122,6 +2122,8 @@ export const STUDIO_CSS = `
   flex-wrap: wrap;
   align-items: center;
   gap: var(--studio-space-4);
+  /* The shape pill is taller for a tall picture; the row keeps that height so a wide picture, or a resize, moves nothing. */
+  min-block-size: calc(var(--studio-export-frame-side) + var(--studio-space-8));
 }
 .crucible-studio-export-facts:empty { display: none; }
 .crucible-studio-export-fact {
