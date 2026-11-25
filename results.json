@@ -1,0 +1,254 @@
+{
+  "date": "2026-11-25",
+  "threeVersion": "0.187.0",
+  "size": "800 by 600",
+  "camera": {
+    "eye": [
+      3,
+      3,
+      3
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "fov": 45
+  },
+  "recipe": "tests/fixtures/pack-lit-box.recipe.json",
+  "packed": {
+    "javascript": 148159,
+    "data": 967,
+    "html": 275,
+    "total": 149401,
+    "files": 41,
+    "rawBytes": 450994,
+    "downloaded": [
+      {
+        "path": "renderer-C3mSYi4m.js",
+        "bytes": 152828,
+        "gzip": 41370
+      },
+      {
+        "path": "agent-scene-capabilities-O7-e6_Ov.js",
+        "bytes": 72165,
+        "gzip": 28900
+      },
+      {
+        "path": "shaders-DMnCRo1v.js",
+        "bytes": 55454,
+        "gzip": 15643
+      },
+      {
+        "path": "environment-DVu5ZlZi.js",
+        "bytes": 16774,
+        "gzip": 5556
+      },
+      {
+        "path": "crucible-scene.js",
+        "bytes": 13289,
+        "gzip": 4804
+      },
+      {
+        "path": "lighting-aY6H8Nt3.js",
+        "bytes": 14210,
+        "gzip": 4400
+      },
+      {
+        "path": "post-B9elcWeF.js",
+        "bytes": 11409,
+        "gzip": 3785
+      },
+      {
+        "path": "camera-CmMj4fVs.js",
+        "bytes": 9419,
+        "gzip": 3256
+      },
+      {
+        "path": "mat4-BtAcIHZR.js",
+        "bytes": 10766,
+        "gzip": 3070
+      },
+      {
+        "path": "wetness-shader-DK99Uzq2.js",
+        "bytes": 9501,
+        "gzip": 3028
+      },
+      {
+        "path": "reversed-depth.js",
+        "bytes": 6668,
+        "gzip": 2580
+      },
+      {
+        "path": "scene-pack-shaders-Kv4BaV3T.js",
+        "bytes": 6481,
+        "gzip": 2533
+      },
+      {
+        "path": "mesh-operations-JcNRR3vV.js",
+        "bytes": 8355,
+        "gzip": 2354
+      },
+      {
+        "path": "lighting-setups-BIfB4zWw.js",
+        "bytes": 5048,
+        "gzip": 1818
+      },
+      {
+        "path": "material-wear-BZLAP0-Q.js",
+        "bytes": 4274,
+        "gzip": 1727
+      },
+      {
+        "path": "environment-shading-DFumoKKu.js",
+        "bytes": 4886,
+        "gzip": 1671
+      },
+      {
+        "path": "budget-D01BR_44.js",
+        "bytes": 3681,
+        "gzip": 1647
+      },
+      {
+        "path": "material-layers-eHJ5-fEU.js",
+        "bytes": 4608,
+        "gzip": 1645
+      },
+      {
+        "path": "clip-planes-BvUzNIAw.js",
+        "bytes": 3167,
+        "gzip": 1471
+      },
+      {
+        "path": "volumetric-CzzhFNfv.js",
+        "bytes": 3546,
+        "gzip": 1436
+      },
+      {
+        "path": "render-culling-CTzXTmus.js",
+        "bytes": 2998,
+        "gzip": 1401
+      },
+      {
+        "path": "vec3-BCf5znuN.js",
+        "bytes": 4121,
+        "gzip": 1356
+      },
+      {
+        "path": "light-uniform-block-BLfEOz4e.js",
+        "bytes": 3409,
+        "gzip": 1310
+      },
+      {
+        "path": "gl-program-xsZCLaR4.js",
+        "bytes": 2462,
+        "gzip": 1226
+      },
+      {
+        "path": "shader-registry-DAzBRJCj.js",
+        "bytes": 2139,
+        "gzip": 1140
+      },
+      {
+        "path": "shadow-light-ChYJQXuh.js",
+        "bytes": 2078,
+        "gzip": 1077
+      },
+      {
+        "path": "compact-color.js",
+        "bytes": 2138,
+        "gzip": 974
+      },
+      {
+        "path": "scene.pack",
+        "bytes": 2360,
+        "gzip": 967
+      },
+      {
+        "path": "look-catalog-CLFDJ0Df.js",
+        "bytes": 2074,
+        "gzip": 953
+      },
+      {
+        "path": "near-plane-fit-BuodMpLP.js",
+        "bytes": 1928,
+        "gzip": 907
+      },
+      {
+        "path": "mat3-C8mj3oV9.js",
+        "bytes": 1704,
+        "gzip": 829
+      },
+      {
+        "path": "tangent-encoding-CqgbRDuv.js",
+        "bytes": 1458,
+        "gzip": 791
+      },
+      {
+        "path": "field-error-N2mochx2.js",
+        "bytes": 1063,
+        "gzip": 622
+      },
+      {
+        "path": "clear-colour-fkxOE7Z3.js",
+        "bytes": 836,
+        "gzip": 532
+      },
+      {
+        "path": "environment-orientation-BzXVsHDs.js",
+        "bytes": 675,
+        "gzip": 457
+      },
+      {
+        "path": "modeling-limits-BeNJEYuH.js",
+        "bytes": 578,
+        "gzip": 433
+      },
+      {
+        "path": "light-limits-3-PssaQH.js",
+        "bytes": 599,
+        "gzip": 400
+      },
+      {
+        "path": "rolldown-runtime-D3egQUva.js",
+        "bytes": 483,
+        "gzip": 375
+      },
+      {
+        "path": "depth-layer-BoFM7KCR.js",
+        "bytes": 497,
+        "gzip": 358
+      },
+      {
+        "path": "view-transform-names-CSS6EmrC.js",
+        "bytes": 441,
+        "gzip": 324
+      },
+      {
+        "path": "index.html",
+        "bytes": 424,
+        "gzip": 275
+      }
+    ]
+  },
+  "three": {
+    "javascript": 133973,
+    "data": 0,
+    "html": 188,
+    "total": 134161,
+    "files": 2,
+    "rawBytes": 537470,
+    "downloaded": [
+      {
+        "path": "main.js",
+        "bytes": 537234,
+        "gzip": 133973
+      },
+      {
+        "path": "index.html",
+        "bytes": 236,
+        "gzip": 188
+      }
+    ]
+  }
+}
