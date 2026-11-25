@@ -188,5 +188,5 @@ export async function startVideoEncoderInPage(page, url, { width, height, fps, q
   return page.evaluate(options => window.__startVideoEncoder(options), { width, height, fps, quantizer });
 }
 
-/** Quantizer that matches the quality of the NVENC constant quality 20 files this pipeline wrote before. */
-export const DEFAULT_PAGE_ENCODER_QUANTIZER = 20;
+/** H.264 quantizer of the in-page encoder (lower is sharper): 37.9 dB or more against the lossless frames on the measured clips, where 20 gave 36.8 dB (#3366). */
+export const DEFAULT_PAGE_ENCODER_QUANTIZER = 16;

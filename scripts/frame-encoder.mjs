@@ -30,12 +30,19 @@ export function pageEncodedTimestampFilter(fps) {
   return `setts=ts=N/${fps}/TB:duration=1/${fps}/TB`;
 }
 
+/**
+ * The page encoder writes full-range YUV and leaves the range out of the stream, so players assume limited range and stretch
+ * the picture's contrast (blacks crushed, whites clipped: 28.8 dB against the lossless frames, 36.8 dB once the range is
+ * read as full). Say so in the stream itself, with the BT.709 colour the container is tagged with.
+ */
+export const PAGE_ENCODED_COLOUR_FILTER = 'h264_metadata=video_full_range_flag=1:colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1';
+
 /** The complete ffmpeg argument list for one encoder, kept apart from the spawn so tests can pin it without ffmpeg. */
 export function frameEncoderArguments({ output, fps, format, backend, audioArguments, audioCodec, frameCount, width, height }) {
   const raw = format === 'rawvideo' ? rawFrameInputArguments({ width, height, fps }) : undefined;
   const encoded = format === 'h264';
   const codec = encoded
-    ? ['-c:v', 'copy', '-bsf:v', pageEncodedTimestampFilter(fps)]
+    ? ['-c:v', 'copy', '-bsf:v', `${PAGE_ENCODED_COLOUR_FILTER},${pageEncodedTimestampFilter(fps)}`, '-color_range', 'pc']
     : backend === 'gpu'
     ? ['-c:v', 'h264_nvenc', '-preset', 'p5', '-cq', '20']
     : ['-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-threads', '2'];

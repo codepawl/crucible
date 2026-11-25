@@ -209,12 +209,22 @@ export function createLeafFrame(forward, roll) {
   return { forward, right: turned, normal: crossProduct(turned, forward) };
 }
 
+const FULL_UV_RECT = { minU: 0, minV: 0, maxU: 1, maxV: 1 };
+
+/** The cell of a 2 x 2 atlas for a variant index, counted left to right from the top row of the image. */
+export function atlasCellRect(variantIndex) {
+  const cell = ((variantIndex % 4) + 4) % 4;
+  const minU = (cell % 2) / 2;
+  const maxV = 1 - Math.floor(cell / 2) / 2;
+  return { minU, maxU: minU + 0.5, minV: maxV - 0.5, maxV };
+}
+
 /**
  * Adds a curved leaf or card as rows of 2 or 3 columns, both faces, with shading
- * normals blended toward the canopy so a flat quad lights like part of a rounded crown.
+ * normals blended toward the canopy so a flat quad lights like part of a rounded crown. `uvRect` picks one cell of a texture atlas (default: all of it).
  */
 export function addLeafSurface(builder, surface) {
-  const { origin, frame, length, width, rows, droop = 0, fold = 0, canopyNormal, canopyBlend = 0.5, colorBase, colorTip, brightness = 1, tint, colorCeiling = Infinity } = surface;
+  const { origin, frame, length, width, rows, droop = 0, fold = 0, canopyNormal, canopyBlend = 0.5, colorBase, colorTip, brightness = 1, tint, colorCeiling = Infinity, uvRect = FULL_UV_RECT } = surface;
   const columns = fold > 0 ? [-1, 0, 1] : [-1, 1];
   const sides = surface.backFaces === false ? [1] : [1, -1];
   const rowIndicesBySide = sides.map((side) => rows.map(([progress, widthFactor]) => {
@@ -228,7 +238,7 @@ export function addLeafSurface(builder, surface) {
       const faceNormal = scaleVector(lobeNormal(forwardTilt, lateralTilt, frame.normal, frame.forward, frame.right), side);
       const shading = normalized(addVectors(scaleVector(faceNormal, 1 - canopyBlend), scaleVector(canopyNormal, canopyBlend)));
       const lifted = column === 0 ? addScaled(center, frame.normal, fold * half) : center;
-      return builder.addVertex(addScaled(lifted, frame.right, column * half), shading, (column + 1) / 2, 1 - progress, color);
+      return builder.addVertex(addScaled(lifted, frame.right, column * half), shading, uvRect.minU + (uvRect.maxU - uvRect.minU) * (column + 1) / 2, uvRect.minV + (uvRect.maxV - uvRect.minV) * (1 - progress), color);
     };
     if (half <= 0) {
       const shared = makeVertex(0);
