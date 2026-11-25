@@ -66,6 +66,9 @@ export const LINE_ART_LIMITS = Object.freeze({
   minPolylinePoints: 2,
   maxPolylinePoints: 256,
   maxPolylineSegments: 4096,
+  dashLength: Object.freeze([0.5, 256]),
+  gapLength: Object.freeze([0.5, 256]),
+  dashOffset: Object.freeze([-1e5, 1e5]),
   coordinate: 1e6,
   maxNodes: 64,
   nodeNameLength: 256,
@@ -73,6 +76,8 @@ export const LINE_ART_LIMITS = Object.freeze({
 
 export const LINE_COLOR_MODES = Object.freeze(['solid', 'darken']);
 export const LINE_SILHOUETTE_SIDES = Object.freeze(['both', 'front']);
+export const POLYLINE_STYLES = Object.freeze(['solid', 'dashed', 'dotted', 'double']);
+const POLYLINE_STYLE_CODE = Object.freeze({ solid: 0, dashed: 1, dotted: 2, double: 3 });
 // A boundary between two parts is flat, not a silhouette, when the two surfaces sit within this relative depth of each
 // other and their normals agree within about 5 degrees (a road beside a pavement).
 const COPLANAR_DEPTH = 0.02;
@@ -81,7 +86,7 @@ const COPLANAR_NORMAL_COSINE = 0.996;
 const NEARER_DEPTH_MARGIN = 0.005;
 
 const LINE_ART_FIELDS = [...Object.keys(LINE_ART_DEFAULTS), 'polylines', 'nodes'];
-const POLYLINE_FIELDS = ['points', 'color', 'width', 'depthTest', 'closed'];
+const POLYLINE_FIELDS = ['points', 'color', 'width', 'depthTest', 'closed', 'style', 'dashLength', 'gapLength', 'dashOffset'];
 const NODE_LINE_FIELDS = ['lines', 'silhouetteOnly', 'color'];
 // How the outline shader reads a node: the mode and the node's index share one float (mode + 4 * index).
 const NODE_MODE = Object.freeze({ normal: 0, off: 1, silhouette: 2 });
@@ -128,6 +133,41 @@ function pointValue(value, label) {
   return value.map((component, index) => numberWithin(component, [-limit, limit], `${label}[${index}]`));
 }
 
+function polylineStyleFields(input, style, width, label) {
+  if (style === 'solid') {
+    const extra = ['dashLength', 'gapLength', 'dashOffset'].find(field => input[field] !== undefined);
+    if (extra) {
+      throw new RangeError(`${label} sets ${extra} on a solid polyline. Fix: set style to "dashed", "dotted" or "double", or drop ${extra}.`);
+    }
+    return {};
+  }
+  if (style === 'dotted' && input.dashLength !== undefined) {
+    throw new RangeError(`${label} sets dashLength with style "dotted". Fix: use width for dot size and gapLength for spacing, or set style to "dashed".`);
+  }
+  if (style === 'double') {
+    const extra = ['dashLength', 'dashOffset'].find(field => input[field] !== undefined);
+    if (extra) {
+      throw new RangeError(`${label} sets ${extra} with style "double". Fix: use gapLength for the gap between rails, or set style to "dashed" or "dotted".`);
+    }
+    const defaultRailGap = Math.max(LINE_ART_LIMITS.gapLength[0], width * 1.5);
+    return {
+      style,
+      gapLength: numberWithin(input.gapLength ?? defaultRailGap, LINE_ART_LIMITS.gapLength, `${label}.gapLength`),
+    };
+  }
+  const defaultGap = Math.max(LINE_ART_LIMITS.gapLength[0], width * 2);
+  const gapLength = numberWithin(input.gapLength ?? defaultGap, LINE_ART_LIMITS.gapLength, `${label}.gapLength`);
+  const dashOffset = numberWithin(input.dashOffset ?? 0, LINE_ART_LIMITS.dashOffset, `${label}.dashOffset`);
+  if (style === 'dotted') return { style, gapLength, dashOffset };
+  const defaultDash = Math.max(LINE_ART_LIMITS.dashLength[0], width * 4);
+  return {
+    style,
+    dashLength: numberWithin(input.dashLength ?? defaultDash, LINE_ART_LIMITS.dashLength, `${label}.dashLength`),
+    gapLength,
+    dashOffset,
+  };
+}
+
 function polylineFrom(input, index, defaults) {
   const label = `lines.polylines[${index}]`;
   plainObject(input, label);
@@ -136,12 +176,15 @@ function polylineFrom(input, index, defaults) {
   if (count < LINE_ART_LIMITS.minPolylinePoints || count > LINE_ART_LIMITS.maxPolylinePoints) {
     throw new RangeError(`${label}.points needs ${LINE_ART_LIMITS.minPolylinePoints} to ${LINE_ART_LIMITS.maxPolylinePoints} points.`);
   }
+  const width = numberWithin(input.width ?? defaults.width, LINE_ART_LIMITS.width, `${label}.width`);
+  const style = choiceValue(input.style ?? 'solid', POLYLINE_STYLES, `${label}.style`);
   return {
     points: input.points.map((point, pointIndex) => pointValue(point, `${label}.points[${pointIndex}]`)),
     color: colorValue(input.color ?? defaults.color, `${label}.color`),
-    width: numberWithin(input.width ?? defaults.width, LINE_ART_LIMITS.width, `${label}.width`),
+    width,
     depthTest: booleanValue(input.depthTest ?? true, `${label}.depthTest`),
     closed: booleanValue(input.closed ?? false, `${label}.closed`),
+    ...polylineStyleFields(input, style, width, label),
   };
 }
 
@@ -375,10 +418,14 @@ precision highp float;
 uniform mat4 viewProjection;
 uniform vec2 resolution;
 uniform float lineWidth;
+uniform float lineStyle;
+uniform vec3 dashPattern;
 in vec3 startPoint;
 in vec3 endPoint;
+in float startOffset;
 out vec2 localPixel;
 flat out float segmentLength;
+flat out float segmentOffset;
 const float NEAR_W = 0.001;
 void main() {
   vec4 startClip = viewProjection * vec4(startPoint, 1.0);
@@ -387,6 +434,7 @@ void main() {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     localPixel = vec2(0.0);
     segmentLength = 0.0;
+    segmentOffset = 0.0;
     return;
   }
   if (startClip.w < NEAR_W) startClip = mix(startClip, endClip, (NEAR_W - startClip.w) / (endClip.w - startClip.w));
@@ -396,16 +444,20 @@ void main() {
   float segmentPixels = distance(startPixel, endPixel);
   vec2 along = segmentPixels > 0.0001 ? (endPixel - startPixel) / segmentPixels : vec2(1.0, 0.0);
   vec2 across = vec2(-along.y, along.x);
-  float margin = lineWidth * 0.5 + 1.0;
+  float halfWidth = lineWidth * 0.5;
+  float railOffset = lineStyle > 2.5 ? (lineWidth + dashPattern.y) * 0.5 : 0.0;
+  float endMargin = halfWidth + 1.0;
+  float sideMargin = halfWidth + railOffset + 1.0;
   bool atEnd = gl_VertexID == 1 || gl_VertexID == 4 || gl_VertexID == 5;
   bool upper = gl_VertexID == 2 || gl_VertexID == 3 || gl_VertexID == 5;
-  float lengthwise = atEnd ? segmentPixels + margin : -margin;
-  float sideways = upper ? margin : -margin;
+  float lengthwise = atEnd ? segmentPixels + endMargin : -endMargin;
+  float sideways = upper ? sideMargin : -sideMargin;
   vec4 anchor = atEnd ? endClip : startClip;
-  vec2 pixel = (atEnd ? endPixel : startPixel) + along * (atEnd ? margin : -margin) + across * sideways;
+  vec2 pixel = (atEnd ? endPixel : startPixel) + along * (atEnd ? endMargin : -endMargin) + across * sideways;
   gl_Position = vec4(pixel / (resolution * 0.5) * anchor.w, anchor.z, anchor.w);
   localPixel = vec2(lengthwise, sideways);
   segmentLength = segmentPixels;
+  segmentOffset = startOffset;
 }`;
 
 const polylineFragment = `#version 300 es
@@ -415,16 +467,41 @@ uniform vec3 projectionDepth;
 uniform float lineWidth;
 uniform vec3 lineColor;
 uniform float depthTest;
+uniform float lineStyle;
+uniform vec3 dashPattern;
 in vec2 localPixel;
 flat in float segmentLength;
+flat in float segmentOffset;
 out vec4 outputColor;
 float eyeDepth(float depth) {
   float ndc = depth * 2.0 - 1.0;
   return projectionDepth.z > 0.5 ? -(ndc - projectionDepth.y) / projectionDepth.x : projectionDepth.y / (ndc + projectionDepth.x);
 }
 void main() {
-  float distanceToSegment = length(vec2(localPixel.x - clamp(localPixel.x, 0.0, segmentLength), localPixel.y));
-  float alpha = clamp(lineWidth * 0.5 - distanceToSegment + 0.5, 0.0, 1.0);
+  float halfWidth = lineWidth * 0.5;
+  float endDistance = localPixel.x - clamp(localPixel.x, 0.0, segmentLength);
+  float alpha = 0.0;
+  if (lineStyle < 0.5) {
+    float distanceToSegment = length(vec2(endDistance, localPixel.y));
+    alpha = clamp(halfWidth - distanceToSegment + 0.5, 0.0, 1.0);
+  } else if (lineStyle > 2.5) {
+    float railOffset = (lineWidth + dashPattern.y) * 0.5;
+    float distanceToSegment = length(vec2(endDistance, abs(localPixel.y) - railOffset));
+    alpha = clamp(halfWidth - distanceToSegment + 0.5, 0.0, 1.0);
+  } else if (lineStyle < 1.5) {
+    float dashLength = dashPattern.x;
+    float period = dashLength + dashPattern.y;
+    float fromDashCenter = mod(segmentOffset + localPixel.x + dashPattern.z - dashLength * 0.5 + period * 0.5, period) - period * 0.5;
+    float dashAlpha = clamp(dashLength * 0.5 - abs(fromDashCenter) + 0.5, 0.0, 1.0);
+    float endAlpha = clamp(halfWidth - length(vec2(endDistance, localPixel.y)) + 0.5, 0.0, 1.0);
+    alpha = min(endAlpha, dashAlpha);
+  } else {
+    float period = lineWidth + dashPattern.y;
+    float fromDotCenter = mod(segmentOffset + localPixel.x + dashPattern.z + period * 0.5, period) - period * 0.5;
+    float dotAlpha = clamp(halfWidth - length(vec2(fromDotCenter, localPixel.y)) + 0.5, 0.0, 1.0);
+    float endAlpha = clamp(halfWidth - length(vec2(endDistance, localPixel.y)) + 0.5, 0.0, 1.0);
+    alpha = min(endAlpha, dotAlpha);
+  }
   if (alpha <= 0.0) discard;
   if (depthTest > 0.5) {
     float sceneDistance = eyeDepth(texelFetch(sceneDepth, ivec2(gl_FragCoord.xy), 0).r);
@@ -455,6 +532,54 @@ function createColorTarget(context, width, height, floatColor, filter) {
   return { texture, framebuffer };
 }
 
+function projectClipPoint(point, viewProjection) {
+  const [pointX, pointY, pointZ] = point;
+  return [
+    viewProjection[0] * pointX + viewProjection[4] * pointY + viewProjection[8] * pointZ + viewProjection[12],
+    viewProjection[1] * pointX + viewProjection[5] * pointY + viewProjection[9] * pointZ + viewProjection[13],
+    viewProjection[2] * pointX + viewProjection[6] * pointY + viewProjection[10] * pointZ + viewProjection[14],
+    viewProjection[3] * pointX + viewProjection[7] * pointY + viewProjection[11] * pointZ + viewProjection[15],
+  ];
+}
+
+function segmentScreenPixels(startClip, endClip, viewportWidth, viewportHeight) {
+  const nearW = 0.001;
+  if (startClip[3] < nearW && endClip[3] < nearW) return 0;
+  let clippedStart = startClip;
+  let clippedEnd = endClip;
+  if (startClip[3] < nearW) {
+    const ratio = (nearW - startClip[3]) / (endClip[3] - startClip[3]);
+    clippedStart = startClip.map((component, index) => component + (endClip[index] - component) * ratio);
+  }
+  if (endClip[3] < nearW) {
+    const ratio = (nearW - endClip[3]) / (startClip[3] - endClip[3]);
+    clippedEnd = endClip.map((component, index) => component + (startClip[index] - component) * ratio);
+  }
+  const halfWidth = viewportWidth * 0.5;
+  const halfHeight = viewportHeight * 0.5;
+  const deltaX = clippedEnd[0] / clippedEnd[3] * halfWidth - clippedStart[0] / clippedStart[3] * halfWidth;
+  const deltaY = clippedEnd[1] / clippedEnd[3] * halfHeight - clippedStart[1] / clippedStart[3] * halfHeight;
+  return Math.hypot(deltaX, deltaY);
+}
+
+/**
+ * Cumulative screen-pixel distance at the start of each polyline segment so dashes and dots flow around corners.
+ */
+export function polylineSegmentOffsets(polyline, viewProjection, viewportWidth, viewportHeight) {
+  const count = segmentCount(polyline);
+  const offsets = new Float32Array(count);
+  const style = polyline.style ?? 'solid';
+  if (style !== 'dashed' && style !== 'dotted') return offsets;
+  const points = polyline.points;
+  const projected = points.map(point => projectClipPoint(point, viewProjection));
+  let cumulative = 0;
+  for (let index = 0; index < count; index++) {
+    offsets[index] = cumulative;
+    cumulative += segmentScreenPixels(projected[index], projected[(index + 1) % points.length], viewportWidth, viewportHeight);
+  }
+  return offsets;
+}
+
 function polylineSegments(polyline) {
   const points = polyline.points;
   const segments = new Float32Array(segmentCount(polyline) * 6);
@@ -471,6 +596,7 @@ function createLineArtStage(state) {
   let polylineProgram = null;
   let polylineUniforms = null;
   let vertexArray = null;
+  let offsetBuffer = null;
   let outputTarget = null;
   let nodeTexture = null;
   let nodeTextureIsEmpty = false;
@@ -551,9 +677,11 @@ function createLineArtStage(state) {
   function dispose(context) {
     releaseTargets(context);
     releaseSegmentBuffers(context);
+    if (offsetBuffer) context.deleteBuffer(offsetBuffer);
     if (outlineProgram) context.deleteProgram(outlineProgram);
     if (polylineProgram) context.deleteProgram(polylineProgram);
     if (vertexArray) context.deleteVertexArray(vertexArray);
+    offsetBuffer = null;
     outlineProgram = null;
     polylineProgram = null;
     vertexArray = null;
@@ -617,7 +745,7 @@ function createLineArtStage(state) {
     if (!polylineProgram) {
       polylineProgram = compileProgram(context, polylineVertex, polylineFragment);
       polylineUniforms = uniformLocations(context, polylineProgram, ['viewProjection', 'resolution', 'lineWidth', 'sceneDepth',
-        'projectionDepth', 'lineColor', 'depthTest']);
+        'projectionDepth', 'lineColor', 'depthTest', 'lineStyle', 'dashPattern']);
       vertexArray = context.createVertexArray();
     }
     context.useProgram(polylineProgram);
@@ -632,6 +760,7 @@ function createLineArtStage(state) {
     context.uniform3fv(polylineUniforms.projectionDepth, projectionDepth(renderer));
     const startLocation = context.getAttribLocation(polylineProgram, 'startPoint');
     const endLocation = context.getAttribLocation(polylineProgram, 'endPoint');
+    const offsetLocation = context.getAttribLocation(polylineProgram, 'startOffset');
     const used = new Set();
     for (const polyline of polylines) {
       const { key, buffer, count } = segmentBufferFor(context, polyline);
@@ -642,9 +771,26 @@ function createLineArtStage(state) {
         context.vertexAttribPointer(location, 3, context.FLOAT, false, 24, offset);
         context.vertexAttribDivisor(location, 1);
       }
+      const style = polyline.style ?? 'solid';
+      if (offsetLocation >= 0) {
+        if (style === 'dashed' || style === 'dotted') {
+          offsetBuffer ??= context.createBuffer();
+          const offsets = polylineSegmentOffsets(polyline, renderer.viewProjection, canvas.width, canvas.height);
+          context.bindBuffer(context.ARRAY_BUFFER, offsetBuffer);
+          context.bufferData(context.ARRAY_BUFFER, offsets, context.DYNAMIC_DRAW);
+          context.enableVertexAttribArray(offsetLocation);
+          context.vertexAttribPointer(offsetLocation, 1, context.FLOAT, false, 0, 0);
+          context.vertexAttribDivisor(offsetLocation, 1);
+        } else {
+          context.disableVertexAttribArray(offsetLocation);
+          context.vertexAttrib1f(offsetLocation, 0);
+        }
+      }
       context.uniform1f(polylineUniforms.lineWidth, polyline.width);
       context.uniform3fv(polylineUniforms.lineColor, polyline.color);
       context.uniform1f(polylineUniforms.depthTest, polyline.depthTest ? 1 : 0);
+      context.uniform1f(polylineUniforms.lineStyle, POLYLINE_STYLE_CODE[style]);
+      context.uniform3f(polylineUniforms.dashPattern, polyline.dashLength ?? 0, polyline.gapLength ?? 0, polyline.dashOffset ?? 0);
       context.drawArraysInstanced(context.TRIANGLES, 0, 6, count);
     }
     releaseSegmentBuffers(context, used);

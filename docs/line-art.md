@@ -65,11 +65,23 @@ To composite lines for some nodes over shading for others, read `metrics.objectN
 
 ```json
 { "environment": { "lines": { "polylines": [
-  { "points": [[0.2, 1.0, 0.6], [0.2, 1.8, 0.6], [-1.2, 1.8, 0.6]], "color": [0.8, 0.1, 0.1], "width": 3, "depthTest": false }
+  { "points": [[0.2, 1.0, 0.6], [0.2, 1.8, 0.6], [-1.2, 1.8, 0.6]], "color": [0.8, 0.1, 0.1], "width": 3, "depthTest": false },
+  { "points": [[-1.0, 0.2, 0.0], [1.0, 0.2, 0.0]], "style": "dashed", "dashLength": 14, "gapLength": 6, "dashOffset": 4, "width": 2.5 },
+  { "points": [[-1.0, 0.5, 0.0], [1.0, 0.5, 0.0]], "style": "dotted", "gapLength": 6, "width": 3 },
+  { "points": [[-1.0, 0.8, 0.0], [1.0, 0.8, 0.0]], "style": "double", "gapLength": 4, "width": 2 }
 ] } } }
 ```
 
-Each polyline has 2 to 256 `points` (`closed: true` joins the last to the first), and its own `color`, `width` and `depthTest` (default `true`: the scene hides what lies behind a surface). Use `depthTest: false` for leader lines and annotations that stay in front. At most 64 polylines and 4,096 segments per recipe. Ends and joins are round.
+Each polyline has 2 to 256 `points` (`closed: true` joins the last to the first), and its own `color`, `width`, `depthTest` (default `true`: the scene hides what lies behind a surface) and optional `style`. Use `depthTest: false` for leader lines and annotations that stay in front. At most 64 polylines and 4,096 segments per recipe. Ends and joins are round.
+
+| Field | Default | What it does |
+| --- | --- | --- |
+| `style` | `"solid"` | `"solid"`, `"dashed"`, `"dotted"` or `"double"` (parallel twin rails). |
+| `dashLength` | `max(0.5, width * 4)` | Screen pixels per dash for `"dashed"` lines, 0.5 to 256. |
+| `gapLength` | `max(0.5, width * 2)` (`width * 1.5` for `"double"`) | Screen-pixel gap between dashes, dots or twin rails, 0.5 to 256. |
+| `dashOffset` | `0` | Screen-pixel phase shift along `"dashed"` and `"dotted"` lines, -100000 to 100000. |
+
+Dashes and dots advance continuously around polyline corners in screen pixels.
 
 ## Limits
 
