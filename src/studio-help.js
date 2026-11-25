@@ -125,9 +125,10 @@ export function shortcutSheetGroups(keymap, { includeUnbound = false } = {}) {
     .filter(group => group.rows.length > 0);
 }
 
-/** How many columns the sheet takes in a window this wide: three when the dialog can be wide, one when it must stack. */
+/** How many columns the sheet takes in a window this wide: four at desktop width so all groups fit on screen, tapering to one when narrow. */
 export function sheetColumnCount(windowWidth) {
-  if (windowWidth >= 1000) return 3;
+  if (windowWidth >= 1120) return 4;
+  if (windowWidth >= 900) return 3;
   return windowWidth > 760 ? 2 : 1;
 }
 

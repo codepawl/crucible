@@ -1002,6 +1002,52 @@ test('the mouse wheel zooms the camera and the page does not scroll', testContex
   const beforeHuge = distance();
   dispatch(ui.canvas, 'wheel', { deltaY: 100000 });
   assert.ok(distance() / beforeHuge <= 1.35 + 1e-3, 'one wheel step is limited to 35 percent');
+
+  // Wheel over a gizmo handle or scene mark zooms the camera too; over a scrolling panel it leaves the camera alone (#3464).
+  ui.selectRow('hero');
+  ui.tool('translate').click();
+  ui.studio.renderNow();
+  const gizmoHandle = ui.gizmoPart('x');
+  const lightMark = ui.gizmo.descendants().find(element => element.getAttribute('data-scene-object') === 'sun');
+  assert.ok(gizmoHandle && lightMark, 'gizmo handle and sun mark are mounted over the viewport');
+  const beforeGizmoWheel = distance();
+  assert.equal(dispatch(gizmoHandle, 'wheel', { deltaY: 100 }).defaultPrevented, true);
+  assert.ok(distance() > beforeGizmoWheel, 'wheel over a gizmo handle zooms');
+  const beforeMarkWheel = distance();
+  assert.equal(dispatch(lightMark, 'wheel', { deltaY: -100 }).defaultPrevented, true);
+  assert.ok(distance() < beforeMarkWheel, 'wheel over a light or sun mark zooms');
+
+  const panels = ui.root.querySelector('.crucible-studio-panels');
+  const beforePanelWheel = distance();
+  const panelWheel = dispatch(panels, 'wheel', { deltaY: 100 });
+  assert.equal(panelWheel.defaultPrevented, false);
+  assert.equal(distance(), beforePanelWheel, 'wheel over a panel leaves the camera alone');
+
+  // Camera drags starting on a gizmo handle or scene mark with middle, right, Alt, or Shift+left move the camera (#3464).
+  const azimuth = () => ui.controller.viewCamera.eye[0];
+  const handles = ui.controller.gizmoHandles();
+  const start = ui.clientPoint(handles.origin);
+  const moved = ui.clientPoint({ x: handles.origin.x + 40, y: handles.origin.y + 15 });
+  const beforePan = [...ui.controller.viewCamera.target];
+  dispatch(gizmoHandle, 'pointerdown', { ...start, button: 1, pointerId: 21 });
+  dispatch(ui.viewport, 'pointermove', { ...moved, pointerId: 21 });
+  dispatch(ui.viewport, 'pointerup', { ...moved, button: 1, pointerId: 21 });
+  assert.notDeepEqual(ui.controller.viewCamera.target, beforePan, 'middle drag from a gizmo handle pans the camera');
+
+  const viewOffset = () => ui.controller.viewCamera.eye.map((value, index) => Math.round((value - ui.controller.viewCamera.target[index]) * 1e6) / 1e6);
+  const beforeShiftOffset = viewOffset();
+  const afterPanTarget = [...ui.controller.viewCamera.target];
+  dispatch(lightMark, 'pointerdown', { ...start, button: 0, shiftKey: true, pointerId: 22 });
+  dispatch(ui.viewport, 'pointermove', { ...moved, pointerId: 22 });
+  dispatch(ui.viewport, 'pointerup', { ...moved, button: 0, pointerId: 22 });
+  assert.notDeepEqual(ui.controller.viewCamera.target, afterPanTarget, 'Shift + left drag from a mark pans the camera');
+  assert.deepEqual(viewOffset(), beforeShiftOffset, 'Shift + left drag pans rather than orbiting');
+
+  const beforeRightPan = [...ui.controller.viewCamera.target];
+  dispatch(gizmoHandle, 'pointerdown', { ...start, button: 2, pointerId: 23 });
+  dispatch(ui.viewport, 'pointermove', { ...moved, pointerId: 23 });
+  dispatch(ui.viewport, 'pointerup', { ...moved, button: 2, pointerId: 23 });
+  assert.notDeepEqual(ui.controller.viewCamera.target, beforeRightPan, 'right drag from a gizmo handle pans the camera');
 });
 
 test('Move with the Face target drops the selection onto the surface under the pointer', testContext => {
