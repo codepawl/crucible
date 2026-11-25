@@ -179,6 +179,9 @@ function minimumNormalizedAltitude(positions, indices, scale) {
  * be hit by a ray anyway.
  */
 export function withoutDegenerateTriangles({ positions, indices }) {
+  if (!positions || positions.length % 3 !== 0) throw new RangeError('positions length must be a multiple of 3.');
+  if (!indices || indices.length % 3 !== 0) throw new RangeError('indices length must be a multiple of 3.');
+  const vertexCount = positions.length / 3;
   const low = [Infinity, Infinity, Infinity];
   const high = [-Infinity, -Infinity, -Infinity];
   for (let offset = 0; offset < positions.length; offset += 3) {
@@ -190,6 +193,12 @@ export function withoutDegenerateTriangles({ positions, indices }) {
   const scale = Math.max(...high.map((value, axis) => value - low[axis]));
   const kept = [];
   for (let offset = 0; offset < indices.length; offset += 3) {
+    for (let corner = 0; corner < 3; corner++) {
+      const vertex = indices[offset + corner];
+      if (!Number.isInteger(vertex) || vertex < 0 || vertex >= vertexCount) {
+        throw new RangeError(`Triangle index ${vertex} is out of range [0, ${vertexCount}).`);
+      }
+    }
     const altitude = normalizedAltitude(positions, indices, offset, scale);
     if (Number.isFinite(altitude) && altitude > MINIMUM_ALTITUDE) kept.push(indices[offset], indices[offset + 1], indices[offset + 2]);
   }

@@ -44,6 +44,12 @@ export function createFloatOutput(context, width, height) {
  * from the top left, like an image, and defaults to the whole frame.
  */
 export function readFloatPixels(context, framebuffer, frameWidth, frameHeight, region = { x: 0, y: 0, width: frameWidth, height: frameHeight }) {
+  if (!Number.isInteger(frameWidth) || frameWidth < 1 || !Number.isInteger(frameHeight) || frameHeight < 1) {
+    throw new RangeError('Frame size must be positive integers.');
+  }
+  if (!region || typeof region !== 'object' || ![region.x, region.y, region.width, region.height].every(Number.isInteger)) {
+    throw new RangeError('The region must use integer x, y, width and height.');
+  }
   if (region.x < 0 || region.y < 0 || region.width < 1 || region.height < 1 || region.x + region.width > frameWidth || region.y + region.height > frameHeight) {
     throw new RangeError('The region lies outside the rendered frame.');
   }

@@ -10,8 +10,7 @@ export function rejectUnknownKeys(value, allowed, label) {
 }
 
 export function boundedNumber(value, label, minimum, maximum, example, exclusiveMinimum = false) {
-  const belowMinimum = exclusiveMinimum ? value <= minimum : value < minimum;
-  if (typeof value !== 'number' || !Number.isFinite(value) || belowMinimum || value > maximum) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || (exclusiveMinimum ? value <= minimum : value < minimum) || value > maximum) {
     throw new RangeError(`${label} must be a number ${exclusiveMinimum ? 'above' : 'from'} ${minimum} to ${maximum}, such as ${example}`);
   }
   return value;

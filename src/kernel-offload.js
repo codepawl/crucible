@@ -362,10 +362,10 @@ async function computeDeferredJobs(session, jobs, { pageKernels, workers, create
 // `accepts` says so; if it fails, the worker still does the job on the CPU, so a GPU fault never fails a build.
 async function computeOnPage(session, pageKernels, job) {
   const kernel = pageKernels?.[job.name];
-  if (!kernel?.accepts(job.args)) {
-    return false;
-  }
   try {
+    if (!kernel?.accepts(job.args)) {
+      return false;
+    }
     session.results.set(job.key, { value: await kernel.compute(job.args) });
     statistics.page++;
     return true;
