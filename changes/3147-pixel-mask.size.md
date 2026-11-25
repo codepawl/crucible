@@ -1,0 +1,5 @@
+- scene:agent-scene: the recipe reader names `material.surfaceCover` in the capabilities text, the material fields and the tool schema, so an agent can switch a large mesh to a per-pixel snow mask (#3147)
+- scene:agent-scene+lazy: the surface cover validator, its GLSL and its uniform binding load only for a recipe that names surfaceCover, so the 3.4 KB gzip sits in the lazy bundle (#3147)
+- goal:agent-scene: the capabilities text and the module table grew 706 bytes gzip for the one field that fixes stair steps on large meshes (#3147)
+- goal:lit-box: the snapshot reference list and the renderer feature line grew 43 bytes gzip (#3147)
+- goal:gltf-box: the snapshot reference list and the renderer feature line grew 35 bytes gzip (#3147)
