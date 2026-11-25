@@ -74,6 +74,32 @@ test('affected tests reach a changed file through a two-step import chain', () =
   }
 });
 
+test('the import graph walks every step of a chain, not one level', () => {
+  const folder = makeRepository();
+  try {
+    write(folder, 'src/leaf.js', 'export const leaf = 1;\n');
+    write(folder, 'src/middle.js', "import { leaf } from './leaf.js';\nexport const middle = leaf;\n");
+    write(folder, 'src/top.js', "export * from './middle.js';\n");
+    write(folder, 'tests/top.test.js', "import { middle } from '../src/top.js';\nmiddle;\n");
+    const reached = buildImportGraph(folder).reachedFrom(['src/leaf.js']);
+    assert.deepEqual([...reached].sort(), ['src/leaf.js', 'src/middle.js', 'src/top.js', 'tests/top.test.js']);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+});
+
+test('affected tests follow a new URL reference in the middle of an import chain', () => {
+  const folder = makeRepository();
+  try {
+    write(folder, 'src/target.js', 'export const target = 1;\n');
+    write(folder, 'src/loader.js', "export const targetUrl = new URL('./target.js', import.meta.url);\n");
+    write(folder, 'tests/loader.test.js', "import test from 'node:test';\nimport { targetUrl } from '../src/loader.js';\ntest('loader', () => targetUrl);\n");
+    assert.deepEqual(findAffectedTests(['src/target.js'], folder), ['tests/loader.test.js']);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+});
+
 test('the fast sample is about ten percent, repeatable per seed and different across seeds', () => {
   const files = Array.from({ length: 200 }, (_, index) => `tests/file-${index}.test.js`);
   const sample = sampleTestFiles(files, 'branch-a');

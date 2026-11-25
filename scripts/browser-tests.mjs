@@ -94,7 +94,7 @@ export function resolveLocalFile(importerPath, specifier, fileExists) {
   return EXTENSIONS.map(extension => resolved + extension).find(candidate => FOLLOWED_FOLDERS.test(candidate) && fileExists(candidate));
 }
 
-function localFilesNamedBy(sourceText, importerPath, fileExists) {
+export function localFilesNamedBy(sourceText, importerPath, fileExists) {
   const specifiers = new Set(importSpecifiers(sourceText).filter(specifier => specifier.startsWith('.') && SCRIPT_EXTENSION.test(specifier)));
   for (const match of sourceText.matchAll(LOCAL_PATH_LITERAL)) specifiers.add(match[2]);
   return [...specifiers].map(specifier => resolveLocalFile(importerPath, specifier, fileExists)).filter(Boolean);

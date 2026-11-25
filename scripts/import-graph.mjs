@@ -1,10 +1,13 @@
 // The reverse import graph of the repository's JavaScript: which files import or re-export a given file, followed transitively (#3403).
 // test:affected and the light CI mode use it to pick every test that reaches a changed file through any chain of static imports.
-// Each file is read once per graph. Specifiers come from importSpecifiers and resolve the way the browser-test detector resolves them.
+// Edges are relative static imports and re-exports plus relative script paths written as literals (`new URL('./b.js', import.meta.url)`).
+// Package-name imports (`@codepawlhq/crucible/...`, `@codepawlhq/cook`) and `import()` of a template literal are not resolved:
+// the name match in test-affected.mjs is the only cover for a test that reaches a change that way.
+// A path in a comment counts as an edge too (comments are not stripped, which is faster and only ever selects more tests).
+// Each file is read once per graph. localFilesNamedBy (importSpecifiers plus the path literals) lists its edges, the way the browser-test detector resolves them; only specifiers that end in a script extension count.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { resolveLocalFile } from './browser-tests.mjs';
-import { importSpecifiers } from './import-specifiers.mjs';
+import { localFilesNamedBy, resolveLocalFile } from './browser-tests.mjs';
 import { repositoryRoot } from './test-run.mjs';
 
 export const GRAPH_FOLDERS = ['tests', 'src', 'scripts', 'bin', 'packages'];
@@ -41,10 +44,8 @@ export function buildImportGraph(folder = repositoryRoot) {
   const fileExists = path => sources.has(path);
   const importers = new Map();
   for (const [importerPath, sourceText] of sources) {
-    for (const specifier of importSpecifiers(sourceText)) {
-      if (!specifier.startsWith('.')) continue;
-      const importedPath = resolveLocalFile(importerPath, specifier, fileExists);
-      if (!importedPath) continue;
+    const importedPaths = localFilesNamedBy(sourceText, importerPath, fileExists);
+    for (const importedPath of importedPaths) {
       if (!importers.has(importedPath)) importers.set(importedPath, new Set());
       importers.get(importedPath).add(importerPath);
     }
