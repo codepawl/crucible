@@ -2343,8 +2343,11 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   }
 
   // A closed room a sun lights gets the sky each floor texel sees; the lazy module decides, keeps its result and honours environment.floorSkyTrace.
+  // The report of the latest default sky trace, kept so scene_inspect can say when the trace stopped at its time limit (#3389).
+  let skyTraceReport = null;
+  const rememberSkyTraceReport = report => (skyTraceReport = report);
   function stageFloorSky(recipe, parts, graph) {
-    return agentSceneModuleActive('floorSky', requestedModules) ? agentSceneModule('floorSky').stageFloorSky(recipe.environment, parts, name => graph.getNode(name).worldMatrix) : parts;
+    return agentSceneModuleActive('floorSky', requestedModules) ? agentSceneModule('floorSky').stageFloorSky(recipe.environment, parts, name => graph.getNode(name).worldMatrix, rememberSkyTraceReport) : parts;
   }
 
   // A scene that asks for no bake and looks like a closed room gets one diagnostic naming the bake. The ray test costs a
@@ -2646,7 +2649,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   function* stageSettledParts(bakedParts) {
     const { recipe, graph } = state;
     const reflected = stageObjectReflections(recipe, state.sourceRestParts, bakedParts, graph);
-    const sky = agentSceneModuleActive('floorSky', requestedModules) ? yield* agentSceneModule('floorSky').stageFloorSkySteps(recipe.environment, reflected ? reflected.parts : bakedParts, name => graph.getNode(name).worldMatrix) : reflected ? reflected.parts : bakedParts;
+    const sky = agentSceneModuleActive('floorSky', requestedModules) ? yield* agentSceneModule('floorSky').stageFloorSkySteps(recipe.environment, reflected ? reflected.parts : bakedParts, name => graph.getNode(name).worldMatrix, rememberSkyTraceReport) : reflected ? reflected.parts : bakedParts;
     const linked = stageLightLinks(recipe, sky);
     const rankedParts = partsToRank(recipe, linked);
     if (agentSceneModuleActive('coplanar', requestedModules) && recipe.environment.resolveCoplanar !== false && !rankedLists().some(list => sameParts(list.rankedParts, rankedParts))) {
@@ -3049,7 +3052,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         return result;
       });
       const resident = geometryStats(ownedGeometryRecords());
-      const diagnostics = [...recipeDiagnostics(state.recipe), ...droppedVertexAlphaDiagnostics(state.parts), ...closedRoomProblems(), ...staleBakeProblems(), ...(state.bakeSkipped ? [agentSceneModule('bake').bakeSkippedDiagnostic(state.bakeSkipped)] : []),...(state.reflectionSkipped ? [agentSceneModule('reflections').reflectionSkippedDiagnostic(state.reflectionSkipped)] : []), ...coplanarProblems(), ...(agentSceneModuleLoaded('unsupportedPart') ? agentSceneModule('unsupportedPart').unsupportedPartProblems(state.parts, state.recipe, revision) : []), ...(state.particleSampler?.diagnostics() ?? []), ...(state.assetRuntime.animators.length ? agentSceneModule('assets').placedClipDiagnostics(state.assetRuntime) : [])];
+      const diagnostics = [...recipeDiagnostics(state.recipe), ...droppedVertexAlphaDiagnostics(state.parts), ...closedRoomProblems(), ...(skyTraceReport ? agentSceneModule('floorSky').skyTraceProblems(skyTraceReport) : []), ...staleBakeProblems(), ...(state.bakeSkipped ? [agentSceneModule('bake').bakeSkippedDiagnostic(state.bakeSkipped)] : []),...(state.reflectionSkipped ? [agentSceneModule('reflections').reflectionSkippedDiagnostic(state.reflectionSkipped)] : []), ...coplanarProblems(), ...(agentSceneModuleLoaded('unsupportedPart') ? agentSceneModule('unsupportedPart').unsupportedPartProblems(state.parts, state.recipe, revision) : []), ...(state.particleSampler?.diagnostics() ?? []), ...(state.assetRuntime.animators.length ? agentSceneModule('assets').placedClipDiagnostics(state.assetRuntime) : [])];
       return {
         revision, topologyRevision,
         ...(state.recipe.motion?.ik?.length ? { motionIk: agentSceneModule('motion').compileAgentMotion(state.recipe.motion, state.recipe).sweepIk() } : {}),
