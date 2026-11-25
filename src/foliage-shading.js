@@ -12,11 +12,24 @@ const ELLIPSOID_FIT = Math.sqrt(5);
 export function describeCrownShape(positions) {
   const center = scaleVector(positions.reduce((sum, position) => addVectors(sum, position), [0, 0, 0]), 1 / positions.length);
   const radius = Math.max(...positions.map(position => vectorLength(subtractVectors(position, center))), MINIMUM_RADIUS);
-  const radii = [0, 1, 2].map((axis) => {
+  const fitted = [0, 1, 2].map((axis) => {
     const meanSquare = positions.reduce((sum, position) => sum + (position[axis] - center[axis]) ** 2, 0) / positions.length;
     return Math.max(Math.sqrt(meanSquare) * ELLIPSOID_FIT, MINIMUM_RADIUS);
   });
+  const radii = shrinkToOuterSites(fitted, center, positions);
   return { center, radius, radii, tintSalt: saltOf(center) };
+}
+
+// The root mean square fit holds a filled ball, but sites on twig tips sit nearer the hull than the middle of a filled ball does,
+// so it can come out too large and leave the hull sites short of it (#3420: the oak's 90th percentile site at 0.93 of the hull,
+// its bright tail gone). The fit is scaled so the outermost tenth of the sites reaches the hull.
+const HULL_SITE_SHARE = 0.1;
+function shrinkToOuterSites(radii, center, positions) {
+  const distances = positions.map(position => Math.hypot(...subtractVectors(position, center).map((value, axis) => value / radii[axis])));
+  distances.sort((first, second) => first - second);
+  const outerDistance = distances[Math.floor(distances.length * (1 - HULL_SITE_SHARE))];
+  const scale = Math.min(outerDistance, 1);
+  return radii.map(value => Math.max(value * scale, MINIMUM_RADIUS));
 }
 
 // A whole number from the crown centre, so one seed always gives one set of clump colours and another seed another.
