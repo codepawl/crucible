@@ -338,8 +338,7 @@ test('the shortcuts list has a row for select all, none and invert', testContext
   const ui = mountStudio(testContext);
   ui.pressKey('?');
   const text = ui.root.textContent;
-  assert.match(text, /A \/ Alt\+A \/ Ctrl\+I/);
-  assert.match(text, /Select all \/ none \/ invert/);
+  assert.match(text, /Select allASelect noneAlt[+]AInvert the selectionCtrl[+]I/);
 });
 
 test('the embedder API selects several nodes', testContext => {

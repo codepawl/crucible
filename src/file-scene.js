@@ -10,6 +10,7 @@ import { withinDrawnLightLimits } from './drawn-light-lists.js';
 import { createFileSceneRenderAt } from './file-scene-clip.js';
 import { startDeferredLods } from './deferred-lods.js';
 import { MEMORY_BUDGET_ERROR_CODE } from './budget.js';
+import { withDepthForRequestedEffects } from './file-scene-depth.js';
 import { partsForRendererOptions, planLodsForRendererOptions, sceneFileLighting, sunShadowBounds, withFileSceneInteriorLight, withSceneFileLights, withSceneFileRendererDefaults } from './dense-lods.js';
 
 // Headless twin of the showcase page for scripts/render-media.mjs (--scene file). The export script serves the scene.json
@@ -100,11 +101,8 @@ async function readJson(url) {
 // The field is built once for the first frame's eye, so every frame and every rerender draws the same blades.
 async function addGroundCover(asset, description, camera) {
   if (description.environment?.groundCover === undefined) return;
-  const { normalizeGroundCover, groundCoverParts } = await import('./ground-cover.js');
-  const entries = normalizeGroundCover(description.environment.groundCover);
-  if (!entries.length) return;
-  const firstEye = camera ? camera.sample(0).eye : description.eye;
-  asset.parts = [...asset.parts, ...groundCoverParts(asset.parts, entries, firstEye)];
+  const { addGroundCoverToAsset } = await import('./ground-cover-offload.js');
+  await addGroundCoverToAsset(asset, description.environment.groundCover, camera ? camera.sample(0).eye : description.eye);
 }
 
 async function start() {
@@ -121,7 +119,8 @@ async function start() {
   const assetOwnParts = asset.parts;
   asset.parts = await loadStagedParts(description, asset, model, sharedTextures);
   await addGroundCover(asset, description, camera);
-  const rendererOptions = withSceneFileRendererDefaults(description.renderer);
+  // An effect the file asks for that reads depth (ambient occlusion, depth of field, motion blur, sun rays) turns the depth buffer on (#3388).
+  const rendererOptions = withDepthForRequestedEffects(withSceneFileRendererDefaults(description.renderer), description.frame?.effects);
   await loadViewTransformForRendererOptions(rendererOptions);
   const shadowCascades = rendererOptions.shadowCascades ? createCascadedShadows(rendererOptions.shadowCascades) : undefined;
   const reflection = description.waterReflection ? applyWaterReflection(asset.parts) : { parts: asset.parts, surface: null };
@@ -139,7 +138,6 @@ async function start() {
     ground: false, hdr: true, samples: 4, memoryBudgetMiB: 384,
     shadowBounds: drawn.sunSplit ? sunShadowBounds(reflection.parts, drawn.environment.lightDirection) : {},
     ...rendererOptions,
-    ...(Number(description.frame?.effects?.motionBlur?.shutter) > 0 ? { depth: true } : {}),
     shadowCascades,
     environment: { ...environmentForRenderer(interior.environment), map: drawn.map },
   });

@@ -13,7 +13,7 @@ import { planRenderSize, estimateTextureBytes, estimateFrameBytes, memoryBudgetE
 import { applyProjection } from './camera.js';
 import { boundsGrownByParts, fittedNearPlane, sceneBoundsOfParts } from './near-plane-fit.js';
 import { installReversedDepth, prepareCameraRelativeProgram } from './reversed-depth.js';
-import { bloomBlurPlan, isBloomActive, resolveEffects } from './effects.js';
+import { bloomBlurPlan, isBloomActive, isDitherActive, resolveEffects } from './effects.js';
 import { frameDiagnostics, everyCasterOutsideShadowView } from './frame-diagnostics.js';
 import { depthLayerOf, flushOrderOf, RANKS_PER_LAYER } from './depth-layer.js';
 import { createLightingState, updateLightingState } from './lighting.js';
@@ -31,6 +31,7 @@ import { TranslucentOrder } from './translucent-order.js';
 import { InstanceSelection, extractFrustumPlanes, geometryBoundingSphere, selectInstances } from './render-culling.js';
 import { countDraws } from './draw-counter.js';
 import { glassFaceTransmittance } from './glass-shadow.js';
+import { fitStudioShadowView } from './studio-shadow-fit.js';
 import { fitWorldShadowView, resolveShadowLight, shadowBiasPerSlope, sunShadowMapSize, writeShadowLightMatrix } from './shadow-light.js';
 import { CLIP_PLANES_FEATURE, MAX_CLIP_PLANES, packClipPlanes, clipPlaneLocations, bindClipPlanes, clipPlanesChanged } from './clip-planes.js';
 import { MAX_MORPH_TARGETS, requireFeatureCode, deformationSupport, requireDeformationSupport, texturedReplaceSupport, textureUpdateSupport } from './shader-registry.js';
@@ -1821,6 +1822,7 @@ export class CrucibleRenderer {
     this.sceneParts = parts;
     this.fitParts = renderParts;
     this.fitBounds = undefined;
+    this.receiverBox = undefined;
     this.densityParts = parts;
     // A scene that gained or lost triangles can cross the density threshold with no size change; resize() judges it again and rebuilds the targets.
     const resampled = this.denseSamples != null && this.chooseMultisampleSamples(this.densityParts) !== this.multisampleSamples;
@@ -2060,6 +2062,7 @@ export class CrucibleRenderer {
     // A part moved toward the camera may leave the box the near plane is fitted to, and the plane would cut it (#2403). Growing the
     // box by the moved parts costs only them; it never shrinks, so the plane stays safe if not as tight.
     if (this.fitBounds) this.fitBounds = boundsGrownByParts(this.fitBounds, parts);
+    if (this.receiverBox) this.receiverBox = boundsGrownByParts(this.receiverBox, parts, { includeMoving: true });
     // A part that crossed a mirror (a flip animation, a toggled billboard) belongs to the other winding batch: regroup every part once.
     // replaceParts packs all parts again, so the rest of this update is done.
     if (mirrorChanged) {
@@ -2129,7 +2132,7 @@ export class CrucibleRenderer {
   shadowMapSizeWanted() {
     const casts = this.batches.some(batch => !batch.floor && batch.castShadow && !this.tintsShadow(batch));
     if (!casts || this.shadowCascades?.replacesSingleMap(this)) return 1;
-    const light = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedWorldShadowView());
+    const light = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedShadowView());
     return sunShadowMapSize(light.extent);
   }
 
@@ -2161,7 +2164,7 @@ export class CrucibleRenderer {
       if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Shadow framebuffer is incomplete.');
       this.shadowFramebufferCheckedSize = mapSize;
     }
-    const resolvedLight = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedWorldShadowView());
+    const resolvedLight = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedShadowView());
     const light = resolvedLight.hard ? registeredFeatureCode.get('hardShadows').snapView(resolvedLight, mapSize) : resolvedLight;
     writeShadowLightMatrix(this.lightProjection, light);
     context.viewport(0, 0, mapSize, mapSize);
@@ -2298,6 +2301,23 @@ export class CrucibleRenderer {
     const casters = this.batches.filter(batch => !batch.floor && batch.castShadow).flatMap(batch => batch.parts);
     if (casters.length === 0) return null;
     return fitWorldShadowView(sceneBoundsOfParts(casters));
+  }
+
+  // The sun view the scene needs: the world fit, or for a scene that is not a world and wrote no bounds, the studio fit (issue #3392).
+  fittedShadowView() {
+    return this.fittedWorldShadowView() ?? this.fittedStudioShadowView();
+  }
+
+  // A scene bigger than the default 7 m studio view gets a view fitted to its parts, so its far walls are shadowed. Cached like the miss check below.
+  fittedStudioShadowView() {
+    if (this.world || this.shadowBounds?.target !== undefined || this.shadowBounds?.extent !== undefined) return null;
+    const cacheKey = `${this.activeLightDirection}|${this.partsMoveCount ?? 0}`;
+    if (this.studioShadowFitCache?.batches !== this.batches || this.studioShadowFitCache.cacheKey !== cacheKey) {
+      const receivers = this.batches.filter(batch => !batch.floor).flatMap(batch => batch.parts);
+      const casters = this.batches.filter(batch => !batch.floor && batch.castShadow).flatMap(batch => batch.parts);
+      this.studioShadowFitCache = { batches: this.batches, cacheKey, view: fitStudioShadowView(casters, receivers, this.activeLightDirection) };
+    }
+    return this.studioShadowFitCache.view;
   }
 
   // The studio shadow view (3.5 m round the origin) stays when a scene sets no shadowBounds target or extent. Returns that view when every
@@ -2449,6 +2469,12 @@ export class CrucibleRenderer {
     const far = frame.far ?? (this.world ? 600 : 100);
     const near = fittedNearPlane(this.fitBounds, this.view, far);
     return near === 0.1 ? frame : { ...frame, near };
+  }
+
+  /** The box around every part where it rests, skinned parts included: where the sun's receivers end, which the cascaded shadows read. */
+  receiverBounds() {
+    if (this.receiverBox === undefined) this.receiverBox = sceneBoundsOfParts(this.fitParts, { includeMoving: true });
+    return this.receiverBox;
   }
 
   /** Every GPU render target this renderer holds: name, size, format, samples and bytes, largest first, with the total. */
@@ -2773,6 +2799,7 @@ export class CrucibleRenderer {
     const gradesColor = effects.saturation !== 1 || effects.contrast !== 1 || effects.temperature !== 0;
     const finishes = gradesColor || (frame.monochrome ?? 0) !== 0 || Boolean(frame.cinematic) || effects.vignette !== 0 || effects.grain !== 0;
     if (finishes) steps.push('finish');
+    if (isDitherActive(effects)) steps.push('dither');
     return steps;
   }
 

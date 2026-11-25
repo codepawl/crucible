@@ -4,14 +4,16 @@ import { unsubdivideMesh } from './mesh-unsubdivide.js';
 import { selectEdges, edgeFaces } from './mesh-bevel.js';
 import { selectFaces, countSelected } from './mesh-select.js';
 import { invalidField } from './field-error.js';
-import { editField, editRuleObject } from './mesh-edit-field.js';
+import { editField, editRuleObject, editEdgeRule } from './mesh-edit-field.js';
 import { EDGE_RULE_HINT } from './mesh-cut-edits.js';
+import { mergeVertices } from './mesh-merge.js';
+import { MERGE_TARGETS, MAX_SELECTED_ELEMENTS } from './mesh-operations.js';
 import { pokeFaces, dualMesh, trisToQuads, symmetrizeMesh, scaleElements, extrudeEdges } from './mesh-reshape.js';
 
 // The reshaping edits as recipe operations: validation of their fields and running them on MeshData. The geometry
 // lives in mesh-reshape.js; this file only connects it to the edit log.
 
-export const RESHAPE_OPERATIONS = Object.freeze(['poke', 'dual', 'tris_to_quads', 'symmetrize', 'scale_elements', 'extrude_edges', 'split_edges', 'delete_loose', 'flatten', 'unsubdivide', 'circularize']);
+export const RESHAPE_OPERATIONS = Object.freeze(['poke', 'dual', 'tris_to_quads', 'symmetrize', 'scale_elements', 'extrude_edges', 'split_edges', 'delete_loose', 'flatten', 'unsubdivide', 'circularize', 'merge_verts']);
 
 const SYMMETRIZE_SIDES = Object.freeze(['positive', 'negative']);
 const MAX_SCALE = 1000;
@@ -39,7 +41,7 @@ export function normalizeReshapeEdit(edit, normalized, index, { finiteNumber, ve
       normalized.scale = finiteNumber(edit.scale, index, 'scale', { minimum: 0, maximum: MAX_SCALE, exclusiveMinimum: true });
       break;
     case 'split_edges':
-      normalized.edges = editRuleObject(edit.edges, index, 'edges', EDGE_RULE_HINT);
+      normalized.edges = editEdgeRule(edit.edges, index, 'edges', EDGE_RULE_HINT);
       break;
     case 'flatten':
       normalized.verts = editRuleObject(edit.verts, index, 'verts', VERTEX_RULE_HINT);
@@ -55,8 +57,16 @@ export function normalizeReshapeEdit(edit, normalized, index, { finiteNumber, ve
       if (edit.regular !== undefined && typeof edit.regular !== 'boolean') throw editField(index, 'regular', edit.regular, 'true or false');
       normalized.regular = edit.regular ?? true;
       break;
+    case 'merge_verts':
+      if (!Array.isArray(edit.vertices) || edit.vertices.length < 2 || edit.vertices.length > MAX_SELECTED_ELEMENTS || !edit.vertices.every(vertex => Number.isInteger(vertex) && vertex >= 0)) {
+        throw editField(index, 'vertices', edit.vertices, `an array of 2 to ${MAX_SELECTED_ELEMENTS} different whole vertex indices in pick order, such as [4, 7]`);
+      }
+      normalized.vertices = [...edit.vertices];
+      if (edit.at !== undefined && !MERGE_TARGETS.includes(edit.at)) throw editField(index, 'at', edit.at, `one of ${MERGE_TARGETS.map(target => `"${target}"`).join(', ')}`);
+      normalized.at = edit.at ?? 'center';
+      break;
     case 'extrude_edges':
-      normalized.edges = editRuleObject(edit.edges, index, 'edges', EDGE_RULE_HINT);
+      normalized.edges = editEdgeRule(edit.edges, index, 'edges', EDGE_RULE_HINT);
       normalized.offset = vector(edit.offset, index, 'offset');
       break;
   }
@@ -125,6 +135,10 @@ export function runReshapeEdit(mesh, edit) {
     case 'split_edges': {
       const outcome = splitEdges(mesh, selectEdges(mesh, edit.edges, edgeFaces(mesh)));
       return { mesh: outcome.mesh, result: { splitEdges: outcome.splitEdges, addedVertices: outcome.addedVertices } };
+    }
+    case 'merge_verts': {
+      const outcome = mergeVertices(mesh, edit.vertices, { at: edit.at });
+      return { mesh: outcome.mesh, result: { mergedVertices: outcome.mergedVertices, removedFaces: outcome.removedFaces } };
     }
     case 'delete_loose': {
       const outcome = deleteLoose(mesh);
