@@ -3,6 +3,7 @@
 //        npm run test:affected            with no files, uses the files changed since origin/main (as preflight does)
 import { basename } from 'node:path';
 import { buildImportGraph } from './import-graph.mjs';
+import { lockMachineForLocalTests } from './machine-lock.mjs';
 import { changedPathsSince } from './preflight.mjs';
 import { isMainModule, listTestFiles, repositoryRoot, runTestFiles } from './test-run.mjs';
 
@@ -38,6 +39,7 @@ async function main(arguments_) {
     return;
   }
   console.log(`Running ${affected.length} test file(s) that mention ${sourcePaths.length} file(s).`);
+  await lockMachineForLocalTests('npm run test:affected');
   process.exit(runTestFiles(affected).code);
 }
 
