@@ -969,12 +969,14 @@ async function checkAgentLayout(page, step) {
       listHeight: Math.round(list.clientHeight),
       sidewaysScroll: list.scrollWidth > list.clientWidth + 1,
       fieldFits: document.querySelector('.crucible-studio-agent-field').getBoundingClientRect().right <= card.right,
+      lastRowInside: card.height <= 60 ? null : Math.round(card.bottom - Math.max(...['.crucible-studio-agent-status', '.crucible-studio-agent-field'].map(selector => rectOf(selector)?.bottom ?? 0))),
     };
   });
   const expect = (condition, message) => {
     if (!condition) throw new Error(`Agent card layout (${step}): ${message}: ${JSON.stringify(found)}`);
   };
   expect(found.bottomGap >= (found.compact ? 0 : 7), 'the card ends past the column bottom or without its bottom gap');
+  expect(found.lastRowInside === null || found.lastRowInside >= 7, 'the last row of the bar (the status row, or the field) is under 7 px from the card bottom, so it is cut or touches the edge');
   expect(!found.sidewaysScroll, 'the list scrolls sideways');
   expect(found.fieldFits, 'the message field runs past the card');
   expect(found.listHeight >= 112 || found.card.height <= 60, 'the list is under four whole rows');

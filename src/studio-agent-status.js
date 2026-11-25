@@ -110,11 +110,11 @@ function createRing(documentReference) {
  * The row and the ring of the Agent card. `row` goes under the field, `button` between the field and Send, `popover` anywhere in the
  * card (it opens in the top layer). `sync(status, usage)` shows what they hold and hides what they do not.
  */
-export function createAgentStatusBar({ documentReference, createElement, createIcon }) {
+export function createAgentStatusBar({ documentReference, createElement, createIcon, wantsShareInRow = () => false }) {
   const row = createElement(documentReference, 'div', { className: 'crucible-studio-agent-status', hidden: true });
   const { ring, arc } = createRing(documentReference);
-  const percentText = createElement(documentReference, 'span');
-  const percent = createElement(documentReference, 'span', { className: 'crucible-studio-agent-usage-percent', attributes: { 'aria-hidden': 'true' } }, createIcon(documentReference, 'creditToken'), percentText);
+  const shareText = createElement(documentReference, 'span');
+  const share = createElement(documentReference, 'span', { className: 'crucible-studio-agent-status-share', attributes: { 'aria-hidden': 'true' } }, createIcon(documentReference, 'creditToken'), shareText);
   const button = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-agent-usage', hidden: true }, ring);
   const leftText = createElement(documentReference, 'span');
   const leftLine = createElement(documentReference, 'span', { className: 'crucible-studio-agent-usage-line' }, createIcon(documentReference, 'creditToken'), leftText);
@@ -186,7 +186,16 @@ export function createAgentStatusBar({ documentReference, createElement, createI
   button.addEventListener('focusin', () => setEngaged(hovered, true));
   button.addEventListener('focusout', () => setEngaged(hovered, false));
 
-  function syncRow(status) {
+  // The share left as text at the end of the row, at low and empty only. Off unless the card asks for it (a capture of a look option).
+  function shareItems(usage) {
+    if (!usage || !wantsShareInRow() || agentUsageLevel(usage) === 'plenty' || agentUsageLevel(usage) === 'half') {
+      return [];
+    }
+    shareText.textContent = `${Math.round((usage.remaining / usage.limit) * 100)}% left`;
+    return [share];
+  }
+
+  function syncRow(status, usage) {
     const items = ROW_FIELDS.filter(({ field }) => status[field]).map(({ field, icon }) => createElement(
       documentReference,
       'span',
@@ -194,6 +203,9 @@ export function createAgentStatusBar({ documentReference, createElement, createI
       createIcon(documentReference, icon),
       createElement(documentReference, 'span', { className: 'crucible-studio-agent-status-text', textContent: status[field] }),
     ));
+    const shown = shareItems(usage);
+    items.push(...shown);
+    row.dataset.share = String(shown.length > 0);
     row.replaceChildren(...items);
     row.hidden = items.length === 0;
   }
@@ -213,8 +225,6 @@ export function createAgentStatusBar({ documentReference, createElement, createI
     leftText.textContent = description.left;
     resetLine.textContent = description.reset;
     resetLine.hidden = description.reset === '';
-    percentText.textContent = `${Math.round(share * 100)}%`;
-    button.replaceChildren(ring, ...(level === 'plenty' ? [] : [percent]));
   }
 
   return {
@@ -222,7 +232,7 @@ export function createAgentStatusBar({ documentReference, createElement, createI
     button,
     popover,
     sync(status, usage) {
-      syncRow(status ?? {});
+      syncRow(status ?? {}, usage ?? undefined);
       syncUsage(usage ?? undefined);
     },
   };
@@ -238,7 +248,7 @@ export const AGENT_STATUS_CSS = `
   flex: none;
   display: grid;
   gap: var(--studio-space-8);
-  padding: var(--studio-space-8) var(--studio-space-12);
+  padding: var(--studio-space-8) var(--studio-space-12) var(--studio-space-12);
 }
 .crucible-studio-agent-status {
   display: flex;
@@ -257,6 +267,17 @@ export const AGENT_STATUS_CSS = `
   max-inline-size: 100%;
 }
 .crucible-studio-agent-status-item .crucible-studio-icon { inline-size: 14px; block-size: 14px; }
+/* With the share at its end the row keeps to one line: the values give way with an ellipsis before the share does. */
+.crucible-studio-agent-status[data-share="true"] { flex-wrap: nowrap; }
+.crucible-studio-agent-status-share {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--studio-space-4);
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+}
+.crucible-studio-agent-status-share .crucible-studio-icon { inline-size: 14px; block-size: 14px; }
 .crucible-studio-agent-status-text { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The ring's hit area is as tall as the field and Send beside it; the ring sits in the middle of it. */
 .crucible-studio-agent button.crucible-studio-agent-usage {
@@ -310,15 +331,6 @@ export const AGENT_STATUS_CSS = `
     transition: stroke-dasharray var(--studio-motion-base) var(--studio-ease-out), stroke var(--studio-motion-base) var(--studio-ease-out);
   }
 }
-/* The share as a number beside the ring, only at low and empty. It is off until a look turns it on with this property. */
-.crucible-studio-agent-usage-percent {
-  display: var(--studio-agent-ring-percent-display, none);
-  align-items: center;
-  gap: var(--studio-space-4);
-  color: color-mix(in srgb, var(--studio-text) 76%, var(--studio-panel));
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
 .crucible-studio-agent-usage-tip {
   gap: var(--studio-space-4);
   min-inline-size: 0;
@@ -329,6 +341,5 @@ export const AGENT_STATUS_CSS = `
 }
 .crucible-studio-agent-usage-tip span[hidden] { display: none; }
 .crucible-studio-agent-usage-line { display: inline-flex; align-items: center; gap: var(--studio-space-4); }
-.crucible-studio-agent-usage-line .crucible-studio-icon,
-.crucible-studio-agent-usage-percent .crucible-studio-icon { inline-size: 14px; block-size: 14px; }
+.crucible-studio-agent-usage-line .crucible-studio-icon { inline-size: 14px; block-size: 14px; }
 `;

@@ -196,6 +196,8 @@ export function createAgentConversation() {
         if (reported.limit !== undefined) usage = reported;
       } else {
         withdrawRetryOffers();
+        // A second outcome with nothing between it and the first (a host that reports twice) replaces the first row instead of adding one.
+        if (messages.at(-1)?.kind === 'outcome') messages.pop();
         push({ kind: 'outcome', outcome: event.type === 'error' ? 'failed' : event.type, text: event.message ?? OUTCOME_TEXT[event.type], retryable: event.retryFree === true });
         running = false;
       }
@@ -239,7 +241,7 @@ export function createAgentChatCard({ documentReference, createElement, createIc
     attributes: { 'aria-label': 'Message to the agent' },
   });
   const sendButton = createElement(documentReference, 'button', { type: 'submit', className: 'crucible-studio-agent-send crucible-studio-primary-btn' });
-  const statusBar = createAgentStatusBar({ documentReference, createElement, createIcon });
+  const statusBar = createAgentStatusBar({ documentReference, createElement, createIcon, wantsShareInRow: () => dock.dataset.usageShare === 'true' });
   const form = createElement(documentReference, 'form', { className: 'crucible-studio-agent-compose' }, field, statusBar.button, sendButton);
   const bar = createElement(documentReference, 'div', { className: 'crucible-studio-agent-bar' }, form, statusBar.row, statusBar.popover);
   const dock = createElement(
@@ -438,15 +440,15 @@ export function createAgentChatCard({ documentReference, createElement, createIc
 
 /** The stylesheet of the card, added to Studio's own. Colours, fonts and spacing come from the --studio tokens. */
 export const AGENT_CHAT_CSS = AGENT_STATUS_CSS + `
-/* The card at the foot of the column. Its floors (248 px, 304 px with a notice) keep four whole rows in the list and the status row whole under the field; Scene keeps 192 px and
+/* The card at the foot of the column. Its floors (252 px, 320 px with a notice) keep four whole rows in the list and the status row whole under the field; Scene keeps 192 px and
    Properties 240 px beside it. When the window is too short for all three the card and Properties take turns, each keeping its title row (studio.js). */
 .crucible-studio-side > .crucible-studio-dock.crucible-studio-agent {
   flex: 0 1 var(--studio-agent-height, 240px);
-  min-block-size: 248px;
+  min-block-size: 252px;
   max-block-size: 55%;
   inline-size: var(--studio-properties-width, 284px);
 }
-.crucible-studio-side > .crucible-studio-dock.crucible-studio-agent[data-notice="true"] { min-block-size: 304px; }
+.crucible-studio-side > .crucible-studio-dock.crucible-studio-agent[data-notice="true"] { min-block-size: 320px; }
 .crucible-studio[data-agent-tight="true"] .crucible-studio-side > .crucible-studio-dock.crucible-studio-agent {
   flex: 1 1 0;
   max-block-size: none;
@@ -550,7 +552,7 @@ export const AGENT_CHAT_CSS = AGENT_STATUS_CSS + `
 .crucible-studio-agent-notices {
   display: grid;
   gap: var(--studio-space-8);
-  padding: var(--studio-space-8) var(--studio-space-12);
+  padding: var(--studio-space-8) var(--studio-space-12) 0;
 }
 .crucible-studio-agent-notices[hidden] { display: none; }
 .crucible-studio-agent-notice {

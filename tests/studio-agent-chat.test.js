@@ -504,7 +504,41 @@ test('the ring shows the share left at each level and names it for a screen read
     assert.equal(parts.arc.style['--studio-agent-ring-fill'], fill);
     assert.equal(parts.ring.getAttribute('aria-label'), name);
   }
-  assert.equal(parts.ring.textContent, '0%', 'low and empty carry the share as text a look can show');
+  assert.equal(parts.ring.textContent, '', 'the ring button holds only the drawing');
+});
+
+test('a look that asks for it shows the share left at the end of the status row at low and empty only, and makes the row appear alone', testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  const parts = statusParts(ui);
+  const shareText = () => ui.root.querySelector('.crucible-studio-agent-status-share')?.textContent;
+  sample.emit({ type: 'usage', used: 42, limit: 50 });
+  assert.equal(shareText(), undefined, 'off unless the card asks');
+  assert.equal(parts.row.hidden, true);
+  ui.root.querySelector('.crucible-studio-agent').dataset.usageShare = 'true';
+  sample.emit({ type: 'usage', used: 42, limit: 50 });
+  assert.equal(shareText(), '16% left');
+  assert.equal(parts.row.hidden, false, 'with no status the row shows just the share');
+  sample.emit({ type: 'status', model: 'Fable 5.2' });
+  assert.equal(parts.row.children.at(-1).className, 'crucible-studio-agent-status-share', 'the share is the last item of the row');
+  sample.emit({ type: 'usage', used: 50, limit: 50 });
+  assert.equal(shareText(), '0% left');
+  sample.emit({ type: 'usage', used: 25, limit: 50 });
+  assert.equal(shareText(), undefined, 'half and plenty show no share');
+});
+
+test('a second outcome with nothing between it and the first replaces that row instead of adding one', testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  ui.type('Make it blue');
+  ui.pressEnter();
+  sample.emit({ type: 'done' });
+  sample.emit({ type: 'done', retryFree: true });
+  assert.equal(ui.rows().filter(row => row.dataset.outcome).length, 1, 'one outcome row, not two');
+  assert.equal(retryButton(ui).textContent, 'Try again', 'the newer outcome is the one shown');
+  sample.emit({ type: 'error', message: 'It broke' });
+  assert.equal(ui.rows().filter(row => row.dataset.outcome).length, 1);
+  assert.equal(ui.rows().at(-1).dataset.outcome, 'failed');
 });
 
 test('a usage that arrives during a run updates the ring and the run goes on', testContext => {
