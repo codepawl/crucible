@@ -2734,7 +2734,8 @@ export const STUDIO_CSS = `
   white-space: nowrap;
 }
 .crucible-studio-account-email,
-.crucible-studio-account-value { color: var(--studio-muted); }
+.crucible-studio-account-value { display: inline-flex; align-items: center; gap: var(--studio-space-4); color: var(--studio-muted); }
+.crucible-studio-account-value .crucible-studio-icon { inline-size: 14px; block-size: 14px; }
 .crucible-studio button[data-action-icon] { gap: var(--studio-space-8); }
 .crucible-studio-account-actions {
   display: flex;

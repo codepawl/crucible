@@ -109,8 +109,10 @@ export function createAccountSection({ documentReference, createElement, createI
     );
   }
 
-  function valueRow(label, value) {
-    return createElement(documentReference, 'div', { className: 'crucible-studio-setting' }, text('', label), text('crucible-studio-account-value', value));
+  function valueRow(label, value, iconName = null) {
+    const valueElement = text('crucible-studio-account-value', value);
+    if (iconName) valueElement.prepend(createIcon(documentReference, iconName));
+    return createElement(documentReference, 'div', { className: 'crucible-studio-setting' }, text('', label), valueElement);
   }
 
   function actionButton(label, iconName, run, fallbackError, { disabled = false } = {}) {
@@ -157,7 +159,7 @@ export function createAccountSection({ documentReference, createElement, createI
     element.dataset.phase = phase;
     const signedIn = phase === 'signed-in';
     const rows = [statusRow(), signedIn ? whoRow() : null];
-    if (signedIn && info.remainingText) rows.push(valueRow('Left to use', info.remainingText));
+    if (signedIn && info.remainingText) rows.push(valueRow('Left to use', info.remainingText, 'creditToken'));
     if (signedIn && info.planText) rows.push(valueRow('Plan', info.planText));
     if (errorText) {
       const problem = iconWithText('warning', errorText, 'crucible-studio-account-error');
