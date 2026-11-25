@@ -36,10 +36,10 @@ const REDUCED_RAYS_PER_TEXEL = 32;
 const SKY_TIME_LIMIT_MESSAGE = maxSeconds => `The sky trace passed its time limit of ${maxSeconds} s, so the ground and walls keep the sky they had (plain).`;
 const SKY_TIME_LIMIT_FIX = 'Raise maxSeconds, lower maximumTexels, or turn the trace off with environment.floorSkyTrace false.';
 
-/** The scene diagnostic for a trace that stopped at its time limit, from its report; null when the trace ran or was never asked for. */
-export function skyTraceStoppedDiagnostic(report) {
-  if (!report?.warnings?.length) return null;
-  return { kind: 'sky-trace-stopped', severity: 'warning', target: 'environment', message: report.warnings[0].replace(` ${SKY_TIME_LIMIT_FIX}`, ''), fix: SKY_TIME_LIMIT_FIX };
+/** The scene diagnostics of a default trace report: one for a trace that stopped at its time limit, none when it ran. */
+export function skyTraceProblems(report) {
+  if (!report.warnings?.length) return [];
+  return [{ kind: 'sky-trace-stopped', severity: 'warning', target: 'environment', message: report.warnings[0].replace(` ${SKY_TIME_LIMIT_FIX}`, ''), fix: SKY_TIME_LIMIT_FIX }];
 }
 export const FLOOR_SKY_STRENGTH = 1;
 // How much of the sky the grid hides on every surface of an open scene (#2771).

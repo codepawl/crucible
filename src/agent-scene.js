@@ -2337,9 +2337,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   // A closed room a sun lights gets the sky each floor texel sees; the lazy module decides, keeps its result and honours environment.floorSkyTrace.
   // The report of the latest default sky trace, kept so scene_inspect can say when the trace stopped at its time limit (#3389).
   let skyTraceReport = null;
-  const rememberSkyTraceReport = report => {
-    skyTraceReport = report;
-  };
+  const rememberSkyTraceReport = report => (skyTraceReport = report);
   function stageFloorSky(recipe, parts, graph) {
     return agentSceneModuleActive('floorSky', requestedModules) ? agentSceneModule('floorSky').stageFloorSky(recipe.environment, parts, name => graph.getNode(name).worldMatrix, rememberSkyTraceReport) : parts;
   }
@@ -2351,11 +2349,6 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const keyColor = environment.keyColor ?? [1, 1, 1];
     const keyLight = (environment.keyIntensity ?? 1) * (keyColor[0] + keyColor[1] + keyColor[2]);
     return lampCount > 0 && keyLight === 0;
-  }
-
-  function skyTraceProblems() {
-    const diagnostic = skyTraceReport && agentSceneModule('floorSky').skyTraceStoppedDiagnostic(skyTraceReport);
-    return diagnostic ? [diagnostic] : [];
   }
 
   let closedRoomCache = null;
@@ -3039,7 +3032,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         return result;
       });
       const resident = geometryStats(ownedGeometryRecords());
-      const diagnostics = [...recipeDiagnostics(state.recipe), ...droppedVertexAlphaDiagnostics(state.parts), ...closedRoomProblems(), ...skyTraceProblems(), ...staleBakeProblems(), ...(state.bakeSkipped ? [agentSceneModule('bake').bakeSkippedDiagnostic(state.bakeSkipped)] : []),...(state.reflectionSkipped ? [agentSceneModule('reflections').reflectionSkippedDiagnostic(state.reflectionSkipped)] : []), ...coplanarProblems(), ...(agentSceneModuleLoaded('unsupportedPart') ? agentSceneModule('unsupportedPart').unsupportedPartProblems(state.parts, state.recipe, revision) : []), ...(state.particleSampler?.diagnostics() ?? []), ...(state.assetRuntime.animators.length ? agentSceneModule('assets').placedClipDiagnostics(state.assetRuntime) : [])];
+      const diagnostics = [...recipeDiagnostics(state.recipe), ...droppedVertexAlphaDiagnostics(state.parts), ...closedRoomProblems(), ...(skyTraceReport ? agentSceneModule('floorSky').skyTraceProblems(skyTraceReport) : []), ...staleBakeProblems(), ...(state.bakeSkipped ? [agentSceneModule('bake').bakeSkippedDiagnostic(state.bakeSkipped)] : []),...(state.reflectionSkipped ? [agentSceneModule('reflections').reflectionSkippedDiagnostic(state.reflectionSkipped)] : []), ...coplanarProblems(), ...(agentSceneModuleLoaded('unsupportedPart') ? agentSceneModule('unsupportedPart').unsupportedPartProblems(state.parts, state.recipe, revision) : []), ...(state.particleSampler?.diagnostics() ?? []), ...(state.assetRuntime.animators.length ? agentSceneModule('assets').placedClipDiagnostics(state.assetRuntime) : [])];
       return {
         revision, topologyRevision,
         ...(state.recipe.motion?.ik?.length ? { motionIk: agentSceneModule('motion').compileAgentMotion(state.recipe.motion, state.recipe).sweepIk() } : {}),
