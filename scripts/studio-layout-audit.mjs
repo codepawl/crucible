@@ -3,7 +3,7 @@
 // studio-layout-rules.mjs: unequal insets around the content of a padded container, a gap or padding off the spacing
 // scale, or a gap between groups smaller than the gap inside one. Every failure names the selector, the numbers and the fix.
 //
-//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|export|newscene|dialog|notice|notices|editmenu|history|helpmenu] [--width pixels] [--records file.json]
+//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|keyboard|studio|rename|popover|export|newscene|dialog|notice|notices|editmenu|history|helpmenu] [--width pixels] [--records file.json]
 //
 // Without --origin it starts a Vite dev server on a free port and stops it (by its own PID) at the end. Screens: the Studio
 // page, each of its popover menus, the five steps of the setup dialog, and the New scene chooser with its unsaved-changes
@@ -37,7 +37,7 @@ const DIALOG_SELECTORS = Object.freeze({
 });
 const SERVER_START_TIMEOUT_MS = 60000;
 const PANELS_TOGGLE = 'button[title="Show or hide the panels"]';
-const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|export|newscene|dialog|notice|notices|editmenu|history|helpmenu] [--width pixels] [--records file.json]';
+const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|keyboard|studio|rename|popover|export|newscene|dialog|notice|notices|editmenu|history|helpmenu] [--width pixels] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
 // A signed-in host with every optional field, so the Account section of Settings is on screen and measured.
@@ -379,6 +379,138 @@ async function measureDraftNotice(browser, origin, theme, extraCss) {
   }
 }
 
+// Settings > Keyboard in each state a person meets: the list, a key waiting for a press, a clash with Swap and Cancel and a refused
+// browser combination. Escape while recording must cancel the recording and leave Settings open. Nothing is saved: the clash is cancelled.
+// Runs in the page. A row cut by the top or bottom edge of the shortcut list must have the fade marker of that edge, and a clash's
+// buttons end where the key column ends (the same right edge within a pixel), inside the row they belong to.
+function checkKeyboardScrollCue() {
+  const list = document.querySelector('.crucible-studio-keyboard-list');
+  const box = list.getBoundingClientRect();
+  const problems = [];
+  for (const row of list.querySelectorAll('.crucible-studio-keyboard-row')) {
+    const rect = row.getBoundingClientRect();
+    if (rect.bottom < box.top || rect.top > box.bottom) continue;
+    const label = row.querySelector('.crucible-studio-keyboard-name').textContent.trim();
+    if (rect.top < box.top - 1 && list.dataset.above !== 'true') problems.push(label + ' is cut at the top without a fade');
+    if (rect.bottom > box.bottom + 1 && list.dataset.more !== 'true') problems.push(label + ' is cut at the bottom without a fade');
+  }
+  const unnotedHeights = [...list.querySelectorAll('.crucible-studio-keyboard-row:not([data-noted])')].map(row => row.getBoundingClientRect().height);
+  if (unnotedHeights.some(height => Math.abs(height - unnotedHeights[0]) > 0.5)) problems.push('rows differ in height (' + [...new Set(unnotedHeights)].join(', ') + ' px); a changed row must be as tall as the others');
+  const toolbarRight = Math.max(...[...document.querySelectorAll('.crucible-studio-keyboard-head button, .crucible-studio-keyboard-head select, .crucible-studio-keyboard-head input')].map(control => control.getBoundingClientRect().right));
+  const keysRight = Math.max(...[...list.querySelectorAll('button.crucible-studio-keyboard-keys')].map(button => button.getBoundingClientRect().right));
+  if (Math.abs(toolbarRight - keysRight) > 1) problems.push('the toolbar ends at ' + toolbarRight + 'px and the key buttons at ' + keysRight + 'px; they share one right edge');
+  const footerRight = Math.max(...[...document.querySelectorAll('dialog.crucible-studio-settings-dialog .crucible-studio-dialog-actions button')].map(button => button.getBoundingClientRect().right));
+  const presetRight = document.querySelector('.crucible-studio-settings-pane[data-section="keys"] select').getBoundingClientRect().right;
+  if (Math.abs(footerRight - keysRight) > 1) problems.push('the key column ends at ' + keysRight + 'px and the footer buttons at ' + footerRight + 'px; they share one right edge');
+  if (Math.abs(footerRight - presetRight) > 1) problems.push('the preset field ends at ' + presetRight + 'px and the footer buttons at ' + footerRight + 'px; they share one right edge');
+  const labelLeft = row => row.querySelector('.crucible-studio-keyboard-name > span:last-child').getBoundingClientRect().left;
+  const rows = [...list.querySelectorAll('.crucible-studio-keyboard-row')];
+  if (rows.some(row => Math.abs(labelLeft(row) - labelLeft(rows[0])) > 1)) problems.push('row labels do not share one left edge');
+  const groups = [...list.querySelectorAll('.crucible-studio-keyboard-group')];
+  const groupRows = groups.map(group => [...group.querySelectorAll('.crucible-studio-keyboard-row')]);
+  if (groups.length > 1) {
+    const rowGap = groupRows[0][1].getBoundingClientRect().top - groupRows[0][0].getBoundingClientRect().bottom;
+    const titleGap = groups[1].querySelector('h4').getBoundingClientRect().top - groupRows[0].at(-1).getBoundingClientRect().bottom;
+    if (titleGap < rowGap + 16) problems.push(`the gap above a group title (${titleGap}px) is not 16px larger than the gap between rows (${rowGap}px)`);
+  }
+  const note = list.querySelector('.crucible-studio-keyboard-row[data-noted="true"]');
+  if (note) {
+    const block = note.getBoundingClientRect();
+    const lastButton = [...note.querySelectorAll('.crucible-studio-keyboard-note button')].at(-1);
+    if (lastButton) {
+      const leftInset = labelLeft(note) - block.left;
+      const rightInset = block.right - lastButton.getBoundingClientRect().right;
+      if (Math.abs(leftInset - rightInset) > 1) problems.push(`the tinted block has ${leftInset}px of room left of the label and ${rightInset}px right of the buttons`);
+    }
+    const noteChildren = [...note.children].map(child => child.getBoundingClientRect());
+    const insets = [
+      Math.min(...noteChildren.map(child => child.top)) - block.top,
+      block.bottom - Math.max(...noteChildren.map(child => child.bottom)),
+      Math.min(...noteChildren.map(child => child.left)) - block.left,
+      block.right - Math.max(...noteChildren.map(child => child.right)),
+    ];
+    if (Math.max(...insets) - Math.min(...insets) > 1) problems.push('the tinted block has unequal room around its content (top, bottom, left, right: ' + insets.join(', ') + ' px)');
+    const above = note.previousElementSibling ?? note.closest('.crucible-studio-keyboard-group').querySelector('h4');
+    const gapAbove = block.top - above.getBoundingClientRect().bottom;
+    if (gapAbove < 8) problems.push('the tinted block starts ' + gapAbove + 'px under the row or title above it; it keeps at least 8px');
+    const trackGap = box.right - (list.offsetWidth - list.clientWidth) - block.right;
+    if (trackGap < 8) problems.push('the tinted block ends ' + trackGap + 'px from the scrollbar; it keeps at least 8px');
+    const keysRight = note.querySelector('.crucible-studio-keyboard-keys').getBoundingClientRect().right;
+    const buttons = [...note.querySelectorAll('.crucible-studio-keyboard-note button')];
+    if (buttons.length > 0 && Math.abs(buttons.at(-1).getBoundingClientRect().right - keysRight) > 1) problems.push('the clash buttons do not end at the key column edge');
+    if (buttons.some(button => button.getBoundingClientRect().bottom > note.getBoundingClientRect().bottom + 1)) problems.push('a clash button leaves its row');
+  }
+  return problems;
+}
+
+async function assertKeyboardScrollCue(page, state) {
+  const problems = await page.evaluate(`(${checkKeyboardScrollCue.toString()})()`);
+  if (problems.length > 0) throw new Error(`keyboard list (${state}): ${problems.join('; ')}`);
+}
+
+async function measureKeyboard(page, theme) {
+  const dialogSelector = 'dialog.crucible-studio-settings-dialog';
+  const keysButton = actionId => page.locator(`button[data-key-action="${actionId}"]`);
+  const screens = [];
+  await openSettingsFromMenu(page);
+  await page.locator('.crucible-studio-settings-section[data-section="keys"]').click();
+  await page.waitForTimeout(200);
+  screens.push({ name: `keyboard default (${theme})`, records: await measure(page, dialogSelector) });
+  await assertKeyboardScrollCue(page, 'top');
+  await page.evaluate(() => { document.querySelector('.crucible-studio-keyboard-list').scrollTop = 333; });
+  await page.waitForTimeout(100);
+  await assertKeyboardScrollCue(page, 'middle');
+  await page.evaluate(() => { document.querySelector('.crucible-studio-keyboard-list').scrollTop = 0; });
+  await keysButton('tool.select').click();
+  await page.waitForTimeout(150);
+  screens.push({ name: `keyboard recording (${theme})`, records: await measure(page, dialogSelector) });
+  await page.keyboard.press('Control+w');
+  await page.waitForTimeout(150);
+  screens.push({ name: `keyboard refused (${theme})`, records: await measure(page, dialogSelector) });
+  await page.keyboard.press('g');
+  await page.waitForTimeout(150);
+  screens.push({ name: `keyboard clash (${theme})`, records: await measure(page, dialogSelector) });
+  await assertKeyboardScrollCue(page, 'clash');
+  await page.locator('.crucible-studio-keyboard-note button', { hasText: 'Cancel' }).click();
+  await keysButton('tool.select').click();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  const state = await page.evaluate(() => ({
+    open: document.querySelector('dialog.crucible-studio-settings-dialog').open,
+    recording: document.querySelector('[data-recording="true"]') !== null,
+    saved: document.querySelector('.crucible-studio-keyboard-row[data-changed="true"]') !== null,
+  }));
+  if (!state.open || state.recording || state.saved) {
+    throw new Error('Escape while recording must cancel the recording, keep Settings open and save nothing: ' + JSON.stringify(state));
+  }
+  // A changed row shows its dot in the gutter, so its label keeps the left edge of the others. The key is really changed here and put back
+  // with the row's own reset, so the screens measured after this one start from the preset.
+  await keysButton('tool.select').click();
+  await page.keyboard.press('j');
+  await page.waitForTimeout(150);
+  const changedRows = () => page.evaluate(() => document.querySelectorAll('.crucible-studio-keyboard-row[data-changed="true"]').length);
+  if (await changedRows() !== 1) throw new Error('Pressing a free key while recording must change exactly that row.');
+  await assertKeyboardScrollCue(page, 'changed row');
+  await page.locator('.crucible-studio-keyboard-actions button', { hasText: 'Reset shortcuts' }).click();
+  await page.waitForTimeout(150);
+  const keepHasFocus = await page.evaluate(() => document.activeElement?.textContent.trim() === 'Keep');
+  if (!keepHasFocus) throw new Error('The reset confirmation must open with the focus on Keep.');
+  screens.push({ name: `keyboard reset confirm (${theme})`, records: await measure(page, dialogSelector) });
+  await assertKeyboardScrollCue(page, 'reset confirm');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  const afterEscape = await page.evaluate(() => ({
+    open: document.querySelector('dialog.crucible-studio-settings-dialog').open,
+    confirming: document.querySelector('.crucible-studio-keyboard-confirm') !== null,
+  }));
+  if (!afterEscape.open || afterEscape.confirming) throw new Error('Escape in the reset confirmation must pick Keep and keep Settings open: ' + JSON.stringify(afterEscape));
+  await page.locator('button.crucible-studio-keyboard-reset').first().click();
+  await page.waitForTimeout(150);
+  if (await changedRows() !== 0) throw new Error('The reset of a changed row must put the preset key back and leave no changed row.');
+  await page.evaluate(() => document.querySelector('dialog.crucible-studio-settings-dialog').close());
+  return screens;
+}
+
 // Runs inside the page: the spacing and the key text contrast of the open shortcut sheet. Returns the problems and the numbers.
 function probeShortcutSheet() {
   const dialog = document.querySelector('dialog.crucible-studio-shortcuts-dialog');
@@ -615,6 +747,7 @@ async function measureScreens(page, theme, only) {
     await page.evaluate(() => document.querySelector('dialog.crucible-studio-settings-dialog').close());
     screens.push({ name: `settings fit (${theme})`, records: [], problems: await measureSettingsFit(page) });
   }
+  if (!only || only === 'keyboard') screens.push(...await measureKeyboard(page, theme));
   if (!only || only === 'dialog') {
     const titles = await page.evaluate(() => Array.from(document.querySelectorAll('.crucible-studio dialog:not(.crucible-studio-setup-dialog)')).map(dialog => dialog.querySelector('h2')?.id).filter(Boolean));
     for (const title of titles) {

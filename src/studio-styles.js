@@ -2580,7 +2580,7 @@ export const STUDIO_CSS = `
 /* One fixed height for every section; a section with more rows than fit scrolls its rows, never the dialog. */
 .crucible-studio dialog.crucible-studio-settings-dialog {
   width: min(600px, calc(100vw - 32px));
-  block-size: min(456px, calc(100vh - 48px));
+  block-size: min(540px, calc(100vh - 48px));
 }
 /* A ring is drawn inside its control, so it never leaves the dialog's inset or the rows' scroll area. */
 .crucible-studio-settings-dialog :focus-visible { outline-offset: -2px; }
@@ -2679,6 +2679,158 @@ export const STUDIO_CSS = `
   margin: 0;
   accent-color: var(--studio-text);
 }
+/* Keyboard section: the preset and the filter stay put, the shortcuts scroll. Row gap 8 sits inside a group, group gap 16 between groups. */
+/* The Keyboard section keeps its preset and filter fixed and scrolls only its list (a fade-scroll box of its own). */
+.crucible-studio-settings-pane[data-section="keys"] .crucible-studio-settings-rows { overflow: visible; }
+.crucible-studio-keyboard {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--studio-space-24);
+  block-size: 100%;
+  min-block-size: 0;
+}
+/* The preset, the toolbar and the key column end on the right edge of the dialog's footer buttons. */
+.crucible-studio-keyboard-head { display: grid; gap: var(--studio-space-8); }
+.crucible-studio-keyboard-tools,
+.crucible-studio-keyboard-actions,
+.crucible-studio-keyboard-controls,
+.crucible-studio-keyboard-note,
+.crucible-studio-keyboard-note-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+}
+.crucible-studio-keyboard-tools > input { flex: 1 1 0; min-inline-size: 0; }
+.crucible-studio-keyboard-actions { flex: none; }
+.crucible-studio-keyboard button:disabled { opacity: 0.45; }
+/* The box reaches 16 px past the labels on the left (the gutter of the changed-row dot, and room for the tint of a row with a message) so
+   labels keep the pane's left edge. A group starts 24 px below the last row of the one above; rows sit 8 px apart. */
+.crucible-studio-keyboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--studio-space-24);
+  min-block-size: 0;
+  margin-inline-start: calc(var(--studio-space-16) * -1);
+  padding-inline-start: var(--studio-space-16);
+}
+/* The scrollbar sits in the dialog's own 24 px of padding, so the keys end where the footer buttons end whether or not the list scrolls.
+   A row with a message reaches 8 px past the keys, which leaves 8 px of air before the scrollbar. */
+.crucible-studio-keyboard-list.crucible-studio-fade-scroll {
+  margin-inline-end: calc(var(--studio-space-24) * -1);
+  padding-inline-end: var(--studio-space-16);
+}
+.crucible-studio-keyboard-tools > input::placeholder { color: var(--studio-muted); opacity: 1; }
+.crucible-studio-keyboard-group { display: flex; flex-direction: column; gap: var(--studio-space-8); }
+.crucible-studio-keyboard-group h4 {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  margin: 0;
+  font-family: var(--studio-font-heading);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--studio-text);
+}
+.crucible-studio-keyboard-group h4 .crucible-studio-icon { flex: none; inline-size: 16px; block-size: 16px; color: var(--studio-muted); }
+.crucible-studio-keyboard-rows { display: flex; flex-direction: column; gap: var(--studio-space-8); }
+.crucible-studio-keyboard-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--studio-space-4) var(--studio-space-8);
+  min-block-size: 28px;
+}
+.crucible-studio-keyboard-name {
+  position: relative;
+  font-weight: 400;
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  min-inline-size: 0;
+}
+.crucible-studio-keyboard-name > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crucible-studio-keyboard-changed {
+  position: absolute;
+  inset-inline-start: calc(var(--studio-space-12) * -1);
+  inline-size: var(--studio-space-8);
+  block-size: var(--studio-space-8);
+  border-radius: 50%;
+  background: var(--studio-accent);
+}
+.crucible-studio-keyboard-controls { justify-content: flex-end; }
+.crucible-studio dialog button.crucible-studio-keyboard-keys {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--studio-space-8);
+  min-inline-size: 96px;
+  min-block-size: 28px;
+  padding-inline: var(--studio-space-8);
+  border: 1px solid var(--studio-muted);
+  color: var(--studio-text);
+  font: inherit;
+  white-space: nowrap;
+}
+.crucible-studio dialog button.crucible-studio-keyboard-keys[data-empty="true"] { color: var(--studio-muted); }
+.crucible-studio dialog button.crucible-studio-keyboard-keys[data-pending="true"],
+.crucible-studio dialog button.crucible-studio-keyboard-keys[data-recording="true"] { border-color: var(--studio-accent); }
+.crucible-studio-keyboard-dot {
+  flex: none;
+  inline-size: var(--studio-space-8);
+  block-size: var(--studio-space-8);
+  border-radius: 50%;
+  background: var(--studio-accent);
+}
+.crucible-studio dialog button.crucible-studio-keyboard-reset {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 28px;
+  block-size: 28px;
+  min-inline-size: 28px;
+  min-block-size: 28px;
+  padding: 0;
+  background: transparent;
+  color: var(--studio-muted);
+}
+.crucible-studio dialog button.crucible-studio-keyboard-reset:hover { color: var(--studio-text); }
+/* The key that leaves a recording, beside the recording key: a quiet cap and its verb. */
+.crucible-studio-keyboard-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  color: var(--studio-muted);
+  white-space: nowrap;
+}
+.crucible-studio-keyboard-cap {
+  display: inline-grid;
+  place-items: center;
+  min-block-size: 20px;
+  padding-inline: var(--studio-space-8);
+  border: 1px solid var(--studio-border);
+  border-radius: var(--studio-radius-control);
+  font-size: 11.5px;
+}
+/* The reset the confirmation asks about: the warning colour on its text and icon, Keep beside it stays plain. */
+.crucible-studio dialog button.crucible-studio-keyboard-confirm {
+  border-color: var(--studio-warning);
+  color: var(--studio-warning);
+}
+.crucible-studio dialog button.crucible-studio-keyboard-confirm .crucible-studio-icon { stroke: var(--studio-warning); }
+.crucible-studio-keyboard-fixed { color: var(--studio-muted); white-space: nowrap; }
+.crucible-studio-keyboard-note { grid-column: 1 / -1; flex-wrap: wrap; min-block-size: 28px; }
+/* A row with a message to answer (a clash, a refused combination) sits on its own surface, the message on a second line, so it reads as one block. */
+.crucible-studio-keyboard-row[data-noted="true"] {
+  margin-inline: calc(var(--studio-space-8) * -1);
+  padding: var(--studio-space-8);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--studio-text) 7%, transparent);
+}
+.crucible-studio-keyboard-note .crucible-studio-icon { flex: none; color: var(--studio-accent); }
+.crucible-studio-keyboard-note-actions { margin-inline-start: auto; }
+@media (prefers-reduced-motion: no-preference) {
+  .crucible-studio-keyboard-dot { animation: crucible-studio-recording 1.2s ease-in-out infinite; }
+}
+@keyframes crucible-studio-recording { 50% { opacity: 0.35; } }
 /* New scene: a chooser of cards, each a rendered picture of its scene over its name. */
 .crucible-studio dialog.crucible-studio-new-dialog {
   width: min(720px, calc(100vw - 32px));
@@ -3287,26 +3439,34 @@ export const STUDIO_CSS = `
   align-items: start;
   gap: var(--studio-space-24);
   min-block-size: 0;
+  font-size: 12.5px;
+}
+/* The one scroll cue of the dialogs (the shortcut sheet and every Settings section): an 8 px thumb with no arrows over a clear track,
+   and a fade at each edge that hides rows (watchScrollFades sets data-above and data-more). The scrolling box reaches 16 px into the
+   dialog padding: 8 px for the scrollbar and 8 px of air, so the text edges stay 24 px from both sides. */
+.crucible-studio-fade-scroll {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  /* The scrolling box reaches 16 px into the dialog padding: 8 px for the scrollbar and 8 px of air, so the text edges stay 24 px from both sides. */
   margin-inline-end: calc(var(--studio-space-16) * -1);
   padding-inline-end: var(--studio-space-8);
-  font-size: 12.5px;
-  /* Rows hidden above or below fade at that edge; the strip over the scrollbar stays solid. */
+  /* The strip over the scrollbar stays solid. */
   --studio-fade-top: 0px;
   --studio-fade-bottom: 0px;
+  /* Where rows are hidden, the last 16 px at the edge are fully clear, so no hairline of a cut control shows. */
+  --studio-clear-top: 0px;
+  --studio-clear-bottom: 0px;
   mask-image:
-    linear-gradient(to bottom, transparent 0, #000 var(--studio-fade-top), #000 calc(100% - var(--studio-fade-bottom)), transparent 100%),
+    linear-gradient(to bottom, transparent 0, transparent var(--studio-clear-top), #000 var(--studio-fade-top), #000 calc(100% - var(--studio-fade-bottom)), transparent calc(100% - var(--studio-clear-bottom)), transparent 100%),
     linear-gradient(to right, transparent calc(100% - var(--studio-space-16)), #000 calc(100% - var(--studio-space-16)));
   mask-composite: add;
 }
-.crucible-studio-shortcuts[data-above="true"] { --studio-fade-top: calc(var(--studio-space-24) * 2); }
-.crucible-studio-shortcuts[data-more="true"] { --studio-fade-bottom: calc(var(--studio-space-24) * 2); }
-.crucible-studio-shortcuts::-webkit-scrollbar { width: 8px; }
-.crucible-studio-shortcuts::-webkit-scrollbar-track { background: transparent; }
-.crucible-studio-shortcuts::-webkit-scrollbar-thumb {
+.crucible-studio-fade-scroll[data-above="true"] { --studio-fade-top: calc(var(--studio-space-24) * 2); --studio-clear-top: var(--studio-space-16); }
+.crucible-studio-fade-scroll[data-more="true"] { --studio-fade-bottom: calc(var(--studio-space-24) * 2); --studio-clear-bottom: var(--studio-space-16); }
+.crucible-studio-fade-scroll::-webkit-scrollbar { width: 8px; }
+.crucible-studio-fade-scroll::-webkit-scrollbar-button { display: none; }
+.crucible-studio-fade-scroll::-webkit-scrollbar-track { background: transparent; }
+.crucible-studio-fade-scroll::-webkit-scrollbar-thumb {
   border-radius: 4px;
   background: color-mix(in srgb, var(--studio-text) 38%, transparent);
 }

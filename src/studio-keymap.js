@@ -140,7 +140,7 @@ function describeBinding(value) {
   return JSON.stringify(value);
 }
 
-function validateBinding(actionId, value) {
+export function validateBinding(actionId, value) {
   const expected = 'pass { key: "g" } or { code: "KeyG" } with optional boolean ctrl, shift and alt';
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new TypeError(`Keymap binding for "${actionId}" is ${describeBinding(value)}: ${expected}.`);
@@ -167,7 +167,7 @@ function shiftsOverlap(first, second) {
   return first === undefined || second === undefined || first === second;
 }
 
-function bindingsOverlap(first, second) {
+export function bindingsOverlap(first, second) {
   return (first.key?.toLowerCase() ?? null) === (second.key?.toLowerCase() ?? null)
     && (first.code ?? null) === (second.code ?? null)
     && Boolean(first.ctrl) === Boolean(second.ctrl)
@@ -360,13 +360,27 @@ export const KEYMAP_PRESETS = Object.freeze({
 
 export const KEYMAP_PRESET_IDS = Object.freeze(Object.keys(KEYMAP_PRESETS));
 
-/** The keymap of a preset, resolved over the defaults. */
-export function resolveKeymapPreset(presetId) {
+/**
+ * The keymap of a preset, resolved over the defaults. `overrides` is what a person changed in that preset:
+ * `{ actionId: binding | [bindings] | null }`, where null leaves the action without a key.
+ */
+export function resolveKeymapPreset(presetId, overrides = {}) {
   const preset = KEYMAP_PRESETS[presetId];
   if (!preset) {
     throw new RangeError(`Unknown keymap preset "${presetId}": pass one of ${KEYMAP_PRESET_IDS.join(', ')}.`);
   }
-  return resolveKeymap(preset.bindings, { unbound: preset.unbound, toolKeysGrab: preset.toolKeysGrab, mouse: preset.mouse });
+  const bindings = { ...preset.bindings };
+  const unbound = new Set(preset.unbound ?? []);
+  for (const [actionId, replacement] of Object.entries(overrides)) {
+    if (replacement === null) {
+      delete bindings[actionId];
+      unbound.add(actionId);
+    } else {
+      bindings[actionId] = replacement;
+      unbound.delete(actionId);
+    }
+  }
+  return resolveKeymap(bindings, { unbound: [...unbound], toolKeysGrab: preset.toolKeysGrab, mouse: preset.mouse });
 }
 
 /** The camera move a mouse press starts under this keymap ('orbit', 'pan' or 'zoom'), or null for the default drag. */

@@ -16,11 +16,12 @@ import { encodePackOrRefuse } from './studio-pack-refusal.js';
 import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shaders.js';
 import { STUDIO_CSS } from './studio-styles.js';
 import { createApplyMenus } from './studio-apply-menu.js';
-import { findKeymapAction, findMouseNavigation, keyLabel, lastKeyLabel, resolveKeymapPreset } from './studio-keymap.js';
+import { findKeymapAction, findMouseNavigation, formatShortcutKeys, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
 import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
 import { createStudioSettings } from './studio-settings.js';
+import { withPresetOverrides } from './studio-key-overrides.js';
 import { detectStudioHardware, gatherStudioHardwareInputs, rendererChangeFor, resolveStudioPerformanceTier, studioViewportSettingsFor } from './studio-hardware.js';
 import { createStudioDiagnostics, describeStudioEnvironment, watchStudioDiagnostics } from './studio-diagnostics.js';
 import {
@@ -1379,8 +1380,10 @@ export function createStudio(container, {
     attributes: { role: 'img', 'aria-label': 'Reloads when the agent edits this file' },
   });
   // The keymap in force. Choosing another preset swaps it and every place that shows a key is drawn again.
-  let keymap = resolveKeymapPreset(preferences.keymap);
-  let appliedKeymap = preferences.keymap;
+  const keymapOf = () => resolveKeymapPreset(preferences.keymap, preferences.keyOverrides[preferences.keymap]);
+  const keymapSignature = () => JSON.stringify([preferences.keymap, preferences.keyOverrides[preferences.keymap] ?? {}]);
+  let keymap = keymapOf();
+  let appliedKeymap = keymapSignature();
   const menuKeyViews = [];
   const keyTooltipViews = [];
   const setShortcutLabel = (element, label) => {
@@ -2943,7 +2946,7 @@ export function createStudio(container, {
   const shortcutsHeading = createElement(documentReference, 'h2', { id: 'crucible-studio-shortcuts-title', textContent: 'Studio keyboard shortcuts' });
   shortcutsHeading.prepend(createIcon(documentReference, 'keyboard'));
   const shortcutsCloseButton = createIconButton(documentReference, 'close', 'Close the shortcuts');
-  const shortcutsGrid = createElement(documentReference, 'div', { className: 'crucible-studio-shortcuts' });
+  const shortcutsGrid = createElement(documentReference, 'div', { className: 'crucible-studio-shortcuts crucible-studio-fade-scroll' });
   // One block per area, each with its icon and a row for every key of the active keymap, in two columns of about equal height.
   const createShortcutGroup = group => createElement(
     documentReference,
@@ -3013,6 +3016,12 @@ export function createStudio(container, {
       settings.dialog.close();
       shortcutsDialog.showModal();
     },
+    keyboard: {
+      getKeymap: () => keymap,
+      getPresetId: () => preferences.keymap,
+      getOverrides: () => preferences.keyOverrides[preferences.keymap] ?? {},
+      onOverridesChange: presetOverrides => setPreference('keyOverrides', withPresetOverrides(preferences.keyOverrides, preferences.keymap, presetOverrides)),
+    },
   });
   const settingsDialog = settings.dialog;
 
@@ -3045,11 +3054,12 @@ export function createStudio(container, {
 
   // Puts the preferences into effect and shows them in the Settings dialog.
   function applyPreferences() {
-    if (preferences.keymap !== appliedKeymap) {
-      appliedKeymap = preferences.keymap;
-      keymap = resolveKeymapPreset(appliedKeymap);
+    if (keymapSignature() !== appliedKeymap) {
+      appliedKeymap = keymapSignature();
+      keymap = keymapOf();
       refreshKeyLabels();
     }
+    settings.refreshKeyboard();
     controller.setInteractionSettings({
       moveSnapStep: preferences.moveSnapStep,
       rotateSnapDegrees: preferences.rotateSnapDegrees,

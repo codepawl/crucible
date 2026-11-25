@@ -2995,6 +2995,7 @@ test('Settings change the snap, the handles and what the viewport shows, and are
     theme: 'system',
     performance: 'automatic',
     keymap: 'crucible',
+    keyOverrides: {},
     motion: 'system',
     zoomDirection: 'normal',
     setupDone: false,
@@ -3012,7 +3013,7 @@ test('Settings change the snap, the handles and what the viewport shows, and are
   assert.equal(next.controller.interactionSettings.moveSnapStep, 1);
   assert.equal(next.root.dataset.readout, 'off');
 
-  next.button('Reset').click();
+  next.button('Reset settings').click();
   assert.deepEqual(next.controller.interactionSettings, { moveSnapStep: 0.25, rotateSnapDegrees: 15, gizmoPixels: 74, snapEnabled: false, snapTarget: 'increment' });
   assert.equal(next.root.dataset.readout, 'on');
   assert.equal(JSON.parse(saved.get('crucible-studio-preferences')).startWorkspace, 'build');
@@ -5255,7 +5256,7 @@ test('Reset in Settings keeps the setup marked done (#2847)', testContext => {
   const ui = mountStudio(testContext);
   ui.studio.setPreference('setupDone', true);
   ui.studio.setPreference('theme', 'dark');
-  ui.button('Reset').click();
+  ui.button('Reset settings').click();
   assert.equal(ui.studio.preferences.theme, 'system');
   assert.equal(ui.studio.setupDone, true);
 });
@@ -5602,7 +5603,7 @@ test('the magnet toggle and its target menu sit on the rail, lit when on, and ar
   assert.equal(nextParts.targetButton.getAttribute('aria-label'), 'Snap to Vertex', 'and so does the target');
   assert.deepEqual([next.controller.interactionSettings.snapEnabled, next.controller.interactionSettings.snapTarget], [true, 'vertex']);
 
-  next.button('Reset').click();
+  next.button('Reset settings').click();
   assert.equal(nextParts.toggle.getAttribute('aria-pressed'), 'false', 'Reset turns snapping off');
   assert.equal(nextParts.targetButton.getAttribute('aria-label'), 'Snap to Increment', 'and back to Increment');
 });
