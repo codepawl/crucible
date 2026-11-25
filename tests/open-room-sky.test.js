@@ -11,10 +11,10 @@ import { partMatrixLookup } from '../src/closed-room.js';
 const SUN = { keyColor: [3, 3, 3], lightDirection: [-0.4, -1, -0.3] };
 const SMALL_TRACE = { maximumTexels: 1500 };
 
-// `rounded` turns every box by a hair (0.01 degrees), which leaves it out of the join test (src/room-box-joins.js, #3433): the boxes keep their rounded edges
-// instead of being drawn sharp where they meet.
+// `rounded` lifts the ceiling 0.05 m off the walls: only four of the six sides then touch (the floor and three walls), which is no room for the sharp joins of src/room-box-joins.js (#3433),
+// so the boxes keep their rounded edges. No box is rotated.
 function setParts({ front = false, ceiling = true, rounded = false } = {}) {
-  const block = (id, translation, scale) => ({ id, geometry: 'box', material: 'wall', translation, scale, ...(rounded ? { rotation: [0, 0, 1e-4, 1] } : {}) });
+  const block = (id, translation, scale) => ({ id, geometry: 'box', material: 'wall', translation, scale });
   const { parts } = createAgentScene({
     format: 'crucible.scene', schemaVersion: 1,
     geometries: [{ id: 'box', type: 'box' }],
@@ -24,7 +24,7 @@ function setParts({ front = false, ceiling = true, rounded = false } = {}) {
       block('wall-back', [0, 2, -4], [10, 4, 0.2]),
       block('wall-left', [-5, 2, 0], [0.2, 4, 8]),
       block('wall-right', [5, 2, 0], [0.2, 4, 8]),
-      ...(ceiling ? [block('ceiling', [0, 4.1, 0], [10.4, 0.2, 8.4])] : []),
+      ...(ceiling ? [block('ceiling', [0, rounded ? 4.15 : 4.1, 0], [10.4, 0.2, 8.4])] : []),
       ...(front ? [block('wall-front', [0, 2, 4], [10, 4, 0.2])] : []),
     ],
     camera: { eye: [0, 1.6, 7.5], target: [0, 2, -1], fov: 70, near: 0.05, far: 60 },
