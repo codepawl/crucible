@@ -14,7 +14,7 @@
 //   sh         count * shDim * 3 bytes, skipped here (shDim is 0, 3, 8, 15 or 24 for degree 0 to 4)
 // Version 4 (a zstd container) and the never released version 1 (float16 positions) are not read.
 
-import { runInChunks } from './gaussian-splat-chunks.js';
+import { resolveChunkOptions, runInChunks, throwIfAborted } from './gaussian-splat-chunks.js';
 import { resolveLimits } from './gaussian-splat-ply.js';
 
 const SPZ_MAGIC = 0x5053474e;
@@ -229,6 +229,8 @@ export async function parseGaussianSplatSpz(buffer, options = {}) {
  * an aborted `signal` rejects with an error named `AbortError`. Inflating the gzip stream does not block the thread.
  */
 export async function parseGaussianSplatSpzAsync(buffer, options = {}) {
+  const { signal } = resolveChunkOptions(options, 'parseGaussianSplatSpzAsync');
+  throwIfAborted(signal, 'parseGaussianSplatSpzAsync');
   const { bytes, header } = await openSplatSpz(buffer, options, 'parseGaussianSplatSpzAsync');
   const reader = createSpzReader(bytes, header);
   await runInChunks(header.count, options, 'parseGaussianSplatSpzAsync', reader.readRange);

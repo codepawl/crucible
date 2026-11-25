@@ -98,18 +98,23 @@ function uploadGeometry(context, geometry) {
   };
 }
 
+const wrappedRenderers = new WeakSet();
+
 function createState(renderer) {
   const context = renderer.context;
   if (!context.getExtension('EXT_float_blend')) throw new Error('Local volumes with fit "mesh" need the WebGL extension EXT_float_blend, which this browser does not offer; use fit "bounds"');
   const program = compileProgram(context, MESH_VERTEX, MESH_FRAGMENT);
   const uniforms = Object.fromEntries(UNIFORM_NAMES.map(name => [name, context.getUniformLocation(program, name)]));
-  const state = { program, uniforms, geometries: new Map(), target: null };
+  const state = { program, uniforms, geometries: new Map(), target: null, disposed: false };
   // The renderer's dispose gains this step here, so the core carries no call for a pass most scenes never create.
-  const disposeRenderer = renderer.dispose.bind(renderer);
-  renderer.dispose = () => {
-    disposeMeshVolumePass(renderer, state);
-    disposeRenderer();
-  };
+  if (!wrappedRenderers.has(renderer)) {
+    wrappedRenderers.add(renderer);
+    const disposeRenderer = renderer.dispose.bind(renderer);
+    renderer.dispose = () => {
+      if (renderer.meshVolumePass) disposeMeshVolumePass(renderer, renderer.meshVolumePass);
+      disposeRenderer();
+    };
+  }
   return state;
 }
 
@@ -235,9 +240,12 @@ export function drawMeshVolumes(renderer, frame) {
 }
 
 function disposeMeshVolumePass(renderer, state) {
+  if (state.disposed) return;
+  state.disposed = true;
   const context = renderer.context;
   releaseTarget(renderer, state);
   state.geometries.forEach(gpu => releaseGeometry(context, gpu));
+  state.geometries.clear();
   context.deleteProgram(state.program);
-  renderer.meshVolumePass = null;
+  if (renderer.meshVolumePass === state) renderer.meshVolumePass = null;
 }

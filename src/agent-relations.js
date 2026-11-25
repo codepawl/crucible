@@ -290,6 +290,12 @@ function constraintsFor(relation, selfBounds, targetBounds) {
  * `worldBounds(node, worldMatrix, region)` returns the axis-aligned world bounds `{ min, max }` of a mesh node, or of
  * the faces carrying the tag `region`, and throws a message that names the tag when it does not exist.
  */
+function assertFiniteBounds(bounds, path, value) {
+  if (!bounds || !bounds.min?.every(Number.isFinite) || !bounds.max?.every(Number.isFinite)) {
+    throw invalidField(path, value, 'finite world bounds');
+  }
+}
+
 export function solveRelations(nodes, worldBounds) {
   const related = nodes.filter(node => node.relations?.length);
   if (related.length === 0) {
@@ -303,6 +309,7 @@ export function solveRelations(nodes, worldBounds) {
     const nodeIndex = nodes.findIndex(candidate => candidate.id === nodeId);
     const delta = [0, 0, 0];
     const selfBounds = worldBounds(node, worldMatrixOf(nodeId, nodesById, cache), undefined);
+    assertFiniteBounds(selfBounds, `nodes[${nodeIndex}]`, node.id);
     node.relations.forEach((relation, index) => {
       if (relation.kind === 'level') {
         for (const constraint of constraintsFor(relation, selfBounds, undefined)) {
@@ -317,6 +324,7 @@ export function solveRelations(nodes, worldBounds) {
       } catch (error) {
         throw invalidField(`${relationPath(nodeIndex, index)}.${relation.region === undefined ? 'to' : 'region'}`, relation.region ?? relation.to, `a target that can be measured (${error.message})`);
       }
+      assertFiniteBounds(targetBounds, `${relationPath(nodeIndex, index)}.${relation.region === undefined ? 'to' : 'region'}`, relation.region ?? relation.to);
       for (const constraint of constraintsFor(relation, selfBounds, targetBounds)) {
         delta[constraint.axis] = constraint.delta;
       }

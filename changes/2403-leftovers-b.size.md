@@ -1,0 +1,1 @@
+- scene:agent-scene+lazy: input validation and edge-case guards across lazy scene modules (Part of #2403)

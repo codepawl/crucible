@@ -43,14 +43,15 @@ export async function loadTextureSet(baseUrl, { channels, extension = 'webp', fe
   const requested = channels ?? TEXTURE_SET_CHANNELS;
   validateChannels(requested);
   const loaded = await Promise.all(requested.map(async (channel) => {
+    let blob;
     try {
-      const blob = await fetchOne(joinUrl(baseUrl, `${channel}.${extension}`));
-      const image = await decodeOne(blob);
-      return [channel, { image, colorSpace: colorSpaces[channel] ?? CHANNEL_COLOR_SPACES[channel] }];
+      blob = await fetchOne(joinUrl(baseUrl, `${channel}.${extension}`));
     } catch (error) {
       if (required) throw error;
       return null;
     }
+    const image = await decodeOne(blob);
+    return [channel, { image, colorSpace: colorSpaces[channel] ?? CHANNEL_COLOR_SPACES[channel] }];
   }));
   const set = Object.fromEntries(loaded.filter(Boolean));
   if (Object.keys(set).length === 0) throw new Error(`No texture channels found under ${baseUrl}.`);
@@ -69,6 +70,9 @@ const CLAMP_TO_EDGE = 33071;
  */
 export async function loadLeafTextures(baseUrl, { species = LEAF_TEXTURE_SPECIES, extension = 'webp', fetchBlob: fetchOne = fetchBlob, decodeBlob: decodeOne = decodeBlob } = {}) {
   if (typeof baseUrl !== 'string' || baseUrl.length === 0) throw new TypeError('baseUrl must be a non-empty string.');
+  if (!Array.isArray(species) || !species.length || species.some(n => typeof n !== 'string' || !/^[\w-]+$/.test(n))) {
+    throw new TypeError('Bad species');
+  }
   const channels = [['color', 'srgb'], ['normal', 'linear'], ['crown', 'srgb']];
   const entries = await Promise.all(species.map(async (name) => {
     const textures = await Promise.all(channels.map(async ([channel, colorSpace]) => {
