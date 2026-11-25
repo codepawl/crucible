@@ -14,7 +14,7 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:net';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { decimateMesh } from '../src/mesh-decimate.js';
@@ -60,15 +60,40 @@ function readOptions(argumentsList) {
   return options;
 }
 
+// Downloaded bytes are checked against the pinned sha256 before anything is written, and the file is created once with
+// the exclusive flag, so an existing file is read and checked but never replaced, and an unverified download never lands on disk.
 async function fetchScan(folder) {
   mkdirSync(folder, { recursive: true });
   for (const file of SCAN_SOURCE.files) {
     const path = join(folder, file.name);
-    if (!existsSync(path)) writeFileSync(path, Buffer.from(await (await fetch(file.url)).arrayBuffer()));
-    const hash = createHash('sha256').update(readFileSync(path)).digest('hex');
+    const bytes = readCachedFile(path) ?? await downloadVerified(file, path);
+    const hash = sha256Of(bytes);
     if (hash !== file.sha256) throw new Error(`${path} has sha256 ${hash}, expected ${file.sha256}. Delete it and run again, or pass --scan-folder with the original Poly Haven files.`);
   }
   return join(folder, SCAN_SOURCE.files[0].name);
+}
+
+function sha256Of(bytes) {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+function readCachedFile(path) {
+  try {
+    return readFileSync(path);
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+async function downloadVerified(file, path) {
+  const response = await fetch(file.url);
+  if (!response.ok) throw new Error(`Downloading ${file.url} failed with HTTP ${response.status}. Check the connection, or pass --scan-folder with the original Poly Haven files.`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const hash = sha256Of(bytes);
+  if (hash !== file.sha256) throw new Error(`${file.url} downloaded with sha256 ${hash}, expected ${file.sha256}. Nothing was written.`);
+  writeFileSync(path, bytes, { flag: 'wx' });
+  return bytes;
 }
 
 function readScanGeometry(gltfPath) {
