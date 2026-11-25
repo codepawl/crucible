@@ -353,6 +353,10 @@ async function measureNotices(page, theme) {
   await page.evaluate(() => window.__studioPage.selectNode('cube'));
   await page.keyboard.press('Control+d');
   await measureToast('toast', 'Duplicated');
+  await page.keyboard.press('Numpad1');
+  await page.waitForSelector('.crucible-studio-numpad-notice:not([hidden])');
+  screens.push({ name: `numpad notice (${theme})`, records: await measure(page, '.crucible-studio-numpad-notice') });
+  await page.locator('.crucible-studio-numpad-notice button', { hasText: 'Keep number row' }).click();
   await page.evaluate(() => {
     // A lost context returns no extension, so the handle is kept to restore it.
     window.loseContextExtension = document.querySelector('.crucible-studio canvas').getContext('webgl2').getExtension('WEBGL_lose_context');

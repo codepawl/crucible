@@ -3,6 +3,7 @@
 //
 // A binding is `{ key | code, ctrl?, shift?, alt? }`. `ctrl` means Ctrl or Command. A modifier left out must be up,
 // except `shift`: left out it is not looked at, because plain keys such as H or ? also work with Shift held.
+import { NUMPAD_FRAME_BINDINGS, NUMPAD_VIEW_BINDINGS } from './studio-numpad.js';
 
 // `mesh` is edit mode: it is looked up before `normal`, which then only answers the keys studio.js lets through.
 export const KEYMAP_CONTEXTS = Object.freeze(['normal', 'modal', 'mesh']);
@@ -249,10 +250,22 @@ export function findKeymapAction(keymap, event, context = 'normal') {
   return null;
 }
 
+const NUMPAD_SYMBOL_LABELS = Object.freeze({
+  NumpadAdd: 'Numpad +',
+  NumpadSubtract: 'Numpad -',
+  NumpadDecimal: 'Numpad .',
+  NumpadMultiply: 'Numpad *',
+  NumpadDivide: 'Numpad /',
+  NumpadEnter: 'Numpad Enter',
+});
+
 function formatKeyName(value) {
-  if (value.code === 'NumpadAdd') return 'Numpad +';
-  if (value.code === 'NumpadSubtract') return 'Numpad -';
-  if (value.code !== undefined) return value.code.replace(/^(Key|Digit)/, '');
+  if (value.code !== undefined) {
+    if (NUMPAD_SYMBOL_LABELS[value.code]) return NUMPAD_SYMBOL_LABELS[value.code];
+    const numpadDigit = /^Numpad(\d)$/.exec(value.code);
+    if (numpadDigit) return `Numpad ${numpadDigit[1]}`;
+    return value.code.replace(/^(Key|Digit)/, '');
+  }
   if (value.key === ' ') return 'Space';
   if (value.key === 'Escape') return 'Esc';
   return value.key.length === 1 ? value.key.toUpperCase() : value.key;
@@ -367,12 +380,18 @@ export const KEYMAP_PRESET_IDS = Object.freeze(Object.keys(KEYMAP_PRESETS));
  * The keymap of a preset, resolved over the defaults. `overrides` is what a person changed in that preset:
  * `{ actionId: binding | [bindings] | null }`, where null leaves the action without a key.
  */
-export function resolveKeymapPreset(presetId, overrides = {}) {
+export function resolveKeymapPreset(presetId, overrides = {}, { numberPad = false } = {}) {
   const preset = KEYMAP_PRESETS[presetId];
   if (!preset) {
     throw new RangeError(`Unknown keymap preset "${presetId}": pass one of ${KEYMAP_PRESET_IDS.join(', ')}.`);
   }
   const bindings = { ...preset.bindings };
+  if (numberPad) {
+    for (const [actionId, numpadBinding] of Object.entries(NUMPAD_VIEW_BINDINGS)) {
+      if (!(actionId in bindings)) bindings[actionId] = numpadBinding;
+    }
+    if (!('view.frame' in bindings)) bindings['view.frame'] = NUMPAD_FRAME_BINDINGS;
+  }
   const unbound = new Set(preset.unbound ?? []);
   for (const [actionId, replacement] of Object.entries(overrides)) {
     if (replacement === null) {

@@ -96,6 +96,7 @@ Pick the form by how a person reaches the feature:
 | Timeline | panel | `src/studio.js:2452`, `src/studio-keymap.js:50` | A scrub bar in the bottom panel shows time. Play is a key, Space. |
 | Undo and redo | operator | `src/studio-keymap.js:41-42`, `src/studio-controller.js:645` | Single actions, 32 steps deep. The rail buttons and Edit menu items call the same operator. |
 | Keymap | setting | `src/studio-keymap.js:319` | A stored choice made once in Settings: the default keys or another keymap preset. |
+| Number pad | setting | `src/studio-numpad.js`, `src/studio-settings.js`, `src/studio-setup.js` | A stored choice in Setup and Settings > Keyboard that switches view keys between the number row and the number pad, with a one-time notice when a number pad key is pressed while off. |
 | Keyboard shortcuts | panel | Help menu, the ? key; src/studio-help.js | A sheet to read, built from the active keymap. |
 | Documentation | operator | Help menu | One action that opens the guide. |
 | Settings | panel | Edit menu > Settings, Ctrl+, `src/studio-keymap.js:55` | One place for preferences, in sections with an icon each, so a person finds a choice by its section. |
