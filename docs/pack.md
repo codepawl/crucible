@@ -95,6 +95,23 @@ A baked room (`tests/fixtures/pack-baked-room.recipe.json` with `bake.preset` se
 
 The two stills are pixel identical (RMSE 0, no pixel differs).
 
+### Against the same scene in three.js
+
+One white box (metallic 0, roughness 0.5) with a studio light, from the camera `eye 3 3 3`, `target 0 0 0`, `fov 45`, 800 by 600. The packed page is `tests/fixtures/pack-lit-box.recipe.json` through `crucible pack --no-poster`. The three.js page imports what the `lit-box` scene of `bench/size/README.md` imports, plus an ambient light, bundled with esbuild (minified, tree shaken) at three.js 0.187.0. Measured 2026-11-25 in GPU Chrome, gzip -9 of each file the page downloaded:
+
+| | Packed bundle | three.js |
+| --- | --- | --- |
+| JavaScript | 148,159 B | 133,973 B |
+| Data | `scene.pack`, 967 B | none |
+| Page (HTML) | 275 B | 188 B |
+| Total | 149,401 B | 134,161 B |
+
+The packed page downloads 15,240 B (11 percent) more, 41 files against 2. `agent-scene-capabilities-*.js` (28,900 B) is the largest single piece that three.js has no counterpart for, and `renderer-*.js` is 41,370 B; #3437 tracks trimming it. This is a different measure from the 49,858 B `lit-box` entry of `bench/size/README.md`, which is the renderer without the `<crucible-scene>` element, the pack reader or the lighting setups.
+
+The two draws are not pixel identical: the packed page has the studio backdrop and soft light, the three.js page one directional light on black, so the table compares bytes for the same subject, not the same picture.
+
+Measure it again with `npm run build:lib && node scripts/measure-pack-vs-three.mjs`. It packs the recipe, builds the three.js page, serves both, reads every response in Chrome and writes the table, every file's size and a side-by-side still to `artifacts/3436/measure/` (`--out` changes the folder, `--size` the page size).
+
 ## Triggers
 
 Three attributes move the camera from the page, with no script. The element draws only while a trigger is moving the camera, and goes back to sleeping when it settles.

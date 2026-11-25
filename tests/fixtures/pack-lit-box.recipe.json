@@ -1,0 +1,9 @@
+{
+  "format": "crucible.scene",
+  "schemaVersion": 1,
+  "geometries": [{ "id": "box", "type": "box", "bevel": 0 }],
+  "materials": [{ "id": "white", "color": [1, 1, 1], "metallic": 0, "roughness": 0.5 }],
+  "nodes": [{ "id": "box", "geometry": "box", "material": "white" }],
+  "camera": { "eye": [3, 3, 3], "target": [0, 0, 0], "fov": 45 },
+  "environment": { "setup": "studio" }
+}
