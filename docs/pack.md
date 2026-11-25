@@ -46,7 +46,7 @@ Packing the same recipe twice writes the same `scene.pack` bytes.
 - The `state` attribute is `loading`, `live` or `error`. The element fires `crucible-scene-ready` or `crucible-scene-error` (with `detail.message`). After an error the poster stays.
 - Changing `src` or `poster` reloads it. It draws again when it changes size.
 
-`crucible-scene.js` imports no `agent-scene` module. `tests/scene-pack.test.js` checks the import graph.
+`crucible-scene.js` imports no `agent-scene` module and none of the MCP capability lists in `agent-scene-capabilities.js`; the names and limits the runtime needs live in small leaf modules. `tests/scene-pack.test.js` checks the import graph.
 
 ## Baked light
 
