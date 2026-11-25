@@ -264,6 +264,22 @@ test('the crown light spans deep shade to sunlit hull: a bright hull, a dark cor
   assert.ok(percentile(0.5) < 0.5, `the median sunlit radiance is ${percentile(0.5).toFixed(2)}: the bulk of the crown stays under the photos' lit half (render lit half 91, round 3 had 104)`);
 });
 
+// #3413: a twig crown puts its sites in a shell, where the fit for a filled ball came out too large and the oak's 90th percentile site
+// sat at 0.93 of the hull. Sites on a sphere's surface must reach the hull of the crown fitted to them.
+test('the crown fit puts the outer tenth of the sites at its hull, also when they sit in a shell', () => {
+  const shell = [];
+  for (let step = 0; step < 400; step++) {
+    const polar = Math.acos(1 - 2 * (step + 0.5) / 400);
+    const azimuth = step * Math.PI * (3 - Math.sqrt(5));
+    shell.push([6 * Math.sin(polar) * Math.cos(azimuth), 6 * Math.cos(polar), 6 * Math.sin(polar) * Math.sin(azimuth)]);
+  }
+  const crown = describeCrownShape(shell);
+  const depths = shell.map(position => crownDepth(crown, position)).sort((first, second) => first - second);
+  const outerDepth = depths[Math.floor(depths.length * 0.9)];
+  assert.ok(outerDepth > 0.999, `the 90th percentile site is at ${outerDepth.toFixed(3)} of the hull`);
+  assert.ok(Math.max(...crown.radii) < 6.5, 'the fit does not grow past the sites');
+});
+
 test('the clump speckle varies leaf colour within a clump without blotchy outliers', () => {
   const geometry = foliageOf(createTree({ preset: 'oak' }, 4));
   const positions = vertexPositions(geometry);
