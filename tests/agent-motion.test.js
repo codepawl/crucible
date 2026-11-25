@@ -222,3 +222,11 @@ test('recipeDiagnostics warns when camera roll or a camera roll track key exceed
   assert.equal(staticWarning?.severity, 'warning');
   assert.equal(staticWarning?.target, 'camera.roll');
 });
+
+test('compileAgentMotion with normalized: true matches the uncached compilation', () => {
+  const input = motion([track('emission', 0, 2), track('roughness', 0.2, 0.8)]);
+  const normalized = normalizeAgentMotion(input, recipe);
+  const direct = compileAgentMotion(input, recipe);
+  const preNormalized = compileAgentMotion(normalized, recipe, { normalized: true });
+  assert.deepEqual(snapshot(preNormalized.sample(0.4)), snapshot(direct.sample(0.4)));
+});

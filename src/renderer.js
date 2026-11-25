@@ -2686,6 +2686,7 @@ export class CrucibleRenderer {
     context.bindTexture(context.TEXTURE_2D, specularTexture);
     context.activeTexture(context.TEXTURE0 + ENVIRONMENT_BRDF_UNIT);
     context.bindTexture(context.TEXTURE_2D, brdfTexture);
+    context.activeTexture(context.TEXTURE0);
   }
 
   // Prefilters a map the first time it is seen; maps spread from one created map share its data and reuse the GPU textures (an `irradianceSource` map, which only the diffuse light reads, counts as part of the map). Returns true when new textures were built.
