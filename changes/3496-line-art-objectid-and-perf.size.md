@@ -1,0 +1,1 @@
+- scene:agent-scene+lazy: skip unused normal pass, preserve objectId in passSupport.texture, and cache lineNodeTable uploads in line-art (#3496, #3491)
