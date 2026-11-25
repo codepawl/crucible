@@ -129,6 +129,10 @@ export const STUDIO_CSS = `
   .crucible-studio button:not([aria-disabled="true"]):not([aria-pressed="true"]):hover {
     background: color-mix(in srgb, var(--studio-text) 8%, transparent);
   }
+  .crucible-studio dialog button.crucible-studio-dialog-primary:not([aria-disabled="true"]):hover,
+  .crucible-studio dialog button.crucible-studio-setup-primary:not([aria-disabled="true"]):hover {
+    background: color-mix(in srgb, var(--studio-text) 86%, var(--studio-bg));
+  }
 }
 @media (prefers-reduced-motion: no-preference) {
   .crucible-studio button {
@@ -142,6 +146,13 @@ export const STUDIO_CSS = `
     --studio-motion-travel: 0ms;
   }
 }
+/* The Motion preference set to Reduced does what the system setting does: the same durations go to 0ms, and the bake pulse stops. */
+.crucible-studio[data-motion="reduced"] {
+  --studio-motion-quick: 0ms;
+  --studio-motion-base: 0ms;
+  --studio-motion-travel: 0ms;
+}
+.crucible-studio[data-motion="reduced"] .crucible-studio-bake-mark .crucible-studio-icon { animation: none; }
 @media (pointer: coarse) {
   .crucible-studio button {
     min-inline-size: 40px;
@@ -2394,7 +2405,7 @@ export const STUDIO_CSS = `
 .crucible-studio[data-compact="true"] button.crucible-studio-filepill { max-inline-size: 190px; }
 
 .crucible-studio dialog {
-  width: min(560px, calc(100vw - 32px));
+  width: min(600px, calc(100vw - 32px));
   padding: 16px;
   border: 1px solid var(--studio-border);
   border-radius: 14px;
@@ -2432,20 +2443,98 @@ export const STUDIO_CSS = `
 .crucible-studio dialog button {
   background: color-mix(in srgb, var(--studio-text) 7%, transparent);
 }
+/* One fixed height for every section; a section with more rows than fit scrolls its rows, never the dialog. */
 .crucible-studio dialog.crucible-studio-settings-dialog {
-  width: min(380px, calc(100vw - 32px));
+  width: min(600px, calc(100vw - 32px));
+  block-size: min(456px, calc(100vh - 48px));
 }
+/* A ring is drawn inside its control, so it never leaves the dialog's inset or the rows' scroll area. */
+.crucible-studio-settings-dialog :focus-visible { outline-offset: -2px; }
+.crucible-studio-settings-dialog:focus { outline: none; }
+.crucible-studio dialog.crucible-studio-settings-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--studio-space-16);
+  padding: var(--studio-space-24);
+}
+/* Trimmed to the letters, so the title sits as far from the top edge as the list does from the left and the buttons from the bottom. */
+.crucible-studio dialog.crucible-studio-settings-dialog h2 {
+  margin: 0;
+  text-box: trim-both cap alphabetic;
+}
+.crucible-studio-settings-dialog .crucible-studio-dialog-actions { margin-top: 0; }
+.crucible-studio-settings-body {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: var(--studio-space-16);
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+.crucible-studio-settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--studio-space-8);
+  align-self: start;
+}
+.crucible-studio dialog button.crucible-studio-settings-section {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--studio-space-8);
+  min-block-size: 36px;
+  padding-inline: var(--studio-space-8);
+  background: transparent;
+  color: var(--studio-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.crucible-studio dialog button.crucible-studio-settings-section .crucible-studio-icon { flex: none; }
+.crucible-studio dialog button.crucible-studio-settings-section[data-current="true"] {
+  background: color-mix(in srgb, var(--studio-text) 8%, transparent);
+  color: var(--studio-text);
+}
+/* Every section sits in the same grid cell, so the dialog keeps the height of the tallest one and does not jump between sections. */
 .crucible-studio-settings {
   display: grid;
-  gap: var(--studio-space-4);
+  grid-template-rows: minmax(0, 1fr);
+  min-block-size: 0;
   font-size: 12.5px;
+}
+.crucible-studio-settings-pane {
+  grid-area: 1 / 1;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--studio-space-8);
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+.crucible-studio-settings-pane[data-current="false"] { visibility: hidden; }
+.crucible-studio-settings-pane h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  min-block-size: 36px;
+  margin: 0;
+  font-family: var(--studio-font-heading);
+  font-size: 15px;
+}
+.crucible-studio-settings-pane h3 .crucible-studio-icon { flex: none; color: var(--studio-muted); }
+.crucible-studio-settings-rows {
+  display: grid;
+  align-content: start;
+  gap: var(--studio-space-8);
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .crucible-studio-setting {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--studio-space-4);
-  min-block-size: 34px;
+  gap: var(--studio-space-8);
+  min-block-size: 32px;
+  white-space: nowrap;
 }
 .crucible-studio-setting select {
   inline-size: 132px;
@@ -2585,6 +2674,71 @@ export const STUDIO_CSS = `
 }
 .crucible-studio-popover button[data-keeps-menu="true"][aria-expanded="true"] > .crucible-studio-icon[data-recent-chevron] { transform: rotate(90deg); }
 .crucible-studio-popover button:disabled { opacity: 0.45; cursor: default; }
+.crucible-studio dialog button.crucible-studio-settings-quiet {
+  margin-inline: calc(var(--studio-space-12) * -1) auto;
+  background: transparent;
+  color: var(--studio-muted);
+}
+.crucible-studio-account {
+  display: grid;
+  gap: var(--studio-space-12);
+  min-inline-size: 0;
+}
+.crucible-studio-account-status,
+.crucible-studio-account-error {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+}
+.crucible-studio-account-status { font-weight: 600; }
+.crucible-studio-account-status .crucible-studio-icon,
+.crucible-studio-account-error .crucible-studio-icon { flex: none; }
+.crucible-studio-account[data-phase="signed-in"] .crucible-studio-account-status .crucible-studio-icon { color: var(--studio-ok); }
+.crucible-studio-account[data-phase="signed-out"] .crucible-studio-account-status .crucible-studio-icon,
+.crucible-studio-account[data-phase="loading"] .crucible-studio-account-status .crucible-studio-icon,
+.crucible-studio-account[data-phase="waiting"] .crucible-studio-account-status .crucible-studio-icon { color: var(--studio-muted); }
+.crucible-studio-account-error .crucible-studio-icon { color: var(--studio-accent); }
+.crucible-studio-account-who {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-12);
+  min-inline-size: 0;
+}
+.crucible-studio-account-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  inline-size: 40px;
+  block-size: 40px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--studio-text) 12%, transparent);
+  font-family: var(--studio-font-heading);
+  font-size: 15px;
+  font-weight: 600;
+}
+.crucible-studio-account-lines {
+  display: grid;
+  min-inline-size: 0;
+}
+.crucible-studio-account-name,
+.crucible-studio-account-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crucible-studio-account-email,
+.crucible-studio-account-value { color: var(--studio-muted); }
+.crucible-studio button[data-action-icon] { gap: var(--studio-space-8); }
+.crucible-studio-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--studio-space-8);
+}
+@media (max-width: 520px) {
+  .crucible-studio-settings-body { grid-template-columns: 36px minmax(0, 1fr); gap: var(--studio-space-16); }
+  .crucible-studio dialog button.crucible-studio-settings-section { padding-inline: 0; justify-content: center; }
+  .crucible-studio dialog button.crucible-studio-settings-section span { display: none; }
+}
 .crucible-studio dialog.crucible-studio-setup-dialog {
   width: min(780px, calc(100vw - 32px));
   max-block-size: calc(100vh - 48px);
@@ -2974,6 +3128,7 @@ export const STUDIO_CSS = `
   background: transparent;
   color: var(--studio-text);
 }
+.crucible-studio dialog button.crucible-studio-dialog-primary,
 .crucible-studio dialog button.crucible-studio-setup-primary {
   min-inline-size: 88px;
   background: var(--studio-text);

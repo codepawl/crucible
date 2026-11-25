@@ -95,4 +95,8 @@ Pick the form by how a person reaches the feature:
 | Timeline | panel | `src/studio.js:2452`, `src/studio-keymap.js:50` | A scrub bar in the bottom panel shows time. Play is a key, Space. |
 | Undo and redo | operator | `src/studio-keymap.js:41-42`, `src/studio-controller.js:645` | Single actions, 32 steps deep. The rail buttons and Edit menu items call the same operator. |
 | Keymap | setting | `src/studio-keymap.js:319` | A stored choice made once in Settings: the default keys or another keymap preset. |
+| Settings | panel | Edit menu > Settings, Ctrl+, `src/studio-keymap.js:55` | One place for preferences, in sections with an icon each, so a person finds a choice by its section. |
+| Motion | setting | `src/studio-preferences.js`, `src/studio-settings.js` | A stored choice made once: follow the system or reduce Studio's own motion. |
+| Zoom direction | setting | `src/studio-preferences.js`, `src/studio-settings.js` | A stored choice made once for which way the wheel and a pinch zoom. |
+| Account | panel | Settings > Account, `src/studio-account.js` | Shows who is signed in and the host's sign-in and sign-out actions in one section; Studio holds no token. |
 | History | panel | `src/studio.js` (the History card in the right column), View > History, Edit > History | A log of the edits that stays on screen beside Properties: a viewer of a recording follows it downward, and the person editing steps back or forward from it. A tab of Properties would be swapped out when the selection changes tabs, so it is its own card, shown and hidden by a toggle. |

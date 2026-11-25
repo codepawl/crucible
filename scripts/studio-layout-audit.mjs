@@ -3,7 +3,7 @@
 // studio-layout-rules.mjs: unequal insets around the content of a padded container, a gap or padding off the spacing
 // scale, or a gap between groups smaller than the gap inside one. Every failure names the selector, the numbers and the fix.
 //
-//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history] [--width pixels] [--records file.json]
+//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history] [--width pixels] [--records file.json]
 //
 // Without --origin it starts a Vite dev server on a free port and stops it (by its own PID) at the end. Screens: the Studio
 // page, each of its popover menus, the five steps of the setup dialog, and the New scene chooser with its unsaved-changes
@@ -23,9 +23,6 @@ const STUDIO_PAGE = '/bench/studio/index.html?setup=off';
 const READY_EXPRESSION = 'Boolean(window.__studioPage?.renderer) && !document.getElementById("studio-loading")';
 const PREFERENCES_KEY = 'crucible-studio-preferences';
 const DRAFT_KEY = 'crucible.studio.draft';
-// The Settings dialog is checked for selection only: its spacing has an open finding that pull request #3317, which redesigns Settings,
-// closes. The Recipe JSON and shortcuts dialogs keep every spacing rule.
-const SELECTION_ONLY_DIALOG_TITLES = new Set(['crucible-studio-settings-title']);
 const THEMES = ['dark', 'light'];
 const VIEWPORT = { width: 1280, height: 720 };
 const NARROW_VIEWPORT = { width: 720, height: 720 };
@@ -38,9 +35,14 @@ const DIALOG_SELECTORS = Object.freeze({
   'shortcuts dialog': 'dialog.crucible-studio-shortcuts-dialog',
 });
 const SERVER_START_TIMEOUT_MS = 60000;
-const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history] [--width pixels] [--records file.json]';
+const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|studio|rename|popover|newscene|dialog|notice|notices|editmenu|history] [--width pixels] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
+// A signed-in host with every optional field, so the Account section of Settings is on screen and measured.
+const SAMPLE_ACCOUNT_HOST = `globalThis.crucibleShell = { account: {
+  get: async () => ({ signedIn: true, name: 'Sample Person', email: 'sample.person@example.com', remainingText: '1,240 credits left', planText: 'Studio plan' }),
+  signIn: async () => {}, signOut: async () => {}, buyCredits: () => {}, manageBilling: () => {},
+} };`;
 const SOFTWARE_ARGUMENTS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--disable-audio-output'];
 
 // An uneven inset or an off-scale value that is meant. Each entry names the kind, the selector (a substring of the
@@ -49,6 +51,7 @@ export const ALLOWLIST = Object.freeze([
   { kind: 'uneven-inset', selector: 'crucible-studio-toolbar', reason: 'The tool rail is a strip as tall as the window; its buttons sit at the top and the strip ends below them.' },
   { kind: 'uneven-inset', selector: 'crucible-studio-tree-row', reason: 'The visibility button at the end of an outliner row is a hit area with its own room, so the row keeps 2px on that side.' },
   { kind: 'uneven-inset', selector: 'crucible-studio-popover > button', reason: 'A menu row is a full-width hit area whose label starts at the leading edge; the free space is the end of the row.' },
+  { kind: 'uneven-inset', selector: 'crucible-studio-settings-section', reason: 'A section of the Settings list is a full-width hit area whose icon and label start at the leading edge; the free space is the end of the row.' },
 ]);
 
 // Runs inside the page. Returns one record per visible element under `rootElement`; the rules read them in Node.
@@ -282,6 +285,7 @@ export async function launchBrowser() {
 export async function openStudio(browser, origin, theme, extraCss = '', { viewport = VIEWPORT, draft = false, savedDraft = null } = {}) {
   const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
   await context.addInitScript(FAKE_POINTER_LOCK_SCRIPT);
+  await context.addInitScript(SAMPLE_ACCOUNT_HOST);
   await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [PREFERENCES_KEY, JSON.stringify({ theme, setupDone: true })]);
   if (draft) await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [DRAFT_STORAGE_KEY, SEEDED_DRAFT]);
   if (savedDraft) await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [DRAFT_KEY, JSON.stringify(savedDraft)]);
@@ -341,6 +345,63 @@ async function measureDraftNotice(browser, origin, theme, extraCss) {
   }
 }
 
+function openSettingsFromMenu(page) {
+  return page.evaluate(() => [...document.querySelectorAll('.crucible-studio button')].find(button => button.textContent.trim().startsWith('Settings')).click());
+}
+
+const SETTINGS_FOOTER_GAP = 16;
+const EXTRA_ROWS = 3;
+
+// Runs in the page. Settings opened the way a person opens it, in a 600 px high window with three more rows than the longest section has:
+// the dialog keeps its height, the rows scroll inside themselves, the last row stays at least 16 px above the footer, focus rests on the
+// dialog, and Done is the one filled button.
+function checkSettingsFit(extraRows, footerGap) {
+  const dialog = document.querySelector('dialog.crucible-studio-settings-dialog');
+  const problems = [];
+  const report = (kind, detail, message) => problems.push({ kind, selector: 'crucible-studio-settings-dialog', detail, message });
+  const heightOf = element => element.getBoundingClientRect().height;
+  const rows = dialog.querySelector('.crucible-studio-settings-pane[data-section="viewport"] .crucible-studio-settings-rows');
+  const clones = [];
+  for (let index = 0; index < extraRows; index += 1) {
+    const clone = rows.firstElementChild.cloneNode(true);
+    clones.push(clone);
+    rows.append(clone);
+  }
+  [...document.querySelectorAll('.crucible-studio button')].find(button => button.textContent.trim().startsWith('Settings')).click();
+  if (document.activeElement !== dialog) report('settings-focus', 'open', 'Settings must open with focus on the dialog, so every section looks the same and no ring is drawn.');
+  if (dialog.querySelector('.crucible-studio-settings-pane[data-current="true"]').dataset.section !== 'interface') report('settings-focus', 'section', 'Settings must open on its first section.');
+  const heightBefore = heightOf(dialog);
+  for (const section of ['interface', 'viewport', 'editing', 'keys']) {
+    dialog.querySelector(`nav button[data-section="${section}"]`).click();
+    const pane = dialog.querySelector(`.crucible-studio-settings-pane[data-section="${section}"]`);
+    const area = pane.querySelector('.crucible-studio-settings-rows');
+    const footer = dialog.querySelector('.crucible-studio-dialog-actions').getBoundingClientRect();
+    if (Math.abs(heightOf(dialog) - heightBefore) > 0.5) report('settings-height', section, `The Settings dialog changed height on ${section} (${heightBefore} to ${heightOf(dialog)} px); it keeps one height.`);
+    if (footer.top - area.getBoundingClientRect().bottom < footerGap) report('settings-footer-gap', section, `The rows of ${section} end less than ${footerGap} px above the footer.`);
+    if (section === 'viewport' && area.scrollHeight <= area.clientHeight) report('settings-scroll', section, `With ${extraRows} more rows the Viewport rows must scroll inside themselves; they did not.`);
+    const innerRight = dialog.getBoundingClientRect().right - parseFloat(getComputedStyle(dialog).paddingRight) - parseFloat(getComputedStyle(dialog).borderRightWidth);
+    for (const control of area.querySelectorAll('select, input, button')) {
+      if (control.getBoundingClientRect().right > innerRight + 0.5 && getComputedStyle(pane).visibility !== 'hidden') report('settings-inset', section, 'A control reaches past the dialog inset.');
+    }
+  }
+  const buttons = [...dialog.querySelectorAll('.crucible-studio-dialog-actions button')];
+  const fillOf = button => getComputedStyle(button).backgroundColor;
+  const done = buttons.find(button => button.textContent === 'Done');
+  if (buttons.some(button => button !== done && fillOf(button) === fillOf(done))) report('settings-primary', 'Done', 'Done must be the one filled button of the dialog.');
+  dialog.close();
+  for (const clone of clones) clone.remove();
+  return problems;
+}
+
+async function measureSettingsFit(page) {
+  await page.setViewportSize({ width: VIEWPORT.width, height: 600 });
+  await page.waitForTimeout(250);
+  const problems = await page.evaluate(`(${checkSettingsFit.toString()})(${EXTRA_ROWS}, ${SETTINGS_FOOTER_GAP})`);
+  await page.setViewportSize(VIEWPORT);
+  await page.waitForTimeout(250);
+  return problems;
+}
+
 // Edit mode builds its own popover on the first Tab (the proportional editing settings), so enter it once and leave: the
 // popover stays in the page and the loop below measures it with the others.
 async function createEditModePopovers(page) {
@@ -364,12 +425,24 @@ async function measureScreens(page, theme, only) {
       await page.evaluate(id => document.getElementById(id).hidePopover(), identifier);
     }
   }
+  if (!only || only === 'settings') {
+    await openSettingsFromMenu(page);
+    const sections = page.locator('.crucible-studio-settings-section');
+    for (let index = 0; index < await sections.count(); index += 1) {
+      await sections.nth(index).click();
+      await page.waitForTimeout(200);
+      const sectionName = await sections.nth(index).getAttribute('data-section');
+      screens.push({ name: `settings ${sectionName} (${theme})`, records: await measure(page, 'dialog.crucible-studio-settings-dialog') });
+    }
+    await page.evaluate(() => document.querySelector('dialog.crucible-studio-settings-dialog').close());
+    screens.push({ name: `settings fit (${theme})`, records: [], problems: await measureSettingsFit(page) });
+  }
   if (!only || only === 'dialog') {
     const titles = await page.evaluate(() => Array.from(document.querySelectorAll('.crucible-studio dialog:not(.crucible-studio-setup-dialog)')).map(dialog => dialog.querySelector('h2')?.id).filter(Boolean));
     for (const title of titles) {
       await page.evaluate(identifier => document.getElementById(identifier).closest('dialog').showModal(), title);
       await page.waitForTimeout(250);
-      screens.push({ name: `${title.replace('crucible-studio-', '')} dialog (${theme})`, records: await measure(page, `dialog:has(#${title})`), selectionOnly: SELECTION_ONLY_DIALOG_TITLES.has(title) });
+      screens.push({ name: `${title.replace('crucible-studio-', '')} dialog (${theme})`, records: await measure(page, `dialog:has(#${title})`) });
       await page.evaluate(identifier => document.getElementById(identifier).closest('dialog').close(), title);
     }
   }
@@ -719,7 +792,7 @@ export function summarize(screens, allowlist = ALLOWLIST) {
   const allowedMerged = new Map();
   for (const screen of screens) {
     const spacing = screen.selectionOnly ? { findings: [], allowed: [] } : findSpacingProblems(screen.records, { allowlist });
-    const findings = [...spacing.findings, ...findSelectionProblems(screen.records)];
+    const findings = [...spacing.findings, ...(screen.problems ?? []), ...findSelectionProblems(screen.records)];
     const rowHeights = screen.buttonRowHeights ?? [];
     if (rowHeights.length > 1 && Math.max(...rowHeights) - Math.min(...rowHeights) > 1) {
       findings.push({

@@ -74,6 +74,14 @@ export const STUDIO_ICON_PATHS = Object.freeze({
   tierSharp: 'M4 4h16v16H4zM7.2 4v16M10.4 4v16M13.6 4v16M16.8 4v16M4 7.2h16M4 10.4h16M4 13.6h16M4 16.8h16',
   tierAutomatic: 'M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4',
   handle: 'M7 7h10v10H7zM3 3h4v4H3zM17 3h4v4h-4zM3 17h4v4H3zM17 17h4v4h-4z',
+  account: 'M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4.5 20a7.5 7.5 0 0 1 15 0',
+  lock: 'M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3M12 15v2',
+  // Action buttons: signIn is a door with an arrow going in, signOut the same door on the other side with the arrow coming out.
+  signIn: 'M10 4h7a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-7M3 12h11M10.5 8l4 4-4 4',
+  signOut: 'M14 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7M10 12h11M17 8l4 4-4 4',
+  buyMore: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8v8M8 12h8',
+  card: 'M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3 10h18M7 15h3',
+  reset: 'M4 12a8 8 0 1 0 2.3-5.7L4 8.5M4 4v4.5h4.5',
   chat: 'M4 5h16v11h-9l-4.5 4v-4H4zM8 9.5h8M8 12.5h5',
   copy: 'M9 4h6v3H9zM7 5.5H5a1 1 0 0 0-1 1V20a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6.5a1 1 0 0 0-1-1h-2M8.5 12h7M8.5 16h5',
   // Action buttons: reload turns clockwise, reset (put back) the other way, signIn is a door with an arrow going in.
