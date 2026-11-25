@@ -1,4 +1,5 @@
 import { agentGroundPlacement } from './agent-ground.js';
+import { formatLengthTuple } from './studio-units.js';
 
 // Working aids for the Studio viewport: a ground grid with the world axes, a view widget that shows where the camera
 // looks and snaps to the main views, and a readout of the camera and the selection. None of them is part of the scene.
@@ -354,10 +355,6 @@ export function createViewWidget(documentReference, { onPickView }) {
   return { element: widget, update };
 }
 
-function metres(value) {
-  return Math.abs(value) >= 100 ? value.toFixed(0) : value.toFixed(2);
-}
-
 /** The camera half of the readout, such as "Perspective · 50 mm" or "Orthographic". */
 export function describeCamera(camera) {
   if (camera.projection === 'orthographic') {
@@ -366,7 +363,7 @@ export function describeCamera(camera) {
   return Number.isFinite(camera.focalLength) ? `Perspective · ${Math.round(camera.focalLength)} mm` : `Perspective · ${Math.round(camera.fov ?? 45)}°`;
 }
 
-/** The selection half of the readout: the object's size in metres, width × height × depth. */
-export function describeBounds(bounds) {
-  return `${metres(bounds.size[0])} × ${metres(bounds.size[1])} × ${metres(bounds.size[2])} m`;
+/** The selection half of the readout: the object's size in the chosen length unit, width × height × depth. */
+export function describeBounds(bounds, lengthUnit = 'm') {
+  return formatLengthTuple(bounds.size, lengthUnit);
 }
