@@ -63,3 +63,29 @@ test('the pair set tells (a, b) from (b, a) and keeps the largest ids', () => {
   assert.equal(pairs.add(1, 2), false);
   assert.equal(pairs.size, 2);
 });
+
+test('the pair set keeps 200000 crowded pairs of the largest ids apart through several grows', () => {
+  const top = 0xfffffffe;
+  const firstRange = 500;
+  const secondRange = 400;
+  const pairs = createTrianglePairSet();
+  for (let index = 0; index < firstRange * secondRange; index++) {
+    assert.equal(pairs.add(top - (index % firstRange), top - Math.floor(index / firstRange)), true);
+  }
+  assert.equal(pairs.size, firstRange * secondRange);
+  for (let first = 0; first < firstRange; first++) {
+    for (let second = 0; second < secondRange; second++) {
+      assert.equal(pairs.has(top - first, top - second), true);
+      // One id past the second range was never added.
+      assert.equal(pairs.has(top - first, top - secondRange - second), false);
+    }
+    // Swapped: the first id of a pair at or past the second range is never a second id.
+    if (first >= secondRange) assert.equal(pairs.has(top - first, top - first), false);
+  }
+  assert.equal(pairs.has(top - 1, top - firstRange), false);
+  assert.equal(pairs.add(top, top - secondRange), true);
+  assert.equal(pairs.add(top - 3, top - 7), false);
+  assert.equal(pairs.size, firstRange * secondRange + 1);
+  for (let first = secondRange; first < firstRange; first++) assert.equal(pairs.has(top - 5, top - first), false);
+  for (let first = secondRange; first < firstRange; first++) assert.equal(pairs.has(top - first, top - 5), true);
+});
