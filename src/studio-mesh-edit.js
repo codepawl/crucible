@@ -1019,6 +1019,17 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return transformPoint(state.part.matrix, sum[0] / vertices.size, sum[1] / vertices.size, sum[2] / vertices.size);
   }
 
+  /** The mean of the picked vertices in the object's own space, or null when nothing is picked. */
+  function selectionCentreLocal() {
+    const vertices = selectedVertices();
+    if (!state || vertices.size === 0) return null;
+    const sum = [0, 0, 0];
+    for (const vertex of vertices) {
+      for (let axis = 0; axis < 3; axis += 1) sum[axis] += state.positions[vertex * 3 + axis];
+    }
+    return sum.map(component => component / vertices.size);
+  }
+
   function writePreview() {
     if (!drag.previewing) return;
     try {
@@ -1415,6 +1426,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     refresh,
     cagePaths,
     selectionScreenRadius,
+    selectionCentreLocal,
     reweighDrag,
     get holdingMove() { return drag !== null; },
     proportional,
