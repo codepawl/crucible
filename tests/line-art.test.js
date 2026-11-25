@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LINE_ART_DEFAULTS, LINE_ART_LIMITS, resolveLineArt, installLineArt } from '../src/line-art.js';
+import { LINE_ART_DEFAULTS, LINE_ART_LIMITS, POLYLINE_STYLES, polylineSegmentOffsets, resolveLineArt, installLineArt } from '../src/line-art.js';
 import { createAgentScene } from '../src/agent-scene.js';
 import { agentSceneModulesNeeded, loadAgentSceneModules } from '../src/agent-scene-modules.js';
 import { AGENT_SCENE_CAPABILITIES } from '../src/agent-scene-capabilities.js';
@@ -208,4 +208,203 @@ test('a recipe keeps the line modes and rejects a wrong one with the field name'
   const lines = createAgentScene(recipe).environment.lines;
   assert.deepEqual([lines.colorMode, lines.darkenFactor, lines.silhouetteSide, lines.convexHighlight], ['darken', 0.54, 'front', 1]);
   assert.throws(() => createAgentScene({ ...BASE_RECIPE, environment: { lines: { silhouetteSide: 'near' } } }), /lines\.silhouetteSide/);
+});
+
+test('polyline styles resolve defaults, clamp narrow lines and reject incompatible fields', () => {
+  assert.deepEqual(POLYLINE_STYLES, ['solid', 'dashed', 'dotted', 'double']);
+  const lines = resolveLineArt({
+    width: 2,
+    polylines: [
+      { points: [[0, 0, 0], [1, 0, 0]], style: 'dashed' },
+      { points: [[0, 0, 0], [1, 0, 0]], style: 'dotted', width: 0.25 },
+      { points: [[0, 0, 0], [1, 0, 0]], style: 'double', width: 3 },
+      { points: [[0, 0, 0], [1, 0, 0]], style: 'dashed', dashLength: 14, gapLength: 5, dashOffset: -12 },
+    ],
+  });
+  assert.deepEqual(lines.polylines[0], {
+    points: [[0, 0, 0], [1, 0, 0]],
+    color: [...LINE_ART_DEFAULTS.color],
+    width: 2,
+    depthTest: true,
+    closed: false,
+    style: 'dashed',
+    dashLength: 8,
+    gapLength: 4,
+    dashOffset: 0,
+  });
+  assert.equal(lines.polylines[1].style, 'dotted');
+  assert.equal(lines.polylines[1].gapLength, 0.5);
+  assert.equal(lines.polylines[1].dashOffset, 0);
+  assert.equal(lines.polylines[2].style, 'double');
+  assert.equal(lines.polylines[2].gapLength, 4.5);
+  assert.equal(lines.polylines[3].dashLength, 14);
+  assert.equal(lines.polylines[3].gapLength, 5);
+  assert.equal(lines.polylines[3].dashOffset, -12);
+  assert.deepEqual(resolveLineArt(lines), lines, 'resolved styled polylines stay idempotent');
+  assert.throws(() => resolveLineArt({ polylines: [{ points: [[0, 0, 0], [1, 0, 0]], style: 'zigzag' }] }), /lines\.polylines\[0\]\.style/);
+  assert.throws(() => resolveLineArt({ polylines: [{ points: [[0, 0, 0], [1, 0, 0]], dashLength: 4 }] }), /sets dashLength on a solid polyline/);
+  assert.throws(() => resolveLineArt({ polylines: [{ points: [[0, 0, 0], [1, 0, 0]], style: 'solid', gapLength: 4 }] }), /sets gapLength on a solid polyline/);
+  assert.throws(() => resolveLineArt({ polylines: [{ points: [[0, 0, 0], [1, 0, 0]], style: 'dotted', dashLength: 4 }] }), /sets dashLength with style "dotted"/);
+  assert.throws(() => resolveLineArt({ polylines: [{ points: [[0, 0, 0], [1, 0, 0]], style: 'double', dashOffset: 4 }] }), /sets dashOffset with style "double"/);
+  assert.throws(() => resolveLineArt({ polylines: [{ points: [[0, 0, 0], [1, 0, 0]], style: 'dashed', dashLength: 0.1 }] }), /lines\.polylines\[0\]\.dashLength must be a number between 0\.5 and 256/);
+  assert.throws(() => resolveLineArt({ polylines: [{ points: [[0, 0, 0], [1, 0, 0]], style: 'double', gapLength: 300 }] }), /lines\.polylines\[0\]\.gapLength must be a number between 0\.5 and 256/);
+  assert.throws(() => resolveLineArt({ polylines: [{ points: [[0, 0, 0], [1, 0, 0]], style: 'dotted', dashOffset: 2e5 }] }), /lines\.polylines\[0\]\.dashOffset must be a number between -100000 and 100000/);
+});
+
+test('polylineSegmentOffsets accumulates screen pixels around corners and clips near the camera plane', () => {
+  const identityProjection = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  const lShape = [[-0.5, 0, 0], [0.5, 0, 0], [0.5, 0.5, 0]];
+  assert.deepEqual(Array.from(polylineSegmentOffsets({ points: lShape, closed: false, style: 'solid' }, identityProjection, 200, 100)), [0, 0]);
+  assert.deepEqual(Array.from(polylineSegmentOffsets({ points: lShape, closed: false, style: 'double' }, identityProjection, 200, 100)), [0, 0]);
+  const offsets = Array.from(polylineSegmentOffsets({ points: lShape, closed: true, style: 'dashed' }, identityProjection, 200, 100));
+  assert.deepEqual(offsets, [0, 100, 125]);
+  // Column-major matrix where clip.w = point.z, exercising behind-camera and near-plane clipping paths.
+  const wFromZ = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0];
+  const clipped = Array.from(polylineSegmentOffsets({
+    points: [[0, 0, -1], [0, 0, -2], [0, 0, 1], [1, 0, 1]],
+    closed: false,
+    style: 'dotted',
+  }, wFromZ, 200, 200));
+  assert.deepEqual(clipped, [0, 0, 0]);
+});
+
+test('drawPolylines binds style uniforms, per-segment offsets for dashed/dotted, and deletes buffers on dispose', () => {
+  const shaderSources = [];
+  const uniform1fCalls = [];
+  const uniform3fCalls = [];
+  const bufferUploads = [];
+  const disabledAttribs = [];
+  const attrib1fCalls = [];
+  const deletedBuffers = [];
+  let nextId = 1;
+  const context = {
+    VERTEX_SHADER: 1,
+    FRAGMENT_SHADER: 2,
+    COMPILE_STATUS: 3,
+    LINK_STATUS: 4,
+    TEXTURE_2D: 5,
+    NEAREST: 6,
+    LINEAR: 7,
+    TEXTURE_MIN_FILTER: 8,
+    TEXTURE_MAG_FILTER: 9,
+    TEXTURE_WRAP_S: 10,
+    TEXTURE_WRAP_T: 11,
+    CLAMP_TO_EDGE: 12,
+    FRAMEBUFFER: 13,
+    COLOR_ATTACHMENT0: 14,
+    FRAMEBUFFER_COMPLETE: 15,
+    RGBA16F: 16,
+    RGBA8: 17,
+    RGBA: 18,
+    HALF_FLOAT: 19,
+    UNSIGNED_BYTE: 20,
+    TEXTURE0: 100,
+    BLEND: 21,
+    ONE: 22,
+    ONE_MINUS_SRC_ALPHA: 23,
+    DEPTH_TEST: 24,
+    CULL_FACE: 25,
+    ARRAY_BUFFER: 26,
+    STATIC_DRAW: 27,
+    DYNAMIC_DRAW: 28,
+    FLOAT: 29,
+    TRIANGLES: 30,
+    createShader: kind => ({ kind }),
+    shaderSource: (shader, source) => {
+      shader.source = source;
+      shaderSources.push(source);
+    },
+    compileShader() {},
+    getShaderParameter: () => true,
+    createProgram: () => ({ id: nextId++ }),
+    attachShader() {},
+    linkProgram() {},
+    getProgramParameter: () => true,
+    getUniformLocation: (program, name) => name,
+    getAttribLocation: (program, name) => ({ startPoint: 0, endPoint: 1, startOffset: 2 }[name] ?? -1),
+    createTexture: () => ({ id: nextId++ }),
+    bindTexture() {},
+    texImage2D() {},
+    texParameteri() {},
+    createFramebuffer: () => ({ id: nextId++ }),
+    bindFramebuffer() {},
+    framebufferTexture2D() {},
+    checkFramebufferStatus: () => 15,
+    createVertexArray: () => ({ id: nextId++ }),
+    bindVertexArray() {},
+    createBuffer: () => ({ id: nextId++ }),
+    bindBuffer() {},
+    bufferData: (target, data, usage) => bufferUploads.push({ data: Array.from(data), usage }),
+    deleteBuffer: buffer => deletedBuffers.push(buffer),
+    deleteTexture() {},
+    deleteFramebuffer() {},
+    deleteProgram() {},
+    deleteVertexArray() {},
+    useProgram() {},
+    activeTexture() {},
+    uniform1i() {},
+    uniform1f: (location, value) => uniform1fCalls.push([location, value]),
+    uniform2f() {},
+    uniform3f: (location, x, y, z) => uniform3fCalls.push([location, x, y, z]),
+    uniform3fv() {},
+    uniformMatrix4fv() {},
+    viewport() {},
+    disable() {},
+    enable() {},
+    blendFuncSeparate() {},
+    enableVertexAttribArray() {},
+    disableVertexAttribArray: location => disabledAttribs.push(location),
+    vertexAttribPointer() {},
+    vertexAttribDivisor() {},
+    vertexAttrib1f: (location, value) => attrib1fCalls.push([location, value]),
+    drawArrays() {},
+    drawArraysInstanced() {},
+  };
+  const identityProjection = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  let resultTexture = null;
+  const renderer = {
+    context,
+    canvas: { width: 200, height: 100 },
+    depthTexture: { id: 99 },
+    hdr: false,
+    projection: identityProjection,
+    viewProjection: identityProjection,
+    view: identityProjection,
+    postStages: [],
+    passSupport: {},
+    render(frame) {
+      resultTexture = this.postStages[0].apply(this, frame, {}, { id: 88 });
+    },
+    rebuildMainProgram() {},
+    requireFeatureNames() {},
+  };
+  installLineArt(renderer);
+  const resolved = resolveLineArt({
+    boundaries: false,
+    creaseAngle: 0,
+    depthJump: 0,
+    polylines: [
+      { points: [[0, 0, 0], [1, 0, 0]], width: 2 },
+      { points: [[-0.5, 0, 0], [0.5, 0, 0], [0.5, 0.5, 0]], style: 'dashed', dashLength: 12, gapLength: 6, dashOffset: 3, width: 2 },
+      { points: [[0, 0, 0], [0.5, 0, 0]], style: 'dotted', gapLength: 5, dashOffset: -2, width: 3 },
+      { points: [[0, 0.2, 0], [1, 0.2, 0]], style: 'double', gapLength: 4, width: 2 },
+    ],
+  });
+  renderer.render({ eye: [0, 0, 5], lines: resolved });
+  assert.ok(resultTexture);
+  assert.ok(shaderSources.some(source => source.includes('railOffset') && source.includes('fromDashCenter') && source.includes('fromDotCenter')));
+  assert.deepEqual(
+    uniform1fCalls.filter(([location]) => location === 'lineStyle').map(([, value]) => value),
+    [0, 1, 2, 3],
+  );
+  assert.deepEqual(
+    uniform3fCalls.filter(([location]) => location === 'dashPattern').map(([, x, y, z]) => [x, y, z]),
+    [[0, 0, 0], [12, 6, 3], [0, 5, -2], [0, 4, 0]],
+  );
+  assert.deepEqual(disabledAttribs, [2, 2]);
+  assert.deepEqual(attrib1fCalls, [[2, 0], [2, 0]]);
+  const dynamicUploads = bufferUploads.filter(upload => upload.usage === context.DYNAMIC_DRAW).map(upload => upload.data);
+  assert.deepEqual(dynamicUploads, [[0, 100], [0]]);
+  renderer.postStages[0].dispose(context);
+  assert.equal(deletedBuffers.length, 5);
 });
