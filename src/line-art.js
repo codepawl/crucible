@@ -289,6 +289,10 @@ function drawsOutlines(lines) {
   return lines.boundaries || lines.creaseAngle > 0 || lines.depthJump > 0;
 }
 
+function needsNormalGuide(lines) {
+  return lines.creaseAngle > 0 || (lines.silhouetteSide === 'front' && lines.boundaries);
+}
+
 // Both guides read the same texel as the frame, so every lookup is a texel fetch at an integer pixel.
 const outlineFragment = `#version 300 es
 precision highp float;
@@ -393,7 +397,7 @@ void main() {
   lastPixel = textureSize(sourceTexture, 0) - 1;
   vec4 source = texelFetch(sourceTexture, pixel, 0);
   vec3 centerPart = partAt(pixel);
-  vec3 centerNormal = normalAt(pixel);
+  vec3 centerNormal = creaseCosine > -1.5 || (frontOnly > 0.5 && useBoundaries > 0.5) ? normalAt(pixel) : vec3(0.0);
   float centerDepth = depthAt(pixel);
   NodeLine centerNode = nodeAt(centerPart);
   edgeColor = centerNode.color;
@@ -600,6 +604,7 @@ function createLineArtStage(state) {
   let outputTarget = null;
   let nodeTexture = null;
   let nodeTextureIsEmpty = false;
+  let cachedNodeState = null;
   const guideTargets = new Map();
   const segmentBuffers = new Map();
 
@@ -636,6 +641,7 @@ function createLineArtStage(state) {
       nodeTexture = null;
       nodeTextureIsEmpty = false;
     }
+    cachedNodeState = null;
   }
 
   // Uploads the per-ID table. A frame without per-node settings gets a one-texel table, made once and not rebuilt.
@@ -654,15 +660,20 @@ function createLineArtStage(state) {
       context.bindTexture(context.TEXTURE_2D, nodeTexture);
     }
     if (!hasNodes) {
+      cachedNodeState = null;
       if (!nodeTextureIsEmpty) {
         context.texImage2D(context.TEXTURE_2D, 0, context.RGBA32F, 1, 1, 0, context.RGBA, context.FLOAT, new Float32Array(4));
         nodeTextureIsEmpty = true;
       }
       return 0;
     }
-    const table = lineNodeTable(lines, renderer.passSupport.objectNodes());
+    const groups = Array.isArray(renderer.batches) ? null : renderer.passSupport.objectNodes();
+    const key = JSON.stringify([lines.color, lines.nodes, groups ?? renderer.batches.length]);
+    if (cachedNodeState?.key === key && cachedNodeState.batches === renderer.batches) return cachedNodeState.count;
+    const table = lineNodeTable(lines, groups ?? renderer.passSupport.objectNodes());
     context.texImage2D(context.TEXTURE_2D, 0, context.RGBA32F, table.width, table.height, 0, context.RGBA, context.FLOAT, table.data);
     nodeTextureIsEmpty = false;
+    cachedNodeState = { key, batches: renderer.batches, count: table.count };
     return table.count;
   }
 
@@ -702,7 +713,9 @@ function createLineArtStage(state) {
         'darkenFactor', 'frontOnly', 'convexLift', 'cameraRight', 'cameraUp']);
     }
     context.useProgram(outlineProgram);
-    const bindings = [[sourceTexture, 'sourceTexture'], [renderer.depthTexture, 'sceneDepth'], [guideTarget(renderer, 'part').texture, 'partTexture'], [guideTarget(renderer, 'normal').texture, 'normalTexture']];
+    const partTexture = guideTarget(renderer, 'part').texture;
+    const normalTexture = needsNormalGuide(lines) ? guideTarget(renderer, 'normal').texture : partTexture;
+    const bindings = [[sourceTexture, 'sourceTexture'], [renderer.depthTexture, 'sceneDepth'], [partTexture, 'partTexture'], [normalTexture, 'normalTexture']];
     bindings.forEach(([texture, uniform], unit) => {
       context.activeTexture(context.TEXTURE0 + unit);
       context.bindTexture(context.TEXTURE_2D, texture);
@@ -897,8 +910,9 @@ export function installLineArt(renderer) {
     pushDefaultToon();
   }
 
-  function drawGuides(frame) {
-    for (const [pass, name] of [['objectId', 'part'], ['normal', 'normal']]) {
+  function drawGuides(frame, lines) {
+    const passes = needsNormalGuide(lines) ? [['normal', 'normal'], ['objectId', 'part']] : [['objectId', 'part']];
+    for (const [pass, name] of passes) {
       drawFrame({ ...frame, pass });
       stage.captureGuide(renderer, name);
     }
@@ -908,7 +922,7 @@ export function installLineArt(renderer) {
     const lines = frame.lines && frame.pass === undefined && !frame.reflectionTarget && !renderer.benchmark ? frame.lines : null;
     applyDefaultToon(lines?.toon ?? 0);
     state.lines = lines;
-    if (lines && drawsOutlines(lines)) drawGuides(frame);
+    if (lines && drawsOutlines(lines)) drawGuides(frame, lines);
     try {
       drawFrame(frame);
     } finally {
