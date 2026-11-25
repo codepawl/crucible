@@ -2012,6 +2012,19 @@ export function createStudio(container, {
   const frameButton = createKeyedIconButton('frame', () => `Frame in view (${keyLabel(keymap, 'view.frame')})`);
   const toggleDocksButton = createIconButton(documentReference, 'panels', 'Show or hide the panels', { attributes: { 'aria-pressed': 'true' } });
   const gridButton = createIconButton(documentReference, 'grid', 'Show or hide the grid', { attributes: { 'aria-pressed': 'true' } });
+  // View state, not an edit: it never reaches the recipe or the undo history, and every edit-mode pick and select obeys it.
+  let seeThrough = false;
+  const seeThroughButton = createKeyedIconButton('seeThrough', () => `See through the surface (${keyLabel(keymap, 'view.seeThrough')})`, { attributes: { 'aria-pressed': 'false' } });
+  function setSeeThrough(enabled) {
+    seeThrough = Boolean(enabled);
+    seeThroughButton.setAttribute('aria-pressed', seeThrough ? 'true' : 'false');
+    meshEditor?.setSeeThrough(seeThrough);
+    requestFrame();
+  }
+  seeThroughButton.addEventListener('click', () => {
+    setSeeThrough(!seeThrough);
+    announce(seeThrough ? 'See-through on' : 'See-through off');
+  });
   gridButton.addEventListener('click', () => {
     setPreference('gridVisible', !gridVisible);
     announce(gridVisible ? 'Grid shown' : 'Grid hidden');
@@ -2064,9 +2077,9 @@ export function createStudio(container, {
     createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Edit the scene' } }, addMenuButton, undoButton, redoButton),
     // Above the line: what changes the scene. Below it: what only shows or hides parts of Studio.
     createElement(documentReference, 'div', { className: 'crucible-studio-toolbar-rule', attributes: { role: 'separator', 'aria-orientation': 'horizontal' } }),
-    createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Show or hide' } }, gridButton, toggleDocksButton),
+    createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Show or hide' } }, gridButton, seeThroughButton, toggleDocksButton),
   );
-  wireRovingFocusFallback(toolbarElement, [...toolButtons, addMenuButton, undoButton, redoButton, gridButton, toggleDocksButton], { vertical: true });
+  wireRovingFocusFallback(toolbarElement, [...toolButtons, addMenuButton, undoButton, redoButton, gridButton, seeThroughButton, toggleDocksButton], { vertical: true });
 
   // Viewport Top-Right 3D View Widget
   const viewPresetButtons = ['front', 'right', 'top', 'isometric'].map(preset => {
@@ -3474,14 +3487,15 @@ export function createStudio(container, {
 
   // The grid is drawn with the scene so objects hide it, but it is never part of the scene: not picked, saved or exported.
   function partsToDraw() {
+    const sceneParts = meshEditor?.active ? meshEditor.partsToDraw(controller.scene.parts) : controller.scene.parts;
     if (!gridVisible || capturingStill) {
-      return controller.scene.parts;
+      return sceneParts;
     }
     gridParts ??= buildGridParts();
     gridPartsByName ??= new Map(gridParts.map(part => [part.name, part]));
     const camera = controller.viewCamera;
     placeGridParts(gridPartsByName, gridLayout({ visibleHeight: cameraVisibleHeight(camera), viewportHeight: controller.viewportHeight, target: camera.target, eye: camera.eye }));
-    return [...controller.scene.parts, ...gridParts];
+    return [...sceneParts, ...gridParts];
   }
 
   // F flies the camera to the framed object instead of jumping there, so the eye can follow where the view went. The
@@ -3529,7 +3543,7 @@ export function createStudio(container, {
   }
 
   function syncRendererParts(activeRenderer) {
-    const topology = `${controller.scene.topologyRevision}|${gridVisible && !capturingStill}`;
+    const topology = `${controller.scene.topologyRevision}|${gridVisible && !capturingStill}|${Boolean(meshEditor?.active && meshEditor.seeThrough)}`;
     if (renderedScene !== controller.scene || renderedTopology !== topology) {
       activeRenderer.replaceParts(partsToDraw());
       renderedScene = controller.scene;
@@ -4915,6 +4929,7 @@ export function createStudio(container, {
   function loadMeshEditor() {
     meshEditorLoad ??= import('./studio-mesh-edit.js').then(({ createMeshEditor }) => {
       meshEditor = createMeshEditor({ controller, announce, getRenderer: () => renderer });
+      meshEditor.setSeeThrough(seeThrough);
       return meshEditor;
     });
     return meshEditorLoad;
@@ -4957,6 +4972,8 @@ export function createStudio(container, {
       pointerState = null;
     } else if (meshEditor.circleSelecting) {
       endCircleSelect();
+    } else if (meshEditor.boxSelecting) {
+      cancelBoxSelect();
     } else if (!meshEditor.clearSelection()) {
       stopWatchingCircleFocus();
       meshEditor.leave();
@@ -5049,6 +5066,47 @@ export function createStudio(container, {
   viewportElement.addEventListener('pointerup', finishCirclePaint);
   viewportElement.addEventListener('pointercancel', finishCirclePaint);
 
+  // Box select (B): one left drag over the viewport selects what lies inside the rectangle, then the key is spent.
+  let boxDrag = null;
+
+  // Escape or B again drops a box that is being dragged, so letting go of the button afterwards selects nothing.
+  function cancelBoxSelect() {
+    if (boxDrag) viewportElement.releasePointerCapture?.(boxDrag.pointerId);
+    boxDrag = null;
+    meshEditor.endBoxSelect();
+  }
+
+  function boxRectangleOf(event) {
+    const { x, y } = localCoordinates(event);
+    return { left: Math.min(boxDrag.x, x), right: Math.max(boxDrag.x, x), top: Math.min(boxDrag.y, y), bottom: Math.max(boxDrag.y, y) };
+  }
+
+  viewportElement.addEventListener('pointerdown', event => {
+    const ownsPointer = meshEditor?.boxSelecting && !controller.dragging && (event.button ?? 0) === 0 && (event.target === canvas || gizmoSvg.contains(event.target));
+    if (!ownsPointer) return;
+    event.preventDefault();
+    event.stopPropagation();
+    boxDrag = { ...localCoordinates(event), pointerId: event.pointerId };
+    viewportElement.setPointerCapture?.(event.pointerId);
+  }, true);
+
+  viewportElement.addEventListener('pointermove', event => {
+    if (boxDrag?.pointerId !== event.pointerId) return;
+    meshEditor.previewBox(boxRectangleOf(event));
+    requestFrame();
+  });
+
+  viewportElement.addEventListener('pointerup', event => {
+    if (boxDrag?.pointerId !== event.pointerId || !meshEditor?.boxSelecting) return;
+    const { left, top, right, bottom } = boxRectangleOf(event);
+    boxDrag = null;
+    viewportElement.releasePointerCapture?.(event.pointerId);
+    meshEditor.selectInRectangle(left, top, right, bottom, { additive: event.shiftKey });
+    meshEditor.endBoxSelect();
+    syncUi();
+    requestFrame();
+  });
+
   // Right click leaves circle select instead of opening a menu.
   viewportElement.addEventListener('contextmenu', event => {
     if (!meshEditor?.circleSelecting) return;
@@ -5069,7 +5127,7 @@ export function createStudio(container, {
   }
 
   // In edit mode these keys of the normal context still work; every other one would act on the whole object.
-  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'view.frame', 'view.top', 'view.projection', 'view.properties']);
+  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'view.frame', 'view.top', 'view.projection', 'view.properties', 'view.seeThrough']);
   const meshKeyHandlers = {
     'mesh.leave': event => {
       event.preventDefault();
@@ -5101,6 +5159,16 @@ export function createStudio(container, {
         return;
       }
       if (meshEditor.beginCircleSelect()) startWatchingCircleFocus();
+      syncUi();
+      requestFrame();
+    },
+    'mesh.boxSelect': () => {
+      if (meshEditor.boxSelecting) {
+        cancelBoxSelect();
+      } else {
+        meshEditor.beginBoxSelect();
+        announce('Drag a rectangle over what to select. Shift adds to the selection.');
+      }
       syncUi();
       requestFrame();
     },
@@ -5167,6 +5235,10 @@ export function createStudio(container, {
     },
     'view.frame': () => flyToSelection(),
     'view.projection': () => controller.toggleCameraProjection(),
+    'view.seeThrough': event => {
+      event.preventDefault();
+      seeThroughButton.click();
+    },
     'view.properties': event => {
       event.preventDefault();
       setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true');
@@ -5458,6 +5530,8 @@ export function createStudio(container, {
     showAgentEdit,
     setGridVisible,
     get gridVisible() { return gridVisible; },
+    setSeeThrough,
+    get seeThrough() { return seeThrough; },
     setPreference,
     get preferences() { return { ...preferences }; },
     /** Opens the first-run setup, one step a page. Studio never opens it on its own. */
