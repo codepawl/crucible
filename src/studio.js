@@ -15,7 +15,8 @@ import { encodePackOrRefuse } from './studio-pack-refusal.js';
 import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shaders.js';
 import { STUDIO_CSS } from './studio-styles.js';
 import { createApplyMenus } from './studio-apply-menu.js';
-import { findKeymapAction, findMouseNavigation, formatShortcutKeys, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
+import { findKeymapAction, findMouseNavigation, keyLabel, lastKeyLabel, resolveKeymapPreset } from './studio-keymap.js';
+import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
 import { createStudioSettings } from './studio-settings.js';
@@ -1230,6 +1231,8 @@ export function createStudio(container, {
   onDirtyChange,
   onThemeChange,
   onDiagnostic,
+  // Opens an address outside Studio. A host page supplies it; without one the guide opens in a new tab.
+  openExternal,
   diagnostics: diagnosticsOptions = {},
 } = {}) {
   const catalog = createStudioCatalog(catalogHooks);
@@ -1591,7 +1594,8 @@ export function createStudio(container, {
   syncMenuToggles();
   const helpPopover = createMenuPopover(
     'crucible-studio-pop-help',
-    createMenuItem('Keyboard shortcuts', 'help.shortcuts', () => shortcutsDialog.showModal(), 'keyboard'),
+    createMenuItem('Keyboard shortcuts', 'help.shortcuts', () => showShortcutsSheet(helpMenuButton), 'keyboard'),
+    createMenuItem('Documentation', '', () => openStudioGuide({ openExternal, windowReference: documentReference.defaultView }), 'book'),
     createMenuItem('Set up Studio…', '', () => openSetup(), 'settings'),
     createMenuItem('Save diagnostics report', '', () => saveDiagnosticsReport(), 'saveAs'),
   );
@@ -1858,6 +1862,10 @@ export function createStudio(container, {
         switchMenubarMenu(openPair[1], menuPopover, () => menuPopover.showPopover?.());
       }
     });
+  }
+  // A menu button stays marked while its menu is open, as it is under the pointer.
+  for (const [menuButton, menuPopover] of menuPairs) {
+    menuPopover.addEventListener('toggle', event => menuButton.setAttribute('aria-expanded', event.newState === 'open' ? 'true' : 'false'));
   }
 
   function bindPopoverAnchor(triggerButton, popoverElement, { beside = false } = {}) {
@@ -2849,28 +2857,55 @@ export function createStudio(container, {
 
   const shortcutsHeading = createElement(documentReference, 'h2', { id: 'crucible-studio-shortcuts-title', textContent: 'Studio keyboard shortcuts' });
   shortcutsHeading.prepend(createIcon(documentReference, 'keyboard'));
+  const shortcutsCloseButton = createIconButton(documentReference, 'close', 'Close the shortcuts');
   const shortcutsGrid = createElement(documentReference, 'div', { className: 'crucible-studio-shortcuts' });
-  function fillShortcutsGrid() {
-    shortcutsGrid.replaceChildren(...shortcutRowsFor(keymap).map(({ keys, label }) => createElement(
+  // One block per area, each with its icon and a row for every key of the active keymap, in two columns of about equal height.
+  const createShortcutGroup = group => createElement(
+    documentReference,
+    'section',
+    { className: 'crucible-studio-shortcut-group', dataset: { group: group.title } },
+    createElement(documentReference, 'h3', {}, createIcon(documentReference, group.icon), createElement(documentReference, 'span', { textContent: group.title })),
+    ...group.rows.map(({ keys, label }) => createElement(
       documentReference,
       'div',
       { className: 'crucible-studio-shortcut-item' },
       createElement(documentReference, 'span', { textContent: label }),
-      createElement(documentReference, 'kbd', { textContent: formatShortcutKeys(keymap, keys) }),
+      createElement(documentReference, 'span', { className: 'crucible-studio-shortcut-keys', textContent: keys }),
+    )),
+  );
+  function fillShortcutsGrid() {
+    const columnCount = sheetColumnCount(documentReference.defaultView?.innerWidth ?? 1280);
+    shortcutsDialog.dataset.columns = String(columnCount);
+    const columns = balanceSheetColumns(shortcutSheetGroups(keymap), columnCount);
+    shortcutsGrid.replaceChildren(...columns.map(columnGroups => createElement(
+      documentReference,
+      'div',
+      { className: 'crucible-studio-shortcut-column' },
+      ...columnGroups.map(createShortcutGroup),
     )));
   }
-  fillShortcutsGrid();
-  const shortcutsCloseButton = createElement(documentReference, 'button', { type: 'submit', value: 'close', autofocus: true, textContent: 'Done' });
   const shortcutsDialog = createElement(
     documentReference,
     'dialog',
     { className: 'crucible-studio-shortcuts-dialog', attributes: { 'aria-labelledby': 'crucible-studio-shortcuts-title', closedby: 'any' } },
-    shortcutsHeading,
+    createElement(documentReference, 'div', { className: 'crucible-studio-shortcuts-head' }, shortcutsHeading, shortcutsCloseButton),
     shortcutsGrid,
-    createElement(documentReference, 'form', { method: 'dialog', className: 'crucible-studio-dialog-actions' }, shortcutsCloseButton),
   );
+  fillShortcutsGrid();
+  const syncShortcutsFade = watchScrollFades(shortcutsGrid);
+  shortcutsCloseButton.addEventListener('click', () => shortcutsDialog.close());
+  // The sheet opened from the Help menu gives the focus back to that button when it closes.
+  let shortcutsFocusTarget = null;
+  function showShortcutsSheet(returnFocusTo = null) {
+    shortcutsFocusTarget = returnFocusTo;
+    fillShortcutsGrid();
+    shortcutsDialog.showModal();
+    syncShortcutsFade();
+  }
   shortcutsDialog.addEventListener('close', () => {
     shortcutsDialog.returnValue = '';
+    shortcutsFocusTarget?.focus?.();
+    shortcutsFocusTarget = null;
   });
 
   const settings = createStudioSettings({
@@ -5667,7 +5702,7 @@ export function createStudio(container, {
       event.preventDefault();
       settings.open();
     },
-    'help.shortcuts': () => shortcutsDialog.showModal(),
+    'help.shortcuts': () => showShortcutsSheet(),
     'mesh.enter': event => {
       if (!controller.selectedNodeId || !tabBelongsToViewport(event.target)) return;
       event.preventDefault();
