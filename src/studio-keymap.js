@@ -299,7 +299,7 @@ const MAYA_BINDINGS = Object.freeze({
   'edit.showAll': binding('h', { ctrl: true, shift: true }),
   'view.frame': binding('f'),
   'view.properties': binding('a', { ctrl: true }),
-  // Not a vendor key: Maya's Ctrl+A is the Attribute Editor (view.properties above), so Apply takes the nearest free key.
+  // Ctrl+A is taken by view.properties in this preset, so Apply takes the nearest free key.
   'edit.apply': binding('a', { ctrl: true, alt: true }),
   'animate.keyframe': binding('s'),
   'animate.play': binding('v', { alt: true }),
