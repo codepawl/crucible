@@ -1,7 +1,7 @@
 import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS } from './material-name-lists.js';
 import { bakeMaterialGraph, graphBaseOutputs, graphImageData, graphMeshMapNames, graphSurfaceSettings, graphVertexGroupNames, MESH_MAP_KEY_PREFIX, normalizeMaterialGraph, surfaceMapKey } from './material-graph.js';
 import { meshMapForGeometry } from './mesh-map-bake.js';
-import { surfaceMap } from './material-surface-map.js';
+import { requireSurfaceUvs, surfaceMap } from './material-surface-map.js';
 import { vertexGroupMap } from './material-vertex-group-map.js';
 import { kernelKey, runKernel } from './kernel-offload.js';
 
@@ -349,6 +349,17 @@ function surfaceSettingsOf(pattern) {
   return settings;
 }
 
+/**
+ * Checks what `groupMapsOf` would read, without baking the surface masks: a mesh without the groups, maps or UVs the
+ * graph reads fails here, when the part is built. The masks wait for the first read of a texture, where a kernel session
+ * can ask for those of every part at once.
+ */
+export function checkGroupInputs(pattern, geometry, nodeId) {
+  for (const name of vertexGroupNamesOf(pattern)) vertexGroupMap(geometry, name, pattern.resolution, nodeId);
+  for (const name of meshMapNamesOf(pattern)) meshMapForGeometry(geometry, name, pattern.resolution);
+  for (const settings of surfaceSettingsOf(pattern)) requireSurfaceUvs(geometry, settings, nodeId);
+}
+
 export function groupMapsOf(pattern, geometry, nodeId, worldMatrix) {
   const maps = {};
   for (const name of vertexGroupNamesOf(pattern)) maps[name] = vertexGroupMap(geometry, name, pattern.resolution, nodeId);
@@ -368,8 +379,12 @@ export function materialViewForGeometry(material, geometry, nodeId, imagePool, w
   const pattern = material.pattern;
   const surfaceSettings = surfaceSettingsOf(pattern);
   if (vertexGroupNamesOf(pattern).length === 0 && meshMapNamesOf(pattern).length === 0 && surfaceSettings.length === 0) return material;
-  // The groups are checked now, so a mesh without UVs or without the group fails when the part is built.
-  const groups = groupMapsOf(pattern, geometry, nodeId, worldMatrix);
+  // The groups are checked now, so a mesh without UVs or without the group fails when the part is built. The maps,
+  // surface masks included, are baked when a texture is first read.
+  checkGroupInputs(pattern, geometry, nodeId);
+  // The part's matrix array may change after this call, and the maps are baked later from the matrix as it is now.
+  const placedMatrix = worldMatrix ? Array.from(worldMatrix) : undefined;
+  let groups;
   const placement = surfaceSettings.some(settings => settings.space === 'world') && worldMatrix ? Array.from(worldMatrix).join(',') : '';
   let views = viewsByGeometry.get(geometry);
   if (!views) {
@@ -384,6 +399,7 @@ export function materialViewForGeometry(material, geometry, nodeId, imagePool, w
   }
   let baked;
   const bakedTextures = () => {
+    groups ??= groupMapsOf(pattern, geometry, nodeId, placedMatrix);
     baked ??= materialPatternTextures(material.pattern, imagePool, groups);
     return baked;
   };
