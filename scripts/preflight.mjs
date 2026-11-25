@@ -10,6 +10,8 @@ import { createWriteStream, mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isScannedPath } from './check-names.mjs';
+import { isLargeFileCandidate } from './check-large-file-growth.mjs';
+import { isScannedPath as isOutsideNameScannedPath } from './check-outside-names.mjs';
 import { RELEASE_FIX, readReleaseProblem } from './check-release-changelog.mjs';
 import { isFragmentName } from './changelog-fragments.mjs';
 
@@ -104,6 +106,20 @@ export function planChecks(changedPaths, { skipTests = false, release = false, b
     command: ['node', 'scripts/check-names.mjs'],
     skipped: paths.some(path => isScannedPath(path)) ? null : 'no scanned source file changed',
     fix: 'Rename each declaration the report names to what it holds; only i j k n, x y z u v, t, w h, r g b a and _ may stay short (scripts/check-names.mjs).',
+  });
+  checks.push({
+    name: 'outside names',
+    command: ['node', 'scripts/check-outside-names.mjs', '--base', baseRef ?? 'origin/main'],
+    skipped: paths.some(path => isOutsideNameScannedPath(path)) ? null : 'no public text file changed',
+    fix: 'Describe the behaviour instead of naming the outside tool on each line the report names; a keymap preset or file format name is allowed in that context (scripts/check-outside-names.mjs).',
+  });
+  // Warn only (#3402): the check prints and passes. #3405 makes it fail.
+  checks.push({
+    name: 'large file growth',
+    command: ['node', 'scripts/check-large-file-growth.mjs', '--base', baseRef ?? 'origin/main'],
+    skipped: paths.some(path => isLargeFileCandidate(path)) ? null : 'no src/*.js file changed',
+    showOutput: true,
+    fix: 'Add the feature as its own registered module instead of growing the big file (#3381).',
   });
   checks.push({
     name: 'tool schemas',
@@ -261,7 +277,8 @@ async function runChecks(checks) {
       const seconds = Math.round((Date.now() - startedAt) / 1000);
       const log = logPath.slice(root.length).replace(/\\/g, '/');
       if (code === 0) {
-        results.push({ name: check.name, status: 'ok', detail: `${seconds} s`, log });
+        const warnings = check.showOutput ? readFileSync(logPath, 'utf8').split('\n').filter(line => line.startsWith('warning:')) : [];
+        results.push({ name: check.name, status: 'ok', detail: `${seconds} s`, log, warnings });
       } else {
         process.stdout.write(`\n--- last ${failingLogTailLines} lines of ${log} ---\n${tailOf(logPath, failingLogTailLines)}\n---\n\n`);
         results.push({ name: check.name, status: 'fail', detail: `exit ${code} after ${seconds} s`, log, fix: check.fix });
@@ -277,6 +294,7 @@ function printSummary(results, manualChecks) {
   for (const result of results) {
     const detail = result.detail ? ` (${result.detail.split('\n')[0]})` : '';
     console.log(`${marks[result.status]} ${result.name}${detail}`);
+    for (const warning of result.warnings ?? []) console.log(`     ${warning}`);
     if (result.status === 'fail') {
       for (const line of result.detail.split('\n').slice(1)) console.log(`     ${line}`);
       if (result.log) console.log(`     log: ${result.log}`);

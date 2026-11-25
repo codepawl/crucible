@@ -107,7 +107,7 @@ The sun scatters in volume fog, and so do point and spot lights: at most 8, poin
 
 ## Exposure, bloom, contrast, occlusion
 
-`effects` holds `exposure`, `saturation`, `contrast`, `temperature`, `vignette`, `grain`, `ambientOcclusion` (0 = off),
+`effects` holds `exposure`, `saturation`, `contrast`, `temperature`, `vignette`, `grain`, `dither` (true stops dark gradients and light falloff banding in 8-bit frames; off by default, files grow), `ambientOcclusion` (0 = off),
 `bloom` and `depthOfField` (see `camera.md`). Nested `bloom` fields merge.
 Named post steps, each off until set: `colorBalance` (`lift`, `gamma`, `gain`, three numbers each), `glare` (`streaks`,
 `count`, `angle`, `fogGlow`, `threshold`, `size`) `lensDistortion` (`distortion`, `dispersion`), `stylize` (`sharpen`, `kuwahara`, `posterize`, `pixelate`), `localToneMapping` (`strength`, `highlightContrast`, `shadowContrast`, `detail`, `blurRadius`, `midtoneRange`: holds a low sun's sky and shaded ground in one frame) and `composite` (`background` `{ color }` or `{ top, bottom }`, `key` `{ chroma: { color, tolerance, softness } }` or `{ luma: { low, high, invert } }`, `mask`; a key needs a background); ranges in `docs/agent-look.md`.
