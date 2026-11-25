@@ -424,6 +424,10 @@ export const STUDIO_CSS = `
   pointer-events: none;
   user-select: none;
 }
+.crucible-studio-readout-line {
+  display: flex;
+  gap: var(--studio-space-8);
+}
 .crucible-studio-readout-selection { color: var(--studio-text); }
 .crucible-studio-readout-selection:empty { display: none; }
 .crucible-studio[data-compact="true"] .crucible-studio-readout { display: none; }

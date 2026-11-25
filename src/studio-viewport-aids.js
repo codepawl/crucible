@@ -358,12 +358,12 @@ function metres(value) {
   return Math.abs(value) >= 100 ? value.toFixed(0) : value.toFixed(2);
 }
 
-/** The camera half of the readout, such as "Perspective · 50 mm" or "Orthographic". */
-export function describeCamera(camera) {
+/** The camera half of the readout as the parts it is shown in, such as ["Perspective", "50 mm"] or ["Orthographic"]. */
+export function describeCameraParts(camera) {
   if (camera.projection === 'orthographic') {
-    return 'Orthographic';
+    return ['Orthographic'];
   }
-  return Number.isFinite(camera.focalLength) ? `Perspective · ${Math.round(camera.focalLength)} mm` : `Perspective · ${Math.round(camera.fov ?? 45)}°`;
+  return ['Perspective', Number.isFinite(camera.focalLength) ? `${Math.round(camera.focalLength)} mm` : `${Math.round(camera.fov ?? 45)}°`];
 }
 
 /** The selection half of the readout: the object's size in metres, width × height × depth. */

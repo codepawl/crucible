@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AXIS_COLORS, GRID_PART_PREFIX, axisWidgetEnds, buildGridParts, cameraVisibleHeight, describeBounds, describeCamera, describeGridStep, gridLayout, placeGridParts, viewportClipPlanes, viewportFloorPart } from '../src/studio-viewport-aids.js';
+import { AXIS_COLORS, GRID_PART_PREFIX, axisWidgetEnds, buildGridParts, cameraVisibleHeight, describeBounds, describeCameraParts, describeGridStep, gridLayout, placeGridParts, viewportClipPlanes, viewportFloorPart } from '../src/studio-viewport-aids.js';
 
 test('buildGridParts makes textured quads whose cells tile a one-texel line, and two axis strips', () => {
   const parts = buildGridParts();
@@ -143,11 +143,11 @@ test('axisWidgetEnds places the axes as the camera sees them, far ends first', (
   near(find(right, 'z', true).x, -1);
 });
 
-test('describeCamera and describeBounds write the readout lines', () => {
-  assert.equal(describeCamera({ projection: 'orthographic', fov: 40 }), 'Orthographic');
-  assert.equal(describeCamera({ focalLength: 49.6 }), 'Perspective · 50 mm');
-  assert.equal(describeCamera({ fov: 41.6 }), 'Perspective · 42°');
-  assert.equal(describeCamera({}), 'Perspective · 45°');
+test('describeCameraParts and describeBounds write the readout lines', () => {
+  assert.deepEqual(describeCameraParts({ projection: 'orthographic', fov: 40 }), ['Orthographic']);
+  assert.deepEqual(describeCameraParts({ focalLength: 49.6 }), ['Perspective', '50 mm']);
+  assert.deepEqual(describeCameraParts({ fov: 41.6 }), ['Perspective', '42°']);
+  assert.deepEqual(describeCameraParts({}), ['Perspective', '45°']);
   assert.equal(describeBounds({ size: [0.42, 0.9, 0.42] }), '0.42 × 0.90 × 0.42 m');
   assert.equal(describeBounds({ size: [120.4, 3, 0.005] }), '120 × 3.00 × 0.01 m');
 });

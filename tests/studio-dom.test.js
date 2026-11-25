@@ -730,9 +730,9 @@ test('Camera tab sets view presets, projection, lens, field of view and orthogra
   assert.notDeepEqual(ui.controller.scene.camera.eye, eyeBefore);
   ui.controller.orbitCamera({ deltaAzimuth: 0.5, deltaElevation: 0.3 });
   assert.equal(['Front', 'Right', 'Top', 'Iso'].some(name => byText(ui.root, name).getAttribute('aria-pressed') === 'true'), false, 'a free orbit matches no view chip');
-  assert.equal(byText(ui.root, 'Perspective').getAttribute('aria-pressed'), 'true', 'the projection chip names the projection in use');
+  assert.equal(byText(ui.panel('camera'), 'Perspective').getAttribute('aria-pressed'), 'true', 'the projection chip names the projection in use');
 
-  const projectionPill = byText(ui.root, 'Perspective');
+  const projectionPill = byText(ui.panel('camera'), 'Perspective');
   projectionPill.click();
   assert.equal(ui.status(), 'Orthographic view');
   assert.equal(projectionPill.textContent, 'Orthographic');
@@ -2400,10 +2400,17 @@ test('the readout names the camera and gives the size of the selection in metres
   const ui = mountStudio(testContext);
   const selection = ui.viewport.querySelector('.crucible-studio-readout-selection');
   const readout = ui.viewport.querySelector('.crucible-studio-readout');
-  assert.match(readout.textContent, /^Perspective · \d+ ?(mm|°)/u);
+  const partsOf = line => line.children.map(part => part.textContent);
+  const [cameraLine] = readout.children;
+  assert.equal(partsOf(cameraLine)[0], 'Perspective');
+  assert.match(partsOf(cameraLine)[1], /^\d+ ?(mm|°)$/u);
+  assert.match(partsOf(cameraLine)[2], /^Grid /u);
+  assert.ok(!readout.textContent.includes('·'), 'no separator character: the layout spaces the parts');
   ui.controller.selectNode('hero');
   ui.studio.renderNow();
-  assert.match(selection.textContent, /^hero · \d+\.\d\d × \d+\.\d\d × \d+\.\d\d m$/u);
+  assert.equal(partsOf(selection)[0], 'hero');
+  assert.equal(partsOf(selection).length, 2);
+  assert.match(partsOf(selection)[1], /^\d+\.\d\d × \d+\.\d\d × \d+\.\d\d m$/u);
   const bounds = ui.controller.nodeBounds('hero');
   assert.deepEqual(bounds.size.map(value => Number(value.toFixed(4))), bounds.max.map((value, axis) => Number((value - bounds.min[axis]).toFixed(4))));
   const sizeText = selection.textContent;

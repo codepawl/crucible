@@ -40,7 +40,7 @@ import { createModifierPanel } from './studio-modifier-panel.js';
 import { createShapeSettings } from './studio-shape-settings.js';
 import { createKeyMarkers } from './studio-timeline-keys.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
-import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, describeBounds, describeCamera, describeGridStep, gridLayout, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart } from './studio-viewport-aids.js';
+import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, describeBounds, describeCameraParts, describeGridStep, gridLayout, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart } from './studio-viewport-aids.js';
 // The grid is textured, and replaceParts takes a textured part only with this module loaded.
 import './replace-textured-parts.js';
 import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
@@ -2261,8 +2261,8 @@ export function createStudio(container, {
       announce(`${view[0].toUpperCase()}${view.slice(1)} view`);
     },
   });
-  const readoutCamera = createElement(documentReference, 'span');
-  const readoutSelection = createElement(documentReference, 'span', { className: 'crucible-studio-readout-selection' });
+  const readoutCamera = createElement(documentReference, 'span', { className: 'crucible-studio-readout-line' });
+  const readoutSelection = createElement(documentReference, 'span', { className: 'crucible-studio-readout-line crucible-studio-readout-selection' });
   const readout = createElement(documentReference, 'div', { className: 'crucible-studio-readout', attributes: { 'aria-hidden': 'true' } }, readoutCamera, readoutSelection);
   const agentPresence = createAgentPresence(documentReference, { controller, requestDraw: () => requestFrame(), isReducedMotion: () => motionIsReduced() });
   const pausedNotice = createPausedPictureNotice({
@@ -3284,31 +3284,37 @@ export function createStudio(container, {
     }
   }
 
+  // A readout line is a row of spans that the layout spaces apart, so no separator character is needed.
+  function showReadoutParts(line, parts) {
+    line.replaceChildren(...parts.map(text => createElement(documentReference, 'span', { textContent: text })));
+  }
+
   // Measured only after a change: the bounds walk every vertex of the selection.
   function describeSelection() {
-    const described = describeSelectedObject();
-    return described !== '' && meshEditor?.active ? `Edit ${MESH_MODE_PLURALS[meshEditor.mode]}, ${described}` : described;
+    const [label, ...rest] = describeSelectedObject();
+    if (label === undefined) return [];
+    return meshEditor?.active ? [`Edit ${MESH_MODE_PLURALS[meshEditor.mode]}, ${label}`, ...rest] : [label, ...rest];
   }
 
   function describeSelectedObject() {
     const selectedId = controller.selectedNodeId;
     const bounds = selectedId ? controller.nodeBounds(selectedId) : null;
     if (!bounds) {
-      return '';
+      return [];
     }
     const selectedNode = controller.exportRecipe().nodes.find(node => node.id === selectedId);
-    return `${selectedNode?.label ?? selectedId} · ${describeBounds(bounds)}`;
+    return [selectedNode?.label ?? selectedId, describeBounds(bounds)];
   }
 
   function syncViewportAids() {
     const camera = controller.viewCamera;
     viewWidget.update(camera);
     const gridStep = gridLayout({ visibleHeight: cameraVisibleHeight(camera), viewportHeight: controller.viewportHeight, target: camera.target, eye: camera.projection === 'orthographic' ? undefined : camera.eye }).step;
-    readoutCamera.textContent = gridVisible ? `${describeCamera(camera)} · Grid ${describeGridStep(gridStep)}` : describeCamera(camera);
+    showReadoutParts(readoutCamera, gridVisible ? [...describeCameraParts(camera), `Grid ${describeGridStep(gridStep)}`] : describeCameraParts(camera));
     if (controller.activeTab === 'export') syncExportFacts();
     if (selectionReadoutStale) {
       selectionReadoutStale = false;
-      readoutSelection.textContent = describeSelection();
+      showReadoutParts(readoutSelection, describeSelection());
     }
   }
 
