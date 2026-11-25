@@ -3,7 +3,7 @@ import { bakeMaterialGraph, graphBaseOutputs, graphImageData, graphMeshMapNames,
 import { meshMapForGeometry } from './mesh-map-bake.js';
 import { requireSurfaceUvs, surfaceMap } from './material-surface-map.js';
 import { vertexGroupMap } from './material-vertex-group-map.js';
-import { kernelKey, runKernel } from './kernel-offload.js';
+import { forEachDeferring, kernelKey, runKernel } from './kernel-offload.js';
 
 // Procedural surface patterns for recipe materials: seeded, tileable and baked on the CPU into the same texture
 // descriptors a loaded material uses. Texture coordinates run 0 to 1 and every noise is periodic over that square, so
@@ -364,7 +364,10 @@ export function groupMapsOf(pattern, geometry, nodeId, worldMatrix) {
   const maps = {};
   for (const name of vertexGroupNamesOf(pattern)) maps[name] = vertexGroupMap(geometry, name, pattern.resolution, nodeId);
   for (const name of meshMapNamesOf(pattern)) maps[MESH_MAP_KEY_PREFIX + name] = meshMapForGeometry(geometry, name, pattern.resolution);
-  for (const settings of surfaceSettingsOf(pattern)) maps[surfaceMapKey(settings)] = surfaceMap(geometry, settings, pattern.resolution, nodeId, worldMatrix);
+  // A part with several surface nodes asks for all its masks in one pass, as the parts of a scene do.
+  forEachDeferring(surfaceSettingsOf(pattern), settings => {
+    maps[surfaceMapKey(settings)] = surfaceMap(geometry, settings, pattern.resolution, nodeId, worldMatrix);
+  });
   return maps;
 }
 

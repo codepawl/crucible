@@ -105,3 +105,21 @@ test('a scene built in a session bakes the masks of all its parts in one pass an
   assert.equal(log.filter(message => message.name === 'surfaceMask').length, 3, 'one mask task per chunk');
   assert.equal(kernelStats().passes, 3, 'one pass for the masks, one for the pattern bakes, one to read them');
 });
+
+test('a part with two surface nodes asks for both masks in one pass', async () => {
+  const { createAgentScene, loadAgentSceneModules } = await import('../src/agent-scene.js');
+  const recipe = terrainLikeRecipe();
+  recipe.geometries = [{ ...recipe.geometries[0], id: 'two-masks-block' }];
+  recipe.nodes = [{ id: 'two-masks-node', geometry: 'two-masks-block', material: 'snowy' }];
+  recipe.materials[0].pattern.graph = { color: { mul: [{ surface: { output: 'slope' } }, { surface: { output: 'height' } }] } };
+  await loadAgentSceneModules(recipe);
+  const log = [];
+  resetKernelStats();
+  let built;
+  await buildWithKernels(() => {
+    built ??= createAgentScene(recipe);
+    forEachDeferring(built.parts, part => void part.material.map);
+  }, { createWorker: () => createAnsweringWorker(log), available: true, maximumWorkers: 2 });
+  assert.equal(log.filter(message => message.name === 'surfaceMask').length, 2, 'both masks go to the worker');
+  assert.equal(kernelStats().passes, 3, 'one pass for both masks, one for the pattern bake, one to read it');
+});
