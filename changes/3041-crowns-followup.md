@@ -1,0 +1,1 @@
+- Leaf twigs are drawn in the bark so every card sits on one, twigs without a leaf are pruned, cards may not point steeply down (birch hangs), each crowned species paints its own spray atlas, the birch gets pendulous end shoots, and the ash, aspen and birch habits are retuned to their photo bands (#3041, #3057)
