@@ -139,3 +139,17 @@ test('the binary refine puts the crossing within a sixteenth of a step of the tr
   assert.ok(refinedError < (1 / steps) / 16, 'refined error ' + refinedError + ' plain ' + plainError);
   assert.ok(refinedError < plainError / 4, 'plain error ' + plainError + ', refined ' + refinedError);
 });
+
+test('a parallax field out of range is rejected with its range even when the material has no heightMap', () => {
+  const withoutMap = fields => createAgentScene({
+    format: 'crucible.scene', schemaVersion: 1,
+    geometries: [{ id: 'quad', type: 'grid', segments: 1 }],
+    materials: [{ id: 'rock', ...fields }],
+    nodes: [{ id: 'rock', geometry: 'quad', material: 'rock' }],
+    camera: { eye: [0, 3, 3], target: [0, 0, 0], fov: 45 },
+  });
+  assert.throws(() => withoutMap({ heightScale: 0.9 }), /heightScale.*0\.5/s);
+  assert.throws(() => withoutMap({ heightFade: 0 }), /heightFade.*0\.1.*1000/s);
+  assert.throws(() => withoutMap({ heightSteps: 2 }), /heightSteps.*4.*32/s);
+  assert.throws(() => withoutMap({ heightScale: 0.02 }), /heightMap/);
+});
