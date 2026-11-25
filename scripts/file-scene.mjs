@@ -68,7 +68,17 @@ export function prepareFileScene({ configPath, root, largeAssetOrigin, largeAsse
     description[field] = route(description[field]);
   }
   routeStagedParts(description, route);
+  routeReflectionHdri(description, route);
   return { description, assets };
+}
+
+// "reflectionHdri" is an optional second sky that only glass, water and other reflections read (#3396); it is a local .hdr path like "hdri".
+function routeReflectionHdri(description, route) {
+  if (description.reflectionHdri === undefined) return;
+  if (typeof description.reflectionHdri !== 'string') {
+    throw new Error('scene.json "reflectionHdri" must be the path of a local Radiance .hdr file, such as "sunset.hdr": it is the sky that glass and water reflect.');
+  }
+  description.reflectionHdri = route(description.reflectionHdri);
 }
 
 // A staged scene lists its other parts in "glbRest", routed like "glb". The first-view fields only speed up the page's first

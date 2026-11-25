@@ -72,6 +72,7 @@ export function catalogLookReferences(value) {
     const environment = node.environment;
     if (environment && typeof environment === 'object' && !Array.isArray(environment)) {
       if (typeof environment.hdri === 'string') environments.add(environment.hdri);
+      if (typeof environment.reflectionHdri === 'string') environments.add(environment.reflectionHdri);
       if (typeof environment.look === 'string' && isCubeLookReference(environment.look)) looks.add(environment.look);
     }
     Object.values(node).forEach(visit);

@@ -2857,7 +2857,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           knownKeys(operation, ['type', lookField], 'operation');
           const patch = operation[lookField];
           // Spot and area lights, cascades and sun links are absent from a recipe until it sets them.
-          const optionalFields = lookField === 'environment' ? ['ground', 'spotLights', 'areaLights', 'shadowCascades', 'localVolumes', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'hdri', 'keyFromHdri', 'sky', 'wetness', 'puddles', 'ambientColor', 'ambientMix', 'fillColor', 'environmentDiffuseScale', 'skybox'] : lookField === 'effects' ? postStepSupport.fields : lookField === 'shadow' ? ['hard'] : [];
+          const optionalFields = lookField === 'environment' ? ['ground', 'spotLights', 'areaLights', 'shadowCascades', 'localVolumes', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'hdri', 'reflectionHdri', 'keyFromHdri', 'sky', 'wetness', 'puddles', 'ambientColor', 'ambientMix', 'fillColor', 'environmentDiffuseScale', 'skybox'] : lookField === 'effects' ? postStepSupport.fields : lookField === 'shadow' ? ['hard'] : [];
           knownKeys(patch, [...Object.keys(candidate[lookField]), ...optionalFields], lookField);
           requireChange(Object.keys(patch).length > 0, operation, [...Object.keys(candidate[lookField]), ...optionalFields]);
           const { kept: keptPatch, cleared: clearedFields } = splitClearedLookPatch(lookField, patch);
