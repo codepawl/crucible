@@ -50,7 +50,8 @@ describe('acquireMachineLock', () => {
     });
     await new Promise(resolve => setTimeout(resolve, 60));
     assert.equal(secondHasLock, false, 'the second run must wait while the first holds the lock');
-    assert.deepEqual(lines, [`waiting for ${process.pid} npm run test:affected`]);
+    assert.equal(lines.length, 1);
+    assert.ok(lines[0].startsWith(`waiting for ${process.pid} npm run test:affected (lock file `) && lines[0].includes(lockFolder));
     release();
     const releaseSecond = await second;
     assert.equal(secondHasLock, true);
@@ -78,7 +79,7 @@ describe('acquireMachineLock', () => {
 
   it('lets a nested run that sees the held variable skip the lock', async () => {
     const release = await acquireMachineLock(options());
-    assert.equal(process.env[HELD_ENVIRONMENT_VARIABLE], '1');
+    assert.equal(process.env[HELD_ENVIRONMENT_VARIABLE], String(process.pid));
     const lines = [];
     const releaseNested = await acquireMachineLock(options({ log: line => lines.push(line), isPidAlive: () => true }));
     assert.deepEqual(lines, []);
@@ -87,6 +88,56 @@ describe('acquireMachineLock', () => {
     release();
     assert.deepEqual(lockFiles(), []);
     assert.equal(process.env[HELD_ENVIRONMENT_VARIABLE], undefined);
+  });
+
+  it('does not skip the lock for a stray held variable that is not the owner of the lock file', async () => {
+    const release = await acquireMachineLock(options());
+    process.env[HELD_ENVIRONMENT_VARIABLE] = '1';
+    const lines = [];
+    let secondHasLock = false;
+    const second = acquireMachineLock(options({ log: line => lines.push(line), isPidAlive: () => true })).then(releaseSecond => {
+      secondHasLock = true;
+      return releaseSecond;
+    });
+    await new Promise(resolve => setTimeout(resolve, 40));
+    assert.equal(secondHasLock, false);
+    assert.equal(lines.length, 1);
+    release();
+    (await second)();
+  });
+
+  it('treats a lock older than the maximum age as stale even when its pid runs', async () => {
+    const startedAt = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    writeFileSync(join(lockFolder, 'crucible-machine-lock-local-tests.json'), JSON.stringify({ pid: 4242, command: 'reused pid', startedAt }));
+    const lines = [];
+    const release = await acquireMachineLock(options({ log: line => lines.push(line), isPidAlive: () => true }));
+    assert.deepEqual(lines, []);
+    release();
+  });
+
+  it('lets exactly one of two waiters clear the same dead lock', async () => {
+    const deadPid = 2147483000;
+    writeFileSync(join(lockFolder, 'crucible-machine-lock-local-tests.json'), JSON.stringify({ pid: deadPid, command: 'old run' }));
+    let seenCount = 0;
+    let openBarrier;
+    const barrier = new Promise(resolve => { openBarrier = resolve; });
+    const beforeStaleClear = async () => {
+      seenCount += 1;
+      if (seenCount === 2) openBarrier();
+      await barrier;
+    };
+    const shared = { isPidAlive: pid => pid !== deadPid, beforeStaleClear };
+    const holders = [];
+    const first = acquireMachineLock(options(shared)).then(release => { holders.push('first'); return release; });
+    const second = acquireMachineLock(options(shared)).then(release => { holders.push('second'); return release; });
+    await new Promise(resolve => setTimeout(resolve, 80));
+    assert.equal(holders.length, 1, 'only one waiter may hold the lock at a time');
+    const releaseFirst = await first;
+    releaseFirst();
+    const releaseSecond = await second;
+    assert.deepEqual(holders, ['first', 'second']);
+    releaseSecond();
+    assert.deepEqual(lockFiles(), []);
   });
 
   it('refuses a missing command with a message that says what to pass', async () => {
