@@ -2954,6 +2954,10 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           if (!Number.isInteger(applied) || applied < 0 || applied > stack.length) {
             throw invalidField('apply', applied, `a whole number from 0 to the stack length ${stack.length}, such as 0`);
           }
+          const switchedOff = stack.slice(0, applied).findIndex(node => node.enabled === false);
+          if (switchedOff >= 0) {
+            throw invalidField('apply', applied, `a count that stops before stack node ${switchedOff}, which is switched off (enabled: false); switch it on or remove it first`);
+          }
           // Applying moves the first nodes into the edit log, as Blender's Apply modifier does.
           target.edits = [...(target.edits ?? []), ...stack.slice(0, applied)];
           target.stack = stack.slice(applied);
