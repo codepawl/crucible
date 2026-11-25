@@ -139,6 +139,7 @@ While an input method composes text (Japanese, Chinese, Korean), Enter picks the
 | Q, T | Select, snap to a surface |
 | G, R, S | Pick the selected object up to move, rotate or scale it |
 | X, Y, Z | While holding an object: keep it to that axis; the same key again frees it |
+| Shift+X, Shift+Y, Shift+Z | While holding an object: keep it to the plane across that axis |
 | Click or Enter, Esc or right click | While holding an object: place it, put it back |
 | Shift+A | Add an object or a light |
 | Ctrl+C, Ctrl+V | Copy the selected object, paste a copy of it (one undo step, still works after the original is deleted) |
@@ -171,7 +172,7 @@ When a motion track moves the camera, the track decides what the scene camera se
 
 Keys do nothing while you type in a field or while a dialog is open.
 
-G, R and S: with an object selected and the pointer over the viewport, the key picks the object up: it follows the pointer with no handle to aim at, and a pill at the bottom of the viewport shows how far it has gone and the keys that act on it. X, Y or Z keeps the move to that axis of the object, a click or Enter places it, and Esc or a right click puts it back as if nothing happened. A placed move is one undo step. With nothing selected, or the pointer over a panel, the key only switches the tool, and the handles work as before. Typing a number while holding an object is not supported: type it in Properties instead.
+G, R and S pick an object up. With an object selected and the pointer over the viewport, the key picks the object up: it follows the pointer with no handle to aim at, and a pill at the bottom of the viewport shows how far it has gone and the keys that act on it. X, Y or Z keeps the move to that axis of the object, a click or Enter places it, and Esc or a right click puts it back as if nothing happened. A placed move is one undo step. With nothing selected, or the pointer over a panel, the key only switches the tool, and the handles work as before. Shift with X, Y or Z keeps a move or a scale on the plane across that axis instead: Shift+Y is the ground, Shift+X the Y and Z plane and Shift+Z the X and Y plane (a turn goes around one axis, so there Shift+Y turns about Y). Typing the amount sets it exactly: G, X, 2, Enter moves 2 m along X, R, Y, 9, 0 turns 90 degrees about Y and S, 2 doubles the size. Digits, a point and a minus sign build the number, which shows in the pill, Backspace takes the last one back and the pointer stops steering until it is cleared. On a plane the number applies to both of its axes; with no axis a move goes to the right of the view. The same drag carries a handle drag and a drag in edit mode, so one typed amount path serves all of them.
 
 A right click on an object, in the viewport or in the Scene list, selects it and opens its menu at the pointer: Frame, Rename, Duplicate, Hide, the three resets and Delete. They are the same rows as in **Edit**, with the same keys. A menu row starts with its icon when one fits and with an empty square when none does, so the labels line up. Dragging with the right button still pans. Alt takes back what the plain key does: G, R and S change a transform and Alt+G, Alt+R and Alt+S reset it, H hides the selection and Alt+H shows everything again, as one undo step.
 
