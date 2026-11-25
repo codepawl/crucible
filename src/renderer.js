@@ -688,6 +688,11 @@ const morphSupport = () => requireDeformationSupport('validateMorphGeometry', 'm
 const hasSkinData = part => Boolean(part.skin || part.geometry.skinIndices || part.geometry.skinWeights);
 const hasMorphData = part => Boolean(part.morph || part.geometry.morphTargets !== undefined);
 
+const validateDeformedTag = (kind, part, allowLiquid) => {
+  const tag = part.material.tag;
+  if ((!allowLiquid || tag !== 'liquid') && PROCEDURAL_MATERIAL_TAGS.has(tag)) throw new Error(`${kind} parts require a standard material tag.`);
+};
+
 function validatePartForGrouping(part, morphInfos) {
   const hidden = isHidden(part);
   validateTransform(part, undefined, hidden);
@@ -698,14 +703,14 @@ function validatePartForGrouping(part, morphInfos) {
     validateSkinGeometry(part.geometry, part.skin);
     if (part.skin && !hidden) validateSkinPose(part.skin, part.geometry, part.matrix);
   }
-  if (part.skin && PROCEDURAL_MATERIAL_TAGS.has(part.material.tag)) throw new Error('Skinned parts require a standard material tag.');
+  if (part.skin) validateDeformedTag('Skinned', part, false);
   if (hasMorphData(part)) {
     const { validateMorphGeometry, validateMorphPose, validateMorphTransform } = morphSupport();
     if (!morphInfos.has(part.geometry)) morphInfos.set(part.geometry, validateMorphGeometry(part.geometry, part.morph));
     else validateMorphPose(part.morph, morphInfos.get(part.geometry));
     if (part.morph && !hidden) validateMorphTransform(part.morph, morphInfos.get(part.geometry), part.matrix, part.skin);
   }
-  if (part.morph && PROCEDURAL_MATERIAL_TAGS.has(part.material.tag)) throw new Error('Morphed parts require a standard material tag.');
+  if (part.morph) validateDeformedTag('Morphed', part, true);
 }
 
 /**
@@ -2064,13 +2069,13 @@ export class CrucibleRenderer {
       if (!materialUnchanged && partPass(part) !== batchPass(location.batch)) throw new Error(`Moving a part into or out of the liquid or foam pass requires replaceParts: ${part.name}`);
       if ((part.skin ?? null) !== location.skin || part.skin?.jointMatrices !== location.jointMatrices || part.geometry.skinIndices !== location.skinIndices || part.geometry.skinWeights !== location.skinWeights) throw new Error(`Skin identity changes require a new renderer: ${part.name}`);
       if (part.skin) {
-        if (PROCEDURAL_MATERIAL_TAGS.has(part.material.tag)) throw new Error('Skinned parts require a standard material tag.');
+        validateDeformedTag('Skinned', part, false);
         if (checks && !hidden) skinSupport().validateSkinPose(part.skin, part.geometry, part.matrix);
         this.updateSkins.add(location.batch.skinTexture);
       }
       if ((part.morph ?? null) !== (location.morph ?? null) || part.morph?.weights !== location.morphWeights || part.geometry.morphTargets !== location.morphTargets) throw new Error(`Morph identity changes require a new renderer: ${part.name}`);
       if (part.morph) {
-        if (PROCEDURAL_MATERIAL_TAGS.has(part.material.tag)) throw new Error('Morphed parts require a standard material tag.');
+        validateDeformedTag('Morphed', part, true);
         if (checks && !hidden) morphSupport().validateMorphTransform(part.morph, location.batch.morphTexture.info, part.matrix, part.skin);
         this.updateMorphs.add(part.morph);
       }

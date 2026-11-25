@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BACK_IDENTIFIER_COUNT, BACK_REACH_PER_THICKNESS, SHELL_PAIR_LIMIT, backFaceExit, backIdentifier, drawsBackFaces, glassBackFaceGlsl, glassShellsNested } from '../src/glass-back-face.js';
-import { drawGlassBackFaces } from '../src/liquid-renderer.js';
+import { closedGlassShells, drawGlassBackFaces } from '../src/liquid-renderer.js';
 import { ballLensExit, refractDirection } from '../src/glass-ball-lens.js';
 import { liquidFragmentSource } from '../src/shaders.js';
 import '../src/liquid-shader.js';
@@ -171,4 +171,70 @@ test('instances of one frame get distinct identifiers from 1 to 254 that never r
   assert.equal(Math.max(...identifiers), BACK_IDENTIFIER_COUNT);
   assert.equal(backIdentifier(3, 2), backIdentifier(4, 1), 'a batch starting at 3 numbers its third instance like a batch starting at 4 its second');
   assert.equal(backIdentifier(0, BACK_IDENTIFIER_COUNT), 1, 'past 254 the numbers wrap');
+});
+
+function batchOfMatrix(matrix, geometry = { positions: new Float32Array([-0.5, -0.5, -0.5, 0.5, 0.5, 0.5]) }) {
+  const layerState = new Float32Array(32);
+  layerState[9] = 1;
+  layerState[11] = 1;
+  return { layerState, parts: [{ geometry, matrix, material: {} }], instanceCount: 1, indexCount: 36, vertexArray: {}, opacity: 1 };
+}
+
+test('a small shell in the corner of a rotated outer shell AABB is not marked nested (#3411)', () => {
+  const unitBox = { positions: new Float32Array([-1, -1, -1, 1, 1, 1]) };
+  const angle = Math.PI / 4;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const rotatedOuter = new Float32Array([cosine, 0, sine, 0, 0, 1, 0, 0, -sine, 0, cosine, 0, 0, 0, 0, 1]);
+  // World AABB of rotated [-1, 1]^3 spans [-1.414, 1.414] on X and Z; a small box at (0.95, 0, 0.95) lies inside that world AABB
+  // but in outer local space it sits at z = 1.3435, outside [-1, 1].
+  const cornerInner = new Float32Array([0.1, 0, 0, 0, 0, 0.1, 0, 0, 0, 0, 0.1, 0, 0.95, 0, 0.95, 1]);
+  const centerInner = new Float32Array([0.1, 0, 0, 0, 0, 0.1, 0, 0, 0, 0, 0.1, 0, 0, 0, 0, 1]);
+  assert.equal(glassShellsNested(closedGlassShells([batchOfMatrix(rotatedOuter, unitBox), batchOfMatrix(cornerInner, unitBox)])), false);
+  assert.equal(glassShellsNested(closedGlassShells([batchOfMatrix(rotatedOuter, unitBox), batchOfMatrix(centerInner, unitBox)])), true);
+});
+
+test('unchanged frames reuse cached shells without re-walking parts and release the far target when nesting ends (#3411)', () => {
+  const released = [];
+  const recorded = [];
+  const context = new Proxy({}, { get: (_, name) => (typeof name === 'string' && /^[A-Z_0-9]+$/.test(name) ? 1 : () => ({})) });
+  const renderer = {
+    context,
+    liquidUniforms: new Proxy({}, { get: () => 0 }),
+    reversedDepth: false,
+    multisampleFramebuffer: {},
+    liquidClipLocations: null,
+    partsMoveCount: 0,
+    batches: [],
+    renderTargets: {
+      record: name => recorded.push(name),
+      release: name => released.push(name),
+    },
+  };
+  const outer = batchOfMatrix(new Float32Array([2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 1, 0, 1]));
+  const inner = batchOfMatrix(new Float32Array([0.6, 0, 0, 0, 0, 0.6, 0, 0, 0, 0, 0.6, 0, 0, 1, 0, 1]));
+  renderer.batches = [outer, inner];
+  const first = drawGlassBackFaces(renderer, renderer.batches, 64, 64);
+  assert.equal(first.farLayer, true);
+  assert.equal(renderer.glassBackShellWalkCount, 1);
+  assert.ok(renderer.glassBackFarFaces);
+  assert.ok(recorded.includes('glassBackFarFaces'));
+
+  drawGlassBackFaces(renderer, renderer.batches, 64, 64);
+  drawGlassBackFaces(renderer, renderer.batches, 64, 64);
+  assert.equal(renderer.glassBackShellWalkCount, 1, 'repeated unchanged frames skip closedGlassShells walk');
+
+  // Moving the inner shell outside the outer shell invalidates the cache via partsMoveCount and frees the far target immediately.
+  inner.parts[0].matrix[12] = 5;
+  renderer.partsMoveCount = 1;
+  const second = drawGlassBackFaces(renderer, renderer.batches, 64, 64);
+  assert.equal(second.farLayer, false);
+  assert.equal(renderer.glassBackShellWalkCount, 2);
+  assert.equal(renderer.glassBackFarFaces, null);
+  assert.deepEqual(released, ['glassBackFarFaces', 'glassBackFarFacesDepth']);
+
+  // Replacing batches invalidates the cache even without changing partsMoveCount.
+  renderer.batches = [outer, inner];
+  drawGlassBackFaces(renderer, renderer.batches, 64, 64);
+  assert.equal(renderer.glassBackShellWalkCount, 3);
 });
