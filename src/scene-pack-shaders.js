@@ -10,6 +10,7 @@ export const PACK_SHADER_MODULES = Object.freeze({
   subsurfaceShader: () => import('./subsurface-shader.js'),
   fogShader: () => import('./fog-shader.js'),
   retroShader: () => import('./retro-shader.js'),
+  surfaceCover: () => import('./surface-cover.js'),
   worldMaterials: () => import('./world-material-shader.js'),
   // The probe code of the object reflections a metal part carries; the traced probe data itself travels in the pack.
   reflections: () => import('./reflection-probes.js'),
