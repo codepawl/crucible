@@ -1170,7 +1170,14 @@ function depthSortedNodes(nodes) {
 }
 
 const MODAL_AXES = Object.freeze(['x', 'y', 'z']);
-const MODAL_AXIS_BY_ACTION = Object.freeze({ 'modal.axisX': 'x', 'modal.axisY': 'y', 'modal.axisZ': 'z' });
+const MODAL_AXIS_BY_ACTION = Object.freeze({
+  'modal.axisX': 'x', 'modal.axisY': 'y', 'modal.axisZ': 'z',
+  // Shift keeps the object on the plane across the axis, so Shift+Y is the ground in Y-up space.
+  'modal.planeX': 'yz', 'modal.planeY': 'xz', 'modal.planeZ': 'xy',
+});
+const MODAL_AXIS_ACROSS_PLANE = Object.freeze({ yz: 'x', xz: 'y', xy: 'z' });
+const MODAL_TYPED_UNITS = Object.freeze({ translate: ' m', rotate: '°', scale: '×' });
+const MODAL_TYPED_PATTERN = /^-?\d*\.?\d*$/;
 const MODAL_TOOL_BY_ACTION = Object.freeze({ 'modal.translate': 'translate', 'modal.rotate': 'rotate', 'modal.scale': 'scale' });
 const TOOL_ACTION_BY_TOOL = Object.freeze({ select: 'tool.select', translate: 'tool.translate', rotate: 'tool.rotate', scale: 'tool.scale', snap: 'tool.snap' });
 const PICK_UP_TOOL_BY_ACTION = Object.freeze({ 'tool.translate': 'translate', 'tool.rotate': 'rotate', 'tool.scale': 'scale' });
@@ -2020,6 +2027,19 @@ export function createStudio(container, {
   const frameButton = createKeyedIconButton('frame', () => `Frame in view (${keyLabel(keymap, 'view.frame')})`);
   const toggleDocksButton = createIconButton(documentReference, 'panels', 'Show or hide the panels', { attributes: { 'aria-pressed': 'true' } });
   const gridButton = createIconButton(documentReference, 'grid', 'Show or hide the grid', { attributes: { 'aria-pressed': 'true' } });
+  // View state, not an edit: it never reaches the recipe or the undo history, and every edit-mode pick and select obeys it.
+  let seeThrough = false;
+  const seeThroughButton = createKeyedIconButton('seeThrough', () => `See through the surface (${keyLabel(keymap, 'view.seeThrough')})`, { attributes: { 'aria-pressed': 'false' } });
+  function setSeeThrough(enabled) {
+    seeThrough = Boolean(enabled);
+    seeThroughButton.setAttribute('aria-pressed', seeThrough ? 'true' : 'false');
+    meshEditor?.setSeeThrough(seeThrough);
+    requestFrame();
+  }
+  seeThroughButton.addEventListener('click', () => {
+    setSeeThrough(!seeThrough);
+    announce(seeThrough ? 'See-through on' : 'See-through off');
+  });
   gridButton.addEventListener('click', () => {
     setPreference('gridVisible', !gridVisible);
     announce(gridVisible ? 'Grid shown' : 'Grid hidden');
@@ -2072,9 +2092,9 @@ export function createStudio(container, {
     createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Edit the scene' } }, addMenuButton, undoButton, redoButton),
     // Above the line: what changes the scene. Below it: what only shows or hides parts of Studio.
     createElement(documentReference, 'div', { className: 'crucible-studio-toolbar-rule', attributes: { role: 'separator', 'aria-orientation': 'horizontal' } }),
-    createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Show or hide' } }, gridButton, toggleDocksButton),
+    createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Show or hide' } }, gridButton, seeThroughButton, toggleDocksButton),
   );
-  wireRovingFocusFallback(toolbarElement, [...toolButtons, addMenuButton, undoButton, redoButton, gridButton, toggleDocksButton], { vertical: true });
+  wireRovingFocusFallback(toolbarElement, [...toolButtons, addMenuButton, undoButton, redoButton, gridButton, seeThroughButton, toggleDocksButton], { vertical: true });
 
   // Viewport Top-Right 3D View Widget
   const viewPresetButtons = ['front', 'right', 'top', 'isometric'].map(preset => {
@@ -3482,14 +3502,15 @@ export function createStudio(container, {
 
   // The grid is drawn with the scene so objects hide it, but it is never part of the scene: not picked, saved or exported.
   function partsToDraw() {
+    const sceneParts = meshEditor?.active ? meshEditor.partsToDraw(controller.scene.parts) : controller.scene.parts;
     if (!gridVisible || capturingStill) {
-      return controller.scene.parts;
+      return sceneParts;
     }
     gridParts ??= buildGridParts();
     gridPartsByName ??= new Map(gridParts.map(part => [part.name, part]));
     const camera = controller.viewCamera;
     placeGridParts(gridPartsByName, gridLayout({ visibleHeight: cameraVisibleHeight(camera), viewportHeight: controller.viewportHeight, target: camera.target, eye: camera.eye }));
-    return [...controller.scene.parts, ...gridParts];
+    return [...sceneParts, ...gridParts];
   }
 
   // F flies the camera to the framed object instead of jumping there, so the eye can follow where the view went. The
@@ -3537,7 +3558,7 @@ export function createStudio(container, {
   }
 
   function syncRendererParts(activeRenderer) {
-    const topology = `${controller.scene.topologyRevision}|${gridVisible && !capturingStill}`;
+    const topology = `${controller.scene.topologyRevision}|${gridVisible && !capturingStill}|${Boolean(meshEditor?.active && meshEditor.seeThrough)}`;
     if (renderedScene !== controller.scene || renderedTopology !== topology) {
       activeRenderer.replaceParts(partsToDraw());
       renderedScene = controller.scene;
@@ -4473,14 +4494,18 @@ export function createStudio(container, {
       createElement(documentReference, 'kbd', { textContent: keys }),
       word,
     );
-    const lockedAxis = modalTransform.locked ? modalTransform.axis : null;
+    const lockedAxes = (modalTransform.locked && modalTransform.axis) || '';
     const axisChips = MODAL_AXES.map(axis => {
       const key = createElement(documentReference, 'kbd', { textContent: keyLabel(keymap, `modal.axis${axis.toUpperCase()}`), dataset: { axis } });
-      key.setAttribute('aria-pressed', lockedAxis === axis ? 'true' : 'false');
+      key.setAttribute('aria-pressed', lockedAxes.includes(axis) ? 'true' : 'false');
       return key;
     });
+    const typedReadout = modalTransform.typed === ''
+      ? []
+      : [createElement(documentReference, 'span', { className: 'crucible-studio-hint-typed', textContent: `= ${modalTransform.typed}${MODAL_TYPED_UNITS[modalTransform.tool]}` })];
     hintBar.replaceChildren(
       createElement(documentReference, 'span', { className: 'crucible-studio-hint-delta', textContent: (liveDeltaLabel || MODAL_TOOL_WORDS[modalTransform.tool]).replace(/^SCREEN/, MODAL_TOOL_WORDS.translate) }),
+      ...typedReadout,
       createElement(documentReference, 'span', { className: 'crucible-studio-hint-chip' }, ...axisChips, 'axis'),
       chip('Click', 'place'),
       chip(keyLabel(keymap, 'modal.cancel'), 'cancel'),
@@ -4497,7 +4522,10 @@ export function createStudio(container, {
     controller.beginGizmoDrag(axis, modalTransform.startX, modalTransform.startY);
     modalTransform.axis = axis;
     modalTransform.locked = locked;
-    if (modalTransform.lastX !== modalTransform.startX || modalTransform.lastY !== modalTransform.startY) {
+    const typedAmount = typedModalAmount();
+    if (typedAmount !== null) {
+      controller.setGizmoTypedAmount(typedAmount);
+    } else if (modalTransform.lastX !== modalTransform.startX || modalTransform.lastY !== modalTransform.startY) {
       controller.updateGizmoDrag(modalTransform.lastX, modalTransform.lastY, { shiftKey: modalTransform.shiftKey });
     }
   }
@@ -4558,6 +4586,7 @@ export function createStudio(container, {
       tool,
       axis: null,
       locked: false,
+      typed: '',
       startX: viewportPointer.x,
       startY: viewportPointer.y,
       lastX: viewportPointer.x,
@@ -4593,13 +4622,43 @@ export function createStudio(container, {
 
   // The same axis key again lets the object go free; another one moves the lock there. The move restarts from where
   // the key picked the object up, so a placed move is still one undo step.
-  function lockModalAxis(axis) {
+  function lockModalAxis(requestedAxis) {
+    // A turn goes around one axis, so the plane across an axis means that axis.
+    const axis = modalTransform.tool === 'rotate' ? MODAL_AXIS_ACROSS_PLANE[requestedAxis] ?? requestedAxis : requestedAxis;
     const release = modalTransform.locked && modalTransform.axis === axis;
     // No axis while the drag is swapped: the change this cancel reports must not read as the object being let go.
     modalTransform.axis = null;
     controller.cancelGizmoDrag();
     beginModalDrag(release ? modalFreeAxis(modalTransform.tool) : axis, !release);
     syncHintBar();
+  }
+
+  // The number typed so far, or null while it is not one yet (nothing, "-" or "."): the pointer then sets the amount.
+  function typedModalAmount() {
+    const amount = Number(modalTransform.typed);
+    return modalTransform.typed === '' || !Number.isFinite(amount) ? null : amount;
+  }
+
+  // Numeric input: digits, a point and a minus sign build the amount, Backspace takes the last one back.
+  function typeModalAmount(event) {
+    const current = modalTransform.typed;
+    let next = current;
+    if (event.key === 'Backspace') {
+      next = current.slice(0, -1);
+    } else if (event.key === '-') {
+      next = current.startsWith('-') ? current.slice(1) : `-${current}`;
+    } else if (/^[0-9.]$/.test(event.key)) {
+      next = current + event.key;
+    } else {
+      return false;
+    }
+    if (!MODAL_TYPED_PATTERN.test(next) || next.split('.').length > 2 || next.length > 12) {
+      return true;
+    }
+    modalTransform.typed = next;
+    controller.setGizmoTypedAmount(typedModalAmount());
+    syncHintBar();
+    return true;
   }
 
   function handleModalKey(event) {
@@ -4610,6 +4669,9 @@ export function createStudio(container, {
     // A key held down repeats: it may not flip the lock or swap the tool. Ctrl+Z is not the Z axis because the
     // modal bindings carry no Ctrl.
     if (event.repeat) {
+      return;
+    }
+    if (!event.ctrlKey && !event.metaKey && !event.altKey && typeModalAmount(event)) {
       return;
     }
     const match = findKeymapAction(keymap, event, 'modal');
@@ -4957,6 +5019,7 @@ export function createStudio(container, {
       root.append(proportionalPopover.popover);
       bindPopoverAnchor(proportionalMenuButton, proportionalPopover.popover, { beside: true });
       meshEditor = createMeshEditor({ controller, announce, getRenderer: () => renderer, proportional });
+      meshEditor.setSeeThrough(seeThrough);
       return meshEditor;
     });
     return meshEditorLoad;
@@ -4999,6 +5062,8 @@ export function createStudio(container, {
       pointerState = null;
     } else if (meshEditor.circleSelecting) {
       endCircleSelect();
+    } else if (meshEditor.boxSelecting) {
+      cancelBoxSelect();
     } else if (!meshEditor.clearSelection()) {
       stopWatchingCircleFocus();
       meshEditor.leave();
@@ -5091,6 +5156,47 @@ export function createStudio(container, {
   viewportElement.addEventListener('pointerup', finishCirclePaint);
   viewportElement.addEventListener('pointercancel', finishCirclePaint);
 
+  // Box select (B): one left drag over the viewport selects what lies inside the rectangle, then the key is spent.
+  let boxDrag = null;
+
+  // Escape or B again drops a box that is being dragged, so letting go of the button afterwards selects nothing.
+  function cancelBoxSelect() {
+    if (boxDrag) viewportElement.releasePointerCapture?.(boxDrag.pointerId);
+    boxDrag = null;
+    meshEditor.endBoxSelect();
+  }
+
+  function boxRectangleOf(event) {
+    const { x, y } = localCoordinates(event);
+    return { left: Math.min(boxDrag.x, x), right: Math.max(boxDrag.x, x), top: Math.min(boxDrag.y, y), bottom: Math.max(boxDrag.y, y) };
+  }
+
+  viewportElement.addEventListener('pointerdown', event => {
+    const ownsPointer = meshEditor?.boxSelecting && !controller.dragging && (event.button ?? 0) === 0 && (event.target === canvas || gizmoSvg.contains(event.target));
+    if (!ownsPointer) return;
+    event.preventDefault();
+    event.stopPropagation();
+    boxDrag = { ...localCoordinates(event), pointerId: event.pointerId };
+    viewportElement.setPointerCapture?.(event.pointerId);
+  }, true);
+
+  viewportElement.addEventListener('pointermove', event => {
+    if (boxDrag?.pointerId !== event.pointerId) return;
+    meshEditor.previewBox(boxRectangleOf(event));
+    requestFrame();
+  });
+
+  viewportElement.addEventListener('pointerup', event => {
+    if (boxDrag?.pointerId !== event.pointerId || !meshEditor?.boxSelecting) return;
+    const { left, top, right, bottom } = boxRectangleOf(event);
+    boxDrag = null;
+    viewportElement.releasePointerCapture?.(event.pointerId);
+    meshEditor.selectInRectangle(left, top, right, bottom, { additive: event.shiftKey });
+    meshEditor.endBoxSelect();
+    syncUi();
+    requestFrame();
+  });
+
   // Right click leaves circle select instead of opening a menu.
   viewportElement.addEventListener('contextmenu', event => {
     if (!meshEditor?.circleSelecting) return;
@@ -5111,7 +5217,7 @@ export function createStudio(container, {
   }
 
   // In edit mode these keys of the normal context still work; every other one would act on the whole object.
-  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'view.frame', 'view.top', 'view.projection', 'view.properties']);
+  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'view.frame', 'view.top', 'view.projection', 'view.properties', 'view.seeThrough']);
   const meshKeyHandlers = {
     'mesh.leave': event => {
       event.preventDefault();
@@ -5147,6 +5253,16 @@ export function createStudio(container, {
       requestFrame();
     },
     'mesh.proportional': () => toggleProportional(),
+    'mesh.boxSelect': () => {
+      if (meshEditor.boxSelecting) {
+        cancelBoxSelect();
+      } else {
+        meshEditor.beginBoxSelect();
+        announce('Drag a rectangle over what to select. Shift adds to the selection.');
+      }
+      syncUi();
+      requestFrame();
+    },
     'mesh.noop': event => event.preventDefault(),
   };
 
@@ -5210,6 +5326,10 @@ export function createStudio(container, {
     },
     'view.frame': () => flyToSelection(),
     'view.projection': () => controller.toggleCameraProjection(),
+    'view.seeThrough': event => {
+      event.preventDefault();
+      seeThroughButton.click();
+    },
     'view.properties': event => {
       event.preventDefault();
       setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true');
@@ -5501,6 +5621,8 @@ export function createStudio(container, {
     showAgentEdit,
     setGridVisible,
     get gridVisible() { return gridVisible; },
+    setSeeThrough,
+    get seeThrough() { return seeThrough; },
     setPreference,
     get preferences() { return { ...preferences }; },
     /** Opens the first-run setup, one step a page. Studio never opens it on its own. */

@@ -230,7 +230,7 @@ export const STUDIO_CSS = `
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.crucible-studio-gizmo .crucible-studio-cage-brush {
+.crucible-studio-gizmo :is(.crucible-studio-cage-brush, .crucible-studio-cage-box) {
   fill: color-mix(in srgb, var(--studio-accent) 14%, transparent);
   stroke: var(--studio-accent);
   stroke-width: 1.5;
@@ -1492,6 +1492,7 @@ export const STUDIO_CSS = `
 }
 .crucible-studio[data-modal] .crucible-studio-viewport { cursor: move; }
 .crucible-studio-hint-delta { min-inline-size: 9ch; }
+.crucible-studio-hint-typed { font-variant-numeric: tabular-nums; color: var(--studio-text); font-weight: 600; }
 .crucible-studio-hint-chip {
   display: inline-flex;
   align-items: center;

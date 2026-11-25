@@ -2923,7 +2923,7 @@ test('the rail keeps scene tools above one line and the show and hide switches b
   assert.deepEqual(rows, ['Transform tool', 'Mesh selection', 'Edit the scene', 'line', 'Show or hide']);
   assert.equal(toolbar.children[1].hidden, true);
   const below = toolbar.children.at(-1).children.map(button => button.getAttribute('aria-label'));
-  assert.deepEqual(below, ['Show or hide the grid', 'Show or hide the panels']);
+  assert.deepEqual(below, ['Show or hide the grid', 'See through the surface (Alt+Z)', 'Show or hide the panels']);
   const above = toolbar.children[2].children.map(button => button.dataset.icon);
   assert.deepEqual(above, ['add', 'undo', 'redo']);
 });
@@ -3320,6 +3320,68 @@ test('G picks the selected object up under the pointer; X locks an axis, Esc put
   assert.equal(ui.controller.tool, 'rotate');
   dispatch(ui.dom.document, 'pointerdown', { button: 2, clientX: 420, clientY: 120 });
   assert.equal(ui.root.dataset.modal, undefined);
+  assert.equal(ui.controller.canUndo, false);
+});
+
+test('typed digits set the amount of a held move, turn or scale, and Shift with an axis keeps the move on a plane', testContext => {
+  const ui = mountStudio(testContext);
+  const hintBar = ui.root.querySelector('.crucible-studio-hintbar');
+  const heroNode = () => ui.controller.exportRecipe().nodes.find(node => node.id === ui.controller.selectedNodeId);
+  const press = (key, modifiers = {}) => dispatch(ui.dom.document, 'keydown', { key, ...modifiers });
+  const pressAll = keys => keys.forEach(key => press(key));
+  ui.controller.selectNode(ui.controller.exportRecipe().nodes[0].id);
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  const before = structuredClone(heroNode().translation);
+
+  // G X 2 Enter moves 2 m along X in one undo step, whatever the pointer does.
+  pressAll(['g', 'x', '2']);
+  dispatch(ui.dom.document, 'pointermove', { clientX: 380, clientY: 150 });
+  assert.match(hintBar.textContent, /= 2 m/);
+  assert.deepEqual(heroNode().translation, [before[0] + 2, before[1], before[2]]);
+  press('.');
+  press('5');
+  assert.equal(heroNode().translation[0], before[0] + 2.5);
+  press('Backspace');
+  press('Backspace');
+  assert.equal(heroNode().translation[0], before[0] + 2);
+  press('-');
+  assert.equal(heroNode().translation[0], before[0] - 2);
+  press('Enter');
+  assert.equal(ui.root.dataset.modal, undefined);
+  assert.equal(heroNode().translation[0], before[0] - 2);
+  ui.controller.undo();
+  assert.deepEqual(heroNode().translation, before);
+  assert.equal(ui.controller.canUndo, false);
+
+  // An amount typed before the axis survives the lock; Esc puts everything back.
+  pressAll(['g', '3', 'x']);
+  assert.equal(heroNode().translation[0], before[0] + 3);
+  press('Escape');
+  assert.deepEqual(heroNode().translation, before);
+
+  // Shift+Y keeps the move on the ground plane: the height does not change, the pointer sets X and Z.
+  press('g');
+  dispatch(ui.dom.document, 'pointermove', { clientX: 380, clientY: 150 });
+  press('Y', { shiftKey: true });
+  assert.deepEqual(hintBar.querySelectorAll('kbd').filter(key => key.getAttribute('aria-pressed') === 'true').map(key => key.textContent), ['X', 'Z']);
+  dispatch(ui.dom.document, 'pointermove', { clientX: 420, clientY: 120 });
+  assert.equal(heroNode().translation[1], before[1]);
+  assert.notEqual(heroNode().translation[0], before[0]);
+  pressAll(['4']);
+  assert.deepEqual(heroNode().translation, [before[0] + 4, before[1], before[2] + 4]);
+  press('Escape');
+
+  // Rotate takes degrees and scale takes a factor.
+  const beforeScale = structuredClone(heroNode().scale ?? [1, 1, 1]);
+  pressAll(['s', '2']);
+  assert.deepEqual(heroNode().scale, beforeScale.map(value => value * 2));
+  press('Enter');
+  ui.controller.undo();
+  pressAll(['r', 'y', '9', '0']);
+  const [, turned, , turnedW] = heroNode().rotation;
+  assert.ok(Math.abs(turned - Math.sin(Math.PI / 4)) < 1e-3 && Math.abs(turnedW - Math.cos(Math.PI / 4)) < 1e-3, 'ninety degrees about Y');
+  press('Enter');
+  ui.controller.undo();
   assert.equal(ui.controller.canUndo, false);
 });
 
