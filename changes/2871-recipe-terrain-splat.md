@@ -1,0 +1,1 @@
+- `terrain.material` maps recipe terrain layers, blending rules, path masks, anti-tiling, triplanar cliffs and parallax onto the splat ground shader (#2871)

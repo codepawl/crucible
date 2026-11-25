@@ -8,6 +8,7 @@ import { invalidField } from './field-error.js';
 import { normalizeTerrainPaths } from './terrain-paths.js';
 import { diagnostic } from './agent-diagnostics.js';
 import { TERRAIN_DEFAULT_SIZE, TERRAIN_DEFAULT_RESOLUTION, holesCoverWholeGround, holesRemovingNoCell } from './terrain-hole-cells.js';
+import { normalizeTerrainSplatMaterial, buildTerrainSplatMaterial } from './agent-terrain-splat.js';
 
 // A scene allows 250000 vertices by default, so a single chunk of 499 cells (250000 vertices) is the most the recipe can draw.
 export const TERRAIN_LIMITS = Object.freeze({
@@ -114,6 +115,7 @@ export function terrainVertexEstimate(value) {
   }
   value.holes?.forEach(checkHole);
   normalizeTerrainPaths(value.paths);
+  if (value.material !== undefined) normalizeTerrainSplatMaterial(value.material, value);
   checkHolesLeaveGround(value.holes, settings.size, settings.resolution * settings.chunks);
   // Every chunk is its own mesh with its own border vertices.
   return settings.chunks * settings.chunks * (settings.resolution + 1) * (settings.resolution + 1);
@@ -278,4 +280,11 @@ export function terrainHoleDiagnostics(geometry) {
     `${geometry.id}.holes[${index}]`,
     `Hole ${index} of terrain ${geometry.id} removes no ground cell, so it changes nothing: cells are ${cellSize} m wide and a hole removes a cell only when it reaches the cell's centre.`,
     `Raise radius above ${smallestRadius} (the smallest that removes a cell here), move center onto a cell centre, or raise the terrain resolution.`));
+}
+
+/** Frozen splat material (`layers` + `splat`) for a recipe terrain with `material` configured. */
+export function terrainSplatMaterial(value, pool) {
+  const normalized = normalizeTerrainSplatMaterial(value.material, value);
+  const pathMasks = normalized.maskNames.length > 0 ? cachedTerrain(value).pathMasks : null;
+  return buildTerrainSplatMaterial(value, pool, pathMasks);
 }
