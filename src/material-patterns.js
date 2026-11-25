@@ -1,5 +1,6 @@
 import { MATERIAL_PATTERN_TYPES, MATERIAL_MAPPINGS } from './material-name-lists.js';
 import { bakeMaterialGraph, graphBaseOutputs, graphImageData, graphMeshMapNames, graphSurfaceSettings, graphVertexGroupNames, MESH_MAP_KEY_PREFIX, normalizeMaterialGraph, surfaceMapKey } from './material-graph.js';
+import { bakeMaterialLayerStack, normalizeMaterialLayerStack, stackBaseOutputs, stackImageData, stackMeshMapNames, stackSurfaceSettings, stackVertexGroupNames } from './material-stack.js';
 import { meshMapForGeometry } from './mesh-map-bake.js';
 import { requireSurfaceUvs, surfaceMap } from './material-surface-map.js';
 import { vertexGroupMap } from './material-vertex-group-map.js';
@@ -146,6 +147,7 @@ const RESOLUTIONS = [256, 512, 1024];
 const MAX_COUNT = 64;
 
 const GRAPH_TYPE = 'graph';
+const LAYERS_TYPE = 'layers';
 const GRAPH_DEFAULTS = { size: 1, bump: 1 };
 const GRAPH_ONLY_FIELDS = ['colors', 'count', 'seed'];
 
@@ -193,10 +195,36 @@ function normalizeGraphPattern(value, mappingField, { allowBase = false } = {}) 
   };
 }
 
+function normalizeLayersPattern(value, mappingField, options = {}) {
+  const { allowBase = false } = options;
+  for (const field of GRAPH_ONLY_FIELDS) {
+    if (value[field] !== undefined) throw patternError(`of type layers does not take ${field}: each layer holds its own colours and pattern fields.`);
+  }
+  if (value.graph !== undefined) throw patternError('of type layers does not take graph: pass graphs inside each layer.');
+  const axis = value.axis ?? 'y';
+  if (!['x', 'y', 'z'].includes(axis)) throw patternError('axis must be x, y or z: the object axis the texture V runs along.');
+  const resolution = value.resolution ?? 512;
+  if (!RESOLUTIONS.includes(resolution)) throw patternError(`resolution must be one of ${RESOLUTIONS.join(', ')}.`);
+  const layers = normalizeMaterialLayerStack(value.layers, resolution, preset => normalizeMaterialPattern({ resolution, ...preset }, options));
+  if (!allowBase && stackBaseOutputs(layers).length > 0) throw patternError('uses a base node, which reads the imported textures of a placed asset part: put the graph in asset.materials[].pattern or asset.pattern, not on a recipe material.');
+  if ((stackVertexGroupNames(layers).length > 0 || stackMeshMapNames(layers).length > 0 || stackSurfaceSettings(layers).length > 0) && mappingField.mapping !== 'uv') {
+    throw patternError('uses a vertexGroup node, a meshMap node or a surface node, which reads the mesh in UV space: set "mapping": "uv" on the pattern (the mesh needs UVs).');
+  }
+  return {
+    type: LAYERS_TYPE,
+    layers,
+    size: checkedNumber(value.size ?? GRAPH_DEFAULTS.size, 'size', 0.01, 100),
+    bump: checkedNumber(value.bump ?? GRAPH_DEFAULTS.bump, 'bump', 0, 4),
+    axis,
+    resolution,
+    ...mappingField,
+  };
+}
+
 /** Validate a recipe pattern and fill in its defaults. A normalized pattern normalizes to itself. */
 export function normalizeMaterialPattern(value, options = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw patternError(`must be an object such as { "type": "wood" }. Types: ${MATERIAL_PATTERN_TYPES.join(', ')}.`);
-  const known = ['type', 'colors', 'size', 'count', 'bump', 'seed', 'axis', 'resolution', 'mapping', 'graph'];
+  const known = ['type', 'colors', 'size', 'count', 'bump', 'seed', 'axis', 'resolution', 'mapping', 'graph', 'layers'];
   for (const key of Object.keys(value)) {
     if (!known.includes(key)) throw patternError(`does not take ${key}. Fields: ${known.join(', ')}.`);
   }
@@ -205,7 +233,9 @@ export function normalizeMaterialPattern(value, options = {}) {
   // Box mapping is the default, so a preset that does not ask for UVs keeps exactly the shape it always had.
   const mappingField = mapping === 'uv' ? { mapping } : {};
   if (value.type === GRAPH_TYPE) return normalizeGraphPattern(value, mappingField, options);
+  if (value.type === LAYERS_TYPE) return normalizeLayersPattern(value, mappingField, options);
   if (value.graph !== undefined) throw patternError('does not take graph unless its type is graph.');
+  if (value.layers !== undefined) throw patternError('does not take layers unless its type is layers.');
   if (!Object.hasOwn(PATTERN_DEFAULTS, value.type ?? '')) throw patternError(`type must be one of ${MATERIAL_PATTERN_TYPES.join(', ')}.`);
   const defaults = PATTERN_DEFAULTS[value.type];
   const count = value.count ?? defaults.count;
@@ -229,6 +259,52 @@ export function normalizeMaterialPattern(value, options = {}) {
   };
 }
 
+/** Validates and applies `material.pattern` or `material.layers` onto a resolved recipe material; returns true when graph opacity is present. */
+export function applyRecipePattern(value, result, invalidField) {
+  if (value.layers !== undefined && value.pattern !== undefined) {
+    throw invalidField('layers', value.layers, 'omitted when pattern is set; pass either layers or pattern');
+  }
+  const input = value.layers !== undefined ? { type: LAYERS_TYPE, layers: value.layers } : value.pattern;
+  if (result.tag !== 'surface') {
+    throw invalidField('pattern', input?.type, 'a material with the surface tag; remove pattern or set tag to surface');
+  }
+  result.pattern = normalizeMaterialPattern(input);
+  if (result.pattern.type === GRAPH_TYPE) {
+    for (const field of ['metallic', 'roughness', 'emission']) {
+      if (value[field] === undefined && Object.hasOwn(result.pattern.graph, field)) result[field] = 1;
+    }
+    for (const field of ['clearcoat', 'transmission']) {
+      if (Object.hasOwn(result.pattern.graph, field)) result[field] = 1;
+    }
+    return Object.hasOwn(result.pattern.graph, 'opacity');
+  }
+  if (result.pattern.type === LAYERS_TYPE) {
+    if (value.metallic === undefined) result.metallic = 1;
+    if (value.roughness === undefined) result.roughness = 1;
+  }
+  return false;
+}
+
+
+function samplePresetPattern(pattern, positionU, positionV) {
+  const sampler = PATTERN_SAMPLERS[pattern.type];
+  const sample = sampler(positionU, positionV, pattern.seed, pattern.count);
+  const [firstColor, secondColor, jointColor] = pattern.colors;
+  const tone = clampUnit(sample.tone);
+  const joint = jointColor ? sample.joint ?? 0 : 0;
+  const channelColor = channel => {
+    const body = firstColor[channel] + (secondColor[channel] - firstColor[channel]) * tone;
+    return joint > 0 ? body + (jointColor[channel] - body) * joint : body;
+  };
+  return {
+    red: channelColor(0),
+    green: channelColor(1),
+    blue: channelColor(2),
+    height: sample.height,
+    roughness: sample.roughness,
+    metal: sample.metal,
+  };
+}
 
 /** Bake a normalized pattern into { map, normalMap, metallicRoughnessMap } texture descriptors. Deterministic. */
 export function bakeMaterialPattern(pattern, images, groups) {
@@ -237,6 +313,7 @@ export function bakeMaterialPattern(pattern, images, groups) {
     boxMapAxis: ['x', 'y', 'z'].indexOf(pattern.axis),
   };
   if (pattern.type === GRAPH_TYPE) return { ...bakeMaterialGraph(pattern.graph, pattern, images, groups), ...placement };
+  if (pattern.type === LAYERS_TYPE) return { ...bakeMaterialLayerStack(pattern.layers, pattern, images, groups, samplePresetPattern), ...placement };
   const { resolution, type, seed, count, colors, bump } = pattern;
   if (!Object.hasOwn(PATTERN_SAMPLERS, type)) throw patternError(`type must be one of ${MATERIAL_PATTERN_TYPES.join(', ')}.`);
   const sampler = PATTERN_SAMPLERS[type];
@@ -285,7 +362,7 @@ const bakedByPatternObject = new WeakMap();
  * of the vertex groups its graph reads, for one mesh (see materialViewForGeometry); the key then covers their bytes.
  */
 export function materialPatternTextures(pattern, imagePool, groups) {
-  const images = pattern.graph ? graphImageData(pattern.graph, imagePool) : {};
+  const images = pattern.graph ? graphImageData(pattern.graph, imagePool) : pattern.layers ? stackImageData(pattern.layers, imagePool) : {};
   const hasImages = Object.keys(images).length > 0;
   if (groups) return bakeWithGroups(pattern, images, groups);
   const remembered = bakedByPatternObject.get(pattern);
@@ -324,14 +401,15 @@ const viewsByGeometry = new WeakMap();
 const groupNamesByPattern = new WeakMap();
 
 function meshMapNamesOf(pattern) {
-  return pattern?.graph ? graphMeshMapNames(pattern.graph) : [];
+  if (pattern?.graph) return graphMeshMapNames(pattern.graph);
+  return pattern?.layers ? stackMeshMapNames(pattern.layers) : [];
 }
 
 function vertexGroupNamesOf(pattern) {
-  if (!pattern?.graph) return [];
+  if (!pattern?.graph && !pattern?.layers) return [];
   let names = groupNamesByPattern.get(pattern);
   if (!names) {
-    names = graphVertexGroupNames(pattern.graph);
+    names = pattern.graph ? graphVertexGroupNames(pattern.graph) : stackVertexGroupNames(pattern.layers);
     groupNamesByPattern.set(pattern, names);
   }
   return names;
@@ -340,10 +418,10 @@ function vertexGroupNamesOf(pattern) {
 const surfaceSettingsByPattern = new WeakMap();
 
 function surfaceSettingsOf(pattern) {
-  if (!pattern?.graph) return [];
+  if (!pattern?.graph && !pattern?.layers) return [];
   let settings = surfaceSettingsByPattern.get(pattern);
   if (!settings) {
-    settings = graphSurfaceSettings(pattern.graph);
+    settings = pattern.graph ? graphSurfaceSettings(pattern.graph) : stackSurfaceSettings(pattern.layers);
     surfaceSettingsByPattern.set(pattern, settings);
   }
   return settings;

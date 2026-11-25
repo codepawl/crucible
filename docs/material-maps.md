@@ -251,3 +251,5 @@ Texture alpha is ignored for opaque materials, as required by glTF's opaque mode
 This feature does not complete the full material system.
 Texture slots inside the layer extensions and node graphs remain missing.
 GLB export of these material maps is outside this feature.
+
+See also [Material layer stack](https://crucible.codepawl.com/material-layers.md) for blending up to four PBR materials with `heightBlend`.
