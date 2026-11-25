@@ -1019,7 +1019,7 @@ const VALID_TRACE_ENVIRONMENT_FIELDS = new Set([
   'map', 'cameraIntensity', 'world', 'keyColor', 'keyIntensity', 'lightDirection',
   'sunAngularRadius', 'sunMaxBounces', 'pointLights', 'spotLights', 'areaLights',
   'fogColor', 'fogDensity', 'volumeFog', 'localVolumes', 'volumeTime', 'volumeShutter',
-  'ground', 'setup', 'hdri', 'keyFromHdri', 'environmentIntensity', 'environmentRotation',
+  'ground', 'setup', 'hdri', 'reflectionHdri', 'keyFromHdri', 'environmentIntensity', 'environmentRotation',
   'fillIntensity', 'ambientIntensity', 'daylight', 'skyTop', 'skyBottom', 'liquid',
   'shadowCascades', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce',
   'specularAntiAliasing', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'wind',

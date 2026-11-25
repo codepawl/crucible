@@ -160,11 +160,14 @@ test('tool buttons, tab buttons and tool keys switch the active tool and inspect
       assert.equal(ui.tool(other).getAttribute('aria-pressed'), other === tool ? 'true' : 'false');
     }
   }
-  const keyToTool = { q: 'select', g: 'translate', r: 'rotate', s: 'scale', t: 'snap', G: 'translate' };
+  const keyToTool = { q: 'select', g: 'translate', r: 'rotate', s: 'scale', G: 'translate' };
   for (const [key, tool] of Object.entries(keyToTool)) {
     dispatch(ui.dom.document, 'keydown', { key });
     assert.equal(ui.controller.tool, tool, `key ${key}`);
   }
+  assert.equal(ui.dom.document.querySelector('[data-tool="snap"]'), null, 'snapping is no longer a tool on the rail');
+  dispatch(ui.dom.document, 'keydown', { key: 't' });
+  assert.equal(ui.controller.tool, 'translate', 'T, the old Snap key, is free');
 
   for (const tab of STUDIO_TABS) {
     ui.tab(tab).click();
@@ -893,9 +896,6 @@ test('the gizmo draws handles for each tool and clears them when nothing is sele
   ui.studio.renderNow();
   assert.deepEqual([...axesDrawn()].sort(), ['uniform', 'x', 'y', 'z']);
   assert.equal(ui.gizmo.querySelectorAll('rect').length, 3);
-  ui.tool('snap').click();
-  ui.studio.renderNow();
-  assert.deepEqual([...axesDrawn()].sort(), ['surface', 'x', 'y', 'z']);
 });
 
 test('dragging a gizmo handle with the pointer moves the node, and undo puts it back', testContext => {
@@ -929,7 +929,7 @@ test('dragging a gizmo handle with the pointer moves the node, and undo puts it 
   assert.deepEqual(ui.node('hero').translation, [0, 0.5, 0]);
 });
 
-test('rotate and scale handles turn and stretch the node, and shift snaps the turn', testContext => {
+test('rotate and scale handles turn and stretch the node, and Ctrl snaps the turn', testContext => {
   const ui = mountStudio(testContext);
   ui.selectRow('hero');
   ui.tool('rotate').click();
@@ -941,7 +941,7 @@ test('rotate and scale handles turn and stretch the node, and shift snaps the tu
     handles.pivot[2] - Math.sin((degrees * Math.PI) / 180),
   ]);
   dispatch(ui.gizmoPart('y'), 'pointerdown', ui.clientPoint(ringPoint(0)));
-  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(ringPoint(33)), shiftKey: true });
+  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(ringPoint(33)), ctrlKey: true });
   dispatch(ui.canvas, 'pointerup', ui.clientPoint(ringPoint(33)));
   assert.ok(Math.abs(ui.node('hero').rotation[1] - Math.sin((15 * Math.PI) / 180)) < 1e-3);
   assert.ok(Math.abs(ui.label('Rotation ° Y').value - 30) < 0.5);
@@ -1010,14 +1010,16 @@ test('the mouse wheel zooms the camera and the page does not scroll', testContex
   assert.ok(distance() / beforeHuge <= 1.35 + 1e-3, 'one wheel step is limited to 35 percent');
 });
 
-test('alt-clicking with the snap tool drops the selection onto the surface under the pointer', testContext => {
-  const ui = mountStudio(testContext);
+test('Move with the Face target drops the selection onto the surface under the pointer', testContext => {
+  const ui = mountStudio(testContext, { preferences: { snapEnabled: true, snapTarget: 'face' } });
   ui.selectRow('hero');
   ui.controller.updateNodeTransform('hero', { translation: [0, 5, 0] });
-  ui.tool('snap').click();
+  ui.tool('translate').click();
+  ui.studio.renderNow();
   const floorPoint = ui.controller.projectWorldPoint([0, 0, -2]);
-  dispatch(ui.canvas, 'pointerdown', ui.clientPoint(floorPoint));
-  dispatch(ui.canvas, 'pointerup', { ...ui.clientPoint(floorPoint), altKey: true });
+  dispatch(ui.gizmoPart('screen'), 'pointerdown', ui.clientPoint(ui.controller.gizmoHandles().origin));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(floorPoint));
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(floorPoint));
   assert.ok(ui.node('hero').translation[1] < 1.2, `y ${ui.node('hero').translation[1]}`);
   assert.equal(ui.controller.selectedNodeId, 'hero');
 
@@ -2546,7 +2548,7 @@ test('turning a ring shows where the turn began, how far it has gone and hides t
   }
   sweep = ui.controller.rotationSweep();
   assert.ok(Math.abs(sweep.degrees - 230) < 0.5, 'a turn past half a circle keeps counting');
-  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(ringPoint(228)), shiftKey: true });
+  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(ringPoint(228)), ctrlKey: true });
   assert.equal(ui.controller.rotationSweep().degrees, 225);
 
   dispatch(ui.canvas, 'pointerup', ui.clientPoint(ringPoint(228)));
@@ -2641,8 +2643,8 @@ test('workspaces run Build, Look, Animate and each shows only the panels its ste
 
   assert.equal(ui.root.dataset.workspace, 'build');
   assert.equal(workspaceTab('build').getAttribute('aria-selected'), 'true');
-  assert.deepEqual(shownTabs(), ['node']);
-  assert.ok(tabList.hasAttribute('hidden'), 'one panel needs no tab row');
+  assert.deepEqual(shownTabs(), ['node', 'modifiers']);
+  assert.equal(tabList.hasAttribute('hidden'), false, 'Build holds the Object and Modifiers tabs');
 
   const recipeBefore = JSON.stringify(ui.studio.exportRecipe());
   workspaceTab('look').click();
@@ -2741,7 +2743,7 @@ test('Settings change the snap, the handles and what the viewport shows, and are
     control(name).checked = checked;
     dispatch(control(name), 'change');
   };
-  assert.deepEqual(ui.controller.interactionSettings, { moveSnapStep: 0.25, rotateSnapDegrees: 15, gizmoPixels: 74 });
+  assert.deepEqual(ui.controller.interactionSettings, { moveSnapStep: 0.25, rotateSnapDegrees: 15, gizmoPixels: 74, snapEnabled: false, snapTarget: 'increment' });
   assert.equal(control('moveSnapStep').value, '0.25');
   assert.equal(control('gridVisible').checked, true);
 
@@ -2750,7 +2752,7 @@ test('Settings change the snap, the handles and what the viewport shows, and are
   choose('moveSnapStep', 1);
   choose('rotateSnapDegrees', 45);
   choose('gizmoSize', 'large');
-  assert.deepEqual(ui.controller.interactionSettings, { moveSnapStep: 1, rotateSnapDegrees: 45, gizmoPixels: 92 });
+  assert.deepEqual(ui.controller.interactionSettings, { moveSnapStep: 1, rotateSnapDegrees: 45, gizmoPixels: 92, snapEnabled: false, snapTarget: 'increment' });
   toggle('gridVisible', false);
   assert.equal(ui.studio.gridVisible, false);
   assert.equal(ui.label('Show or hide the grid').getAttribute('aria-pressed'), 'false');
@@ -2775,6 +2777,8 @@ test('Settings change the snap, the handles and what the viewport shows, and are
     panelsFloating: false,
     moveSnapStep: 1,
     rotateSnapDegrees: 45,
+    snapEnabled: false,
+    snapTarget: 'increment',
     gizmoSize: 'large',
     startWorkspace: 'animate',
     theme: 'system',
@@ -2798,13 +2802,13 @@ test('Settings change the snap, the handles and what the viewport shows, and are
   assert.equal(next.root.dataset.readout, 'off');
 
   next.button('Reset').click();
-  assert.deepEqual(next.controller.interactionSettings, { moveSnapStep: 0.25, rotateSnapDegrees: 15, gizmoPixels: 74 });
+  assert.deepEqual(next.controller.interactionSettings, { moveSnapStep: 0.25, rotateSnapDegrees: 15, gizmoPixels: 74, snapEnabled: false, snapTarget: 'increment' });
   assert.equal(next.root.dataset.readout, 'on');
   assert.equal(JSON.parse(saved.get('crucible-studio-preferences')).startWorkspace, 'build');
   assert.throws(() => next.studio.setPreference('colour', 'pink'), /Unknown Studio preference/);
 });
 
-test('a Shift drag snaps a move to the step chosen in Settings', testContext => {
+test('a Ctrl drag snaps a move to the step chosen in Settings while snapping is off', testContext => {
   const ui = mountStudio(testContext, { preferences: { moveSnapStep: 1 } });
   ui.selectRow('hero');
   ui.tool('translate').click();
@@ -2813,7 +2817,7 @@ test('a Shift drag snaps a move to the step chosen in Settings', testContext => 
   const along = distance => ui.controller.projectWorldPoint(handles.pivot.map((value, index) => value + handles.basis.x[index] * distance));
   const startX = ui.node('hero').translation[0];
   dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
-  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(along(handles.handleLength + 1.3)), shiftKey: true });
+  dispatch(ui.canvas, 'pointermove', { ...ui.clientPoint(along(handles.handleLength + 1.3)), ctrlKey: true });
   dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength + 1.3)));
   const travelled = ui.node('hero').translation[0] - startX;
   assert.ok(Math.abs(travelled - Math.round(travelled)) < 1e-6 && Math.abs(travelled) >= 1, `moved ${travelled} m in whole metres`);
@@ -2925,11 +2929,11 @@ test('the rail keeps scene tools above one line and the show and hide switches b
   const toolbar = ui.root.querySelector('.crucible-studio-toolbar');
   const rows = toolbar.children.map(child => child.getAttribute('role') === 'separator' ? 'line' : child.getAttribute('aria-label'));
   // The mesh selection modes are in the rail but hidden until edit mode starts.
-  assert.deepEqual(rows, ['Transform tool', 'Mesh selection', 'Edit the scene', 'line', 'Show or hide']);
-  assert.equal(toolbar.children[1].hidden, true);
+  assert.deepEqual(rows, ['Transform tool', 'Snapping', 'Mesh selection', 'Edit the scene', 'line', 'Show or hide']);
+  assert.equal(toolbar.children[2].hidden, true);
   const below = toolbar.children.at(-1).children.map(button => button.getAttribute('aria-label'));
   assert.deepEqual(below, ['Show or hide the grid', 'See through the surface (Alt+Z)', 'Show or hide the panels']);
-  const above = toolbar.children[2].children.map(button => button.dataset.icon);
+  const above = toolbar.children[3].children.map(button => button.dataset.icon);
   assert.deepEqual(above, ['add', 'undo', 'redo']);
 });
 
@@ -5160,7 +5164,7 @@ test('the Cinema 4D keymap: E, R and T choose the tool, 9 selects and F9 keys', 
   press('9');
   assert.equal(ui.controller.tool, 'select');
   press('S', { shiftKey: true });
-  assert.equal(ui.controller.tool, 'snap');
+  assert.equal(ui.studio.preferences.snapEnabled, true, 'Shift+S, the Cinema 4D snapping key, turns snapping on');
   press('F9');
   await ui.dom.settle();
   assert.equal(ui.studio.exportRecipe().motion.tracks.length > 0, true, 'F9 sets a key');
@@ -5293,6 +5297,147 @@ test('Maya and Cinema 4D navigate with Alt and a mouse button, and the Blender k
   assert.notDeepEqual(ui.controller.scene.camera.target, targetBefore, 'the default right drag still pans, whatever the keymap');
 });
 
+// Snapping is a state on the rail, not a tool (#3342).
+function snapParts(ui) {
+  return {
+    toggle: byDataset(ui.root, 'snapToggle', 'true'),
+    targetButton: byDataset(ui.root, 'snapTargetButton', 'true'),
+    popover: ui.root.querySelector('#crucible-studio-pop-snap'),
+  };
+}
+
+test('the magnet toggle and its target menu sit on the rail, lit when on, and are kept for the next visit (#3342)', testContext => {
+  const saved = new Map();
+  const preferenceStorage = { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) };
+  const ui = mountStudio(testContext, { preferenceStorage });
+  const { toggle, targetButton, popover } = snapParts(ui);
+  assert.equal(toggle.dataset.icon, 'snap');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+  assert.match(toggle.getAttribute('aria-label'), /^Snapping off \(Shift\+Tab\)$/);
+  assert.equal(targetButton.getAttribute('aria-label'), 'Snap to Increment');
+  assert.deepEqual(popover.querySelectorAll('button').map(item => [item.textContent, item.dataset.snapTarget, item.querySelector('svg') !== null]), [
+    ['Increment', 'increment', true],
+    ['Vertex', 'vertex', true],
+    ['Face', 'face', true],
+  ]);
+  assert.deepEqual(popover.querySelectorAll('button').map(item => item.getAttribute('aria-checked')), ['true', 'false', 'false']);
+  assert.ok(STUDIO_CSS.includes('button[data-snap-toggle][aria-pressed="true"] svg'), 'the lit magnet is filled, not only tinted');
+
+  toggle.click();
+  assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+  assert.equal(ui.controller.interactionSettings.snapEnabled, true);
+  assert.match(toggle.getAttribute('aria-label'), /^Snapping on/);
+  assert.equal(ui.status(), 'Snapping on, to Increment');
+
+  byText(popover, 'Vertex').click();
+  assert.equal(ui.controller.interactionSettings.snapTarget, 'vertex');
+  assert.equal(targetButton.dataset.icon, 'meshVertex');
+  assert.equal(targetButton.getAttribute('aria-label'), 'Snap to Vertex');
+  assert.deepEqual(popover.querySelectorAll('button').map(item => item.getAttribute('aria-checked')), ['false', 'true', 'false']);
+
+  const next = mountStudio(testContext, { preferenceStorage, sharedDom: ui.dom });
+  const nextParts = snapParts(next);
+  assert.equal(nextParts.toggle.getAttribute('aria-pressed'), 'true', 'the state comes back');
+  assert.equal(nextParts.targetButton.getAttribute('aria-label'), 'Snap to Vertex', 'and so does the target');
+  assert.deepEqual([next.controller.interactionSettings.snapEnabled, next.controller.interactionSettings.snapTarget], [true, 'vertex']);
+
+  next.button('Reset').click();
+  assert.equal(nextParts.toggle.getAttribute('aria-pressed'), 'false', 'Reset turns snapping off');
+  assert.equal(nextParts.targetButton.getAttribute('aria-label'), 'Snap to Increment', 'and back to Increment');
+});
+
+test('Shift+Tab toggles snapping from the page or the canvas, and leaves Tab to the browser anywhere else (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const { toggle } = snapParts(ui);
+  const shiftTab = target => dispatch(target, 'keydown', { key: 'Tab', shiftKey: true });
+
+  assert.equal(shiftTab(ui.dom.document).defaultPrevented, true);
+  assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  shiftTab(ui.canvas);
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false', 'from the canvas too, with the pointer over the viewport');
+
+  const onButton = shiftTab(ui.label('Delete (Del)'));
+  assert.equal(onButton.defaultPrevented, false, 'a focused control keeps Shift+Tab as the way back');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+  const inField = shiftTab(ui.root.querySelector('input'));
+  assert.equal(inField.defaultPrevented, false);
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+
+  byText(ui.root, 'Settings…').click();
+  shiftTab(ui.dom.document);
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false', 'nothing happens behind an open dialog');
+});
+
+test('Shift+Tab does not enter edit mode (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  const meshBefore = ui.root.dataset.meshEdit;
+  dispatch(ui.dom.document, 'keydown', { key: 'Tab', shiftKey: true });
+  assert.equal(ui.root.dataset.meshEdit, meshBefore, 'Shift+Tab only toggled snapping');
+  assert.equal(snapParts(ui).toggle.getAttribute('aria-pressed'), 'true');
+});
+
+test('holding or letting go of Ctrl flips snapping for a handle drag at once, in both directions (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  ui.selectRow('hero');
+  ui.tool('translate').click();
+  ui.studio.renderNow();
+  const handles = ui.controller.gizmoHandles();
+  const along = distance => ui.controller.projectWorldPoint(handles.pivot.map((value, index) => value + handles.basis.x[index] * distance));
+  const heroX = () => ui.node('hero').translation[0];
+  const onStep = value => Math.abs(value / 0.25 - Math.round(value / 0.25)) < 1e-6;
+
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(along(handles.handleLength + 0.83)));
+  const free = heroX();
+  assert.equal(onStep(free), false, 'snapping is off: the move is free');
+  dispatch(ui.dom.document, 'keydown', { key: 'Control', ctrlKey: true });
+  assert.equal(onStep(heroX()), true, 'Ctrl down snaps the move in hand without the pointer moving');
+  dispatch(ui.dom.document, 'keyup', { key: 'Control', ctrlKey: false });
+  assert.equal(heroX(), free, 'Ctrl up gives the free move back');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength + 0.83)));
+
+  snapParts(ui).toggle.click();
+  ui.controller.updateNodeTransform('hero', { translation: [0, 0.5, 0] });
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(along(handles.handleLength + 0.83)));
+  assert.equal(onStep(heroX()), true, 'snapping is on: the move is on the step');
+  dispatch(ui.dom.document, 'keydown', { key: 'Control', ctrlKey: true });
+  assert.equal(onStep(heroX()), false, 'Ctrl down frees it');
+  dispatch(ui.dom.document, 'keyup', { key: 'Control', ctrlKey: false });
+  assert.equal(onStep(heroX()), true, 'Ctrl up snaps it again');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength + 0.83)));
+});
+
+test('G and R obey the snapping state, and Ctrl flips it while the object is held (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const press = (key, modifiers = {}) => dispatch(ui.dom.document, 'keydown', { key, ...modifiers });
+  const heroX = () => ui.node('hero').translation[0];
+  const onStep = value => Math.abs(value / 0.25 - Math.round(value / 0.25)) < 1e-6;
+  ui.controller.selectNode('hero');
+  snapParts(ui).toggle.click();
+
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  press('g');
+  press('x');
+  dispatch(ui.dom.document, 'pointermove', { clientX: 377, clientY: 200 });
+  assert.equal(onStep(heroX()) && heroX() !== 0, true, `G with snapping on lands on the step: ${heroX()}`);
+  press('Control', { ctrlKey: true });
+  assert.equal(onStep(heroX()), false, 'Ctrl while holding frees the move');
+  dispatch(ui.dom.document, 'keyup', { key: 'Control', ctrlKey: false });
+  assert.equal(onStep(heroX()), true);
+  press('Escape');
+
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  press('r');
+  dispatch(ui.dom.document, 'pointermove', { clientX: 333, clientY: 200 });
+  const turned = ui.node('hero').rotation;
+  const degrees = (2 * Math.asin(Math.max(Math.abs(turned[0]), Math.abs(turned[1]), Math.abs(turned[2]))) * 180) / Math.PI;
+  assert.ok(Math.abs(degrees / 15 - Math.round(degrees / 15)) < 1e-3 && degrees > 1, `R turns in 15 degree steps: ${degrees}`);
+  press('Escape');
+});
+
 test('select all belongs to Studio only when the event comes from Studio (#3328)', testContext => {
   const ui = mountStudio(testContext);
   const hostText = ui.dom.document.createElement('p');
@@ -5382,6 +5527,104 @@ test('settleUntil gives up at its deadline when the work never finishes', async 
   await dom.settleUntil(() => false, 50);
   const waited = performance.now() - started;
   assert.ok(waited >= 50 && waited < 5000, `waited ${waited} ms for a 50 ms deadline`);
+});
+
+test('Shift+Tab on the focused canvas is the browser reverse tab while the pointer is off the viewport (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const { toggle } = snapParts(ui);
+  const shiftTab = target => dispatch(target, 'keydown', { key: 'Tab', shiftKey: true });
+
+  const withoutPointer = shiftTab(ui.canvas);
+  assert.equal(withoutPointer.defaultPrevented, false, 'no pointer over the viewport: the browser takes it');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  assert.equal(shiftTab(ui.canvas).defaultPrevented, true, 'pointer over the viewport: snapping takes it');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+
+  dispatch(ui.viewport, 'pointerleave');
+  const afterLeaving = shiftTab(ui.canvas);
+  assert.equal(afterLeaving.defaultPrevented, false, 'the pointer left: the browser takes it again');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'true');
+
+  assert.equal(shiftTab(ui.dom.document).defaultPrevented, true, 'with nothing focused it still toggles');
+  assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+});
+
+test('no object menu opens over a handle drag or a G, R or S move, and its context menu is still swallowed (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const menu = ui.root.querySelector('#crucible-studio-pop-object');
+  ui.selectRow('hero');
+  ui.tool('translate').click();
+  ui.studio.renderNow();
+  const handles = ui.controller.gizmoHandles();
+  const tip = ui.controller.projectWorldPoint(handles.pivot.map((value, index) => value + handles.basis.x[index] * handles.handleLength));
+
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(tip));
+  assert.equal(ui.controller.dragging, true);
+  const duringDrag = dispatch(ui.gizmo, 'contextmenu', { clientX: 300, clientY: 200 });
+  assert.equal(duringDrag.defaultPrevented, true);
+  assert.notEqual(menu.popoverOpen, true, 'no menu over a handle drag');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(tip));
+
+  dispatch(ui.viewport, 'pointermove', { clientX: 300, clientY: 200 });
+  dispatch(ui.dom.document, 'keydown', { key: 'g' });
+  assert.equal(ui.root.dataset.modal !== undefined, true);
+  const duringMove = dispatch(ui.gizmo, 'contextmenu', { clientX: 300, clientY: 200 });
+  assert.equal(duringMove.defaultPrevented, true);
+  assert.notEqual(menu.popoverOpen, true, 'no menu over a G move');
+  dispatch(ui.dom.document, 'keydown', { key: 'Escape' });
+
+  dispatch(ui.gizmo, 'contextmenu', { clientX: 300, clientY: 200 });
+  assert.equal(menu.popoverOpen, true, 'with nothing in hand the menu opens as before');
+});
+
+test('the window losing focus during a handle drag lets go of Ctrl, and a cancel with Ctrl held puts the object back (#3342)', testContext => {
+  const dom = installStudioDom();
+  const windowListeners = new Map();
+  dom.document.defaultView.addEventListener = (type, listener) => windowListeners.set(type, listener);
+  dom.document.defaultView.removeEventListener = type => windowListeners.delete(type);
+  testContext.after(() => dom.uninstall());
+  const ui = mountStudio(testContext, { sharedDom: dom });
+  ui.selectRow('hero');
+  ui.tool('translate').click();
+  ui.studio.renderNow();
+  const handles = ui.controller.gizmoHandles();
+  const along = distance => ui.controller.projectWorldPoint(handles.pivot.map((value, index) => value + handles.basis.x[index] * distance));
+  const heroX = () => ui.node('hero').translation[0];
+  const onStep = value => Math.abs(value / 0.25 - Math.round(value / 0.25)) < 1e-6;
+  const start = heroX();
+
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(along(handles.handleLength + 0.83)));
+  const free = heroX();
+  dispatch(ui.dom.document, 'keydown', { key: 'Control', ctrlKey: true });
+  assert.equal(onStep(heroX()), true, 'Ctrl held: on the step');
+  windowListeners.get('blur')();
+  assert.equal(heroX(), free, 'blur lets go of Ctrl: the free move is back');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength + 0.83)));
+
+  ui.controller.updateNodeTransform('hero', { translation: [start, 0.5, 0] });
+  dispatch(ui.gizmoPart('x'), 'pointerdown', ui.clientPoint(along(handles.handleLength)));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(along(handles.handleLength + 0.83)));
+  dispatch(ui.dom.document, 'keydown', { key: 'Control', ctrlKey: true });
+  assert.equal(ui.controller.cancelGizmoDrag(), true);
+  assert.equal(heroX(), start, 'cancel with Ctrl held puts the object back');
+  dispatch(ui.dom.document, 'keyup', { key: 'Control', ctrlKey: false });
+  windowListeners.get('blur')();
+  assert.equal(heroX(), start, 'a later Ctrl release or blur moves nothing');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(along(handles.handleLength)));
+  assert.equal(heroX(), start);
+});
+
+test('the target button always shows the icon of the active target, open or closed (#3342)', testContext => {
+  const ui = mountStudio(testContext);
+  const { targetButton, popover } = snapParts(ui);
+  assert.equal(targetButton.dataset.icon, 'grid');
+  popover.showPopover();
+  assert.equal(targetButton.dataset.icon, 'grid', 'opening the menu is not a different glyph');
+  byDataset(popover, 'snapTarget', 'vertex').click();
+  assert.equal(targetButton.dataset.icon, 'meshVertex', 'choosing a target changes it for good');
 });
 
 function makeFiveEdits(ui) {

@@ -1,0 +1,1 @@
+- Studio snapping is a magnet toggle on the rail (Shift+Tab) with an Increment, Vertex or Face target menu, Ctrl flips it for one move, and the Snap tool is gone (#3342)

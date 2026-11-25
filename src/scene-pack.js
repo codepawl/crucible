@@ -57,6 +57,9 @@ export function validatePackRecipe(recipe) {
   if (environment.sky) {
     refuse('recipe.environment.sky: crucible pack lights a scene with a lighting setup or an HDRI sky image for now; remove "sky" and set environment.setup (daylight, studio and the other names scene_capabilities lists) or environment.hdri.');
   }
+  if (environment.reflectionHdri) {
+    refuse('recipe.environment.reflectionHdri: crucible pack carries one sky image, so it cannot give reflections a sky of their own; remove "reflectionHdri", or set "hdri" to the sky you want lit and reflected.');
+  }
 }
 
 /** The texels of every baked light texture on the parts. */

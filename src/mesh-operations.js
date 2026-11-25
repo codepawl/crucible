@@ -111,6 +111,7 @@ export const MAX_SHRINKWRAP_TRIANGLE_TESTS = 20_000_000;
 
 export const STACK_OPERATIONS = /* @__PURE__ */ Object.freeze(['mirror', 'array', 'solidify', 'bevel', 'uv_unwrap', 'uv_project', 'uv_pack', 'subdivide', 'set_position', 'displace', 'decimate', 'remesh', ...Object.keys(MODIFIER_OPERATIONS)]);
 export const MAX_STACK_NODES = 16;
+export const MAX_ARRAY_COUNT = 256;
 
 // Field expressions (mesh-fields.js) and instancing (mesh-instances.js): limits and names as plain data. A test
 // keeps FIELD_OPERATOR_NAMES equal to the operators the language really has.

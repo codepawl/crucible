@@ -245,12 +245,19 @@ function writeMaterial(writer, textureWriter, material) {
   return gltfMaterial;
 }
 
+// Grass carries its blade length in uv.x for the wind shader (src/grass.js); the file keeps only the side coordinate.
+function withoutGrassLengthCode(uvs) {
+  const side = Float32Array.from(uvs);
+  for (let index = 0; index < side.length; index += 2) side[index] %= 2;
+  return side;
+}
+
 function writeGeometry(writer, geometry) {
   const ARRAY_BUFFER = 34962;
   const attributes = { POSITION: writer.addAccessor(geometry.positions, 'VEC3', ARRAY_BUFFER), NORMAL: writer.addAccessor(geometry.normals, 'VEC3', ARRAY_BUFFER) };
   const primitive = { attributes, indices: writer.addAccessor(geometry.indices, 'SCALAR', 34963) };
   if (geometry.colors) attributes.COLOR_0 = writer.addAccessor(geometry.colors, 'VEC3', ARRAY_BUFFER);
-  if (geometry.uvs) attributes.TEXCOORD_0 = writer.addAccessor(geometry.uvs, 'VEC2', ARRAY_BUFFER);
+  if (geometry.uvs) attributes.TEXCOORD_0 = writer.addAccessor(geometry.grassLengthUvs ? withoutGrassLengthCode(geometry.uvs) : geometry.uvs, 'VEC2', ARRAY_BUFFER);
   if (geometry.lightUvs) attributes.TEXCOORD_1 = writer.addAccessor(geometry.lightUvs, 'VEC2', ARRAY_BUFFER);
   if (geometry.skinIndices) {
     attributes.JOINTS_0 = writer.addAccessor(Uint16Array.from(geometry.skinIndices), 'VEC4', ARRAY_BUFFER, { bounds: false });

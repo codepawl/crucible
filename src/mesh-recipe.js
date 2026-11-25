@@ -40,6 +40,7 @@ import { assertSlotsKept } from './mesh-material-slots.js';
 import { remeshMesh, remeshGridSize, MAX_REMESH_RESOLUTION } from './mesh-remesh.js';
 import {
   MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, MAX_MATERIAL_SLOTS, STACK_OPERATIONS, MAX_STACK_NODES, ELEMENT_SELECTION_FIELDS, ELEMENT_MOVE_OPERATIONS, SCULPT_STROKE_TYPES, MAX_SCULPT_STROKES, SHRINKWRAP_MODES,
+  MAX_ARRAY_COUNT,
 } from './mesh-operations.js';
 export { MESH_EDIT_OPERATIONS, MAX_MESH_EDITS, STACK_OPERATIONS, MAX_STACK_NODES };
 
@@ -297,7 +298,7 @@ export function normalizeMeshEdits(edits) {
         normalized.merge = edit.merge === undefined ? 0.001 : finiteNumber(edit.merge, index, 'merge', { minimum: 0, maximum: 1e3 });
         break;
       case 'array':
-        if (!Number.isInteger(edit.count ?? 2) || (edit.count ?? 2) < 1 || (edit.count ?? 2) > 256) throw editField(index, 'count', edit.count, 'a whole number from 1 to 256, such as 4');
+        if (!Number.isInteger(edit.count ?? 2) || (edit.count ?? 2) < 1 || (edit.count ?? 2) > MAX_ARRAY_COUNT) throw editField(index, 'count', edit.count, `a whole number from 1 to ${MAX_ARRAY_COUNT}, such as 4`);
         normalized.count = edit.count ?? 2;
         normalized.offset = edit.offset === undefined ? [0, 0, 0] : vector(edit.offset, index, 'offset');
         normalized.relativeOffset = edit.relativeOffset === undefined ? (edit.offset === undefined ? [1, 0, 0] : [0, 0, 0]) : vector(edit.relativeOffset, index, 'relativeOffset');
@@ -771,18 +772,25 @@ export function applyMeshEdits(mesh, edits, { maxVertices = 250_000, maxFaces = 
 }
 
 
-/** Validate a modifier stack: nodes restricted to STACK_OPERATIONS, at most 16. */
+/**
+ * Validate a modifier stack: nodes restricted to STACK_OPERATIONS, at most 16. A node may carry `enabled: false`, the
+ * switch that hides a modifier without deleting it: it stays in the stack and is skipped when the stack runs.
+ * `enabled: true` is the default and is not kept.
+ */
 export function normalizeMeshStack(stack) {
   if (!Array.isArray(stack)) throw new TypeError('stack must be an array.');
   if (stack.length > MAX_STACK_NODES) throw new RangeError(`A stack holds at most ${MAX_STACK_NODES} nodes.`);
   for (const [index, node] of stack.entries()) {
     if (!STACK_OPERATIONS.includes(node?.op)) throw new TypeError(`Stack node ${index} op must be one of ${STACK_OPERATIONS.join(', ')}.`);
+    if (node.enabled !== undefined && typeof node.enabled !== 'boolean') throw editField(index, 'enabled', node.enabled, 'true or false');
   }
   // Stack nodes default their names from their own position, separately from the edit log.
-  return normalizeMeshEdits(stack.map((node, index) => {
-    if (!MESH_EDIT_OPERATIONS[node.op].fields.includes('name')) return node;
-    return { ...node, name: node.name ?? `${node.op}-s${index + 1}` };
+  const normalized = normalizeMeshEdits(stack.map((node, index) => {
+    const { enabled, ...operationFields } = node;
+    if (!MESH_EDIT_OPERATIONS[node.op].fields.includes('name')) return operationFields;
+    return { ...operationFields, name: node.name ?? `${node.op}-s${index + 1}` };
   }));
+  return normalized.map((node, index) => (stack[index].enabled === false ? { ...node, enabled: false } : node));
 }
 
 /**
@@ -797,6 +805,10 @@ export function evaluateMeshStack(mesh, stack, { maxVertices = 250_000, maxFaces
   let current = mesh;
   let key = cacheKey;
   normalized.forEach((node, index) => {
+    if (node.enabled === false) {
+      results.push({ op: node.op, enabled: false, after: { vertices: current.vertexCount, faces: current.faceCount } });
+      return;
+    }
     key = key === undefined ? undefined : `${key}|${JSON.stringify(node)}`;
     const hit = key === undefined ? undefined : cache?.get(key);
     let result;

@@ -1,6 +1,7 @@
 import { CrucibleRenderer } from './renderer.js';
 import { createSharedTextures, loadGltf } from './gltf.js';
 import { loadHdri } from './hdri.js';
+import { withReflectionEnvironment } from './reflection-environment.js';
 import { loadViewTransformForRendererOptions } from './view-transform-loading.js';
 import { createCascadedShadows } from './cascaded-shadows.js';
 import { applyWaterReflection, attachWaterReflection } from './water-reflection.js';
@@ -109,9 +110,10 @@ async function start() {
   const description = await readJson('/__file/config.json');
   const cameraResponse = await fetch('/__file/camera.json');
   const camera = cameraResponse.ok ? createCameraSampler(await cameraResponse.json()) : null;
-  const [model, map] = await Promise.all([
+  const [model, map, reflectionMap] = await Promise.all([
     fetch(description.glb).then(response => response.blob()),
     loadHdri(description.hdri, description.hdriOptions ?? {}),
+    description.reflectionHdri ? loadHdri(description.reflectionHdri) : null,
   ]);
   const sharedTextures = createSharedTextures();
   const gltfOptions = description.gltfOptions ?? {};
@@ -139,7 +141,8 @@ async function start() {
     shadowBounds: drawn.sunSplit ? sunShadowBounds(reflection.parts, drawn.environment.lightDirection) : {},
     ...rendererOptions,
     shadowCascades,
-    environment: { ...environmentForRenderer(interior.environment), map: drawn.map },
+    // "reflectionHdri" gives glass and water a sky of their own; the diffuse light and the native trace keep the lighting map (#3396).
+    environment: { ...environmentForRenderer(interior.environment), map: reflectionMap ? withReflectionEnvironment(drawn.map, reflectionMap) : drawn.map },
   });
   attachWaterReflection(renderer, reflection.surface, { updateEvery: 1 });
   const frame = { exposure: description.exposure ?? 1, ...(description.frame ?? {}) };

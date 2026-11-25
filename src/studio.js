@@ -34,6 +34,7 @@ import { createOutlineMask } from './studio-outline-mask.js';
 import { createPanelGrips } from './studio-panel-grips.js';
 import { leadWithActionIcon, STUDIO_ACTION_ICONS, STUDIO_BRAND_ICON_NAMES, STUDIO_FILLED_ICON_NAMES, STUDIO_ICON_ACCENTS, STUDIO_LIGHT_ICONS, STUDIO_NOTICE_ICONS, STUDIO_PRIMITIVE_ICONS, studioIconPath } from './studio-icons.js';
 import { createPropertyLine, createPropertyPanel } from './studio-property-panel.js';
+import { createModifierPanel } from './studio-modifier-panel.js';
 import { createShapeSettings } from './studio-shape-settings.js';
 import { createKeyMarkers } from './studio-timeline-keys.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
@@ -45,6 +46,7 @@ import { createBakeMark } from './studio-bake-mark.js';
 import { watchScrollFade } from './studio-scroll-cue.js';
 import { extensionOf, openNameEditor, splitFileName, validateFileStem, validateNodeLabel, validateShotName } from './studio-name-editor.js';
 import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
+import { SNAP_TARGETS } from './studio-snapping.js';
 import { editIconName } from './studio-edit-names.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, frameFailureReason, watchContextLoss } from './studio-context-loss.js';
@@ -116,7 +118,7 @@ const COMPACT_WIDTH = 820;
 // The work runs left to right: build the scene, give it its look, then set it in motion. Each workspace shows only the
 // panels its step needs.
 const STUDIO_WORKSPACES = Object.freeze([
-  Object.freeze({ id: 'build', label: 'Build', icon: 'node', tabs: Object.freeze(['node']) }),
+  Object.freeze({ id: 'build', label: 'Build', icon: 'node', tabs: Object.freeze(['node', 'modifiers']) }),
   Object.freeze({ id: 'look', label: 'Look', icon: 'material', tabs: Object.freeze(['material', 'look']) }),
   Object.freeze({ id: 'animate', label: 'Animate', icon: 'play', tabs: Object.freeze(['camera', 'node']) }),
 ]);
@@ -526,6 +528,28 @@ function arrowHeadPoints(origin, tip) {
   return corners.map(corner => `${corner[0].toFixed(1)},${corner[1].toFixed(1)}`).join(' ');
 }
 
+// The ring is a little wider than the 6.5 px centre handle, so a vertex that lands under the handle stays visible, and
+// the dot is the vertex itself. The dark halo is wider than the pale ring by 2 px a side so the ring reads over the
+// accent outline of the selected object and over a pale surface alike.
+const SNAP_MARKER_RING_RADIUS = 10;
+const SNAP_MARKER_DOT_RADIUS = 2.5;
+const SNAP_MARKER_HALO_WIDTH = 6;
+const SNAP_MARKER_RING_WIDTH = 2;
+
+// The vertex a drag is snapping to. Drawn after the handles and the outline, so nothing covers it.
+function appendSnapMarker(documentReference, gizmoSvg, marker) {
+  if (!marker) {
+    return;
+  }
+  const centre = { cx: marker.x.toFixed(1), cy: marker.y.toFixed(1), 'pointer-events': 'none' };
+  gizmoSvg.append(
+    createSvgElement(documentReference, 'circle', { ...centre, r: String(SNAP_MARKER_RING_RADIUS), fill: 'none', stroke: 'var(--studio-trace-edge)', 'stroke-width': String(SNAP_MARKER_HALO_WIDTH), 'data-snap-halo': 'vertex' }),
+    createSvgElement(documentReference, 'circle', { ...centre, r: String(SNAP_MARKER_DOT_RADIUS + 1), fill: 'var(--studio-trace-edge)', 'data-snap-halo': 'dot' }),
+    createSvgElement(documentReference, 'circle', { ...centre, r: String(SNAP_MARKER_RING_RADIUS), fill: 'none', stroke: 'var(--studio-trace)', 'stroke-width': String(SNAP_MARKER_RING_WIDTH), 'data-snap-marker': 'vertex' }),
+    createSvgElement(documentReference, 'circle', { ...centre, r: String(SNAP_MARKER_DOT_RADIUS), fill: 'var(--studio-trace)', 'data-snap-marker': 'dot' }),
+  );
+}
+
 // What a drag has changed so far: a dashed outline where the object was and, for a move, a dashed line from there to
 // where it is now. Nothing here takes the pointer.
 function appendDragTrace(documentReference, gizmoSvg, trace) {
@@ -727,7 +751,7 @@ function appendGizmoHitAreas(documentReference, gizmoSvg, handles, tool, clearRa
   }
   const origin = handles.origin;
   const cleared = clearRadius !== null;
-  const centreAxis = tool === 'scale' ? 'uniform' : tool === 'snap' ? 'surface' : 'screen';
+  const centreAxis = tool === 'scale' ? 'uniform' : 'screen';
   if (cleared) {
     // Only the ring answers for the centre, so a click inside it still picks the element under it.
     gizmoSvg.append(createSvgElement(documentReference, 'circle', {
@@ -1032,7 +1056,7 @@ function renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask,
     }
   }
 
-  const centreAxis = tool === 'scale' ? 'uniform' : tool === 'snap' ? 'surface' : 'screen';
+  const centreAxis = tool === 'scale' ? 'uniform' : 'screen';
   if (cleared) {
     appendFreeMoveRing(documentReference, gizmoSvg, origin, clearedRingRadius(clearRadius), centreAxis);
     return;
@@ -1041,7 +1065,7 @@ function renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask,
     cx: origin.x.toFixed(1),
     cy: origin.y.toFixed(1),
     r: '6.5',
-    fill: tool === 'snap' ? '#5fc48a' : 'var(--studio-text)',
+    fill: 'var(--studio-text)',
     stroke: 'var(--studio-bg)',
     'stroke-width': '2',
     'data-gizmo-axis': centreAxis,
@@ -1184,7 +1208,7 @@ const MODAL_AXIS_ACROSS_PLANE = Object.freeze({ yz: 'x', xz: 'y', xy: 'z' });
 const MODAL_TYPED_UNITS = Object.freeze({ translate: ' m', rotate: '°', scale: '×' });
 const MODAL_TYPED_PATTERN = /^-?\d*\.?\d*$/;
 const MODAL_TOOL_BY_ACTION = Object.freeze({ 'modal.translate': 'translate', 'modal.rotate': 'rotate', 'modal.scale': 'scale' });
-const TOOL_ACTION_BY_TOOL = Object.freeze({ select: 'tool.select', translate: 'tool.translate', rotate: 'tool.rotate', scale: 'tool.scale', snap: 'tool.snap' });
+const TOOL_ACTION_BY_TOOL = Object.freeze({ select: 'tool.select', translate: 'tool.translate', rotate: 'tool.rotate', scale: 'tool.scale' });
 const PICK_UP_TOOL_BY_ACTION = Object.freeze({ 'tool.translate': 'translate', 'tool.rotate': 'rotate', 'tool.scale': 'scale' });
 const MODAL_FREE_AXIS = Object.freeze({ translate: 'screen', scale: 'uniform' });
 const MODAL_TOOL_WORDS = Object.freeze({ translate: 'Move', rotate: 'Rotate', scale: 'Scale' });
@@ -1421,6 +1445,40 @@ export function createStudio(container, {
     className: 'crucible-studio-popover',
     attributes: { popover: 'auto' },
   }, ...items);
+  // Snapping is a state, not a tool: the magnet turns it on or off, the button under it names what it snaps to.
+  const snapTargetOf = id => SNAP_TARGETS.find(target => target.id === id) ?? SNAP_TARGETS[0];
+  const snapToggleButton = createKeyedIconButton('snap', () => `Snapping ${preferences.snapEnabled ? 'on' : 'off'} (${keyLabel(keymap, 'snap.toggle')})`, {
+    dataset: { snapToggle: 'true' },
+    attributes: { 'aria-pressed': preferences.snapEnabled ? 'true' : 'false' },
+  });
+  const snapTargetButton = createIconButton(documentReference, snapTargetOf(preferences.snapTarget).icon, `Snap to ${snapTargetOf(preferences.snapTarget).label}`, {
+    dataset: { snapTargetButton: 'true' },
+    attributes: { popovertarget: 'crucible-studio-pop-snap', 'aria-haspopup': 'menu' },
+  });
+  const snapTargetItems = SNAP_TARGETS.map(target => {
+    const item = createMenuItem(target.label, '', () => {
+      setPreferences({ snapTarget: target.id, snapEnabled: true });
+      announce(`Snapping to ${target.label}`);
+    }, target.icon);
+    item.dataset.snapTarget = target.id;
+    item.setAttribute('role', 'menuitemcheckbox');
+    return item;
+  });
+  const snapPopover = createMenuPopover('crucible-studio-pop-snap', ...snapTargetItems);
+  function syncSnapUi() {
+    const target = snapTargetOf(preferences.snapTarget);
+    snapToggleButton.setAttribute('aria-pressed', preferences.snapEnabled ? 'true' : 'false');
+    setButtonIcon(snapToggleButton, 'snap', `Snapping ${preferences.snapEnabled ? 'on' : 'off'} (${keyLabel(keymap, 'snap.toggle')})`);
+    setButtonIcon(snapTargetButton, target.icon, `Snap to ${target.label}`);
+    for (const item of snapTargetItems) {
+      item.setAttribute('aria-checked', item.dataset.snapTarget === target.id ? 'true' : 'false');
+    }
+  }
+  snapToggleButton.addEventListener('click', () => toggleSnapping());
+  function toggleSnapping() {
+    setPreference('snapEnabled', !preferences.snapEnabled);
+    announce(preferences.snapEnabled ? `Snapping on, to ${snapTargetOf(preferences.snapTarget).label}` : 'Snapping off');
+  }
   const fileMenuButton = createMenuButton('File', 'crucible-studio-pop-new');
   const editMenuButton = createMenuButton('Edit', 'crucible-studio-pop-edit');
   const viewMenuButton = createMenuButton('View', 'crucible-studio-pop-view');
@@ -1521,7 +1579,9 @@ export function createStudio(container, {
     popover.style.setProperty('--studio-popover-shift', opening.shift);
     popover.showPopover?.();
   }
+  // No menu while an object is in hand: a Ctrl press on a Mac is a right click, and it would open this over the move.
   function openObjectMenu(clientX, clientY) {
+    if (controller.dragging || modalTransform) return;
     lastObjectMenuPoint = [clientX, clientY];
     openPopoverAt(objectPopover, clientX, clientY);
   }
@@ -1770,7 +1830,7 @@ export function createStudio(container, {
     startMenuGroup(importAndExportRows[0]),
     ...importAndExportRows.slice(1),
   );
-  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, separatePopover, meshDeletePopover, meshMergePopover, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover]) {
+  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, separatePopover, meshDeletePopover, meshMergePopover, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover, snapPopover]) {
     popoverElement.addEventListener('click', event => {
       const clickedButton = event.target.closest?.('button');
       if (clickedButton && !clickedButton.dataset.keepsMenu) popoverElement.hidePopover?.();
@@ -1841,6 +1901,7 @@ export function createStudio(container, {
     meshMergePopover,
     viewPopover,
     helpPopover,
+    snapPopover,
   );
 
   // A hover switch is instant: the bar says so while one menu hides and the next shows, a style read makes the browser
@@ -1868,14 +1929,14 @@ export function createStudio(container, {
     menuPopover.addEventListener('toggle', event => menuButton.setAttribute('aria-expanded', event.newState === 'open' ? 'true' : 'false'));
   }
 
-  function bindPopoverAnchor(triggerButton, popoverElement, { beside = false } = {}) {
+  function bindPopoverAnchor(triggerButton, popoverElement, { beside = false, topOffset = 8 } = {}) {
     popoverElement.addEventListener('beforetoggle', event => {
       if (event.newState !== 'open') return;
       const rectangle = (typeof triggerButton === 'function' ? triggerButton() : triggerButton).getBoundingClientRect();
       const viewportWidth = documentReference.defaultView?.innerWidth ?? 1280;
       const viewportHeight = documentReference.defaultView?.innerHeight ?? 800;
       const wantedLeft = beside ? rectangle.right + 16 : rectangle.left - 5;
-      const wantedTop = beside ? rectangle.top - 8 : rectangle.bottom + 14;
+      const wantedTop = beside ? rectangle.top - topOffset : rectangle.bottom + 14;
       const clampedLeft = Math.max(8, Math.min(wantedLeft, Math.max(8, viewportWidth - 256)));
       const clampedTop = Math.max(8, Math.min(wantedTop, Math.max(8, viewportHeight - 300)));
       // A trigger in the right half opens towards the left, so the menu never leaves the window.
@@ -1900,6 +1961,8 @@ export function createStudio(container, {
   addMenuButton.addEventListener('click', () => { addMenuAnchor = addMenuButton; });
   bindPopoverAnchor(() => addMenuAnchor, addPopover, { beside: true });
   bindPopoverAnchor(aiSyncMenuButton, aiSyncPopover);
+  // The menu's top edge is the top edge of the button that opens it.
+  bindPopoverAnchor(snapTargetButton, snapPopover, { beside: true, topOffset: 0 });
   bindPopoverAnchor(exportMenuButton, exportPopover);
 
   // Left Outliner + Material Palette Dock
@@ -2049,7 +2112,7 @@ export function createStudio(container, {
   const announceWarning = message => announce(message, STATUS_DEFAULT_MILLISECONDS, 'warning');
 
   // Viewport Top-Left Toolbar (Modern Web Guidance: toolbar pattern)
-  const toolLabels = { select: 'Select', translate: 'Move', rotate: 'Rotate', scale: 'Scale', snap: 'Snap' };
+  const toolLabels = { select: 'Select', translate: 'Move', rotate: 'Rotate', scale: 'Scale' };
   const toolButtons = STUDIO_TOOLS.map(tool => createKeyedIconButton(tool, () => `${toolLabels[tool]} (${keyLabel(keymap, TOOL_ACTION_BY_TOOL[tool])})`, {
     dataset: { tool },
     attributes: { 'aria-pressed': tool === controller.tool ? 'true' : 'false' },
@@ -2160,13 +2223,14 @@ export function createStudio(container, {
       attributes: { role: 'toolbar', focusgroup: 'toolbar wrap', 'aria-orientation': 'vertical', 'aria-label': 'Tools', 'aria-controls': canvas.id },
     },
     createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Transform tool' } }, ...toolButtons),
+    createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Snapping' } }, snapToggleButton, snapTargetButton),
     meshModeGroup,
     createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Edit the scene' } }, addMenuButton, undoButton, redoButton),
     // Above the line: what changes the scene. Below it: what only shows or hides parts of Studio.
     createElement(documentReference, 'div', { className: 'crucible-studio-toolbar-rule', attributes: { role: 'separator', 'aria-orientation': 'horizontal' } }),
     createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Show or hide' } }, gridButton, seeThroughButton, toggleDocksButton),
   );
-  wireRovingFocusFallback(toolbarElement, [...toolButtons, addMenuButton, undoButton, redoButton, gridButton, seeThroughButton, toggleDocksButton], { vertical: true });
+  wireRovingFocusFallback(toolbarElement, [...toolButtons, snapToggleButton, snapTargetButton, addMenuButton, undoButton, redoButton, gridButton, seeThroughButton, toggleDocksButton], { vertical: true });
 
   // Viewport Top-Right 3D View Widget
   const viewPresetButtons = ['front', 'right', 'top', 'isometric'].map(preset => {
@@ -2226,7 +2290,7 @@ export function createStudio(container, {
   viewportElement.append(canvas, maskFilterSvg, gizmoSvg, agentPresence.element, viewWidget.element, readout, hintBar, statusRegion, bakeMark.element, dropOverlay, pausedNotice.element, postPassNotice.element, draftNotice.element);
 
   // Right 4-Tab Inspector Dock (Modern Web Guidance: tabs pattern)
-  const tabLabels = { node: 'Object', material: 'Material', look: 'Look', camera: 'Camera' };
+  const tabLabels = { node: 'Object', modifiers: 'Modifiers', material: 'Material', look: 'Look', camera: 'Camera' };
   const tabButtons = STUDIO_TABS.map(tab => createIconButton(documentReference, tab, tabLabels[tab], {
     id: `crucible-studio-tab-${tab}`,
     dataset: { tab },
@@ -2510,8 +2574,10 @@ export function createStudio(container, {
     ),
   );
 
+  const modifierPanel = createModifierPanel({ documentReference, controller, announce, builders: { createElement, createIcon, createIconButton, createVectorRow } });
   const panelsByTab = {
     node: createElement(documentReference, 'div', { id: 'crucible-studio-panel-node', tabIndex: 0, attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-node' } }, nodePanelBody),
+    modifiers: createElement(documentReference, 'div', { id: 'crucible-studio-panel-modifiers', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-modifiers', hidden: 'until-found' } }, createElement(documentReference, 'div', { className: 'crucible-studio-panel-body crucible-studio-modifier-body' }, modifierPanel.element)),
     material: createElement(documentReference, 'div', { id: 'crucible-studio-panel-material', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-material', hidden: 'until-found' } }, materialPanelBody),
     look: createElement(documentReference, 'div', { id: 'crucible-studio-panel-look', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-look', hidden: 'until-found' } }, lookPanelBody),
     camera: createElement(documentReference, 'div', { id: 'crucible-studio-panel-camera', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-camera', hidden: 'until-found' } }, cameraPanelBody),
@@ -2574,7 +2640,7 @@ export function createStudio(container, {
     onSelect: button => selectInspectorTab(button.dataset.tab),
   });
 
-  const panelsElement = createElement(documentReference, 'div', { className: 'crucible-studio-panels crucible-studio-scroll' }, panelsByTab.node, panelsByTab.material, panelsByTab.look, panelsByTab.camera);
+  const panelsElement = createElement(documentReference, 'div', { className: 'crucible-studio-panels crucible-studio-scroll' }, panelsByTab.node, panelsByTab.modifiers, panelsByTab.material, panelsByTab.look, panelsByTab.camera);
   watchScrollFade(panelsElement);
   const inspectorElement = createElement(
     documentReference,
@@ -2969,7 +3035,10 @@ export function createStudio(container, {
       moveSnapStep: preferences.moveSnapStep,
       rotateSnapDegrees: preferences.rotateSnapDegrees,
       gizmoPixels: STUDIO_GIZMO_PIXELS[preferences.gizmoSize],
+      snapEnabled: preferences.snapEnabled,
+      snapTarget: preferences.snapTarget,
     });
+    syncSnapUi();
     applyTheme();
     applyPerformance();
     if (setup.dialog.open) setup.refresh();
@@ -3951,6 +4020,7 @@ export function createStudio(container, {
       syncViewportDimensions();
       drawSceneFrame();
       renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask, activeOutlineMask, { hideSelectionOutline: Boolean(meshEditor?.active), clearRadius: meshEditor?.active ? meshEditor.selectionScreenRadius() : null });
+      appendSnapMarker(documentReference, gizmoSvg, controller.snapMarker());
       if (!capturingStill) {
         renderSceneObjectMarks(documentReference, gizmoSvg, controller);
       }
@@ -4721,6 +4791,7 @@ export function createStudio(container, {
   function syncPropertyPanels() {
     if (controller.activeTab === 'look') syncLookPanels();
     if (controller.activeTab === 'camera') cameraPanel.sync();
+    if (controller.activeTab === 'modifiers') modifierPanel.sync();
   }
 
   function syncLookPanels() {
@@ -4778,7 +4849,7 @@ export function createStudio(container, {
     if (typedAmount !== null) {
       controller.setGizmoTypedAmount(typedAmount);
     } else if (modalTransform.lastX !== modalTransform.startX || modalTransform.lastY !== modalTransform.startY) {
-      controller.updateGizmoDrag(modalTransform.lastX, modalTransform.lastY, { shiftKey: modalTransform.shiftKey });
+      controller.updateGizmoDrag(modalTransform.lastX, modalTransform.lastY, { ctrlKey: modalTransform.ctrlKey });
     }
   }
 
@@ -4786,8 +4857,20 @@ export function createStudio(container, {
     const coordinates = localCoordinates(event);
     modalTransform.lastX = coordinates.x;
     modalTransform.lastY = coordinates.y;
-    modalTransform.shiftKey = event.shiftKey;
-    controller.updateGizmoDrag(coordinates.x, coordinates.y, { shiftKey: event.shiftKey });
+    modalTransform.ctrlKey = event.ctrlKey;
+    controller.updateGizmoDrag(coordinates.x, coordinates.y, { ctrlKey: event.ctrlKey });
+  }
+
+  // Ctrl held or let go flips snapping for the move in hand at once, without waiting for the pointer to move.
+  function replayDragWithCtrl(ctrlKey) {
+    if (!controller.dragging) return;
+    if (modalTransform) {
+      modalTransform.ctrlKey = ctrlKey;
+      controller.updateGizmoDrag(modalTransform.lastX, modalTransform.lastY, { ctrlKey });
+    } else if (pointerState?.mode === 'gizmo') {
+      pointerState.ctrlKey = ctrlKey;
+      controller.updateGizmoDrag(pointerState.lastX, pointerState.lastY, { ctrlKey });
+    }
   }
 
   // The press that places or cancels belongs to the move: it must not also orbit, select or press a button under it.
@@ -4829,6 +4912,11 @@ export function createStudio(container, {
     finishModalTransform(false);
   }
 
+  // The window losing focus during a handle drag: the key-up of Ctrl will never arrive, so the drag goes on as if it were up.
+  function onWindowBlur() {
+    if (pointerState?.mode === 'gizmo') replayDragWithCtrl(false);
+  }
+
   function startModalTransform(tool) {
     if (modalTransform || pointerState || !viewportPointer || !controller.selectedNodeId) {
       return false;
@@ -4843,7 +4931,7 @@ export function createStudio(container, {
       startY: viewportPointer.y,
       lastX: viewportPointer.x,
       lastY: viewportPointer.y,
-      shiftKey: false,
+      ctrlKey: false,
     };
     root.dataset.modal = tool;
     beginModalDrag(modalFreeAxis(tool), false);
@@ -4914,7 +5002,7 @@ export function createStudio(container, {
   }
 
   function handleModalKey(event) {
-    if (event.key === 'Shift') {
+    if (event.key === 'Shift' || event.key === 'Control') {
       return;
     }
     event.preventDefault();
@@ -4991,7 +5079,7 @@ export function createStudio(container, {
       announceError(error.message);
       return;
     }
-    pointerState = { mode: 'gizmo', pointerId: event.pointerId };
+    pointerState = { mode: 'gizmo', pointerId: event.pointerId, lastX: coordinates.x, lastY: coordinates.y, ctrlKey: event.ctrlKey };
     viewportElement.setPointerCapture?.(event.pointerId);
   });
 
@@ -5059,7 +5147,10 @@ export function createStudio(container, {
     if (!pointerState) return;
     const coordinates = localCoordinates(event);
     if (pointerState.mode === 'gizmo') {
-      controller.updateGizmoDrag(coordinates.x, coordinates.y, { shiftKey: event.shiftKey });
+      pointerState.lastX = coordinates.x;
+      pointerState.lastY = coordinates.y;
+      pointerState.ctrlKey = event.ctrlKey;
+      controller.updateGizmoDrag(coordinates.x, coordinates.y, { ctrlKey: event.ctrlKey });
       return;
     }
     if (pointerState.mode === 'light') {
@@ -5122,8 +5213,6 @@ export function createStudio(container, {
           syncUi();
           requestFrame();
         }
-      } else if (controller.tool === 'snap' && controller.selectedNodeId && event.altKey) {
-        controller.snapSelectedToAt(coordinates.x, coordinates.y);
       } else {
         // Shift or Ctrl (Command) with a left click adds the object under the pointer to the selection, or takes it out.
         const mode = (event.button ?? 0) === 0 && (event.shiftKey || event.ctrlKey || event.metaKey) ? 'toggle' : 'replace';
@@ -5520,7 +5609,7 @@ export function createStudio(container, {
   }
 
   // In edit mode these keys of the normal context still work; every other one would act on the whole object.
-  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'view.frame', 'view.top', 'view.projection', 'view.properties', 'view.seeThrough']);
+  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'snap.toggle', 'view.frame', 'view.top', 'view.projection', 'view.properties', 'view.seeThrough']);
   const meshKeyHandlers = {
     'mesh.leave': event => {
       event.preventDefault();
@@ -5604,7 +5693,15 @@ export function createStudio(container, {
   // otherwise use itself (save, open, copy, undo and so on).
   const keyHandlers = {
     'tool.select': () => controller.setTool('select'),
-    'tool.snap': () => controller.setTool('snap'),
+    // Tab is also how the keyboard moves between controls, so Shift+Tab snaps only from the page or the canvas.
+    // With the canvas focused, the keys go to the area under the pointer: Shift+Tab with the pointer elsewhere
+    // is the browser's way back out of the canvas.
+    'snap.toggle': event => {
+      const canvasHasFocus = event.target === canvas;
+      if (event.key === 'Tab' && (canvasHasFocus ? viewportPointer === null : !tabBelongsToViewport(event.target))) return;
+      event.preventDefault();
+      toggleSnapping();
+    },
     'add.open': () => addMenuButton.click(),
     'edit.copy': event => {
       if (pageTextIsSelected()) return;
@@ -5767,7 +5864,11 @@ export function createStudio(container, {
   const onKeyDown = event => {
     blockPageSelectAll(event);
     if (!isModifierKey(event.key)) root.dataset.input = 'keyboard';
+    if (event.key === 'Control' && !event.repeat) replayDragWithCtrl(true);
     onWindowKeyDown(event);
+  };
+  const onKeyUp = event => {
+    if (event.key === 'Control') replayDragWithCtrl(false);
   };
   const onPointerInput = event => {
     root.dataset.input = 'pointer';
@@ -5792,6 +5893,8 @@ export function createStudio(container, {
     return !path.some(node => isEditableTarget(node, 'a') || node?.closest?.('.crucible-studio-selectable'));
   }
   documentReference.addEventListener('keydown', onKeyDown);
+  documentReference.addEventListener('keyup', onKeyUp);
+  documentReference.defaultView?.addEventListener?.('blur', onWindowBlur);
   documentReference.addEventListener('pointerdown', onPointerInput, true);
 
   const onVisibilityChange = () => {
@@ -6035,6 +6138,8 @@ export function createStudio(container, {
       documentReference.removeEventListener('click', onModalClick, true);
       documentReference.removeEventListener('pointerdown', onAnyPointerDown, true);
       documentReference.removeEventListener('keydown', onKeyDown);
+      documentReference.removeEventListener('keyup', onKeyUp);
+      documentReference.defaultView?.removeEventListener?.('blur', onWindowBlur);
       documentReference.removeEventListener('pointerdown', onPointerInput, true);
       documentReference.removeEventListener('visibilitychange', onVisibilityChange);
       documentReference.removeEventListener('visibilitychange', flushDraftWhenHidden);
