@@ -134,6 +134,7 @@
     "./addons/subsurface-shader": "./build/subsurface-shader.js",
     "./addons/retro-shader": "./build/retro-shader.js",
     "./addons/glitter-shader": "./build/glitter-shader.js",
+    "./addons/height-parallax-shader": "./build/height-parallax-shader.js",
     "./addons/surface-cover": "./build/surface-cover.js",
     "./addons/fog-shader": "./build/fog-shader.js",
     "./addons/linear-output-shader": "./build/linear-output-shader.js",

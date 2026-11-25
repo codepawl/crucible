@@ -1,8 +1,7 @@
 import { mat4, vec3 } from 'gl-matrix';
-import { registerShaderFeatureCode } from './shader-registry.js';
+import { HEIGHT_MAP_UNIT, registerShaderFeatureCode } from './shader-registry.js';
 import { resolveShadowLight } from './shadow-light.js';
 import { farthestDepthOfBounds } from './near-plane-fit.js';
-import { HEIGHT_MAP_UNIT } from './height-parallax-shader.js';
 
 // Cascaded sun shadows. The camera frustum is cut into up to four slices by view depth; each slice gets its own depth
 // map, fitted to a bounding sphere of the slice, so a shadow near the camera is sharp and a far one is coarse. Pass
