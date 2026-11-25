@@ -35,11 +35,19 @@ const REDUCED_RAYS_PER_TEXEL = 32;
 
 const SKY_TIME_LIMIT_MESSAGE = maxSeconds => `The sky trace passed its time limit of ${maxSeconds} s, so the ground and walls keep the sky they had (plain).`;
 const SKY_TIME_LIMIT_FIX = 'Raise maxSeconds, lower maximumTexels, or turn the trace off with environment.floorSkyTrace false.';
+const SKY_RAY_LIMIT_MESSAGE = (maximumRays, attempts) => `The sky trace needs more than ${maximumRays} rays even after ${attempts} coarser cuts, so the ground and walls keep the sky they had (plain).`;
+const SKY_RAY_LIMIT_FIX = 'Join the thin parts into fewer ones, remove parts the camera does not see, or turn the trace off with environment.floorSkyTrace false.';
+// A trace over the ray limit is cut coarser, by at most this many tries, before it gives up (#3433).
+const MAXIMUM_COARSENING_ATTEMPTS = 5;
+// The edge grows by the square root of the overshoot (the texel count falls with its square), plus this margin so the next cut lands under the limit.
+const COARSENING_MARGIN = 1.1;
 
-/** The scene diagnostics of a default trace report: one for a trace that stopped at its time limit, none when it ran. */
+/** The scene diagnostics of a default trace report: one for a trace that stopped at its time limit or its ray limit, none when it ran. */
 export function skyTraceProblems(report) {
   if (!report.warnings?.length) return [];
-  return [{ kind: 'sky-trace-stopped', severity: 'warning', target: 'environment', message: report.warnings[0].replace(` ${SKY_TIME_LIMIT_FIX}`, ''), fix: SKY_TIME_LIMIT_FIX }];
+  const [warning] = report.warnings;
+  const fix = [SKY_TIME_LIMIT_FIX, SKY_RAY_LIMIT_FIX].find(candidate => warning.endsWith(candidate));
+  return [{ kind: 'sky-trace-stopped', severity: 'warning', target: 'environment', message: fix ? warning.slice(0, -fix.length - 1) : warning, fix }];
 }
 export const FLOOR_SKY_STRENGTH = 1;
 // How much of the sky the grid hides on every surface of an open scene (#2771).
@@ -525,7 +533,7 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
   }
   const unchanged = (reason, fallbackReason = null, warnings = []) => ({ parts, report: { floors: [], texels: 0, rays: 0, seconds: (performance.now() - started) / 1000, method: null, fallbackReason, reason, warnings, branch: `${reason}, skipped` } });
   // A scene the triangle trace cannot take is left as it is ('skip', the default: the grid alone darkened the classroom against Cycles, #2771) or traced through the grid ('proxy').
-  const tooLarge = (reason, detail) => (largeScenes === 'proxy' ? applyProxySkyVisibility(proxyInput, detail) : unchanged(reason, detail));
+  const tooLarge = (reason, detail, warnings = []) => (largeScenes === 'proxy' ? applyProxySkyVisibility(proxyInput, detail) : unchanged(reason, detail, warnings));
   let proxyInput = null;
   const floorIndices = findFloorParts(parts);
   if (floorIndices.length === 0) return unchanged('no floor');
@@ -583,16 +591,42 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
   let totalRays = 0;
   const tracedParts = [];
   const nextParts = parts.slice();
-  for (const index of cutPartIndices) {
+  // Cuts every part at `edgeScale` times the base edge and stops as soon as the rays pass the limit, with an estimate of the whole scene's rays from the area cut so far.
+  function* cutEveryPart(edgeScale) {
+    const cuts = [];
+    let rays = 0;
+    let areaCut = 0;
+    for (const index of cutPartIndices) {
+      const part = parts[index];
+      const isReducedPart = openSided && (isPropPart(part) || isGroundSlab(part));
+      const raysPerVertex = isReducedPart ? reducedRays : raysPerTexel;
+      const partEdge = maximumEdge * edgeScale * (openSided && isPropPart(part) ? PROP_EDGE_FACTOR : 1);
+      const cut = yield* cutGeometrySteps(part.geometry, part.matrix, partEdge, !everySurface || (openSided && isGroundSlab(part)), checkpoint);
+      cuts.push({ index, isReducedPart, raysPerVertex, partEdge, ...cut });
+      rays += cut.tracedVertices.size * raysPerVertex;
+      areaCut += partAreas.get(index);
+      if (rays > maximumRays) return { estimatedRays: rays * (totalArea / areaCut) };
+    }
+    return { cuts };
+  }
+  // A scene over the ray limit is cut coarser instead of skipped: the cost of a thin set cut at the open-sided room's fine edge jumped from nothing to 17 million rays (#3433).
+  const partAreas = new Map(cutPartIndices.map(index => [index, worldSurfaceArea(parts[index])]));
+  const totalArea = [...partAreas.values()].reduce((total, area) => total + area, 0);
+  let edgeScale = 1;
+  let cuts = null;
+  let estimatedRays = 0;
+  for (let attempt = 0; attempt <= MAXIMUM_COARSENING_ATTEMPTS && !cuts; attempt++) {
+    ({ cuts, estimatedRays } = yield* cutEveryPart(edgeScale));
+    if (!cuts) edgeScale *= Math.max(COARSENING_MARGIN, Math.sqrt(estimatedRays / maximumRays) * COARSENING_MARGIN);
+  }
+  if (!cuts) {
+    return tooLarge('too many rays', `more than ${maximumRays} rays for ${cutPartIndices.length} parts`, [`${SKY_RAY_LIMIT_MESSAGE(maximumRays, MAXIMUM_COARSENING_ATTEMPTS)} ${SKY_RAY_LIMIT_FIX}`]);
+  }
+  for (const { index, isReducedPart, raysPerVertex, partEdge, builder, indices, tracedVertices } of cuts) {
     const part = parts[index];
     const { geometry, matrix } = part;
-    const isReducedPart = openSided && (isPropPart(part) || isGroundSlab(part));
     if (isReducedPart) reducedParts.push(part.name);
-    const raysPerVertex = isReducedPart ? reducedRays : raysPerTexel;
     const samples = samplesOfRayCount.get(raysPerVertex);
-    const partEdge = openSided && isPropPart(part) ? maximumEdge * PROP_EDGE_FACTOR : maximumEdge;
-    const { builder, indices, tracedVertices } = yield* cutGeometrySteps(geometry, matrix, partEdge, !everySurface || (openSided && isGroundSlab(part)), checkpoint);
-    if (totalRays + tracedVertices.size * raysPerVertex > maximumRays) return tooLarge('too many rays', `more than ${maximumRays} rays for ${cutPartIndices.length} parts`);
     const vertexCount = builder.positions.length / 3;
     const skyVisibility = new Float32Array(vertexCount).fill(1);
     const escapedShares = new Float32Array(vertexCount);
@@ -662,7 +696,7 @@ export function* applyFloorSkyVisibilitySteps(parts, { raysPerTexel = FLOOR_SKY_
   }
   const texels = floors.reduce((total, floor) => total + floor.texels, 0);
   const meanVisibility = texels ? floors.reduce((total, floor) => total + floor.meanVisibility * floor.texels, 0) / texels : 1;
-  return { parts: Object.freeze(nextParts), report: { floors, texels, meanVisibility, interiorFill, rays: totalRays, seconds: (performance.now() - started) / 1000, method: 'triangles', fallbackReason: null, reason: null, warnings: [], reducedParts, branch } };
+  return { parts: Object.freeze(nextParts), report: { floors, texels, meanVisibility, interiorFill, rays: totalRays, seconds: (performance.now() - started) / 1000, method: 'triangles', fallbackReason: null, reason: null, warnings: [], reducedParts, edgeScale, branch } };
 }
 
 /** True when the environment has a sun: a key light with a colour and intensity above zero. A recipe that sets neither has the default sun. */
