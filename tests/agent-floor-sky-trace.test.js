@@ -218,22 +218,38 @@ test('a sky trace that stops at its time limit shows in the scene diagnostics of
   assert.equal(hasStoppedTrace(again), false);
 });
 
-// #3433: five thin boxes over 8 by 10 m with no prop in them. The open-sided cut is twice as fine for walls, ceiling and floor, and with nothing to take the budget it came to 17 million
-// rays, so the trace was skipped and the ground stayed plain. It is cut coarser until it fits instead.
-function fiveThinSlabs() {
+// #3433: five thin boxes over 8 by 10 m with no prop in them. Their joins were open grooves (the default box rounds its edges), and the rounded geometry came to 17 million rays at the open-sided
+// room's fine cut, so the trace was skipped and the ground stayed plain. Touching boxes of a set open on one side are now drawn sharp (src/room-box-joins.js); a set that does not touch keeps the
+// rounded boxes and is cut coarser until it fits instead.
+function fiveThinSlabs({ apart }) {
   const slab = (id, translation, scale) => ({ id, geometry: 'box', material: 'stone', translation, scale });
+  // Walls 0.1 m outside the floor's edge touch the ceiling only: three touching pairs, fewer than the four that make a join.
+  const wallOffset = apart ? 0.1 : 0;
   const nodes = [
     slab('floor', [0, -0.05, 0], [8, 0.1, 10]),
-    slab('wall-back', [0, 1.5, -5], [8, 3, 0.1]),
-    slab('wall-left', [-4, 1.5, 0], [0.1, 3, 10]),
-    slab('wall-right', [4, 1.5, 0], [0.1, 3, 10]),
+    slab('wall-back', [0, 1.5, -5 - wallOffset], [8, 3, 0.1]),
+    slab('wall-left', [-4 - wallOffset, 1.5, 0], [0.1, 3, 10]),
+    slab('wall-right', [4 + wallOffset, 1.5, 0], [0.1, 3, 10]),
     slab('ceiling', [0, 3.05, 0], [8.2, 0.1, 10.2]),
   ];
   return { ...room({ keyColor: [3, 3, 3] }), nodes, camera: { eye: [0, 1.5, 9], target: [0, 1.5, 0], fov: 60, near: 0.05, far: 40 } };
 }
 
-test('a bare open set of five thin slabs is cut coarser and traced within the ray limit', () => {
-  const scene = createAgentScene(fiveThinSlabs());
+test('a bare open set of five touching thin slabs is traced at the fine cut within the ray limit', () => {
+  const scene = createAgentScene(fiveThinSlabs({ apart: false }));
+  const report = lastDefaultFloorSkyReport();
+  assert.equal(report.branch, 'open-sided room, every surface traced');
+  assert.equal(report.reason, null);
+  assert.deepEqual(report.warnings, []);
+  assert.equal(report.edgeScale, 1, 'the first cut fitted');
+  assert.ok(report.rays <= 3_200_000, `the trace shot ${report.rays} rays`);
+  assert.ok(report.texels <= 55_000, `the trace cut ${report.texels} texels`);
+  assert.ok(scene.parts.find(part => part.name === 'wall-back').geometry.skyVisibility, 'the wall carries the trace');
+  assert.equal(scene.inspect().diagnostics?.some(diagnostic => diagnostic.kind === 'sky-trace-stopped') ?? false, false);
+});
+
+test('a set of five rounded thin slabs that do not touch is cut coarser and traced within the ray limit', () => {
+  const scene = createAgentScene(fiveThinSlabs({ apart: true }));
   const report = lastDefaultFloorSkyReport();
   assert.equal(report.branch, 'open-sided room, every surface traced');
   assert.equal(report.reason, null);
@@ -242,11 +258,10 @@ test('a bare open set of five thin slabs is cut coarser and traced within the ra
   assert.ok(report.rays <= 4_500_000, `the trace shot ${report.rays} rays`);
   assert.ok(report.rays >= 1_000_000, `the trace shot only ${report.rays} rays, coarser than it needs`);
   assert.ok(scene.parts.find(part => part.name === 'wall-back').geometry.skyVisibility, 'the wall carries the trace');
-  assert.equal(scene.inspect().diagnostics?.some(diagnostic => diagnostic.kind === 'sky-trace-stopped') ?? false, false);
 });
 
 test('a trace that stays over the ray limit says so in a scene diagnostic with what to change', () => {
-  const { parts } = createAgentScene({ ...fiveThinSlabs(), environment: { keyColor: [3, 3, 3], floorSkyTrace: false } });
+  const { parts } = createAgentScene({ ...fiveThinSlabs({ apart: false }), environment: { keyColor: [3, 3, 3], floorSkyTrace: false } });
   const { report } = applyDefaultFloorSky(parts, { keyColor: [3, 3, 3] }, { maximumTexels: 400, maximumRays: 100 });
   assert.equal(report.reason, 'too many rays');
   assert.equal(report.rays, 0);
