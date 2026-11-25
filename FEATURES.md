@@ -624,7 +624,7 @@ An id is the name in the `###` heading of its block, not a file name: `drive.mjs
 - Drive: none: not a page
 
 ### `push-evidence`
-- Name: Pushes pictures and clips to the evidence-pr-<number> branch without touching the working tree
+- Name: Pushes pictures and clips to the single evidence branch (pr-<number>/ folders; old evidence-pr-* branches stay) without touching the working tree
 - Surface: CLI
 - Reach: command `node scripts/push-evidence.mjs`
 - Source: `scripts/push-evidence.mjs`

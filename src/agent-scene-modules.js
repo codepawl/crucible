@@ -39,6 +39,7 @@ const MODULE_LOADERS = {
   volumeEmissionMask: () => import('./volume-emission-mask.js'),
   retroShader: () => import('./retro-shader.js'),
   glitterShader: () => import('./glitter-shader.js'),
+  surfaceCover: () => import('./surface-cover.js'),
   worldMaterials: () => import('./world-material-shader.js'),
   terrain: () => import('./agent-terrain.js'),
   floorPlan: () => import('./agent-floor-plan.js'),
@@ -124,6 +125,7 @@ const MODULE_MARKERS = {
   subsurfaceShader: ['"subsurface"'],
   retroShader: ['"retro"'],
   glitterShader: ['"waterGlint"'],
+  surfaceCover: ['"surfaceCover"'],
   // Any mention loads it, because an edit can set the density through a path or the environment of an operation.
   fogShader: ['volumeFog', 'localVolumes', '"add-explosion"'],
   // A volume that casts a shadow draws the emission of the parts it covers apart from the dimmed light (#1360); loaded up front, the first frame already has it.

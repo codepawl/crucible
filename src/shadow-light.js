@@ -1,3 +1,4 @@
+import { mat4 } from 'gl-matrix';
 import { requireFiniteInRange } from './modeling-limits.js';
 
 // Far beyond any scene, and small enough that squaring it stays finite.
@@ -62,6 +63,13 @@ const HARD_REACH_TEXELS = 2;
  * `extent * 2 / mapSize * FILTER_REACH_TEXELS`, divided by `far - near`, so the same scene gives the same bias in metres
  * for any depth range. `light` is the result of `resolveShadowLight`.
  */
+/** Writes the sun shadow map's world-to-clip matrix for a resolved light (from resolveShadowLight) into `out`: the orthographic box the shadow pass draws. */
+export function writeShadowLightMatrix(out, light) {
+  const lightView = mat4.lookAt(mat4.create(), light.eye, light.target, light.up ?? [0, 1, 0]);
+  mat4.ortho(out, -light.extent, light.extent, -light.extent, light.extent, light.near, light.far);
+  return mat4.multiply(out, out, lightView);
+}
+
 export function shadowBiasPerSlope(light, mapSize) {
   requireFiniteInRange('shadowBiasPerSlope', 'mapSize and light.extent', [mapSize, light.extent], Number.MIN_VALUE, MAXIMUM_COORDINATE);
   requireFiniteInRange('shadowBiasPerSlope', 'light.far - light.near', light.far - light.near, Number.MIN_VALUE, MAXIMUM_COORDINATE);
