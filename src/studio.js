@@ -15,6 +15,7 @@ import { packedSkyOf } from './scene-pack-sky.js';
 import { encodePackOrRefuse } from './studio-pack-refusal.js';
 import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shaders.js';
 import { STUDIO_CSS } from './studio-styles.js';
+import { AGENT_CHAT_CSS, createAgentPanel } from './studio-agent-chat.js';
 import { createApplyMenus } from './studio-apply-menu.js';
 import { createMeshMenus } from './studio-mesh-menus.js';
 import { findKeymapAction, findMouseNavigation, formatShortcutKeys, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
@@ -127,7 +128,7 @@ function injectStudioStyles(documentReference) {
     style.id = STUDIO_STYLE_ID;
     documentReference.head.append(style);
   }
-  style.textContent = STUDIO_CSS;
+  style.textContent = STUDIO_CSS + AGENT_CHAT_CSS;
 }
 
 function createElement(documentReference, tagName, properties = {}, ...children) {
@@ -1428,6 +1429,24 @@ export function createStudio(container, {
     });
     return giveMenuIcon(item, iconName);
   };
+  // The Agent card: a host that offers a chat fills it (studio-agent-chat.js). Without one there is no card, no menu row and no data attribute.
+  const agentPanel = createAgentPanel({
+    documentReference,
+    createElement,
+    createIcon,
+    createIconButton,
+    watchScrollFade,
+    host: globalThis.crucibleShell?.agentChat,
+    root,
+    readPreferences: () => preferences,
+    setPreference: (name, value) => setPreference(name, value),
+    applyPreferences: () => applyPreferences(),
+    showPanelMinimized: (...argumentsList) => showPanelMinimized(...argumentsList),
+    syncMenuToggles: () => syncMenuToggles(),
+    onStep: nodeId => showAgentEdit({ nodeIds: [nodeId] }),
+    setInspectorCollapsed: collapsed => setInspectorCollapsed(collapsed),
+    hideHistory: () => setHistoryShown(false, { remember: false }),
+  });
   // Whether the History panel is shown, and the edits it last drew, so a notification that changed no edit draws nothing.
   let historyShown = false;
   let renderedHistoryKey = '';
@@ -1618,6 +1637,7 @@ export function createStudio(container, {
     sceneCameraToggle,
     createMenuToggle('Scene and Properties', '', () => toggleDocksButton.click(), () => root.dataset.outlinerCollapsed !== 'true' || root.dataset.inspectorCollapsed !== 'true', 'panels'),
     createMenuToggle('History', '', () => setHistoryShown(!historyShown), () => historyShown, 'history'),
+    ...(agentPanel ? [createMenuToggle('Agent', 'view.agent', () => agentPanel.toggle(), () => agentPanel.shown, 'chat')] : []),
     createMenuToggle('Properties', 'view.properties', () => setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true'), () => root.dataset.inspectorCollapsed !== 'true', 'settings'),
   );
   // A row that switches something shows whether it is on each time its menu opens.
@@ -1942,7 +1962,7 @@ export function createStudio(container, {
   // With several objects selected the panels follow the active one; the head says how many there are.
   const selectionCountLabel = createElement(documentReference, 'span');
   const selectionCountElement = createElement(documentReference, 'span', { className: 'crucible-studio-selection-count', attributes: { hidden: '' } }, createIcon(documentReference, 'select'), selectionCountLabel);
-  propertiesMinimizeButton.addEventListener('click', () => setPreference('propertiesMinimized', !preferences.propertiesMinimized));
+  propertiesMinimizeButton.addEventListener('click', () => (agentPanel?.holdsRoom ? agentPanel.setOpenInShortWindow(false) : setPreference('propertiesMinimized', !preferences.propertiesMinimized)));
 
   const outlinerDock = createElement(
     documentReference,
@@ -2799,6 +2819,7 @@ export function createStudio(container, {
     // In a compact window the two cards would cover each other, so showing one puts the other away; the panels button or
     // View > Properties brings Properties back and puts History away.
     if (shown && root.dataset.compact === 'true') setInspectorCollapsed(true);
+    if (shown && agentPanel?.takesTurns) agentPanel.setShown(false, { remember: false });
     if (remember) setPreference('historyVisible', shown);
     syncHistoryPanel();
     syncMenuToggles();
@@ -2935,7 +2956,7 @@ export function createStudio(container, {
   function fillShortcutsGrid() {
     const columnCount = sheetColumnCount(documentReference.defaultView?.innerWidth ?? 1280);
     shortcutsDialog.dataset.columns = String(columnCount);
-    const columns = balanceSheetColumns(shortcutSheetGroups(keymap), columnCount);
+    const columns = balanceSheetColumns(shortcutSheetGroups(keymap, { omittedActionIds: agentPanel ? [] : ['view.agent'] }), columnCount);
     shortcutsGrid.replaceChildren(...columns.map(columnGroups => createElement(
       documentReference,
       'div',
@@ -3061,9 +3082,10 @@ export function createStudio(container, {
     setGridVisible(preferences.gridVisible);
     showPanelSizes(preferences);
     showPanelMinimized(sceneMinimizeButton, 'outlinerMinimized', 'Scene', preferences.sceneMinimized);
-    showPanelMinimized(propertiesMinimizeButton, 'inspectorMinimized', 'Properties', preferences.propertiesMinimized);
+    showPanelMinimized(propertiesMinimizeButton, 'inspectorMinimized', 'Properties', preferences.propertiesMinimized || Boolean(agentPanel?.holdsRoom));
     showPanelMinimized(historyMinimizeButton, 'historyMinimized', 'History', preferences.historyMinimized);
     refitHistoryList();
+    agentPanel?.syncCard();
     for (const [name, control] of settings.controls) {
       if (STUDIO_PREFERENCE_CHOICES[name]) control.value = String(preferences[name]);
       else control.checked = preferences[name];
@@ -3203,6 +3225,7 @@ export function createStudio(container, {
     root,
     outlinerDock,
     inspectorElement,
+    agentDock: agentPanel?.dock,
     readPreferences: () => preferences,
     changePreferences: setPreferences,
   });
@@ -3215,6 +3238,7 @@ export function createStudio(container, {
 
   sideColumn.append(historyDock);
   setHistoryShown(preferences.historyVisible, { remember: false });
+  agentPanel?.mount(sideColumn);
   applyPreferences();
   root.append(viewportElement, menubarElement, toolbarElement, sideColumn, bottomElement, fileInput, importInput, recipeDialog, shortcutsDialog, settingsDialog, setup.dialog);
   container.append(root);
@@ -5799,74 +5823,57 @@ export function createStudio(container, {
   }
 
   // In edit mode these keys of the normal context still work; every other one would act on the whole object.
-  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'snap.toggle', 'view.frame', 'view.front', 'view.right', 'view.top', 'view.projection', 'view.properties', 'view.seeThrough']);
+  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'snap.toggle', 'view.frame', 'view.front', 'view.right', 'view.top', 'view.projection', 'view.properties', 'view.agent', 'view.seeThrough']);
+  const preventDefaultThen = action => event => {
+    event.preventDefault();
+    action(event);
+  };
   const meshKeyHandlers = {
-    'mesh.leave': event => {
-      event.preventDefault();
-      leaveMeshEdit();
-    },
-    'mesh.escape': event => {
-      event.preventDefault();
-      escapeMeshEdit();
-    },
+    'mesh.leave': preventDefaultThen(leaveMeshEdit),
+    'mesh.escape': preventDefaultThen(escapeMeshEdit),
     'mesh.vertexMode': () => chooseMeshMode('vertex'),
     'mesh.edgeMode': () => chooseMeshMode('edge'),
     'mesh.faceMode': () => chooseMeshMode('face'),
-    'mesh.deleteMenu': event => {
-      event.preventDefault();
-      meshMenus.openMeshMenu(meshMenus.meshDeletePopover);
-    },
-    'mesh.mergeMenu': event => {
-      event.preventDefault();
-      meshMenus.openMeshMenu(meshMenus.meshMergePopover);
-    },
+    'mesh.deleteMenu': preventDefaultThen(() => meshMenus.openMeshMenu(meshMenus.meshDeletePopover)),
+    'mesh.mergeMenu': preventDefaultThen(() => meshMenus.openMeshMenu(meshMenus.meshMergePopover)),
     'mesh.makeFace': () => {
       meshEditor.makeFace();
-      syncUi();
-      requestFrame();
+      updateMeshSelectionView();
     },
     // Alt+A and Ctrl+I have browser actions of their own (the menu bar, page info).
-    'mesh.selectNone': event => {
-      event.preventDefault();
+    'mesh.selectNone': preventDefaultThen(() => {
       meshEditor.selectNone();
-      syncUi();
-      requestFrame();
-    },
-    'mesh.invertSelection': event => {
-      event.preventDefault();
+      updateMeshSelectionView();
+    }),
+    'mesh.invertSelection': preventDefaultThen(() => {
       meshEditor.invertSelection();
-      syncUi();
-      requestFrame();
-    },
+      updateMeshSelectionView();
+    }),
     'mesh.circleSelect': () => {
       if (meshEditor.circleSelecting) {
         endCircleSelect();
         return;
       }
       if (meshEditor.beginCircleSelect()) startWatchingCircleFocus();
-      syncUi();
-      requestFrame();
+      updateMeshSelectionView();
     },
     // L under the pointer; Ctrl+L and Ctrl+Plus or Minus have browser actions of their own (the address bar, the zoom).
     'mesh.selectLinked': () => {
       if (viewportPointer) meshEditor.selectLinkedAt(viewportPointer.x, viewportPointer.y);
       updateMeshSelectionView();
     },
-    'mesh.selectLinkedSelection': event => {
-      event.preventDefault();
+    'mesh.selectLinkedSelection': preventDefaultThen(() => {
       meshEditor.selectLinkedFromSelection();
       updateMeshSelectionView();
-    },
-    'mesh.growSelection': event => {
-      event.preventDefault();
+    }),
+    'mesh.growSelection': preventDefaultThen(() => {
       meshEditor.growSelection();
       updateMeshSelectionView();
-    },
-    'mesh.shrinkSelection': event => {
-      event.preventDefault();
+    }),
+    'mesh.shrinkSelection': preventDefaultThen(() => {
       meshEditor.shrinkSelection();
       updateMeshSelectionView();
-    },
+    }),
     'mesh.proportional': () => toggleProportional(),
     'mesh.boxSelect': () => {
       if (meshEditor.boxSelecting) {
@@ -5875,13 +5882,9 @@ export function createStudio(container, {
         meshEditor.beginBoxSelect();
         announce('Drag a rectangle over what to select. Shift adds to the selection.');
       }
-      syncUi();
-      requestFrame();
+      updateMeshSelectionView();
     },
-    'mesh.separate': event => {
-      event.preventDefault();
-      openSeparateMenu();
-    },
+    'mesh.separate': preventDefaultThen(openSeparateMenu),
   };
 
   // Handlers of the normal context by action id. A handler calls preventDefault for the keys the browser would
@@ -5912,40 +5915,22 @@ export function createStudio(container, {
       if (binding.ctrl) event.preventDefault();
       duplicateSelection();
     },
-    'edit.join': event => {
-      event.preventDefault();
-      joinSelection();
-    },
-    'edit.parent': event => {
-      event.preventDefault();
-      parentSelection();
-    },
-    'edit.clearParent': event => {
-      event.preventDefault();
-      clearParentSelection();
-    },
+    'edit.join': preventDefaultThen(joinSelection),
+    'edit.parent': preventDefaultThen(parentSelection),
+    'edit.clearParent': preventDefaultThen(clearParentSelection),
     'edit.delete': event => {
       if (!controller.selectedNodeId && !selectedObjectIsDeletable()) return;
       event.preventDefault();
       deleteSelection();
     },
-    'edit.rename': event => {
-      event.preventDefault();
-      renameActiveObject({ byKeyboard: true });
-    },
+    'edit.rename': preventDefaultThen(() => renameActiveObject({ byKeyboard: true })),
     'edit.deselect': () => {
       if (controller.selectedNodeId || controller.selectedObjectKey) controller.selectNode(null);
     },
     // A plain letter has no browser action to stop; Ctrl+I and Alt+A do (page info, the menu bar).
     'select.all': () => selectAllNodes(),
-    'select.none': event => {
-      event.preventDefault();
-      controller.selectNode(null);
-    },
-    'select.invert': event => {
-      event.preventDefault();
-      invertNodeSelection();
-    },
+    'select.none': preventDefaultThen(() => controller.selectNode(null)),
+    'select.invert': preventDefaultThen(invertNodeSelection),
     'edit.apply': event => {
       // Ctrl+A is also the page's select all: outside Studio, and in its text fields, the page keeps it.
       if (!selectAllEventBelongsToStudio(event)) return;
@@ -5959,49 +5944,24 @@ export function createStudio(container, {
       if (binding.ctrl) event.preventDefault();
       hideSelection();
     },
-    'edit.showAll': event => {
-      event.preventDefault();
-      showAllHidden();
-    },
-    'edit.undo': event => {
-      event.preventDefault();
-      controller.undo();
-    },
-    'edit.redo': event => {
-      event.preventDefault();
-      controller.redo();
-    },
+    'edit.showAll': preventDefaultThen(showAllHidden),
+    'edit.undo': preventDefaultThen(() => controller.undo()),
+    'edit.redo': preventDefaultThen(() => controller.redo()),
     'view.frame': () => flyToSelection(),
     'view.projection': () => controller.toggleCameraProjection(),
-    'view.seeThrough': event => {
+    'view.seeThrough': preventDefaultThen(() => seeThroughButton.click()),
+    'view.properties': preventDefaultThen(() => setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true')),
+    'view.agent': event => {
+      if (!agentPanel) return;
       event.preventDefault();
-      seeThroughButton.click();
-    },
-    'view.properties': event => {
-      event.preventDefault();
-      setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true');
+      agentPanel.toggle();
     },
     'animate.keyframe': () => keyframeButton.click(),
-    'animate.play': event => {
-      event.preventDefault();
-      playButton.click();
-    },
-    'file.open': event => {
-      event.preventDefault();
-      performOpenFile();
-    },
-    'file.save': event => {
-      event.preventDefault();
-      performSaveFile({ forceAs: false });
-    },
-    'file.saveAs': event => {
-      event.preventDefault();
-      performSaveFile({ forceAs: true });
-    },
-    'settings.open': event => {
-      event.preventDefault();
-      settings.open();
-    },
+    'animate.play': preventDefaultThen(() => playButton.click()),
+    'file.open': preventDefaultThen(performOpenFile),
+    'file.save': preventDefaultThen(() => performSaveFile({ forceAs: false })),
+    'file.saveAs': preventDefaultThen(() => performSaveFile({ forceAs: true })),
+    'settings.open': preventDefaultThen(() => settings.open()),
     'help.shortcuts': () => showShortcutsSheet(),
     'mesh.enter': event => {
       if (!controller.selectedNodeId || !tabBelongsToViewport(event.target)) return;
@@ -6115,6 +6075,7 @@ export function createStudio(container, {
   function setInspectorCollapsed(collapsed) {
     root.dataset.inspectorCollapsed = collapsed ? 'true' : 'false';
     if (!collapsed && root.dataset.compact === 'true' && historyShown) setHistoryShown(false, { remember: false });
+    if (!collapsed && agentPanel?.takesTurns && agentPanel.shown) agentPanel.setShown(false, { remember: false });
     toggleDocksButton.setAttribute('aria-pressed', root.dataset.outlinerCollapsed === 'false' || root.dataset.inspectorCollapsed === 'false' ? 'true' : 'false');
     requestFrame();
   }
@@ -6223,10 +6184,12 @@ export function createStudio(container, {
     setHistoryShown(compact ? false : preferences.historyVisible, { remember: false });
   }
   syncCompactLayout();
+  agentPanel?.syncRoom();
 
   if (typeof ResizeObserver === 'function') {
     resizeObserver = new ResizeObserver(() => {
       syncCompactLayout();
+      agentPanel?.syncRoom();
       refitHistoryList();
       refitTreeToWholeRows();
       requestFrame();
@@ -6332,6 +6295,7 @@ export function createStudio(container, {
       clearTimeout(statusExitTimer);
       clearTimeout(awaitedProgramTimer);
       agentPresence.dispose();
+      agentPanel?.dispose();
       settings.dispose();
       systemSchemeQuery?.removeEventListener?.('change', onSystemSchemeChange);
       if (frameHandle) cancelAnimationFrame(frameHandle);
