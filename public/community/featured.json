@@ -6,8 +6,8 @@
       "authorUrl": "https://x.com/anxuanng",
       "link": "https://crucible.codepawl.com/showcase.html",
       "image": "/community/barcelona-pavilion.webp",
-      "width": 1600,
-      "height": 900,
+      "width": 960,
+      "height": 540,
       "alt": "A glass pavilion with a travertine wall behind a shallow pool of pebbles, path traced by Cook in Crucible",
       "assets": "Model by eMirage, CC-BY, from the Blender demo files"
     },
@@ -17,8 +17,8 @@
       "authorUrl": "https://x.com/anxuanng",
       "link": "https://crucible.codepawl.com/showcase.html",
       "image": "/community/airport-ramp.webp",
-      "width": 1600,
-      "height": 900,
+      "width": 960,
+      "height": 540,
       "alt": "Two airliners parked at an airport ramp with ground vehicles, rendered live in Crucible",
       "assets": "Sketchfab models (CC BY 4.0) and CC0 textures; full credits on the page"
     },
@@ -28,8 +28,8 @@
       "authorUrl": "https://x.com/anxuanng",
       "link": "https://crucible.codepawl.com/showcase.html",
       "image": "/community/bistro-cafe.webp",
-      "width": 1600,
-      "height": 900,
+      "width": 960,
+      "height": 540,
       "alt": "A Paris street corner with a green cafe, red awnings and a blue scooter, rendered by Crucible",
       "assets": "Amazon Lumberyard Bistro, CC BY 4.0; Poly Haven sky (CC0)"
     },
@@ -39,8 +39,8 @@
       "authorUrl": "https://x.com/anxuanng",
       "link": "https://crucible.codepawl.com/showcase.html",
       "image": "/community/classroom.webp",
-      "width": 1600,
-      "height": 900,
+      "width": 960,
+      "height": 540,
       "alt": "A sunlit school classroom with wooden desks and a chalkboard, path traced by Cook in Crucible",
       "assets": "Scene by Christophe Seux, CC0, from the Blender demo files"
     }

@@ -40,6 +40,23 @@ const PROPERTIES = {
   // bloomStrength (0 to 8), and glareStreaks / lensDispersion (0 to 1 on recipes with effects.glare / effects.lensDistortion).
   effects: { exposure: 1, focusDistance: 1, distortionStrength: 1, flashIntensity: 1, bloomStrength: 1, glareStreaks: 1, lensDispersion: 1 },
 };
+export function cameraRollDiagnostics(recipe) {
+  const problems = [];
+  (recipe.motion?.tracks ?? []).forEach((track, index) => {
+    if (track.kind !== 'camera' || track.property !== 'roll') return;
+    const bad = (track.keyframes ?? []).find(keyframe => typeof keyframe.value === 'number' && Math.abs(keyframe.value) > Math.PI);
+    if (bad) {
+      problems.push({
+        kind: 'camera-roll-range',
+        severity: 'warning',
+        target: `motion.tracks[${index}]`,
+        message: `motion.tracks[${index}] value ${bad.value} exceeds +/-pi; camera roll is in radians, not degrees.`,
+        fix: 'Convert degrees to radians (degrees * Math.PI / 180) with scene_apply set-motion.',
+      });
+    }
+  });
+  return problems;
+}
 // Every kind a motion track may have; the MCP schema and its error message take this list so they cannot drift from the backend.
 export const MOTION_TRACK_KINDS = Object.freeze(Object.keys(PROPERTIES));
 // Kinds with one target in the scene, so a track names no ID.
@@ -214,6 +231,13 @@ function nodeIdFrom(value, nodes, label) {
   return value;
 }
 
+function checkTrackKeyframes(keyframes, label) {
+  if (Array.isArray(keyframes) && keyframes.length > MAX_KEYS_PER_TRACK) {
+    throw invalidField(label, `${keyframes.length} keyframes`, `a bounded list of at most ${MAX_KEYS_PER_TRACK} keyframes per track`);
+  }
+  denseArray(keyframes, MAX_KEYS_PER_TRACK, label);
+}
+
 /** Keyframed IK channels share the motion's clip clock and keyframe budget. */
 function ikKeyframes(input, size, duration, label) {
   knownKeys(input, ['keyframes', 'interpolation'], label);
@@ -221,7 +245,7 @@ function ikKeyframes(input, size, duration, label) {
   if (!['LINEAR', 'STEP', 'SMOOTH'].includes(interpolation)) {
     throw invalidField(`${label}.interpolation`, interpolation, 'LINEAR, STEP or SMOOTH');
   }
-  denseArray(input.keyframes, MAX_KEYS_PER_TRACK, `${label}.keyframes`);
+  checkTrackKeyframes(input.keyframes, `${label}.keyframes`);
   if (!input.keyframes.length) {
     throw invalidField(`${label}.keyframes`, input.keyframes, 'at least one keyframe, such as [{ "time": 0, "value": [0, 1, 0] }]');
   }
@@ -602,7 +626,7 @@ export function normalizeAgentMotion(input, recipe) {
     if (track.property === 'visible' && interpolation !== 'STEP') {
       throw invalidField(`motion.tracks[${index}].interpolation`, interpolation, 'STEP, or the field left out, since a visible track is 1 (shown) or 0 (hidden) and cannot blend between them');
     }
-    denseArray(track.keyframes, MAX_KEYS_PER_TRACK, `motion.tracks[${index}].keyframes`);
+    checkTrackKeyframes(track.keyframes, `motion.tracks[${index}].keyframes`);
     if (!track.keyframes.length) throw invalidField(`motion.tracks[${index}].keyframes`, [], 'one or more keyframes');
     keyframeCount += track.keyframes.length;
     if (keyframeCount > 2048) {

@@ -153,9 +153,14 @@ export function dielectricReflectance(material) {
   return materialLayerValue(material, 'specularColor').map(component => Math.min(fromIor * component, 1) * weight);
 }
 
+/** Grazing Fresnel reflectance of a dielectric (F90), scaled by specular and clamped at 1 (KHR_materials_specular). */
+export function dielectricGrazingReflectance(material) {
+  return Math.min(materialLayerValue(material, 'specular'), 1);
+}
+
 /**
  * Plain values the renderer batches by: dielectric F0 (3), coat (2), sheen (4), transmission (4), attenuation colour (3),
- * anisotropy strength and rotation (2), iridescence factor, film IOR and film thickness in nanometres (3), light mask (1), toon bands (1), and the subsurface block as JSON, or '' (1; subsurface-limits.js and the addon read it), emission fresnel (1), the emission mask: axis index or -1, from, to (3), the soft edge exponent (1; #2304) and the toon step colours as JSON, or '' (1; toon-shader.js reads it).
+ * anisotropy strength and rotation (2), iridescence factor, film IOR and film thickness in nanometres (3), light mask (1), toon bands (1), and the subsurface block as JSON, or '' (1; subsurface-limits.js and the addon read it), emission fresnel (1), the emission mask: axis index or -1, from, to (3), the soft edge exponent (1; #2304), dielectric grazing F90 (1; DIELECTRIC_GRAZING_STATE_INDEX), the toon step colours as JSON, or '' (1; toon-shader.js reads it) and toon edge (1; toon-shader.js reads it).
  */
 export function materialLayerState(material) {
   validateMaterialLayers(material);
@@ -183,9 +188,11 @@ export function materialLayerState(material) {
     material.emissionMask?.from ?? 0,
     material.emissionMask?.to ?? 1,
     materialLayerValue(material, 'softEdge'),
+    dielectricGrazingReflectance(material),
     material.toonColors ? JSON.stringify(material.toonColors) : '',
     materialLayerValue(material, 'toonEdge'),
   ];
 }
 
-export const MATERIAL_LAYER_STATE_LENGTH = 31;
+export const DIELECTRIC_GRAZING_STATE_INDEX = 29;
+export const MATERIAL_LAYER_STATE_LENGTH = 32;

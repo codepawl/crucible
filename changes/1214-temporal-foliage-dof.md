@@ -1,0 +1,1 @@
+- The native film temporal blend keeps clean same-surface history unclamped when enough corners match, and on depth steps also rescues matching-depth texels whose averaged normal turned, weighted by depth proximity (#1214)

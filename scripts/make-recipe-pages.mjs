@@ -44,10 +44,6 @@ ${body}
   return applyChrome(page, path.slice(1, -5));
 }
 
-function frameFigure(recipe, frame) {
-  return `<figure><img src="/recipes/${recipe.slug}-${frame.id}.webp" width="960" height="540" alt="${escapeHtml(`${recipe.title}: ${frame.label}`)}" /><figcaption>${escapeHtml(frame.label)}</figcaption></figure>`;
-}
-
 function codeBlock({ id, heading, source }) {
   return `      <section class="recipe-code" aria-labelledby="${id}-title">
         <div class="recipe-code-heading"><h2 id="${id}-title">${escapeHtml(heading)}</h2><button type="button" data-copy-code="${id}">Copy</button></div>
@@ -57,11 +53,20 @@ function codeBlock({ id, heading, source }) {
 
 function mediaSection(recipe) {
   const [before, after] = recipe.frames;
-  const stills = `<div class="recipe-pair">${frameFigure(recipe, before)}${frameFigure(recipe, after)}</div>`;
-  if (!recipe.clip) return `      ${stills}`;
+  const compare = `      <div class="recipe-compare" data-recipe-compare style="--compare: 50%">
+        <img class="recipe-compare-after" src="/recipes/${recipe.slug}-${after.id}.webp" width="960" height="540" alt="${escapeHtml(`${recipe.title}: ${after.label}`)}" />
+        <div class="recipe-compare-before">
+          <img src="/recipes/${recipe.slug}-${before.id}.webp" width="960" height="540" alt="${escapeHtml(`${recipe.title}: ${before.label}`)}" />
+        </div>
+        <div class="recipe-compare-line" aria-hidden="true"><span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4-4 4 4 4M10 4l4 4-4 4"/></svg></span></div>
+        <span class="recipe-compare-label before">${escapeHtml(before.label)}</span>
+        <span class="recipe-compare-label after">${escapeHtml(after.label)}</span>
+        <input class="recipe-compare-slider" type="range" min="0" max="100" value="50" aria-label="Compare ${escapeHtml(before.label)} and ${escapeHtml(after.label)}" />
+      </div>`;
+  if (!recipe.clip) return compare;
   const poster = `/recipes/${recipe.slug}-${before.id}.webp`;
   const clip = `<video class="recipe-clip" src="/recipes/${recipe.slug}.mp4" poster="${poster}" width="960" height="540" muted loop playsinline autoplay aria-label="${escapeHtml(`${recipe.title}, rendered by Crucible`)}"></video>`;
-  return `      ${clip}\n      ${stills}`;
+  return `      ${clip}\n${compare}`;
 }
 
 export function renderRecipePage(recipe) {
@@ -86,6 +91,7 @@ export function renderIndexPage() {
           <p>${escapeHtml(recipe.summary)}</p>
         </a>`).join('\n');
   const body = `      <h1>Recipes</h1>
+      <p class="lede">Short scene blueprints rendered by Crucible. Scrub before and after, inspect the JSON, or drop it into <code>scene_create</code>.</p>
       <div class="recipe-list">
 ${cards}
       </div>`;

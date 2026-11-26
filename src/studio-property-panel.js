@@ -1,6 +1,7 @@
 import { STUDIO_PROPERTY_SECTION_ICONS } from './studio-icons.js';
 import { directionToSunAngles, hexToLinearRgb, linearRgbToHex } from './studio-controller.js';
 import {
+  MIXED_PROPERTY_LABEL,
   formatPropertyNumber,
   hdriChoiceLabel,
   motionPropertyOf,
@@ -145,6 +146,11 @@ export function createPropertyPanel({ documentReference, controller, announce, b
         const shownValue = value ?? lastShownNumbers.get(field.id) ?? field.offValue ?? null;
         input.value = shownValue === null ? '' : propertyValueText(field, shownValue, getLengthUnit());
       },
+      setMixed: mixed => {
+        input.dataset.mixed = mixed ? 'true' : 'false';
+        input.placeholder = mixed ? MIXED_PROPERTY_LABEL : (field.clearable && field.offValue === undefined ? 'Off' : '');
+        if (mixed) input.value = '';
+      },
       setDisabled: disabled => {
         input.disabled = disabled;
       },
@@ -172,12 +178,17 @@ export function createPropertyPanel({ documentReference, controller, announce, b
       commit(field, propertyStoredValue(field, shown, getLengthUnit()));
     });
     const unitMark = createUnitMark(field);
+    const container = createPropertyLine(documentReference, createElement, field.label, input, output, unitMark);
     return {
-      container: createPropertyLine(documentReference, createElement, field.label, input, output, unitMark),
+      container,
       setValue: value => {
         const unit = getLengthUnit();
         input.value = String(propertyDisplayValue(field, value, unit));
         output.textContent = propertyValueText(field, value, unit);
+      },
+      setMixed: mixed => {
+        container.dataset.mixed = mixed ? 'true' : 'false';
+        if (mixed) output.textContent = MIXED_PROPERTY_LABEL;
       },
       setDisabled: disabled => {
         input.disabled = disabled;
@@ -195,10 +206,14 @@ export function createPropertyPanel({ documentReference, controller, announce, b
   function colourControl(field) {
     const input = createElement(documentReference, 'input', { type: 'color', value: '#ffffff', attributes: { 'aria-label': propertyNameOf(field) } });
     input.addEventListener('input', () => commit(field, hexToLinearRgb(input.value)));
+    const container = createPropertyLine(documentReference, createElement, field.label, input);
     return {
-      container: createPropertyLine(documentReference, createElement, field.label, input),
+      container,
       setValue: value => {
         input.value = linearRgbToHex(value);
+      },
+      setMixed: mixed => {
+        container.dataset.mixed = mixed ? 'true' : 'false';
       },
       setDisabled: disabled => {
         input.disabled = disabled;
@@ -218,6 +233,10 @@ export function createPropertyPanel({ documentReference, controller, announce, b
     return {
       container: createPropertyLine(documentReference, createElement, field.label, button),
       setValue: value => button.setAttribute('aria-checked', value ? 'true' : 'false'),
+      setMixed: mixed => {
+        button.dataset.mixed = mixed ? 'true' : 'false';
+        if (mixed) button.setAttribute('aria-checked', 'mixed');
+      },
       setDisabled: disabled => {
         button.disabled = disabled;
         button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
@@ -234,7 +253,12 @@ export function createPropertyPanel({ documentReference, controller, announce, b
       onGestureStart: () => controller.beginUndoGroup(),
       onGestureEnd: () => controller.endUndoGroup(),
     });
-    return { container: row.container, setValue: values => row.setValues(values, VECTOR_DISPLAY_PRECISION), setDisabled: row.setDisabled };
+    return {
+      container: row.container,
+      setValue: values => row.setValues(values, VECTOR_DISPLAY_PRECISION),
+      setMixed: mixed => row.setMixed?.(mixed),
+      setDisabled: row.setDisabled,
+    };
   }
 
   // A choice from a short list. A value the list lacks (a catalog file the scene names) shows as a read-only current choice.
@@ -346,7 +370,8 @@ export function createPropertyPanel({ documentReference, controller, announce, b
       rebuild(description.kind);
     }
     const context = currentContext();
-    for (const { field, container, mark, setValue, setDisabled, setUnit } of controls.values()) {
+    const mixedFields = description.mixedFields ?? null;
+    for (const { field, container, mark, setValue, setMixed, setDisabled, setUnit } of controls.values()) {
       if (unitChanged) {
         setUnit?.(lengthUnit);
       }
@@ -360,6 +385,7 @@ export function createPropertyPanel({ documentReference, controller, announce, b
       if (field.read) {
         setValue(field.read(description.source, context));
       }
+      setMixed?.(mixedFields?.has(field.id) ?? false);
     }
   }
 

@@ -1,0 +1,1 @@
+- Studio rotates, scales, copies, pastes and edits shared or Mixed object and material properties across multi-selected objects as one undo step (#2816)

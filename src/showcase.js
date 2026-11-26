@@ -6,7 +6,7 @@ import { CrucibleRenderer } from './renderer.js';
 import { createSharedTextures, loadGltf } from './gltf.js';
 import { loadHdri } from './hdri.js';
 import { loadViewTransformForRendererOptions } from './view-transform-loading.js';
-import { createCascadedShadows } from './cascaded-shadows.js';
+import { resolveSceneFileCascades } from './cascaded-shadows.js';
 import { mergePartLights, showcaseEnvironment, withSceneFileLights } from './dense-lods.js';
 import { applyWaterReflection, attachWaterReflection } from './water-reflection.js';
 
@@ -339,7 +339,8 @@ async function selectScene(id) {
     await loadViewTransformForRendererOptions(rendererOptions);
     if (request !== loadingRequest) return;
     // scene.json stores cascades as plain options; the renderer takes the cascade object built from them.
-    const shadowCascades = rendererOptions.shadowCascades ? createCascadedShadows(rendererOptions.shadowCascades) : undefined;
+    const environment = showcaseEnvironment(asset.lights, rendererOptions.environment, map);
+    const shadowCascades = resolveSceneFileCascades(rendererOptions, environment, rendererOptions.shadowBounds);
     // A scene that sets waterReflection mirrors itself in its largest flat, smooth surface (water or a polished floor).
     if (description.environment?.groundCover !== undefined) console.warn('environment.groundCover is drawn only by render-media.mjs --scene file; this page ignores it.');
     if (description.reflectionHdri !== undefined) console.warn('reflectionHdri is drawn only by render-media.mjs --scene file; this page reflects the lighting HDRI.');
@@ -348,7 +349,7 @@ async function selectScene(id) {
       ground: false, hdr: true, samples: 4, memoryBudgetMiB: 384,
       ...rendererOptions,
       shadowCascades,
-      environment: showcaseEnvironment(asset.lights, rendererOptions.environment, map),
+      environment,
     });
     const detachReflection = attachWaterReflection(renderer, reflection.surface, WATER_REFLECTION_OPTIONS);
     scene = { frame: { exposure: description.exposure ?? 1, ...(description.frame ?? {}) } };

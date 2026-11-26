@@ -8,22 +8,12 @@ import { operationsBetweenRecipes, sameRecipeValue } from './studio-history-diff
 import { EDIT_LABEL_FALLBACK, GIZMO_EDIT_LABELS, nameEditOperations, nameEditTarget, nodeLabelIn } from './studio-edit-names.js';
 import { MAX_POINT_LIGHTS, MAX_AREA_LIGHTS, MAX_SPOT_LIGHTS } from './light-limits.js';
 import { registeredStudioTabIds } from './studio-registry.js';
-import {
-  STUDIO_MATERIAL_PRESETS,
-  STUDIO_PRIMITIVE_GROUPS,
-  STUDIO_PRIMITIVES,
-  STUDIO_TABS,
-  STUDIO_TEMPLATES,
-  STUDIO_TOOLS,
-  STUDIO_VIEW_PRESETS,
-  primitiveGeometrySpec,
-} from './studio-templates.js';
+import { STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, STUDIO_TABS, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, primitiveGeometrySpec } from './studio-templates.js';
 import {
   OWN_VERTEX_LIMIT,
   SNAP_TARGET_IDS,
   SCALE_SNAP_STEP,
-  findVertexUnderPointer,
-  moveToLandVertex,
+  resolvePointerSnapDelta,
   sampleVertices,
   snapDegrees,
   snapIsActive,
@@ -35,6 +25,19 @@ import {
   collectDescendantIds as descendantIdsOfMany,
   reparentOperationsFor,
 } from './studio-parenting.js';
+import {
+  batchAssignMaterialOperations,
+  batchMaterialUpdateOperations,
+  batchNodeTransformOperations,
+  buildAddCopyOperations,
+  buildDragCompanions,
+  companionMoveOperations,
+  companionRotateOperations,
+  companionScaleOperations,
+  directionThroughMatrix,
+  liveMotionForDragOperations,
+  toNodeLocalDelta,
+} from './studio-multi-edit.js';
 import { formatLength, STUDIO_LENGTH_UNITS } from './studio-units.js';
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
@@ -659,7 +662,7 @@ export function createStudioController({
     ?? null;
   commitNodeSelection(firstNodeId === null ? [] : [firstNodeId], firstNodeId);
   let selectedObjectKey = null;
-  let copiedNode = null;
+  let copiedSelection = null;
   let pasteCount = 0;
   let activeTool = 'translate';
   let activeTab = 'node';
@@ -1612,7 +1615,10 @@ export function createStudioController({
     const recipe = currentScene.exportRecipe();
     const node = recipe.nodes.find(candidate => candidate.id === selectedNodeId);
     const handles = gizmoHandles();
-    const worldMatrices = buildNodeWorldMatrices(recipe.nodes);
+    const effectiveNodes = autoKey && recipe.motion
+      ? recipe.nodes.map(candidate => ({ ...candidate, ...sampledNodePose(recipe, candidate, motionTime) }))
+      : recipe.nodes;
+    const worldMatrices = buildNodeWorldMatrices(effectiveNodes);
     const parentWorld = node.parent ? worldMatrices.get(node.parent) : null;
     let axisScreen = [1, 0];
     if (AXIS_NAMES.includes(axis) && handles) {
@@ -1668,7 +1674,21 @@ export function createStudioController({
       authoredPose: { ...authoredPose, rotation: normalizeQuaternion(authoredPose.rotation) },
       parentInverse: parentWorld ? mat4.invert(mat4.create(), parentWorld) : null,
       parentWorld: parentWorld ?? null,
-      companions: elementSession ? [] : moveCompanionsOf(recipe, node.id, worldMatrices),
+      companions: elementSession
+        ? []
+        : buildDragCompanions({
+            recipe,
+            activeId: node.id,
+            worldMatrices,
+            autoKey,
+            motionTime,
+            authoredNodePose,
+            sampledNodePose,
+            normalizeQuaternion,
+            descendantIdsOf,
+            selectionRootsIn,
+            worldBasisOf,
+          }),
       activeCarried: !elementSession && !selectionRootsIn(recipe.nodes).includes(node.id),
       selectionIds,
       ownPoints: sampledOwnPoints,
@@ -1737,28 +1757,13 @@ export function createStudioController({
     return { axis: dragState.axis, degrees: dragState.sweepDegrees, centre: projectWorldPoint(Array.from(pivot)), arc };
   }
 
-  function toNodeLocalDelta(worldDelta, parentInverse) {
-    if (!parentInverse) {
-      return worldDelta;
-    }
-    const rotated = vec3.fromValues(worldDelta[0], worldDelta[1], worldDelta[2]);
-    const linearInverse = mat4.clone(parentInverse);
-    linearInverse[12] = 0;
-    linearInverse[13] = 0;
-    linearInverse[14] = 0;
-    vec3.transformMat4(rotated, rotated, linearInverse);
-    return [rotated[0], rotated[1], rotated[2]];
-  }
-
   // A keyed node shows its sampled pose, so with auto-key on the dragged pose is also keyed at the playhead as the pointer
   // moves; built from the motion the drag began with, so each move replaces the last and cancel can put the motion back.
-  function writeDraggedPose(pose) {
+  function writeDraggedPose(pose, companionOperations = []) {
     const operations = dragState.activeCarried ? [] : [{ type: 'set-node', id: dragState.nodeId, ...pose }];
-    if (pose.translation) {
-      operations.push(...companionMoveOperations(pose.translation));
-    }
-    if (autoKey && !dragState.activeCarried) {
-      const motion = motionWithPoseKeys(dragState.baseMotion, dragState.nodeId, pose, motionTime);
+    operations.push(...companionOperations);
+    if (autoKey) {
+      const motion = liveMotionForDragOperations({ baseMotion: dragState.baseMotion, operations, motionTime, motionWithPoseKeys });
       if (motion) {
         operations.push({ type: 'set-motion', motion });
         dragState.keyedLive = true;
@@ -1778,73 +1783,29 @@ export function createStudioController({
     return snapped;
   }
 
-  // The other selected objects that move with the dragged one: the selection's roots, minus what already moves with it
-  // (its own children). A selected ancestor of the dragged object is one of them and carries it along, so the dragged
-  // object is then not written itself (`activeCarried`).
-  // They start from the pose the dragged node starts from: the sampled pose under auto-key, the authored one otherwise.
-  function moveCompanionsOf(recipe, activeId, worldMatrices) {
-    const recipeNodes = recipe.nodes;
-    const carriedByActive = descendantIdsOf(recipeNodes, activeId);
-    return selectionRootsIn(recipeNodes)
-      .filter(nodeId => !carriedByActive.has(nodeId))
-      .map(nodeId => {
-        const node = recipeNodes.find(candidate => candidate.id === nodeId);
-        const parentWorld = node.parent ? worldMatrices.get(node.parent) : null;
-        const authored = authoredNodePose(node);
-        const startPose = autoKey ? sampledNodePose(recipe, node, motionTime) : authored;
-        return {
-          nodeId,
-          authoredPose: { ...authored, rotation: normalizeQuaternion(authored.rotation) },
-          baseTranslation: startPose.translation,
-          parentInverse: parentWorld ? mat4.invert(mat4.create(), parentWorld) : null,
-        };
-      });
-  }
-
-  // The dragged node's move, as a world move, applied to every companion so the selection keeps its offsets.
-  function companionMoveOperations(translation) {
-    if (dragState.companions.length === 0) {
-      return [];
-    }
-    const localDelta = translation.map((component, axis) => component - dragState.baseTranslation[axis]);
-    const worldDelta = dragState.parentWorld ? directionThroughMatrix(localDelta, dragState.parentWorld) : localDelta;
-    return dragState.companions.map(({ nodeId, baseTranslation, parentInverse }) => {
-      const companionDelta = toNodeLocalDelta(worldDelta, parentInverse);
-      const moved = baseTranslation.map((component, axis) => component + companionDelta[axis]);
-      return { type: 'set-node', id: nodeId, translation: roundVector(moved) };
-    });
-  }
-
-  function directionThroughMatrix(direction, matrix) {
-    return [
-      matrix[0] * direction[0] + matrix[4] * direction[1] + matrix[8] * direction[2],
-      matrix[1] * direction[0] + matrix[5] * direction[1] + matrix[9] * direction[2],
-      matrix[2] * direction[0] + matrix[6] * direction[1] + matrix[10] * direction[2],
-    ];
-  }
-
-  // The world point a vertex target would land on: the vertex of another object nearest the pointer within reach, or null.
-  function vertexUnderPointer(pixelX, pixelY) {
-    const candidateParts = currentScene.parts.filter(part => !ownsPart(dragState.selectionIds, part));
-    const projectPoint = worldPointProjector();
-    const found = findVertexUnderPointer({
-      parts: candidateParts,
-      pointer: { x: pixelX, y: pixelY },
-      project: worldPoint => {
-        const projected = projectPoint(worldPoint);
-        return projected.visible ? projected : null;
-      },
-    });
-    return found ? found.point : null;
-  }
-
   // The world move that snapping a free move onto a vertex or a surface makes of it, or null when nothing is in reach: the
   // move is then left free. `freeWorldDelta` is the free move from where the drag began.
   function snappedWorldDelta(target, pixelX, pixelY, freeWorldDelta) {
-    if (target === 'vertex') {
-      const landing = vertexUnderPointer(pixelX, pixelY);
-      dragState.snapMarker = landing;
-      return landing ? moveToLandVertex(dragState.ownPoints, freeWorldDelta, landing) : null;
+    if (dragState.elementDrag || target === 'vertex') {
+      const editSources = dragState.elementDrag ? (elementSession?.snapSources?.() ?? null) : null;
+      const excludedIds = dragState.elementDrag ? new Set([dragState.nodeId]) : dragState.selectionIds;
+      const otherParts = currentScene.parts.filter(part => !ownsPart(excludedIds, part));
+      const ownPart = editSources ? (target === 'vertex' ? editSources.unmovedVertexPart : editSources.unmovedFacePart) : null;
+      const candidateParts = ownPart ? [...otherParts, ownPart] : otherParts;
+      const resolved = resolvePointerSnapDelta({
+        target,
+        pointer: { x: pixelX, y: pixelY },
+        ray: target === 'face' ? screenRay(pixelX, pixelY) : null,
+        freeWorldDelta,
+        basePivot: dragState.basePivot,
+        ownPoints: editSources ? editSources.ownPoints : dragState.ownPoints,
+        candidateParts,
+        projectPoint: worldPointProjector(),
+        queryCache: dragState,
+        cacheKey: ownPart ?? null,
+      });
+      dragState.snapMarker = resolved.marker;
+      return resolved.delta;
     }
     const translation = computeSnapTranslation(dragState.nodeId, pixelX, pixelY, dragState.selectionIds);
     if (!translation) {
@@ -1933,7 +1894,7 @@ export function createStudioController({
     const snapping = !isTyped && snapIsActive(snapEnabled, ctrlKey);
     const incrementSnap = snapping && snapTarget === 'increment';
     // Vertex and Face place a free move; a move kept to an axis or a plane has no free place to land, so it stays free.
-    const landingTarget = snapping && dragState.axis === 'screen' && !dragState.elementDrag && snapTarget !== 'increment' ? snapTarget : null;
+    const landingTarget = snapping && dragState.axis === 'screen' && snapTarget !== 'increment' ? snapTarget : null;
     dragState.snapMarker = null;
     if (dragState.tool === 'translate' && dragState.planeNormal) {
       const ray = screenRay(pixelX, pixelY);
@@ -1959,10 +1920,10 @@ export function createStudioController({
         rawWorldDelta[1] *= factor;
         rawWorldDelta[2] *= factor;
       }
-      if (dragState.elementDrag) {
-        return moveElementSelection(rawWorldDelta, incrementSnap, planeDeltaLabel());
-      }
       const landedDelta = landingTarget ? snappedWorldDelta(landingTarget, pixelX, pixelY, rawWorldDelta) : null;
+      if (dragState.elementDrag) {
+        return moveElementSelection(landedDelta ?? rawWorldDelta, incrementSnap, planeDeltaLabel());
+      }
       const localDelta = toNodeLocalDelta(landedDelta ?? rawWorldDelta, dragState.parentInverse);
       const rawTranslation = [
         dragState.baseTranslation[0] + localDelta[0],
@@ -1970,7 +1931,7 @@ export function createStudioController({
         dragState.baseTranslation[2] + localDelta[2],
       ];
       const translation = roundVector(incrementSnap ? snapPlaneTranslation(rawTranslation) : rawTranslation);
-      writeDraggedPose({ translation });
+      writeDraggedPose({ translation }, companionMoveOperations(dragState, translation, roundVector));
       dragState.changed = true;
       dragState.deltaLabel = planeDeltaLabel();
       notify({ kind: 'transform', nodeId: dragState.nodeId, live: true, deltaLabel: dragState.deltaLabel });
@@ -1996,7 +1957,7 @@ export function createStudioController({
         dragState.baseTranslation[2] + localDelta[2],
       ];
       const translation = roundVector(rawTranslation);
-      writeDraggedPose({ translation });
+      writeDraggedPose({ translation }, companionMoveOperations(dragState, translation, roundVector));
       dragState.changed = true;
       dragState.deltaLabel = `${dragState.axis.toUpperCase()} ${formatLength(travel, lengthUnit, { signed: true, fixedDecimals: 2 })}`;
       notify({ kind: 'transform', nodeId: dragState.nodeId, live: true, deltaLabel: dragState.deltaLabel });
@@ -2025,7 +1986,7 @@ export function createStudioController({
       const deltaQuaternion = quat.setAxisAngle(quat.create(), axisVector, radians);
       const nextQuaternion = quat.multiply(quat.create(), dragState.baseRotation, deltaQuaternion);
       const rotation = normalizeQuaternion(nextQuaternion);
-      writeDraggedPose({ rotation });
+      writeDraggedPose({ rotation }, companionRotateOperations(dragState, radians, { normalizeQuaternion, roundVector }));
       dragState.changed = true;
       dragState.deltaLabel = `${(axisIndex >= 0 ? dragState.axis : 'z').toUpperCase()} ${degrees >= 0 ? '+' : ''}${degrees.toFixed(1)}°`;
       notify({ kind: 'transform', nodeId: dragState.nodeId, live: true, deltaLabel: dragState.deltaLabel });
@@ -2052,7 +2013,11 @@ export function createStudioController({
       const scale = roundVector(dragState.baseScale.map((component, index) => (
         affectsAxis(index) ? Math.max(MINIMUM_SCALE, Math.min(MAXIMUM_SCALE, component * factor)) : component
       )));
-      writeDraggedPose({ scale });
+      writeDraggedPose({ scale }, companionScaleOperations(dragState, factor, affectsAxis, {
+        minimumScale: MINIMUM_SCALE,
+        maximumScale: MAXIMUM_SCALE,
+        roundVector,
+      }));
       dragState.changed = true;
       dragState.deltaLabel = `×${factor.toFixed(2)}`;
       notify({ kind: 'transform', nodeId: dragState.nodeId, live: true, deltaLabel: dragState.deltaLabel });
@@ -2092,7 +2057,8 @@ export function createStudioController({
     if (!dragState) {
       return false;
     }
-    const { baseRecipe, changed, nodeId, authoredPose, elementDrag, companions } = dragState;
+    const { baseRecipe, changed, nodeId, authoredPose, elementDrag, companions, snapQuery } = dragState;
+    snapQuery?.dispose();
     dragState = null;
     if (elementDrag) {
       elementSession?.finish(changed);
@@ -2116,7 +2082,8 @@ export function createStudioController({
     if (!dragState) {
       return false;
     }
-    const { nodeId, authoredPose, changed, keyedLive, baseMotion, elementDrag, companions } = dragState;
+    const { nodeId, authoredPose, changed, keyedLive, baseMotion, elementDrag, companions, snapQuery } = dragState;
+    snapQuery?.dispose();
     dragState = null;
     if (elementDrag) {
       elementSession?.cancel();
@@ -2216,6 +2183,29 @@ export function createStudioController({
     const changesTopology = patch.parent !== undefined || patch.vegetation !== undefined;
     notify({ kind: changesTopology ? 'topology' : 'transform', nodeId, keyed });
     return operation;
+  }
+
+  function updateNodesTransform(nodeIds, patch) {
+    const recipe = currentScene.exportRecipe();
+    const { operations, keyed, changesTopology } = batchNodeTransformOperations(recipe, nodeIds, patch, {
+      autoKey,
+      motionTime,
+      assertFiniteVector,
+      roundVector,
+      eulerDegreesToQuaternion,
+      quaternionToEulerDegrees,
+      normalizeQuaternion,
+      reparentOperationsFor,
+      authoredNodePose,
+      sampledNodePose,
+      motionWithPoseKeys,
+    });
+    applySceneOperations(operations);
+    if (keyed) {
+      settleSelectionAndMotion();
+    }
+    notify({ kind: changesTopology ? 'topology' : 'transform', nodeId: nodeIds[0], keyed });
+    return operations;
   }
 
   /** Reparents `nodeIds` to `parentId` (or `null` for root) as one undo step, keeping each node's world transform. */
@@ -2554,61 +2544,19 @@ export function createStudioController({
     return source;
   }
 
-  // A copy of `source` shifted aside by `offsetSteps` offsets, with an id and label of its own. `existingIds` gains the new id.
-  function buildNodeCopy(source, offsetSteps, existingIds) {
-    const copyId = uniqueIdentifier(existingIds, `${source.id}-copy`);
-    existingIds.add(copyId);
-    const cloned = structuredClone(source);
-    cloned.id = copyId;
-    cloned.label = `${source.label ?? source.id} copy`;
-    cloned.translation = roundVector([
-      (source.translation?.[0] ?? 0) + COPY_OFFSET[0] * offsetSteps,
-      source.translation?.[1] ?? 0,
-      (source.translation?.[2] ?? 0) + COPY_OFFSET[2] * offsetSteps,
-    ]);
-    return cloned;
-  }
-
-  // The nodes ordered so that each one comes after the parent it names, when that parent is in the list too.
-  function parentsFirst(nodes) {
-    const ordered = [];
-    const placed = new Set();
-    const waiting = [...nodes];
-    while (waiting.length > 0) {
-      const waitingIds = new Set(waiting.map(node => node.id));
-      const ready = waiting.filter(node => !waitingIds.has(node.parent) || node.parent === node.id);
-      for (const node of ready.length > 0 ? ready : waiting) {
-        ordered.push(node);
-        placed.add(node.id);
-      }
-      waiting.splice(0, waiting.length, ...waiting.filter(node => !placed.has(node.id)));
-    }
-    return ordered;
-  }
-
   // One undo step that adds a copy of each source and selects the copies; the copy of `activeSourceId` is the active one.
   function addNodeCopies(sources, offsetSteps, activeSourceId) {
     const recipe = currentScene.exportRecipe();
-    const existingIds = new Set(recipe.nodes.map(node => node.id));
-    const copies = sources.map(source => buildNodeCopy(source, offsetSteps, existingIds));
-    const copyIdBySourceId = new Map(sources.map((source, index) => [source.id, copies[index].id]));
-    copies.forEach((cloned, index) => {
-      const source = sources[index];
-      if (copyIdBySourceId.has(source.parent)) {
-        // Under the copy of its parent it keeps its place relative to it: the parent's shift already carries it.
-        cloned.parent = copyIdBySourceId.get(source.parent);
-        cloned.translation = structuredClone(source.translation ?? [0, 0, 0]);
-      } else if (cloned.parent !== undefined && !recipe.nodes.some(node => node.id === cloned.parent)) {
-        // The parent may be gone by the time a copy is pasted.
-        delete cloned.parent;
-      }
+    const { operations, copyIds, activeCopy } = buildAddCopyOperations(recipe, sources, offsetSteps, activeSourceId, {
+      copyOffset: COPY_OFFSET,
+      roundVector,
+      uniqueIdentifier,
     });
-    applySceneOperations(parentsFirst(copies).map(node => ({ type: 'add-node', node })));
-    const activeIndex = Math.max(0, sources.findIndex(source => source.id === activeSourceId));
-    commitNodeSelection(copies.map(node => node.id), copies[activeIndex].id);
+    applySceneOperations(operations);
+    commitNodeSelection(copyIds, activeCopy.id);
     selectedObjectKey = null;
-    notify({ kind: 'topology', nodeId: copies[activeIndex].id });
-    return copies[activeIndex];
+    notify({ kind: 'topology', nodeId: activeCopy.id });
+    return activeCopy;
   }
 
   /** Adds a copy of every selected object as one undo step and selects the copies; returns the copy of the active one. */
@@ -2619,20 +2567,23 @@ export function createStudioController({
     return addNodeCopies(sources.length > 0 ? sources : [activeSource], 1, activeSource.id);
   }
 
-  /** Remembers the selected node, as it is now, for pasteCopy. The scene is not touched. */
+  /** Remembers every selected object, as it is now, for pasteCopy. The scene is not touched. */
   function copySelected() {
-    copiedNode = structuredClone(selectedSourceNode('copying'));
+    const activeSource = selectedSourceNode('copying');
+    const nodesById = new Map(currentScene.exportRecipe().nodes.map(node => [node.id, node]));
+    const sources = selectedNodeIds.map(nodeId => nodesById.get(nodeId)).filter(Boolean);
+    copiedSelection = { nodes: structuredClone(sources.length > 0 ? sources : [activeSource]), activeId: activeSource.id };
     pasteCount = 0;
-    return structuredClone(copiedNode);
+    return structuredClone(activeSource);
   }
 
-  /** Adds a copy of the node copySelected remembered; it still works after the original is deleted or the selection moved. */
+  /** Adds a copy of every object copySelected remembered as one undo step and selects the copies. */
   function pasteCopy() {
-    if (!copiedNode) {
+    if (!copiedSelection) {
       throw new RangeError('Copy a node before pasting: select one and use copySelected().');
     }
     pasteCount += 1;
-    return addNodeCopies([copiedNode], pasteCount, copiedNode.id);
+    return addNodeCopies(copiedSelection.nodes, pasteCount, copiedSelection.activeId);
   }
 
   /** Removes every selected object (and what hangs below it) as one undo step. */
@@ -2667,73 +2618,56 @@ export function createStudioController({
     return null;
   }
 
-  function updateMaterial(materialId, patch) {
-    if (!patch || typeof patch !== 'object') {
-      throw new TypeError('updateMaterial expects a patch object.');
-    }
-    const operation = { type: 'set-material', id: materialId };
-    if (patch.hexColor !== undefined) {
-      operation.color = hexToLinearRgb(patch.hexColor);
-    } else if (patch.color !== undefined) {
-      operation.color = roundVector(assertFiniteVector(patch.color, 3, 'color'));
-    }
-    if (patch.emissiveHex !== undefined) {
-      operation.emissiveColor = hexToLinearRgb(patch.emissiveHex);
-    } else if (patch.emissiveColor !== undefined) {
-      operation.emissiveColor = roundVector(assertFiniteVector(patch.emissiveColor, 3, 'emissiveColor'));
-    }
-    for (const scalarField of ['roughness', 'metallic', 'clearcoat', 'clearcoatRoughness', 'emission', 'opacity']) {
-      if (patch[scalarField] !== undefined) {
-        if (typeof patch[scalarField] !== 'number' || !Number.isFinite(patch[scalarField])) {
-          throw new TypeError(`Material ${scalarField} must be a finite number.`);
-        }
-        operation[scalarField] = roundValue(patch[scalarField]);
-      }
-    }
-    if (patch.doubleSided !== undefined) {
-      if (typeof patch.doubleSided !== 'boolean') {
-        throw new TypeError('Material doubleSided must be true or false.');
-      }
-      operation.doubleSided = patch.doubleSided;
-    }
-    applySceneOperations([operation]);
-    notify({ kind: 'material', materialId });
-    return operation;
+  function updateMaterials(materialIds, patchOrFactory) {
+    const operations = batchMaterialUpdateOperations(currentScene.exportRecipe(), materialIds, patchOrFactory, {
+      hexToLinearRgb,
+      assertFiniteVector,
+      roundVector,
+      roundValue,
+    });
+    applySceneOperations(operations);
+    notify({ kind: 'material', materialId: operations[0].id });
+    return operations;
   }
 
-  function createMaterial({ color = [0.72, 0.72, 0.72], roughness = 0.42, metallic = 0.05, assignToNodeId = selectedNodeId } = {}) {
+  function updateMaterial(materialId, patch) {
+    return updateMaterials([materialId], patch)[0];
+  }
+
+  function createMaterial({ color = [0.72, 0.72, 0.72], roughness = 0.42, metallic = 0.05, assignToNodeId = selectedNodeId, assignToNodeIds = null } = {}) {
     const recipe = currentScene.exportRecipe();
     const existingIds = new Set(recipe.materials.map(item => item.id));
     const materialId = uniqueIdentifier(existingIds, 'mat');
     const materialRecord = { id: materialId, tag: 'surface', color, roughness, metallic };
     const operations = [{ type: 'add-material', material: materialRecord }];
-    if (assignToNodeId && recipe.nodes.some(node => node.id === assignToNodeId && node.geometry !== undefined)) {
-      operations.push({ type: 'set-node', id: assignToNodeId, material: materialId });
+    const targets = Array.isArray(assignToNodeIds) ? assignToNodeIds : (assignToNodeId ? [assignToNodeId] : []);
+    for (const nodeId of targets) {
+      if (recipe.nodes.some(node => node.id === nodeId && node.geometry !== undefined)) {
+        operations.push({ type: 'set-node', id: nodeId, material: materialId });
+      }
     }
     applySceneOperations(operations);
     notify({ kind: 'material', materialId });
     return materialRecord;
   }
 
-  function assignNodeMaterial(nodeId, materialId) {
-    const recipe = currentScene.exportRecipe();
-    if (!recipe.nodes.some(node => node.id === nodeId && node.geometry !== undefined)) {
-      throw new RangeError(`Node "${String(nodeId)}" has no geometry to paint.`);
-    }
-    if (!recipe.materials.some(material => material.id === materialId)) {
-      throw new RangeError(`Unknown material "${String(materialId)}".`);
-    }
-    applySceneOperations([{ type: 'set-node', id: nodeId, material: materialId }]);
-    notify({ kind: 'material', materialId, nodeId });
+  function assignNodesMaterial(nodeIds, materialId) {
+    const operations = batchAssignMaterialOperations(currentScene.exportRecipe(), nodeIds, materialId);
+    applySceneOperations(operations);
+    notify({ kind: 'material', materialId, nodeId: operations[0].id });
     return materialId;
   }
 
-  function applyMaterialPreset(materialId, presetName) {
+  function assignNodeMaterial(nodeId, materialId) {
+    return assignNodesMaterial([nodeId], materialId);
+  }
+
+  function applyMaterialsPreset(materialIds, presetName) {
     const preset = STUDIO_MATERIAL_PRESETS[presetName];
     if (!preset) {
       throw new RangeError(`Unknown material preset "${String(presetName)}". Use ${Object.keys(STUDIO_MATERIAL_PRESETS).join(', ')}.`);
     }
-    return updateMaterial(materialId, {
+    return updateMaterials(materialIds, {
       color: [...preset.color],
       roughness: preset.roughness,
       metallic: preset.metallic,
@@ -2743,6 +2677,10 @@ export function createStudioController({
       emission: preset.emission ?? 0,
       ...(preset.emissiveColor ? { emissiveColor: [...preset.emissiveColor] } : {}),
     });
+  }
+
+  function applyMaterialPreset(materialId, presetName) {
+    return applyMaterialsPreset([materialId], presetName)[0];
   }
 
   function updateLook({ environment, effects } = {}) {
@@ -3260,6 +3198,7 @@ export function createStudioController({
     snapSelectedToAt,
     snapMarker,
     updateNodeTransform,
+    updateNodesTransform,
     reparentNodes,
     addPrimitive: timed('add', addPrimitive),
     applyImportOperations: timed('add', applyImportOperations),
@@ -3267,12 +3206,15 @@ export function createStudioController({
     duplicateSelected: timed('duplicate', duplicateSelected),
     copySelected,
     pasteCopy: timed('paste', pasteCopy),
-    get canPaste() { return copiedNode !== null; },
+    get canPaste() { return copiedSelection !== null; },
     deleteSelected: timed('delete', deleteSelected),
     updateMaterial,
+    updateMaterials,
     createMaterial,
     assignNodeMaterial,
+    assignNodesMaterial,
     applyMaterialPreset,
+    applyMaterialsPreset,
     updateLook,
     updateSceneShadow,
     setSunAngles,

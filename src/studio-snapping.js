@@ -1,6 +1,7 @@
 // Snapping in Studio is a state: a magnet toggle, a target (what to snap to) and Ctrl to flip it for one
 // transform. This file holds the pure parts. The controller feeds it world-space numbers, so a node move, a key-driven
 // move and an edit-mode element move all snap the same way.
+import { createSceneQuery } from './scene-query.js';
 
 export const SNAP_TARGETS = Object.freeze([
   Object.freeze({ id: 'increment', label: 'Increment', icon: 'grid' }),
@@ -169,4 +170,104 @@ export function moveToLandVertex(ownPoints, offset, target) {
     }
   }
   return bestPoint ? [target[0] - bestPoint[0], target[1] - bestPoint[1], target[2] - bestPoint[2]] : null;
+}
+
+/**
+ * Builds world-space moved vertex candidates and synthetic parts for the unmoved vertices and unmoved faces of an edited mesh,
+ * so edit-mode Vertex and Face snapping can snap onto the rest of the mesh without snapping a moved element onto itself.
+ */
+export function buildEditSnapSources({ mesh, positions, basePositions = null, movedVertices, seedVertices, matrix, ownLimit = OWN_VERTEX_LIMIT }) {
+  const movedSlotByVertex = new Map();
+  movedVertices.forEach((vertex, slot) => {
+    movedSlotByVertex.set(vertex, slot);
+  });
+  const seeds = [...new Set(seedVertices)];
+  const ownPoints = evenIndices(seeds.length, ownLimit).map(index => {
+    const vertex = seeds[index];
+    const movedSlot = basePositions ? movedSlotByVertex.get(vertex) : undefined;
+    const source = movedSlot === undefined ? positions : basePositions;
+    const slot = movedSlot === undefined ? vertex : movedSlot;
+    return transformedPoint(matrix, source, slot);
+  });
+  const unmovedCoords = [];
+  for (let vertex = 0; vertex < mesh.vertexCount; vertex += 1) {
+    if (!movedSlotByVertex.has(vertex)) {
+      const offset = vertex * 3;
+      unmovedCoords.push(positions[offset], positions[offset + 1], positions[offset + 2]);
+    }
+  }
+  const unmovedVertexPart = unmovedCoords.length >= 3 ? { matrix, geometry: { positions: Float32Array.from(unmovedCoords) } } : null;
+  const unmovedIndices = [];
+  for (let face = 0; face < mesh.faceCount; face += 1) {
+    const first = mesh.faceOffsets[face];
+    const end = mesh.faceOffsets[face + 1];
+    if (end - first < 3) {
+      continue;
+    }
+    let touchesMoved = false;
+    for (let corner = first; corner < end; corner += 1) {
+      if (movedSlotByVertex.has(mesh.cornerVertices[corner])) {
+        touchesMoved = true;
+        break;
+      }
+    }
+    if (touchesMoved) {
+      continue;
+    }
+    const anchor = mesh.cornerVertices[first];
+    for (let corner = first + 1; corner + 1 < end; corner += 1) {
+      unmovedIndices.push(anchor, mesh.cornerVertices[corner], mesh.cornerVertices[corner + 1]);
+    }
+  }
+  const unmovedFacePart = unmovedIndices.length >= 3
+    ? { matrix, geometry: { positions: Float32Array.from(positions), indices: Uint32Array.from(unmovedIndices) } }
+    : null;
+  return { ownPoints, unmovedVertexPart, unmovedFacePart };
+}
+
+/** Raycasts `parts` for surface snapping, reusing a cached query on `queryCache` while `cacheKey` stays the same. */
+export function raycastSnapSurface({ parts, ray, queryCache = null, cacheKey = null }) {
+  if (!parts || parts.length === 0) {
+    return null;
+  }
+  if (!queryCache) {
+    const query = createSceneQuery(parts);
+    try {
+      return query.raycast(ray);
+    } finally {
+      query.dispose();
+    }
+  }
+  if (queryCache.snapQuery && queryCache.snapQueryKey !== cacheKey) {
+    queryCache.snapQuery.dispose();
+    queryCache.snapQuery = null;
+  }
+  if (!queryCache.snapQuery) {
+    queryCache.snapQuery = createSceneQuery(parts);
+    queryCache.snapQueryKey = cacheKey;
+  }
+  return queryCache.snapQuery.raycast(ray);
+}
+
+/** Resolves a Vertex or Face snap delta and optional vertex marker for a move, or `{ delta: null, marker: null }`. */
+export function resolvePointerSnapDelta({ target, pointer, ray, freeWorldDelta, basePivot, ownPoints, candidateParts, projectPoint, queryCache, cacheKey }) {
+  if (target === 'vertex') {
+    const found = findVertexUnderPointer({
+      parts: candidateParts,
+      pointer,
+      project: worldPoint => {
+        const projected = projectPoint(worldPoint);
+        return projected.visible ? projected : null;
+      },
+    });
+    return {
+      delta: found ? moveToLandVertex(ownPoints, freeWorldDelta, found.point) : null,
+      marker: found ? found.point : null,
+    };
+  }
+  const hit = raycastSnapSurface({ parts: candidateParts, ray, queryCache, cacheKey });
+  return {
+    delta: hit ? [hit.point[0] - basePivot[0], hit.point[1] - basePivot[1], hit.point[2] - basePivot[2]] : null,
+    marker: null,
+  };
 }

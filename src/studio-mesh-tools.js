@@ -1,8 +1,8 @@
-import { MAX_SELECTED_ELEMENTS } from './mesh-operations.js';
+import { MAX_SELECTED_ELEMENTS, MERGE_TARGETS } from './mesh-operations.js';
 
 // Planning helpers for Studio edit mode commands: convert the current vertex, edge or face selection
 // into deterministic recipe edit entries (`make_face`, `fill_holes`, `grid_fill`, `bridge_edge_loops`,
-// `subdivide_edges`, `symmetrize`).
+// `subdivide_edges`, `symmetrize`, `dissolve_*`, `merge_verts`).
 
 const SYMMETRIZE_AXES = Object.freeze(['x', 'y', 'z']);
 const SYMMETRIZE_KEEP = Object.freeze(['positive', 'negative']);
@@ -125,6 +125,64 @@ export function planMeshSubdivide(mesh, mode, selected, { cuts = 1 } = {}) {
   }
   refuseTooManyElements(edges.length, 'edges', 'Subdividing');
   return { op: 'subdivide_edges', edges: { edges: edgePairsOf(mesh, edges) }, cuts };
+}
+
+/** The faces whose every corner vertex belongs to `vertexSet`, and the covered vertices. */
+export function facesInsideVertexSet(mesh, vertexSet) {
+  const faces = [];
+  const covered = new Set();
+  for (let face = 0; face < mesh.faceCount; face += 1) {
+    const first = mesh.faceOffsets[face];
+    const end = mesh.faceOffsets[face + 1];
+    let inside = true;
+    for (let corner = first; corner < end && inside; corner += 1) {
+      inside = vertexSet.has(mesh.cornerVertices[corner]);
+    }
+    if (!inside) continue;
+    faces.push(face);
+    for (let corner = first; corner < end; corner += 1) covered.add(mesh.cornerVertices[corner]);
+  }
+  return { faces, covered };
+}
+
+function facesOfSelection(mesh, mode, selected) {
+  if (mode === 'face') return [...selected].sort((first, second) => first - second);
+  return facesInsideVertexSet(mesh, verticesOfSelection(mesh, mode, selected)).faces;
+}
+
+/** The log entry that dissolves the selection as `kind` ("vertices", "edges" or "faces"), from the Delete menu. */
+export function planMeshDissolve(mesh, mode, selected, kind) {
+  if (kind === 'vertices') {
+    const vertices = [...verticesOfSelection(mesh, mode, selected)].sort((first, second) => first - second);
+    if (vertices.length === 0) throw new RangeError('Pick a vertex, edge or face to dissolve first.');
+    refuseTooManyElements(vertices.length, 'vertices', 'Dissolving');
+    return { op: 'dissolve_verts', verts: { vertices } };
+  }
+  if (kind === 'edges') {
+    const edges = edgesOfSelection(mesh, mode, selected);
+    if (edges.length === 0) throw new RangeError('Dissolve Edges needs at least one edge: pick an edge, two vertices that share one, or a face.');
+    refuseTooManyElements(edges.length, 'edges', 'Dissolving');
+    return { op: 'dissolve_edges', edges: { edges: edgePairsOf(mesh, edges) }, removeStraight: true };
+  }
+  if (kind === 'faces') {
+    const faces = facesOfSelection(mesh, mode, selected);
+    if (faces.length === 0) throw new RangeError('Dissolve Faces needs at least one whole face: pick a face, or every vertex of one.');
+    refuseTooManyElements(faces.length, 'faces', 'Dissolving');
+    return { op: 'dissolve_faces', select: { faces } };
+  }
+  throw new RangeError(`Unknown dissolve kind "${String(kind)}"; use one of vertices, edges, faces.`);
+}
+
+/** The log entry that merges the selected vertices at `at` (center, first, last or collapse), from the Merge menu. */
+export function planMeshMerge(mesh, mode, selected, at) {
+  if (!MERGE_TARGETS.includes(at)) throw new RangeError(`Unknown merge target "${String(at)}"; use one of ${MERGE_TARGETS.join(', ')}.`);
+  if ((at === 'first' || at === 'last') && mode !== 'vertex') {
+    throw new RangeError('At First and At Last follow the order the vertices were picked, so they work in vertex mode (key 1).');
+  }
+  const vertices = pickedVerticesInOrder(mesh, mode, selected);
+  if (vertices.length < 2) throw new RangeError('Pick at least two vertices to merge.');
+  refuseTooManyElements(vertices.length, 'vertices', 'Merging');
+  return { op: 'merge_verts', vertices, at };
 }
 
 /** The log entry for Symmetrize: cuts the mesh along an axis plane and mirrors the kept side. */

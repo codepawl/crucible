@@ -2,7 +2,9 @@ import { buildWorld, cosineDirection, hashUnit, radicalInverse, sceneScale } fro
 import { createTracer } from './ray-query.js';
 import { CLOSED_ROOM_SHARE, partMatrixLookup } from './closed-room.js';
 import { fittedClosedRoomShare } from './fitted-closed-room.js';
-import { partDiffuseAlbedo } from './ground-bounce.js';
+import { sampleShellSurfaces } from './sun-bounce-shell.js';
+import { partDiffuseAlbedo, withMapBounce } from './ground-bounce.js';
+import { computeIrradianceCoefficients, evaluateIrradiance } from './environment.js';
 import { MAX_POINT_LIGHTS } from './light-limits.js';
 import { requireFiniteInRange } from './modeling-limits.js';
 
@@ -34,6 +36,13 @@ const MINIMUM_LIFT_SHARE = 0.03;
 const KEY_THRESHOLD = 1e-3;
 // A light's intensity is capped at this, so a larger strength only blows the frame out.
 const MAXIMUM_STRENGTH = 1e5;
+const MAXIMUM_ROOM_ALBEDO = 0.95;
+// Only apply scene-wide map bounce when at least half of the shell faces lie inside the room, so a small room on an outdoor terrain leaves the outdoors untouched.
+const MINIMUM_INTERIOR_SHARE_FOR_MAP_BOUNCE = 0.5;
+const ROOM_RATIO_LOW = 0.01;
+const ROOM_RATIO_HIGH = 0.06;
+const ROOM_SHADOW_FLOOR = 0.25;
+const ROOM_SOLVE_PASSES = 6;
 const EXCLUDED_TAGS = new Set(['liquid', 'foam', 'unlit', 'fire', 'smoke']);
 
 function isBounceSurface(part) {
@@ -161,7 +170,8 @@ function clusterSamples(samples, count, scale) {
   return centres.map((centre, index) => samples.filter((sample, sampleIndex) => assignment[sampleIndex] === index)).filter(group => group.length > 0);
 }
 
-function lightOfPatch(group, strength, tracer, probeOffset, sceneSize) {
+// `freeDistanceOf(point, normal)` is how far the space in front of a patch is clear, from the triangles or from the room shell.
+function lightOfPatch(group, strength, gain, freeDistanceOf, sceneSize) {
   const flux = [0, 0, 0];
   const centre = [0, 0, 0];
   const facing = [0, 0, 0];
@@ -179,42 +189,150 @@ function lightOfPatch(group, strength, tracer, probeOffset, sceneSize) {
   const normal = facing.map(component => component / facingLength);
   const middle = centre.map(component => component / weight);
   const radius = Math.sqrt(group.reduce((total, sample) => total + luminanceOf(sample.flux) * sample.point.reduce((sum, value, axis) => sum + (value - middle[axis]) ** 2, 0), 0) / weight);
-  const freeDistance = probeOffset + tracer.trace(middle[0] + normal[0] * probeOffset, middle[1] + normal[1] * probeOffset, middle[2] + normal[2] * probeOffset, normal[0], normal[1], normal[2], Infinity, false).nearestDistance;
+  const freeDistance = freeDistanceOf(middle, normal);
   const minimumLift = sceneSize * MINIMUM_LIFT_SHARE;
   if (freeDistance / 2 < minimumLift) return null;
   const lift = Math.max(Math.min(radius * LIFT_IN_RADII, freeDistance / 2), minimumLift);
   // Spread over the half space in front of the patch: intensity = flux / (2 pi).
-  const intensity = flux.map(channel => (strength * SUN_BOUNCE_GAIN * channel) / (2 * Math.PI));
+  const intensity = flux.map(channel => (strength * gain * channel) / (2 * Math.PI));
   const peak = Math.max(...intensity, 1e-9);
   return { position: middle.map((value, axis) => value + normal[axis] * lift), color: intensity.map(channel => Math.min(channel / peak, 1)), intensity: Math.min(peak, 1e5), radius: lift };
+}
+
+/** Reasons `findSunBounceLights` returns no lights, keyed by `report.reason`. */
+export const SUN_BOUNCE_REASONS = Object.freeze({
+  'no strength': 'sunBounce is 0 or no lights were asked for',
+  'no sun': 'the scene has no sun (a key light with a colour, an intensity and a direction)',
+  'baked light': 'a part already carries a light map or an irradiance grid, and that baked light wins',
+  'open scene': 'the scene is not a closed room, which is where sunlit patches bounce light on',
+  'too many triangles': "the scene is past the light bake's triangle limit",
+  'no lit surface': 'no surface of the room is both reached by the sun and inside the room',
+});
+
+function fewerThanAsked(report, reason, detail = SUN_BOUNCE_REASONS[reason]) {
+  if (report) Object.assign(report, { reason, detail });
+  return [];
+}
+
+function leftOut(report, reason) {
+  fewerThanAsked(report, reason);
+  return null;
+}
+
+function spanOf(samples) {
+  return Math.max(...[0, 1, 2].map(axis => Math.max(...samples.map(sample => sample.point[axis])) - Math.min(...samples.map(sample => sample.point[axis]))), 1e-3);
+}
+
+function lightsOfSamples(samples, { strength, gain, maximumLights, freeDistanceOf }) {
+  const sceneSize = spanOf(samples);
+  return clusterSamples(samples, maximumLights, sceneSize).map(group => lightOfPatch(group, strength, gain, freeDistanceOf, sceneSize)).filter(Boolean);
+}
+
+/**
+ * The diffuse multi-bounce radiance (bounces 2+, in `environmentDiffuse` units) inside a closed room: reflected power `P`
+ * times the room's textured albedo `rho`, bouncing over the remaining reflections `1 / (1 - rho)`, spread over the interior
+ * area `A` and divided by `pi`: `P * rho / (A * (1 - rho) * pi)` per colour channel.
+ */
+export function roomMultiBounceRadiance(samples, interior) {
+  if (!(interior.area > 0)) return [0, 0, 0];
+  const albedo = interior.albedo ?? [interior.meanAlbedo, interior.meanAlbedo, interior.meanAlbedo];
+  return [0, 1, 2].map(channel => {
+    const power = samples.reduce((total, sample) => total + sample.flux[channel], 0);
+    const channelAlbedo = Math.min(albedo[channel], MAXIMUM_ROOM_ALBEDO);
+    return (power * channelAlbedo) / (interior.area * (1 - channelAlbedo) * Math.PI);
+  });
+}
+
+// Solves `bounce * interiorFill * shadowOcclusion(bounce) = target` for the shader's room shadow multiplier (src/shaders.js).
+function solveRoomMapBounce(multiBounceRadiance, environment, interiorFill) {
+  const coefficients = computeIrradianceCoefficients(environment.map);
+  const irrUp = evaluateIrradiance(coefficients, [0, 1, 0]);
+  const irrUpSum = (irrUp[0] + irrUp[1] + irrUp[2]) * (environment.map.intensity ?? 1);
+  const keyColor = environment.keyColor ?? [1, 1, 1];
+  const keyIntensity = environment.keyIntensity ?? 1;
+  const keySum = Math.max((keyColor[0] + keyColor[1] + keyColor[2]) * keyIntensity, 0.003);
+  let bounce = multiBounceRadiance.map(value => value / interiorFill);
+  for (let pass = 0; pass < ROOM_SOLVE_PASSES; pass++) {
+    const bounceSum = bounce[0] + bounce[1] + bounce[2];
+    const ratio = (irrUpSum + bounceSum) / keySum;
+    const step = Math.max(0, Math.min(1, (ratio - ROOM_RATIO_LOW) / (ROOM_RATIO_HIGH - ROOM_RATIO_LOW)));
+    const roomFactor = 1 - step * step * (3 - 2 * step);
+    const shadowOcclusion = 1 - roomFactor + roomFactor * ROOM_SHADOW_FLOOR;
+    bounce = multiBounceRadiance.map(value => value / (interiorFill * shadowOcclusion));
+  }
+  return bounce;
+}
+
+function roomLitBySun(label, parts, environment, { strength, maximumLights, report }) {
+  requireFiniteInRange(label, 'strength', strength, 0, MAXIMUM_STRENGTH);
+  if (strength <= 0 || maximumLights <= 0) return leftOut(report, 'no strength');
+  if (!hasSun(environment)) return leftOut(report, 'no sun');
+  if (parts.some(part => part.material?.lightMap || part.material?.irradianceGrid)) return leftOut(report, 'baked light');
+  const share = fittedClosedRoomShare(parts, partMatrixLookup(parts));
+  if (share === null || share < CLOSED_ROOM_SHARE) return leftOut(report, 'open scene');
+  return { surfaces: parts.filter(isBounceSurface), sun: sunOf(environment) };
+}
+
+function lightsOfShell(surfaces, sun, { strength, maximumLights, report }) {
+  const { samples, freeDistanceOf, interior } = sampleShellSurfaces(surfaces, sun, { roomRays: ROOM_RAYS, enclosedShare: ENCLOSED_SHARE });
+  if (samples.length === 0) return fewerThanAsked(report, 'no lit surface');
+  // The shell path runs on sky-occluded scenes where unoccluded sky is removed, so 1st-bounce patches carry their full physical flux / (2 pi).
+  const lights = lightsOfSamples(samples, { strength, gain: 1, maximumLights, freeDistanceOf });
+  const multiBounceRadiance = roomMultiBounceRadiance(samples, interior);
+  if (report) {
+    Object.assign(report, {
+      method: 'shell',
+      multiBounceRadiance,
+      interiorShare: interior.interiorShare,
+      interiorArea: interior.area,
+      interiorAlbedo: interior.albedo,
+    });
+  }
+  return lights;
 }
 
 /**
  * The point lights that stand for the sunlit patches of a closed room: `[]` when the scene has no sun, is not a closed room,
  * is drawn with a bake or has no lit, enclosed surface. `strength` multiplies every light (`environment.sunBounce`).
- * `maximumLights` caps how many patches there are. A `report` object, when given, gets `reason` when the scene is past the
- * light bake's triangle limit and no patch could be found.
+ * `maximumLights` caps how many patches there are. A scene past the light bake's triangle limit gets no patches by default
+ * (`largeScenes: 'skip'`); `largeScenes: 'proxy'` finds them on the room shell of its occupancy grid instead
+ * (src/sun-bounce-shell.js), so the same scene gives the same lights whatever its mesh density (#2771). A `report` object,
+ * when given, gets `reason` (a key of SUN_BOUNCE_REASONS) and `detail` for every answer without lights, and `method`
+ * ('triangles' or 'shell') when it found some, so a caller can say why a scene stayed dark.
  */
-export function findSunBounceLights(parts, environment, { strength = 1, maximumLights = SUN_BOUNCE_PATCH_LIGHTS, report = null } = {}) {
-  requireFiniteInRange('findSunBounceLights', 'strength', strength, 0, MAXIMUM_STRENGTH);
-  if (strength <= 0 || maximumLights <= 0 || !hasSun(environment) || parts.some(part => part.material?.lightMap || part.material?.irradianceGrid)) return [];
-  const share = fittedClosedRoomShare(parts, partMatrixLookup(parts));
-  if (share === null || share < CLOSED_ROOM_SHARE) return [];
-  const surfaces = parts.filter(isBounceSurface);
-  const sun = sunOf(environment);
+export function findSunBounceLights(parts, environment, { strength = 1, maximumLights = SUN_BOUNCE_PATCH_LIGHTS, report = null, largeScenes = 'skip' } = {}) {
+  if (largeScenes !== 'skip' && largeScenes !== 'proxy') {
+    throw new RangeError(`findSunBounceLights largeScenes must be 'skip' or 'proxy', got ${largeScenes}`);
+  }
+  const room = roomLitBySun('findSunBounceLights', parts, environment, { strength, maximumLights, report });
+  if (!room) return [];
+  const { surfaces, sun } = room;
   let sampled;
   try {
     sampled = sampleLitSurfaces(surfaces, sun);
   } catch (error) {
     // Only a size limit is an expected miss; any other error is a bug and must surface.
     if (!(error instanceof RangeError)) throw error;
-    if (report) report.reason = error.message;
-    return [];
+    if (largeScenes === 'skip') {
+      return fewerThanAsked(report, 'too many triangles', `${error.message} Pass largeScenes: 'proxy' to find the patches on the room shell instead.`);
+    }
+    return lightsOfShell(surfaces, sun, { strength, maximumLights, report });
   }
   const { samples, tracer } = sampled;
-  if (samples.length === 0) return [];
-  const sceneSize = Math.max(...[0, 1, 2].map(axis => Math.max(...samples.map(sample => sample.point[axis])) - Math.min(...samples.map(sample => sample.point[axis]))), 1e-3);
-  return clusterSamples(samples, maximumLights, sceneSize).map(group => lightOfPatch(group, strength, tracer, sceneSize * 1e-3, sceneSize)).filter(Boolean);
+  if (samples.length === 0) return fewerThanAsked(report, 'no lit surface');
+  if (report) report.method = 'triangles';
+  const probeOffset = spanOf(samples) * 1e-3;
+  const freeDistanceOf = (point, normal) => probeOffset + tracer.trace(point[0] + normal[0] * probeOffset, point[1] + normal[1] * probeOffset, point[2] + normal[2] * probeOffset, normal[0], normal[1], normal[2], Infinity, false).nearestDistance;
+  return lightsOfSamples(samples, { strength, gain: SUN_BOUNCE_GAIN, maximumLights, freeDistanceOf });
+}
+
+/**
+ * `findSunBounceLights` on the room shell of the occupancy grid, whatever the triangle count: the lights depend on the geometry
+ * alone and ignore any triangle budget, so the same room gives the same lights at any mesh density (#2771). Same options and report.
+ */
+export function findSunBounceLightsOnShell(parts, environment, { strength = 1, maximumLights = SUN_BOUNCE_PATCH_LIGHTS, report = null } = {}) {
+  const room = roomLitBySun('findSunBounceLightsOnShell', parts, environment, { strength, maximumLights, report });
+  return room ? lightsOfShell(room.surfaces, room.sun, { strength, maximumLights, report }) : [];
 }
 
 const lightsOfParts = new WeakMap();
@@ -222,25 +340,45 @@ const lightsOfParts = new WeakMap();
 /**
  * The environment with the sunlit patches' lights added to its point lights. `environment.sunBounce` (default 1) scales
  * them; 0 returns the environment itself. The patches are found once for these parts and this sun and kept.
+ * `largeScenes: 'proxy'` finds them on the room shell for a scene past the bake's triangle limit (see `findSunBounceLights`),
+ * and when `interiorFill` is passed on a predominantly interior shell it also adds the derived multi-bounce room radiance to `environment.map`.
+ * A `report` object gets what `findSunBounceLights` reports, or `reason` `'no strength'` / `'no sun'` when nothing was looked for.
  */
-export function withSunBounce(parts, environment) {
+export function withSunBounce(parts, environment, { largeScenes = 'skip', report = null, interiorFill = null } = {}) {
   const strength = requireFiniteInRange('withSunBounce', 'environment.sunBounce', environment.sunBounce ?? DEFAULT_SUN_BOUNCE, 0, MAXIMUM_STRENGTH);
-  if (strength <= 0 || !hasSun(environment)) return environment;
+  if (strength <= 0 || !hasSun(environment)) {
+    if (report) {
+      Object.assign(report, strength <= 0
+        ? { reason: 'no strength', detail: SUN_BOUNCE_REASONS['no strength'] }
+        : { reason: 'no sun', detail: SUN_BOUNCE_REASONS['no sun'] });
+    }
+    return environment;
+  }
   const existing = environment.pointLights ?? [];
   const room = Math.min(SUN_BOUNCE_PATCH_LIGHTS, MAX_POINT_LIGHTS - existing.length);
-  const key = JSON.stringify([parts.length, environment.keyColor, environment.keyIntensity, environment.lightDirection, room]);
+  const key = JSON.stringify([parts.length, environment.keyColor, environment.keyIntensity, environment.lightDirection, room, largeScenes]);
   let remembered = lightsOfParts.get(parts);
   if (remembered?.key !== key) {
-    const report = {};
-    remembered = { key, lights: findSunBounceLights(parts, environment, { strength: 1, maximumLights: room, report }), scaled: new Map() };
-    if (report.reason) console.warn(`Sun bounce left out: ${report.reason}`);
+    const found = {};
+    remembered = { key, found, lights: findSunBounceLights(parts, environment, { strength: 1, maximumLights: room, report: found, largeScenes }), scaled: new Map() };
+    if (found.reason === 'too many triangles' || found.reason === 'no lit surface') console.warn(`Sun bounce left out: ${found.detail}`);
     lightsOfParts.set(parts, remembered);
   }
+  if (report) Object.assign(report, remembered.found);
   if (remembered.lights.length === 0) return environment;
   if (!remembered.scaled.has(strength)) {
     remembered.scaled.set(strength, remembered.lights.map(light => scaledLight(light, strength)));
   }
-  return { ...environment, pointLights: [...existing, ...remembered.scaled.get(strength)] };
+  let nextEnvironment = { ...environment, pointLights: [...existing, ...remembered.scaled.get(strength)] };
+  const { found } = remembered;
+  if (found.method === 'shell' && environment.map && interiorFill > 0 && found.interiorShare >= MINIMUM_INTERIOR_SHARE_FOR_MAP_BOUNCE) {
+    const scaledMultiBounce = found.multiBounceRadiance.map(value => value * strength);
+    const mapBounce = solveRoomMapBounce(scaledMultiBounce, environment, interiorFill);
+    if (mapBounce.some(channel => channel > 0)) {
+      nextEnvironment = { ...nextEnvironment, map: withMapBounce(environment.map, mapBounce) };
+    }
+  }
+  return nextEnvironment;
 }
 
 function scaledLight(light, strength) {

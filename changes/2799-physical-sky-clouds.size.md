@@ -1,0 +1,1 @@
+- scene:agent-scene+lazy: Loads volumetric cloud raymarching (`src/sky-clouds.js`) lazily only for recipes with a physical sky.

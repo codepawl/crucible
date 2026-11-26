@@ -1,0 +1,2 @@
+- entry:floor-sky-visibility: room-shell sun bounce (`src/sun-bounce-shell.js`), adaptive sky proxy budget (`proxyPairBudget`), and multi-bounce derivation (`solveRoomMapBounce`) load only in the lazy interior-lighting path so large GLB rooms get physical bounce without growing `entry:core`
+- scene:agent-scene+lazy: pulls in the lazy `floor-sky-visibility` and shell sun-bounce modules listed above; `scene:agent-scene`, `scene:lit-box`, `scene:gltf-box`, and `entry:core` all stay at 0 B gzip growth

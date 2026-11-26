@@ -4,6 +4,7 @@
 //
 // The host object has `send(text)` (a promise that settles when the run ends), `stop()` and `subscribe(listener)` (returns the
 // function that unsubscribes). The listener gets plain events; `parseAgentChatEvent` checks each one at this boundary.
+import { AGENT_STATUS_CSS, createAgentStatusBar, parseAgentStatus, parseAgentUsage } from './studio-agent-status.js';
 
 export const AGENT_CHAT_LIMITS = Object.freeze({
   messageCount: 200,
@@ -15,13 +16,21 @@ export const AGENT_CHAT_LIMITS = Object.freeze({
   actionLabelLength: 40,
 });
 
-export const AGENT_NOTICE_KINDS = Object.freeze(['signedOut', 'quota', 'error']);
-const NOTICE_ICONS = Object.freeze({ signedOut: 'lock', quota: 'warning', error: 'error' });
+/** What the card asks a host for beyond the base set, as the second argument of subscribe. A host that ignores it still works. */
+export const AGENT_SUBSCRIBE_EVENTS = Object.freeze(['status', 'usage']);
+export const AGENT_SUBSCRIBE_NOTICE_KINDS = Object.freeze(['quota-warning']);
+export const AGENT_SUBSCRIBE_OPTIONS = Object.freeze({ events: AGENT_SUBSCRIBE_EVENTS, noticeKinds: AGENT_SUBSCRIBE_NOTICE_KINDS });
+export const AGENT_NOTICE_KINDS = Object.freeze(['signedOut', 'quota-warning', 'quota', 'error']);
+// A warning triangle for the credit running low, an empty ring for the credit gone, the error mark for the rest.
+const NOTICE_ICONS = Object.freeze({ signedOut: 'lock', 'quota-warning': 'warning', quota: 'usageEmpty', error: 'error' });
+const RETRY_LABEL = 'Try again';
+const RETRY_HINT = 'Free';
 const OUTCOME_ICONS = Object.freeze({ done: 'check', stopped: 'stop', failed: 'error' });
 const STEP_ICON = 'agent';
 const OUTCOME_TEXT = Object.freeze({ done: 'Done', stopped: 'Stopped' });
 const STICK_TO_BOTTOM_PIXELS = 24;
 const HOST_METHODS = Object.freeze(['send', 'stop', 'subscribe']);
+const OPTIONAL_HOST_METHODS = Object.freeze(['retry']);
 
 function boundedText(event, field, longest, { required = true } = {}) {
   const value = event[field];
@@ -55,9 +64,15 @@ function parseNotice(event) {
   return notice;
 }
 
+// A finished run, or a failed one, the host says is free to repeat: only an exact true counts.
+function withRetryOffer(parsed, event) {
+  if (event.retryFree === true && parsed.type !== 'stopped') parsed.retryFree = true;
+  return parsed;
+}
+
 /**
  * The event as Studio keeps it, or an error that says what was wrong. Unknown fields are dropped.
- * The events: text, step, done, stopped, error and notice (see docs/studio.md, "Agent chat").
+ * The events: text, step, done, stopped, error, notice, status and usage (see docs/studio.md, "Agent chat").
  * An event type or a notice kind this card does not know returns null, so a newer host can send more
  * than an older Studio shows; a known event that is malformed still throws.
  */
@@ -76,11 +91,15 @@ export function parseAgentChatEvent(event) {
       };
     case 'done':
     case 'stopped':
-      return { type: event.type };
+      return withRetryOffer({ type: event.type }, event);
     case 'error':
-      return { type: 'error', message: boundedText(event, 'message', AGENT_CHAT_LIMITS.noticeTextLength) };
+      return withRetryOffer({ type: 'error', message: boundedText(event, 'message', AGENT_CHAT_LIMITS.noticeTextLength) }, event);
     case 'notice':
       return parseNotice(event);
+    case 'status':
+      return parseAgentStatus(event);
+    case 'usage':
+      return parseAgentUsage(event);
     default:
       if (typeof event.type !== 'string' || event.type === '') {
         throw new TypeError(`An agent chat event needs type as a non-empty string such as text, step, done, stopped, error or notice; got ${JSON.stringify(event.type)}.`);
@@ -97,7 +116,9 @@ export function agentChatHostProblems(host) {
   if (typeof host !== 'object') {
     return [`crucibleShell.agentChat must be an object with ${HOST_METHODS.join(', ')}; got ${typeof host}.`];
   }
-  return HOST_METHODS.filter(method => typeof host[method] !== 'function').map(method => `crucibleShell.agentChat.${method} must be a function.`);
+  const missing = HOST_METHODS.filter(method => typeof host[method] !== 'function');
+  const wrong = OPTIONAL_HOST_METHODS.filter(method => host[method] !== undefined && typeof host[method] !== 'function');
+  return [...missing, ...wrong].map(method => `crucibleShell.agentChat.${method} must be a function.`);
 }
 
 /** The messages of one conversation, the run in progress and the notices. It never touches the page. */
@@ -105,6 +126,9 @@ export function createAgentConversation() {
   let messages = [];
   let notices = [];
   let running = false;
+  let status = null;
+  let usage = null;
+  let lastPersonText = '';
   let nextId = 1;
 
   function push(message) {
@@ -122,6 +146,12 @@ export function createAgentConversation() {
     }
   }
 
+  function withdrawRetryOffers() {
+    for (const message of messages) {
+      message.retryable = false;
+    }
+  }
+
   function putNotice(notice) {
     notices = [...notices.filter(existing => existing.kind !== notice.kind), notice];
   }
@@ -130,8 +160,21 @@ export function createAgentConversation() {
     get messages() { return messages; },
     get notices() { return notices; },
     get running() { return running; },
+    /** What the host last reported (model, effort, mode, usage), or null; the newest status replaces the one before as a whole. */
+    get status() { return status; },
+    /** The newest valid usage { used, remaining, limit, unit, resetsAt? }, or null; an invalid one leaves it as it was. */
+    get usage() { return usage; },
+    /** What the person sent last, which a free retry sends again when the host has no retry of its own. */
+    get lastPersonText() { return lastPersonText; },
+    /** A retry starts a run without a new message and takes the retry offer away. */
+    beginRetry() {
+      withdrawRetryOffers();
+      running = true;
+    },
     /** The person's message starts a run and clears the notices of the one before. */
     addPersonMessage(text) {
+      withdrawRetryOffers();
+      lastPersonText = text;
       push({ kind: 'person', text: text.slice(0, AGENT_CHAT_LIMITS.personTextLength) });
       notices = [];
       running = true;
@@ -145,8 +188,17 @@ export function createAgentConversation() {
         return event.nodeId ?? null;
       } else if (event.type === 'notice') {
         putNotice(event);
+      } else if (event.type === 'status') {
+        const { type, ...reported } = event;
+        status = Object.keys(reported).length > 0 ? reported : null;
+      } else if (event.type === 'usage') {
+        const { type, ...reported } = event;
+        if (reported.limit !== undefined) usage = reported;
       } else {
-        push({ kind: 'outcome', outcome: event.type === 'error' ? 'failed' : event.type, text: event.message ?? OUTCOME_TEXT[event.type] });
+        withdrawRetryOffers();
+        // A second outcome with nothing between it and the first (a host that reports twice) replaces the first row instead of adding one.
+        if (messages.at(-1)?.kind === 'outcome') messages.pop();
+        push({ kind: 'outcome', outcome: event.type === 'error' ? 'failed' : event.type, text: event.message ?? OUTCOME_TEXT[event.type], retryable: event.retryFree === true });
         running = false;
       }
       return null;
@@ -189,7 +241,9 @@ export function createAgentChatCard({ documentReference, createElement, createIc
     attributes: { 'aria-label': 'Message to the agent' },
   });
   const sendButton = createElement(documentReference, 'button', { type: 'submit', className: 'crucible-studio-agent-send crucible-studio-primary-btn' });
-  const form = createElement(documentReference, 'form', { className: 'crucible-studio-agent-compose' }, field, sendButton);
+  const statusBar = createAgentStatusBar({ documentReference, createElement, createIcon, wantsShareInRow: () => dock.dataset.usageShare === 'true' });
+  const form = createElement(documentReference, 'form', { className: 'crucible-studio-agent-compose' }, field, statusBar.button, sendButton);
+  const bar = createElement(documentReference, 'div', { className: 'crucible-studio-agent-bar' }, form, statusBar.row, statusBar.popover);
   const dock = createElement(
     documentReference,
     'aside',
@@ -204,7 +258,7 @@ export function createAgentChatCard({ documentReference, createElement, createIc
     ),
     list,
     noticeArea,
-    form,
+    bar,
   );
 
   function createMessageRow(message) {
@@ -223,6 +277,25 @@ export function createAgentChatCard({ documentReference, createElement, createIc
     target.textContent = text;
   }
 
+  function retryPossible() {
+    return typeof host.retry === 'function' || conversation.lastPersonText !== '';
+  }
+
+  // A failed run the host says costs nothing to repeat gets a button and the word "Free" under its message, until it is pressed or a new run starts.
+  function syncRetryOffer(entry, message) {
+    const offered = message.retryable === true && retryPossible() && !conversation.running;
+    if (entry.retryable === offered) return;
+    entry.retryable = offered;
+    entry.row.dataset.retry = offered ? 'true' : 'false';
+    if (!offered) {
+      entry.row.querySelector('.crucible-studio-agent-retry')?.remove();
+      return;
+    }
+    const button = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-primary-btn', textContent: RETRY_LABEL });
+    button.addEventListener('click', retryRun);
+    entry.row.append(createElement(documentReference, 'span', { className: 'crucible-studio-agent-retry' }, button, createElement(documentReference, 'span', { className: 'crucible-studio-agent-retry-hint', textContent: RETRY_HINT })));
+  }
+
   function syncMessages() {
     const kept = new Set(conversation.messages.map(message => message.id));
     for (const [id, entry] of rendered) {
@@ -234,7 +307,7 @@ export function createAgentChatCard({ documentReference, createElement, createIc
     for (const message of conversation.messages) {
       let entry = rendered.get(message.id);
       if (!entry) {
-        entry = { row: createMessageRow(message), text: null };
+        entry = { row: createMessageRow(message), text: null, retryable: false };
         rendered.set(message.id, entry);
         emptyMark.remove();
         list.append(entry.row);
@@ -243,6 +316,7 @@ export function createAgentChatCard({ documentReference, createElement, createIc
         entry.text = message.text;
         writeText(entry.row, message.text);
       }
+      syncRetryOffer(entry, message);
     }
     const empty = conversation.messages.length === 0;
     list.dataset.empty = empty ? 'true' : 'false';
@@ -254,7 +328,9 @@ export function createAgentChatCard({ documentReference, createElement, createIc
       createIcon(documentReference, NOTICE_ICONS[notice.kind]),
       createElement(documentReference, 'span', { className: 'crucible-studio-agent-notice-text', textContent: notice.message }));
     if (notice.actionLabel) {
-      const button = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-primary-btn', textContent: notice.actionLabel });
+      const button = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-primary-btn' }, createElement(documentReference, 'span', { textContent: notice.actionLabel }));
+      // The button of a quota notice buys credits, so it carries the coin. The words stay, so the icon is only a mark.
+      if (notice.kind.startsWith('quota')) button.prepend(createIcon(documentReference, 'creditToken'));
       button.addEventListener('click', () => {
         conversation.clearNotice(notice.kind);
         render();
@@ -283,6 +359,7 @@ export function createAgentChatCard({ documentReference, createElement, createIc
     noticeArea.replaceChildren(...conversation.notices.map(createNoticeRow));
     noticeArea.hidden = conversation.notices.length === 0;
     dock.dataset.notice = conversation.notices.length > 0 ? 'true' : 'false';
+    statusBar.sync(conversation.status, conversation.usage);
     syncComposer();
   }
 
@@ -324,6 +401,19 @@ export function createAgentChatCard({ documentReference, createElement, createIc
     render();
   }
 
+  async function retryRun() {
+    if (conversation.running || !retryPossible()) return;
+    conversation.beginRetry();
+    render();
+    try {
+      await (typeof host.retry === 'function' ? host.retry() : host.send(conversation.lastPersonText));
+    } catch (error) {
+      receive({ type: 'error', message: errorText(error) });
+    }
+    conversation.finishRun();
+    render();
+  }
+
   form.addEventListener('submit', event => {
     event.preventDefault();
     sendMessage();
@@ -337,7 +427,7 @@ export function createAgentChatCard({ documentReference, createElement, createIc
     sendMessage();
   });
 
-  const unsubscribe = host.subscribe(receive);
+  const unsubscribe = host.subscribe(receive, AGENT_SUBSCRIBE_OPTIONS);
   render();
   return {
     dock,
@@ -348,10 +438,10 @@ export function createAgentChatCard({ documentReference, createElement, createIc
   };
 }
 
-// Below this window height the column cannot stack Scene (at least 192 px), Properties (240 px) and the open card (232 px, 288 px with a
+// Below this window height the column cannot stack Scene (at least 192 px), Properties (240 px) and the open card (252 px, 320 px with a
 // notice) with the gaps and the top bar. Then the card and Properties take turns: both keep their title row in the column and the one
 // that is away folds to it. That turn is not saved: only a fold the person made in a tall window is `agentMinimized`.
-const AGENT_STACK_MINIMUM_HEIGHT = 820;
+const AGENT_STACK_MINIMUM_HEIGHT = 856;
 
 /**
  * Wraps `createAgentChatCard` with the column room/visibility state machine (tall stack, short-window turn-taking, compact overlay).
@@ -452,16 +542,16 @@ export function createAgentPanel({
 }
 
 /** The stylesheet of the card, added to Studio's own. Colours, fonts and spacing come from the --studio tokens. */
-export const AGENT_CHAT_CSS = `
-/* The card at the foot of the column. Its floors (232 px, 288 px with a notice) keep four whole rows in the list; Scene keeps 192 px and
-   Properties 240 px beside it. When the window is too short for all three the card and Properties take turns, each keeping its title row (studio.js). */
+export const AGENT_CHAT_CSS = AGENT_STATUS_CSS + `
+/* The card at the foot of the column. Its floors (252 px, 320 px with a notice) keep four whole rows in the list and the status row whole under the field; Scene keeps 192 px and
+   Properties 240 px beside it. When the window is too short for all three the card and Properties take turns, each keeping its title row. */
 .crucible-studio-side > .crucible-studio-dock.crucible-studio-agent {
   flex: 0 1 var(--studio-agent-height, 240px);
-  min-block-size: 232px;
+  min-block-size: 252px;
   max-block-size: 55%;
   inline-size: var(--studio-properties-width, 284px);
 }
-.crucible-studio-side > .crucible-studio-dock.crucible-studio-agent[data-notice="true"] { min-block-size: 288px; }
+.crucible-studio-side > .crucible-studio-dock.crucible-studio-agent[data-notice="true"] { min-block-size: 320px; }
 .crucible-studio[data-agent-tight="true"] .crucible-studio-side > .crucible-studio-dock.crucible-studio-agent {
   flex: 1 1 0;
   max-block-size: none;
@@ -551,12 +641,21 @@ export const AGENT_CHAT_CSS = `
 }
 .crucible-studio-agent-send strong { font-weight: inherit; }
 .crucible-studio-agent-line { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; }
+.crucible-studio-agent-outcome[data-retry="true"] { flex-wrap: wrap; }
+.crucible-studio-agent-retry {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--studio-space-8);
+  padding-inline-start: var(--studio-space-24);
+}
+.crucible-studio-agent-retry button.crucible-studio-primary-btn { min-block-size: 28px; }
 .crucible-studio-agent-outcome[data-outcome="done"] .crucible-studio-icon { color: var(--studio-ok); }
 .crucible-studio-agent-outcome[data-outcome="failed"] .crucible-studio-icon { color: var(--studio-warning); }
 .crucible-studio-agent-notices {
   display: grid;
   gap: var(--studio-space-8);
-  padding: var(--studio-space-8) var(--studio-space-12);
+  padding: var(--studio-space-8) var(--studio-space-12) 0;
 }
 .crucible-studio-agent-notices[hidden] { display: none; }
 .crucible-studio-agent-notice {
@@ -575,16 +674,16 @@ export const AGENT_CHAT_CSS = `
   padding-inline: var(--studio-space-12);
   background: color-mix(in srgb, var(--studio-text) 7%, transparent);
 }
+.crucible-studio-agent-notice button.crucible-studio-primary-btn .crucible-studio-icon { inline-size: 14px; block-size: 14px; }
 .crucible-studio-agent-notice button.crucible-studio-primary-btn {
+  gap: var(--studio-space-4);
   min-block-size: 28px;
   background: color-mix(in srgb, var(--studio-text) 14%, transparent);
 }
 .crucible-studio-agent-compose {
-  flex: none;
   display: flex;
   align-items: stretch;
   gap: var(--studio-space-8);
-  padding: var(--studio-space-8) var(--studio-space-12);
 }
 .crucible-studio-agent button.crucible-studio-agent-send { min-block-size: 36px; }
 /* Send is the card's one primary action, filled the way the primary button of a dialog is; Stop keeps the quiet wash. */

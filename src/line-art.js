@@ -92,6 +92,10 @@ const NODE_LINE_FIELDS = ['lines', 'silhouetteOnly', 'color'];
 const NODE_MODE = Object.freeze({ normal: 0, off: 1, silhouette: 2 });
 const NODE_TABLE_WIDTH = 1024;
 const OUTLINE_RING_LIMIT = Math.ceil(LINE_ART_LIMITS.width[1] / 2);
+// A 45-degree chamfer bevel turns twice in the same direction across a narrow strip; collapse strips up to this many steps
+// into one centred outline while keeping wider architectural 45-degree planes as separate creases.
+const MAX_BEVEL_SPAN = 10;
+const BEVEL_MONOTONIC_MARGIN = 0.05;
 
 function plainObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`${label} must be a JSON object.`);
@@ -317,13 +321,16 @@ out vec4 outputColor;
 ivec2 lastPixel;
 vec3 edgeColor;
 bool edgeIsConvex;
+float bevelCoverage;
+bool bevelConvex;
 vec3 partAt(ivec2 pixel) { return texelFetch(partTexture, clamp(pixel, ivec2(0), lastPixel), 0).rgb; }
 vec3 normalAt(ivec2 pixel) { return normalize(texelFetch(normalTexture, clamp(pixel, ivec2(0), lastPixel), 0).rgb * 2.0 - 1.0); }
 float depthAt(ivec2 pixel) {
   float ndc = texelFetch(sceneDepth, clamp(pixel, ivec2(0), lastPixel), 0).r * 2.0 - 1.0;
-  return projectionDepth.z > 0.5 ? -(ndc - projectionDepth.y) / projectionDepth.x : (ndc + projectionDepth.x) / projectionDepth.y;
+  return projectionDepth.z > 0.5 ? -(ndc - projectionDepth.y) / projectionDepth.x : projectionDepth.y / (ndc + projectionDepth.x);
 }
 bool hasPart(vec3 part) { return dot(part, vec3(1.0)) > 0.0; }
+bool samePart(vec3 partA, vec3 partB) { return dot(abs(partA - partB), vec3(1.0)) <= 0.001; }
 // Per-node settings: mode 0 draws as usual, 1 draws no line (a neighbour draws none for it either), 2 draws only where the node
 // meets another node or the background.
 struct NodeLine { float mode; float index; vec3 color; };
@@ -339,14 +346,72 @@ NodeLine nodeAt(vec3 part) {
   return node;
 }
 // frontOnly: the line is drawn on the nearer surface only. A boundary between two surfaces at the same depth with parallel
-// normals is flat ground, not a silhouette, and draws nothing. Perspective depth is an inverse depth, orthographic a distance.
+// normals is flat ground, not a silhouette, and draws nothing. Both perspective and orthographic depths are positive eye distances.
 bool drawsOnFrontSide(ivec2 other, vec3 otherPart, vec3 centerNormal, float centerDepth) {
   if (!hasPart(otherPart)) return true;
   float otherDepth = depthAt(other);
-  bool centerIsNearer = projectionDepth.z > 0.5 ? centerDepth <= otherDepth : centerDepth >= otherDepth;
+  bool centerIsNearer = centerDepth <= otherDepth;
   if (!centerIsNearer) return false;
   bool isFlat = abs(centerDepth - otherDepth) < ${COPLANAR_DEPTH} * abs(centerDepth) && dot(centerNormal, normalAt(other)) > ${COPLANAR_NORMAL_COSINE};
   return !isFlat;
+}
+int walkBevelSide(ivec2 start, ivec2 step, vec3 basePart, vec3 baseNormal, out vec3 sideNormal, out int flatRun) {
+  int boundary = -1;
+  flatRun = 0;
+  for (int i = 1; i <= ${MAX_BEVEL_SPAN * 2}; i++) {
+    ivec2 samplePixel = start + step * i;
+    if (!samePart(partAt(samplePixel), basePart)) {
+      if (boundary < 0) return -1;
+      flatRun = ${MAX_BEVEL_SPAN};
+      return boundary;
+    }
+    vec3 candidate = normalAt(samplePixel);
+    if (boundary < 0) {
+      if (i > ${MAX_BEVEL_SPAN}) return -1;
+      if (dot(baseNormal, candidate) < creaseCosine) {
+        sideNormal = candidate;
+        boundary = i;
+      }
+    } else if (dot(sideNormal, candidate) < creaseCosine) {
+      return boundary;
+    } else {
+      flatRun++;
+    }
+  }
+  return boundary;
+}
+bool bevelAlongAxis(ivec2 bevelPixel, ivec2 axis, vec3 basePart, vec3 bevelNormal, out int minusSteps, out int plusSteps, out vec3 sideMinus, out vec3 sidePlus) {
+  int flatMinus;
+  int flatPlus;
+  minusSteps = walkBevelSide(bevelPixel, -axis, basePart, bevelNormal, sideMinus, flatMinus);
+  if (minusSteps < 0) return false;
+  plusSteps = walkBevelSide(bevelPixel, axis, basePart, bevelNormal, sidePlus, flatPlus);
+  int span = minusSteps + plusSteps - 1;
+  if (plusSteps < 0 || span > ${MAX_BEVEL_SPAN} || flatMinus < span || flatPlus < span) return false;
+  return dot(sideMinus, sidePlus) < min(dot(sideMinus, bevelNormal), dot(bevelNormal, sidePlus)) - ${BEVEL_MONOTONIC_MARGIN};
+}
+void recordBevelCoverage(float distSteps, ivec2 axis, vec3 sideMinus, vec3 sidePlus) {
+  float cov = clamp(min(2.0 * halfWidth, halfWidth + 0.5 - distSteps * length(vec2(axis))), 0.0, 1.0);
+  if (cov <= bevelCoverage) return;
+  bevelCoverage = cov;
+  bevelConvex = convexLift > 0.0 && dot(sidePlus - sideMinus, cameraRight * float(axis.x) + cameraUp * float(axis.y)) > 0.0;
+}
+bool bevelOnAnyAxis(ivec2 pixel, vec3 basePart, vec3 baseNormal, vec3 otherNormal, vec2 offsetToPixel, bool isCenter) {
+  ivec2 axes[4] = ivec2[4](ivec2(1, 0), ivec2(0, 1), ivec2(1, 1), ivec2(1, -1));
+  for (int i = 0; i < 4; i++) {
+    ivec2 axis = axes[i];
+    int minusSteps;
+    int plusSteps;
+    vec3 sideMinus;
+    vec3 sidePlus;
+    if (!bevelAlongAxis(pixel, axis, basePart, baseNormal, minusSteps, plusSteps, sideMinus, sidePlus)) continue;
+    if (dot(otherNormal, sideMinus) < creaseCosine && dot(otherNormal, sidePlus) < creaseCosine) continue;
+    float centerOffset = 0.5 * float(plusSteps - minusSteps);
+    float distSteps = isCenter ? abs(centerOffset) : abs(dot(offsetToPixel, vec2(axis)) / dot(vec2(axis), vec2(axis)) + centerOffset);
+    recordBevelCoverage(distSteps, axis, sideMinus, sidePlus);
+    return true;
+  }
+  return false;
 }
 bool differs(ivec2 center, ivec2 other, vec3 centerPart, vec3 centerNormal, float centerDepth, NodeLine centerNode) {
   edgeIsConvex = false;
@@ -355,7 +420,7 @@ bool differs(ivec2 center, ivec2 other, vec3 centerPart, vec3 centerNormal, floa
   bool centerDrawn = hasPart(centerPart);
   if (otherNode.mode == 1.0) return false;
   bool silhouetteOnly = centerDrawn && centerNode.mode == 2.0;
-  if (useBoundaries > 0.5 && dot(abs(otherPart - centerPart), vec3(1.0)) > 0.001 && (!silhouetteOnly || otherNode.index != centerNode.index)) {
+  if (useBoundaries > 0.5 && !samePart(otherPart, centerPart) && (!silhouetteOnly || otherNode.index != centerNode.index)) {
     if (frontOnly > 0.5 && (!centerDrawn || !drawsOnFrontSide(other, otherPart, centerNormal, centerDepth))) return false;
     edgeColor = centerDrawn ? centerNode.color : otherNode.color;
     return true;
@@ -363,9 +428,11 @@ bool differs(ivec2 center, ivec2 other, vec3 centerPart, vec3 centerNormal, floa
   if (!silhouetteOnly && creaseCosine > -1.5 && centerDrawn && hasPart(otherPart)) {
     vec3 otherNormal = normalAt(other);
     if (dot(centerNormal, otherNormal) >= creaseCosine) return false;
+    vec2 delta = vec2(other - center);
+    if (bevelOnAnyAxis(center, centerPart, centerNormal, otherNormal, delta, true)) return false;
+    if (bevelOnAnyAxis(other, centerPart, otherNormal, centerNormal, delta, false)) return false;
     // Convex when the surface turns away from the viewer across the step from this pixel to the other one.
-    vec2 stepToOther = vec2(other - center);
-    edgeIsConvex = convexLift > 0.0 && dot(otherNormal - centerNormal, cameraRight * stepToOther.x + cameraUp * stepToOther.y) > 0.0;
+    edgeIsConvex = convexLift > 0.0 && dot(otherNormal - centerNormal, cameraRight * delta.x + cameraUp * delta.y) > 0.0;
     return true;
   }
   return false;
@@ -373,14 +440,38 @@ bool differs(ivec2 center, ivec2 other, vec3 centerPart, vec3 centerNormal, floa
 bool depthEdge(ivec2 center, ivec2 offset, float centerDepth) {
   float plusDepth = depthAt(center + offset);
   float minusDepth = depthAt(center - offset);
-  float jump = abs(plusDepth + minusDepth - 2.0 * centerDepth);
+  // Perspective 1/depth is linear across a flat tilted plane, so compare against the harmonic mean to avoid false triggers at grazing angles.
+  float expectedDepth = projectionDepth.z > 0.5
+    ? 0.5 * (plusDepth + minusDepth)
+    : (2.0 * plusDepth * minusDepth) / max(plusDepth + minusDepth, 1e-6);
+  float jump = 2.0 * abs(expectedDepth - centerDepth);
   if (jump <= depthJump * abs(centerDepth)) return false;
   if (frontOnly < 0.5) return true;
   // frontOnly: a pixel at the far end of the step draws nothing.
-  bool isOrthographic = projectionDepth.z > 0.5;
-  float farthestDepth = isOrthographic ? max(plusDepth, minusDepth) : min(plusDepth, minusDepth);
-  float nearerBy = isOrthographic ? farthestDepth - centerDepth : centerDepth - farthestDepth;
+  float farthestDepth = max(plusDepth, minusDepth);
+  float nearerBy = farthestDepth - centerDepth;
   return nearerBy > ${NEARER_DEPTH_MARGIN} * abs(centerDepth);
+}
+void checkInteriorBevel(ivec2 pixel, vec3 centerPart, vec3 centerNormal) {
+  ivec2 axes[4] = ivec2[4](ivec2(1, 0), ivec2(0, 1), ivec2(1, 1), ivec2(1, -1));
+  for (int i = 0; i < 4; i++) {
+    ivec2 axis = axes[i];
+    bool nearChange = false;
+    for (int probe = 3; probe <= 5; probe += 2) {
+      for (int dir = -1; dir <= 1; dir += 2) {
+        ivec2 samplePixel = pixel + axis * (probe * dir);
+        if (samePart(partAt(samplePixel), centerPart) && dot(centerNormal, normalAt(samplePixel)) < creaseCosine) nearChange = true;
+      }
+    }
+    if (!nearChange) continue;
+    int minusSteps;
+    int plusSteps;
+    vec3 sideMinus;
+    vec3 sidePlus;
+    if (bevelAlongAxis(pixel, axis, centerPart, centerNormal, minusSteps, plusSteps, sideMinus, sidePlus)) {
+      recordBevelCoverage(0.5 * abs(float(plusSteps - minusSteps)), axis, sideMinus, sidePlus);
+    }
+  }
 }
 bool ringHasEdge(ivec2 center, int ring, vec3 centerPart, vec3 centerNormal, float centerDepth, NodeLine centerNode) {
   int diagonal = max(1, int(round(float(ring) * 0.70710678)));
@@ -401,6 +492,8 @@ void main() {
   float centerDepth = depthAt(pixel);
   NodeLine centerNode = nodeAt(centerPart);
   edgeColor = centerNode.color;
+  bevelCoverage = 0.0;
+  bevelConvex = false;
   float fullRings = floor(halfWidth);
   float partial = halfWidth - fullRings;
   float coverage = 0.0;
@@ -410,6 +503,14 @@ void main() {
       coverage = float(ring) <= fullRings ? 1.0 : partial;
       break;
     }
+  }
+  if (coverage < 1.0 && creaseCosine > -1.5 && hasPart(centerPart) && centerNode.mode == 0.0) {
+    checkInteriorBevel(pixel, centerPart, centerNormal);
+  }
+  if (bevelCoverage > coverage) {
+    coverage = bevelCoverage;
+    edgeColor = centerNode.color;
+    edgeIsConvex = bevelConvex;
   }
   vec3 ink = edgeColor;
   if (darkenFactor >= 0.0) ink = source.rgb * darkenFactor;

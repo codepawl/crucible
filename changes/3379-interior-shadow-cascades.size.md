@@ -1,0 +1,2 @@
+- entry:cascaded-shadows: receiver-plane slope bias on soft sun blocker and filter taps, wider 48-texel penumbra clamp for close slices, and shared scene-file cascade resolution for sunAngularRadius (#3379)
+- scene:agent-scene+lazy: same soft-sun cascade shader and scene-file resolution in the lazy cascaded-shadows addon (#3379)

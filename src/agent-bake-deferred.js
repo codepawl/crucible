@@ -40,9 +40,11 @@ export function* deferredBakeSteps({ parts, snapshots, lighting, settings }, set
 // scene drew before (its baked light, floor sky and reflections). A part whose mesh changed, or whose material changed, is
 // drawn without light, because the old light has the old shape or the old colour in it.
 function partsKeepingLastLight(sourceRestParts, previous, unlitNames) {
-  const previousSource = new Map(previous.sourceRestParts.map(part => [part.name, part]));
-  const previousDrawn = new Map(previous.restParts.map(part => [part.name, part]));
-  return Object.freeze(sourceRestParts.map(part => (previousSource.get(part.name) === part && !unlitNames.has(part.name) ? previousDrawn.get(part.name) ?? part : part)));
+  // The parts of a node with material slots share its name, so they are told apart by slot.
+  const keyOf = part => (part.materialSlot === undefined ? part.name : `${part.name}#slot-${part.materialSlot}`);
+  const previousSource = new Map(previous.sourceRestParts.map(part => [keyOf(part), part]));
+  const previousDrawn = new Map(previous.restParts.map(part => [keyOf(part), part]));
+  return Object.freeze(sourceRestParts.map(part => (previousSource.get(keyOf(part)) === part && !unlitNames.has(part.name) ? previousDrawn.get(keyOf(part)) ?? part : part)));
 }
 
 function nodesOfChangedMaterials(recipe, stagedMaterialSnapshots) {

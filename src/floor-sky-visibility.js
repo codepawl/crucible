@@ -123,13 +123,13 @@ export function interiorWeight(escapedShare, softEdge) {
  * colour, in proportion to the share of the point's light that is fill and not at all where the sun reaches the point.
  * Each traced part is `{ skyVisibility, escapedShares, nearShares, sunlit, colors, tracedVertices, albedo }`; their `skyVisibility` and `colors` are changed in place.
  */
-function applyInteriorFill(tracedParts, openShare, softEdge = false) {
+function applyInteriorFill(tracedParts, openShare, softEdge = false, { tinted = true } = {}) {
   let count = 0;
   const albedoTotal = [0, 0, 0];
-  for (const { escapedShares, tracedVertices, albedo, levelOfPart = false } of tracedParts) {
+  for (const { escapedShares, tracedVertices, albedo, vertexWeight = 1, levelOfPart = false } of tracedParts) {
     if (levelOfPart) continue;
     for (const vertex of tracedVertices) {
-      const weight = interiorWeight(escapedShares[vertex], softEdge);
+      const weight = interiorWeight(escapedShares[vertex], softEdge) * vertexWeight;
       if (weight === 0) continue;
       count += weight;
       for (let channel = 0; channel < 3; channel++) albedoTotal[channel] += albedo[channel] * weight;
@@ -147,6 +147,7 @@ function applyInteriorFill(tracedParts, openShare, softEdge = false) {
       const lifted = Math.min(1, skyVisibility[vertex] + pointFill);
       const fillShare = sunlit[vertex] || lifted === 0 ? 0 : (lifted - skyVisibility[vertex]) / lifted;
       skyVisibility[vertex] = lifted;
+      if (!tinted) continue;
       for (let channel = 0; channel < 3; channel++) colors[vertex * 3 + channel] *= 1 + fillShare * (tint[channel] - 1);
     }
   }
@@ -473,14 +474,29 @@ function allVertices(count) {
   return Array.from({ length: count }, (unused, index) => index);
 }
 
+// What the room opens to the sky, area-weighted over room surfaces (excluding exterior roof and ground faces with escaped > 0.5, #2771).
+function measuredOpenShare(tracedParts) {
+  let total = 0;
+  let weightTotal = 0;
+  for (const { escapedShares, vertexWeight = 1, levelOfPart = false } of tracedParts) {
+    if (levelOfPart) continue;
+    for (let vertex = 0; vertex < escapedShares.length; vertex++) {
+      if (escapedShares[vertex] > 0.5) continue;
+      total += escapedShares[vertex] * vertexWeight;
+      weightTotal += vertexWeight;
+    }
+  }
+  return weightTotal ? total / weightTotal : 0;
+}
+
 /**
  * The sky trace through the occupancy grid of src/sky-voxel-proxy.js, for a scene the triangle trace cannot take: more
  * triangles than the bake allows or more rays than the budget (#2771). The meshes are not cut; every vertex of the traced
  * parts, and of each level of their `lods`, reads the grid's value for its cell and normal, so the cost follows the scene's
  * size and not its triangle count. `report.method` is 'proxy' and `report.fallbackReason` says why the triangle trace was
- * left. Buried points and the sunlit test are not available here: every interior point takes the fill.
+ * left. Buried points and the sunlit test are not available here: every interior point takes the untinted fill.
  */
-function applyProxySkyVisibility({ parts, occluders, floorIndices, everySurface, everyPart = false, strength, roomShare, started }, fallbackReason) {
+function applyProxySkyVisibility({ parts, occluders, floorIndices, everySurface, everyPart = false, strength, started }, fallbackReason) {
   const grid = buildOccupancyGrid(occluders);
   const proxy = createSkyProxy(grid);
   const tracedIndices = everyPart ? parts.map((part, index) => index).filter(index => isFloorMaterial(parts[index].material) && hasPlainMesh(parts[index])) : everySurface ? parts.map((part, index) => index).filter(index => floorIndices.includes(index) || (isFloorMaterial(parts[index].material) && hasPlainMesh(parts[index]))) : floorIndices;
@@ -497,17 +513,18 @@ function applyProxySkyVisibility({ parts, occluders, floorIndices, everySurface,
       const escaped = geometrySkyVisibility(proxy, level.geometry, part.matrix, 1);
       if (escaped === null) return finish('sky proxy budget spent');
       const skyVisibility = escaped.map(share => 1 - strength * (1 - share));
-      const geometry = Object.freeze(geometryWithSky(level.geometry, skyVisibility, everySurface));
+      const geometry = Object.freeze(geometryWithSky(level.geometry, skyVisibility, false));
       nextLevels.push({ ...level, geometry });
       const vertexCount = skyVisibility.length;
+      const vertexWeight = levelIndex === 0 && vertexCount > 0 ? worldSurfaceArea(part) / vertexCount : 1;
       const floor = levelIndex === 0 ? { name: part.name, texels: vertexCount, triangles: level.geometry.indices.length / 3, meanVisibility: 1 } : null;
       if (floor) floors.push(floor);
-      tracedParts.push({ floor, skyVisibility, escapedShares: escaped, nearShares: new Float32Array(vertexCount), sunlit: new Uint8Array(vertexCount), colors: geometry.colors, tracedVertices: allVertices(vertexCount), albedo, levelOfPart: levelIndex > 0 });
+      tracedParts.push({ floor, skyVisibility, escapedShares: escaped, nearShares: new Float32Array(vertexCount), sunlit: new Uint8Array(vertexCount), colors: geometry.colors, tracedVertices: allVertices(vertexCount), albedo, vertexWeight, levelOfPart: levelIndex > 0 });
     }
     const [levelZero] = nextLevels;
     nextParts[index] = Object.freeze(part.lods ? { ...part, geometry: levelZero.geometry, lods: nextLevels } : { ...part, geometry: levelZero.geometry });
   }
-  const interiorFill = everySurface ? applyInteriorFill(tracedParts, 1 - roomShare) : 0;
+  const interiorFill = everySurface ? applyInteriorFill(tracedParts, measuredOpenShare(tracedParts), false, { tinted: false }) : 0;
   for (const { floor, skyVisibility } of tracedParts) {
     if (!floor) continue;
     let sum = 0;
