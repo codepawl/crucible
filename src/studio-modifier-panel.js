@@ -1,6 +1,7 @@
 import { createPropertyLine } from './studio-property-panel.js';
 import { CONVERTIBLE_PRIMITIVES, planOwnMesh } from './studio-own-mesh.js';
 import { MAX_ARRAY_COUNT, MAX_STACK_NODES } from './mesh-operations.js';
+import { hasStudioTab, registerStudioTab } from './studio-registry.js';
 
 // The Modifiers tab of the Properties editor: the stack of modifiers as collapsible panels, each
 // with a header (name, show in viewport, apply, delete, move) and its main fields, and an Add Modifier menu above them.
@@ -364,4 +365,20 @@ export function createModifierPanel({ documentReference, controller, announce, b
   });
 
   return { element, sync };
+}
+
+if (!hasStudioTab('modifiers')) {
+  registerStudioTab({
+    id: 'modifiers',
+    label: 'Modifiers',
+    order: 20,
+    workspaces: ['build'],
+    bodyClassName: 'crucible-studio-panel-body crucible-studio-modifier-body',
+    createPanel: ({ documentReference, controller, announce, builders }) => createModifierPanel({
+      documentReference,
+      controller,
+      announce,
+      builders,
+    }),
+  });
 }

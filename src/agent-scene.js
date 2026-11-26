@@ -63,16 +63,96 @@ const PENDING_CUTTER_SCOPE = Object.freeze({ definitions: null, chain: Object.fr
 const TERRAIN_SKY_VISIBILITY_BYTES = 4;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
 // Per-node render flags: `visible` hides a node and its children; the rest become renderer part flags of a mesh node.
-const RENDER_FLAG_FIELDS = ['visible', 'castShadow', 'receiveShadow', 'holdout', 'shadowCatcher', 'shadowOnly'];
+const RENDER_FLAG_FIELDS = [
+  'visible',
+  'castShadow',
+  'receiveShadow',
+  'holdout',
+  'shadowCatcher',
+  'shadowOnly',
+];
 const PART_FLAG_FIELDS = RENDER_FLAG_FIELDS.slice(1);
 // On an asset placement these two flags reach each part it expands to.
-const ASSET_PLACEMENT_FLAG_FIELDS = ['castShadow', 'receiveShadow'];
-const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'vegetation', 'clutter', 'grass', 'decal', 'faceImages', 'depthLayer', 'billboard', 'blend', 'rayVisibility', ...RENDER_FLAG_FIELDS];
-const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'alphaCutoff', 'doubleSided', 'depthTest', 'pattern', 'map', 'text', 'subsurface', 'snippet', 'preset', 'waterPreset', 'absorption', 'turbidity', 'foamEdge', 'foamWidth', 'foamColor', 'foamVeins', 'contactFoam', 'caustics', 'ripples', 'waterRamp', 'aov', 'wear', 'surfaceCover', 'retro', 'emissionMask', 'toonColors', ...MATERIAL_LAYER_FIELDS];
-const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'layerMaps', 'transmissionMap', 'aovMap', 'emissionFresnel', 'boxMapScale', 'boxMapAxis'];
+const ASSET_PLACEMENT_FLAG_FIELDS = [
+  'castShadow',
+  'receiveShadow',
+];
+const NODE_FIELDS = [
+  'translation',
+  'rotation',
+  'scale',
+  'parent',
+  'label',
+  'geometry',
+  'material',
+  'skin',
+  'relations',
+  'asset',
+  'vegetation',
+  'clutter',
+  'grass',
+  'decal',
+  'faceImages',
+  'depthLayer',
+  'billboard',
+  'blend',
+  'rayVisibility',
+  ...RENDER_FLAG_FIELDS,
+];
+// Optional/newer material fields join this sorted list (one per line) so parallel pull requests never collide while core packed key order stays identical.
+const EXTRA_MATERIAL_FIELDS = [
+  'waterGlint',
+];
+const MATERIAL_FIELDS = [
+  'color',
+  'metallic',
+  'roughness',
+  'emission',
+  'emissiveColor',
+  'opacity',
+  'alphaMode',
+  'alphaCutoff',
+  'doubleSided',
+  'depthTest',
+  'pattern',
+  'map',
+  'text',
+  'subsurface',
+  'snippet',
+  'preset',
+  'waterPreset',
+  'absorption',
+  'turbidity',
+  'foamEdge',
+  'foamWidth',
+  'foamColor',
+  'foamVeins',
+  'contactFoam',
+  'caustics',
+  'ripples',
+  'waterRamp',
+  'aov',
+  'wear',
+  'surfaceCover',
+  'retro',
+  'emissionMask',
+  'toonColors',
+  ...MATERIAL_LAYER_FIELDS,
+  ...EXTRA_MATERIAL_FIELDS,
+];
+const PATTERN_TEXTURE_FIELDS = [
+  'map',
+  'normalMap',
+  'metallicRoughnessMap',
+  'emissiveMap',
+  'layerMaps',
+  'transmissionMap',
+  'aovMap',
+  'emissionFresnel',
+  'boxMapScale',
+  'boxMapAxis',
+];
 const CAMERA_FIELDS = [...Object.keys(CAMERA_DEFAULTS), ...CAMERA_LENS_FIELDS];
-// Fields of an optional shader module join the list here, so the long list above stays a line each material feature does not rewrite.
-MATERIAL_FIELDS.push('waterGlint');
 const LOOK_OPERATION_FIELDS = Object.freeze({
   'set-environment': 'environment',
   'set-effects': 'effects',
@@ -632,10 +712,16 @@ function cameraFrom(value = {}) {
 }
 
 const GEOMETRY_FIELDS = {
-  box: ['bevel', 'subdivisions'], cylinder: ['segments', 'bevel', 'bevelSegments'],
-  sphere: ['segments', 'rings'], grid: ['segments'], plane: ['segments'],
-  cone: ['radiusTop', 'radiusBottom', 'segments'], icoSphere: ['subdivisions'], circle: ['segments', 'innerRadius'],
-  line: ['from', 'to', 'radius', 'radialSegments'], torus: ['tubeRadius', 'segments', 'sides', 'arc', 'start'],
+  box: ['bevel', 'subdivisions'],
+  cylinder: ['segments', 'bevel', 'bevelSegments'],
+  sphere: ['segments', 'rings'],
+  grid: ['segments'],
+  plane: ['segments'],
+  cone: ['radiusTop', 'radiusBottom', 'segments'],
+  icoSphere: ['subdivisions'],
+  circle: ['segments', 'innerRadius'],
+  line: ['from', 'to', 'radius', 'radialSegments'],
+  torus: ['tubeRadius', 'segments', 'sides', 'arc', 'start'],
   lathe: ['profile', 'segments', 'startAngle', 'sweep'],
   extrude: ['contour', 'holes', 'depth', 'steps', 'bevel', 'bevelThickness', 'bevelSegments'],
   tube: ['path', 'radius', 'segments', 'radialSegments', 'closed'],

@@ -7,6 +7,7 @@ import { agentSceneModule } from './agent-scene-modules.js';
 import { operationsBetweenRecipes, sameRecipeValue } from './studio-history-diff.js';
 import { EDIT_LABEL_FALLBACK, GIZMO_EDIT_LABELS, nameEditOperations, nameEditTarget, nodeLabelIn } from './studio-edit-names.js';
 import { MAX_POINT_LIGHTS, MAX_AREA_LIGHTS, MAX_SPOT_LIGHTS } from './light-limits.js';
+import { registeredStudioTabIds } from './studio-registry.js';
 import {
   STUDIO_MATERIAL_PRESETS,
   STUDIO_PRIMITIVE_GROUPS,
@@ -1206,8 +1207,10 @@ export function createStudioController({
   }
 
   function setActiveTab(tab) {
-    if (!STUDIO_TABS.includes(tab)) {
-      throw new RangeError(`Unknown Studio tab "${String(tab)}". Use one of ${STUDIO_TABS.join(', ')}.`);
+    const registered = registeredStudioTabIds();
+    const validTabs = registered.length > 0 ? registered : STUDIO_TABS;
+    if (!validTabs.includes(tab)) {
+      throw new RangeError(`Unknown Studio tab "${String(tab)}". Use one of ${validTabs.join(', ')}.`);
     }
     activeTab = tab;
     notify({ kind: 'tab' });
