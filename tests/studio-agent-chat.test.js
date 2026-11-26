@@ -8,6 +8,9 @@ import {
   createAgentConversation,
   parseAgentChatEvent,
 } from '../src/studio-agent-chat.js';
+import { AGENT_SUBSCRIBE_OPTIONS } from '../src/studio-agent-chat.js';
+import { AGENT_STATUS_LIMITS, agentUsageLevel } from '../src/studio-agent-status.js';
+import { STUDIO_ICON_PATHS } from '../src/studio-icons.js';
 import { normalizeStudioPreferences } from '../src/studio-preferences.js';
 import { byText, createFakeRenderer, dispatch, installStudioDom } from './support/studio-dom.mjs';
 
@@ -221,8 +224,8 @@ test('reply text is shown as text, never as markup', testContext => {
 test('an event type or notice kind from a newer host is skipped without a notice or a row', testContext => {
   const sample = createSampleHost();
   const ui = mountWithHost(testContext, { host: sample.host });
-  sample.emit({ type: 'usage', used: 3, limit: 10 });
-  sample.emit({ type: 'notice', kind: 'quota-warning', message: 'Half of the credits are used' });
+  sample.emit({ type: 'billing', plan: 'studio' });
+  sample.emit({ type: 'notice', kind: 'maintenance', message: 'Back at noon' });
   assert.equal(ui.notices().textContent, '');
   assert.equal(ui.rows().length, 0);
   sample.emit({ type: 'text', text: 'Still here' });
@@ -396,4 +399,326 @@ test('the card is marked while a notice shows, so the stylesheet can keep four r
   assert.equal(ui.card().dataset.notice, 'false');
   sample.emit({ type: 'notice', kind: 'error', message: 'Not reachable' });
   assert.equal(ui.card().dataset.notice, 'true');
+});
+
+function statusParts(ui) {
+  const query = selector => ui.root.querySelector(selector);
+  return {
+    row: query('.crucible-studio-agent-status'),
+    ring: query('.crucible-studio-agent-usage'),
+    arc: query('.crucible-studio-agent-ring-arc'),
+    tip: query('.crucible-studio-agent-usage-tip'),
+    items: () => ui.root.querySelectorAll('.crucible-studio-agent-status-item').map(item => [item.dataset.field, item.textContent]),
+    document: ui.root.ownerDocument,
+  };
+}
+
+test('a status event keeps the model, effort and mode as trimmed text and drops the rest', () => {
+  assert.deepEqual(parseAgentChatEvent({ type: 'status', model: '  Fable 5.2 ', effort: 'high', mode: 'Plan', extra: 1, usage: { used: 1, limit: 2 } }), { type: 'status', model: 'Fable 5.2', effort: 'high', mode: 'Plan' });
+  assert.deepEqual(parseAgentChatEvent({ type: 'status', model: 7, effort: '   ', mode: null }), { type: 'status' });
+  assert.equal(parseAgentChatEvent({ type: 'status', model: 'm'.repeat(100) }).model.length, AGENT_STATUS_LIMITS.valueLength);
+});
+
+test('a usage event holds used between 0 and the limit, gives the credits left and parses the reset time', () => {
+  const usage = parseAgentChatEvent({ type: 'usage', used: 38, limit: 50, unit: ' tokens ', resetsAt: '2026-12-01T12:00:00Z', extra: 1 });
+  assert.deepEqual(usage, { type: 'usage', used: 38, remaining: 12, limit: 50, unit: 'tokens', resetsAt: Date.parse('2026-12-01T12:00:00Z') });
+  assert.equal(parseAgentChatEvent({ type: 'usage', used: 3, limit: 50 }).unit, 'credits');
+  assert.equal(parseAgentChatEvent({ type: 'usage', used: 3, limit: 50, resetsAt: 1796126400000 }).resetsAt, 1796126400000);
+  assert.deepEqual([parseAgentChatEvent({ type: 'usage', used: 80, limit: 50 }).used, parseAgentChatEvent({ type: 'usage', used: 80, limit: 50 }).remaining], [50, 0], 'above the limit is clamped');
+  assert.equal(parseAgentChatEvent({ type: 'usage', used: -4, limit: 50 }).remaining, 50, 'below zero is clamped');
+  assert.equal(parseAgentChatEvent({ type: 'usage', used: 3, limit: 50, resetsAt: 'someday' }).resetsAt, undefined);
+});
+
+test('a usage whose numbers are not finite, or whose limit is not above zero, is ignored', testContext => {
+  const invalid = [{ used: '12', limit: 50 }, { used: 12, limit: 0 }, { used: 12, limit: -5 }, { used: Number.NaN, limit: 50 }, { used: 5, limit: Infinity }, { limit: 50 }, { used: 5 }, {}];
+  for (const fields of invalid) {
+    assert.deepEqual(parseAgentChatEvent({ type: 'usage', ...fields }), { type: 'usage' }, JSON.stringify(fields));
+  }
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  sample.emit({ type: 'usage', used: 10, limit: 50 });
+  sample.emit({ type: 'usage', used: 'lots', limit: 50 });
+  assert.equal(statusParts(ui).ring.dataset.level, 'plenty', 'the ring stays as it was');
+  assert.equal(statusParts(ui).ring.getAttribute('aria-label'), '40 of 50 credits left');
+});
+
+test('the levels follow the share used: plenty under 50%, half to 80%, low to 100%, empty at 100%', () => {
+  assert.equal(agentUsageLevel({ used: 49.9, limit: 100 }), 'plenty');
+  assert.equal(agentUsageLevel({ used: 50, limit: 100 }), 'half');
+  assert.equal(agentUsageLevel({ used: 79.9, limit: 100 }), 'half');
+  assert.equal(agentUsageLevel({ used: 80, limit: 100 }), 'low');
+  assert.equal(agentUsageLevel({ used: 99.9, limit: 100 }), 'low');
+  assert.equal(agentUsageLevel({ used: 100, limit: 100 }), 'empty');
+});
+
+test('without a status or usage the card has no row and no ring', testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  const parts = statusParts(ui);
+  assert.equal(parts.row.hidden, true);
+  assert.deepEqual(parts.items(), []);
+  assert.equal(parts.ring.hidden, true);
+});
+
+test('a usage alone shows the ring with no row, and a status alone shows the row with no ring', testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  const parts = statusParts(ui);
+  sample.emit({ type: 'usage', used: 10, limit: 50 });
+  assert.equal(parts.ring.hidden, false);
+  assert.equal(parts.row.hidden, true);
+  sample.emit({ type: 'status', model: 'Fable 5.2' });
+  assert.equal(parts.ring.hidden, false, 'a status leaves the ring alone');
+  sample.emit({ type: 'status' });
+  assert.equal(parts.ring.hidden, false);
+  assert.equal(parts.row.hidden, true);
+});
+
+test('a partial status shows only the values the host gave, in the order model, effort, mode', testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  const parts = statusParts(ui);
+  sample.emit({ type: 'status', mode: 'Plan', model: 'Fable 5.2' });
+  assert.deepEqual(parts.items(), [['model', 'Fable 5.2'], ['mode', 'Plan']]);
+  assert.equal(parts.ring.hidden, true, 'no usage, no ring');
+  sample.emit({ type: 'status', effort: 'high' });
+  assert.deepEqual(parts.items(), [['effort', 'high']], 'the newest status replaces the whole one');
+  sample.emit({ type: 'status' });
+  assert.equal(parts.row.hidden, true);
+});
+
+test('the ring shows the share left at each level and names it for a screen reader', testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  const parts = statusParts(ui);
+  const cases = [
+    [{ used: 10, limit: 50 }, 'plenty', '80', '40 of 50 credits left'],
+    [{ used: 25, limit: 50 }, 'half', '50', '25 of 50 credits left'],
+    [{ used: 40, limit: 50 }, 'low', '20', '10 of 50 credits left'],
+    [{ used: 50, limit: 50, unit: 'tokens' }, 'empty', '0', '0 of 50 tokens left'],
+  ];
+  for (const [usage, level, fill, name] of cases) {
+    sample.emit({ type: 'usage', ...usage });
+    assert.equal(parts.ring.hidden, false);
+    assert.equal(parts.ring.dataset.level, level);
+    assert.equal(parts.arc.style['--studio-agent-ring-fill'], fill);
+    assert.equal(parts.ring.getAttribute('aria-label'), name);
+  }
+  assert.equal(parts.ring.textContent, '', 'the ring button holds only the drawing');
+});
+
+test('a look that asks for it shows the share left at the end of the status row at low and empty only, and makes the row appear alone', testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  const parts = statusParts(ui);
+  const shareText = () => ui.root.querySelector('.crucible-studio-agent-status-share')?.textContent;
+  sample.emit({ type: 'usage', used: 42, limit: 50 });
+  assert.equal(shareText(), undefined, 'off unless the card asks');
+  assert.equal(parts.row.hidden, true);
+  ui.root.querySelector('.crucible-studio-agent').dataset.usageShare = 'true';
+  sample.emit({ type: 'usage', used: 42, limit: 50 });
+  assert.equal(shareText(), '16% left');
+  assert.equal(parts.row.hidden, false, 'with no status the row shows just the share');
+  sample.emit({ type: 'status', model: 'Fable 5.2' });
+  assert.equal(parts.row.children.at(-1).className, 'crucible-studio-agent-status-share', 'the share is the last item of the row');
+  sample.emit({ type: 'usage', used: 50, limit: 50 });
+  assert.equal(shareText(), '0% left');
+  sample.emit({ type: 'usage', used: 25, limit: 50 });
+  assert.equal(shareText(), undefined, 'half and plenty show no share');
+});
+
+test('a second outcome with nothing between it and the first replaces that row instead of adding one', testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  ui.type('Make it blue');
+  ui.pressEnter();
+  sample.emit({ type: 'done' });
+  sample.emit({ type: 'done', retryFree: true });
+  assert.equal(ui.rows().filter(row => row.dataset.outcome).length, 1, 'one outcome row, not two');
+  assert.equal(retryButton(ui).textContent, 'Try again', 'the newer outcome is the one shown');
+  sample.emit({ type: 'error', message: 'It broke' });
+  assert.equal(ui.rows().filter(row => row.dataset.outcome).length, 1);
+  assert.equal(ui.rows().at(-1).dataset.outcome, 'failed');
+});
+
+test('a usage that arrives during a run updates the ring and the run goes on', testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  const parts = statusParts(ui);
+  sample.emit({ type: 'usage', used: 20, limit: 50 });
+  ui.type('Hello');
+  ui.pressEnter();
+  assert.equal(ui.sendButton().textContent, 'Stop');
+  sample.emit({ type: 'usage', used: 42, limit: 50 });
+  assert.equal(parts.ring.dataset.level, 'low');
+  assert.equal(ui.sendButton().textContent, 'Stop');
+  sample.emit({ type: 'done' });
+  assert.equal(parts.ring.dataset.level, 'low', 'an outcome does not clear the usage');
+});
+
+test('the popover shows the numbers and the reset day on hover or focus and closes on Esc and on leaving', testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  const parts = statusParts(ui);
+  sample.emit({ type: 'usage', used: 38, limit: 50, resetsAt: '2026-12-01T12:00:00Z' });
+  assert.match(parts.ring.getAttribute('aria-label'), /^12 of 50 credits left\. Resets \d+ Dec$/);
+  assert.equal(parts.tip.popoverOpen, false);
+  dispatch(parts.ring, 'pointerenter');
+  assert.equal(parts.tip.popoverOpen, true);
+  assert.match(parts.tip.textContent, /12 of 50 credits left/);
+  assert.match(parts.tip.textContent, /Resets \d+ Dec/);
+  dispatch(parts.ring, 'pointerleave');
+  assert.equal(parts.tip.popoverOpen, false);
+  parts.ring.focus();
+  assert.equal(parts.tip.popoverOpen, true, 'keyboard focus opens it');
+  dispatch(parts.document, 'keydown', { key: 'Escape' });
+  assert.equal(parts.tip.popoverOpen, false, 'Esc closes it');
+  dispatch(parts.ring, 'focusout');
+  dispatch(parts.ring, 'focusin');
+  assert.equal(parts.tip.popoverOpen, true, 'focusing again opens it again');
+});
+
+test('the popover shows the coin before the numbers, hidden from a screen reader, and has no reset line without a time', testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  const parts = statusParts(ui);
+  sample.emit({ type: 'usage', used: 38, limit: 50 });
+  dispatch(parts.ring, 'pointerenter');
+  assert.equal(parts.tip.textContent, '12 of 50 credits left');
+  const coin = parts.tip.querySelector('svg');
+  assert.equal(coin.getAttribute('aria-hidden'), 'true');
+  assert.equal(coin.querySelector('path').getAttribute('d'), STUDIO_ICON_PATHS.creditToken);
+  assert.equal(parts.tip.querySelector('.crucible-studio-agent-usage-line').firstElementChild, coin);
+});
+
+test('the action button of a quota notice carries the coin and the other notices do not', testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  sample.emit({ type: 'notice', kind: 'quota', message: 'No credits left', actionLabel: 'Buy credits', action: () => {} });
+  const quotaButton = ui.notices().querySelector('button');
+  assert.equal(quotaButton.textContent, 'Buy credits');
+  assert.equal(quotaButton.querySelector('svg').querySelector('path').getAttribute('d'), STUDIO_ICON_PATHS.creditToken);
+  sample.emit({ type: 'notice', kind: 'error', message: 'Not reachable', actionLabel: 'Try again', action: () => {} });
+  const errorRow = ui.notices().querySelectorAll('.crucible-studio-agent-notice').find(row => row.dataset.kind === 'error');
+  assert.equal(errorRow.querySelector('button').querySelectorAll('svg').length, 0);
+});
+
+test('a quota-warning notice has the warning triangle, the exhausted quota notice an empty ring and an unknown kind is skipped', testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  const markOf = kind => ui.notices().querySelectorAll('.crucible-studio-agent-notice').find(row => row.dataset.kind === kind).querySelector('svg').querySelector('path').getAttribute('d');
+  sample.emit({ type: 'notice', kind: 'quota-warning', message: 'Credits are running low', actionLabel: 'Buy credits', action: () => {} });
+  sample.emit({ type: 'notice', kind: 'quota', message: 'No credits left' });
+  sample.emit({ type: 'notice', kind: 'error', message: 'Not reachable' });
+  const marks = [markOf('quota-warning'), markOf('quota'), markOf('error')];
+  assert.equal(marks[0], STUDIO_ICON_PATHS.warning);
+  assert.equal(marks[1], STUDIO_ICON_PATHS.usageEmpty);
+  assert.equal(marks[2], STUDIO_ICON_PATHS.error);
+  assert.equal(new Set(marks).size, 3, 'three shapes');
+  assert.equal(ui.notices().querySelectorAll('.crucible-studio-agent-notice').length, 3);
+  sample.emit({ type: 'notice', kind: 'weather', message: 'Rain' });
+  assert.equal(ui.notices().querySelectorAll('.crucible-studio-agent-notice').length, 3, 'an unknown kind is skipped');
+});
+
+async function failRunWith(ui, sample, properties) {
+  ui.type('Make it blue');
+  ui.pressEnter();
+  sample.emit({ type: 'error', message: 'The agent stopped', ...properties });
+  sample.endRun();
+  await new Promise(resolve => setImmediate(resolve));
+}
+
+const retryButton = ui => ui.root.querySelectorAll('.crucible-studio-agent-retry button')[0];
+
+for (const retryFree of [undefined, false, 'true', 1]) {
+  test(`a retryFree of ${JSON.stringify(retryFree)} shows no retry button`, async testContext => {
+    const sample = createSampleHost();
+    const ui = mountWithHost(testContext, { host: sample.host });
+    await failRunWith(ui, sample, { retryFree });
+    assert.equal(retryButton(ui), undefined);
+  });
+}
+
+test('a retryFree of true shows Try again with the word Free, and the status icon stays in front', async testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  await failRunWith(ui, sample, { retryFree: true });
+  assert.equal(retryButton(ui).textContent, 'Try again');
+  assert.equal(ui.root.querySelector('.crucible-studio-agent-retry-hint').textContent, 'Free');
+  assert.equal(ui.rows().at(-1).dataset.outcome, 'failed');
+  assert.equal(ui.rows().at(-1).querySelector('svg').querySelector('path').getAttribute('d'), STUDIO_ICON_PATHS.error);
+});
+
+test('a free retry sends the last text again when the host has no retry, and the button goes away', async testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  await failRunWith(ui, sample, { retryFree: true });
+  dispatch(retryButton(ui), 'click');
+  assert.deepEqual(sample.record.sent, ['Make it blue', 'Make it blue']);
+  assert.equal(retryButton(ui), undefined, 'removed once pressed');
+  assert.equal(ui.sendButton().textContent, 'Stop', 'a run is going');
+});
+
+test('a free retry calls the retry method of the host when it has one, and a new run removes the offer', async testContext => {
+  const sample = createSampleHost();
+  let retryCalls = 0;
+  sample.host.retry = () => {
+    retryCalls += 1;
+    return new Promise(() => {});
+  };
+  const ui = mountWithHost(testContext, { host: sample.host });
+  await failRunWith(ui, sample, { retryFree: true });
+  dispatch(retryButton(ui), 'click');
+  assert.equal(retryCalls, 1);
+  assert.deepEqual(sample.record.sent, ['Make it blue'], 'send is not called again');
+});
+
+test('a new run removes the retry offer', async testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  await failRunWith(ui, sample, { retryFree: true });
+  assert.ok(retryButton(ui));
+  ui.type('Something else');
+  ui.pressEnter();
+  assert.equal(retryButton(ui), undefined);
+});
+
+test('a host with a retry that is not a function gets no card', () => {
+  assert.deepEqual(agentChatHostProblems({ send() {}, stop() {}, subscribe() {}, retry: 'again' }), ['crucibleShell.agentChat.retry must be a function.']);
+  assert.deepEqual(agentChatHostProblems({ send() {}, stop() {}, subscribe() {}, retry() {} }), []);
+});
+
+test('the card asks the host for status, usage and the quota-warning notice in the one subscribe call', testContext => {
+  const sample = createSampleHost();
+  const asked = [];
+  const subscribe = sample.host.subscribe;
+  sample.host.subscribe = (listener, ...rest) => {
+    asked.push(rest);
+    return subscribe(listener);
+  };
+  mountWithHost(testContext, { host: sample.host });
+  assert.equal(asked.length, 1);
+  assert.deepEqual(asked[0], [{ events: ['status', 'usage'], noticeKinds: ['quota-warning'] }]);
+  assert.equal(asked[0][0], AGENT_SUBSCRIBE_OPTIONS);
+  assert.equal(Object.isFrozen(AGENT_SUBSCRIBE_OPTIONS.events) && Object.isFrozen(AGENT_SUBSCRIBE_OPTIONS.noticeKinds), true);
+});
+
+test('a done that is free to repeat offers the retry under the reply, on the latest outcome only', async testContext => {
+  const sample = createSampleHost();
+  const ui = mountWithHost(testContext, { host: sample.host });
+  ui.type('Make it blue');
+  ui.pressEnter();
+  sample.emit({ type: 'text', text: 'Done, it is blue.' });
+  sample.emit({ type: 'done', retryFree: 'yes' });
+  assert.equal(retryButton(ui), undefined, 'only an exact true counts');
+  sample.emit({ type: 'done', retryFree: true });
+  assert.equal(retryButton(ui).textContent, 'Try again');
+  assert.equal(ui.root.querySelector('.crucible-studio-agent-retry-hint').textContent, 'Free');
+  assert.equal(ui.root.querySelectorAll('.crucible-studio-agent-retry').length, 1);
+  sample.emit({ type: 'done' });
+  assert.equal(retryButton(ui), undefined, 'a newer outcome without the offer takes it away');
+  sample.emit({ type: 'done', retryFree: true });
+  dispatch(retryButton(ui), 'click');
+  assert.deepEqual(sample.record.sent, ['Make it blue', 'Make it blue']);
+  assert.equal(retryButton(ui), undefined);
 });
