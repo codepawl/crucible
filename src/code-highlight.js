@@ -1,5 +1,6 @@
 import highlight from 'highlight.js/lib/core';
 import javascript from 'highlight.js/lib/languages/javascript';
+import json from 'highlight.js/lib/languages/json';
 import xml from 'highlight.js/lib/languages/xml';
 
 // highlight.js's bash grammar leaves a plain command such as `npm install pkg` uncoloured, so the site's commands get a
@@ -22,6 +23,7 @@ function shell() {
 }
 
 highlight.registerLanguage('javascript', javascript);
+highlight.registerLanguage('json', json);
 highlight.registerLanguage('xml', xml);
 highlight.registerLanguage('shell', shell);
 highlight.registerAliases(['bash', 'sh'], { languageName: 'shell' });

@@ -13,7 +13,7 @@
 .showcase-frame {
   position: relative;
   overflow: hidden;
-  border-radius: 0;
+  border-radius: var(--panel-radius);
   background: var(--surface);
  
 }
@@ -28,7 +28,7 @@
   min-height: 34px;
   padding: 6px 14px;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--round);
   background: #17161aa6;
   color: #fefefd;
   font-size: 13px;
@@ -51,7 +51,7 @@
   margin: 0;
   padding: 10px 16px;
   transform: translate(-50%, -50%);
-  border-radius: 0;
+  border-radius: var(--round);
   background: #17161ab8;
   color: #fefefd;
   font-size: 14px;
@@ -61,7 +61,7 @@
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
   backdrop-filter: blur(14px) saturate(1.4);
 }
-#showcase-status[data-kind=error] { border-radius: 0; color: var(--error); }
+#showcase-status[data-kind=error] { border-radius: var(--round); color: var(--error); }
 /* Stays after the scene loads; sits at the top so it covers neither the loading chip nor the reset button. */
 #showcase-notice {
   position: absolute;
@@ -75,7 +75,7 @@
   margin: 0;
   padding: 10px 16px;
   transform: translateX(-50%);
-  border-radius: 0;
+  border-radius: var(--round);
   background: #17161ad9;
   color: #fefefd;
   font-size: 14px;
@@ -101,7 +101,7 @@ body.site.showcase > main { grid-template-columns: minmax(0, 1fr); }
 .showcase-cook { display: grid; gap: 20px; }
 .showcase-cook-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
 .showcase-cook figure { margin: 0; display: grid; gap: 12px; }
-.showcase-cook img { display: block; width: 100%; height: auto; border-radius: 0; background: var(--surface); }
+.showcase-cook img { display: block; width: 100%; height: auto; border-radius: var(--panel-radius); background: var(--surface); }
 .showcase-cook figcaption { display: grid; gap: 4px; color: var(--muted); font-size: 14px; }
 .showcase-cook figcaption strong { color: var(--text); font-weight: 600; }
 .showcase-cook figcaption small { font-size: 13px; }
@@ -112,7 +112,7 @@ body.site.showcase > main { grid-template-columns: minmax(0, 1fr); }
 .community-grid[hidden] { display: none; }
 .community-empty figure { opacity: .92; }
 .community-grid figure { margin: 0; display: grid; gap: 12px; }
-.community-grid img { display: block; width: 100%; height: auto; border-radius: 0; background: var(--surface); }
+.community-grid img { display: block; width: 100%; height: auto; border-radius: var(--panel-radius); background: var(--surface); }
 .community-grid figcaption { display: grid; gap: 4px; color: var(--muted); font-size: 14px; }
 .community-grid figcaption strong { color: var(--text); font-weight: 600; }
 .community-grid figcaption small { font-size: 13px; }
@@ -129,5 +129,5 @@ body.site.showcase > main { grid-template-columns: minmax(0, 1fr); }
   .showcase-cook-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 600px) {
-  .showcase-frame { border-radius: 0; }
+  .showcase-frame { border-radius: var(--panel-radius); }
 }

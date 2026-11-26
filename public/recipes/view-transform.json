@@ -2,35 +2,49 @@
   "format": "crucible.scene",
   "schemaVersion": 1,
   "geometries": [
-    { "id": "base", "type": "lathe", "segments": 64, "profile": [[0, 0], [0.36, 0], [0.38, 0.03], [0.3, 0.07], [0.06, 0.1], [0, 0.1]] },
-    { "id": "stem", "type": "cylinder", "segments": 32 },
-    { "id": "shade", "type": "lathe", "segments": 64, "profile": [[0.12, 0], [0.4, 0], [0.4, 0.02], [0.14, 0.34], [0.1, 0.34]] },
+    { "id": "base", "type": "lathe", "segments": 72, "profile": [[0,0],[0.30,0],[0.31,0.022],[0.25,0.05],[0.10,0.075],[0.065,0.10],[0,0.10]] },
+    { "id": "arm", "type": "tube", "path": [[0,0.09,0],[0,0.46,-0.12],[0,0.84,-0.08],[0,0.97,0.08],[0,0.92,0.20]], "radius": 0.022, "segments": 56, "radialSegments": 16 },
+    { "id": "neck", "type": "lathe", "segments": 48, "profile": [[0,0],[0.045,0],[0.052,0.035],[0.036,0.058],[0,0.058]] },
+    { "id": "shade", "type": "lathe", "segments": 72, "profile": [[0.045,0.24],[0.095,0.232],[0.15,0.208],[0.205,0.168],[0.255,0.115],[0.292,0.055],[0.315,0.012],[0.32,0],[0.302,0],[0.28,0.05],[0.242,0.105],[0.195,0.155],[0.14,0.192],[0.088,0.214],[0.042,0.22]] },
     { "id": "bulb", "type": "sphere", "segments": 48, "rings": 32 },
+    { "id": "cup", "type": "lathe", "segments": 48, "profile": [[0,0],[0.085,0],[0.095,0.09],[0.098,0.18],[0.09,0.184],[0.082,0.09],[0.075,0.015],[0,0.015]] },
+    { "id": "cup-handle", "type": "tube", "path": [[0.085,0.145,0],[0.155,0.14,0],[0.15,0.055,0],[0.08,0.05,0]], "radius": 0.012, "segments": 28, "radialSegments": 12 },
+    { "id": "book", "type": "box", "bevel": 0.04 },
     { "id": "floor", "type": "box", "bevel": 0 }
   ],
   "materials": [
-    { "id": "brass", "color": [0.6, 0.38, 0.12], "metallic": 0.9, "roughness": 0.3 },
-    { "id": "shade", "color": [0.9, 0.45, 0.12], "metallic": 0, "roughness": 0.7, "emission": 0.3, "emissiveColor": [1, 0.35, 0.05] },
-    { "id": "glow", "color": [1, 0.35, 0.05], "emission": 3, "emissiveColor": [1, 0.35, 0.05] },
-    { "id": "table", "color": [0.36, 0.22, 0.14], "metallic": 0, "roughness": 0.5 },
-    { "id": "wall", "color": [0.12, 0.1, 0.1], "metallic": 0, "roughness": 0.9 }
+    { "id": "brass", "color": [0.72, 0.48, 0.16], "metallic": 0.92, "roughness": 0.25 },
+    { "id": "shade", "color": [0.92, 0.56, 0.20], "metallic": 0, "roughness": 0.65, "emission": 0.35, "emissiveColor": [1, 0.40, 0.08] },
+    { "id": "glow", "color": [1, 0.45, 0.12], "emission": 4.2, "emissiveColor": [1, 0.38, 0.07] },
+    { "id": "ceramic", "color": [0.16, 0.18, 0.20], "metallic": 0, "roughness": 0.35 },
+    { "id": "forest", "color": [0.11, 0.22, 0.16], "metallic": 0, "roughness": 0.72 },
+    { "id": "oxblood", "color": [0.34, 0.10, 0.09], "metallic": 0, "roughness": 0.65 },
+    { "id": "table", "color": [0.24, 0.14, 0.08], "metallic": 0, "roughness": 0.46 },
+    { "id": "wall", "color": [0.11, 0.10, 0.11], "metallic": 0, "roughness": 0.9 }
   ],
   "nodes": [
-    { "id": "table", "geometry": "floor", "material": "table", "translation": [0, -0.05, 0], "scale": [5, 0.1, 3] },
-    { "id": "wall", "geometry": "floor", "material": "wall", "translation": [0, 1.5, -1.4], "scale": [8, 3.2, 0.1] },
-    { "id": "lamp", "translation": [0, 0, 0] },
+    { "id": "table", "geometry": "floor", "material": "table", "translation": [0, -0.05, 0], "scale": [6, 0.1, 3.6] },
+    { "id": "wall", "geometry": "floor", "material": "wall", "translation": [0, 1.5, -1.35], "scale": [8, 3.2, 0.1] },
+    { "id": "lamp", "translation": [-0.20, 0, -0.08], "rotation": [0, 0.1305, 0, 0.9914] },
     { "id": "base", "parent": "lamp", "geometry": "base", "material": "brass" },
-    { "id": "stem", "parent": "lamp", "geometry": "stem", "material": "brass", "translation": [0, 0.5, 0], "scale": [0.04, 0.8, 0.04] },
-    { "id": "shade", "parent": "lamp", "geometry": "shade", "material": "shade", "translation": [0, 0.9, 0] },
-    { "id": "bulb", "parent": "lamp", "geometry": "bulb", "material": "glow", "translation": [0, 0.98, 0], "scale": [0.2, 0.22, 0.2] }
+    { "id": "arm", "parent": "lamp", "geometry": "arm", "material": "brass" },
+    { "id": "neck", "parent": "lamp", "geometry": "neck", "material": "brass", "translation": [0, 0.91, 0.20] },
+    { "id": "shade", "parent": "lamp", "geometry": "shade", "material": "shade", "translation": [0, 0.72, 0.20] },
+    { "id": "bulb", "parent": "lamp", "geometry": "bulb", "material": "glow", "translation": [0, 0.80, 0.20], "scale": [0.09, 0.105, 0.09] },
+    { "id": "book-1", "geometry": "book", "material": "forest", "translation": [0.46, 0.032, 0.18], "rotation": [0, 0.12, 0, 0.9927], "scale": [0.54, 0.064, 0.68] },
+    { "id": "book-2", "geometry": "book", "material": "oxblood", "translation": [0.48, 0.09, 0.16], "rotation": [0, -0.10, 0, 0.995], "scale": [0.46, 0.052, 0.60] },
+    { "id": "weight", "geometry": "bulb", "material": "brass", "translation": [0.46, 0.194, 0.22], "scale": [0.078, 0.078, 0.078] },
+    { "id": "mug", "translation": [-0.58, 0, 0.24], "rotation": [0, 0.42, 0, 0.9075] },
+    { "id": "mug-body", "parent": "mug", "geometry": "cup", "material": "ceramic" },
+    { "id": "mug-handle", "parent": "mug", "geometry": "cup-handle", "material": "ceramic" }
   ],
-  "camera": { "eye": [0.4, 0.95, 2.6], "target": [0, 0.55, 0], "fov": 32 },
+  "camera": { "eye": [0.52, 0.92, 2.55], "target": [0.10, 0.46, 0.06], "fov": 32 },
   "environment": {
     "world": false,
     "viewTransform": "agx",
     "keyIntensity": 0.1,
     "ambientIntensity": 0.1,
-    "pointLights": [{ "position": [0, 0.98, 0.35], "color": [1, 0.5, 0.15], "intensity": 3 }]
+    "pointLights": [{ "position": [-0.14, 0.80, 0.36], "color": [1, 0.52, 0.16], "intensity": 3.4 }]
   },
   "effects": { "exposure": 1 }
 }

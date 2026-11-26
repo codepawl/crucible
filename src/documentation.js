@@ -3,7 +3,7 @@ import './site.css';
 import './documentation.css';
 import guide from '../docs/guide.md?raw';
 import { highlightCode } from './code-highlight.js';
-import { createLiveExample, autoRunVisibleExamples } from './docs-live.js';
+import { createLiveExample } from './docs-live.js';
 import { createApiReference } from './docs-api.js';
 import { topicAliases, topicSlug, guideTopics, learnTopics, orderTopics } from './documentation-topics.js';
 import { figureMatch } from './documentation-figure.js';
@@ -191,7 +191,7 @@ function cardList(info) {
     const card = document.createElement('a');
     card.className = picture ? 'doc-card has-picture' : 'doc-card';
     card.href = href;
-    card.innerHTML = `${picture ? `<img src="${escapeHtml(picture)}" alt="" loading="lazy" decoding="async">` : ''}<strong>${inline(title)} ${icon('arrow')}</strong><span>${inline(description)}</span>`;
+    card.innerHTML = `${picture ? `<img src="${escapeHtml(picture)}" width="960" height="540" alt="" loading="lazy" decoding="async">` : ''}<strong>${inline(title)} ${icon('arrow')}</strong><span>${inline(description)}</span>`;
     list.append(card);
   }
   return list;
@@ -236,7 +236,7 @@ function figure(paragraph) {
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
     element.innerHTML = `<video src="${source}" ${still ? 'controls' : 'autoplay loop'} muted playsinline preload="metadata" aria-label="${escapeHtml(alt)}"></video>`;
   } else {
-    element.innerHTML = `<img src="${source}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async">`;
+    element.innerHTML = `<img src="${source}" width="960" height="540" alt="${escapeHtml(alt)}" loading="lazy" decoding="async">`;
   }
   if (caption) element.insertAdjacentHTML('beforeend', `<figcaption>${inline(caption)}</figcaption>`);
   return element;
@@ -403,7 +403,6 @@ function openTopic(focus = false) {
   copyPage.innerHTML = `${icon('copy')}Copy page`;
   renderNavigation();
   renderOutline(section);
-  exampleStarter = autoRunVisibleExamples(article);
   section.addEventListener('api-ready', () => {
     renderOutline(section);
     if (requestedSection) document.getElementById(requestedSection)?.scrollIntoView();
