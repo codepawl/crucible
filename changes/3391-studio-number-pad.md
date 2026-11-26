@@ -1,0 +1,1 @@
+- Added a Number pad setting in Studio Setup (with keyboard drawings) and Settings > Keyboard plus a one-time detection notice so view keys switch cleanly between the number row and number pad across all presets (#3391).

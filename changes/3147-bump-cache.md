@@ -1,0 +1,1 @@
+- Cache adjacent edge reads in `normalMapFromHeightFunction` so bump maps read height twice a pixel instead of four times, and keep shared-node costing symmetric across outputs and key order (Part of #3147)

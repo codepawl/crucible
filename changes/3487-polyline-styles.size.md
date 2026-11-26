@@ -1,0 +1,2 @@
+- entry:line-art: Adds style validation, cumulative screen-pixel segment offsets, and GLSL dashed, dotted, and double-rail polyline shaders.
+- scene:agent-scene+lazy: Loads the updated lazy line-art addon only for recipes that use `environment.lines`.

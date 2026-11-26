@@ -400,3 +400,6 @@ function keepClear(free, columns, rows, radius) {
   }
   return result;
 }
+
+export { findSurfaceDecalOverlaps } from './surface-decal-overlap.js';
+

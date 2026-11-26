@@ -126,7 +126,7 @@ function budgetGraph(roughnessWrappers) {
   const noise = (octaves, seed) => ({ noise: { scale: 4, octaves, seed } });
   let roughness = noise(1, 1);
   for (let index = 0; index < roughnessWrappers; index++) roughness = { invert: roughness };
-  return { roughness, metallic: noise(2, 2), height: noise(6, 3) };
+  return { roughness, metallic: { add: [noise(6, 2), { voronoi: { scale: 4 } }] }, emission: noise(4, 4), height: noise(6, 3) };
 }
 
 test('the work budget is 60,000,000 units: the last graph under it at 1024 bakes and the next one over it is refused', () => {

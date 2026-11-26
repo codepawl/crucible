@@ -5,6 +5,9 @@ import { KEYMAP_PRESETS } from './studio-keymap.js';
 import { STUDIO_PREFERENCE_CHOICES } from './studio-preferences.js';
 import { createAccountSection, STUDIO_SETTINGS_ACTION_ICONS } from './studio-account.js';
 import { leadWithActionIcon } from './studio-icons.js';
+import { createKeyboardSection } from './studio-keyboard-settings.js';
+import { watchScrollFades } from './studio-help.js';
+import { STUDIO_LENGTH_UNIT_LABELS } from './studio-units.js';
 
 const capitalised = value => value[0].toUpperCase() + value.slice(1);
 const MOTION_LABELS = Object.freeze({ system: 'Follow system', reduced: 'Reduced' });
@@ -44,22 +47,27 @@ export const STUDIO_SETTING_SECTIONS = Object.freeze([
     rows: [
       ['moveSnapStep', 'Move snap step', value => `${value} m`],
       ['rotateSnapDegrees', 'Rotate snap angle', value => `${value}°`],
+      ['lengthUnit', 'Units', value => STUDIO_LENGTH_UNIT_LABELS[value]],
     ],
   },
   {
     id: 'keys',
-    title: 'Keys',
+    title: 'Keyboard',
     icon: 'keyboard',
-    rows: [['keymap', 'Preset', value => KEYMAP_PRESETS[value].label]],
+    rows: [
+      ['keymap', 'Preset', value => KEYMAP_PRESETS[value].label],
+      ['numberPad', 'Number pad'],
+    ],
   },
 ]);
 
 /**
  * Builds the dialog. `onChange(name, value)` writes one preference, `onReset()` returns every preference to its default,
- * `onRunSetup()` and `onOpenShortcuts()` open the dialogs of those names. Returns the dialog, a map of preference to its
- * control, `open()` and `dispose()`.
+ * `onRunSetup()` and `onOpenShortcuts()` open the dialogs of those names. `keyboard` reads and writes the key changes of the
+ * active preset (`getKeymap`, `getPresetId`, `getOverrides`, `onOverridesChange`). Returns the dialog, a map of preference to its
+ * control, `refreshKeyboard()`, `open()` and `dispose()`.
  */
-export function createStudioSettings({ documentReference, createElement, createIcon, shell, onChange, onReset, onRunSetup, onOpenShortcuts }) {
+export function createStudioSettings({ documentReference, createElement, createIcon, shell, onChange, onReset, onRunSetup, onOpenShortcuts, keyboard }) {
   const controls = new Map();
   const account = createAccountSection({ documentReference, createElement, createIcon, shell });
 
@@ -76,18 +84,38 @@ export function createStudioSettings({ documentReference, createElement, createI
     return createElement(documentReference, 'label', { className: 'crucible-studio-setting' }, createElement(documentReference, 'span', { textContent: label }), control);
   }
 
-  function createShortcutsRow() {
-    const button = createElement(documentReference, 'button', { type: 'button', textContent: 'Show', attributes: { 'aria-label': 'Show keyboard shortcuts' } });
-    button.addEventListener('click', onOpenShortcuts);
-    return createElement(documentReference, 'div', { className: 'crucible-studio-setting' }, createElement(documentReference, 'span', { textContent: 'Shortcuts' }), button);
+  function createKeyboardBody(section) {
+    const showSheetButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Show', attributes: { 'aria-label': 'Show keyboard shortcuts' } });
+    leadWithActionIcon(showSheetButton, createIcon(documentReference, 'keyboard'), 'keyboard');
+    showSheetButton.addEventListener('click', onOpenShortcuts);
+    keyboardSection = createKeyboardSection({
+      documentReference,
+      createElement,
+      createIcon,
+      ...keyboard,
+      presetRow: createRow(section.rows[0]),
+      numberPadRow: createRow(section.rows[1]),
+      showSheetButton,
+    });
+    return [keyboardSection.element];
   }
 
+  let keyboardSection = null;
   const sections = STUDIO_SETTING_SECTIONS.map(section => ({
     ...section,
-    body: [...section.rows.map(createRow), ...(section.id === 'keys' ? [createShortcutsRow()] : [])],
+    body: section.id === 'keys' ? createKeyboardBody(section) : section.rows.map(createRow),
   }));
   if (account) {
     sections.push({ id: 'account', title: 'Account', icon: 'account', body: [account.element] });
+  }
+
+  // Every section scrolls its rows with the shared cue (thin thumb, fades); the Keyboard list carries its own, under its fixed head.
+  const fadeSyncs = [];
+  function createScrollingRows(section) {
+    const scrolls = section.id !== 'keys';
+    const rows = createElement(documentReference, 'div', { className: scrolls ? 'crucible-studio-settings-rows crucible-studio-fade-scroll' : 'crucible-studio-settings-rows' }, ...section.body);
+    if (scrolls) fadeSyncs.push(watchScrollFades(rows));
+    return rows;
   }
 
   const navButtons = new Map();
@@ -108,7 +136,7 @@ export function createStudioSettings({ documentReference, createElement, createI
       'section',
       { className: 'crucible-studio-settings-pane', dataset: { section: section.id }, attributes: { 'aria-labelledby': `crucible-studio-settings-${section.id}-title` } },
       createElement(documentReference, 'h3', { id: `crucible-studio-settings-${section.id}-title` }, createIcon(documentReference, section.icon), createElement(documentReference, 'span', { textContent: section.title })),
-      createElement(documentReference, 'div', { className: 'crucible-studio-settings-rows' }, ...section.body),
+      createScrollingRows(section),
     ));
   }
 
@@ -119,12 +147,18 @@ export function createStudioSettings({ documentReference, createElement, createI
       navButtons.get(id).dataset.current = String(current);
       navButtons.get(id).setAttribute('aria-current', current ? 'true' : 'false');
     }
+    syncFades();
+  }
+  // A closed dialog has no size, so the fades are read again once it is open and whenever another section shows.
+  function syncFades() {
+    for (const sync of fadeSyncs) sync();
+    keyboardSection?.syncFades();
   }
   showSection(sections[0].id);
 
   const settingsHeading = createElement(documentReference, 'h2', { id: 'crucible-studio-settings-title', textContent: 'Settings' });
   settingsHeading.prepend(createIcon(documentReference, 'settings'));
-  const resetButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Reset' });
+  const resetButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Reset settings' });
   leadWithActionIcon(resetButton, createIcon(documentReference, STUDIO_SETTINGS_ACTION_ICONS.reset), STUDIO_SETTINGS_ACTION_ICONS.reset);
   resetButton.addEventListener('click', onReset);
   const setupButton = createElement(documentReference, 'button', { type: 'button', className: 'crucible-studio-settings-quiet', textContent: 'Run setup again' });
@@ -161,13 +195,16 @@ export function createStudioSettings({ documentReference, createElement, createI
     controls,
     account,
     showSection,
+    refreshKeyboard: () => keyboardSection.refresh(),
     // Every opening looks the same: the first section, with focus on the dialog itself, so no control carries a focus ring and the
     // first Tab lands on the first section in the list (the way the setup dialog opens).
     open() {
       account?.refresh({ showLoading: true });
+      keyboardSection.stopRecording();
       showSection(sections[0].id);
       dialog.showModal();
       dialog.focus();
+      syncFades();
     },
     dispose() {
       account?.dispose();

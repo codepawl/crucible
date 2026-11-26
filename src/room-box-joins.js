@@ -52,23 +52,37 @@ function joinedExtent(boxes) {
   };
 }
 
-// A room has a thin slab on each of its six sides, flush with the outside of the joined boxes. A floor with trees on it has no
-// walls, and a counter with a few boxes on it has no ceiling, so neither is treated as a room.
-function enclosesSixSides(boxes) {
-  const extent = joinedExtent(boxes);
+// A room has a thin slab on its sides, at the outside of the joined boxes (no further in than its own thickness, so a ceiling that overhangs its walls still counts) and spanning most of
+// that face: six for a closed room, five for a set open on one side (a stage or a TV-style set, #3433). A floor with trees on it has no walls, and a counter with a few boxes on it has no
+// ceiling, so neither is treated as a room; a table (a top and four legs), a pergola (a floor and four posts) and a bookcase (two sides, a top, a bottom and a back) are not either:
+// their legs and posts span no face, and a set open on one side is a room only when a person fits in it on every axis.
+export const MINIMUM_ENCLOSED_SIDES = 5;
+const CLOSED_ROOM_SIDES = 6;
+// A slab spans a face when it covers at least this share of the joined boxes' extent on both other axes.
+const SPAN_SHARE = 0.6;
+// The smallest extent, on every axis, of a set open on one side that is drawn sharp (metres).
+export const MINIMUM_OPEN_SET_SPAN = 1.5;
+
+const thicknessOf = (box, axis) => box.bounds.maximum[axis] - box.bounds.minimum[axis];
+
+function spansFace(box, axis, extent) {
+  return [0, 1, 2].every(other => other === axis || thicknessOf(box, other) >= SPAN_SHARE * (extent.maximum[other] - extent.minimum[other]));
+}
+
+function countEnclosedSides(boxes, extent) {
+  let enclosedSides = 0;
   for (let axis = 0; axis < 3; axis++) {
     const thickLimit = THIN_SHARE * (extent.maximum[axis] - extent.minimum[axis]);
-    const thinAlongAxis = boxes.filter(box => box.bounds.maximum[axis] - box.bounds.minimum[axis] <= thickLimit);
-    const onLowSide = thinAlongAxis.some(box => box.bounds.minimum[axis] - extent.minimum[axis] <= TOUCH_TOLERANCE);
-    const onHighSide = thinAlongAxis.some(box => extent.maximum[axis] - box.bounds.maximum[axis] <= TOUCH_TOLERANCE);
-    if (!onLowSide || !onHighSide) return false;
+    const thinAlongAxis = boxes.filter(box => thicknessOf(box, axis) <= thickLimit && spansFace(box, axis, extent));
+    if (thinAlongAxis.some(box => box.bounds.minimum[axis] - extent.minimum[axis] <= thicknessOf(box, axis) + TOUCH_TOLERANCE)) enclosedSides++;
+    if (thinAlongAxis.some(box => extent.maximum[axis] - box.bounds.maximum[axis] <= thicknessOf(box, axis) + TOUCH_TOLERANCE)) enclosedSides++;
   }
-  return true;
+  return enclosedSides;
 }
 
 /**
  * The IDs of nodes with rounded box geometry that touch another such node, when at least four pairs touch and the joined boxes
- * close a room on all six sides; otherwise an empty set. The engine draws these nodes with sharp edges so the joins stay closed.
+ * close a room on at least five of its six sides; otherwise an empty set. The engine draws these nodes with sharp edges so the joins stay closed.
  */
 export function roomJoinedBoxNodeIds(recipe) {
   const roundedIds = roundedBoxGeometryIds(recipe);
@@ -88,5 +102,10 @@ export function roomJoinedBoxNodeIds(recipe) {
     }
   }
   if (touchingPairs < MINIMUM_TOUCHING_BOX_PAIRS) return new Set();
-  return enclosesSixSides(boxes.filter(box => joined.has(box.id))) ? joined : new Set();
+  const joinedBoxes = boxes.filter(box => joined.has(box.id));
+  const extent = joinedExtent(joinedBoxes);
+  const enclosedSides = countEnclosedSides(joinedBoxes, extent);
+  if (enclosedSides >= CLOSED_ROOM_SIDES) return joined;
+  const fitsAPerson = [0, 1, 2].every(axis => extent.maximum[axis] - extent.minimum[axis] >= MINIMUM_OPEN_SET_SPAN);
+  return enclosedSides >= MINIMUM_ENCLOSED_SIDES && fitsAPerson ? joined : new Set();
 }

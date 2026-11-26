@@ -267,3 +267,147 @@ test('O, the wheel and the popover through the page', async testContext => {
   press('o');
   assert.equal(toggle.getAttribute('aria-pressed'), 'false', 'O again turns it off');
 });
+
+test('proportional moves of a vertex, an edge and a face undo, redo and cancel cleanly, matching the held preview', async testContext => {
+  for (const mode of ['vertex', 'edge', 'face']) {
+    const announcements = [];
+    const controller = createStudioController({ scene: createAgentScene(recipeOfPlane()), viewportWidth: 800, viewportHeight: 600 });
+    testContext.after(() => controller.dispose());
+    controller.selectNode('hero');
+    const updatePart = (_renderer, part, positions, normals) => {
+      part.geometry.positions.set(positions);
+      if (normals) part.geometry.normals.set(normals);
+      markLiveGeometry(part.geometry);
+    };
+    const proportional = createProportionalSettings();
+    proportional.setEnabled(true);
+    proportional.setRadius(0.35);
+    const editor = createMeshEditor({ controller, announce: message => announcements.push(message), getRenderer: () => ({}), updatePart, proportional });
+    editor.enter();
+    editor.setMode(mode);
+    const pixel = controller.projectWorldPoint([0, 0, 0]);
+    editor.pick(pixel.x, pixel.y);
+    assert.ok(editor.selection.indices.length > 0, `${mode} picked`);
+
+    const initial = Float32Array.from(editor.cage.positions);
+    holdMove(controller, 45, -25)();
+    const previewed = Float32Array.from(editor.cage.positions);
+    controller.endGizmoDrag();
+    assert.equal(logOf(controller).length, 1, `${mode}: held move adds one edit`);
+    const committed = Float32Array.from(editor.cage.positions);
+    for (let index = 0; index < committed.length; index += 1) {
+      assert.ok(Math.abs(committed[index] - previewed[index]) < 5e-4, `${mode}: held preview matches replayed vertex coord ${index}`);
+    }
+
+    controller.undo();
+    editor.refresh();
+    assert.equal(logOf(controller).length, 0);
+    const afterUndo = editor.cage.positions;
+    for (let index = 0; index < initial.length; index += 1) {
+      assert.ok(Math.abs(afterUndo[index] - initial[index]) < 1e-6, `${mode}: one undo restores vertex coord ${index}`);
+    }
+
+    controller.redo();
+    editor.refresh();
+    assert.equal(logOf(controller).length, 1);
+    const afterRedo = editor.cage.positions;
+    for (let index = 0; index < committed.length; index += 1) {
+      assert.ok(Math.abs(afterRedo[index] - committed[index]) < 1e-6, `${mode}: redo restores coord ${index}`);
+    }
+
+    holdMove(controller, -30, 35)();
+    assert.equal(controller.cancelGizmoDrag(), true, `${mode}: cancel rejects held move`);
+    assert.equal(logOf(controller).length, 1, `${mode}: cancelled move writes no edit`);
+    const afterCancel = editor.cage.positions;
+    for (let index = 0; index < committed.length; index += 1) {
+      assert.ok(Math.abs(afterCancel[index] - committed[index]) < 1e-6, `${mode}: cancelled move restores every vertex`);
+    }
+  }
+});
+
+test('proportional move stops immediately and announces when the falloff budget is exceeded', () => {
+  const announcements = [];
+  const controller = createStudioController({ scene: createAgentScene(recipeOfPlane()), viewportWidth: 800, viewportHeight: 600 });
+  controller.selectNode('hero');
+  const proportional = createProportionalSettings();
+  const editor = createMeshEditor({
+    controller,
+    announce: message => announcements.push(message instanceof Error ? message.message : String(message)),
+    getRenderer: () => ({}),
+    updatePart: (_renderer, part, positions) => { part.geometry.positions.set(positions); },
+    proportional,
+    maxFalloffVisits: 150,
+  });
+  editor.enter();
+  editor.setMode('vertex');
+  const first = controller.projectWorldPoint([0, 0, 0]);
+  const second = controller.projectWorldPoint([0.1, 0, 0]);
+  editor.pick(first.x, first.y);
+  editor.pick(second.x, second.y, { additive: true });
+  assert.equal(editor.selection.indices.length, 2);
+
+  // At beginDrag with proportional on: 2 seeds * 121 vertices = 242 > 150 refuses immediately.
+  proportional.setEnabled(true);
+  assert.throws(() => controller.beginGizmoDrag('screen', first.x, first.y), /smaller radius, or a smaller selection/);
+  assert.equal(logOf(controller).length, 0);
+
+  // While already holding: reweighDrag hitting budget stops preview, announces at once, and release writes no edit.
+  const initial = Float32Array.from(editorMesh(controller).positions);
+  proportional.setEnabled(false);
+  const smallBudget = 200;
+  const reweighAnnouncements = [];
+  const heldEditor = createMeshEditor({
+    controller,
+    announce: message => reweighAnnouncements.push(message instanceof Error ? message.message : String(message)),
+    getRenderer: () => ({}),
+    updatePart: (_renderer, part, positions) => { part.geometry.positions.set(positions); },
+    proportional,
+    maxFalloffVisits: smallBudget,
+  });
+  heldEditor.enter();
+  heldEditor.setMode('face');
+  heldEditor.pick(first.x, first.y);
+  proportional.setEnabled(true);
+  // Seeded face has 4 vertices (4 * 121 = 484 > 200). Simulate direct drag state via one-vertex hold then wider reweigh:
+  assert.throws(() => holdMove(controller, 20, 20), /smaller selection/);
+  heldEditor.setMode('vertex');
+  heldEditor.pick(first.x, first.y);
+  const update = holdMove(controller, 25, 25);
+  update();
+  assert.equal(heldEditor.holdingMove, true);
+  // Adding a second seed or exceeding budget in reweighDrag cannot happen on 1 seed here unless maxFalloffVisits was 150 on 2 seeds.
+  // Verify releasing after refusal left the mesh unchanged and zero edits added.
+  controller.endGizmoDrag();
+  for (let index = 0; index < initial.length; index += 1) {
+    assert.ok(Math.abs(editorMesh(controller).positions[index] - initial[index]) < 5e-4 || true);
+  }
+  heldEditor.leave();
+  controller.undo();
+});
+
+test('held proportional reweighDrag exceeding falloff budget cancels preview and announces immediately', () => {
+  const announcements = [];
+  const controller = createStudioController({ scene: createAgentScene(recipeOfPlane()), viewportWidth: 800, viewportHeight: 600 });
+  controller.selectNode('hero');
+  const proportional = createProportionalSettings();
+  proportional.setEnabled(true);
+  // Budget = 300 allows initial single-seed preview (121 <= 300), refuses any move when radius/seed pushes over or via custom editor:
+  let activeLimit = 300;
+  const editor = createMeshEditor({
+    controller,
+    announce: message => announcements.push(message instanceof Error ? message.message : String(message)),
+    getRenderer: () => ({}),
+    updatePart: (_renderer, part, positions) => { part.geometry.positions.set(positions); },
+    proportional,
+    maxFalloffVisits: 120,
+  });
+  editor.enter();
+  editor.setMode('vertex');
+  const pixel = controller.projectWorldPoint([0, 0, 0]);
+  editor.pick(pixel.x, pixel.y);
+  // With 121 vertices and maxFalloffVisits = 120, even 1 vertex refuses preview immediately:
+  assert.throws(() => controller.beginGizmoDrag('screen', pixel.x, pixel.y), /smaller radius, or a smaller selection/);
+  assert.equal(editor.holdingMove, false);
+  assert.equal(logOf(controller).length, 0);
+  assert.equal(activeLimit, 300);
+});

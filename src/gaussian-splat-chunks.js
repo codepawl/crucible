@@ -16,7 +16,10 @@ function yieldToEventLoop() {
   });
 }
 
-function resolveChunkOptions(options, caller) {
+export function resolveChunkOptions(options, caller) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) {
+    throw new TypeError(`${caller} options must be an object`);
+  }
   const { onProgress, chunkSize = DEFAULT_SPLAT_CHUNK_SIZE, signal } = options;
   if (!Number.isInteger(chunkSize) || chunkSize <= 0) {
     throw new RangeError(`${caller} chunkSize must be a positive whole number of splats, got ${chunkSize}`);
@@ -30,7 +33,7 @@ function resolveChunkOptions(options, caller) {
   return { onProgress, chunkSize, signal };
 }
 
-function throwIfAborted(signal, caller) {
+export function throwIfAborted(signal, caller) {
   if (!signal?.aborted) return;
   const reason = signal.reason instanceof Error ? `: ${signal.reason.message}` : '';
   const error = new Error(`${caller} was aborted${reason}`);
@@ -46,6 +49,10 @@ function throwIfAborted(signal, caller) {
 export async function runInChunks(total, options, caller, processRange) {
   const { onProgress, chunkSize, signal } = resolveChunkOptions(options, caller);
   throwIfAborted(signal, caller);
+  if (total === 0) {
+    onProgress?.(1);
+    return;
+  }
   for (let start = 0; start < total; start += chunkSize) {
     const end = Math.min(total, start + chunkSize);
     processRange(start, end);

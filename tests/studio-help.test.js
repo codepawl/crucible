@@ -140,17 +140,22 @@ test('openStudioGuide does nothing harmful when no window or host exists', () =>
   assert.equal(openStudioGuide({}), null);
 });
 
-test('the sheet takes three columns in a wide window and one in a narrow one, and the tallest column is as short as it can be', () => {
-  assert.equal(sheetColumnCount(1280), 3);
-  assert.equal(sheetColumnCount(900), 2);
+test('the sheet takes four columns in a desktop window and tapers down on narrower ones, with balanced columns', () => {
+  assert.equal(sheetColumnCount(1280), 4);
+  assert.equal(sheetColumnCount(1120), 4);
+  assert.equal(sheetColumnCount(1000), 3);
+  assert.equal(sheetColumnCount(900), 3);
+  assert.equal(sheetColumnCount(800), 2);
   assert.equal(sheetColumnCount(720), 1);
   const groups = shortcutSheetGroups(resolveKeymap());
-  const columns = balanceSheetColumns(groups, 3);
-  assert.equal(columns.length, 3);
-  assert.deepEqual(columns.flat().map(group => group.title), groups.map(group => group.title));
-  const height = column => column.reduce((sum, group) => sum + group.rows.length + 1, 0);
-  const total = groups.reduce((sum, group) => sum + group.rows.length + 1, 0);
-  assert.ok(Math.max(...columns.map(height)) <= Math.ceil(total / 3) + 3);
+  for (const columnCount of [4, 3, 2]) {
+    const columns = balanceSheetColumns(groups, columnCount);
+    assert.equal(columns.length, columnCount);
+    assert.deepEqual(columns.flat().map(group => group.title), groups.map(group => group.title));
+    const height = column => column.reduce((sum, group) => sum + group.rows.length + 1, 0);
+    const total = groups.reduce((sum, group) => sum + group.rows.length + 1, 0);
+    assert.ok(Math.max(...columns.map(height)) <= Math.ceil(total / columnCount) + 4, `${columnCount} columns stay balanced`);
+  }
 });
 
 test('no sheet label is long enough to wrap in a third of the dialog, and Documentation leads with a book', testContext => {

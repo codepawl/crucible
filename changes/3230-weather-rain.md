@@ -1,0 +1,1 @@
+- Add `@codepawlhq/crucible/addons/rain` for deterministic camera-local falling rain streaks, ground splashes, animatable intensity curves, and paired surface wetness (`#3230`)

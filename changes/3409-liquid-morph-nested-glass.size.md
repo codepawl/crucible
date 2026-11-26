@@ -1,0 +1,4 @@
+- entry:spume: the liquid pass adds morph uniform/shader wiring (#3409) and oriented containment, shell cache and far-target release (#3411) inside lazy liquid code only (+1.3 KB gzip)
+- entry:liquid-shader: same lazy liquid pass additions (+1.4 KB gzip; core, gltf-box, lit-box and agent-scene stay within allowances)
+- scene:gltf-box+lazy: includes the lazy liquid pass additions above (+1.3 KB gzip)
+- scene:agent-scene+lazy: includes the lazy liquid pass additions above (+1.3 KB gzip)

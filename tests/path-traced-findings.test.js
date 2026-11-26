@@ -74,12 +74,16 @@ test('a path traced job reports part findings and says why exposure findings and
       const unavailable = diagnostics.find(problem => problem.kind === 'findings-unavailable');
       assert.match(unavailable?.message ?? '', /object ID, depth and normal/);
       assert.equal(diagnostics.some(problem => problem.kind === 'post-passes-skipped'), false, 'a scene without postPasses gets no skipped-pass warning');
+      assert.equal(diagnostics.some(problem => problem.kind === 'reflection-hdri-ignored'), false, 'a scene without reflectionHdri gets no ignored-reflection warning');
 
-      const withPasses = (await call('scene_create', { recipe: { ...recipe, postPasses: [passRecipe] } })).structuredContent;
+      const withPasses = (await call('scene_create', { recipe: { ...recipe, postPasses: [passRecipe], environment: { hdri: 'studio-softbox', reflectionHdri: 'sky-clouds' } } })).structuredContent;
       const passDiagnostics = await traceDiagnostics(withPasses.sessionId);
       const skipped = passDiagnostics.find(problem => problem.kind === 'post-passes-skipped');
       assert.equal(skipped?.severity, 'warning');
       assert.match(skipped?.message ?? '', /does not run postPasses.*desaturate/);
+      const ignoredReflection = passDiagnostics.find(problem => problem.kind === 'reflection-hdri-ignored');
+      assert.equal(ignoredReflection?.severity, 'warning');
+      assert.match(ignoredReflection?.message ?? '', /ignores environment.reflectionHdri/);
 
       const refused = await call('scene_render_submit', { sessionId: created.sessionId, expectedRevision: 0, settings: { ...settings, passes: ['objectId'] } });
       assert.equal(refused.isError, true);

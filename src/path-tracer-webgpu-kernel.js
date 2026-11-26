@@ -20,6 +20,21 @@ export const PATH_STATE_VECTORS = 9;
 const NEAREST_MATERIAL = 'nearestMaterial';
 const FLAT_NEAREST_MATERIAL = 'i32(triangles[nearestSlot * TRIANGLE_TEXELS].w)';
 
+// The occlusion map of the hit material (glTF semantics: 1 + strength * (map - 1)), read from the table after the material records
+// (path-tracer-gpu-pack.js packOcclusion). tileAndDepth.w is the material count. Spliced in only for a scene with an occlusion map.
+const OCCLUSION_FUNCTIONS = /* wgsl */ `
+var<private> hitOcclusion: f32 = 1.0;
+
+fn occlusionAt(uv: vec2<f32>, secondUv: vec2<f32>) -> f32 {
+  let first = i32(params.tileAndDepth.w) * MATERIAL_TEXELS + hitMaterialIndex * 2;
+  let rectangle = materials[first];
+  if (rectangle.z <= 0.0) { return 1.0; }
+  let settings = materials[first + 1];
+  let texel = sampleAtlas(rectangle, settings.x, select(uv, secondUv, settings.z > 0.5));
+  return 1.0 + settings.y * (texel.r - 1.0);
+}
+`;
+
 // The ray query of a scene with one triangle table and one BVH: the default, and the only one before instancing.
 const FLAT_TRACE_RAY = `fn traceRay(origin: vec3<f32>, direction: vec3<f32>, limit: f32, anyHit: bool) {
   nearestDistance = limit;
@@ -51,9 +66,11 @@ const FLAT_TRACE_RAY = `fn traceRay(origin: vec3<f32>, direction: vec3<f32>, lim
 }`;
 
 // An instanced scene (path-tracer-webgpu-instancing.js) moves the edges and normals of the hit triangle from mesh space to the world.
-const buildCommonSource = ({ hasVolume = false, hasLocalVolumes = false, hasGridVolume = false, hasNoiseOctaves = false, hasEmissionRamp = false, hasMeshVolume = false, instanced = false } = {}) => {
+const buildCommonSource = ({ hasVolume = false, hasLocalVolumes = false, hasGridVolume = false, hasNoiseOctaves = false, hasEmissionRamp = false, hasMeshVolume = false, hasOcclusionMap = false, instanced = false } = {}) => {
   const worldVector = expression => (instanced ? `surfaceVectorToWorld(${expression})` : expression);
   const worldNormal = expression => (instanced ? `normalToWorld(${expression})` : expression);
+  // Only the sky is gathered by a ray the occlusion map has not met yet, so the sky's own shadow ray carries it; the sun and lights stay direct.
+  const skyOcclusion = hasOcclusionMap ? ' * select(1.0, hitOcclusion, weightMode == 1)' : '';
   return /* wgsl */ `
 const PI: f32 = 3.14159265358979;
 const TWO_PI: f32 = 6.28318530717959;
@@ -282,7 +299,7 @@ fn mapReadsSecondUvSet(mask: f32, bit: i32) -> bool {
   return (i32(mask) / bit) % 2 == 1;
 }
 
-// Fills the hit globals from the triangle in nearestSlot; returns the alpha of the colour map.
+${hasOcclusionMap ? OCCLUSION_FUNCTIONS : ''}// Fills the hit globals from the triangle in nearestSlot; returns the alpha of the colour map.
 fn fillHit(origin: vec3<f32>, direction: vec3<f32>, distance: f32) -> f32 {
   let base = nearestSlot * TRIANGLE_TEXELS;
   let cornerData = triangles[base];
@@ -350,7 +367,7 @@ fn fillHit(origin: vec3<f32>, direction: vec3<f32>, distance: f32) -> f32 {
     let uvOne = select(vec2<f32>(normalTwoData.w - normalOneData.w, colorTwoData.w - colorOneData.w), secondSetCorners.zw - secondSetCorners.xy, normalOnSecondSet);
     let uvTwo = select(vec2<f32>(normalThreeData.w - normalOneData.w, colorThreeData.w - colorOneData.w), secondSetThird - secondSetCorners.xy, normalOnSecondSet);
     applyNormalMap(normalRectangle, flagsOne.z, shape.xy, edgeOne, edgeTwo, uvOne, uvTwo, select(uv, secondUv, normalOnSecondSet));
-  }
+  }${hasOcclusionMap ? '\n  hitOcclusion = occlusionAt(uv, secondUv);' : ''}
   return alpha;
 }
 
@@ -891,7 +908,7 @@ fn addDirect(depth: i32, normal: vec3<f32>, distance: f32, weightMode: i32) {
     if (value.x + value.y + value.z <= 0.0) { return; }
     shadowOrigin = hitPoint + normal * params.environmentRotationAndRays.z;
     ${hasVolume ? `let transmittance = fogTransmittance(shadowOrigin, distance);` : `let transmittance = 1.0;`}
-    let scale = cosine * directWeight(weightMode, surfacePdf) * transmittance;
+    let scale = cosine * directWeight(weightMode, surfacePdf) * transmittance${skyOcclusion};
     shadowAmount = throughput * value * lightRadiance * scale;
     shadowDepth = depth;
   }
@@ -1207,7 +1224,7 @@ fn bakeTexels(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgro
 `;
 
 // `realtime` is the set of WGSL pieces of path-tracer-realtime-webgpu-kernel.js (REALTIME_KERNEL_PIECES); the real-time tracer passes them in, so other bundles do not carry them.
-export const buildMegakernelSource = ({ hasVolume = false, hasLocalVolumes = false, hasGridVolume = false, hasNoiseOctaves = false, hasEmissionRamp = false, hasMeshVolume = false, hasSubsurface = false, texelBake = false, realtime = null, instanced = false } = {}) => buildCommonSource({ hasVolume, hasLocalVolumes, hasGridVolume, hasNoiseOctaves, hasEmissionRamp, hasMeshVolume, instanced }) + /* wgsl */ `
+export const buildMegakernelSource = ({ hasVolume = false, hasLocalVolumes = false, hasGridVolume = false, hasNoiseOctaves = false, hasEmissionRamp = false, hasMeshVolume = false, hasSubsurface = false, hasOcclusionMap = false, texelBake = false, realtime = null, instanced = false } = {}) => buildCommonSource({ hasVolume, hasLocalVolumes, hasGridVolume, hasNoiseOctaves, hasEmissionRamp, hasMeshVolume, hasOcclusionMap, instanced }) + /* wgsl */ `
 ${realtime ? realtime.declarations + realtime.addLights : `// The first hit lights from every emitter; later hits draw one, and divide by the chance of drawing it.
 fn addLights(depth: i32, normal: vec3<f32>) {
   let emitterCount = params.emittersFlagsSample.x;
@@ -1327,7 +1344,7 @@ fn tracePath(origin: vec3<f32>, startDirection: vec3<f32>, pixel: u32, sampleInd
       let isMirror = sampleSurface(lobeUnit, firstUnit, secondUnit);
       direction = sampledDirection;
       let cosine = dot(direction, normal);
-      if (cosine <= 0.0) { break; }
+      if (cosine <= 0.0) { break; }${hasOcclusionMap ? '\n      throughput *= hitOcclusion;' : ''}
       if (isMirror) {
         throughput *= mirrorWeight();
         afterMirror = true;

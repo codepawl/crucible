@@ -1,0 +1,1 @@
+- Studio Settings > Keyboard lists every shortcut by area and lets you change any of them: click a key and press the new combination, see a clash with Swap and Cancel before it is saved, reset one key or all of the preset, and find an action by name; changes are kept per preset and the menus, tooltips and Help sheet follow at once.

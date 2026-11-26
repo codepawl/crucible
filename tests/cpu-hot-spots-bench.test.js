@@ -29,3 +29,10 @@ test('arguments are bounded and the median handles even and odd counts', () => {
   assert.equal(medianOf([3, 1, 2]), 2);
   assert.equal(medianOf([4, 1, 2, 3]), 2.5);
 });
+
+test('the mesh edits and selection tools are timed, each on a sphere sized by faces', async () => {
+  const meshIds = ['mesh-extrude', 'mesh-dissolve', 'mesh-boolean', 'mesh-select-grow', 'mesh-select-by-normal', 'mesh-select-linked', 'mesh-select-grow-shrink'];
+  const report = await runBench({ runs: 1, tiny: true, only: meshIds });
+  assert.deepEqual(report.rows.map(row => row.id).sort(), [...meshIds].sort());
+  for (const row of report.rows) assert.match(row.describe, /\d+-face sphere/, `${row.id} does not name its face count`);
+});

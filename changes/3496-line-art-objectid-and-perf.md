@@ -1,0 +1,1 @@
+- `installLineArt` draws `normal` before `objectId` so `passSupport.texture` stays usable by user passes (`objectSlotAt(uv)`), skips the `normal` pass when unused (`creaseAngle: 0` with `silhouetteSide: 'both'`), and caches `nodeTexture` uploads across unchanged frames (#3496, #3491)

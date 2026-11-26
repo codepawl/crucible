@@ -83,11 +83,12 @@ test('the dialogs and the page pass the selection audit, and a seeded selectable
 test('the notices pass the selection audit, and only an error message in them is selectable', { timeout: 240000 }, async context => {
   const screens = await inChrome(context, () => runAudit({ only: 'notice' }));
   if (!screens) return;
-  assert.equal(screens.length, 10, 'error toast, toast, paused notice, paused notice with Reload and draft notice, in two themes');
+  assert.equal(screens.length, 12, 'error toast, toast, numpad notice, paused notice, paused notice with Reload and draft notice, in two themes');
   assert.deepEqual(summarize(screens).findings.map(finding => finding.message), []);
   const selectableCount = name => screens.filter(screen => screen.name.startsWith(name)).map(screen => screen.records.filter(record => record.selectable).length);
   assert.deepEqual(selectableCount('error toast'), [1, 1], 'the error message is on the allowed list');
   assert.deepEqual(selectableCount('toast'), [0, 0], 'an ordinary toast is not');
+  assert.deepEqual(selectableCount('numpad notice'), [0, 0]);
   assert.deepEqual(selectableCount('paused notice'), [0, 0, 0, 0]);
   assert.deepEqual(selectableCount('draft notice'), [0, 0]);
 });

@@ -11,7 +11,9 @@ import { partMatrixLookup } from '../src/closed-room.js';
 const SUN = { keyColor: [3, 3, 3], lightDirection: [-0.4, -1, -0.3] };
 const SMALL_TRACE = { maximumTexels: 1500 };
 
-function setParts({ front = false, ceiling = true } = {}) {
+// `rounded` lifts the ceiling 0.05 m off the walls: only four of the six sides then touch (the floor and three walls), which is no room for the sharp joins of src/room-box-joins.js (#3433),
+// so the boxes keep their rounded edges. No box is rotated.
+function setParts({ front = false, ceiling = true, rounded = false } = {}) {
   const block = (id, translation, scale) => ({ id, geometry: 'box', material: 'wall', translation, scale });
   const { parts } = createAgentScene({
     format: 'crucible.scene', schemaVersion: 1,
@@ -22,7 +24,7 @@ function setParts({ front = false, ceiling = true } = {}) {
       block('wall-back', [0, 2, -4], [10, 4, 0.2]),
       block('wall-left', [-5, 2, 0], [0.2, 4, 8]),
       block('wall-right', [5, 2, 0], [0.2, 4, 8]),
-      ...(ceiling ? [block('ceiling', [0, 4.1, 0], [10.4, 0.2, 8.4])] : []),
+      ...(ceiling ? [block('ceiling', [0, rounded ? 4.15 : 4.1, 0], [10.4, 0.2, 8.4])] : []),
       ...(front ? [block('wall-front', [0, 2, 4], [10, 4, 0.2])] : []),
     ],
     camera: { eye: [0, 1.6, 7.5], target: [0, 2, -1], fov: 70, near: 0.05, far: 60 },
@@ -31,10 +33,16 @@ function setParts({ front = false, ceiling = true } = {}) {
   return parts;
 }
 
-function meanSkyVisibility(result, name) {
-  const visibility = result.parts.find(part => part.name === name).geometry.skyVisibility;
-  assert.ok(visibility, `${name} carries the sky it sees`);
-  return visibility.reduce((total, value) => total + value, 0) / visibility.length;
+// The mean over the vertices of the face that looks into the room (normal along `axis` with `sign`): the outer faces see the whole sky and would hide what the room face sees.
+function meanSkyVisibility(result, name, axis, sign) {
+  const { normals, skyVisibility } = result.parts.find(part => part.name === name).geometry;
+  assert.ok(skyVisibility, `${name} carries the sky it sees`);
+  const roomFace = [];
+  for (let vertex = 0; vertex < skyVisibility.length; vertex++) {
+    if (normals[vertex * 3 + axis] * sign > 0.9) roomFace.push(skyVisibility[vertex]);
+  }
+  assert.ok(roomFace.length > 20, `${name} has ${roomFace.length} points on its room face`);
+  return roomFace.reduce((total, value) => total + value, 0) / roomFace.length;
 }
 
 test('three walls and a ceiling have walls on three quarters of the ring: a room for the loose test, not the strict one', () => {
@@ -46,8 +54,8 @@ test('three walls and a ceiling have walls on three quarters of the ring: a room
 test('an open-sided set gets the sky trace on its ceiling and walls, and the report names the branch', () => {
   const result = applyDefaultFloorSky(setParts(), SUN, SMALL_TRACE);
   assert.equal(result.report.branch, 'open-sided room, every surface traced');
-  assert.ok(meanSkyVisibility(result, 'ceiling') < 0.7, 'the ceiling underside no longer sees the whole sky');
-  assert.ok(meanSkyVisibility(result, 'wall-back') < 0.7, 'the back wall no longer sees the whole sky');
+  assert.ok(meanSkyVisibility(result, 'ceiling', 1, -1) < 0.7, 'the ceiling underside no longer sees the whole sky');
+  assert.ok(meanSkyVisibility(result, 'wall-back', 2, 1) < 0.7, 'the back wall no longer sees the whole sky');
 });
 
 test('a sealed room keeps its branch', () => {
@@ -82,7 +90,7 @@ test('a room walled all round keeps the hard cut at a quarter of escaping rays',
 // The rounded edge of the back wall runs along its top and bottom: with the corner falloff of the fill and a coarse cut, a point there and its
 // neighbours differed a lot, which drew a scalloped line. Points on one ring of the rounded edge share a height.
 test('the rounded edge of a wall of an open-sided set has no alternating sky values', () => {
-  const result = applyDefaultFloorSky(setParts(), SUN, { maximumTexels: 3000 });
+  const result = applyDefaultFloorSky(setParts({ rounded: true }), SUN, { maximumTexels: 3000 });
   const { positions, normals, skyVisibility } = result.parts.find(part => part.name === 'wall-back').geometry;
   const rings = new Map();
   for (let vertex = 0; vertex < positions.length / 3; vertex++) {

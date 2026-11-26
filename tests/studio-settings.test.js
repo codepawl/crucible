@@ -49,7 +49,7 @@ const FULL_REPORT = { signedIn: true, name: 'Sample Person', email: 'sample.pers
 test('Settings groups its rows into titled sections that each have an icon, and shows one section at a time (#3310)', testContext => {
   const ui = mountStudio(testContext);
   const titles = ui.sectionButtons().map(button => button.querySelector('span').textContent);
-  assert.deepEqual(titles, ['Interface', 'Viewport', 'Editing', 'Keys'], 'no Account section without a host');
+  assert.deepEqual(titles, ['Interface', 'Viewport', 'Editing', 'Keyboard'], 'no Account section without a host');
   for (const button of ui.sectionButtons()) {
     assert.ok(button.querySelector('svg'), `${button.dataset.section} has an icon in the list`);
     assert.ok(ui.pane(button.dataset.section).querySelector('h3 svg'), `${button.dataset.section} has an icon at its title`);
@@ -57,8 +57,8 @@ test('Settings groups its rows into titled sections that each have an icon, and 
   const rowsOf = id => ui.pane(id).descendants().filter(element => element.dataset?.setting).map(element => element.dataset.setting);
   assert.deepEqual(rowsOf('interface'), ['theme', 'startWorkspace', 'panelsFloating', 'motion']);
   assert.deepEqual(rowsOf('viewport'), ['performance', 'gridVisible', 'readoutVisible', 'viewWidgetVisible', 'agentCursorVisible', 'gizmoSize', 'zoomDirection']);
-  assert.deepEqual(rowsOf('editing'), ['moveSnapStep', 'rotateSnapDegrees']);
-  assert.deepEqual(rowsOf('keys'), ['keymap']);
+  assert.deepEqual(rowsOf('editing'), ['moveSnapStep', 'rotateSnapDegrees', 'lengthUnit']);
+  assert.deepEqual(rowsOf('keys'), ['keymap', 'numberPad']);
   const shownRows = STUDIO_SETTING_SECTIONS.flatMap(section => section.rows.map(row => row[0]));
   assert.equal(new Set(shownRows).size, shownRows.length, 'a preference sits in one section only');
   assert.equal(ui.account(), null);
@@ -92,7 +92,7 @@ test('Reset in a sectioned Settings returns every preference, the new ones too, 
   ui.control('zoomDirection').value = 'inverted';
   dispatch(ui.control('zoomDirection'), 'change');
   assert.equal(JSON.parse(saved.get('crucible-studio-preferences')).motion, 'reduced');
-  ui.settingsDialog.querySelectorAll('button').find(button => button.textContent === 'Reset').click();
+  ui.settingsDialog.querySelectorAll('button').find(button => button.textContent === 'Reset settings').click();
   const stored = JSON.parse(saved.get('crucible-studio-preferences'));
   assert.equal(stored.motion, 'system');
   assert.equal(stored.zoomDirection, 'normal');
@@ -429,11 +429,11 @@ function cssRule(selector) {
   return STUDIO_CSS.slice(start, STUDIO_CSS.indexOf('}', start));
 }
 
-test('Done is the one primary button of Settings; Reset and Run setup again stay secondary (#3310)', testContext => {
+test('Done is the one primary button of Settings; Reset settings and Run setup again stay secondary (#3310)', testContext => {
   const ui = mountStudio(testContext);
   const buttonNamed = label => ui.settingsDialog.querySelectorAll('.crucible-studio-dialog-actions button').find(button => button.textContent === label);
   assert.ok(buttonNamed('Done').className.split(/\s+/).includes('crucible-studio-dialog-primary'));
-  assert.equal(buttonNamed('Reset').className.includes('primary'), false);
+  assert.equal(buttonNamed('Reset settings').className.includes('primary'), false);
   assert.equal(buttonNamed('Run setup again').className.includes('primary'), false);
   assert.equal(ui.settingsDialog.querySelectorAll('.crucible-studio-dialog-primary').length, 1);
   assert.match(STUDIO_CSS, /button\.crucible-studio-dialog-primary,\s*\.crucible-studio dialog button\.crucible-studio-setup-primary \{[^}]*background: var\(--studio-text\)/, 'it shares the look of the setup dialog\'s primary button');
@@ -503,7 +503,7 @@ test('Account actions lead with a door in, a door out, a coin and a card, and Do
   assert.ok(!accountGlyphs.includes(titleGlyph), 'no button repeats the icon of the Account title');
   assert.notEqual(STUDIO_ICON_PATHS.signOut, STUDIO_ICON_PATHS.signIn, 'the two doors differ');
   const footerButtons = ui.settingsDialog.querySelectorAll('.crucible-studio-dialog-actions button');
-  assertActionIcons(footerButtons, { 'Run setup again': 'runSetup', Reset: 'reset', Done: null }, 'footer');
+  assertActionIcons(footerButtons, { 'Run setup again': 'runSetup', 'Reset settings': 'reset', Done: null }, 'footer');
   assert.ok(STUDIO_CSS.includes('.crucible-studio button[data-action-icon] { gap: var(--studio-space-8); }'), 'icon and label sit 8 px apart');
 });
 
