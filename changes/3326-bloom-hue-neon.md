@@ -1,0 +1,1 @@
+- `material.preset: "neon"` adds an emissive plain dielectric preset (`emission: 8`, `roughness: 0.5`, `metallic: 0`, no pattern) that glows in `color` and pairs with `effects.bloom.keepHue: true` at exposure 1 (#3326).

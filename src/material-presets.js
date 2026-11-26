@@ -4,7 +4,7 @@
 // `color` sets their hue, and a preset without `color` falls back to its own tint.
 // Pattern `size` is metres per repeat after node scale, so a 4 m and a 40 m part show the same grain size.
 
-export const MATERIAL_PRESET_NAMES = Object.freeze(['smoothPlastic', 'wood', 'grass', 'glass', 'brick']);
+export const MATERIAL_PRESET_NAMES = Object.freeze(['smoothPlastic', 'wood', 'grass', 'neon', 'glass', 'brick']);
 
 // Sparse upright blades: Voronoi cells squeezed four times along u so each is a tall sliver, kept only where the cell's random
 // value passes a threshold (the rest is bare turf), each a sharpened dome that is bright at the core and dark at the rim, over a
@@ -60,6 +60,10 @@ const MATERIAL_PRESETS = Object.freeze({
     color: Object.freeze([0.18, 0.5, 0.08]), roughness: 1, metallic: 0,
     pattern: GRASS_PATTERN,
     note: 'Short turf with sparse upright blades, bright at the core and dark at the rim, one repeat per 1.25 m across, so a part under 1.2 m shows no repeat, tinted by color.',
+  }),
+  neon: Object.freeze({
+    color: Object.freeze([0.2, 1, 0.9]), roughness: 0.5, metallic: 0, emission: 8,
+    note: 'Glowing plain dielectric (emission 8); pair with bloom.keepHue.',
   }),
   glass: Object.freeze({
     color: Object.freeze([0.5, 0.8, 0.93]), roughness: 0.03, metallic: 0, opacity: 0.8, clearcoat: 1,

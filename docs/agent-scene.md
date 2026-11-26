@@ -151,7 +151,7 @@ Image textures come from catalog images (a colour map sequence, and scanned text
 
 ### Material presets
 
-`preset` names a ready look for blocky scenes, such as parts exported from Roblox Studio that carry a material name and a colour: `smoothPlastic`, `wood`, `grass`, `glass` or `brick`. The preset fills only the fields the material leaves out, so any field you set (`roughness`, `pattern`, `opacity`) wins.
+`preset` names a ready look for blocky scenes, such as parts exported from Roblox Studio that carry a material name and a colour: `smoothPlastic`, `wood`, `grass`, `neon`, `glass` or `brick`. The preset fills only the fields the material leaves out, so any field you set (`roughness`, `pattern`, `opacity`) wins.
 
 ```json
 { "id": "roof", "preset": "brick", "color": [0.75, 0.2, 0.15] }
@@ -162,6 +162,7 @@ Image textures come from catalog images (a colour map sequence, and scanned text
 | `smoothPlastic` | roughness 0.28, no pattern |
 | `wood` | dark-ringed `wood` pattern, 0.8 m per repeat, roughness 0.8 |
 | `grass` | a `graph` pattern of sparse upright blades, bright at the core and dark at the rim, over a slow mottle, a repeat every 1.25 m across, so a part under 1.2 m shows none, roughness 1; reads as turf on any part colour, and the `grass` tag is for swaying blades |
+| `neon` | glowing plain dielectric (`roughness` 0.5, `metallic` 0, `emission` 8, no pattern), glowing in `color` (or `emissiveColor` when set). Pair with `effects.bloom` `{ "strength": 0.5, "radius": 16, "keepHue": true }` (up to strength 1) at exposure 1 so faces stay saturated and halos keep the source hue ([Bloom that keeps the hue](agent-look.md#bloom-that-keeps-the-hue)) |
 | `glass` | pale cyan tint, opacity 0.8, roughness 0.03, clear coat, no transmission, and a thin bright rim at the silhouette: `emission` 7 (every channel stays under 255) times the Fresnel of `ior` 1.01 (about 0 face on, rising within a few pixels of the edge), blended. Glaze drops emission on a material with `transmission` above 0 (#3279), and a blended transmissive material does not refract (`transmission-blended`), so the preset leaves transmission out; set it yourself for a bend and the rim goes away. Over bloom the rim glows: lower `emission` for a quieter edge. A coloured pane over a dark backdrop looks dark, since it tints what is behind it. Its tinted shadow is drawn only by the default shadow map: `environment.sunAngularRadius` (soft sun) drops it (#3259) |
 | `brick` | `bricks` pattern, 1 m per repeat, roughness 0.9 |
 

@@ -23,7 +23,7 @@ function materialOf(scene, id) {
 
 test('every preset name is listed in scene_capabilities', async () => {
   assert.deepEqual([...AGENT_SCENE_CAPABILITIES.materialPresets.names], [...MATERIAL_PRESET_NAMES]);
-  assert.deepEqual([...MATERIAL_PRESET_NAMES], ['smoothPlastic', 'wood', 'grass', 'glass', 'brick']);
+  assert.deepEqual([...MATERIAL_PRESET_NAMES], ['smoothPlastic', 'wood', 'grass', 'neon', 'glass', 'brick']);
 });
 
 test('each preset builds, and the part colour is kept as the tint', async () => {
@@ -97,4 +97,20 @@ test('brick defaults to a deep red', async () => {
   const scene = await build(recipeWith([{ id: 'brick', preset: 'brick' }]));
   const [red, green, blue] = materialOf(scene, 'brick').color;
   assert.ok(red >= 0.5 && green <= 0.2 && blue <= 0.15, 'deep brick red, not peach');
+});
+
+test('neon is a plain glowing dielectric tinted by color with no pattern', async () => {
+  const scene = await build(recipeWith([{ id: 'default-neon', preset: 'neon' }, { id: 'red-neon', preset: 'neon', color: [1, 0, 0] }]));
+  const fallback = materialOf(scene, 'default-neon');
+  assert.equal(fallback.tag, 'surface');
+  assert.equal(fallback.metallic, 0);
+  assert.equal(fallback.roughness, 0.5);
+  assert.equal(fallback.emission, 8);
+  assert.equal(fallback.pattern, undefined);
+  assert.equal(fallback.emissiveColor, undefined);
+  assert.deepEqual([...fallback.color], [0.2, 1, 0.9]);
+  const red = materialOf(scene, 'red-neon');
+  assert.deepEqual([...red.color], [1, 0, 0]);
+  assert.equal(red.emission, 8);
+  assert.equal(red.pattern, undefined);
 });
