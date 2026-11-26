@@ -759,6 +759,8 @@ export function syncObjectAndMaterialPanels({
   controls,
 }) {
   const {
+    nodeEmptyPrompt,
+    nodeControls,
     nodeLabelInput,
     nodeParentSelect,
     visibleToggle,
@@ -767,6 +769,8 @@ export function syncObjectAndMaterialPanels({
     positionRow,
     rotationRow,
     scaleRow,
+    materialEmptyPrompt,
+    materialControls,
     materialSelect,
     colorInput,
     colorMixedTag,
@@ -784,6 +788,10 @@ export function syncObjectAndMaterialPanels({
   } = controls;
 
   const hasNode = Boolean(summary);
+  if (nodeEmptyPrompt && nodeControls) {
+    nodeEmptyPrompt.hidden = hasNode;
+    nodeControls.hidden = !hasNode;
+  }
   nodeLabelInput.disabled = !hasNode;
   nodeParentSelect.disabled = !hasNode;
   visibleToggle.setAttribute('aria-disabled', hasNode ? 'false' : 'true');
@@ -839,6 +847,15 @@ export function syncObjectAndMaterialPanels({
   const activeMaterial = materialSummary?.activeMaterial ?? (!summary ? (recipe.materials[0] ?? null) : null);
   renderPaletteSwatches(recipe, materialSummary && !materialSummary.assignedMixed ? (activeMaterial?.id ?? null) : null);
   const hasMaterial = Boolean(activeMaterial);
+  if (materialEmptyPrompt && materialControls) {
+    materialEmptyPrompt.hidden = hasMaterial;
+    materialControls.hidden = !hasMaterial;
+    if (!hasMaterial) {
+      materialEmptyPrompt.textContent = recipe.materials.length === 0
+        ? 'Add a material with + in Scene, then select an object to paint.'
+        : 'Select an object with a material, or pick a swatch in Scene.';
+    }
+  }
   materialSelect.disabled = !hasMaterial;
   colorInput.disabled = !hasMaterial;
   emissiveColorInput.disabled = !hasMaterial;

@@ -27,11 +27,18 @@ export function clearStudioDraft(storage) {
  * Keeps `recipe` as the draft and returns what happened: 'saved', 'too-large' (the recipe is over the limit, and the older
  * draft is dropped because it would restore a state the person has left) or 'unavailable' (storage refused the write).
  */
-export function saveStudioDraft(storage, recipe, fileName) {
+export function saveStudioDraft(storage, recipe, fileName, workspaceState = null) {
   if (!storage) {
     return 'unavailable';
   }
-  const text = JSON.stringify({ fileName, recipe });
+  const payload = { fileName, recipe };
+  if (typeof workspaceState?.workspace === 'string' && workspaceState.workspace.length > 0) {
+    payload.workspace = workspaceState.workspace;
+  }
+  if (typeof workspaceState?.activeTab === 'string' && workspaceState.activeTab.length > 0) {
+    payload.activeTab = workspaceState.activeTab;
+  }
+  const text = JSON.stringify(payload);
   if (text.length > MAXIMUM_DRAFT_CHARACTERS) {
     removeDraftEntry(storage);
     return 'too-large';
@@ -44,7 +51,7 @@ export function saveStudioDraft(storage, recipe, fileName) {
   }
 }
 
-/** The saved draft as `{ fileName, recipe }`, or null when there is none or the entry is damaged (which also drops it). */
+/** The saved draft as `{ fileName, recipe, workspace?, activeTab? }`, or null when there is none or the entry is damaged (which also drops it). */
 export function loadStudioDraft(storage) {
   let saved = null;
   try {
@@ -58,7 +65,14 @@ export function loadStudioDraft(storage) {
   try {
     const draft = JSON.parse(saved);
     if (draft && typeof draft === 'object' && draft.recipe && typeof draft.recipe === 'object' && Array.isArray(draft.recipe.nodes)) {
-      return { fileName: typeof draft.fileName === 'string' ? draft.fileName : '', recipe: draft.recipe };
+      const result = { fileName: typeof draft.fileName === 'string' ? draft.fileName : '', recipe: draft.recipe };
+      if (typeof draft.workspace === 'string' && draft.workspace.length > 0) {
+        result.workspace = draft.workspace;
+      }
+      if (typeof draft.activeTab === 'string' && draft.activeTab.length > 0) {
+        result.activeTab = draft.activeTab;
+      }
+      return result;
     }
   } catch {
     // A damaged entry falls through to be dropped.

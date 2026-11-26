@@ -1,0 +1,1 @@
+- Studio workspace tabs now order as Build, Look, Animate and Export with distinct icons, scoped panels and tools, non-empty selection prompts and per-scene tab restoration (#3370)
