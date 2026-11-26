@@ -60,6 +60,7 @@ const GROUP_BY_ACTION = Object.freeze({
   'mesh.growSelection': 'Mesh selection',
   'mesh.shrinkSelection': 'Mesh selection',
   'mesh.separate': 'Mesh tools',
+  'mesh.makeFace': 'Mesh tools',
   'mesh.deleteMenu': 'Mesh tools',
   'mesh.mergeMenu': 'Mesh tools',
   'mesh.proportional': 'Mesh tools',

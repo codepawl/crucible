@@ -1,0 +1,1 @@
+- Studio edit mode adds Fill, Grid fill, Bridge edge loops, Subdivide, Symmetrize and `F` (`make_face`) to close holes, bridge loops and split faces (#3298)

@@ -15,8 +15,27 @@ import { DEFAULT_MAX_FALLOFF_VISITS, spatialFalloffWeights } from './mesh-ops.js
 import { proportionalCirclePath } from './studio-proportional.js';
 import { MAX_SELECTED_ELEMENTS, MERGE_TARGETS } from './mesh-operations.js';
 import { CONVERTIBLE_PRIMITIVES, meshGeometryOfPrimitive, planOwnMesh } from './studio-own-mesh.js';
+import {
+  edgesOfSelection,
+  planMeshBridge,
+  planMeshFill,
+  planMeshGridFill,
+  planMeshMakeFace,
+  planMeshSubdivide,
+  planMeshSymmetrize,
+  verticesOfSelection,
+} from './studio-mesh-tools.js';
 
-export { meshGeometryOfPrimitive };
+export {
+  meshGeometryOfPrimitive,
+  planMeshBridge,
+  planMeshFill,
+  planMeshGridFill,
+  planMeshMakeFace,
+  planMeshSubdivide,
+  planMeshSymmetrize,
+  verticesOfSelection,
+};
 
 export const MESH_SELECTION_MODES = Object.freeze(['vertex', 'edge', 'face']);
 export const MAX_MASK_VERTICES = 19;
@@ -185,39 +204,6 @@ export function previewNormalsOf(indices, positions, normals) {
     }
   }
   return normals;
-}
-
-/** The vertices a selection of `mode` covers: the picked ones, the ends of picked edges, or the corners of picked faces. */
-export function verticesOfSelection(mesh, mode, selected) {
-  const vertices = new Set();
-  for (const element of selected) {
-    if (mode === 'vertex') {
-      vertices.add(element);
-    } else if (mode === 'edge') {
-      vertices.add(mesh.edgeVertices[element * 2]);
-      vertices.add(mesh.edgeVertices[element * 2 + 1]);
-    } else {
-      for (let corner = mesh.faceOffsets[element]; corner < mesh.faceOffsets[element + 1]; corner += 1) vertices.add(mesh.cornerVertices[corner]);
-    }
-  }
-  return vertices;
-}
-
-// The edges a selection dissolves: the picked ones, those between two picked vertices, or those around a picked face.
-function edgesOfSelection(mesh, mode, selected) {
-  if (mode === 'edge') return [...selected].sort((first, second) => first - second);
-  if (mode === 'vertex') {
-    const edges = [];
-    for (let edge = 0; edge < mesh.edgeCount; edge += 1) {
-      if (selected.has(mesh.edgeVertices[edge * 2]) && selected.has(mesh.edgeVertices[edge * 2 + 1])) edges.push(edge);
-    }
-    return edges;
-  }
-  const edges = new Set();
-  for (const face of selected) {
-    for (let corner = mesh.faceOffsets[face]; corner < mesh.faceOffsets[face + 1]; corner += 1) edges.add(mesh.cornerEdges[corner]);
-  }
-  return [...edges].sort((first, second) => first - second);
 }
 
 // The faces a selection dissolves: the picked ones, or those whose every corner is picked.
@@ -1142,6 +1128,36 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return runTopologyEdit(() => planMeshMerge(state.mesh, state.mode, state.selected, at), `Merged the vertices ${at === 'collapse' ? 'by collapse' : `at ${at}`}`);
   }
 
+  /** Makes a face from 3+ picked vertices or splits a shared face with an edge between 2 picked vertices (F): one undo step. */
+  function makeFace() {
+    return runTopologyEdit(() => planMeshMakeFace(state.mesh, state.mode, state.selected), 'Created face or edge');
+  }
+
+  /** Fills the selected boundary loop or caps all open boundaries when nothing is picked: one undo step. */
+  function fill() {
+    return runTopologyEdit(() => planMeshFill(state.mesh, state.mode, state.selected), 'Filled selection');
+  }
+
+  /** Fills closed even-sided boundary loops in the selection with quad grids: one undo step. */
+  function gridFill() {
+    return runTopologyEdit(() => planMeshGridFill(state.mesh, state.mode, state.selected), 'Filled with grid');
+  }
+
+  /** Bridges two selected boundary edge loops with a strip of quads: one undo step. */
+  function bridge(options = {}) {
+    return runTopologyEdit(() => planMeshBridge(state.mesh, state.mode, state.selected, options), 'Bridged edge loops');
+  }
+
+  /** Subdivides the selected edges (and splits quads across them): one undo step. */
+  function subdivide(options = {}) {
+    return runTopologyEdit(() => planMeshSubdivide(state.mesh, state.mode, state.selected, options), 'Subdivided selection');
+  }
+
+  /** Symmetrizes the mesh across the chosen axis plane: one undo step. */
+  function symmetrize(options = {}) {
+    return runTopologyEdit(() => planMeshSymmetrize(state.mesh, state.mode, state.selected, options), 'Symmetrized mesh');
+  }
+
   /**
    * The radius or the curve changed while a move is held: the vertices it reaches are chosen again from where they stood before
    * the move, and the move already made is applied to them, so the hill widens under the pointer.
@@ -1376,6 +1392,12 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     separateSelection,
     dissolve,
     merge,
+    makeFace,
+    fill,
+    gridFill,
+    bridge,
+    subdivide,
+    symmetrize,
     selectNone,
     invertSelection,
     selectInRectangle,

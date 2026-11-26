@@ -16,6 +16,7 @@ import { encodePackOrRefuse } from './studio-pack-refusal.js';
 import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shaders.js';
 import { STUDIO_CSS } from './studio-styles.js';
 import { createApplyMenus } from './studio-apply-menu.js';
+import { createMeshMenus } from './studio-mesh-menus.js';
 import { findKeymapAction, findMouseNavigation, formatShortcutKeys, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
 import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
@@ -1572,35 +1573,7 @@ export function createStudio(container, {
     applyMenus.originRow,
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
   );
-  // P in edit mode: what to separate. Selection is the picked faces.
-  const separatePopover = createMenuPopover(
-    'crucible-studio-pop-separate',
-    createMenuItem('Selection', 'mesh.separate', () => separateMeshSelection(), 'duplicate'),
-  );
   let lastObjectMenuPoint = null;
-  // Edit mode's Delete and Merge menus (X and M). Dissolve acts on the selection of any mode; the merges need picked
-  // vertices, and At First and At Last follow the order of the picks, which only vertex mode keeps.
-  const dissolveSelection = kind => {
-    meshEditor.dissolve(kind);
-    syncUi();
-    requestFrame();
-  };
-  const mergeSelection = target => {
-    meshEditor.merge(target);
-    syncUi();
-    requestFrame();
-  };
-  const meshDeletePopover = createMenuPopover(
-    'crucible-studio-pop-mesh-delete',
-    createMenuItem('Dissolve Vertices', '', () => dissolveSelection('vertices'), 'meshVertex'),
-    createMenuItem('Dissolve Edges', '', () => dissolveSelection('edges'), 'meshEdge'),
-    createMenuItem('Dissolve Faces', '', () => dissolveSelection('faces'), 'meshFace'),
-  );
-  const meshMergeCenterItem = createMenuItem('At Center', '', () => mergeSelection('center'), 'meshVertex');
-  const meshMergeFirstItem = createMenuItem('At First', '', () => mergeSelection('first'), 'meshVertex');
-  const meshMergeLastItem = createMenuItem('At Last', '', () => mergeSelection('last'), 'meshVertex');
-  const meshMergeCollapseItem = createMenuItem('Collapse', '', () => mergeSelection('collapse'), 'meshVertex');
-  const meshMergePopover = createMenuPopover('crucible-studio-pop-mesh-merge', meshMergeCenterItem, meshMergeFirstItem, meshMergeLastItem, meshMergeCollapseItem);
   function openPopoverAt(popover, clientX, clientY) {
     const windowWidth = documentReference.defaultView?.innerWidth ?? 1280;
     const windowHeight = documentReference.defaultView?.innerHeight ?? 800;
@@ -1616,28 +1589,25 @@ export function createStudio(container, {
     popover.style.setProperty('--studio-popover-shift', opening.shift);
     popover.showPopover?.();
   }
+  const meshMenus = createMeshMenus({
+    createMenuPopover,
+    createMenuItem,
+    controller,
+    getCanvas: () => canvas,
+    openPopoverAt,
+    getMeshEditor: () => meshEditor,
+    separateMeshSelection: () => separateMeshSelection(),
+    onTopologyApplied: () => {
+      syncUi();
+      requestFrame();
+    },
+  });
   // No menu while an object is in hand: a Ctrl press on a Mac is a right click, and it would open this over the move.
   function openObjectMenu(clientX, clientY) {
     if (controller.dragging || modalTransform) return;
     lastObjectMenuPoint = [clientX, clientY];
     openPopoverAt(objectPopover, clientX, clientY);
   }
-  // The keys open these menus at the middle of the selection, as the pointer is not tracked between clicks.
-  function openMeshMenu(popover) {
-    const bounds = canvas.getBoundingClientRect();
-    const centre = meshEditor.selectionCentre;
-    const pixel = centre ? controller.projectWorldPoint(centre) : null;
-    const isAtFirstOrLastAvailable = meshEditor.mode === 'vertex';
-    for (const item of [meshMergeFirstItem, meshMergeLastItem]) item.setAttribute('aria-disabled', isAtFirstOrLastAvailable ? 'false' : 'true');
-    openPopoverAt(popover, bounds.left + (pixel?.x ?? bounds.width / 2), bounds.top + (pixel?.y ?? bounds.height / 2));
-  }
-  const meshMenuIsOpen = () => [meshDeletePopover, meshMergePopover].some(popover => {
-    try {
-      return popover.matches(':popover-open');
-    } catch {
-      return false;
-    }
-  });
   function hideSelection() {
     if (!controller.selectedNodeId) return;
     controller.updateNodeTransform(controller.selectedNodeId, { visible: false });
@@ -1846,7 +1816,7 @@ export function createStudio(container, {
     startMenuGroup(importAndExportRows[0]),
     ...importAndExportRows.slice(1),
   );
-  for (const popoverElement of [newPopover, addPopover, editPopover, objectPopover, separatePopover, meshDeletePopover, meshMergePopover, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover, snapPopover]) {
+  for (const popoverElement of [newPopover, addPopover, editPopover, objectPopover, ...meshMenus.popovers, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover, snapPopover]) {
     popoverElement.addEventListener('click', event => {
       const clickedButton = event.target.closest?.('button');
       if (clickedButton && !clickedButton.dataset.keepsMenu) popoverElement.hidePopover?.();
@@ -1909,11 +1879,9 @@ export function createStudio(container, {
     aiSyncPopover,
     editPopover,
     objectPopover,
-    separatePopover,
+    ...meshMenus.popovers,
     applyMenus.applyPopover,
     applyMenus.originPopover,
-    meshDeletePopover,
-    meshMergePopover,
     viewPopover,
     helpPopover,
     snapPopover,
@@ -2177,7 +2145,9 @@ export function createStudio(container, {
   const proportionalButton = createKeyedIconButton('proportional', () => `Proportional editing (${keyLabel(keymap, 'mesh.proportional')})`, { dataset: { proportional: 'toggle' }, attributes: { 'aria-pressed': 'false' } });
   const proportionalMenuButton = createIconButton(documentReference, 'chevron', 'Falloff and size of proportional editing', { dataset: { proportional: 'menu' }, attributes: { popovertarget: PROPORTIONAL_POPOVER_ID } });
   proportionalButton.addEventListener('click', () => toggleProportional());
-  meshModeGroup.append(proportionalButton, proportionalMenuButton);
+  const meshToolsButton = createIconButton(documentReference, 'more', 'Mesh tools', { dataset: { meshTools: 'true' }, attributes: { popovertarget: 'crucible-studio-pop-mesh-tools', 'aria-haspopup': 'menu' } });
+  bindPopoverAnchor(meshToolsButton, meshMenus.meshToolsPopover, { beside: true });
+  meshModeGroup.append(proportionalButton, proportionalMenuButton, meshToolsButton);
 
   const undoButton = createKeyedIconButton('undo', () => `Undo (${keyLabel(keymap, 'edit.undo')})`, { attributes: { 'aria-disabled': 'true' } });
   const redoButton = createKeyedIconButton('redo', () => `Redo (${keyLabel(keymap, 'edit.redo')})`, { attributes: { 'aria-disabled': 'true' } });
@@ -5408,6 +5378,9 @@ export function createStudio(container, {
           }
           syncUi();
           requestFrame();
+        } else if (event.button === 2 && !meshEditor.circleSelecting && !meshEditor.boxSelecting) {
+          const { clientX, clientY } = event;
+          setTimeout(() => meshMenus.openToolsAt(clientX, clientY), 0);
         }
       } else {
         // Shift or Ctrl (Command) with a left click adds the object under the pointer to the selection, or takes it out.
@@ -5641,8 +5614,7 @@ export function createStudio(container, {
   }
 
   function openSeparateMenu() {
-    const bounds = canvas.getBoundingClientRect();
-    openPopoverAt(separatePopover, bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+    meshMenus.openMeshMenu(meshMenus.separatePopover);
   }
 
   async function enterMeshEdit() {
@@ -5854,11 +5826,16 @@ export function createStudio(container, {
     'mesh.faceMode': () => chooseMeshMode('face'),
     'mesh.deleteMenu': event => {
       event.preventDefault();
-      openMeshMenu(meshDeletePopover);
+      meshMenus.openMeshMenu(meshMenus.meshDeletePopover);
     },
     'mesh.mergeMenu': event => {
       event.preventDefault();
-      openMeshMenu(meshMergePopover);
+      meshMenus.openMeshMenu(meshMenus.meshMergePopover);
+    },
+    'mesh.makeFace': () => {
+      meshEditor.makeFace();
+      syncUi();
+      requestFrame();
     },
     // Alt+A and Ctrl+I have browser actions of their own (the menu bar, page info).
     'mesh.selectNone': event => {
@@ -6072,8 +6049,8 @@ export function createStudio(container, {
     if (isEditableTarget(event.target, event.key)) {
       return;
     }
-    // Esc or a key pressed over an open Delete or Merge menu belongs to the menu, not to edit mode.
-    if (meshMenuIsOpen()) {
+    // Esc or a key pressed over an open mesh menu belongs to the menu, not to edit mode.
+    if (meshMenus.isOpen()) {
       return;
     }
     const editingMesh = Boolean(meshEditor?.active);
