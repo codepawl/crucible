@@ -1,0 +1,1 @@
+- Keep nested shared material graph subgraphs deduplicated across outputs and evaluate scalar colour-ramp and warp inputs once per texel (Part of #3147)

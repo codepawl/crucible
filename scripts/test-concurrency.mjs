@@ -1,9 +1,9 @@
 // How many test files node --test runs at once. Node's default is availableParallelism() - 1, which is 27 node
-// processes on a 28-thread PC; several worktrees running the suite at once then exhaust memory (#3257).
+// processes on a 28-thread PC; several worktrees or local desktop use then saturate the CPU and memory (#3257).
 // CRUCIBLE_TEST_CONCURRENCY overrides the default; the count never exceeds what Node itself would pick.
 import { availableParallelism } from 'node:os';
 
-export const DEFAULT_TEST_CONCURRENCY = 6;
+export const DEFAULT_TEST_CONCURRENCY = 3;
 export const TEST_CONCURRENCY_VARIABLE = 'CRUCIBLE_TEST_CONCURRENCY';
 
 export function testConcurrency({ environment = process.env, parallelism = availableParallelism() } = {}) {

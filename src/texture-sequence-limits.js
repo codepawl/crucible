@@ -11,7 +11,7 @@ export const TEXTURE_SEQUENCE_LIMITS = Object.freeze({
 
 export const TEXTURE_SEQUENCE_CAPABILITIES = Object.freeze({
   field: 'material.map = { sequence: { frames: [catalog image asset IDs], fps, loop } }',
-  covers: 'color map (map) of surface-tag materials; needs UVs (grid, box and similar); not combined with pattern',
+  covers: 'color map (map, and emissiveMap when emission > 0) of surface or unlit materials; needs UVs (grid, box and similar); not combined with pattern',
   frame: 'floor(motionTime * fps), wrapped when loop is true (default) and held on the last frame when false; frame 0 before any motion time',
   clock: 'motionTime, also in render jobs (settings.motion.start + elapsed)',
   streaming: 'a sequence of more than wholeSequenceFrames frames loads on demand: the host reads and decodes the frame of each requested time and keeps the one before it, so a video job decodes each frame once, in frame order, and the limits are per frame (maxSide) and for the decoded frames kept at once (maxDecodedBytes), not for the whole list. Streaming covers scene_look with a time and the raster still and video jobs; scene_review (all shots in one call) and path traced or native jobs (settings.renderer, which refuses a streamed sequence) need a sequence of at most wholeSequenceFrames frames. Shorter sequences load whole.',

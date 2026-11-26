@@ -5,16 +5,18 @@ import {
 } from './mesh-dissolve.js';
 import { bisectPlane } from './mesh-bisect.js';
 import { bridgeEdgeLoops, gridFill } from './mesh-bridge.js';
+import { makeFace } from './mesh-make-face.js';
 import { subdivideEdges, edgeSplitSize } from './mesh-edgesplit.js';
 import { knifeCut } from './mesh-knife.js';
 import { invalidField } from './field-error.js';
 import { editField, editInteger, editBoolean, editRuleObject, editEdgeRule } from './mesh-edit-field.js';
+import { MAX_SELECTED_ELEMENTS } from './mesh-operations.js';
 
 // The cutting edits as recipe operations: validation of their fields and running them on MeshData. The geometry lives
 // in the modules imported above; this file only connects it to the edit log.
 
 export const CUT_OPERATIONS = Object.freeze([
-  'fill_holes', 'dissolve_faces', 'dissolve_edges', 'dissolve_verts', 'dissolve_limited',
+  'fill_holes', 'make_face', 'dissolve_faces', 'dissolve_edges', 'dissolve_verts', 'dissolve_limited',
   'bisect_plane', 'bridge_edge_loops', 'subdivide_edges', 'grid_fill', 'knife_project',
 ]);
 
@@ -30,6 +32,12 @@ export function normalizeCutEdit(edit, normalized, index, { finiteNumber, vector
   switch (edit.op) {
     case 'fill_holes':
       if (edit.sides !== undefined) normalized.sides = editInteger(edit.sides, index, 'sides', 3, 4096);
+      break;
+    case 'make_face':
+      if (!Array.isArray(edit.vertices) || edit.vertices.length < 2 || edit.vertices.length > MAX_SELECTED_ELEMENTS || !edit.vertices.every(vertex => Number.isInteger(vertex) && vertex >= 0)) {
+        throw editField(index, 'vertices', edit.vertices, `an array of 2 to ${MAX_SELECTED_ELEMENTS} different whole vertex indices, such as [0, 1, 2]`);
+      }
+      normalized.vertices = [...edit.vertices];
       break;
     case 'dissolve_faces':
       break;
@@ -97,6 +105,10 @@ export function runCutEdit(mesh, edit) {
     case 'fill_holes': {
       const outcome = fillHoles(mesh, { sides: edit.sides ?? Infinity, name: edit.name });
       return { mesh: outcome.mesh, result: { filled: outcome.filled, skipped: outcome.skipped } };
+    }
+    case 'make_face': {
+      const outcome = makeFace(mesh, edit.vertices, { name: edit.name });
+      return { mesh: outcome.mesh, result: { createdFaces: outcome.createdFaces, splitFaces: outcome.splitFaces } };
     }
     case 'dissolve_faces': {
       const mask = selectFaces(mesh, edit.select);

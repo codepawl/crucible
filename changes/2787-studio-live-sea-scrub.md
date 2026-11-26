@@ -1,0 +1,1 @@
+- Studio now uploads animated sea vertices in place during timeline scrubbing (including spray-enabled oceans) without rebuilding GPU batches (#2787)

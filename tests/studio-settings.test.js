@@ -58,7 +58,7 @@ test('Settings groups its rows into titled sections that each have an icon, and 
   assert.deepEqual(rowsOf('interface'), ['theme', 'startWorkspace', 'panelsFloating', 'motion']);
   assert.deepEqual(rowsOf('viewport'), ['performance', 'gridVisible', 'readoutVisible', 'viewWidgetVisible', 'agentCursorVisible', 'gizmoSize', 'zoomDirection']);
   assert.deepEqual(rowsOf('editing'), ['moveSnapStep', 'rotateSnapDegrees', 'lengthUnit']);
-  assert.deepEqual(rowsOf('keys'), ['keymap']);
+  assert.deepEqual(rowsOf('keys'), ['keymap', 'numberPad']);
   const shownRows = STUDIO_SETTING_SECTIONS.flatMap(section => section.rows.map(row => row[0]));
   assert.equal(new Set(shownRows).size, shownRows.length, 'a preference sits in one section only');
   assert.equal(ui.account(), null);
@@ -279,6 +279,144 @@ test('disposing Studio removes the account listener from the page (#3310)', asyn
   assert.equal(dom.document.listeners.filter(entry => entry.type === 'crucible-shell:account-changed').length, 1);
   studio.dispose();
   assert.equal(dom.document.listeners.filter(entry => entry.type === 'crucible-shell:account-changed').length, 0);
+});
+
+function deferred() {
+  const handle = {};
+  handle.promise = new Promise((resolve, reject) => {
+    handle.resolve = resolve;
+    handle.reject = reject;
+  });
+  return handle;
+}
+
+test('Account with isSignedIn() shows no rows while the host has not answered, then Sign out and Manage billing once, each calling the host once (#3460)', async testContext => {
+  const answer = deferred();
+  const calls = [];
+  withShell(testContext, {
+    account: {
+      isSignedIn: () => answer.promise,
+      signIn: async () => calls.push('signIn'),
+      signOut: async () => calls.push('signOut'),
+      manageBilling: async () => {
+        calls.push('manageBilling');
+        return { opened: true };
+      },
+    },
+  });
+  const ui = mountStudio(testContext);
+  await ui.dom.settle();
+  assert.equal(ui.account().dataset.phase, 'loading');
+  assert.deepEqual(ui.accountButtons(), [], 'no account rows until the answer settles');
+  answer.resolve(true);
+  await ui.dom.settle();
+  assert.equal(ui.account().dataset.phase, 'signed-in');
+  assert.deepEqual(ui.accountButtons(), ['Sign out', 'Manage billing']);
+  ui.accountButton('Manage billing').click();
+  await ui.dom.settle();
+  assert.deepEqual(calls, ['manageBilling']);
+  assert.equal(ui.account().querySelector('.crucible-studio-account-error'), null, 'opened: true shows nothing');
+});
+
+test('Account with isSignedIn() reads false, a plain boolean and a rejection as signed in or out, and signs out then reads again (#3460)', async testContext => {
+  let signedIn = true;
+  let signOutCalls = 0;
+  withShell(testContext, { account: { isSignedIn: () => signedIn, signIn: async () => {}, signOut: async () => { signOutCalls += 1; signedIn = false; } } });
+  const plainBoolean = mountStudio(testContext);
+  await plainBoolean.dom.settle();
+  assert.equal(plainBoolean.account().dataset.phase, 'signed-in', 'a plain boolean from an older host works');
+  assert.deepEqual(plainBoolean.accountButtons(), ['Sign out'], 'no Manage billing without the function');
+  plainBoolean.accountButton('Sign out').click();
+  await plainBoolean.dom.settle();
+  assert.equal(signOutCalls, 1);
+  assert.equal(plainBoolean.account().dataset.phase, 'signed-out', 'isSignedIn is read again after signOut resolves');
+  assert.deepEqual(plainBoolean.accountButtons(), ['Sign in']);
+});
+
+test('Account counts an isSignedIn() that rejects or throws as signed out, with Sign in and no error (#3460)', async testContext => {
+  withShell(testContext, { account: { isSignedIn: async () => { throw new Error('The host is away.'); }, signIn: async () => {}, signOut: async () => {} } });
+  const rejected = mountStudio(testContext);
+  await rejected.dom.settle();
+  assert.equal(rejected.account().dataset.phase, 'signed-out');
+  assert.deepEqual(rejected.accountButtons(), ['Sign in']);
+  assert.equal(rejected.account().querySelector('.crucible-studio-account-error'), null);
+  withShell(testContext, { account: { isSignedIn: () => { throw new Error('Thrown at once.'); }, signIn: async () => {} } });
+  const thrown = mountStudio(testContext);
+  await thrown.dom.settle();
+  assert.equal(thrown.account().dataset.phase, 'signed-out');
+});
+
+test('Account keeps showing the person, credits and plan from get() when isSignedIn() says signed in (#3460)', async testContext => {
+  withShell(testContext, { account: { isSignedIn: async () => true, get: async () => FULL_REPORT, signOut: async () => {}, buyCredits: () => {}, manageBilling: async () => ({ opened: true }) } });
+  const ui = mountStudio(testContext);
+  await ui.dom.settle();
+  for (const expected of ['Sample Person', 'sample.person@example.com', 'Left to use', '1,240 credits left', 'Studio plan']) {
+    assert.ok(ui.account().textContent.includes(expected), `shows ${expected}`);
+  }
+  assert.deepEqual(ui.accountButtons(), ['Sign out', 'Buy more', 'Manage billing']);
+});
+
+test('Manage billing shows the bounded reason when it did not open, and the message when it rejects (#3460)', async testContext => {
+  const outcomes = [{ opened: false, reason: `No portal ${'x'.repeat(400)}` }, { opened: false }, new Error('The billing page is down.')];
+  withShell(testContext, {
+    account: {
+      isSignedIn: async () => true,
+      manageBilling: async () => {
+        const outcome = outcomes.shift();
+        if (outcome instanceof Error) throw outcome;
+        return outcome;
+      },
+    },
+  });
+  const ui = mountStudio(testContext);
+  await ui.dom.settle();
+  const problem = () => ui.account().querySelector('.crucible-studio-account-error');
+  ui.accountButton('Manage billing').click();
+  await ui.dom.settle();
+  assert.match(problem().textContent, /^No portal x+$/);
+  assert.ok(problem().textContent.length <= 200, 'the reason is bounded');
+  assert.equal(problem().getAttribute('role'), 'alert');
+  ui.accountButton('Manage billing').click();
+  await ui.dom.settle();
+  assert.match(problem().textContent, /Billing could not be opened\./, 'no reason falls back to plain words');
+  ui.accountButton('Manage billing').click();
+  await ui.dom.settle();
+  assert.match(problem().textContent, /The billing page is down\./);
+});
+
+test('Account drops a slower answer that comes after a newer one (#3460)', async testContext => {
+  const [first, second] = [deferred(), deferred()];
+  const answers = [first, second];
+  withShell(testContext, { account: { isSignedIn: () => answers.shift().promise, signIn: async () => {} } });
+  const ui = mountStudio(testContext);
+  ui.dom.document.dispatchEvent(ui.dom.document.createEvent('crucible-shell:account-changed'));
+  await ui.dom.settle();
+  second.resolve(false);
+  await ui.dom.settle();
+  assert.equal(ui.account().dataset.phase, 'signed-out');
+  first.resolve(true);
+  await ui.dom.settle();
+  assert.equal(ui.account().dataset.phase, 'signed-out', 'the older answer does not win');
+});
+
+test('Account drops an answer that arrives after Settings was closed, and reads again when it opens (#3460)', async testContext => {
+  const [initial, whileOpen, nextOpening] = [deferred(), deferred(), deferred()];
+  const answers = [initial, whileOpen, nextOpening];
+  withShell(testContext, { account: { isSignedIn: () => answers.shift().promise, signIn: async () => {} } });
+  const ui = mountStudio(testContext);
+  initial.resolve(false);
+  await ui.dom.settle();
+  openSettingsFromMenu(ui);
+  await ui.dom.settle();
+  assert.equal(ui.account().dataset.phase, 'loading', 'opening Settings shows no rows until the host answers');
+  ui.settingsDialog.close();
+  whileOpen.resolve(true);
+  await ui.dom.settle();
+  assert.equal(ui.account().dataset.phase, 'loading', 'the answer to a closed Settings is dropped');
+  openSettingsFromMenu(ui);
+  nextOpening.resolve(true);
+  await ui.dom.settle();
+  assert.equal(ui.account().dataset.phase, 'signed-in');
 });
 
 function openSettingsFromMenu(ui) {

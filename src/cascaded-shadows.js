@@ -53,35 +53,50 @@ float cascadeTap(int layer, vec2 coordinates, float receiverDepth, ivec2 dimensi
   float upperRight = step(receiverDepth, texelFetch(cascadeShadowMap, ivec3(clamp(origin + ivec2(1, 1), ivec2(0), maximum), layer), 0).r);
   return mix(mix(lowerLeft, lowerRight, blend.x), mix(upperLeft, upperRight, blend.x), blend.y);
 }
-float cascadeSoftVisibility(int layer, vec3 projected, float receiverDepth, ivec2 dimensions) {
+float cascadeSoftVisibility(int layer, vec3 projected, float receiverDepth, ivec2 dimensions, vec3 normal) {
   float rotation = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
   float texelWorld = cascadeTexels[layer];
-  float searchTexels = clamp(sunSoftness * 12.0 / texelWorld, 1.0, 24.0);
+  float range = cascadeRanges[layer];
+  float slopeScale = min(1.0 / max(dot(normal, normalize(lightDirection)), 0.05), 4.0);
+  vec3 uAxis = normalize(vec3(cascadeMatrices[layer][0][0], cascadeMatrices[layer][1][0], cascadeMatrices[layer][2][0]));
+  vec3 vAxis = normalize(vec3(cascadeMatrices[layer][0][1], cascadeMatrices[layer][1][1], cascadeMatrices[layer][2][1]));
+  vec2 slopePerTexel = vec2(dot(uAxis, normal), dot(vAxis, normal)) * (texelWorld * slopeScale / range);
+  float searchTexels = clamp(sunSoftness * 12.0 / texelWorld, 1.0, 48.0);
   float gapSum = 0.0;
   float blockers = 0.0;
-  for (int tap = 0; tap < 12; tap++) {
-    ivec2 texel = clamp(ivec2(floor(projected.xy * vec2(dimensions) + cascadeVogel(tap, 12, rotation) * searchTexels)), ivec2(0), dimensions - 1);
+  for (int tap = 0; tap < 16; tap++) {
+    vec2 offsetTexels = cascadeVogel(tap, 16, rotation) * searchTexels;
+    ivec2 texel = clamp(ivec2(floor(projected.xy * vec2(dimensions) + offsetTexels)), ivec2(0), dimensions - 1);
+    float tapDepth = receiverDepth + min(dot(offsetTexels, slopePerTexel), 0.0);
     float stored = texelFetch(cascadeShadowMap, ivec3(texel, layer), 0).r;
-    if (stored < receiverDepth) {
-      gapSum += receiverDepth - stored;
+    if (stored < tapDepth) {
+      gapSum += tapDepth - stored;
       blockers += 1.0;
     }
   }
-  if (blockers == 0.0) return 1.0;
-  float penumbraTexels = clamp(sunSoftness * (gapSum / blockers) * cascadeRanges[layer] / texelWorld, 1.0, 24.0);
-  float lit = 0.0;
-  for (int tap = 0; tap < 16; tap++) {
-    lit += cascadeTap(layer, projected.xy + cascadeVogel(tap, 16, rotation) * penumbraTexels / vec2(dimensions), receiverDepth, dimensions);
+  float centerStored = texelFetch(cascadeShadowMap, ivec3(clamp(ivec2(floor(projected.xy * vec2(dimensions))), ivec2(0), dimensions - 1), layer), 0).r;
+  if (centerStored < receiverDepth) {
+    gapSum += receiverDepth - centerStored;
+    blockers += 1.0;
   }
-  return lit / 16.0;
+  if (blockers == 0.0) return 1.0;
+  float penumbraTexels = clamp(sunSoftness * (gapSum / blockers) * range / texelWorld, 1.0, 48.0);
+  float lit = 0.0;
+  for (int tap = 0; tap < 24; tap++) {
+    vec2 offsetTexels = cascadeVogel(tap, 24, rotation) * penumbraTexels;
+    float tapDepth = receiverDepth + min(dot(offsetTexels, slopePerTexel), 0.0);
+    lit += cascadeTap(layer, projected.xy + offsetTexels / vec2(dimensions), tapDepth, dimensions);
+  }
+  return lit / 24.0;
 }
 float cascadeLayerVisibility(int layer, vec3 normal) {
-  vec3 shifted = worldPosition + normal * (cascadeTexels[layer] * 1.5);
+  float normalCosine = dot(normal, normalize(lightDirection));
+  vec3 shifted = worldPosition + normal * (cascadeTexels[layer] * 1.5 * clamp(normalCosine, 0.25, 1.0));
   vec3 projected = (cascadeMatrices[layer] * vec4(shifted, 1.0)).xyz * 0.5 + 0.5;
   if (projected.z > 1.0 || projected.z < 0.0 || any(lessThan(projected.xy, vec2(0.0))) || any(greaterThan(projected.xy, vec2(1.0)))) return 1.0;
-  float bias = cascadeTexels[layer] / cascadeRanges[layer] * (1.0 + 2.0 * (1.0 - dot(normal, normalize(lightDirection))));
+  float bias = cascadeTexels[layer] / cascadeRanges[layer] * (1.0 + 2.0 * (1.0 - normalCosine));
   ivec2 dimensions = textureSize(cascadeShadowMap, 0).xy;
-  if (sunSoftness > 0.0) return cascadeSoftVisibility(layer, projected, projected.z - bias, dimensions);
+  if (sunSoftness > 0.0) return cascadeSoftVisibility(layer, projected, projected.z - bias, dimensions, normal);
   vec2 texel = 1.0 / vec2(dimensions);
   float visibility = 0.0;
   for (int row = -1; row <= 1; row++) {
@@ -434,6 +449,22 @@ export class CascadedShadows {
 /** Options: count (1 to 4 slices, default 3), resolution (default 2048), maximumDistance (default 150 m), splitLambda, casterReach. */
 export function createCascadedShadows(options) {
   return new CascadedShadows(options);
+}
+
+/**
+ * Resolves cascaded sun shadows for a scene file or showcase page. Explicit `shadowCascades` options win (`0`, `null` or
+ * `false` keeps the single map); when omitted, `environment.sunAngularRadius > 0` enables cascades through
+ * `effectiveShadowCascades` so a soft sun works without requiring a manual cascade block (#3379).
+ */
+export function resolveSceneFileCascades(rendererOptions = {}, environment = {}, shadowBounds = {}) {
+  const requested = rendererOptions.shadowCascades;
+  if (requested !== undefined) {
+    if (!requested) return undefined;
+    return createCascadedShadows(typeof requested === 'number' ? { count: requested } : requested);
+  }
+  if (!(environment?.sunAngularRadius > 0)) return undefined;
+  const count = effectiveShadowCascades(environment, shadowBounds);
+  return count > 0 ? createCascadedShadows({ count }) : undefined;
 }
 
 /**

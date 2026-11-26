@@ -54,7 +54,10 @@ export const STUDIO_SETTING_SECTIONS = Object.freeze([
     id: 'keys',
     title: 'Keyboard',
     icon: 'keyboard',
-    rows: [['keymap', 'Preset', value => KEYMAP_PRESETS[value].label]],
+    rows: [
+      ['keymap', 'Preset', value => KEYMAP_PRESETS[value].label],
+      ['numberPad', 'Number pad'],
+    ],
   },
 ]);
 
@@ -85,7 +88,15 @@ export function createStudioSettings({ documentReference, createElement, createI
     const showSheetButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Show', attributes: { 'aria-label': 'Show keyboard shortcuts' } });
     leadWithActionIcon(showSheetButton, createIcon(documentReference, 'keyboard'), 'keyboard');
     showSheetButton.addEventListener('click', onOpenShortcuts);
-    keyboardSection = createKeyboardSection({ documentReference, createElement, createIcon, ...keyboard, presetRow: createRow(section.rows[0]), showSheetButton });
+    keyboardSection = createKeyboardSection({
+      documentReference,
+      createElement,
+      createIcon,
+      ...keyboard,
+      presetRow: createRow(section.rows[0]),
+      numberPadRow: createRow(section.rows[1]),
+      showSheetButton,
+    });
     return [keyboardSection.element];
   }
 
@@ -175,6 +186,7 @@ export function createStudioSettings({ documentReference, createElement, createI
     ),
   );
   dialog.addEventListener('close', () => {
+    account?.discardPending();
     dialog.returnValue = '';
   });
 
@@ -187,7 +199,7 @@ export function createStudioSettings({ documentReference, createElement, createI
     // Every opening looks the same: the first section, with focus on the dialog itself, so no control carries a focus ring and the
     // first Tab lands on the first section in the list (the way the setup dialog opens).
     open() {
-      account?.refresh();
+      account?.refresh({ showLoading: true });
       keyboardSection.stopRecording();
       showSection(sections[0].id);
       dialog.showModal();

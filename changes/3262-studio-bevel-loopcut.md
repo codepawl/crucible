@@ -1,0 +1,1 @@
+- Added interactive Bevel (`Ctrl+B`) and Loop Cut (`Ctrl+R`) tools with live previews, wheel/`+`/`-` segment and cut controls, Mesh tools menu entries, undo/redo, and save/reload round-trip in Studio edit mode (#3262).

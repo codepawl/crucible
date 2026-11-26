@@ -1,0 +1,1 @@
+- Scale dielectric grazing Fresnel F90 by `specular` (clamped at 1) in `environmentLighting`, `multipleScatterGain`, and `fresnel` (#3525)

@@ -4,8 +4,11 @@ import {
   ASSET_TIMEOUT_MS_PER_MIB,
   GRID_VOLUME_TIMEOUT_FACTOR,
   MAXIMUM_ASSET_TIMEOUT_MS,
+  SHARED_GPU_TIMEOUT_FACTOR,
+  STREAMED_SEQUENCE_TIMEOUT_FACTOR,
   assetDataBytes,
   assetTimeoutAllowanceMs,
+  payloadAssetBytes,
   slowAssetsNote,
   operationsAddGridVolume,
   previewCallTimeoutMs,
@@ -65,4 +68,19 @@ test('a timed-out call names its three largest assets by size and says what to s
   assert.doesNotMatch(note, /small\.glb/);
   assert.match(note, /Shrink their textures/);
   assert.equal(slowAssetsNote([]), '');
+});
+
+test('shared GPU and streamed sequence flags scale preview timeouts and payloadAssetBytes sums all payloads (#3462)', () => {
+  const sharedGpu = previewCallTimeoutMs({ bakes: false, addsGridVolume: false, sharedGpu: true, plainTimeoutMs: PLAIN_TIMEOUT_MS, bakeTimeoutMs: BAKE_TIMEOUT_MS });
+  const streamed = previewCallTimeoutMs({ bakes: false, addsGridVolume: false, streamedSequence: true, plainTimeoutMs: PLAIN_TIMEOUT_MS, bakeTimeoutMs: BAKE_TIMEOUT_MS });
+  assert.equal(sharedGpu, SHARED_GPU_TIMEOUT_FACTOR * PLAIN_TIMEOUT_MS);
+  assert.equal(streamed, STREAMED_SEQUENCE_TIMEOUT_FACTOR * PLAIN_TIMEOUT_MS);
+  const payload = {
+    assetData: { a: Buffer.alloc(1200).toString('base64') },
+    sequenceData: { b: Buffer.alloc(1500).toString('base64') },
+    sources: { c: Buffer.alloc(900).toString('base64') },
+    gridData: { d: Buffer.alloc(600).toString('base64') },
+    data: Buffer.alloc(300).toString('base64'),
+  };
+  assert.equal(payloadAssetBytes(payload), 4500);
 });

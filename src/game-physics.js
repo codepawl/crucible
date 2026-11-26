@@ -5,6 +5,7 @@ import { liveAgentPhysicsDefinition } from './agent-physics.js';
 import { gamePhysicsProblem } from './game-needs.js';
 import { loadJoltEngine, joltAdapter } from './physics-jolt.js';
 import { createPhysicsSystem } from './physics-runtime.js';
+import { wholeGeometryOfParts } from './mesh-material-slots.js';
 
 export const GAME_PHYSICS_STEP_SECONDS = 1 / 60;
 
@@ -18,6 +19,17 @@ function sameOriginModuleUrl(physicsUrl) {
   return url.href;
 }
 
+/** The geometry of each recipe geometry as its node draws it; a node with material slots is several parts, whose triangles are put back together. */
+export function bodyGeometriesOf(recipe, parts) {
+  const partsByNode = new Map();
+  for (const part of parts) partsByNode.set(part.name, [...(partsByNode.get(part.name) ?? []), part]);
+  const geometries = new Map();
+  for (const node of recipe.nodes) {
+    if (node.geometry !== undefined && partsByNode.has(node.id)) geometries.set(node.geometry, wholeGeometryOfParts(partsByNode.get(node.id)));
+  }
+  return geometries;
+}
+
 /**
  * Build the physics of a game. `scene` is the agent scene (its parts give each body's geometry), `playerNode` and
  * `playerFootOffset` name the node the controller moves (a kinematic body when it is in the physics section) and
@@ -26,11 +38,7 @@ function sameOriginModuleUrl(physicsUrl) {
 export async function createGamePhysics({ recipe, scene, playerNode, physicsUrl }) {
   const problem = gamePhysicsProblem(recipe);
   if (problem) throw new Error(problem);
-  const partsByNode = new Map(scene.parts.map(part => [part.name, part]));
-  const geometries = new Map();
-  for (const node of recipe.nodes) {
-    if (node.geometry !== undefined && partsByNode.has(node.id)) geometries.set(node.geometry, partsByNode.get(node.id).geometry);
-  }
+  const geometries = bodyGeometriesOf(recipe, scene.parts);
   const definition = liveAgentPhysicsDefinition(recipe.physics, recipe, geometries);
   await loadJoltEngine({ moduleUrl: sameOriginModuleUrl(physicsUrl) });
   const createSystem = () => createPhysicsSystem(definition, { adapter: joltAdapter, timestep: GAME_PHYSICS_STEP_SECONDS });

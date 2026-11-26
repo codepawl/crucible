@@ -109,9 +109,11 @@ test('every real site page is covered by the shared chrome; only redirects and t
   }
 });
 
-test('every site page head carries the same theme-color tags and the modeling redirect uses relative links', () => {
+test('every site page head carries the same theme-color and font preload tags and the modeling redirect uses relative links', () => {
   for (const pageName of CHROME_PAGES) {
-    assert.ok(readPage(pageName).includes(THEME_COLOR_META), `site/${pageName}.html needs THEME_COLOR_META from scripts/site-chrome.mjs`);
+    const html = readPage(pageName);
+    assert.ok(html.includes(THEME_COLOR_META), `site/${pageName}.html needs THEME_COLOR_META from scripts/site-chrome.mjs`);
+    assert.ok(html.includes('rel="preload" href="/fonts/plus-jakarta-sans-latin-3.woff2"'), `site/${pageName}.html needs font preloads`);
   }
   assert.ok(!/(href|url)="?\/docs\.html/.test(readPage('modeling')), 'site/modeling.html must link ./docs.html, not an absolute path');
 });
@@ -125,4 +127,15 @@ test('every page wears the shared theme class and loads the shared styles', () =
     const source = readFileSync(new URL(`../src/${name}.js`, import.meta.url), 'utf8');
     assert.match(source, /site-chrome\.(css|js)'/, `src/${name}.js must load the shared chrome`);
   }
+});
+
+test('shared chrome uses the brand kit font stack and lowercase bold wordmark with no Pixelify Sans', () => {
+  const chromeStyles = readFileSync(new URL('../src/site-chrome.css', import.meta.url), 'utf8');
+  assert.match(chromeStyles, /--display:\s*'Plus Jakarta Sans'/);
+  assert.match(chromeStyles, /--wordmark:\s*'Plus Jakarta Sans'/);
+  assert.match(chromeStyles, /--body:\s*'Inter'/);
+  assert.match(chromeStyles, /--mono:\s*'JetBrains Mono'/);
+  assert.match(chromeStyles, /--round:\s*8px/);
+  assert.match(chromeStyles, /\.themed\s+\.brand\s*\{[^}]*font:\s*700\s+22px\/1\s+var\(--wordmark\)[^}]*letter-spacing:\s*-0\.035em[^}]*text-transform:\s*lowercase/);
+  assert.doesNotMatch(chromeStyles, /pixelify|pixel-icon/i);
 });

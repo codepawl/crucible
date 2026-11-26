@@ -4,8 +4,9 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { buildImportGraph } from '../scripts/import-graph.mjs';
-import { findAffectedTests } from '../scripts/test-affected.mjs';
+import { findAffectedTests, parseAffectedArguments } from '../scripts/test-affected.mjs';
 import { sampleTestFiles } from '../scripts/test-fast.mjs';
 import { buildCompactReport } from '../scripts/test-compact-reporter.mjs';
 import { findBlockingChanges, parseArguments, runMutationCheck } from '../scripts/test-mutation-check.mjs';
@@ -228,4 +229,34 @@ test('mutation check arguments accept --base=<ref> and refuse a missing ref or a
   assert.throws(() => parseArguments(['tests/a.test.js', '--base']), /--base needs a ref/);
   assert.throws(() => parseArguments(['--base=', 'tests/a.test.js']), /--base needs a ref/);
   assert.throws(() => parseArguments(['tests/a.test.js', '--bsae', 'main']), /Unknown option --bsae/);
+});
+
+test('parseAffectedArguments reads --base and positional file paths', () => {
+  assert.deepEqual(parseAffectedArguments([]), { baseRef: 'origin/main', files: [] });
+  assert.deepEqual(parseAffectedArguments(['--base', 'HEAD~1', 'src/a.js']), { baseRef: 'HEAD~1', files: ['src/a.js'] });
+  assert.deepEqual(parseAffectedArguments(['--base=main', 'scripts/b.mjs']), { baseRef: 'main', files: ['scripts/b.mjs'] });
+  assert.throws(() => parseAffectedArguments(['--base']), /--base needs a git ref/);
+  assert.throws(() => parseAffectedArguments(['--base=']), /--base needs a git ref/);
+});
+
+test('runTestFiles lowers child process priority to below normal when CI is unset', () => {
+  const folder = makeRepository();
+  try {
+    write(folder, 'tests/priority.test.js', "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport os from 'node:os';\ntest('priority is below normal', () => { assert.equal(os.getPriority(0), os.constants.priority.PRIORITY_BELOW_NORMAL); });\n");
+    const testRunUrl = pathToFileURL(join(process.cwd(), 'scripts/test-run.mjs')).href;
+    const childEnvironment = { ...process.env };
+    delete childEnvironment.CI;
+    delete childEnvironment.NODE_TEST_CONTEXT;
+    const probeScript = [
+      `import os from 'node:os';`,
+      `import { runTestFiles } from ${JSON.stringify(testRunUrl)};`,
+      `const result = runTestFiles(['tests/priority.test.js'], { folder: ${JSON.stringify(folder)}, quiet: true });`,
+      'if (os.getPriority(0) !== os.constants.priority.PRIORITY_BELOW_NORMAL) process.exit(2);',
+      'process.exit(result.code);',
+    ].join('\n');
+    const run = spawnSync(process.execPath, ['--input-type=module', '-e', probeScript], { encoding: 'utf8', env: childEnvironment });
+    assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 });
