@@ -1,13 +1,16 @@
 import { createEnvironmentMap } from './environment.js';
 import { applyGradientSky, createGradientSkyMap } from './gradient-sky.js';
 import { resolveClockTime, sunAnglesFromClock } from './sun-clock.js';
+import { resolveSkyClouds, marchSkyClouds, renderCloudHemisphere, bakeCloudShadowMap, cloudShadowTransmittance } from './sky-clouds.js';
+
+export { cloudShadowTransmittance };
 
 // environment.sky { type: 'physical' }: a clear-sky model driven by the sun alone. It is an analytic single-scattering
 // approximation (Rayleigh and Henyey-Greenstein aerosol, Kasten-Young air mass), not the Nishita integration Blender uses.
 // The normalized recipe stores the resolved sun, so the key light, the sky map, the background gradient and the
 // aerial perspective of distant geometry always agree.
 
-export const PHYSICAL_SKY_FIELDS = Object.freeze(['type', 'sunElevation', 'sunRotation', 'turbidity', 'groundAlbedo', 'aerialPerspective', 'ozone', 'sunDisc', 'clockTime']);
+export const PHYSICAL_SKY_FIELDS = Object.freeze(['type', 'sunElevation', 'sunRotation', 'turbidity', 'groundAlbedo', 'aerialPerspective', 'ozone', 'sunDisc', 'clockTime', 'clouds']);
 
 // Named looks an agent can ask for with environment.sky { preset }: they set the sun and nothing else, so the sky, the key colour and
 // the haze all come from the same atmosphere. Fields named beside a preset win over it.
@@ -80,6 +83,9 @@ export function resolvePhysicalSky(input, fail) {
     throw fail('environment.sky.sunDisc', sunDisc, 'true or false');
   }
   resolved.sunDisc = sunDisc;
+  if (input.clouds !== undefined && input.clouds !== null && input.clouds !== false) {
+    resolved.clouds = resolveSkyClouds(input.clouds, fail);
+  }
   return resolved;
 }
 
@@ -218,25 +224,47 @@ function sunDiscOf(sky) {
   if (sky.sunDisc === false || sky.sunElevation <= -1.5) {
     return null;
   }
-  const { sun, color } = colorAtZenithAndHorizon(sky);
-  return { direction: sun, radiance: color.map(component => component * SUN_DISC_STRENGTH) };
+  const { sun, color, zenith, horizon } = colorAtZenithAndHorizon(sky);
+  const transmission = sky.clouds && sky.clouds.coverage > 0 && sky.clouds.density > 0
+    ? marchSkyClouds(sun, sun, color, zenith, horizon, sky.clouds, 0.5).transmittance
+    : 1;
+  return { direction: sun, radiance: color.map(component => component * SUN_DISC_STRENGTH * transmission) };
 }
 
 function buildMapData(sky) {
-  const { sun, color, zenith } = colorAtZenithAndHorizon(sky);
+  const { sun, color, zenith, horizon } = colorAtZenithAndHorizon(sky);
+  const cloudsActive = Boolean(sky.clouds && sky.clouds.coverage > 0 && sky.clouds.density > 0);
+  const sampleClouds = cloudsActive ? renderCloudHemisphere(sun, color, zenith, horizon, sky.clouds) : null;
   const data = new Float32Array(MAP_WIDTH * MAP_HEIGHT * 3);
   for (let row = 0; row < MAP_HEIGHT; row++) {
     const polar = ((row + 0.5) / MAP_HEIGHT) * Math.PI;
     for (let column = 0; column < MAP_WIDTH; column++) {
       const azimuth = ((column + 0.5) / MAP_WIDTH - 0.5) * 2 * Math.PI;
       const direction = [Math.sin(polar) * Math.sin(azimuth), Math.cos(polar), -Math.sin(polar) * Math.cos(azimuth)];
-      const radiance = direction[1] >= 0
-        ? skyRadiance(sky, direction, sun)
-        : belowHorizonRadiance(sky, color, zenith, sun, direction);
+      let radiance;
+      if (direction[1] >= 0) {
+        radiance = skyRadiance(sky, direction, sun);
+        if (sampleClouds) {
+          const [cloudRed, cloudGreen, cloudBlue, transmittance] = sampleClouds((row + 0.5) / (MAP_HEIGHT * 0.5), (column + 0.5) / MAP_WIDTH);
+          radiance = [
+            radiance[0] * transmittance + cloudRed,
+            radiance[1] * transmittance + cloudGreen,
+            radiance[2] * transmittance + cloudBlue,
+          ];
+        }
+      } else {
+        radiance = belowHorizonRadiance(sky, color, zenith, sun, direction);
+      }
       data.set(radiance, (row * MAP_WIDTH + column) * 3);
     }
   }
   return data;
+}
+
+/** Bakes the 2D ground shadow transmittance map from a physical sky's `clouds`, or null when clouds are absent. */
+export function createCloudShadowMap(sky, options = {}) {
+  if (!sky?.clouds) return null;
+  return bakeCloudShadowMap(sky.clouds, physicalSunDirection(sky), options);
 }
 
 /** The environment map of a physical sky; the same object returns while sky, strength, rotation and background hold. */
@@ -245,12 +273,14 @@ export function createPhysicalSkyMap(environment) {
     return createGradientSkyMap(environment);
   }
   const { sky, environmentIntensity: intensity, environmentRotation: rotation, world: showBackground } = environment;
-  const key = [...PHYSICAL_SKY_FIELDS.slice(1).map(field => sky[field]), intensity, rotation, showBackground].join('|');
+  const skyParts = PHYSICAL_SKY_FIELDS.slice(1).map(field => (field === 'clouds' ? (sky.clouds ? JSON.stringify(sky.clouds) : '') : sky[field]));
+  const key = [...skyParts, intensity, rotation, showBackground].join('|');
   if (!mapsByKey.has(key)) {
     if (mapsByKey.size >= MAXIMUM_CACHED_MAPS) {
       mapsByKey.clear();
     }
-    mapsByKey.set(key, createEnvironmentMap({ width: MAP_WIDTH, height: MAP_HEIGHT, data: buildMapData(sky), intensity, rotation, showBackground, sunDisc: sunDiscOf(sky) }));
+    const map = createEnvironmentMap({ width: MAP_WIDTH, height: MAP_HEIGHT, data: buildMapData(sky), intensity, rotation, showBackground, sunDisc: sunDiscOf(sky) });
+    mapsByKey.set(key, sky.clouds?.shadows ? Object.freeze({ ...map, cloudShadowMap: bakeCloudShadowMap(sky.clouds, physicalSunDirection(sky)) }) : map);
   }
   return mapsByKey.get(key);
 }
