@@ -61,6 +61,7 @@
     "docs/user-passes.md",
     "docs/addons.md",
     "docs/skeleton-pose.md",
+    "docs/prop-grip.md",
     "docs/studio.md",
     "docs/verification.md"
   ],
@@ -96,6 +97,7 @@
     "./addons/retarget": "./build/retarget.js",
     "./addons/crowd-skinning": "./build/crowd-skinning.js",
     "./addons/skeleton-pose": "./build/skeleton-pose.js",
+    "./addons/prop-grip": "./build/prop-grip.js",
     "./addons/vehicle": "./build/vehicle.js",
     "./addons/vegetation": "./build/vegetation.js",
     "./addons/terrain": "./build/terrain.js",

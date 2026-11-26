@@ -130,7 +130,7 @@ For joint constraints or clamp behavior beyond local Euler `limits`, read and re
 ## Reading the result
 
 `pose.jointWorld(name)` returns `{ position, rotation }` after the last `apply`, in world space, for attaching props or
-chaining targets. To inspect deformed mesh vertices directly on the CPU after `apply(time)`, call `posedVertexPositions(part, output?)` (exported from `'crucible'` and `'crucible/addons/skeleton-pose'`), which returns world-space `[x, y, z, ...]` positions matching the renderer's normalized skinning blend. `pose.ikResults` holds one `{ reached, error }` per solver: `error` is metres from the target for
+chaining targets. To attach handheld tools or props automatically inside a character's palm tunnel with optional finger curl, see [prop grip](https://crucible.codepawl.com/prop-grip.md). To inspect deformed mesh vertices directly on the CPU after `apply(time)`, call `posedVertexPositions(part, output?)` (exported from `'crucible'` and `'crucible/addons/skeleton-pose'`), which returns world-space `[x, y, z, ...]` positions matching the renderer's normalized skinning blend. `pose.ikResults` holds one `{ reached, error }` per solver: `error` is metres from the target for
 two-bone and radians off target for aim.
 
 ## Rigs seen so far

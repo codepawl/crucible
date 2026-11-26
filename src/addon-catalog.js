@@ -80,6 +80,7 @@ export const ADDON_CATALOG = [
   { name: 'morph', area: 'motion', summary: 'Morph targets with a static preflight.' },
   { name: 'skinning', area: 'motion', summary: 'Skeletal skinning for characters.', doc: true },
   { name: 'skeleton-pose', area: 'motion', summary: 'Layered skeletal poses with inverse kinematics.', doc: true },
+  { name: 'prop-grip', area: 'motion', summary: 'Attach handheld props to character grip sockets with auto finger curl.', doc: true },
   { name: 'retarget', area: 'motion', summary: 'Retarget a clip between humanoid skeletons.', doc: true },
   { name: 'crowd-skinning', area: 'motion', summary: 'GPU crowds from one character and one clip.' },
   { name: 'cloth', area: 'motion', summary: 'Position-based cloth recorded offline as frames.' },

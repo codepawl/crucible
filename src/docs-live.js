@@ -24,6 +24,7 @@ const addonLoaders = import.meta.glob([
   './retarget.js',
   './crowd-skinning.js',
   './skeleton-pose.js',
+  './prop-grip.js',
   './vehicle.js',
   './vegetation.js',
   './terrain.js',
