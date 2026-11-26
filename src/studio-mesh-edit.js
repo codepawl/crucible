@@ -16,6 +16,7 @@ import { proportionalCirclePath } from './studio-proportional.js';
 import { MAX_SELECTED_ELEMENTS, MERGE_TARGETS } from './mesh-operations.js';
 import { FACE_TOOLS, PICK_FACES_FIRST, faceToolAmount, faceToolEdit, faceToolFrame, faceToolTargets, roundAmount } from './studio-mesh-tool.js';
 import { CONVERTIBLE_PRIMITIVES, meshGeometryOfPrimitive, planOwnMesh } from './studio-own-mesh.js';
+import { evaluateModifierPreview, modifierPreviewState, previewNormalsOf, previewPartForCage } from './studio-modifier-cage.js';
 import {
   edgesOfSelection,
   planMeshBridge,
@@ -35,6 +36,7 @@ export {
   planMeshMakeFace,
   planMeshSubdivide,
   planMeshSymmetrize,
+  previewNormalsOf,
   verticesOfSelection,
 };
 
@@ -48,7 +50,6 @@ const EDGE_PICK_RADIUS_PIXELS = 10;
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
 const NEEDS_A_MESH = 'Edit mode needs a mesh geometry or a shape of the Add menu.';
-const NEEDS_NO_MODIFIERS = 'Edit mode does not work on a mesh with modifiers yet. Add a plain shape from the Mesh group and edit that, or have the modifiers applied first.';
 const TOO_MANY_SEEDS = `Proportional editing moves at most ${MAX_SELECTED_ELEMENTS} vertices that are not whole faces; select fewer, or whole faces.`;
 const LOG_IS_FULL = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take another move.`;
 const LOG_IS_FULL_FOR_TOOL = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take an extrude or an inset.`;
@@ -169,45 +170,6 @@ function rayTriangleDistance(origin, direction, cornerA, cornerB, cornerC) {
   return distance > 0 ? distance : null;
 }
 
-/**
- * Smooth normals for a drag preview: the area weighted sum of the triangles that share each render vertex, so a cube whose
- * corners are split per face stays flat and a shared vertex is averaged. Writes into `normals` (3 per vertex) and returns it;
- * the release builds the real ones.
- */
-export function previewNormalsOf(indices, positions, normals) {
-  normals.fill(0);
-  for (let corner = 0; corner + 2 < indices.length; corner += 3) {
-    const first = indices[corner] * 3;
-    const second = indices[corner + 1] * 3;
-    const third = indices[corner + 2] * 3;
-    const edgeOneX = positions[second] - positions[first];
-    const edgeOneY = positions[second + 1] - positions[first + 1];
-    const edgeOneZ = positions[second + 2] - positions[first + 2];
-    const edgeTwoX = positions[third] - positions[first];
-    const edgeTwoY = positions[third + 1] - positions[first + 1];
-    const edgeTwoZ = positions[third + 2] - positions[first + 2];
-    const crossX = edgeOneY * edgeTwoZ - edgeOneZ * edgeTwoY;
-    const crossY = edgeOneZ * edgeTwoX - edgeOneX * edgeTwoZ;
-    const crossZ = edgeOneX * edgeTwoY - edgeOneY * edgeTwoX;
-    for (const vertexOffset of [first, second, third]) {
-      normals[vertexOffset] += crossX;
-      normals[vertexOffset + 1] += crossY;
-      normals[vertexOffset + 2] += crossZ;
-    }
-  }
-  for (let offset = 0; offset < normals.length; offset += 3) {
-    const length = Math.hypot(normals[offset], normals[offset + 1], normals[offset + 2]);
-    if (length < 1e-12) {
-      normals[offset + 1] = 1;
-    } else {
-      normals[offset] /= length;
-      normals[offset + 1] /= length;
-      normals[offset + 2] /= length;
-    }
-  }
-  return normals;
-}
-
 // The faces a selection dissolves: the picked ones, or those whose every corner is picked.
 function facesOfSelection(mesh, mode, selected) {
   if (mode === 'face') return [...selected].sort((first, second) => first - second);
@@ -285,6 +247,7 @@ function logsShareTheirPrefix(first, second) {
 export function createMeshEditor({ controller, announce = () => {}, getRenderer = () => null, updatePart = updatePartVertices, proportional = null, maxFalloffVisits = DEFAULT_MAX_FALLOFF_VISITS } = {}) {
   let state = null;
   let drag = null;
+  let previewRevision = 0;
   // True while this editor writes its own entry: the mesh it reads back has the same topology, so the pick stays.
   let writingOwnEntry = false;
   // True from entering edit mode until the first pick selects something: the hint goes away with that pick.
@@ -320,7 +283,6 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
 
   function refusalFor(geometrySpec, recipe, nodeId) {
     if (!geometrySpec) return `This object is ${kindOfObjectWithoutGeometry(recipe, nodeId)}, which has no mesh to edit. Select a shape or a mesh.`;
-    if ((geometrySpec.stack ?? []).length > 0) return NEEDS_NO_MODIFIERS;
     if (geometrySpec.type === 'text') return 'Text cannot be edited as a mesh yet. Change its words in the properties panel, or add a shape from the Mesh group.';
     if (geometrySpec.type !== 'mesh' && !CONVERTIBLE_PRIMITIVES.has(geometrySpec.type)) return NEEDS_A_MESH;
     return null;
@@ -346,7 +308,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       mesh,
       positions: Float32Array.from(mesh.positions),
       renderVertexSource: source.renderVertexSource,
-      previewable: source.renderVertexSource.length * 3 === part.geometry.positions.length,
+      ...modifierPreviewState(geometrySpec, part, source.renderVertexSource),
       tooLarge: triangleCountOf(mesh) > CAGE_TRIANGLE_BUDGET,
       mode: previous?.mode ?? 'face',
       selected: new Set(),
@@ -412,25 +374,27 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     if (!state) return;
     if (!seeThrough) {
       state.ghostPart = null;
-      return;
+    } else if (!state.ghostPart) {
+      const { part } = state;
+      state.ghostPart = Object.freeze({
+        ...part,
+        material: {
+          ...part.material,
+          alphaMode: 'blend',
+          opacity: Math.min(part.material.opacity ?? 1, SEE_THROUGH_SURFACE_OPACITY),
+          doubleSided: true,
+        },
+      });
     }
-    if (state.ghostPart) return;
-    const { part } = state;
-    state.ghostPart = Object.freeze({
-      ...part,
-      material: {
-        ...part.material,
-        alphaMode: 'blend',
-        opacity: Math.min(part.material.opacity ?? 1, SEE_THROUGH_SURFACE_OPACITY),
-        doubleSided: true,
-      },
-    });
+    state.previewPart = state.previewGeometry ? previewPartForCage(state.part, state.ghostPart, state.previewGeometry) : null;
   }
 
-  /** The parts Studio draws: the same list, with the edited part faint while see-through is on. */
+  /** The parts Studio draws: the same list, with the edited part replaced by a live modifier preview or faint surface. */
   function partsToDraw(parts) {
-    if (!state?.ghostPart) return parts;
-    return parts.map(part => (part === state.part ? state.ghostPart : part));
+    if (!state) return parts;
+    const replacement = state.previewPart ?? state.ghostPart;
+    if (!replacement) return parts;
+    return parts.map(part => (part === state.part ? replacement : part));
   }
 
   /** Turns the see-through view on or off. Returns the new value. It changes how the cage draws and what a pick reaches, never the mesh. */
@@ -990,6 +954,16 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
 
   function writePreview() {
     if (!drag.previewing) return;
+    if (state.stackedPreview) {
+      try {
+        state.previewGeometry = evaluateModifierPreview(state);
+        state.previewPart = previewPartForCage(state.part, state.ghostPart, state.previewGeometry);
+        previewRevision += 1;
+      } catch {
+        drag.previewing = false;
+      }
+      return;
+    }
     try {
       gatherRenderPositions({ positions: state.positions }, state.renderVertexSource, drag.renderPositions);
       previewNormalsOf(state.part.geometry.indices, drag.renderPositions, drag.renderNormals);
@@ -1005,7 +979,12 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     vertices.forEach((vertex, slot) => {
       for (let axis = 0; axis < 3; axis += 1) state.positions[vertex * 3 + axis] = basePositions[slot * 3 + axis];
     });
-    if (drag.previewing) {
+    if (state.previewGeometry) {
+      state.previewGeometry = null;
+      state.previewPart = null;
+      previewRevision += 1;
+    }
+    if (drag.previewing && !state.stackedPreview) {
       try {
         updatePart(getRenderer(), state.ghostPart ?? state.part, drag.originalRenderPositions, drag.originalRenderNormals);
       } catch {
@@ -1013,7 +992,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       }
     }
     // The preview marked the geometry live (its values change in place); its values are final again, so caches may measure it.
-    if (!drag.wasLive) unmarkLiveGeometry(state.part.geometry);
+    if (!drag.wasLive && !state.stackedPreview) unmarkLiveGeometry(state.part.geometry);
   }
 
   function cancelDrag() {
@@ -1052,7 +1031,8 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
 
   // What a held change keeps to put the cage and the drawn surface back: where each vertex stood, and the buffers of the preview.
   function createDrag(vertices, falloff) {
-    const previewing = state.previewable && getRenderer() !== null;
+    const bufferPreview = !state.stackedPreview && state.previewable && getRenderer() !== null;
+    const previewing = state.stackedPreview ? state.previewable : bufferPreview;
     return {
       seeds: vertices,
       falloff,
@@ -1061,10 +1041,10 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       worldDelta: [0, 0, 0],
       previewing,
       wasLive: isLiveGeometry(state.part.geometry),
-      renderPositions: previewing ? new Float32Array(state.part.geometry.positions.length) : null,
-      renderNormals: previewing ? new Float32Array(state.part.geometry.normals.length) : null,
-      originalRenderPositions: previewing ? Float32Array.from(state.part.geometry.positions) : null,
-      originalRenderNormals: previewing ? Float32Array.from(state.part.geometry.normals) : null,
+      renderPositions: bufferPreview ? new Float32Array(state.part.geometry.positions.length) : null,
+      renderNormals: bufferPreview ? new Float32Array(state.part.geometry.normals.length) : null,
+      originalRenderPositions: bufferPreview ? Float32Array.from(state.part.geometry.positions) : null,
+      originalRenderNormals: bufferPreview ? Float32Array.from(state.part.geometry.normals) : null,
     };
   }
 
@@ -1518,6 +1498,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     cancelFaceTool,
     get holdingFaceTool() { return Boolean(drag?.tool); },
     get holdingMove() { return drag !== null && !drag.tool; },
+    get previewRevision() { return previewRevision; },
     proportional,
     draw,
   });

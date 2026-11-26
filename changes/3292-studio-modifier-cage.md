@@ -1,0 +1,1 @@
+- Studio edit mode opens and edits the base cage on meshes with modifiers while keeping the modifier stack live on preview and commit (#3292)

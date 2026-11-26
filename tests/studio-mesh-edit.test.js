@@ -362,12 +362,13 @@ test('the selection clears after an undo that changes the mesh topology, and edi
   assert.equal(editor.active, false);
 });
 
-test('a mesh with modifiers or one the cage is too big to draw says so', () => {
+test('a mesh with modifiers opens its base cage; a cage too big to draw says so', () => {
   const stacked = recipeOf();
   stacked.geometries[0].stack = [{ op: 'subdivide', levels: 1 }];
   const withStack = mount(stacked);
-  assert.equal(withStack.editor.enter().ok, false);
-  assert.match(withStack.messages.at(-1), /modifiers/);
+  assert.equal(withStack.editor.enter().ok, true);
+  assert.equal(withStack.editor.cage.mesh.faceCount, 6);
+  assert.ok(withStack.editor.cagePaths().some(path => path.className === 'crucible-studio-cage-edges'));
 
   const dense = mount(recipeOf({ base: { type: 'box', bevel: 0, subdivisions: 40 } }));
   assert.equal(dense.editor.enter().ok, true);

@@ -170,7 +170,6 @@ test('what edit mode cannot take says what the thing is and what to do instead, 
     { name: 'text', geometries: [{ id: 'words', type: 'text', text: 'Hi', size: 0.6, depth: 0.12 }], node: { id: 'other', geometry: 'words', material: 'grey' }, message: /Text cannot be edited.*properties panel/ },
     { name: 'a group', geometries: [], node: { id: 'other' }, children: [{ id: 'part-of-group', geometry: 'geo-hero', material: 'grey', parent: 'other' }], message: /is a group.*no mesh to edit.*Select a shape or a mesh/ },
     { name: 'an empty object', geometries: [], node: { id: 'other' }, message: /is an empty object.*Select a shape or a mesh/ },
-    { name: 'a mesh with a modifier', geometries: [{ id: 'stacked', type: 'mesh', base: { type: 'box', bevel: 0 }, stack: [{ op: 'subdivide', levels: 1 }] }], node: { id: 'other', geometry: 'stacked', material: 'grey' }, message: /modifiers.*Add a plain shape from the Mesh group.*applied first/ },
   ];
   for (const { name, geometries, node, children = [], message } of cases) {
     const { controller, editor, messages } = mount(recipeOfShape('box', { extraNodes: [node, ...children], extraGeometries: geometries }));

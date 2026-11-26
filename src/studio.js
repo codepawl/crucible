@@ -4018,7 +4018,7 @@ export function createStudio(container, {
   }
 
   function syncRendererParts(activeRenderer) {
-    const topology = `${controller.scene.topologyRevision}|${gridVisible && !drawingTheShot()}|${Boolean(meshEditor?.active && meshEditor.seeThrough)}`;
+    const topology = `${controller.scene.topologyRevision}|${gridVisible && !drawingTheShot()}|${Boolean(meshEditor?.active && meshEditor.seeThrough)}|${meshEditor?.previewRevision ?? 0}`;
     if (renderedScene !== controller.scene || renderedTopology !== topology) {
       activeRenderer.replaceParts(partsToDraw());
       renderedScene = controller.scene;
