@@ -5,6 +5,8 @@
 // segments, rings, bevel, radii, subdivisions. The ranges repeat the checks of geometry.js and agent-scene.js, which stay the
 // authority; tests/studio-shape-settings.test.js applies each bound to the real validator, so a drift fails there.
 
+import { MIXED_PROPERTY_LABEL, batchShapeChangeOperations, summarizeShapeSelection } from './studio-multi-edit.js';
+
 const WHOLE = true;
 
 function wholeField(id, label, defaultValue, min, max) {
@@ -141,10 +143,14 @@ export function shapeChangeOperations(recipe, nodeId, fieldId, value) {
   return [{ type: 'add-geometry', geometry: { ...changed, id: copyId } }, { type: 'set-node', id: nodeId, geometry: copyId }];
 }
 
-/** Rebuilds the selected shape with one field changed, as one undo step. Throws what to type when the value is refused. */
-export function changeShapeSetting(controller, nodeId, fieldId, value) {
-  const operations = shapeChangeOperations(controller.exportRecipe(), nodeId, fieldId, value);
-  controller.applyImportOperations(operations, { detail: { kind: 'topology', nodeId } });
+/** Rebuilds the selected shape (or shapes) with one field changed, as one undo step. Throws what to type when the value is refused. */
+export function changeShapeSetting(controller, nodeIds, fieldId, value) {
+  const targets = Array.isArray(nodeIds) ? nodeIds : [nodeIds];
+  const recipe = controller.exportRecipe();
+  const operations = targets.length === 1
+    ? shapeChangeOperations(recipe, targets[0], fieldId, value)
+    : batchShapeChangeOperations(recipe, targets, fieldId, value, { shapeFieldsOf, checkedShapeValue });
+  controller.applyImportOperations(operations, { detail: { kind: 'topology', nodeId: targets[0] } });
 }
 
 /** The rows of the node panel for a basic shape: its fields, or the reason they are gone once the shape was edited as a mesh. */
@@ -174,7 +180,8 @@ export function createShapeSettings({ documentReference, createElement, createPr
     }
     input.addEventListener('change', () => {
       try {
-        changeShapeSetting(controller, controller.selectedNodeId, field.id, input.value);
+        const targets = controller.selectedNodeIds.length > 0 ? controller.selectedNodeIds : [controller.selectedNodeId];
+        changeShapeSetting(controller, targets, field.id, input.value);
       } catch (error) {
         refuse(error);
       }
@@ -184,23 +191,31 @@ export function createShapeSettings({ documentReference, createElement, createPr
   }
 
   function syncFromRecipe() {
-    const nodeId = controller.selectedNodeId;
-    const section = nodeId ? shapeSectionOf(controller.exportRecipe(), nodeId) : null;
-    element.hidden = section === null;
-    if (section === null) {
+    const summary = summarizeShapeSelection(
+      controller.exportRecipe(),
+      controller.selectedNodeIds,
+      controller.selectedNodeId,
+      { shapeFieldsOf, shapeFieldValue },
+    );
+    element.hidden = summary === null;
+    if (summary === null) {
       shownKey = null;
       return;
     }
-    reason.hidden = section.reason === undefined;
-    reason.textContent = section.reason ?? '';
-    const key = section.fields ? `${nodeId}:${section.geometry.type}` : `${nodeId}:reason`;
+    reason.hidden = !summary.meshEdited;
+    reason.textContent = summary.meshEdited ? MESH_EDITED_REASON : '';
+    const key = summary.fields ? `${summary.nodeIds.join(',')}:${summary.shapeType}` : `${summary.nodeIds.join(',')}:reason`;
     if (key !== shownKey) {
       shownKey = key;
       inputs = new Map();
-      rows.replaceChildren(...(section.fields ?? []).map(createRow));
+      rows.replaceChildren(...(summary.fields ?? []).map(createRow));
     }
-    for (const field of section.fields ?? []) {
-      inputs.get(field.id).value = String(shapeFieldValue(section.geometry, field));
+    for (const field of summary.fields ?? []) {
+      const input = inputs.get(field.id);
+      const isMixed = summary.mixedFields.has(field.id);
+      input.dataset.mixed = isMixed ? 'true' : 'false';
+      input.placeholder = isMixed ? MIXED_PROPERTY_LABEL : '';
+      input.value = isMixed ? '' : String(shapeFieldValue(summary.geometry, field));
     }
   }
 
