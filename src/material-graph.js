@@ -177,7 +177,8 @@ function compileWarp(warp, state, depth) {
   }
   const offsetNode = compileNode(warp.node, state, depth + 1, 'warp "node"');
   state.cost += WARP_COST;
-  const [offsetU, offsetV] = offsetNode.kind === 'vector' ? offsetNode.parts : [offsetNode.evaluate, offsetNode.evaluate];
+  const sharedScalar = offsetNode.kind === 'vector' ? undefined : rememberLastTexel(offsetNode.evaluate);
+  const [offsetU, offsetV] = offsetNode.kind === 'vector' ? offsetNode.parts : [sharedScalar, sharedScalar];
   return {
     shiftU: (u, v) => (finiteOrZero(offsetU(u, v)) - 0.5) * strength,
     shiftV: (u, v) => (finiteOrZero(offsetV(u, v)) - 0.5) * strength,
@@ -421,8 +422,9 @@ function compileRamp(node, state, depth) {
   if (!stops.every(stop => stop.isVector === stops[0].isVector)) throw graphError('ramp stops are all numbers or all [r, g, b].');
   const input = compileNode(settings.value, state, depth + 1, 'ramp "value"');
   if (input.kind !== 'scalar') throw graphError('ramp "value" needs a number.');
+  const evaluateInput = stops[0].isVector ? rememberLastTexel(input.evaluate) : input.evaluate;
   const channelRamp = channel => (u, v) => {
-    const position = clampUnit(input.evaluate(u, v));
+    const position = clampUnit(evaluateInput(u, v));
     const valueOf = stop => (stop.isVector ? stop.value[channel] : stop.value);
     if (position <= stops[0].position) return valueOf(stops[0]);
     for (let index = 1; index < stops.length; index++) {
@@ -987,15 +989,23 @@ function rememberCompiled(compiled) {
   return vectorValue(...compiled.parts.map(rememberLastTexel));
 }
 
+function checkDepth(depth, state) {
+  if (depth > MATERIAL_GRAPH_LIMITS.maxDepth) throw graphError(`nesting deeper than ${MATERIAL_GRAPH_LIMITS.maxDepth}.`);
+  state.deepest = Math.max(state.deepest ?? 0, depth);
+}
+
 function compileSharedNode(node, state, depth, field, structureId) {
   const cached = state.shared.compiled.get(structureId);
   if (cached) {
-    // Compile the copy once more, apart from the totals, so it is checked at its own nesting depth.
-    compileNodeAt(node, { ...state, nodeCount: 0, cost: 0, shared: undefined }, depth, field);
-    return cached;
+    checkDepth(depth + cached.relativeDepth, state);
+    return cached.compiled;
   }
+  const previousDeepest = state.deepest;
+  state.deepest = depth;
   const compiled = rememberCompiled(compileNodeAt(node, state, depth, field));
-  state.shared.compiled.set(structureId, compiled);
+  const relativeDepth = state.deepest - depth;
+  state.deepest = Math.max(previousDeepest, state.deepest);
+  state.shared.compiled.set(structureId, { compiled, relativeDepth });
   return compiled;
 }
 
@@ -1018,7 +1028,7 @@ function compileUnpricedNode(node, state, depth, field) {
   state.nodeCount++;
   state.cost += NODE_COST;
   if (state.nodeCount > MATERIAL_GRAPH_LIMITS.maxNodes) throw graphError(`more than ${MATERIAL_GRAPH_LIMITS.maxNodes} nodes.`);
-  if (depth > MATERIAL_GRAPH_LIMITS.maxDepth) throw graphError(`nesting deeper than ${MATERIAL_GRAPH_LIMITS.maxDepth}.`);
+  checkDepth(depth, state);
   if (typeof node === 'number') {
     if (!finiteLiteral(node)) throw graphError(`numbers must be finite and within ${MAX_LITERAL}.`);
     return scalarValue(() => node);
@@ -1055,7 +1065,7 @@ const SCALAR_OUTPUTS = ['roughness', 'metallic', 'height', 'opacity', 'clearcoat
 // out again for each read. The graph's total already holds the height once, at what it added beyond the nodes the other
 // outputs share (`addedCost`); the bump pays for two standalone reads of the whole height field, plus the normalize.
 function bumpExtraCost(heightNode, state, addedCost) {
-  const alone = { ...state, nodeCount: 0, cost: 0, shared: undefined };
+  const alone = { ...state, nodeCount: 0, cost: 0, deepest: 0, shared: undefined };
   const { ids, repeated } = countRepeatedStructures(heightNode);
   alone.shared = { ids, repeated, compiled: new Map() };
   compileNode(heightNode, alone, 0, 'output "height"');
@@ -1072,7 +1082,7 @@ export function compileMaterialGraph(graph, { size = 1, images, groups } = {}) {
   const names = Object.keys(graph);
   if (names.length === 0) throw graphError(`graph needs at least one output: ${MATERIAL_GRAPH_OUTPUTS.join(', ')}.`);
   const { ids, repeated } = countRepeatedStructures(graph);
-  const state = { nodeCount: 0, cost: 0, size, images, groups, shared: { ids, repeated, compiled: new Map() } };
+  const state = { nodeCount: 0, cost: 0, deepest: 0, size, images, groups, shared: { ids, repeated, compiled: new Map() } };
   const outputs = Object.create(null);
   for (const name of MATERIAL_GRAPH_OUTPUTS) {
     if (names.includes(name)) outputs[name] = undefined;
