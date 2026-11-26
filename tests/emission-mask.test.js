@@ -40,7 +40,7 @@ async function stoolMaterial(override) {
 test('an asset override carries the mask to the material the renderer draws', async () => {
   const material = await stoolMaterial({ emissionMask: MASK });
   assert.deepEqual({ ...material.emissionMask }, MASK);
-  assert.deepEqual(materialLayerState(material).slice(-6, -3), [1, 0.2, 0.5]);
+  assert.deepEqual(materialLayerState(material).slice(25, 28), [1, 0.2, 0.5]);
 });
 
 test('the same recipe builds the same mask every time', async () => {
@@ -54,7 +54,7 @@ test('without a mask the material and its layer state are unchanged', async () =
   assert.equal(material.emissionMask, undefined);
   const state = materialLayerState(material);
   assert.equal(state.length, MATERIAL_LAYER_STATE_LENGTH);
-  assert.deepEqual(state.slice(-6, -3), [-1, 0, 1]);
+  assert.deepEqual(state.slice(25, 28), [-1, 0, 1]);
   assert.notDeepEqual(state, materialLayerState(await stoolMaterial({ emissionMask: MASK })));
 });
 
