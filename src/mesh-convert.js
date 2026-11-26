@@ -22,6 +22,9 @@ function spatialHash(cellX, cellY, cellZ, mask) {
  * Uses a hashed uniform grid with cell size equal to the tolerance, so each lookup checks 27 cells.
  */
 export function weldVertices(positions, tolerance) {
+  if (typeof tolerance !== 'number' || !Number.isFinite(tolerance) || tolerance < 0) {
+    throw new RangeError('weldVertices tolerance must be a finite non-negative number.');
+  }
   const count = positions.length / 3;
   const weldMap = new Uint32Array(count);
   const representatives = [];

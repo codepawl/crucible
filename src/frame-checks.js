@@ -357,6 +357,22 @@ export function pathTracerSkippedPassesWarning(postPasses) {
   };
 }
 
+/**
+ * The warning a path traced job carries when its scene sets `environment.reflectionHdri`. Raster glass and water reflect
+ * that second map, but the tracer lights and reflects the lighting `hdri` only, so the traced still shows another sky.
+ * Returns undefined when the scene sets none, so a job without it is unchanged.
+ */
+export function pathTracerReflectionHdriWarning(environment) {
+  if (!environment?.reflectionHdri) return undefined;
+  return {
+    kind: 'reflection-hdri-ignored',
+    severity: 'warning',
+    target: 'renderer',
+    message: 'This job is path traced, and the path tracer ignores environment.reflectionHdri: it lights and reflects the lighting hdri instead, so glass and water reflect a different sky than a raster frame of this scene does.',
+    fix: 'Set environment.hdri and environment.reflectionHdri to the same map for a trace that matches the raster frame, or render a raster job (leave renderer out) to see the reflection sky (docs/agent-look.md, reflectionHdri).',
+  };
+}
+
 /** Adds a frame's diagnostics to `metrics.diagnostics`, keeping one entry per kind, target and message across a job's frames, up to 16 entries. */
 export function mergeFrameDiagnostics(metrics, frameDiagnostics) {
   if (!frameDiagnostics?.length) return;

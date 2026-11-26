@@ -41,6 +41,7 @@ const MODULE_LOADERS = {
   volumeEmissionMask: () => import('./volume-emission-mask.js'),
   retroShader: () => import('./retro-shader.js'),
   glitterShader: () => import('./glitter-shader.js'),
+  heightParallaxShader: () => import('./height-parallax-shader.js'),
   surfaceCover: () => import('./surface-cover.js'),
   worldMaterials: () => import('./world-material-shader.js'),
   terrain: () => import('./agent-terrain.js'),
@@ -55,6 +56,7 @@ const MODULE_LOADERS = {
   grass: () => import('./agent-grass.js'),
   crowd: () => import('./agent-crowd.js'),
   lineArt: () => import('./line-art.js'),
+  rain: () => import('./rain.js'),
   viewTransform: () => import('./view-transform-shader.js'),
   coplanar: () => import('./coplanar-overlap.js'),
   unsupportedPart: () => import('./unsupported-part.js'),
@@ -131,6 +133,8 @@ const MODULE_MARKERS = {
   subsurfaceShader: ['"subsurface"'],
   retroShader: ['"retro"'],
   glitterShader: ['"waterGlint"'],
+  // Relief needs a heightScale above 0; a heightMap alone is ignored, so the scale is the marker (a texture set sets its height the same way).
+  heightParallaxShader: ['"heightScale"'],
   surfaceCover: ['"surfaceCover"'],
   // Any mention loads it, because an edit can set the density through a path or the environment of an operation.
   fogShader: ['volumeFog', 'localVolumes', '"add-explosion"'],
@@ -152,6 +156,7 @@ const MODULE_MARKERS = {
   grass: ['"grass":{'],
   crowd: ['"crowd":{'],
   lineArt: ['"lines":{', '"toon":'],
+  rain: ['"rain":{'],
   viewTransform: ['"viewTransform":"agx"', '"viewTransform":"neutral"', '"viewTransform":"standard"', '"look":"'],
   // Flush faces are ranked whenever this is loaded (issue #751): the MCP preview registers it, loadAllAgentSceneModules loads it,
   // and so does a recipe that names resolveCoplanar or places an asset, since glTF models nest facades a few millimetres apart.

@@ -285,7 +285,8 @@ export async function runAnnotateSession({ png, width, height, prompt = '', maxM
   const server = createServer(async (request, response) => {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'");
-    if (!isPreviewHost(request.headers.host, server.address().port) || !request.url.startsWith(base)) {
+    const port = server.address()?.port;
+    if (!port || !isPreviewHost(request.headers.host, port) || !request.url.startsWith(base)) {
       response.writeHead(404);
       response.end();
       return;
@@ -306,6 +307,7 @@ export async function runAnnotateSession({ png, width, height, prompt = '', maxM
         finish({ outcome: 'cancelled' });
       } else if (request.method === 'POST' && route === 'send') {
         const body = JSON.parse(await readBody(request));
+        if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Expected a JSON object body.');
         const marks = validateMarks(body.marks, { width, height, maxMarks });
         if (!marks.length) throw new TypeError('Add at least one pin before sending.');
         if (!isBoundedPng(body.image)) throw new TypeError('The marked picture is not a PNG within 1 MiB.');

@@ -20,7 +20,8 @@ for (const folder of folders) {
     console.log(`ok   ${pack.name} ${pack.version} (${counts || 'no items'})`);
   } catch (error) {
     failed = true;
-    console.error(`FAIL ${error.message}`);
+    const message = error.code === 'ENOENT' ? `Pack folder not found: ${resolve(folder)}` : error.message;
+    console.error(`FAIL ${message}`);
   }
 }
 process.exit(failed ? 1 : 0);

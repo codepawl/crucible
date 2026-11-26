@@ -37,7 +37,7 @@ export default defineConfig({
   build: {
     copyPublicDir: false,
     rolldownOptions: {
-      external: ['@dimforge/rapier3d-compat', 'jolt-physics', 'manifold-3d', 'playwright-core', /^node:/],
+      external: ['@dimforge/rapier3d-compat', 'jolt-physics', 'manifold-3d', 'meshoptimizer', 'playwright-core', /^node:/],
       output: { banner: legalBanner },
     },
     outDir: 'build',
@@ -97,6 +97,7 @@ export default defineConfig({
         'line-art': 'src/line-art.js',
         'mesh-blend': 'src/mesh-blend.js',
         'coplanar-overlap': 'src/coplanar-overlap.js',
+        meshlets: 'src/meshlets.js',
         'reversed-depth': 'src/reversed-depth.js',
         'material-layer-shaders': 'src/material-layer-shaders.js',
         'view-transform-shader': 'src/view-transform-shader.js',
@@ -109,6 +110,7 @@ export default defineConfig({
         'linear-output-shader': 'src/linear-output-shader.js',
         'retro-shader': 'src/retro-shader.js',
         'glitter-shader': 'src/glitter-shader.js',
+        'height-parallax-shader': 'src/height-parallax-shader.js',
         'surface-cover': 'src/surface-cover.js',
         'light-linking': 'src/light-linking.js',
         'cascaded-shadows': 'src/cascaded-shadows.js',
@@ -131,6 +133,7 @@ export default defineConfig({
         'update-part-vertices':'src/update-part-vertices.js',
         'replace-textured-parts': 'src/replace-textured-parts.js',
         'reflection-probes': 'src/reflection-probes.js',
+        rain: 'src/rain.js',
         fracture: 'src/fracture.js',
         morph: 'src/morph.js',
         skinning: 'src/skinning.js',

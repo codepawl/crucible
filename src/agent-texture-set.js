@@ -57,16 +57,16 @@ export function applyTextureMaps(value, result) {
 
 const HEIGHT_EXAMPLES = Object.freeze({ heightScale: '0.02 (2 cm deep)', heightFade: '12 (metres)', heightSteps: '16' });
 
-/** The parallax fields need a heightMap, and each sits inside its limits; heightSteps is a whole number. */
+/** Each parallax field sits inside its limits (heightSteps is a whole number), with or without a heightMap, and the fields need a heightMap. The module that draws the relief is not loaded for this. */
 function applyHeightParallax(value, result) {
   const named = HEIGHT_PARALLAX_FIELDS.find(field => value[field] !== undefined);
-  if (value.heightMap === undefined) throw invalidField(named, value[named], 'a material that sets heightMap; add the height map, or remove the parallax fields');
   if (value.heightScale !== undefined) result.heightScale = checkedNumber('heightScale', value.heightScale, HEIGHT_PARALLAX_LIMITS.scale, HEIGHT_EXAMPLES.heightScale);
   if (value.heightFade !== undefined) result.heightFade = checkedNumber('heightFade', value.heightFade, HEIGHT_PARALLAX_LIMITS.fade, HEIGHT_EXAMPLES.heightFade);
   if (value.heightSteps !== undefined) {
     if (!Number.isInteger(value.heightSteps)) throw invalidField('heightSteps', value.heightSteps, `a whole number ${rangeText(HEIGHT_PARALLAX_LIMITS.steps)}, such as ${HEIGHT_EXAMPLES.heightSteps}`);
     result.heightSteps = checkedNumber('heightSteps', value.heightSteps, HEIGHT_PARALLAX_LIMITS.steps, HEIGHT_EXAMPLES.heightSteps);
   }
+  if (value.heightMap === undefined) throw invalidField(named, value[named], 'a material that sets heightMap; add the height map, or remove the parallax fields');
 }
 
 function sameSize(left, right) {

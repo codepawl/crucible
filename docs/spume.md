@@ -73,7 +73,7 @@ The player returns new geometry for each new frame. Pass it through `renderer.re
 Textured, skinned and morphed parts (trees, characters, imported assets) can share the renderer as long as they stay in the list unchanged: their batches are retained and only new geometry is uploaded and validated. Adding or removing such parts still needs a new renderer.
 Whitewater parts set `castShadow: false`; the liquid casts shadows.
 
-The `liquid` and `foam` tags draw after the opaque scene. Tune them with `frame.liquid` or `environment.liquid`:
+The `liquid` and `foam` tags draw after the opaque scene. A `liquid` part can also carry morph targets (`geometry.morphTargets` with `part.morph = createMorphPose(...)`) to deform a liquid surface or droplet per frame without rebuilding geometry. Tune them with `frame.liquid` or `environment.liquid`:
 
 ```js
 renderer.render({ eye, target, liquid: { thickness: 0.8, ior: 1.33, refraction: 1, scattering: 1, foamOpacity: 0.55, foamSoftness: 1 } });

@@ -4,12 +4,22 @@
 const CELL_CORNERS = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]];
 const CELL_EDGES = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
 
+const MAX_GRID_CELLS = 16_777_216;
+
 /** One vertex per crossed cell, at the mean of the edge crossings. Returns the cell-to-vertex map and positions. */
 export function placeCellVertices(distances, grid, origin) {
-  const [pointsX, pointsY, pointsZ] = grid.points;
+  const points = grid?.points;
+  if (!Array.isArray(points) || points.length !== 3 || !points.every(count => Number.isInteger(count) && count >= 2)) {
+    throw new RangeError('Surface nets grid.points must be three integers of at least 2.');
+  }
+  const [pointsX, pointsY, pointsZ] = points;
   const cellsX = pointsX - 1;
   const cellsY = pointsY - 1;
-  const cellVertex = new Int32Array(cellsX * cellsY * (pointsZ - 1)).fill(-1);
+  const cellCount = cellsX * cellsY * (pointsZ - 1);
+  if (cellCount > MAX_GRID_CELLS) {
+    throw new RangeError(`Surface nets grid has ${cellCount} cells, over the limit of ${MAX_GRID_CELLS}.`);
+  }
+  const cellVertex = new Int32Array(cellCount).fill(-1);
   const positions = [];
   const values = new Float64Array(8);
   for (let z = 0; z < pointsZ - 1; z++) {

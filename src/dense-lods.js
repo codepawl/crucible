@@ -191,7 +191,11 @@ export function planLodsForRendererOptions(parts, canvas, rendererOptions = {}) 
 }
 
 /** The canvas pixels the renderer options imply, or null when `denseLods` is false. */
-function denseLodPixels(label, canvas, { denseLods = true, pixelRatio = 1.5 }) {
+function denseLodPixels(label, canvas, rendererOptions = {}) {
+  if (!rendererOptions || typeof rendererOptions !== 'object' || Array.isArray(rendererOptions)) {
+    throw new TypeError(`${label} rendererOptions must be an object.`);
+  }
+  const { denseLods = true, pixelRatio = 1.5 } = rendererOptions;
   if (typeof denseLods !== 'boolean') throw new TypeError('renderer.denseLods must be true or false.');
   if (!denseLods) return null;
   requireFiniteInRange(label, 'pixelRatio', pixelRatio, 0.1, 16);

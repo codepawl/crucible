@@ -57,7 +57,7 @@ function readOption(argumentList, flagName, fallbackValue) {
 function readIntegerOption(argumentList, flagName, fallbackValue, minimum, maximum) {
   const text = readOption(argumentList, flagName, String(fallbackValue));
   const parsed = Number(text);
-  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
+  if (!/^-?\d+$/.test(text.trim()) || !Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
     throw new RangeError(`Option ${flagName} must be a whole number from ${minimum} to ${maximum}, got "${text}".`);
   }
   return parsed;
@@ -66,7 +66,7 @@ function readIntegerOption(argumentList, flagName, fallbackValue, minimum, maxim
 function readSecondsOption(argumentList, flagName, fallbackValue) {
   const text = readOption(argumentList, flagName, String(fallbackValue));
   const parsed = Number(text);
-  if (!Number.isFinite(parsed) || parsed < 0) {
+  if (!/^-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(text.trim()) || !Number.isFinite(parsed) || parsed < 0) {
     throw new RangeError(`Option ${flagName} must be a number of seconds, 0 or more, got "${text}".`);
   }
   return parsed;

@@ -88,7 +88,7 @@ rebuilding the topology.
 
 ## Lint
 
-`lintMesh(mesh, { geometry = false })` returns `{ ok, counts, parts, valence, quadQuality, topologyScore, tags, bounds, problems }`:
+`lintMesh(mesh, { geometry = false, topology = true })` returns `{ ok, counts, parts, valence, quadQuality, topologyScore, tags, bounds, problems }`. `topology: false` leaves out `valence`, `quadQuality` and `topologyScore` for callers that read only the problems:
 
 - `valence` counts interior vertices by edge degree: `{ regular, poles3, poles5, poles6Plus }` (boundary vertices on open rims are left out).
 - `quadQuality` summarizes quad faces: `{ meanAngleError, maxAngleError, maxAspect, maxWarp }` (angles in degrees from $90^\circ$ and across the quad diagonal).
@@ -452,6 +452,7 @@ boundary edges whose midpoint is in a box, which picks one hole among several.
 | Edit | Fields | Tags | What it does |
 | --- | --- | --- | --- |
 | `fill_holes` | `sides` | `fill` | Caps each closed boundary loop with one polygon; `sides` skips loops with more edges. |
+| `make_face` | `vertices` (2 to 4096 distinct indices) | `fill` | Makes one polygon face from 3 or more picked vertices (closing a boundary loop, chain or planar cycle with consistent winding), or splits a shared face with an edge between 2 non-adjacent vertices. |
 | `dissolve_faces` | `select` | `merged` | Merges connected selected faces into one polygon each. |
 | `dissolve_edges` | `edges`, `removeStraight` (default false) | `merged` | Merges the two faces beside each selected edge. Boundary edges are ignored. With `removeStraight` a vertex the dissolve leaves with two edges goes too, so a dissolved loop leaves clean polygons; the result lists `removedStraight`. |
 | `dissolve_verts` | `verts` | `merged` | Removes vertices: a vertex with two edges just leaves its faces, one with more merges the faces around it. |

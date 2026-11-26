@@ -184,6 +184,14 @@ function freePort() {
   });
 }
 
+export function printSceneWarnings(warnings, log = console.warn) {
+  if (!Array.isArray(warnings) || warnings.length === 0) return;
+  log(`Scene load warnings (${warnings.length}):`);
+  for (const warning of warnings) {
+    log(`  - ${warning}`);
+  }
+}
+
 export async function renderMedia(values = process.argv.slice(2)) {
   const plan = parseRenderOptions(values);
   const { options, kind, backend, scene, presetName, preset, aspect, width, height, fps, time, start, memory, assembly, output, jpegQuality } = plan;
@@ -255,6 +263,8 @@ export async function renderMedia(values = process.argv.slice(2)) {
     if (fileSceneError) throw new Error(`Scene file failed to load: ${fileSceneError}`);
     // Output draws only after the levels of detail are in, so the frames never depend on when they were made (#2985).
     await page.evaluate(() => window.__scene?.lodsReady);
+    const sceneWarnings = (await page.evaluate(() => window.__scene?.warnings)) ?? [];
+    printSceneWarnings(sceneWarnings);
     if (options.asset) {
       await page.locator('#file').setInputFiles(resolve(options.asset));
       await page.waitForFunction(() => document.querySelector('#notice').hidden || document.querySelector('#notice').textContent.startsWith('⚠'));
@@ -428,7 +438,7 @@ export async function renderMedia(values = process.argv.slice(2)) {
     if (backend === 'cpu' && !graphics.gpu.toLowerCase().includes('swiftshader')) throw new Error('CPU backend did not select SwiftShader.');
     const elapsedSeconds = (performance.now() - started) / 1000;
     const framesReport = plan.frameRange ? { ...plan.frameRange, millisecondsPerFrame: (frameRangeSeconds * 1000) / plan.frameRange.count } : null;
-    const report = { scene, kind, backend, preset: presetName, aspect, start, frames: framesReport, encoder: captureFormat === 'webcodecs' ? 'browser-h264' : encoderBackend, requestedEncoder: kind === 'video' ? plan.encoderBackend : null, captureFormat, jpegQuality: captureFormat === 'jpeg' ? jpegQuality : null, capturedFrames, stageTimings, effectiveFPS: capturedFrames / elapsedSeconds, speedRatio: kind === 'video' ? capturedFrames / fps / elapsedSeconds : null, assembly: scene === 'object' ? assembly : null, width, height, actualRenderSize, fps, duration: kind === 'video' ? duration : null, memoryBudgetMiB: memory, peakEstimatedRenderBytes, peakNodeBytes, peakBrowserHeap, maximumPendingFrames, firstFrameBytes, elapsedSeconds, graphics, output: basename(output), errors };
+    const report = { scene, kind, backend, preset: presetName, aspect, start, frames: framesReport, encoder: captureFormat === 'webcodecs' ? 'browser-h264' : encoderBackend, requestedEncoder: kind === 'video' ? plan.encoderBackend : null, captureFormat, jpegQuality: captureFormat === 'jpeg' ? jpegQuality : null, capturedFrames, stageTimings, effectiveFPS: capturedFrames / elapsedSeconds, speedRatio: kind === 'video' ? capturedFrames / fps / elapsedSeconds : null, assembly: scene === 'object' ? assembly : null, width, height, actualRenderSize, fps, duration: kind === 'video' ? duration : null, memoryBudgetMiB: memory, peakEstimatedRenderBytes, peakNodeBytes, peakBrowserHeap, maximumPendingFrames, firstFrameBytes, elapsedSeconds, graphics, output: basename(output), errors, warnings: sceneWarnings };
     await writeFile(`${output}.json`, JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));
   } finally {

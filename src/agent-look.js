@@ -32,9 +32,9 @@ function resolveEmissionRampOnDemand(input, shape, label) {
 // The longest list in a look is the longest light list.
 const MAX_LOOK_ARRAY_ENTRIES = Math.max(MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS);
 
-const ENVIRONMENT_FIELDS = [
+export const ENVIRONMENT_FIELDS = [
   'world', 'ground', 'setup', 'hdri', 'reflectionHdri', 'keyFromHdri', 'environmentIntensity', 'environmentRotation', 'lightDirection', 'keyColor', 'keyIntensity', 'fillIntensity', 'ambientIntensity', 'ambientColor', 'ambientMix', 'fillColor', 'environmentDiffuseScale', 'skybox',
-  'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'localVolumes', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'wind', 'sky', 'wetness', 'puddles',
+  'daylight', 'pointLights', 'spotLights', 'areaLights', 'skyTop', 'skyBottom', 'fogColor', 'fogDensity', 'volumeFog', 'localVolumes', 'liquid', 'shadowCascades', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'wind', 'sky', 'wetness', 'puddles', 'rain',
 ];
 const EFFECT_FIELDS = ['exposure', 'saturation', 'contrast', 'temperature', 'vignette', 'grain', 'dither', 'ambientOcclusion', 'ambientOcclusionRadius', 'bloom', 'depthOfField', 'motionBlur'];
 const SHADOW_FIELDS = ['target', 'extent', 'distance', 'near', 'far', 'hard'];
@@ -325,18 +325,23 @@ function environmentFrom(input = {}) {
     throw invalidField('environment.setup', setup, `one of ${LIGHTING_SETUP_NAMES.join(', ')}`);
   }
   const defaults = lightingSetupFields(setup);
+  const mapLights = (field, maximum, normalizeLight) =>
+    lightListFrom(input[field], maximum, `environment.${field}`).map((light, index) =>
+      withFieldPrefix(`environment.${field}[${index}]`, () => normalizeLight(light)));
+  const environmentNumber = (field, defaultValue, minimum = 0, maximum = 100) =>
+    numberInRange(fallback(input[field], defaultValue), minimum, maximum, `environment.${field}`);
   const environment = {
     world,
     setup,
-    environmentIntensity: numberInRange(fallback(input.environmentIntensity, 1), 0, 100, 'environment.environmentIntensity'),
-    environmentRotation: numberInRange(fallback(input.environmentRotation, 0), -100, 100, 'environment.environmentRotation'),
+    environmentIntensity: environmentNumber('environmentIntensity', 1),
+    environmentRotation: environmentNumber('environmentRotation', 0, -100, 100),
     lightDirection: directionFrom(fallback(input.lightDirection, defaults.lightDirection), 'environment.lightDirection').direction,
     keyColor: vectorInRange(fallback(input.keyColor, defaults.keyColor), 0, 1000, 'environment.keyColor'),
-    keyIntensity: numberInRange(fallback(input.keyIntensity, defaults.keyIntensity), 0, 100, 'environment.keyIntensity'),
-    fillIntensity: numberInRange(fallback(input.fillIntensity, defaults.fillIntensity), 0, 100, 'environment.fillIntensity'),
-    ambientIntensity: numberInRange(fallback(input.ambientIntensity, defaults.ambientIntensity), 0, 100, 'environment.ambientIntensity'),
-    daylight: numberInRange(fallback(input.daylight, 1), 0, 100, 'environment.daylight'),
-    pointLights: lightListFrom(input.pointLights, MAX_POINT_LIGHTS, 'environment.pointLights').map((light, index) => withFieldPrefix(`environment.pointLights[${index}]`, () => pointLightFrom(light))),
+    keyIntensity: environmentNumber('keyIntensity', defaults.keyIntensity),
+    fillIntensity: environmentNumber('fillIntensity', defaults.fillIntensity),
+    ambientIntensity: environmentNumber('ambientIntensity', defaults.ambientIntensity),
+    daylight: environmentNumber('daylight', 1),
+    pointLights: mapLights('pointLights', MAX_POINT_LIGHTS, pointLightFrom),
     skyTop: vectorInRange(fallback(input.skyTop, defaults.skyTop), 0, 1, 'environment.skyTop'),
     skyBottom: vectorInRange(fallback(input.skyBottom, defaults.skyBottom), 0, 1, 'environment.skyBottom'),
     fogColor: vectorInRange(fallback(input.fogColor, [0.35, 0.43, 0.43]), 0, 1, 'environment.fogColor'),
@@ -344,24 +349,13 @@ function environmentFrom(input = {}) {
     volumeFog: volumeFogFrom(input.volumeFog),
   };
   // Optional so recipes without these fields keep their exported shape.
-  if (input.ground !== undefined) {
-    if (typeof input.ground !== 'boolean') {
-      throw invalidField('environment.ground', input.ground, 'true or false', TypeError);
+  // `floorSkyTrace: false` opts out of the floor sky trace that src/floor-sky-visibility.js gives sun-lit closed rooms.
+  for (const field of ['ground', 'objectReflections', 'floorSkyTrace', 'keyFromHdri']) {
+    if (input[field] === undefined) continue;
+    if (typeof input[field] !== 'boolean') {
+      throw invalidField(`environment.${field}`, input[field], 'true or false', TypeError);
     }
-    environment.ground = input.ground;
-  }
-  if (input.objectReflections !== undefined) {
-    if (typeof input.objectReflections !== 'boolean') {
-      throw invalidField('environment.objectReflections', input.objectReflections, 'true or false', TypeError);
-    }
-    environment.objectReflections = input.objectReflections;
-  }
-  // `false` opts out of the floor sky trace that src/floor-sky-visibility.js gives sun-lit closed rooms.
-  if (input.floorSkyTrace !== undefined) {
-    if (typeof input.floorSkyTrace !== 'boolean') {
-      throw invalidField('environment.floorSkyTrace', input.floorSkyTrace, 'true or false', TypeError);
-    }
-    environment.floorSkyTrace = input.floorSkyTrace;
+    environment[field] = input[field];
   }
   // Flat diffuse light added to the environment's (a Roblox OutdoorAmbient) and a scale on all of the environment's diffuse light (EnvironmentDiffuseScale); both absent keeps the exported shape and the picture.
   if (input.ambientColor !== undefined) {
@@ -379,12 +373,13 @@ function environmentFrom(input = {}) {
   if (input.environmentDiffuseScale !== undefined) {
     environment.environmentDiffuseScale = numberInRange(input.environmentDiffuseScale, 0, 100, 'environment.environmentDiffuseScale');
   }
+  const isSet = value => value !== undefined && value !== null;
   // A second HDRI that only the reflections read (src/reflection-environment.js, loaded on demand); the diffuse light stays the lighting map's.
-  if (input.reflectionHdri !== undefined && input.reflectionHdri !== null) {
+  if (isSet(input.reflectionHdri)) {
     environment.reflectionHdri = agentSceneModule('reflectionEnvironment').resolveReflectionHdri(input.reflectionHdri, input.skybox, invalidField, { isReference: isEnvironmentReference, names: BUNDLED_ENVIRONMENT_NAMES });
   }
   // Six face images as the sky (src/skybox.js); the module checks the faces and loads on demand. null clears it.
-  if (input.skybox !== undefined && input.skybox !== null) {
+  if (isSet(input.skybox)) {
     if (input.hdri || input.sky) {
       throw invalidField('environment.skybox', 'set beside hdri or sky', 'a skybox alone: it is the sky, so remove "hdri" or "sky", or remove "skybox"');
     }
@@ -404,9 +399,8 @@ function environmentFrom(input = {}) {
   // Wet ground (src/wetness.js): wetness darkens porous surfaces and lowers their roughness, puddles pool sky-mirroring water; both are off when absent.
   if (input.wetness !== undefined) environment.wetness = normalizeWetness(input.wetness);
   if (input.puddles !== undefined) environment.puddles = normalizePuddles(input.puddles);
-  // Outlines and line geometry; null clears them. The module checks the fields and loads on demand.
-  if (input.lines !== undefined && input.lines !== null) {
-    environment.lines = copiedJson(agentSceneModule('lineArt').resolveLineArt(input.lines));
+  for (const [field, moduleName, resolver] of [['lines', 'lineArt', 'resolveLineArt'], ['rain', 'rain', 'resolveRain']]) {
+    if (isSet(input[field])) environment[field] = copiedJson(agentSceneModule(moduleName)[resolver](input[field]));
   }
   if (input.resolveCoplanar !== undefined) {
     if (input.resolveCoplanar !== 'offset' && input.resolveCoplanar !== false) {
@@ -414,12 +408,8 @@ function environmentFrom(input = {}) {
     }
     environment.resolveCoplanar = input.resolveCoplanar;
   }
-  if (input.spotLights !== undefined) {
-    environment.spotLights = lightListFrom(input.spotLights, MAX_SPOT_LIGHTS, 'environment.spotLights').map((light, index) => withFieldPrefix(`environment.spotLights[${index}]`, () => spotLightFrom(light)));
-  }
-  if (input.areaLights !== undefined) {
-    environment.areaLights = lightListFrom(input.areaLights, MAX_AREA_LIGHTS, 'environment.areaLights').map((light, index) => withFieldPrefix(`environment.areaLights[${index}]`, () => areaLightFrom(light)));
-  }
+  if (input.spotLights !== undefined) environment.spotLights = mapLights('spotLights', MAX_SPOT_LIGHTS, spotLightFrom);
+  if (input.areaLights !== undefined) environment.areaLights = mapLights('areaLights', MAX_AREA_LIGHTS, areaLightFrom);
   // Optional like the lights above, so a recipe without local volumes keeps its exported shape.
   if (input.localVolumes !== undefined) {
     environment.localVolumes = copiedJson(resolveLocalVolumesWith(resolveGridVolumeOnDemand, input.localVolumes, 'environment.localVolumes', resolveEmissionRampOnDemand));
@@ -427,26 +417,22 @@ function environmentFrom(input = {}) {
   if (input.shadowCascades !== undefined) {
     environment.shadowCascades = shadowCascadesFrom(input.shadowCascades);
   }
-  if (input.wind !== undefined && input.wind !== null) environment.wind = agentSceneModule('vegetation').normalizeWind(input.wind);
+  if (isSet(input.wind)) environment.wind = agentSceneModule('vegetation').normalizeWind(input.wind);
   // A catalog HDRI replaces the procedural sky map. The setup still supplies the key light: set keyIntensity 0 when the HDRI has its own sun.
-  if (input.hdri !== undefined && input.hdri !== null) {
+  if (isSet(input.hdri)) {
     if (typeof input.hdri !== 'string' || !isEnvironmentReference(input.hdri)) {
       throw invalidField('environment.hdri', input.hdri, `one of ${BUNDLED_ENVIRONMENT_NAMES.join(', ')} or the 64-character ID of a .hdr file in the asset catalog`);
     }
     environment.hdri = input.hdri;
   }
   // The key light takes the HDRI's sun when the scene is built (agentEnvironmentKey), since the HDRI data loads after the recipe is checked.
-  if (input.keyFromHdri !== undefined) {
-    if (typeof input.keyFromHdri !== 'boolean') {
-      throw invalidField('environment.keyFromHdri', input.keyFromHdri, 'true or false', TypeError);
-    }
-    if (input.keyFromHdri && !environment.hdri) {
+  if (input.keyFromHdri) {
+    if (!environment.hdri) {
       throw invalidField('environment.keyFromHdri', input.keyFromHdri, 'false, or true together with environment.hdri: set "hdri" to a catalog HDRI that has a sun');
     }
-    if (input.keyFromHdri && input.sky) {
+    if (input.sky) {
       throw invalidField('environment.keyFromHdri', input.keyFromHdri, 'false while environment.sky is set: the physical sky has its own sun, so remove "sky" or remove "keyFromHdri"');
     }
-    environment.keyFromHdri = input.keyFromHdri;
   }
   if (input.viewTransform !== undefined) {
     if (!VIEW_TRANSFORM_NAMES.includes(input.viewTransform)) {
@@ -454,7 +440,7 @@ function environmentFrom(input = {}) {
     }
     environment.viewTransform = input.viewTransform;
   }
-  if (input.look !== undefined && input.look !== null) {
+  if (isSet(input.look)) {
     if (!LOOK_NAMES.includes(input.look) && !isCubeLookReference(input.look)) {
       throw invalidField('environment.look', input.look, `one of ${[...LOOK_NAMES, ...BUNDLED_CUBE_LOOK_NAMES].join(', ')} or the 64-character ID of a .cube file in the asset catalog`);
     }
@@ -467,9 +453,9 @@ function environmentFrom(input = {}) {
     knownKeys(input.liquid, Object.keys(LIQUID_OPTICS), 'liquid');
     environment.liquid = copiedJson(resolveLiquidOptics(copiedJson(input.liquid)));
   }
-  if (input.sky !== undefined && input.sky !== null) {
+  if (isSet(input.sky)) {
     // The sky derives these from its sun; a value written beside the sky is a choice and stays.
-    const explicit = Object.fromEntries(SKY_OVERRIDABLE_FIELDS.filter(field => input[field] !== undefined && input[field] !== null).map(field => [field, environment[field]]));
+    const explicit = Object.fromEntries(SKY_OVERRIDABLE_FIELDS.filter(field => isSet(input[field])).map(field => [field, environment[field]]));
     agentSceneModule('physicalSky').applyPhysicalSky(input.sky, environment, invalidField);
     Object.assign(environment, explicit);
   }
@@ -493,8 +479,12 @@ const hdriSunSplits = new WeakMap();
 
 // The HDRI of an environment that sets keyFromHdri, with its sun split out as splitHdriSun does for a scene file (#2875).
 // Cached by map, so the pixel scan runs once for each map that createCatalogEnvironmentMap hands back.
+function catalogEnvironmentMap(id, environment) {
+  return createCatalogEnvironmentMap(id, { intensity: environment.environmentIntensity, rotation: environment.environmentRotation, showBackground: environment.world });
+}
+
 function hdriSunSplit(environment) {
-  const source = createCatalogEnvironmentMap(environment.hdri, { intensity: environment.environmentIntensity, rotation: environment.environmentRotation, showBackground: environment.world });
+  const source = catalogEnvironmentMap(environment.hdri, environment);
   if (!hdriSunSplits.has(source)) {
     hdriSunSplits.set(source, splitHdriSun(source));
   }
@@ -528,7 +518,7 @@ export function agentEnvironmentMap(environment, { withReflection = true } = {})
   if (!withReflection || !environment.reflectionHdri) {
     return lightingMap;
   }
-  const reflectionMap = createCatalogEnvironmentMap(environment.reflectionHdri, { intensity: environment.environmentIntensity, rotation: environment.environmentRotation, showBackground: environment.world });
+  const reflectionMap = catalogEnvironmentMap(environment.reflectionHdri, environment);
   return agentSceneModule('reflectionEnvironment').withReflectionEnvironment(lightingMap, reflectionMap);
 }
 
@@ -543,7 +533,7 @@ function agentLightingMap(environment) {
     return hdriSunSplit(environment).map;
   }
   if (environment.hdri) {
-    return createCatalogEnvironmentMap(environment.hdri, { intensity: environment.environmentIntensity, rotation: environment.environmentRotation, showBackground: environment.world });
+    return catalogEnvironmentMap(environment.hdri, environment);
   }
   return createLightingSetupMap(environment.setup, {
     intensity: environment.environmentIntensity,
@@ -561,15 +551,16 @@ function effectsFrom(input = {}) {
     }
   }
   const groups = {};
-  for (const [group, fields] of Object.entries(groupFields)) {
-    groups[group] = fallback(input[group], {});
-    knownKeys(groups[group], fields, group);
+  for (const [groupName, fields] of Object.entries(groupFields)) {
+    const values = fallback(input[groupName], {});
+    groups[groupName] = values;
+    knownKeys(values, fields, groupName);
     for (const field of fields) {
-      if (!Object.hasOwn(groups[group], field)) continue;
+      if (!Object.hasOwn(values, field)) continue;
       if (FLAG_GROUP_FIELDS.has(field)) {
-        if (typeof groups[group][field] !== 'boolean') throw new TypeError(`${group}.${field} must be true or false, got ${JSON.stringify(groups[group][field])}.`);
+        if (typeof values[field] !== 'boolean') throw new TypeError(`${groupName}.${field} must be true or false, got ${JSON.stringify(values[field])}.`);
       } else {
-        numberInRange(groups[group][field], -Number.MAX_VALUE, Number.MAX_VALUE, `${group}.${field}`);
+        numberInRange(values[field], -Number.MAX_VALUE, Number.MAX_VALUE, `${groupName}.${field}`);
       }
     }
   }
@@ -597,15 +588,16 @@ function shadowFrom(input = {}) {
 }
 
 function shadowBoundsFrom(shadow, direction) {
+  const { target, extent, distance, near, far, hard } = shadow;
   const { unitDirection } = directionFrom(direction);
-  const eye = shadow.target.map((component, axis) => component + unitDirection[axis] * shadow.distance);
+  const eye = target.map((component, axis) => component + unitDirection[axis] * distance);
   if (!eye.every(component => Number.isFinite(Math.fround(component))) ||
-      eye.every((component, axis) => Math.fround(component) === Math.fround(shadow.target[axis]))) {
+      eye.every((component, axis) => Math.fround(component) === Math.fround(target[axis]))) {
     throw new RangeError('Shadow eye and target must remain finite and distinguishable at Float32 precision.');
   }
   const up = Math.abs(unitDirection[1]) > 0.99 ? [0, 0, 1] : [0, 1, 0];
-  const view = mat4.lookAt(mat4.create(), eye, shadow.target, up);
-  const projection = mat4.ortho(mat4.create(), -shadow.extent, shadow.extent, -shadow.extent, shadow.extent, shadow.near, shadow.far);
+  const view = mat4.lookAt(mat4.create(), eye, target, up);
+  const projection = mat4.ortho(mat4.create(), -extent, extent, -extent, extent, near, far);
   const combined = mat4.multiply(mat4.create(), projection, view);
   for (const matrix of [view, projection, combined]) {
     const determinant = mat4.determinant(matrix);
@@ -613,7 +605,7 @@ function shadowBoundsFrom(shadow, direction) {
       throw new RangeError('Shadow view, projection, and combined matrices must remain finite and nonsingular at Float32 precision.');
     }
   }
-  return { eye, target: [...shadow.target], up, extent: shadow.extent, near: shadow.near, far: shadow.far, ...(shadow.hard ? { hard: true } : {}) };
+  return { eye, target: [...target], up, extent, near, far, ...(hard ? { hard: true } : {}) };
 }
 
 // A recipe that leaves `shadow` out gets a 7 m wide view around [0, 1, 0], and a bigger scene has no shadow data beyond it, so the sun reaches

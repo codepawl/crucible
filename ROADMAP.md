@@ -113,6 +113,7 @@ Ideas that nobody is working on live here instead of as open issues, so the issu
 - Toon vegetation: toonColors on recipe vegetation, scatter without terrain ground (#2840)
 - Water: ripples and glint alias into pixels at a distance (#853)
 - Measure the normal-map linear filter against a CPU bilinear spec, with mips on and off, to settle whether the 2.2 to 2.5° left on decimated scans is only filtering (#2988)
+- Draw an open-front cabinet under 1.5 m (five touching slabs) with sharp joins, so its rounded inner corners do not leak sky light; #3440 keeps sets under 1.5 m rounded to spare tables and shelves (#3433)
 
 ### Modeling
 

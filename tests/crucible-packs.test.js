@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createZip } from '../scripts/build-pack-index.mjs';
 import { readZip, checkEntryName } from '../bin/crucible-zip-reader.mjs';
-import { addPack, checkChecksum, listPacks, loadPins, PACK_LIMITS, removePack, runPacksCommand } from '../bin/crucible-packs.mjs';
+import { addPack, checkChecksum, listPacks, loadPins, PACK_LIMITS, RELEASE_URL_PREFIX, removePack, runPacksCommand } from '../bin/crucible-packs.mjs';
 import { defaultPacksFolder, resolvePacksOption } from '../bin/crucible-pack-folder.mjs';
 import { mcpHelpText } from '../bin/crucible-mcp-flags.mjs';
 
@@ -76,7 +76,9 @@ test('entry names that could leave the pack folder are refused', () => {
 });
 
 test('pins must name a release asset of this repository with a sha256 and size', () => {
-  assert.deepEqual(loadPins(), {}, 'the shipped pin file parses');
+  const shipped = loadPins();
+  assert.deepEqual(Object.keys(shipped), ['vegetation-scans'], 'the shipped pin file parses');
+  assert.equal(shipped['vegetation-scans'].url, RELEASE_URL_PREFIX + 'vegetation-scans-1.0.0/vegetation-scans-1.0.0.zip');
   const good = { version: '1.0.0', url: RELEASE, sha256: 'a'.repeat(64), bytes: 10 };
   assert.equal(loadPins({ schemaVersion: 1, packs: { 'vegetation-scans': good } })['vegetation-scans'].bytes, 10);
   assert.throws(() => loadPins({ schemaVersion: 1, packs: { 'vegetation-scans': { ...good, url: 'https://example.com/x.zip' } } }), /release asset under https:\/\/github\.com\/codepawl\/crucible/);

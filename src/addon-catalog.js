@@ -42,6 +42,7 @@ export const ADDON_CATALOG = [
   { name: 'liquid-shader', area: 'look', summary: 'Liquid, transmissive and foam materials.' },
   { name: 'world-material-shader', area: 'look', summary: 'Water bodies with absorption and turbidity.' },
   { name: 'glitter-shader', area: 'look', summary: 'Stylized water glint with a hard edge and sparkle.' },
+  { name: 'height-parallax-shader', area: 'look', summary: 'Parallax relief from a height map on a material.' },
   { name: 'retro-shader', area: 'look', summary: 'The PlayStation 1 look: vertex snap and affine textures.' },
   { name: 'surface-cover', area: 'look', summary: 'A snow or dust layer masked per pixel, smooth on huge meshes.' },
   { name: 'splat-shader', area: 'look', summary: 'Splat-mapped ground material blended by a control texture.' },
@@ -71,6 +72,7 @@ export const ADDON_CATALOG = [
   { name: 'render-passes', area: 'render', summary: 'Depth, normals, object IDs and other render passes.' },
   { name: 'wireframe-pass', area: 'render', summary: 'Polygon edges drawn over the shaded surface, with or without repair colours.' },
   { name: 'coplanar-overlap', area: 'render', summary: 'Stop z-fighting between near-flush triangles.' },
+  { name: 'meshlets', area: 'render', summary: 'Build meshoptimizer meshlets and cull clusters per draw on dense meshes.', doc: true },
   { name: 'reversed-depth', area: 'render', summary: 'Reversed-Z depth for far-away precision.' },
   { name: 'crucible-scene', area: 'render', summary: 'The <crucible-scene> web component for packed scenes.' },
 
@@ -106,6 +108,7 @@ export const ADDON_CATALOG = [
   { name: 'vegetation', area: 'world', summary: 'Trees, bushes and scattering on terrain.', doc: true },
   { name: 'grass', area: 'world', summary: 'Grass fields made of real blades.', doc: true },
   { name: 'clutter', area: 'world', summary: 'Pebbles, twigs and leaves scattered in streamable tiles.', doc: true },
+  { name: 'rain', area: 'world', summary: 'Camera-local falling rain streaks, ground splashes and wet surfaces.', doc: true },
   { name: 'gaussian-splats', area: 'world', summary: 'Gaussian splat scenes and objects.', doc: true },
 ];
 

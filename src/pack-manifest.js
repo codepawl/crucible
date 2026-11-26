@@ -155,7 +155,7 @@ export function assertPackFilePath(value, fieldPath) {
   if (typeof value !== 'string' || value.length === 0 || value.length > MAXIMUM_PATH_CHARACTERS) throw invalidField(fieldPath, value, expected);
   if (value.startsWith('/') || value.includes('\\') || /^[A-Za-z]:/.test(value)) throw invalidField(fieldPath, value, expected);
   for (const segment of value.split('/')) {
-    if (segment === '' || segment === '.' || segment === '..' || !PATH_SEGMENT_PATTERN.test(segment)) throw invalidField(fieldPath, value, expected);
+    if (segment === '' || /^\.+$/.test(segment) || segment.endsWith('.') || !PATH_SEGMENT_PATTERN.test(segment)) throw invalidField(fieldPath, value, expected);
   }
   return value;
 }

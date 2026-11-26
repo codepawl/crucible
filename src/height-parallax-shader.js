@@ -9,8 +9,8 @@
 // the tangent frame of the normal map keeps reading the unshifted UV. The depth fades to zero between half of heightFade and
 // heightFade metres from the eye, which leaves plain normal mapping there.
 
-import { HEIGHT_PARALLAX_LIMITS } from './texture-set-fields.js';
-import { HEIGHT_MAP_UNIT } from './shader-registry.js';
+import { HEIGHT_PARALLAX_LIMITS, HEIGHT_PARALLAX_DEFAULTS } from './texture-set-fields.js';
+import { HEIGHT_MAP_UNIT, HEIGHT_MAP_FEATURE, registerShaderFeatureCode, heightParallaxSupport } from './shader-registry.js';
 
 /** The ray steps a pixel may take at most; the loop bound the GLSL needs at compile time. */
 export const MAXIMUM_PARALLAX_STEPS = HEIGHT_PARALLAX_LIMITS.steps[1];
@@ -189,3 +189,37 @@ export function referenceParallaxShift(heightAt, fullShift, steps, refineSteps =
   const depth = Math.min(crossing, rayDepth);
   return [-fullShift[0] * depth, -fullShift[1] * depth];
 }
+
+/**
+ * The [heightMap, depth in metres, fade distance in metres, ray steps] of a material that draws its heightMap (a map and a heightScale
+ * above zero); throws what to change when a value is out of range or the material cannot carry the relief.
+ */
+export function heightParallaxState(material, proceduralTags) {
+  const { scale, fade, steps } = HEIGHT_PARALLAX_LIMITS;
+  const withinRange = (value, [minimum, maximum]) => typeof value === 'number' && value >= minimum && value <= maximum;
+  const depth = material.heightScale;
+  const fadeDistance = material.heightFade ?? HEIGHT_PARALLAX_DEFAULTS.fade;
+  const stepCount = material.heightSteps ?? HEIGHT_PARALLAX_DEFAULTS.steps;
+  if (!withinRange(depth, scale)) throw new RangeError(`heightScale must be between ${scale[0]} and ${scale[1]} metres; got ${depth}. Use a depth such as 0.02.`);
+  if (!withinRange(fadeDistance, fade)) throw new RangeError(`heightFade must be between ${fade[0]} and ${fade[1]} metres; got ${fadeDistance}. Use a distance such as 12.`);
+  if (!Number.isInteger(stepCount) || !withinRange(stepCount, steps)) throw new RangeError(`heightSteps must be a whole number between ${steps[0]} and ${steps[1]}; got ${stepCount}. Use a count such as 16.`);
+  if (material.boxMapScale > 0 || proceduralTags.has(material.tag) || material.tag === 'unlit') throw new Error('heightMap needs a standard PBR material with UVs: remove heightMap, or remove boxMapScale and use the surface tag.');
+  if (material.heightMap.colorSpace !== 'linear') throw new Error('heightMap requires a linear texture descriptor.');
+  if (material.alphaMode === 'mask') throw new Error('heightMap does not combine with alphaMode mask: the depth pass cannot follow the parallax. Use alphaMode opaque or blend.');
+  return [material.heightMap, depth, fadeDistance, stepCount];
+}
+
+/** Sets the parallax uniforms of a batch and binds its height texture; a batch without one (state is empty) sends w = 0, which skips the march. */
+export function bindHeightParallax(context, uniforms, state, heightTexture) {
+  const [, depth = 0, fadeDistance = HEIGHT_PARALLAX_DEFAULTS.fade, stepCount = HEIGHT_PARALLAX_DEFAULTS.steps] = state;
+  context.uniform4f(uniforms.heightState, depth, fadeDistance, stepCount, heightTexture ? 1 : 0);
+  // The sampler always names its own unit: left at its default it would read unit 0, where the cascade array sits.
+  context.uniform1i(uniforms.heightMap, HEIGHT_MAP_UNIT);
+  if (!heightTexture) return;
+  context.activeTexture(context.TEXTURE0 + HEIGHT_MAP_UNIT);
+  context.bindTexture(context.TEXTURE_2D, heightTexture);
+}
+
+// A scene without a height map never imports this module: the renderer asks the registry for it when a material has one.
+registerShaderFeatureCode(HEIGHT_MAP_FEATURE, HEIGHT_PARALLAX_CODE);
+Object.assign(heightParallaxSupport, { rewrite: withHeightParallax, state: heightParallaxState, bind: bindHeightParallax });
