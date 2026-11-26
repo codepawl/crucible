@@ -56,6 +56,7 @@ import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgent
 import { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, primitiveGeometrySpec, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, buildTemplateRecipe } from './studio-templates.js';
 import { createStudioController, hasAnimatedData, linearRgbToHex, quaternionToEulerDegrees, roundValue } from './studio-controller.js';
 import { createPartSyncTracker } from './studio-live-parts.js';
+import { assignSwatchMaterialInEditMode, createFaceMaterialPanel, planJoinOperations } from './studio-material-slots.js';
 
 const CORE_STUDIO_TABS = [
   { id: 'node', label: 'Object', order: 10, workspaces: [{ id: 'build', order: 10 }, { id: 'animate', order: 20 }], createPanel: ({ inlinePanels }) => ({ element: inlinePanels.node }) },
@@ -2514,10 +2515,12 @@ export function createStudio(container, {
   const emissionField = createSliderField(documentReference, 'Emission', { min: 0, max: 12, step: 0.1, value: 0 }, value => applyMaterialsPatch({ emission: value }));
   const colorField = createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'div', { className: 'crucible-studio-field-head' }, createElement(documentReference, 'span', { textContent: 'Color' }), colorMixedTag), colorInput);
   const emissiveField = createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'div', { className: 'crucible-studio-field-head' }, createElement(documentReference, 'span', { textContent: 'Glow color' }), emissiveMixedTag), emissiveColorInput);
+  const faceMaterialPanel = createFaceMaterialPanel({ documentReference, createElement, controller, getMeshEditor: () => meshEditor, announceError, onAssigned: () => updateMeshSelectionView() });
   const materialPanelBody = createElement(
     documentReference,
     'div',
     { className: 'crucible-studio-panel-body' },
+    faceMaterialPanel.element,
     createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'span', { className: 'crucible-studio-field-head', textContent: 'Material' }), materialSelect),
     createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'span', { className: 'crucible-studio-field-head', textContent: 'Presets' }), createElement(documentReference, 'div', { className: 'crucible-studio-chips' }, ...materialPresetChips)),
     colorField,
@@ -4642,6 +4645,11 @@ export function createStudio(container, {
         });
         swatch.style.background = hex;
         swatch.addEventListener('click', () => {
+          if (meshEditor?.active) {
+            assignSwatchMaterialInEditMode({ meshEditor, materialId: material.id, onAssigned: () => updateMeshSelectionView() });
+            selectInspectorTab('material');
+            return;
+          }
           const targets = selectedTargets();
           if (targets.length > 0) {
             try {
@@ -4872,6 +4880,7 @@ export function createStudio(container, {
         clearcoatField, clearcoatRoughnessField, doubleSidedToggle, opacityField, emissionField,
       },
     });
+    faceMaterialPanel.sync();
 
     const environment = recipe.environment ?? {};
     const activeSetup = environment.setup ?? 'daylight';
@@ -5599,7 +5608,7 @@ export function createStudio(container, {
   // The second Tab pressed while the editor is still loading takes the first one back.
   let meshEnterPending = false;
 
-  // Ctrl+J: the other selected objects join the active one (the last picked), one undo step. A shape becomes a mesh first.
+  // Ctrl+J: the other selected objects join the active one (the last picked), one undo step. Shapes become meshes first.
   async function joinSelection() {
     const activeId = controller.selectedNodeId;
     const otherIds = controller.selectedNodeIds.filter(nodeId => nodeId !== activeId);
@@ -5607,21 +5616,8 @@ export function createStudio(container, {
       announce('Select two or more objects to join. The one picked last keeps the result.');
       return;
     }
-    const recipe = controller.exportRecipe();
-    const operations = [];
-    const active = recipe.nodes.find(node => node.id === activeId);
-    const activeGeometry = recipe.geometries.find(geometry => geometry.id === active?.geometry);
-    if (activeGeometry && activeGeometry.type !== 'mesh') {
-      const { meshGeometryOfPrimitive } = await import('./studio-mesh-edit.js');
-      const converted = meshGeometryOfPrimitive(activeGeometry);
-      if (converted) {
-        const takenIds = new Set(recipe.geometries.map(geometry => geometry.id));
-        let meshId = `${activeGeometry.id}-mesh`;
-        for (let suffix = 2; takenIds.has(meshId); suffix += 1) meshId = `${activeGeometry.id}-mesh-${suffix}`;
-        operations.push({ type: 'add-geometry', geometry: { ...converted, id: meshId } }, { type: 'set-node', id: activeId, geometry: meshId });
-      }
-    }
-    operations.push({ type: 'join-meshes', node: activeId, nodes: otherIds });
+    const { meshGeometryOfPrimitive } = await import('./studio-mesh-edit.js');
+    const operations = planJoinOperations(controller.exportRecipe(), activeId, otherIds, meshGeometryOfPrimitive);
     try {
       controller.applyImportOperations(operations, { selectNodeId: activeId, detail: { kind: 'topology', nodeId: activeId } });
       announce(`Joined ${otherIds.length + 1} objects into ${activeId}`);

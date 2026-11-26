@@ -2754,6 +2754,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       const removedNodes = new Set();
       const removedMaterials = new Set();
       const removals = [];
+      const sourceGeometry = geometryId => generateOperationGeometry(candidate, geometryId, limits);
       for (const operation of operations) {
         const section = Object.hasOwn(NULLABLE_SECTION_OPERATIONS, operation.type) ? NULLABLE_SECTION_OPERATIONS[operation.type] : null;
         if (section === 'motion' && 'removeTracks' in operation) {
@@ -2824,16 +2825,15 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         }
         if (operation.type === 'fracture-node') {
           const { id: fracturedId } = candidate.nodes.find(node => node.id === operation.node) ?? {};
-          agentSceneModule('fracture').fractureNode(candidate, operation, geometryId => generateOperationGeometry(candidate, geometryId, limits));
+          agentSceneModule('fracture').fractureNode(candidate, operation, sourceGeometry);
           if (fracturedId !== undefined) removedNodes.add(fracturedId);
           continue;
         }
-        if (operation.type === 'separate-faces' || operation.type === 'join-meshes') {
-          agentSceneModule('meshParts').applyMeshPartsOperation(candidate, operation, removedNodes, geometryId => generateOperationGeometry(candidate, geometryId, limits));
+        if (operation.type === 'separate-faces' || operation.type === 'join-meshes' || operation.type === 'assign-face-material') {
+          agentSceneModule('meshParts').applyMeshPartsOperation(candidate, operation, removedNodes, sourceGeometry);
           continue;
         }
         if (operation.type === 'add-explosion') {
-          const sourceGeometry = geometryId => generateOperationGeometry(candidate, geometryId, limits);
           agentSceneModule('explosion').addExplosion(candidate, operation, { sourceGeometry, fractureNode: fracture => agentSceneModule('fracture').fractureNode(candidate, fracture, sourceGeometry) });
           if (typeof operation.debris?.node === 'string') removedNodes.add(operation.debris.node);
           continue;
@@ -2864,20 +2864,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         if (operation.type === 'set-mesh-stack') {
           knownKeys(operation, ['type', 'geometry', 'stack', 'apply'], 'operation');
           const target = meshGeometryTarget(candidate, operation, () => 'Only mesh geometries have a modifier stack.');
-          const stack = operation.stack ?? target.stack ?? [];
-          agentSceneModule('mesh').normalizeMeshStack(stack);
-          const applied = operation.apply ?? 0;
-          if (!Number.isInteger(applied) || applied < 0 || applied > stack.length) {
-            throw invalidField('apply', applied, `a whole number from 0 to the stack length ${stack.length}, such as 0`);
-          }
-          const switchedOff = stack.slice(0, applied).findIndex(node => node.enabled === false);
-          if (switchedOff >= 0) {
-            throw invalidField('apply', applied, `a count that stops before stack node ${switchedOff}, which is switched off (enabled: false); switch it on or remove it first`);
-          }
-          // Applying moves the first nodes into the edit log, as Blender's Apply modifier does.
-          target.edits = [...(target.edits ?? []), ...stack.slice(0, applied)];
-          target.stack = stack.slice(applied);
-          agentSceneModule('mesh').normalizeMeshEdits(target.edits);
+          agentSceneModule('mesh').applySetMeshStack(target, operation);
           continue;
         }
         if (operation.type === 'remove-node') {

@@ -19,6 +19,8 @@ import { CONVERTIBLE_PRIMITIVES, meshGeometryOfPrimitive, planOwnMesh } from './
 import { evaluateModifierPreview, modifierPreviewState, previewNormalsOf, previewPartForCage } from './studio-modifier-cage.js';
 import { buildEditSnapSources } from './studio-snapping.js';
 import { createBevelLoopTools } from './studio-mesh-bevel-loop.js';
+import { wholeGeometryOfParts } from './mesh-material-slots.js';
+import { applyEditModeFaceMaterial, buildSeeThroughParts, selectedFaceSlotsState } from './studio-material-slots.js';
 import {
   edgesOfSelection,
   facesInsideVertexSet,
@@ -247,7 +249,8 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     const refusal = refusalFor(geometrySpec, controller.exportRecipe(), nodeId);
     if (refusal) return refusal;
     if (geometrySpec.type !== 'mesh') return NEEDS_A_MESH;
-    const part = controller.scene.parts.find(candidate => candidate.name === nodeId);
+    const parts = controller.scene.parts.filter(candidate => candidate.name === nodeId);
+    const part = parts[0];
     const source = part ? meshEditSourceOf(part.geometry) : null;
     if (!source) return NEEDS_A_MESH;
     const mesh = source.mesh;
@@ -259,6 +262,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       editCount: edits.length,
       logEntries: edits.map(entry => JSON.stringify(entry)),
       part,
+      parts,
       mesh,
       positions: Float32Array.from(mesh.positions),
       renderVertexSource: source.renderVertexSource,
@@ -271,7 +275,8 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     // shorter one: an undo or a redo of a move keeps it, an edit that replaced an entry may have renumbered everything.
     const sameMesh = previous && previous.nodeId === nodeId && previous.geometryId === geometrySpec.id
       && previous.mesh.vertexCount === mesh.vertexCount && previous.mesh.edgeCount === mesh.edgeCount && previous.mesh.faceCount === mesh.faceCount;
-    state.ghostPart = previous?.part === part ? previous.ghostPart : null;
+    state.ghostParts = previous?.parts?.length === parts.length && previous.parts.every((entry, index) => entry === parts[index]) ? previous.ghostParts : null;
+    state.ghostPart = state.ghostParts?.[0] ?? null;
     showSurface();
     if (sameMesh && (writingOwnEntry || logsShareTheirPrefix(previous.logEntries, state.logEntries))) state.selected = new Set(selectedBefore);
     return null;
@@ -328,18 +333,11 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   function showSurface() {
     if (!state) return;
     if (!seeThrough) {
+      state.ghostParts = null;
       state.ghostPart = null;
-    } else if (!state.ghostPart) {
-      const { part } = state;
-      state.ghostPart = Object.freeze({
-        ...part,
-        material: {
-          ...part.material,
-          alphaMode: 'blend',
-          opacity: Math.min(part.material.opacity ?? 1, SEE_THROUGH_SURFACE_OPACITY),
-          doubleSided: true,
-        },
-      });
+    } else if (!state.ghostParts) {
+      state.ghostParts = buildSeeThroughParts(state.parts, SEE_THROUGH_SURFACE_OPACITY);
+      state.ghostPart = state.ghostParts[0] ?? null;
     }
     state.previewPart = state.previewGeometry ? previewPartForCage(state.part, state.ghostPart, state.previewGeometry) : null;
   }
@@ -349,9 +347,13 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     const previewed = bevelLoop.partsToDraw(parts);
     if (previewed) return previewed;
     if (!state) return parts;
-    const replacement = state.previewPart ?? state.ghostPart;
-    if (!replacement) return parts;
-    return parts.map(part => (part === state.part ? replacement : part));
+    if (state.previewPart) {
+      const slotParts = new Set(state.parts);
+      return parts.flatMap(candidate => (candidate === state.part ? [state.previewPart] : slotParts.has(candidate) ? [] : [candidate]));
+    }
+    if (!state.ghostParts) return parts;
+    const replacements = new Map(state.parts.map((candidate, index) => [candidate, state.ghostParts[index]]));
+    return parts.map(candidate => replacements.get(candidate) ?? candidate);
   }
 
   /** Turns the see-through view on or off. Returns the new value. It changes how the cage draws and what a pick reaches, never the mesh. */
@@ -923,8 +925,8 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     }
     try {
       gatherRenderPositions({ positions: state.positions }, state.renderVertexSource, drag.renderPositions);
-      previewNormalsOf(state.part.geometry.indices, drag.renderPositions, drag.renderNormals);
-      updatePart(getRenderer(), state.ghostPart ?? state.part, drag.renderPositions, drag.renderNormals);
+      previewNormalsOf(wholeGeometryOfParts(state.parts).indices, drag.renderPositions, drag.renderNormals);
+      for (const candidate of state.ghostParts ?? state.parts) updatePart(getRenderer(), candidate, drag.renderPositions, drag.renderNormals);
     } catch {
       // A part the renderer cannot rewrite in place (skinned, morphed, LOD) keeps its look; only the cage moves.
       drag.previewing = false;
@@ -943,13 +945,13 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     }
     if (drag.previewing && !state.stackedPreview) {
       try {
-        updatePart(getRenderer(), state.ghostPart ?? state.part, drag.originalRenderPositions, drag.originalRenderNormals);
+        for (const candidate of state.ghostParts ?? state.parts) updatePart(getRenderer(), candidate, drag.originalRenderPositions, drag.originalRenderNormals);
       } catch {
         drag.previewing = false;
       }
     }
     // The preview marked the geometry live (its values change in place); its values are final again, so caches may measure it.
-    if (!drag.wasLive && !state.stackedPreview) unmarkLiveGeometry(state.part.geometry);
+    if (!drag.wasLive && !state.stackedPreview) for (const candidate of state.parts) unmarkLiveGeometry(candidate.geometry);
   }
 
   function cancelDrag() {
@@ -1405,6 +1407,17 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return { ok: true, nodeId: partId };
   }
 
+  function selectedFaceSlots() {
+    return state ? selectedFaceSlotsState(controller.exportRecipe(), state.nodeId, state.mesh, selectedFaces()) : null;
+  }
+
+  function assignMaterial(target) {
+    if (!state || isBusy()) return refuse('Enter edit mode on a mesh to assign face materials.');
+    const faces = selectedFaces();
+    if (faces.length === 0) return refuse('Pick the faces to assign a material to first.');
+    return applyEditModeFaceMaterial({ controller, nodeId: state.nodeId, faces, target, refresh, announce, refuse });
+  }
+
   return Object.freeze({
     get active() { return state !== null; },
     get mode() { return state?.mode ?? null; },
@@ -1418,6 +1431,8 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     setMode,
     clearSelection,
     separateSelection,
+    selectedFaceSlots,
+    assignMaterial,
     dissolve,
     merge,
     makeFace,

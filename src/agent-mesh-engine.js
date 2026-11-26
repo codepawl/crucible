@@ -1,5 +1,5 @@
 // Everything the agent scene needs for mesh geometry, behind one on-demand import (see agent-scene-modules.js).
-export { meshReport, generateMeshGeometry, taggedFacePositions, waterFoamGeometry } from './agent-mesh.js';
+export { meshReport, generateMeshGeometry, taggedFacePositions, waterFoamGeometry, applySetMeshStack } from './agent-mesh.js';
 export { normalizeMeshEdits, normalizeMeshStack } from './mesh-recipe.js';
 export { checkDisplaceMaterials, displaceHeightSignature } from './mesh-displace-keys.js';
 export { normalizeShapeKeys } from './mesh-shape-keys.js';

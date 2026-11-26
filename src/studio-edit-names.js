@@ -15,6 +15,9 @@ const OPERATION_LABELS = Object.freeze({
   'set-camera': 'Move camera',
   'set-timeline': 'Edit shots',
   'set-motion': 'Edit animation',
+  'join-meshes': 'Join',
+  'separate-faces': 'Separate',
+  'assign-face-material': 'Assign material',
 });
 
 // The operations that only support another one: a new object brings its geometry and material, a pose edit may key itself.
@@ -111,6 +114,7 @@ const EDIT_ICON_BY_LABEL = Object.freeze({
   'Move camera': 'camera',
   'Edit shots': 'film',
   'Edit animation': 'keyframe',
+  'Assign material': 'material',
   'Open scene': 'open',
 });
 

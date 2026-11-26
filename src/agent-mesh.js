@@ -2,7 +2,7 @@ import { meshFromGeometry } from './mesh-convert.js';
 import { facesWithTag } from './mesh-data.js';
 import { invalidField } from './field-error.js';
 import { lintMesh } from './mesh-lint.js';
-import { applyMeshEdits, evaluateMeshStack } from './mesh-recipe.js';
+import { applyMeshEdits, evaluateMeshStack, normalizeMeshEdits, normalizeMeshStack } from './mesh-recipe.js';
 import { extractRender } from './mesh-render.js';
 import { normalizeShapeKeys, shapeKeyTargets } from './mesh-shape-keys.js';
 import { realizedGeometry } from './mesh-instances.js';
@@ -18,8 +18,18 @@ export { needsMeshBooleans } from './agent-scene-modules.js';
 
 const reports = new WeakMap();
 
-// Render geometry generated from a mesh recipe keeps its polygon mesh and edit results here.
+// Render geometry generated from a mesh recipe keeps its polygon mesh and edit results here; slots share `positions`.
 const polygonMeshes = new WeakMap();
+const polygonMeshesByPositions = new WeakMap();
+
+function recordPolygonMesh(geometry, record) {
+  polygonMeshes.set(geometry, record);
+  if (geometry?.positions) polygonMeshesByPositions.set(geometry.positions, record);
+}
+
+function polygonRecordOf(geometry) {
+  return polygonMeshes.get(geometry) ?? (geometry?.positions ? polygonMeshesByPositions.get(geometry.positions) : undefined);
+}
 
 const CACHE_MAX_ENTRIES = 64;
 const CACHE_MAX_BYTES = 64 * 1024 * 1024;
@@ -148,13 +158,13 @@ export function generateMeshGeometry(baseGeometry, edits, {
     geometry.morphTargetNames = keys.map(key => key.name);
     geometry.morphTargetValues = Float32Array.from(keys, key => key.value);
   }
-  polygonMeshes.set(geometry, { mesh: evaluated.mesh, results: edited.result, stack: evaluated.results, editLog: { mesh: edited.mesh, renderVertexSource, stackLength: stack.length } });
+  recordPolygonMesh(geometry, { mesh: evaluated.mesh, results: edited.result, stack: evaluated.results, editLog: { mesh: edited.mesh, renderVertexSource, stackLength: stack.length } });
   return geometry;
 }
 
 /** Remember the polygon mesh and edit results behind geometry built outside generateMeshGeometry (imported parts). */
 export function registerEditedMesh(geometry, mesh, results) {
-  polygonMeshes.set(geometry, { mesh, results, stack: [] });
+  recordPolygonMesh(geometry, { mesh, results, stack: [] });
 }
 
 /**
@@ -203,12 +213,12 @@ function roundedBounds(bounds) {
  * The mesh is shared with the evaluation cache: read it, never write it.
  */
 export function meshEditSourceOf(geometry) {
-  return polygonMeshes.get(geometry)?.editLog ?? null;
+  return polygonRecordOf(geometry)?.editLog ?? null;
 }
 
 /** The polygon mesh behind renderer geometry: the recipe's own mesh when it has one, else the welded, quad-joined view. */
 export function polygonMeshOf(geometry) {
-  return polygonMeshes.get(geometry)?.mesh ?? meshFromGeometry(geometry);
+  return polygonRecordOf(geometry)?.mesh ?? meshFromGeometry(geometry);
 }
 
 /**
@@ -237,4 +247,22 @@ export function meshReport(geometry) {
   });
   reports.set(geometry, report);
   return report;
+}
+
+/** Validates and applies a `set-mesh-stack` operation against `target` mesh geometry. */
+export function applySetMeshStack(target, operation) {
+  const stack = operation.stack ?? target.stack ?? [];
+  normalizeMeshStack(stack);
+  const applied = operation.apply ?? 0;
+  if (!Number.isInteger(applied) || applied < 0 || applied > stack.length) {
+    throw invalidField('apply', applied, `a whole number from 0 to the stack length ${stack.length}, such as 0`);
+  }
+  const switchedOff = stack.slice(0, applied).findIndex(node => node.enabled === false);
+  if (switchedOff >= 0) {
+    throw invalidField('apply', applied, `a count that stops before stack node ${switchedOff}, which is switched off (enabled: false); switch it on or remove it first`);
+  }
+  // Applying bakes the first modifier nodes into the edit log.
+  target.edits = [...(target.edits ?? []), ...stack.slice(0, applied)];
+  target.stack = stack.slice(applied);
+  normalizeMeshEdits(target.edits);
 }
