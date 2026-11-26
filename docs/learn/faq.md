@@ -8,17 +8,17 @@ No. You can use them side by side. three.js is a general 3D library that you pro
 
 ## Is there a visual editor?
 
-Yes, Studio, an optional addon that edits the same scene recipe as the MCP tools. It is not a page of the public site. The [Studio guide](https://github.com/codepawl/crucible/blob/main/docs/studio.md) says how to use it.
+Yes. Studio (`@codepawlhq/crucible/addons/studio`) is an optional addon that an app mounts with `createStudio` to edit the same scene recipe as the MCP tools. It is not a page of the public site; in a local checkout, run `npm run dev` and open `/bench/studio/index.html`. The [Studio guide](/studio.md) says how to use it.
 
 ## Is it faster or smaller than three.js?
 
-It is smaller. A lit box is 49,858 bytes gzip in Crucible and 133,652 bytes in three.js 0.186.1. A box loaded from a GLB is 77,122 against 155,814 bytes. Both were measured on 2026-11-03 ([size bench](https://github.com/codepawl/crucible/blob/main/bench/size/README.md)).
+It is smaller. A lit box is 64,940 bytes gzip in Crucible and 133,797 bytes in three.js 0.187.0. A box loaded from a GLB is 100,370 against 156,445 bytes. Both come from the 0.22.0 baseline ([baseline.json](https://github.com/codepawl/crucible/blob/main/bench/size/baseline.json), [size bench](https://github.com/codepawl/crucible/blob/main/bench/size/README.md)).
 
 It is not faster in general. On 2026-11-04, three.js drew the faster full frame in most runtime bench scenes. Crucible was faster on two of them: many copies of one object, and moving shadows. The [performance page](#performance-and-memory/where-three-js-still-wins) has the numbers.
 
 ## Why JavaScript, and why not Vulkan or DirectX?
 
-Crucible draws in the browser, so it uses WebGL2, which every current desktop and phone browser has. A page or an agent can show a scene with no install. A native Vulkan or DirectX backend is not planned. A native path tracer package is an open idea in issue #626.
+Crucible draws in the browser, so Glaze uses WebGL2, which every current desktop and phone browser has. A page or an agent can show a scene with no install. For offline stills, the Cook path tracer runs on CPU, WebGL2, opt-in WebGPU, and natively on Vulkan ray queries through the optional `@codepawlhq/cook` package ([path tracer guide](/path-tracer.md)).
 
 ## What is the benefit over asking an agent to "make it in three.js"?
 
@@ -62,4 +62,4 @@ This is not measured yet. Issue #746 adds an opt-in local log of tool calls, and
 
 ## How do I help?
 
-Read the [contributing guide](https://github.com/codepawl/crucible/blob/main/CONTRIBUTING.md) and pick an issue. Issues marked `good first issue` are small and self-contained, such as OBJ and STL export (issue #747).
+Read the [contributing guide](https://github.com/codepawl/crucible/blob/main/CONTRIBUTING.md) and pick an issue labeled `good first issue`. For mesh export, GLB ships in core and OBJ and STL export ship in `@codepawlhq/crucible/addons/export-mesh` ([export guide](/export-glb.md#obj-and-stl)).

@@ -195,7 +195,7 @@ function paintScene(index) {
   stage.setAttribute('aria-label', `A live 3D scene: ${scene.name}`);
   ringMarks.forEach(mark => { mark.fill.style.strokeDashoffset = String(RING_LENGTH); });
   attribution.hidden = scene.credits.length === 0;
-  // One caption line under the picture: the credits of the scene on screen, joined by a middle dot.
+  // One caption line under the picture: the credits of the scene on screen, joined by a vertical bar.
   const links = scene.credits.map(credit => {
     const link = document.createElement('a');
     link.href = credit.href;
@@ -211,7 +211,7 @@ function separator() {
   const dot = document.createElement('span');
   dot.className = 'credit-separator';
   dot.setAttribute('aria-hidden', 'true');
-  dot.textContent = '·';
+  dot.textContent = '|';
   return dot;
 }
 

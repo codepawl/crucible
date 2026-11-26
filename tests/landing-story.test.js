@@ -65,5 +65,9 @@ test('the page keeps the sections, release hooks and install paths of the old ho
   }
   assert.ok(landingPage.includes('data-release-version'));
   assert.ok(landingPage.includes('data-release-commit'));
-  assert.ok(landingPage.includes('npx crucible-mcp'));
+  assert.ok(landingPage.includes('npx -y --package @codepawlhq/crucible crucible-mcp'));
+  assert.ok(landingPage.includes("from '@codepawlhq/crucible'"));
+  assert.ok(landingPage.includes("from '@codepawlhq/crucible/addons/gltf'"));
+  assert.ok(landingPage.includes("from '@codepawlhq/crucible/addons/hdri'"));
+  assert.doesNotMatch(landingPage, /href="\/(?:mcp|path-tracer|agent-review|changelog)\.md"/);
 });

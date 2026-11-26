@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /file.html
+
+Sitemap: https://crucible.codepawl.com/sitemap.xml

@@ -205,9 +205,9 @@ async function showAsset(loaded, title, nextSetting = DEFAULT_SETTING) {
   names.forEach((name, index) => clip.add(new Option(name, String(index))));
   clip.disabled = !asset.animations.length;
   syncAnimation();
-  document.querySelector('#metrics').textContent = `${asset.parts.length.toLocaleString()} parts · ${renderer.batches.length} draws`;
+  document.querySelector('#metrics').textContent = `${asset.parts.length.toLocaleString()} parts | ${renderer.batches.length} draws`;
   document.querySelector('#notice').hidden = true;
-  document.title = `${title} · Crucible asset viewer`;
+  document.title = `${title} - Crucible asset viewer`;
   invalidate();
 }
 

@@ -25,10 +25,12 @@ async function listedToolCount() {
 
 async function countStatedIn(file, pattern) {
   const text = await readFile(new URL(`../${file}`, import.meta.url), 'utf8');
-  const match = text.match(pattern);
-  assert.ok(match, `${file} no longer states the MCP tool count`);
-  const stated = match[1].toLowerCase();
-  return numberWords.get(stated) ?? Number(stated);
+  const matches = [...text.matchAll(new RegExp(pattern.source, `${pattern.flags.replace(/g/g, '')}g`))];
+  assert.ok(matches.length > 0, `${file} no longer states the MCP tool count`);
+  return matches.map((match) => {
+    const stated = match[1].toLowerCase();
+    return numberWords.get(stated) ?? Number(stated);
+  });
 }
 
 test('documented MCP tool counts match the protocol listing', async () => {
@@ -42,7 +44,9 @@ test('documented MCP tool counts match the protocol listing', async () => {
     ['site/index.html', /(\d+) MCP tools/],
   ];
   for (const [file, pattern] of statements) {
-    assert.equal(await countStatedIn(file, pattern), listed, `${file} states a different tool count than tools/list`);
+    for (const stated of await countStatedIn(file, pattern)) {
+      assert.equal(stated, listed, `${file} states a different tool count than tools/list`);
+    }
   }
 });
 

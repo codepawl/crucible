@@ -3380,14 +3380,14 @@ export function createStudio(container, {
       return '';
     }
     const selectedNode = controller.exportRecipe().nodes.find(node => node.id === selectedId);
-    return `${selectedNode?.label ?? selectedId} · ${describeBounds(bounds, preferences.lengthUnit)}`;
+    return `${selectedNode?.label ?? selectedId} | ${describeBounds(bounds, preferences.lengthUnit)}`;
   }
 
   function syncViewportAids() {
     const camera = controller.viewCamera;
     viewWidget.update(camera);
     const gridStep = gridLayout({ visibleHeight: cameraVisibleHeight(camera), viewportHeight: controller.viewportHeight, target: camera.target, eye: camera.projection === 'orthographic' ? undefined : camera.eye }).step;
-    readoutCamera.textContent = gridVisible ? `${describeCamera(camera)} · Grid ${describeGridStep(gridStep)}` : describeCamera(camera);
+    readoutCamera.textContent = gridVisible ? `${describeCamera(camera)} | Grid ${describeGridStep(gridStep)}` : describeCamera(camera);
     if (controller.activeTab === 'export') syncExportFacts();
     if (selectionReadoutStale) {
       selectionReadoutStale = false;

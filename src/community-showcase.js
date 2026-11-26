@@ -82,7 +82,7 @@ function escapeHtml(value) {
 // The markup of one entry. The still links to the live page when there is one, otherwise to the discussion.
 export function communityFigureMarkup(entry) {
   const target = escapeHtml(entry.link ?? entry.discussion);
-  const discussionLink = entry.discussion ? ` · <a href="${escapeHtml(entry.discussion)}">Discussion</a>` : '';
+  const discussionLink = entry.discussion ? ` | <a href="${escapeHtml(entry.discussion)}">Discussion</a>` : '';
   const image = `<img src="${escapeHtml(entry.image)}" alt="${escapeHtml(entry.alt)}" width="${entry.width}" height="${entry.height}" loading="lazy" />`;
   const author = `<a href="${escapeHtml(entry.authorUrl)}">${escapeHtml(entry.author)}</a>`;
   return `<figure><a class="community-still" href="${target}">${image}</a>`

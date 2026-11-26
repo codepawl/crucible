@@ -48,7 +48,7 @@ function renderAt(time) {
   slider.setAttribute('aria-valuetext', `${state.time.toFixed(1)} of ${MOTION_DURATION} seconds`);
   document.querySelector('#motion-clock').value = `${state.time.toFixed(1)} / ${MOTION_DURATION.toFixed(1)} s`;
   document.querySelector('#motion-shot').textContent = `Shot ${frame.shot + 1} of 3`;
-  document.querySelector('#motion-stat').textContent = `${Math.round(renderer.triangles / 1000)}k triangles · ${renderer.batches.length} draws · ${Math.round(renderer.memoryPlan.estimatedBytes / 1048576)} MB estimated`;
+  document.querySelector('#motion-stat').textContent = `${Math.round(renderer.triangles / 1000)}k triangles | ${renderer.batches.length} draws | ${Math.round(renderer.memoryPlan.estimatedBytes / 1048576)} MB estimated`;
   return frame;
 }
 

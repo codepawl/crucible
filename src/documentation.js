@@ -430,7 +430,7 @@ async function openTopic(focus = false) {
   }
   article.append(pagination);
   document.querySelector('#doc-topic-name').textContent = currentTopic.title;
-  document.title = `${currentTopic.title} · Crucible documentation`;
+  document.title = `${currentTopic.title} - Crucible documentation`;
   copyStatus.textContent = '';
   document.querySelector('.doc-copy-fallback')?.remove();
   copyPage.innerHTML = `${icon('copy')}Copy page`;

@@ -139,3 +139,33 @@ test('shared chrome uses the brand kit font stack and lowercase bold wordmark wi
   assert.match(chromeStyles, /\.themed\s+\.brand\s*\{[^}]*font:\s*700\s+22px\/1\s+var\(--wordmark\)[^}]*letter-spacing:\s*-0\.035em[^}]*text-transform:\s*lowercase/);
   assert.doesNotMatch(chromeStyles, /pixelify|pixel-icon/i);
 });
+
+test('the shared footer links CodePawl social profiles without Discord', () => {
+  const footer = renderFooter();
+  for (const href of ['https://x.com/codepawl', 'https://www.threads.com/@codepawl', 'https://www.youtube.com/@codepawlhq', 'https://huggingface.co/codepawl']) {
+    assert.ok(footer.includes(`href="${href}"`), `${href} is missing from the footer`);
+  }
+  assert.doesNotMatch(footer, /discord/i);
+});
+
+test('every site page carries canonical, Open Graph and Twitter metadata and avoids middle-dot title separators', () => {
+  for (const pageName of CHROME_PAGES) {
+    const html = readPage(pageName);
+    const title = html.match(/<title>([^<]+)<\/title>/)?.[1] ?? '';
+    assert.ok(title.length > 0, `site/${pageName}.html needs a <title>`);
+    assert.doesNotMatch(title, /\u00b7/, `site/${pageName}.html <title> must not use a middle dot`);
+    for (const pattern of [/property="og:type"/, /property="og:title"/, /property="og:description"/, /property="og:url"/, /property="og:image"/, /name="twitter:card"/, /rel="canonical"/]) {
+      assert.match(html, pattern, `site/${pageName}.html is missing ${pattern}`);
+    }
+  }
+});
+
+test('public/robots.txt and public/sitemap.xml exist and list every site page', () => {
+  const robots = readFileSync(new URL('../public/robots.txt', import.meta.url), 'utf8');
+  assert.match(robots, /Sitemap:\s*https:\/\/crucible\.codepawl\.com\/sitemap\.xml/);
+  const sitemap = readFileSync(new URL('../public/sitemap.xml', import.meta.url), 'utf8');
+  for (const pageName of CHROME_PAGES) {
+    const expectedUrl = pageName === 'index' ? 'https://crucible.codepawl.com/' : `https://crucible.codepawl.com/${pageName}.html`;
+    assert.ok(sitemap.includes(`<loc>${expectedUrl}</loc>`), `public/sitemap.xml is missing ${expectedUrl}`);
+  }
+});

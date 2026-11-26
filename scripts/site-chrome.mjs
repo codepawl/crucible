@@ -56,6 +56,17 @@ const FOOTER_PAGE_LINKS = [
   { href: '/changelog.html', label: 'Changelog' },
 ];
 
+const SOCIAL_LINKS = [
+  { href: 'https://x.com/codepawl', label: 'X' },
+  { href: 'https://www.threads.com/@codepawl', label: 'Threads' },
+  { href: 'https://www.youtube.com/@codepawlhq', label: 'YouTube' },
+  { href: 'https://huggingface.co/codepawl', label: 'Hugging Face' },
+];
+
+const SITE_ORIGIN = 'https://crucible.codepawl.com';
+const OG_IMAGE_ALT = 'The Crucible mark over a container port rendered by Crucible';
+const SEO_MARKER_PATTERN = /<!-- site-chrome:seo -->[\s\S]*?<!-- \/site-chrome:seo -->/;
+
 const BRAND = '<a class="brand" href="/" aria-label="Crucible home"><picture><source media="(prefers-color-scheme: dark)" srcset="/brand/crucible-mark-64-dark.webp"><img src="/brand/crucible-mark-64.webp" alt="" width="28" height="28" decoding="async"></picture>Crucible</a>';
 
 export function renderHeader(pageName) {
@@ -96,9 +107,62 @@ export function renderFooter() {
     '      <a href="/logo.svg" download>Logo SVG</a>',
     '      <a href="https://github.com/sponsors/codepawl">Sponsor</a>',
     '    </nav>',
+    '    <nav aria-label="CodePawl social">',
+    ...SOCIAL_LINKS.map((link) => `      <a href="${link.href}">${link.label}</a>`),
+    '    </nav>',
     '  </div>',
     '</footer>',
   ].join('\n');
+}
+
+function escapeAttribute(text) {
+  return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function unescapeAttribute(text) {
+  return text.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+}
+
+function renderSeoBlock(source, pageName) {
+  const titleMatch = source.match(/<title>([^<]+)<\/title>/);
+  const descriptionMatch = source.match(/<meta\s+name="description"\s+content="([^"]*)"\s*\/?>/);
+  if (!titleMatch) throw new Error(`${pageName}.html has no <title> element for SEO metadata.`);
+  if (!descriptionMatch) throw new Error(`${pageName}.html has no <meta name="description"> element for SEO metadata.`);
+  const title = escapeAttribute(unescapeAttribute(titleMatch[1].trim()));
+  const description = escapeAttribute(unescapeAttribute(descriptionMatch[1].trim()));
+  const url = `${SITE_ORIGIN}/${pageName}.html`;
+  return [
+    '<!-- site-chrome:seo -->',
+    '    <meta property="og:type" content="website" />',
+    '    <meta property="og:site_name" content="crucible" />',
+    `    <meta property="og:title" content="${title}" />`,
+    `    <meta property="og:description" content="${description}" />`,
+    `    <meta property="og:url" content="${url}" />`,
+    `    <meta property="og:image" content="${SITE_ORIGIN}/og.jpg" />`,
+    '    <meta property="og:image:width" content="1200" />',
+    '    <meta property="og:image:height" content="630" />',
+    `    <meta property="og:image:alt" content="${OG_IMAGE_ALT}" />`,
+    '    <meta name="twitter:card" content="summary_large_image" />',
+    `    <meta name="twitter:title" content="${title}" />`,
+    `    <meta name="twitter:description" content="${description}" />`,
+    `    <meta name="twitter:image" content="${SITE_ORIGIN}/og.jpg" />`,
+    `    <link rel="canonical" href="${url}" />`,
+    '    <!-- /site-chrome:seo -->',
+  ].join('\n');
+}
+
+function applySeoMeta(source, pageName) {
+  if (pageName === 'index') return source;
+  const seoBlock = renderSeoBlock(source, pageName);
+  const withoutStandaloneCanonical = source.replace(/\s*<link\s+rel="canonical"[^>]*\/?>/g, (match, offset, currentSource) => {
+    const before = currentSource.slice(0, offset);
+    const insideMarker = before.lastIndexOf('<!-- site-chrome:seo -->') > before.lastIndexOf('<!-- /site-chrome:seo -->');
+    return insideMarker ? match : '';
+  });
+  if (SEO_MARKER_PATTERN.test(withoutStandaloneCanonical)) {
+    return withoutStandaloneCanonical.replace(SEO_MARKER_PATTERN, () => seoBlock);
+  }
+  return withoutStandaloneCanonical.replace(/<title>/, `${seoBlock}\n    <title>`);
 }
 
 const REGIONS = {
@@ -106,7 +170,7 @@ const REGIONS = {
   footer: { pattern: /<!-- site-chrome:footer -->[\s\S]*?<!-- \/site-chrome:footer -->/, render: renderFooter },
 };
 
-// Returns the page source with its marked header and footer regions and font preloads rewritten.
+// Returns the page source with its marked header, footer, SEO metadata and font preloads rewritten.
 export function applyChrome(source, pageName) {
   let result = source;
   if (result.includes(THEME_COLOR_META) && !result.includes(FONT_PRELOAD_META)) {
@@ -122,6 +186,7 @@ export function applyChrome(source, pageName) {
     }
     result = result.replace(pattern, () => `<!-- site-chrome:${part} -->\n${render(pageName)}\n<!-- /site-chrome:${part} -->`);
   }
+  result = applySeoMeta(result, pageName);
   return result;
 }
 

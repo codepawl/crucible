@@ -2446,10 +2446,10 @@ test('the readout names the camera and gives the size of the selection in metres
   const ui = mountStudio(testContext);
   const selection = ui.viewport.querySelector('.crucible-studio-readout-selection');
   const readout = ui.viewport.querySelector('.crucible-studio-readout');
-  assert.match(readout.textContent, /^Perspective · \d+ ?(mm|°)/u);
+  assert.match(readout.textContent, /^Perspective \| \d+ ?(mm|°)/u);
   ui.controller.selectNode('hero');
   ui.studio.renderNow();
-  assert.match(selection.textContent, /^hero · \d+\.\d\d × \d+\.\d\d × \d+\.\d\d m$/u);
+  assert.match(selection.textContent, /^hero \| \d+\.\d\d × \d+\.\d\d × \d+\.\d\d m$/u);
   const bounds = ui.controller.nodeBounds('hero');
   assert.deepEqual(bounds.size.map(value => Number(value.toFixed(4))), bounds.max.map((value, axis) => Number((value - bounds.min[axis]).toFixed(4))));
   const sizeText = selection.textContent;

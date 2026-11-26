@@ -145,9 +145,9 @@ test('axisWidgetEnds places the axes as the camera sees them, far ends first', (
 
 test('describeCamera and describeBounds write the readout lines', () => {
   assert.equal(describeCamera({ projection: 'orthographic', fov: 40 }), 'Orthographic');
-  assert.equal(describeCamera({ focalLength: 49.6 }), 'Perspective · 50 mm');
-  assert.equal(describeCamera({ fov: 41.6 }), 'Perspective · 42°');
-  assert.equal(describeCamera({}), 'Perspective · 45°');
+  assert.equal(describeCamera({ focalLength: 49.6 }), 'Perspective | 50 mm');
+  assert.equal(describeCamera({ fov: 41.6 }), 'Perspective | 42°');
+  assert.equal(describeCamera({}), 'Perspective | 45°');
   assert.equal(describeBounds({ size: [0.42, 0.9, 0.42] }), '0.42 × 0.90 × 0.42 m');
   assert.equal(describeBounds({ size: [120.4, 3, 0.005] }), '120 × 3.00 × 0.01 m');
 });

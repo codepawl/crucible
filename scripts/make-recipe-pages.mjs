@@ -8,7 +8,6 @@ import { applyChrome, THEME_COLOR_META } from './site-chrome.mjs';
 import { beforeSource, RECIPES, recipeSource } from './recipe-catalog.mjs';
 
 const siteFolder = fileURLToPath(new URL('../site/', import.meta.url));
-const ORIGIN = 'https://crucible.codepawl.com';
 
 export function pageFileName(slug) {
   return `recipe-${slug}.html`;
@@ -26,8 +25,8 @@ function pageShell({ title, description, path, body }) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     ${THEME_COLOR_META}
     <meta name="description" content="${escapeHtml(description)}" />
-    <link rel="canonical" href="${ORIGIN}${path}" />
-    <title>${escapeHtml(title)} · Crucible</title>
+    <!-- site-chrome:seo --><!-- /site-chrome:seo -->
+    <title>${escapeHtml(title)} - Crucible</title>
     <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" /><link rel="icon" href="/favicon.ico?v=2" sizes="48x48" /><link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   </head>
   <body class="site themed recipes">

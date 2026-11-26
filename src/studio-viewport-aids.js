@@ -355,12 +355,12 @@ export function createViewWidget(documentReference, { onPickView }) {
   return { element: widget, update };
 }
 
-/** The camera half of the readout, such as "Perspective · 50 mm" or "Orthographic". */
+/** The camera half of the readout, such as "Perspective | 50 mm" or "Orthographic". */
 export function describeCamera(camera) {
   if (camera.projection === 'orthographic') {
     return 'Orthographic';
   }
-  return Number.isFinite(camera.focalLength) ? `Perspective · ${Math.round(camera.focalLength)} mm` : `Perspective · ${Math.round(camera.fov ?? 45)}°`;
+  return Number.isFinite(camera.focalLength) ? `Perspective | ${Math.round(camera.focalLength)} mm` : `Perspective | ${Math.round(camera.fov ?? 45)}°`;
 }
 
 /** The selection half of the readout: the object's size in the chosen length unit, width × height × depth. */
