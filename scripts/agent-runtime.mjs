@@ -1818,7 +1818,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
       });
     },
     exportRecipe(input) {
-      return enqueue(() => invoke('exportRecipe', input));
+      return enqueue(async () => withSnapshotSkyColors(await invoke('exportRecipe', input)));
     },
     dispose(input) {
       return enqueue(async () => {
@@ -1845,7 +1845,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
       return enqueue(async () => {
         await requirePreviewRenderer();
         await jobs();
-        const { recipe, revision } = await invoke('exportRecipe', { sessionId });
+        const { recipe, revision } = withSnapshotSkyColors(await invoke('exportRecipe', { sessionId }));
         // Same name rule as GLB exports: the server picks the folder, and only the newest few are kept.
         const directory = join(jobRoot, EXPORT_DIRECTORY_NAME);
         await mkdir(directory, { recursive: true, mode: 0o700 });
