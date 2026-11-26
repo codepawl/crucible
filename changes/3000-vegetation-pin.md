@@ -1,0 +1,1 @@
+- `npx crucible packs add vegetation-scans` installs the scanned bark and leaf pack, so recipe trees use the scans with no `--packs` flag (#3000)
