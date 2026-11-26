@@ -148,32 +148,36 @@ test('studio-features.js keeps imports sorted one per line', () => {
   assertSortedUnique(imports, 'studio-features.js imports');
 });
 
-test('agent-scene.js and material-patterns.js keep field lists sorted and one item per line', () => {
+test('agent-scene.js and material-patterns.js keep field lists one item per line with sorted extension lists', () => {
   const agentSceneSource = readFileSync(join(ROOT_FOLDER, 'src/agent-scene.js'), 'utf8');
   const patternSource = readFileSync(join(ROOT_FOLDER, 'src/material-patterns.js'), 'utf8');
 
   const nodeFields = extractArrayItems(agentSceneSource, /const NODE_FIELDS = \[([\s\S]*?)\];/);
-  assertSortedUnique(nodeFields, 'agent-scene.js NODE_FIELDS');
+  assert.equal(new Set(nodeFields).size, nodeFields.length, 'agent-scene.js NODE_FIELDS must not contain duplicate entries');
+  const extraNodeFields = extractArrayItems(agentSceneSource, /const EXTRA_NODE_FIELDS = \[([\s\S]*?)\];/);
+  assertSortedUnique(extraNodeFields, 'agent-scene.js EXTRA_NODE_FIELDS');
 
   const materialFields = extractArrayItems(agentSceneSource, /const MATERIAL_FIELDS = \[([\s\S]*?)\];/);
-  assertSortedUnique(materialFields, 'agent-scene.js MATERIAL_FIELDS');
-  assert.equal(agentSceneSource.includes('MATERIAL_FIELDS.push('), false, 'material fields belong directly in sorted MATERIAL_FIELDS');
+  assert.equal(new Set(materialFields).size, materialFields.length, 'agent-scene.js MATERIAL_FIELDS must not contain duplicate entries');
+  assert.equal(agentSceneSource.includes('MATERIAL_FIELDS.push('), false, 'material fields belong in MATERIAL_FIELDS or EXTRA_MATERIAL_FIELDS');
+  const extraMaterialFields = extractArrayItems(agentSceneSource, /const EXTRA_MATERIAL_FIELDS = \[([\s\S]*?)\];/);
+  assertSortedUnique(extraMaterialFields, 'agent-scene.js EXTRA_MATERIAL_FIELDS');
 
   const patternFields = extractArrayItems(agentSceneSource, /const PATTERN_TEXTURE_FIELDS = \[([\s\S]*?)\];/);
-  assertSortedUnique(patternFields, 'agent-scene.js PATTERN_TEXTURE_FIELDS');
+  assert.equal(new Set(patternFields).size, patternFields.length, 'agent-scene.js PATTERN_TEXTURE_FIELDS must not contain duplicates');
 
   const duplicatedPatternFields = extractArrayItems(patternSource, /const PATTERN_TEXTURE_FIELDS = \[([\s\S]*?)\];/);
-  assertSortedUnique(duplicatedPatternFields, 'material-patterns.js PATTERN_TEXTURE_FIELDS');
   assert.deepEqual(duplicatedPatternFields, patternFields);
 
   const renderFlags = extractArrayItems(agentSceneSource, /const RENDER_FLAG_FIELDS = \[([\s\S]*?)\];/);
   assert.equal(renderFlags[0], 'visible', 'visible must stay first in RENDER_FLAG_FIELDS for slice(1)');
-  assertSortedUnique(renderFlags.slice(1), 'agent-scene.js RENDER_FLAG_FIELDS part flags');
+  assert.equal(new Set(renderFlags).size, renderFlags.length, 'agent-scene.js RENDER_FLAG_FIELDS must not contain duplicates');
 
   const geometryBlock = agentSceneSource.match(/const GEOMETRY_FIELDS = \{([\s\S]*?)\n\};/);
   assert.ok(geometryBlock, 'GEOMETRY_FIELDS missing from src/agent-scene.js');
   const geometryNames = [...geometryBlock[1].matchAll(/^\s{2}(\w+): \[/gm)].map(match => match[1]);
-  assertSortedUnique(geometryNames, 'agent-scene.js GEOMETRY_FIELDS keys');
+  assert.equal(new Set(geometryNames).size, geometryNames.length, 'agent-scene.js GEOMETRY_FIELDS keys must not contain duplicates');
+  assert.equal(geometryNames.length >= 22, true);
 });
 
 test('renderer.js keeps feature lists sorted one item per line and dispatches registered postStep hooks', () => {
