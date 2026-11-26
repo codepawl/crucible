@@ -48,6 +48,18 @@ export const RECIPES = [
       { id: 'after', label: 'FOV 20', time: 4.8 },
     ],
   },
+  {
+    slug: 'cumulus-towers',
+    title: 'Cumulus towers: procedural cloud lobes over ocean waves',
+    summary: 'Three seeded cloud meshes with soft lobes and a six-step cool-to-warm toon ramp over an ocean mesh.',
+    why: [
+      'Each cloud is a declarative cloud geometry with three nested levels of soft lobes and a flat base, seeded separately so the three towers read as distinct shapes.',
+      'A six-step toon ramp shifts shadows cool blue-grey and highlights warm cream under a physical sky.',
+    ],
+    frames: [
+      { id: 'still', label: 'Cumulus towers', image: '/recipes/cumulus-towers.webp', time: 0 },
+    ],
+  },
 ];
 
 export function loadRecipe(slug) {

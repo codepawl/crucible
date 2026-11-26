@@ -310,7 +310,8 @@ Company sponsors get their logo here from $100 a month.
   <sub>Crucible is made by CodePawl, an independent 3D studio in Vietnam.</sub>
   <br>
   <sub>
-    <a href="https://x.com/anxuanng">X</a>
+    <a href="https://x.com/anxuanng">X (@anxuanng)</a>
+    <a href="https://x.com/codepawl">X (@codepawl)</a>
     <a href="https://github.com/codepawl">GitHub</a>
     <a href="https://www.youtube.com/@codepawlhq">YouTube</a>
     <a href="https://www.threads.com/@codepawl">Threads</a>

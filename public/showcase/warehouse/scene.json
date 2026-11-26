@@ -2,6 +2,8 @@
   "id": "warehouse",
   "title": "Warehouse",
   "blurb": "A distribution warehouse with racking, forklifts and dock doors.",
+  "eye": [13.8105, 4.3958, 12.7717],
+  "target": [0.5243, 2.414, -4.8779],
   "glb": "/showcase/warehouse/scene.glb",
   "hdri": "/showcase/warehouse/sky.hdr",
   "hdriOptions": { "intensity": 0.7, "rotation": 0, "showBackground": true, "backgroundBlur": 0.6 },
