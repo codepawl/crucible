@@ -109,7 +109,7 @@
         </div>
       </div>
       <div class="scene">
-        <div class="frame"><img class="poster" src="/previews/foundry-splats-0.webp" width="960" height="540" alt="" aria-hidden="true" fetchpriority="high" decoding="async"><canvas id="foundry" role="img" aria-label="A crucible pours molten metal into an icosahedron mould as the page scrolls, rendered live by Crucible"></canvas><div class="callouts"><svg class="leader" id="leader" aria-hidden="true"><polyline points="0,0"></polyline><rect width="6" height="6"></rect></svg><div class="callout" data-anchor="pour" data-aside data-from="0.12" data-to="0.31"><h2>Pour</h2><p>An agent gets a live scene to edit.</p><p class="tools">scene_create · scene_apply</p></div><div class="callout" data-anchor="fill" data-from="0.39" data-to="0.59"><h2>Fill</h2><p>It draws the scene with Glaze or Cook.</p><p class="tools">scene_look · scene_render_submit</p></div><div class="callout" data-anchor="cool" data-from="0.61" data-to="0.78"><h2>Cool</h2><p>It reviews the result from several angles.</p><p class="tools">scene_review · scene_inspect</p></div><div class="callout" data-anchor="cast" data-from="0.9" data-to="1"><h2>Cast</h2><p>Out comes a PNG or an MP4.</p></div></div></div>
+        <div class="frame"><img class="poster" src="/previews/foundry-splats-0.webp" width="960" height="540" alt="" aria-hidden="true" fetchpriority="high" decoding="async"><canvas id="foundry" role="img" aria-label="A crucible pours molten metal into an icosahedron mould as the page scrolls, rendered live by Crucible"></canvas><div class="callouts"><svg class="leader" id="leader" aria-hidden="true"><polyline points="0,0"></polyline><rect width="6" height="6"></rect></svg><div class="callout" data-anchor="pour" data-aside data-from="0.12" data-to="0.31"><h2>Pour</h2><p>An agent gets a live scene to edit.</p><p class="tools">scene_create, scene_apply</p></div><div class="callout" data-anchor="fill" data-from="0.39" data-to="0.59"><h2>Fill</h2><p>It draws the scene with Glaze or Cook.</p><p class="tools">scene_look, scene_render_submit</p></div><div class="callout" data-anchor="cool" data-from="0.61" data-to="0.78"><h2>Cool</h2><p>It reviews the result from several angles.</p><p class="tools">scene_review, scene_inspect</p></div><div class="callout" data-anchor="cast" data-from="0.9" data-to="1"><h2>Cast</h2><p>Out comes a PNG or an MP4.</p></div></div></div>
         <div class="hud">
           <div class="ladder" id="ladder" role="group" aria-label="Story steps"><button type="button" class="on" data-jump="0">Pot</button><button type="button" data-jump="0.24">Pour</button><button type="button" data-jump="0.48">Fill</button><button type="button" data-jump="0.7">Cool</button><button type="button" data-jump="0.95">Cast</button></div>
           <span><b id="hud-fill">0%</b>fill</span>
@@ -135,7 +135,7 @@
           <div class="command"><code id="package-command" data-install-command>npm i @codepawlhq/crucible</code><button class="copy" type="button" aria-label="Copy the install command"><svg class="icon copy-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-copy"/></svg><svg class="icon done-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-check"/></svg></button></div>
           <div class="release-feedback" hidden><p data-release-status role="status">Loading release information</p><button type="button" data-release-retry hidden>Retry</button></div>
           <span class="named"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-mcp"/></svg>MCP server</span>
-          <div class="command"><code>npx crucible-mcp --backend gpu --memory 192</code><button class="copy" type="button" aria-label="Copy the MCP server command"><svg class="icon copy-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-copy"/></svg><svg class="icon done-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-check"/></svg></button></div>
+          <div class="command"><code>npx -y --package @codepawlhq/crucible crucible-mcp --backend gpu --memory 192</code><button class="copy" type="button" aria-label="Copy the MCP server command"><svg class="icon copy-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-copy"/></svg><svg class="icon done-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-check"/></svg></button></div>
         </div>
         <div class="stack">
           <span class="named"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-terminal"/></svg>Claude Code</span>
@@ -160,9 +160,9 @@
       <h2 id="code-title">A scene in a few lines</h2>
       <p class="lede">Load a glTF model and an HDRI, then render.</p>
       <div class="split">
-        <div class="code-wrap"><pre class="code-block">import { Glaze } from 'crucible';
-import { loadGltf } from 'crucible/addons/gltf';
-import { loadHdri } from 'crucible/addons/hdri';
+        <div class="code-wrap"><pre class="code-block">import { Glaze } from '@codepawlhq/crucible';
+import { loadGltf } from '@codepawlhq/crucible/addons/gltf';
+import { loadHdri } from '@codepawlhq/crucible/addons/hdri';
 const { parts } = await loadGltf('/airport.glb');
 const map = await loadHdri('/sky.hdr');
 const renderer = new Glaze(canvas, parts, {
@@ -199,18 +199,18 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
       <div class="split">
         <div class="stack">
           <p>An agent gets a live scene to edit, draws it with Glaze or Cook, and reviews the result.</p>
-          <div class="command"><code>npx crucible-mcp --backend gpu --memory 192</code><button class="copy" type="button" aria-label="Copy the MCP server command"><svg class="icon copy-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-copy"/></svg><svg class="icon done-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-check"/></svg></button></div>
+          <div class="command"><code>npx -y --package @codepawlhq/crucible crucible-mcp --backend gpu --memory 192</code><button class="copy" type="button" aria-label="Copy the MCP server command"><svg class="icon copy-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-copy"/></svg><svg class="icon done-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-check"/></svg></button></div>
           <div class="meter" role="img" aria-label="Measured gzip bundle size on lit-box: Crucible 58.8 kB, three.js 133.8 kB">
-            <span><span>Crucible (lit-box)</span><span>58.8 kB gzip · 2.28× smaller</span></span><i class="ours" style="--share: 44%"></i>
+            <span><span>Crucible (lit-box)</span><span>58.8 kB gzip, 2.28× smaller</span></span><i class="ours" style="--share: 44%"></i>
             <span><span>three.js (lit-box)</span><span>133.8 kB gzip</span></span><i style="--share: 100%"></i>
           </div>
         </div>
         <figure class="shot"><img data-dither src="/previews/cook-monk.webp" width="960" height="720" alt="A monk statue path traced by Cook" loading="lazy"></figure>
       </div>
       <div class="cards">
-        <a class="card" href="/mcp.md"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-mcp"/></svg><h3>25 MCP tools</h3><p>Create, edit, explode, blend and render over stdio.</p></a>
-        <a class="card" href="/path-tracer.md"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-sun"/></svg><h3>Glaze + Cook</h3><p>Real-time frames, or path-traced stills.</p></a>
-        <a class="card" href="/agent-review.md"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-eye"/></svg><h3>Visual review</h3><p>Compare labeled views and normals from one snapshot.</p></a>
+        <a class="card" href="/docs.html#connect-mcp"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-mcp"/></svg><h3>26 MCP tools</h3><p>Create, edit, explode, blend and render over stdio.</p></a>
+        <a class="card" href="/docs.html#cook-path-tracer"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-sun"/></svg><h3>Glaze + Cook</h3><p>Real-time frames, or path-traced stills.</p></a>
+        <a class="card" href="/docs.html#agent-workflows"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-eye"/></svg><h3>Visual review</h3><p>Compare labeled views and normals from one snapshot.</p></a>
       </div>
     </div>
   </section>
@@ -279,7 +279,7 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
           <a href="/docs.html#getting-started"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-docs"/></svg>Getting started</a>
           <a href="/docs.html#models-and-ai-agents"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-mcp"/></svg>Models and agents</a>
           <a href="/docs.html#performance-and-memory"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gauge"/></svg>Performance and memory</a>
-          <a href="/changelog.md"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-changelog"/></svg>Changelog</a>
+          <a href="/changelog.html"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-changelog"/></svg>Changelog</a>
         </nav>
       </div>
       <div class="stack" id="help">
@@ -320,6 +320,12 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
       <a href="/license.txt">MIT license</a>
       <a href="/logo.svg" download>Logo SVG</a>
       <a href="https://github.com/sponsors/codepawl">Sponsor</a>
+    </nav>
+    <nav aria-label="Social links">
+      <a href="https://x.com/anxuanng">X</a>
+      <a href="https://www.threads.com/@codepawl">Threads</a>
+      <a href="https://www.youtube.com/@codepawlhq">YouTube</a>
+      <a href="https://huggingface.co/codepawl">Hugging Face</a>
     </nav>
   </div>
 </footer>
