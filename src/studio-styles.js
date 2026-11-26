@@ -1,6 +1,7 @@
 import { SCRUB_THUMB_WIDTH } from './studio-timeline-keys.js';
 import { MODIFIER_CSS } from './studio-modifier-styles.js';
 import { STUDIO_NUMPAD_CSS } from './studio-numpad.js';
+import { STUDIO_MOTION_CSS } from './studio-motion-styles.js';
 // Studio is one full-bleed viewport with floating islands on top: the scene keeps the screen.
 export const STUDIO_CSS = `
 .crucible-studio {
@@ -148,11 +149,7 @@ export const STUDIO_CSS = `
   }
 }
 /* The Motion preference set to Reduced does what the system setting does: the same durations go to 0ms, and the bake pulse stops. */
-.crucible-studio[data-motion="reduced"] {
-  --studio-motion-quick: 0ms;
-  --studio-motion-base: 0ms;
-  --studio-motion-travel: 0ms;
-}
+.crucible-studio[data-motion="reduced"] { --studio-motion-quick: 0ms; --studio-motion-base: 0ms; --studio-motion-travel: 0ms; }
 .crucible-studio[data-motion="reduced"] .crucible-studio-bake-mark .crucible-studio-icon { animation: none; }
 @media (pointer: coarse) {
   .crucible-studio button {
@@ -3647,4 +3644,4 @@ export const STUDIO_CSS = `
     outline: 2px solid Highlight;
   }
 }
-${MODIFIER_CSS}${STUDIO_NUMPAD_CSS}`;
+${MODIFIER_CSS}${STUDIO_NUMPAD_CSS}${STUDIO_MOTION_CSS}`;
