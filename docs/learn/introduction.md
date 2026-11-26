@@ -47,6 +47,9 @@ Showcase | /showcase.html | Large scenes: an airport, a data center and a port. 
 Chip fab | #effects-and-lighting | A cleanroom bay with ambient occlusion, bloom and a vignette. | /previews/showcase-chipfab.webp
 Warehouse | #hdr-environment-lighting | Racks and a forklift lit by a warehouse sky. | /previews/showcase-warehouse.webp
 Dark store | #local-lights-and-volume-fog | Shelves lit by point lights in thin fog. | /previews/showcase-darkstore.webp
+Ocean and boat wake | #ocean-and-boat-wake | Seeded waves with foam veins, buoyancy and a steered boat wake. | /previews/ocean-boat-wake.webp
+Explosions and volumes | #explosions-and-volumes | Gas-simulated fire, smoke plumes, debris and flying sparks. | /previews/explosion-volumes.webp
+Baked light | #bake-light | Indirect bounce light baked into lightmaps over procedural shapes. | /previews/baked-light-room.webp
 Path tracer | #cook-path-tracer | Cook traces a scene for a still with real bounce light. | /previews/cook-monk.webp
 ```
 
