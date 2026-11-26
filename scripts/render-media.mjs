@@ -14,13 +14,33 @@ import { prepareFileScene, readCameraKeys } from './file-scene.mjs';
 import { startAssetServer } from './asset-server.mjs';
 import { DEFAULT_PAGE_ENCODER_QUANTIZER, createFrameReceiver, installFrameReaderInPage, startFrameServer, startVideoEncoderInPage } from './gpu-frame-reader.mjs';
 
+const ALLOWED_RENDER_OPTIONS = new Set([
+  'kind', 'backend', 'scene', 'preset', 'width', 'height', 'fps', 'duration',
+  'time', 'memory', 'assembly', 'output', 'audio', 'encoder', 'start',
+  'aspect', 'asset', 'config', 'camera', 'root', 'capture', 'jpeg-quality', 'frames',
+  'batch',
+]);
+const BATCH_SHOT_OPTIONS = new Set([...ALLOWED_RENDER_OPTIONS].filter(option => option !== 'batch'));
+const BATCH_CAMEL_CASE_ALIASES = Object.freeze({ jpegQuality: 'jpeg-quality' });
+const BATCH_CONFLICTING_CLI_OPTIONS = Object.freeze([
+  'output', 'config', 'camera', 'asset', 'time', 'frames', 'start', 'duration', 'audio',
+]);
+const STRING_RENDER_OPTIONS = Object.freeze([
+  'kind', 'backend', 'scene', 'preset', 'aspect', 'asset', 'config', 'camera', 'root', 'output', 'encoder', 'capture',
+]);
+export const MINIMUM_BATCH_SHOTS = 1;
+export const MAXIMUM_BATCH_SHOTS = 500;
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function argumentsFrom(values) {
   const result = {};
-  const allowed = new Set(['kind', 'backend', 'scene', 'preset', 'width', 'height', 'fps', 'duration', 'time', 'memory', 'assembly', 'output', 'audio', 'encoder', 'start', 'aspect', 'asset', 'config', 'camera', 'root', 'capture', 'jpeg-quality', 'frames']);
   for (let index = 0; index < values.length; index += 2) {
     if (!values[index].startsWith('--') || values[index + 1] === undefined) throw new Error('Every option needs a value.');
     const name = values[index].slice(2);
-    if (!allowed.has(name)) throw new Error(`Unknown render option: ${name}`);
+    if (!ALLOWED_RENDER_OPTIONS.has(name)) throw new Error(`Unknown render option: ${name}`);
     result[name] = values[index + 1];
   }
   return result;
@@ -44,6 +64,9 @@ export const MAXIMUM_FRAME_RANGE_COUNT = 3600;
 
 /** Reads "--frames 0-89" (first and last frame, both included) or a single frame number "12". */
 export function parseFrameRange(text) {
+  if (typeof text !== 'string' && !(typeof text === 'number' && Number.isInteger(text) && text >= 0)) {
+    throw new Error(`--frames must be a first and last frame such as 0-89 (or one frame such as 12), got "${text}".`);
+  }
   const match = /^(\d+)(?:-(\d+))?$/.exec(String(text));
   if (!match) throw new Error(`--frames must be a first and last frame such as 0-89 (or one frame such as 12), got "${text}".`);
   const first = Number(match[1]);
@@ -89,8 +112,15 @@ export async function assertOutputHasAudio(ffmpeg, output, expectedSeconds) {
   }
 }
 
-export function parseRenderOptions(values) {
-  const options = argumentsFrom(values);
+function planFromOptions(options) {
+  for (const stringKey of STRING_RENDER_OPTIONS) {
+    if (options[stringKey] !== undefined && typeof options[stringKey] !== 'string') {
+      throw new Error(`Render option ${stringKey} must be a string.`);
+    }
+  }
+  if (options.audio !== undefined && options.audio !== null && typeof options.audio !== 'string') {
+    throw new Error('Render option audio must be a string.');
+  }
   const kind = options.kind ?? 'image';
   const backend = options.backend ?? 'gpu';
   const scene = options.scene ?? 'film';
@@ -103,7 +133,11 @@ export function parseRenderOptions(values) {
   if ((options.config || options.camera || options.root) && scene !== 'file') throw new Error('--config, --camera and --root require --scene file.');
   const cameraKeys = options.camera ? readCameraKeys(options.camera) : null;
   const numberOption = (name, fallback, minimum, maximum) => {
-    const value = Number(options[name] ?? fallback);
+    const rawValue = options[name];
+    if (rawValue !== undefined && (rawValue === null || typeof rawValue === 'boolean' || typeof rawValue === 'object' || (typeof rawValue === 'string' && rawValue.trim() === ''))) {
+      throw new Error(`${name} must be between ${minimum} and ${maximum}.`);
+    }
+    const value = Number(rawValue ?? fallback);
     if (!Number.isFinite(value) || value < minimum || value > maximum) throw new Error(`${name} must be between ${minimum} and ${maximum}.`);
     return value;
   };
@@ -112,8 +146,8 @@ export function parseRenderOptions(values) {
   const ratio = aspect === 'portrait' ? 9 / 16 : aspect === 'square' ? 1 : 16 / 9;
   let defaultWidth = aspect === 'landscape' ? longer : shorter;
   let defaultHeight = aspect === 'portrait' ? longer : shorter;
-  if (options.width !== undefined && options.height === undefined) defaultHeight = Number(options.width) / ratio;
-  if (options.height !== undefined && options.width === undefined) defaultWidth = Number(options.height) * ratio;
+  if (options.width !== undefined && options.height === undefined) defaultHeight = numberOption('width', defaultWidth, 64, 4096) / ratio;
+  if (options.height !== undefined && options.width === undefined) defaultWidth = numberOption('height', defaultHeight, 64, 4096) * ratio;
   const width = roundDerivedDimension(numberOption('width', defaultWidth, 64, 4096), kind, options.width);
   const height = roundDerivedDimension(numberOption('height', defaultHeight, 64, 4096), kind, options.height);
   if (kind === 'video' && (width % 2 || height % 2)) throw new Error('Video dimensions must be even for yuv420p output.');
@@ -138,6 +172,123 @@ export function parseRenderOptions(values) {
   if (!['auto', 'cpu', 'gpu'].includes(encoderBackend)) throw new Error('Encoder must be auto, cpu or gpu.');
   const audio = options.audio ?? (scene === 'film' ? 'artifacts/critical-score.wav' : null);
   return { cameraKeys, options, kind, backend, scene, presetName, preset, aspect, width, height, fps, duration, time, start, frameRange, memory, assembly, output, encoderBackend, audio, captureFormat, jpegQuality };
+}
+
+export function parseRenderOptions(values) {
+  const options = argumentsFrom(values);
+  if (options.batch !== undefined) {
+    throw new Error('--batch defines multiple shots; pass --batch to parseBatchOptions() or renderMedia().');
+  }
+  return planFromOptions(options);
+}
+
+function normalizeShotOptions(rawObject, contextLabel) {
+  if (!isPlainObject(rawObject)) {
+    throw new Error(`${contextLabel} must be a plain object.`);
+  }
+  const normalized = {};
+  for (const [key, value] of Object.entries(rawObject)) {
+    const canonicalKey = BATCH_CAMEL_CASE_ALIASES[key] ?? key;
+    if (!BATCH_SHOT_OPTIONS.has(canonicalKey)) {
+      throw new Error(`Unknown render option in ${contextLabel}: ${key}`);
+    }
+    if (canonicalKey in normalized) {
+      throw new Error(`${contextLabel} specifies both "jpeg-quality" and "jpegQuality"; pass only one.`);
+    }
+    normalized[canonicalKey] = value;
+  }
+  return normalized;
+}
+
+export function parseBatchManifest(manifest, cliDefaults = {}) {
+  let rawDefaults = {};
+  let rawShots;
+  if (Array.isArray(manifest)) {
+    rawShots = manifest;
+  } else if (isPlainObject(manifest)) {
+    for (const key of Object.keys(manifest)) {
+      if (key !== 'defaults' && key !== 'shots') {
+        throw new Error(`Unknown batch manifest key "${key}". Allowed top-level keys are "defaults" and "shots".`);
+      }
+    }
+    if (!Array.isArray(manifest.shots)) {
+      throw new Error('Batch manifest object must have a "shots" array.');
+    }
+    if (manifest.defaults !== undefined && !isPlainObject(manifest.defaults)) {
+      throw new Error('Batch manifest "defaults" must be a plain object.');
+    }
+    rawDefaults = manifest.defaults ?? {};
+    rawShots = manifest.shots;
+  } else {
+    throw new Error('Batch manifest must be an array of shots or an object with "shots" (and optional "defaults").');
+  }
+  if (rawShots.length < MINIMUM_BATCH_SHOTS || rawShots.length > MAXIMUM_BATCH_SHOTS) {
+    throw new Error(`Batch manifest must contain between ${MINIMUM_BATCH_SHOTS} and ${MAXIMUM_BATCH_SHOTS} shots, got ${rawShots.length}.`);
+  }
+  const normalizedCliDefaults = normalizeShotOptions(cliDefaults, 'CLI defaults');
+  const normalizedManifestDefaults = normalizeShotOptions(rawDefaults, 'manifest defaults');
+  const plans = [];
+  const seenOutputs = new Map();
+  for (let index = 0; index < rawShots.length; index += 1) {
+    const normalizedShot = normalizeShotOptions(rawShots[index], `shot ${index}`);
+    if (typeof normalizedShot.output !== 'string' || normalizedShot.output.trim() === '') {
+      throw new Error(`Batch shot ${index} must specify a non-empty string "output" path.`);
+    }
+    const mergedOptions = { ...normalizedCliDefaults, ...normalizedManifestDefaults, ...normalizedShot };
+    const plan = planFromOptions(mergedOptions);
+    const outputKey = process.platform === 'win32' ? plan.output.toLowerCase() : plan.output;
+    if (seenOutputs.has(outputKey)) {
+      throw new Error(`Duplicate output path "${plan.output}" at batch shot ${index} (already used by shot ${seenOutputs.get(outputKey)}).`);
+    }
+    seenOutputs.set(outputKey, index);
+    plans.push(plan);
+  }
+  const backends = new Set(plans.map(plan => plan.backend));
+  if (backends.size > 1) {
+    throw new Error('All shots in a --batch run must use the same --backend (gpu or cpu).');
+  }
+  return plans;
+}
+
+export function parseBatchOptions(values) {
+  const rawOptions = argumentsFrom(values);
+  if (!rawOptions.batch || rawOptions.batch.trim() === '') {
+    throw new Error('--batch requires a path to a JSON manifest file.');
+  }
+  for (const conflictingFlag of BATCH_CONFLICTING_CLI_OPTIONS) {
+    if (rawOptions[conflictingFlag] !== undefined) {
+      throw new Error(`--batch cannot be combined with --${conflictingFlag}. Specify ${conflictingFlag} per shot inside the batch manifest.`);
+    }
+  }
+  const manifestPath = resolve(rawOptions.batch);
+  let manifestText;
+  try {
+    manifestText = readFileSync(manifestPath, 'utf8');
+  } catch (error) {
+    throw new Error(`Batch manifest not found or unreadable at "${manifestPath}": ${error.message}`);
+  }
+  let manifest;
+  try {
+    manifest = JSON.parse(manifestText);
+  } catch (error) {
+    throw new Error(`Batch manifest "${manifestPath}" is not valid JSON: ${error.message}`);
+  }
+  const cliDefaults = { ...rawOptions };
+  delete cliDefaults.batch;
+  return { manifestPath, plans: parseBatchManifest(manifest, cliDefaults) };
+}
+
+export async function selectBatchEncoderBackends(plans, probe) {
+  let probePromise = null;
+  const probeOnce = () => {
+    probePromise ??= Promise.resolve().then(() => probe());
+    return probePromise;
+  };
+  const backends = [];
+  for (const plan of plans) {
+    backends.push(plan.kind === 'video' ? await selectEncoderBackend(plan.encoderBackend, probeOnce) : null);
+  }
+  return backends;
 }
 
 export async function selectEncoderBackend(requested, probe) {
@@ -192,39 +343,31 @@ export function printSceneWarnings(warnings, log = console.warn) {
   }
 }
 
-export async function renderMedia(values = process.argv.slice(2)) {
-  const plan = parseRenderOptions(values);
-  const { options, kind, backend, scene, presetName, preset, aspect, width, height, fps, time, start, memory, assembly, output, jpegQuality } = plan;
-  let captureFormat = plan.captureFormat;
-  let duration = plan.duration;
-  let frameRangeSeconds = 0;
-  if (options.asset) {
-    const details = await stat(resolve(options.asset));
-    if (!details.isFile() || details.size > 32 * 1024 ** 2) throw new Error('Asset capture requires a GLB file of at most 32 MiB.');
-  }
-  await mkdir(dirname(output), { recursive: true });
-  const root = fileURLToPath(new URL('..', import.meta.url));
-  const ffmpeg = process.platform === 'win32' ? resolve(process.env.USERPROFILE, '.local/bin/ffmpeg.exe') : 'ffmpeg';
-  const encoderBackend = kind === 'video' ? await selectEncoderBackend(plan.encoderBackend, () => probeNvenc(ffmpeg)) : null;
-  const chrome = process.platform === 'darwin'
+function resolveFfmpegExecutable() {
+  return process.platform === 'win32' ? resolve(process.env.USERPROFILE, '.local/bin/ffmpeg.exe') : 'ffmpeg';
+}
+
+function resolveChromeExecutable() {
+  return process.platform === 'darwin'
     ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
     : 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+}
+
+async function assertAssetFileValid(assetPath) {
+  if (!assetPath) return;
+  const details = await stat(resolve(assetPath));
+  if (!details.isFile() || details.size > 32 * 1024 ** 2) {
+    throw new Error('Asset capture requires a GLB file of at most 32 MiB.');
+  }
+}
+
+async function startRenderRuntime({ backend }) {
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const ffmpeg = resolveFfmpegExecutable();
+  const chrome = resolveChromeExecutable();
   const serverPort = await freePort();
   const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--config', 'scripts/render-vite.config.mjs', '--host', '127.0.0.1', '--port', String(serverPort), '--strictPort'], { cwd: root, windowsHide: true, stdio: 'pipe' });
   let browser;
-  let frameReceiver;
-  let frameServer;
-  let assetServer;
-  let encoder;
-  let peakNodeBytes = 0;
-  let peakBrowserHeap = 0;
-  let peakEstimatedRenderBytes = 0;
-  let maximumPendingFrames = 0;
-  let firstFrameBytes = 0;
-  let actualRenderSize;
-  let capturedFrames = 0;
-  const stageTimings = { renderSeconds: 0, captureSeconds: 0, readPixelsSeconds: 0, encoderBackpressureSeconds: 0, encoderFinishSeconds: 0 };
-  const started = performance.now();
   try {
     await new Promise((resolveStarted, reject) => {
       const timeout = setTimeout(() => reject(new Error('Render server did not start.')), 15000);
@@ -239,7 +382,53 @@ export async function renderMedia(values = process.argv.slice(2)) {
     if (backend === 'cpu') args.push('--use-angle=swiftshader', '--enable-unsafe-swiftshader');
     else if (process.platform === 'darwin') args.push('--use-angle=metal', '--enable-gpu');
     browser = await chromium.launch({ headless: true, ...(existsSync(chrome) ? { executablePath: chrome } : {}), args });
-    const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
+    return {
+      server,
+      serverPort,
+      browser,
+      ffmpeg,
+      async close() {
+        try {
+          await browser?.close();
+        } finally {
+          server.kill();
+        }
+      },
+    };
+  } catch (error) {
+    try {
+      await browser?.close();
+    } finally {
+      server.kill();
+    }
+    throw error;
+  }
+}
+
+export async function renderShotInBrowser(plan, runtime) {
+  const { options, kind, backend, scene, presetName, preset, aspect, width, height, fps, time, start, memory, assembly, output, jpegQuality } = plan;
+  const { browser, serverPort, ffmpeg, encoderBackend, started = performance.now(), printReport = true } = runtime;
+  let captureFormat = plan.captureFormat;
+  let duration = plan.duration;
+  let frameRangeSeconds = 0;
+  await assertAssetFileValid(options.asset);
+  await mkdir(dirname(output), { recursive: true });
+  let page;
+  let session;
+  let frameReceiver;
+  let frameServer;
+  let assetServer;
+  let encoder;
+  let peakNodeBytes = 0;
+  let peakBrowserHeap = 0;
+  let peakEstimatedRenderBytes = 0;
+  let maximumPendingFrames = 0;
+  let firstFrameBytes = 0;
+  let actualRenderSize;
+  let capturedFrames = 0;
+  const stageTimings = { renderSeconds: 0, captureSeconds: 0, readPixelsSeconds: 0, encoderBackpressureSeconds: 0, encoderFinishSeconds: 0 };
+  try {
+    page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     const route = scene === 'object' ? 'object.html' : `${scene}.html`;
@@ -300,7 +489,7 @@ export async function renderMedia(values = process.argv.slice(2)) {
         window.renderAt = () => renderer.render(window.__studio.camera());
       } else window.renderAt = (time) => window.__nature.renderAt(time);
     }, { memory, width, height, samples: backend === 'cpu' ? 1 : preset.samples, scene, assembly });
-    const session = await page.context().newCDPSession(page);
+    session = await page.context().newCDPSession(page);
     if (['auto', 'webcodecs', 'raw'].includes(captureFormat)) {
       frameReceiver = createFrameReceiver({ maximumBytes: width * height * 4 });
       frameServer = await startFrameServer(frameReceiver);
@@ -309,10 +498,10 @@ export async function renderMedia(values = process.argv.slice(2)) {
       // The page encodes with the browser's hardware H.264 encoder and sends only the small encoded chunks. Software
       // rendering or a CPU encoder request uses screenshots, which feed ffmpeg's libx264, because raw readback is slower.
       const wantsCpu = backend === 'cpu' || options.encoder === 'cpu';
-      const started = wantsCpu ? { supported: false, reason: 'A CPU render or encoder was requested.' }
+      const startedEncoder = wantsCpu ? { supported: false, reason: 'A CPU render or encoder was requested.' }
         : await startVideoEncoderInPage(page, frameServer.url, { width, height, fps, quantizer: DEFAULT_PAGE_ENCODER_QUANTIZER });
-      if (started.supported) captureFormat = 'webcodecs';
-      else if (captureFormat === 'webcodecs') throw new Error(`Capture webcodecs is not available: ${started.reason}`);
+      if (startedEncoder.supported) captureFormat = 'webcodecs';
+      else if (captureFormat === 'webcodecs') throw new Error(`Capture webcodecs is not available: ${startedEncoder.reason}`);
       else captureFormat = 'jpeg';
     }
     if (captureFormat === 'raw') await installFrameReaderInPage(page, frameServer.url);
@@ -440,20 +629,83 @@ export async function renderMedia(values = process.argv.slice(2)) {
     const framesReport = plan.frameRange ? { ...plan.frameRange, millisecondsPerFrame: (frameRangeSeconds * 1000) / plan.frameRange.count } : null;
     const report = { scene, kind, backend, preset: presetName, aspect, start, frames: framesReport, encoder: captureFormat === 'webcodecs' ? 'browser-h264' : encoderBackend, requestedEncoder: kind === 'video' ? plan.encoderBackend : null, captureFormat, jpegQuality: captureFormat === 'jpeg' ? jpegQuality : null, capturedFrames, stageTimings, effectiveFPS: capturedFrames / elapsedSeconds, speedRatio: kind === 'video' ? capturedFrames / fps / elapsedSeconds : null, assembly: scene === 'object' ? assembly : null, width, height, actualRenderSize, fps, duration: kind === 'video' ? duration : null, memoryBudgetMiB: memory, peakEstimatedRenderBytes, peakNodeBytes, peakBrowserHeap, maximumPendingFrames, firstFrameBytes, elapsedSeconds, graphics, output: basename(output), errors, warnings: sceneWarnings };
     await writeFile(`${output}.json`, JSON.stringify(report, null, 2));
-    console.log(JSON.stringify(report, null, 2));
+    if (printReport) console.log(JSON.stringify(report, null, 2));
+    return report;
   } finally {
     try {
       await encoder?.close();
     } finally {
-      try { await browser?.close(); }
-      finally {
-        try { await frameServer?.close(); }
-        finally {
-          try { await assetServer?.close(); }
-          finally { server.kill(); }
+      try {
+        await session?.detach().catch(() => {});
+      } finally {
+        try {
+          await page?.close();
+        } finally {
+          try {
+            await frameServer?.close();
+          } finally {
+            await assetServer?.close();
+          }
         }
       }
     }
+  }
+}
+
+export async function renderBatch(values = process.argv.slice(2)) {
+  const batchStarted = performance.now();
+  const { plans } = parseBatchOptions(values);
+  for (const plan of plans) {
+    await assertAssetFileValid(plan.options.asset);
+  }
+  const ffmpeg = resolveFfmpegExecutable();
+  const encoderBackends = await selectBatchEncoderBackends(plans, () => probeNvenc(ffmpeg));
+  const startupStarted = performance.now();
+  const runtime = await startRenderRuntime({ backend: plans[0].backend });
+  const startupSeconds = (performance.now() - startupStarted) / 1000;
+  const shots = [];
+  try {
+    for (let index = 0; index < plans.length; index += 1) {
+      const report = await renderShotInBrowser(plans[index], {
+        browser: runtime.browser,
+        serverPort: runtime.serverPort,
+        ffmpeg: runtime.ffmpeg,
+        encoderBackend: encoderBackends[index],
+        printReport: false,
+      });
+      shots.push(report);
+    }
+  } finally {
+    await runtime.close();
+  }
+  const elapsedSeconds = (performance.now() - batchStarted) / 1000;
+  const summary = { batch: true, totalShots: shots.length, startupSeconds, elapsedSeconds, shots };
+  console.log(JSON.stringify(summary, null, 2));
+  return summary;
+}
+
+export async function renderMedia(values = process.argv.slice(2)) {
+  const rawOptions = argumentsFrom(values);
+  if (rawOptions.batch !== undefined) {
+    return renderBatch(values);
+  }
+  const plan = planFromOptions(rawOptions);
+  await assertAssetFileValid(plan.options.asset);
+  const started = performance.now();
+  const ffmpeg = resolveFfmpegExecutable();
+  const encoderBackend = plan.kind === 'video' ? await selectEncoderBackend(plan.encoderBackend, () => probeNvenc(ffmpeg)) : null;
+  const runtime = await startRenderRuntime({ backend: plan.backend });
+  try {
+    return await renderShotInBrowser(plan, {
+      browser: runtime.browser,
+      serverPort: runtime.serverPort,
+      ffmpeg: runtime.ffmpeg,
+      encoderBackend,
+      started,
+      printReport: true,
+    });
+  } finally {
+    await runtime.close();
   }
 }
 

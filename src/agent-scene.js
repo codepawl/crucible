@@ -1692,7 +1692,7 @@ function oceanTimeGeometries(stagedState, sampled, time) {
       // A water part draws the ocean's foam group as foam, as the first build of the part does.
       const material = stagedState.recipe.materials?.find(candidate => candidate.id === node.material);
       const drawn = material && frame.geometry.vertexGroups?.foam ? agentSceneModule('mesh').waterFoamGeometry(frame.geometry, material) : frame.geometry;
-      geometries.set(node.id, drawn);
+      geometries.set(node.id, keepSeaInPlace(stagedState, node.id, drawn));
     }
   }
   return geometries;
@@ -1706,54 +1706,42 @@ function oceanTrackNodeIds(recipe) {
 
 // What an ocean time moves in a sea geometry. The triangle indices move too: the diagonal of each quad follows the waves.
 const SEA_MOVING_FIELDS = ['positions', 'normals', 'skyVisibility', 'indices'];
+const SEA_MOVING_MAPS = ['vertexGroups', 'vertexVectors'];
 
-// True when the two seas differ only in what an ocean time moves: the same fields and vertex groups, the same array sizes and
-// types, and the same UVs, so the arrays of one can be overwritten with the other. Any other field (surface masks, colours) is
-// not known to stay put, so it sends the sea to the part swap.
+const sameTypedArray = (liveArray, nextArray) => liveArray?.length === nextArray.length && liveArray.constructor === nextArray.constructor;
+
+// True when the two seas differ only in what an ocean time moves, so the arrays of one can be overwritten with the other.
 function seaOnlyMoved(live, next) {
   const fields = Object.keys(next);
-  if (fields.length !== Object.keys(live).length || !fields.every(field => field in live && (SEA_MOVING_FIELDS.includes(field) || field === 'uvs' || field === 'vertexGroups'))) return false;
+  if (fields.length !== Object.keys(live).length || !fields.every(field => field in live && (SEA_MOVING_FIELDS.includes(field) || field === 'uvs' || SEA_MOVING_MAPS.includes(field)))) return false;
   if (next.uvs && (live.uvs.length !== next.uvs.length || next.uvs.some((value, index) => value !== live.uvs[index]))) return false;
-  if (!SEA_MOVING_FIELDS.every(field => !next[field] || (live[field].length === next[field].length && live[field].constructor === next[field].constructor))) return false;
-  const groups = Object.keys(next.vertexGroups ?? {});
-  return groups.length === Object.keys(live.vertexGroups ?? {}).length && groups.every(name => live.vertexGroups[name]?.length === next.vertexGroups[name].length);
+  if (!SEA_MOVING_FIELDS.every(field => !next[field] || sameTypedArray(live[field], next[field]))) return false;
+  return SEA_MOVING_MAPS.every((map) => {
+    const names = Object.keys(next[map] ?? {});
+    return names.length === Object.keys(live[map] ?? {}).length && names.every(name => sameTypedArray(live[map][name], next[map][name]));
+  });
 }
 
 // A copy of a sea with its own moving arrays, which later times overwrite. The geometry a frame cache holds stays untouched.
 function liveSea(sea) {
-  const vertexGroups = sea.vertexGroups && Object.fromEntries(Object.entries(sea.vertexGroups).map(([name, weights]) => [name, weights.slice()]));
-  const copy = { ...sea, ...(vertexGroups && { vertexGroups }) };
-  for (const field of SEA_MOVING_FIELDS) {
-    if (sea[field]) copy[field] = sea[field].slice();
-  }
+  const copy = { ...sea };
+  for (const field of SEA_MOVING_FIELDS) if (sea[field]) copy[field] = sea[field].slice();
+  for (const map of SEA_MOVING_MAPS) if (sea[map]) copy[map] = Object.fromEntries(Object.entries(sea[map]).map(([name, values]) => [name, values.slice()]));
   return markLiveGeometry(Object.freeze(copy), { reindexed: true });
 }
 
-/**
- * Each sea an ocean time track drives keeps one geometry per node, so a renderer keeps its part and uploads new positions,
- * normals, foam and triangle indices (updatePartVertices) instead of building a batch for every time. A sea that changed in any
- * other way, such as its vertex or triangle count, replaces the kept one and the renderer swaps its parts as before.
- */
-function seasKeptInPlace(stagedState, geometries) {
-  const seaNodeIds = oceanTrackNodeIds(stagedState.recipe);
+// Each sea an ocean time track drives keeps one geometry per node, so a renderer keeps its part and uploads new positions,
+// normals, foam and triangle indices (updatePartVertices) instead of building a batch for every time.
+function keepSeaInPlace(stagedState, nodeId, next) {
   const kept = stagedState.liveSeas ??= new Map();
-  let result = geometries;
-  for (const nodeId of seaNodeIds) {
-    const next = geometries.get(nodeId);
-    if (!next) continue;
-    const live = kept.get(nodeId);
-    if (live && seaOnlyMoved(live, next)) {
-      for (const field of SEA_MOVING_FIELDS) {
-        if (next[field]) live[field].set(next[field]);
-      }
-      for (const [name, weights] of Object.entries(next.vertexGroups ?? {})) live.vertexGroups[name].set(weights);
-    } else {
-      kept.set(nodeId, liveSea(next));
-    }
-    if (result === geometries) result = new Map(geometries);
-    result.set(nodeId, kept.get(nodeId));
+  const live = kept.get(nodeId);
+  if (live && seaOnlyMoved(live, next)) {
+    for (const field of SEA_MOVING_FIELDS) if (next[field]) live[field].set(next[field]);
+    for (const map of SEA_MOVING_MAPS) for (const [name, values] of Object.entries(next[map] ?? {})) live[map][name].set(values);
+  } else {
+    kept.set(nodeId, liveSea(next));
   }
-  return result;
+  return kept.get(nodeId);
 }
 
 // Cloth and particles replace the geometry of their own nodes at a sampled time; no node belongs to both.
@@ -1921,7 +1909,7 @@ function publishPose(stagedState, pose) {
   stagedState.movedLook = pose.movedLook;
   stagedState.motionTime = pose.time;
   const previousParts = stagedState.parts;
-  const sampledParts = partsWithCloth(stagedState.restParts, pose.clothGeometries && seasKeptInPlace(stagedState, pose.clothGeometries), previousParts);
+  const sampledParts = partsWithCloth(stagedState.restParts, pose.clothGeometries, previousParts);
   // Ranked also when the parts did not change: staging an edit ranks the rest parts, so the drawn parts get their ranks back.
   stagedState.parts = stagedState.rankFlushParts ? stagedState.rankFlushParts(sampledParts) : sampledParts;
   return stagedState.parts !== previousParts;

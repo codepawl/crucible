@@ -55,7 +55,7 @@ import { clipFromGltfAnimation } from '../src/skeleton-pose.js';
 import { sessionProblem, planSceneEviction } from '../src/agent-errors.js';
 import { AGENT_SCENE_DEFAULT_LIMITS, MEMORY_CEILING_MIB } from '../src/agent-scene-capabilities.js';
 import { describeApplication } from '../src/agent-apply-report.js';
-import { framingProblems, placementProblems, textureProblems, exposureProblems, lumaShares } from '../src/frame-checks.js';
+import { framingProblems, placementProblems, textureProblems, exposureProblems, lumaShares, lowSunShadowCascadeWarning } from '../src/frame-checks.js';
 import { BRANCH_LIMITS, createBranchStore, printableLabel } from '../src/agent-branches.js';
 import { wedgeOperation } from '../src/agent-wedge.js';
 import { agentAssetDecodeOptions, withCatalogLimitAdvice } from '../src/agent-asset-limits.js';
@@ -203,18 +203,35 @@ function sampleFrameShares() {
   return lumaShares(context.getImageData(0, 0, EXPOSURE_PROBE_SIZE, EXPOSURE_PROBE_SIZE).data);
 }
 
+function shadowBoxesFor(record, boxes) {
+  if (!boxes) return undefined;
+  const nonCasters = new Set(record.scene.parts.filter(part => part.castShadow === false).map(part => part.name));
+  return nonCasters.size > 0 ? boxes.filter(box => !nonCasters.has(box.name)) : boxes;
+}
+
+function lowSunCascadeDiagnostic(record, boxes = record.scene.worldBounds?.()) {
+  const environment = record.scene.environment;
+  if (!environment) return undefined;
+  const shadow = boxes ? record.scene.shadow : fitAgentShadow(record.scene.shadow, record.scene.parts);
+  return lowSunShadowCascadeWarning({ environment, boxes: shadowBoxesFor(record, boxes), shadow });
+}
+
 /**
  * Warnings about the frame just drawn from `camera`: framing, a stale bake and exposure (when `exposure` is given, the
  * effects.exposure drawn with). Imported assets have no part bounds or bake, so they get the texture and exposure checks only.
  * `placement` adds the floating and intersecting parts, which only scene_look reports: a render job would repeat them
- * for every frame of a moving scene.
+ * for every frame of a moving scene. `shadowCascades` checks raster shadow-map cascade resolution against sun elevation.
  */
-function viewProblems(record, camera, exposure, { placement = false } = {}) {
+function viewProblems(record, camera, exposure, { placement = false, shadowCascades = true } = {}) {
   const problems = [];
   const boxes = record.scene.worldBounds?.();
   if (boxes) {
     problems.push(...framingProblems({ camera, aspect: canvas.width / canvas.height, boxes, reportPartsOutside: placement }));
     if (placement) problems.push(...placementProblems({ boxes }));
+  }
+  if (shadowCascades) {
+    const shadowWarning = lowSunCascadeDiagnostic(record, boxes);
+    if (shadowWarning) problems.push(shadowWarning);
   }
   if (record.scene.bakeStaleness) problems.push(...record.scene.bakeStaleness());
   problems.push(...textureProblems({ parts: record.scene.parts }));
@@ -1360,6 +1377,8 @@ window.__agentPreview = {
     const frames = profileFrameCount({ profile, profileFrames: requestedFrames });
     const record = requireSession(sessionId);
     const inspection = { sessionId, ...record.scene.inspect(options), kernels: kernelReport() };
+    const shadowWarning = lowSunCascadeDiagnostic(record);
+    if (shadowWarning) inspection.diagnostics = [...(inspection.diagnostics ?? []), shadowWarning];
     reportChosenExposure(record, inspection);
     return profile ? { ...inspection, profile: profileScene(record, frames) } : inspection;
   },
@@ -1479,7 +1498,7 @@ window.__agentPreview = {
     } else if (motionTime !== undefined) {
       record.scene.sampleMotion(motionTime);
     }
-    return { diagnostics: viewProblems(record, record.scene.camera, undefined, { placement: true }) };
+    return { diagnostics: viewProblems(record, record.scene.camera, undefined, { placement: true, shadowCascades: false }) };
   },
   // One candidate frame for scene_fit_look: edit the live scene, draw it, and return the PNG. The runtime puts the recipe back with
   // restoreRecipe when the fit ends, so the caller's scene is unchanged apart from its revision counter.

@@ -189,3 +189,39 @@ test('a bounce in the probe trace adds light to a lit surface and never takes di
 test('a probe map width that is odd is refused instead of dropping the last rows of the map', () => {
   assert.throws(() => traceProbeMaps(closedRoom(), lamp, [[0, 1.5, 0]], { width: 9, samples: 2 }), /even integer/);
 });
+
+test('a probe on a material that already defines environmentProbe keeps live fields and binds the new probe (#3523)', () => {
+  const previousProbe = { id: 'previous-probe' };
+  const withDataProbe = placed('mirror', ball, [0, 1, 0], [0.5, 0.5, 0.5], {
+    metallic: 1,
+    roughness: 0.05,
+    environmentProbe: previousProbe,
+  });
+  const getterMaterial = {
+    tag: 'surface',
+    color: [0.7, 0.7, 0.7],
+    metallic: 1,
+    roughness: 0.05,
+    emission: 0,
+  };
+  Object.defineProperty(getterMaterial, 'environmentProbe', {
+    enumerable: true,
+    get: () => previousProbe,
+  });
+  const withGetterProbe = { ...placed('chrome', ball, [0, 1, 0], [0.5, 0.5, 0.5]), material: getterMaterial };
+  const trace = traceProbes([withDataProbe, withGetterProbe], lamp, [{ position: [0, 1, 0], radius: 5 }], { samples: 4 });
+  const result = placeProbes([withDataProbe, withGetterProbe], trace);
+  const expectedMap = result.probes[0].map;
+  assert.equal(result.parts[0].material.environmentProbe, expectedMap);
+  assert.equal(result.parts[1].material.environmentProbe, expectedMap);
+  assert.notEqual(result.parts[0].material.environmentProbe, previousProbe);
+  withDataProbe.material.color = [0.1, 0.2, 0.3];
+  getterMaterial.roughness = 0.25;
+  assert.deepEqual(result.parts[0].material.color, [0.1, 0.2, 0.3]);
+  assert.equal(result.parts[1].material.roughness, 0.25);
+
+  const rewrapped = placeProbes(result.parts, trace);
+  assert.equal(rewrapped.parts[0].material.environmentProbe, rewrapped.probes[0].map);
+  withDataProbe.material.color = [0.4, 0.5, 0.6];
+  assert.deepEqual(rewrapped.parts[0].material.color, [0.4, 0.5, 0.6]);
+});
