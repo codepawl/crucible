@@ -1,0 +1,1 @@
+- Add volumetric cloud layer (`cumulus`, `stratus`, `cirrus`) with silver lining, deterministic wind animation, and ground shadow maps to physical skies (`environment.sky.clouds`).

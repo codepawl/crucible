@@ -21,15 +21,15 @@ const FLIP_AXIS_MAXIMUM = 0.6;
 const NOISE_TIME_AXIS_MAXIMUM = 4.5;
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six'];
 const BLENDER_LABEL = { 'eevee-lowest': 'EEVEE 1 sample', 'eevee-default': 'EEVEE 64 samples' };
-// Pixel icons of the tier names, drawn on a 16 by 16 grid from the same line icons as the rest of the page.
-const PIXEL_ICON_PATH = {
-  draft: 'M10 1h1v1h-1zM9 2h3v1h-3zM8 3h5v1h-5zM7 4h7v1h-7zM6 5h9v1h-9zM5 6h3v1h-3zM10 6h4v1h-4zM4 7h3v1h-3zM10 7h3v1h-3zM3 8h3v1h-3zM9 8h3v1h-3zM2 9h3v1h-3zM8 9h3v1h-3zM2 10h2v1h-2zM7 10h3v1h-3zM2 11h2v1h-2zM6 11h3v1h-3zM2 12h6v1h-6zM2 13h5v1h-5z',
-  realtime: 'M6 4h4v1h-4zM4 5h8v1h-8zM3 6h4v1h-4zM9 6h4v1h-4zM2 7h3v1h-3zM9 7h5v1h-5zM2 8h2v1h-2zM8 8h3v1h-3zM12 8h2v1h-2zM2 9h2v1h-2zM8 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM7 10h2v1h-2zM12 10h2v1h-2zM2 11h1v1h-1zM7 11h2v1h-2zM13 11h1v1h-1z',
-  'realtime-high': 'M7 1h2v1h-2zM5 2h6v1h-6zM3 3h4v1h-4zM9 3h4v1h-4zM1 4h5v1h-5zM10 4h5v1h-5zM0 5h5v1h-5zM11 5h5v1h-5zM2 6h4v1h-4zM10 6h4v1h-4zM1 7h2v1h-2zM4 7h8v1h-8zM13 7h2v1h-2zM1 8h3v1h-3zM6 8h4v1h-4zM12 8h3v1h-3zM2 9h4v1h-4zM7 9h2v1h-2zM10 9h4v1h-4zM1 10h2v1h-2zM4 10h8v1h-8zM13 10h2v1h-2zM1 11h3v1h-3zM6 11h4v1h-4zM12 11h3v1h-3zM2 12h4v1h-4zM7 12h2v1h-2zM10 12h4v1h-4zM4 13h8v1h-8zM6 14h4v1h-4zM7 15h2v1h-2z',
-  final: 'M7 1h2v1h-2zM7 2h2v1h-2zM6 3h4v1h-4zM6 4h4v1h-4zM0 5h16v1h-16zM1 6h6v1h-6zM9 6h6v1h-6zM2 7h3v1h-3zM11 7h3v1h-3zM3 8h3v1h-3zM10 8h3v1h-3zM4 9h2v1h-2zM10 9h2v1h-2zM4 10h2v1h-2zM7 10h2v1h-2zM10 10h2v1h-2zM4 11h8v1h-8zM3 12h10v1h-10zM3 13h3v1h-3zM10 13h3v1h-3zM3 14h2v1h-2zM11 14h2v1h-2z',
+// Thin-line sprite icons of the tier names, referencing symbols defined in site/index.html.
+const TIER_ICON_ID = {
+  draft: 'ic-zap',
+  realtime: 'ic-gauge',
+  'realtime-high': 'ic-sparkles',
+  final: 'ic-award',
 };
-const pixelIcon = name => `<svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="${PIXEL_ICON_PATH[name]}"/></svg>`;
-const TIER_ICON = { draft: pixelIcon('draft'), realtime: pixelIcon('realtime'), 'realtime-high': pixelIcon('realtime-high'), final: pixelIcon('final') };
+const tierIcon = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#${TIER_ICON_ID[name]}"/></svg>`;
+const TIER_ICON = { draft: tierIcon('draft'), realtime: tierIcon('realtime'), 'realtime-high': tierIcon('realtime-high'), final: tierIcon('final') };
 const TIER_PURPOSE = { draft: 'A quick look while editing', realtime: 'Interactive use' };
 
 function fail(message) {

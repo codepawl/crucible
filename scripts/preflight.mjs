@@ -2,7 +2,7 @@
 // one summary line per check and how to fix each failure. Made for people and coding agents alike: every check runs even
 // after one fails, full logs go to artifacts/preflight/, and only the tail of a failing log is printed.
 // Usage: npm run preflight                 every check that applies to the changed files
-//        npm run preflight -- --skip-tests  run only the sub-second unit tests (config/fast-tests.json) and skip the rest and the coverage gate
+//        npm run preflight -- --skip-tests  run only the affected unit tests (scripts/test-affected.mjs) and skip the rest and the coverage gate
 //        npm run preflight -- --json        print the summary as JSON after the logs
 //        npm run preflight -- --base <ref>  compare with another ref than origin/main
 import { spawn, spawnSync } from 'node:child_process';
@@ -114,12 +114,10 @@ export function planChecks(changedPaths, { skipTests = false, release = false, b
     skipped: paths.some(path => isOutsideNameScannedPath(path)) ? null : 'no public text file changed',
     fix: 'Describe the behaviour instead of naming the outside tool on each line the report names; a keymap preset or file format name is allowed in that context (scripts/check-outside-names.mjs).',
   });
-  // Warn only (#3402): the check prints and passes. #3405 makes it fail.
   checks.push({
     name: 'large file growth',
     command: ['node', 'scripts/check-large-file-growth.mjs', '--base', baseRef ?? 'origin/main'],
     skipped: paths.some(path => isLargeFileCandidate(path)) ? null : 'no src/*.js file changed',
-    showOutput: true,
     fix: 'Add the feature as its own registered module instead of growing the big file (#3381).',
   });
   checks.push({
@@ -157,8 +155,8 @@ export function planChecks(changedPaths, { skipTests = false, release = false, b
 
   const testSkip = skipTests ? 'skipped with --skip-tests' : null;
   checks.push({
-    name: 'fast tests',
-    command: ['node', 'scripts/fast-tests.mjs'],
+    name: 'affected tests',
+    command: ['node', 'scripts/test-affected.mjs', ...(baseRef ? ['--base', baseRef] : [])],
     skipped: skipTests ? null : 'the full unit test pass below covers them',
     fix: 'Run the failing file alone with node --test tests/<file>.test.js. Never weaken a test to make it pass.',
   });
@@ -325,8 +323,7 @@ export async function runChecks(checks, {
     const normalizedLog = logPath.replace(/\\/g, '/');
     const log = normalizedLog.startsWith(normalizedRoot) ? normalizedLog.slice(normalizedRoot.length) : normalizedLog;
     if (code === 0) {
-      const warnings = check.showOutput ? readLog(logPath).split('\n').filter(line => line.startsWith('warning:')) : [];
-      finish(index, check, { name: check.name, status: 'ok', detail: `${seconds} s`, log, warnings });
+      finish(index, check, { name: check.name, status: 'ok', detail: `${seconds} s`, log });
     } else {
       const tail = readLog(logPath).trimEnd().split(/\r?\n/).slice(-tailLines).join('\n');
       writeOutput(`\n--- last ${tailLines} lines of ${log} ---\n${tail}\n---\n\n`);
@@ -359,7 +356,6 @@ function printSummary(results, manualChecks) {
   for (const result of results) {
     const detail = result.detail ? ` (${result.detail.split('\n')[0]})` : '';
     console.log(`${marks[result.status]} ${result.name}${detail}`);
-    for (const warning of result.warnings ?? []) console.log(`     ${warning}`);
     if (result.status === 'fail') {
       for (const line of result.detail.split('\n').slice(1)) console.log(`     ${line}`);
       if (result.log) console.log(`     log: ${result.log}`);

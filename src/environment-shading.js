@@ -73,9 +73,9 @@ vec3 environmentDiffuse(vec3 normal) {
   return (environmentIrradianceGrid(mapped) + environmentBounce) * environmentDiffuseFrame.z;
 }
 // Light a rough microfacet loses on its first bounce and gets back on a second one, as a factor on single-scatter specular.
-vec3 multipleScatterGain(vec2 lookup, vec3 baseReflectance) {
+vec3 multipleScatterGain(vec2 lookup, vec3 baseReflectance, float grazingReflectance) {
   float missingEnergy = 1.0 - (lookup.x + lookup.y);
-  vec3 averageFresnel = baseReflectance + (1.0 - baseReflectance) / 21.0;
+  vec3 averageFresnel = baseReflectance + (vec3(grazingReflectance) - baseReflectance) / 21.0;
   return 1.0 / (1.0 - missingEnergy * averageFresnel);
 }
 // specularWeight scales only the reflected sky; leaf cards use less, since their bent normals face the view at grazing angles.
@@ -86,17 +86,18 @@ vec2 environmentBrdfFit(float normalView, float roughness) {
   return vec2(-1.04, 1.04) * edge + terms.zw;
 }
 vec3 environmentLighting(vec3 normal, vec3 specularNormal, vec3 baseReflectance, vec3 viewDirection, vec3 reflected, vec3 color, float metallic, float roughness, float occlusion, float ambient, float specularWeight) {
+  float grazingReflectance = mix(materialDielectric.w, 1.0, metallic);
   if (LIGHT_SHADING) {
     // No second bounce, and the sky reflection is the blurred sky of the surface's own normal: one irradiance read serves both.
     vec2 fitted = environmentBrdfFit(clamp(dot(normal, viewDirection), 0.001, 1.0), roughness);
-    vec3 fittedColor = (baseReflectance * fitted.x + fitted.y) * specularWeight;
+    vec3 fittedColor = (baseReflectance * fitted.x + grazingReflectance * fitted.y) * specularWeight;
     vec3 irradiance = environmentDiffuse(normal);
     return irradiance * (fittedColor + color * (1.0 - metallic) * (1.0 - fittedColor)) * occlusion * ambient;
   }
   float normalView = clamp(dot(normal, viewDirection), 0.001, 1.0);
   vec2 lookup = environmentBrdfLookup(normalView, roughness);
-  vec3 singleScatter = baseReflectance * lookup.x + lookup.y;
-  vec3 specularColor = singleScatter * multipleScatterGain(lookup, baseReflectance) * specularWeight;
+  vec3 singleScatter = baseReflectance * lookup.x + grazingReflectance * lookup.y;
+  vec3 specularColor = singleScatter * multipleScatterGain(lookup, baseReflectance, grazingReflectance) * specularWeight;
   vec3 specular = environmentRadiance(reflected, roughness * environmentLevelMax) * specularColor;
   vec3 diffuse = environmentDiffuse(normal) * color * (1.0 - metallic) * (1.0 - specularColor);
   return (specular + diffuse) * occlusion * ambient;

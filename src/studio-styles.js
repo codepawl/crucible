@@ -3025,7 +3025,8 @@ export const STUDIO_CSS = `
   white-space: nowrap;
 }
 .crucible-studio-account-email,
-.crucible-studio-account-value { color: var(--studio-muted); }
+.crucible-studio-account-value { display: inline-flex; align-items: center; gap: var(--studio-space-4); color: var(--studio-muted); }
+.crucible-studio-account-value .crucible-studio-icon { inline-size: 14px; block-size: 14px; }
 .crucible-studio button[data-action-icon] { gap: var(--studio-space-8); }
 .crucible-studio-account-actions {
   display: flex;
@@ -3570,7 +3571,7 @@ export const STUDIO_CSS = `
   --studio-dock-bar: 52px;
   --studio-dock-side: min(var(--studio-side-width, 284px), calc(100% - var(--studio-rail) - 160px));
 }
-.crucible-studio[data-floating="false"][data-outliner-collapsed="true"][data-inspector-collapsed="true"][data-history-collapsed="true"] {
+.crucible-studio[data-floating="false"][data-outliner-collapsed="true"][data-inspector-collapsed="true"][data-history-collapsed="true"]:not([data-agent-collapsed="false"]) {
   --studio-dock-side: 0px;
 }
 .crucible-studio[data-floating="false"]:not([data-compact="true"]) .crucible-studio-viewport {
@@ -3623,7 +3624,7 @@ export const STUDIO_CSS = `
   inset-inline-end: var(--studio-edge);
   inset-block-start: var(--studio-edge);
 }
-.crucible-studio[data-floating="false"][data-outliner-collapsed="true"][data-inspector-collapsed="true"][data-history-collapsed="true"] .crucible-studio-side {
+.crucible-studio[data-floating="false"][data-outliner-collapsed="true"][data-inspector-collapsed="true"][data-history-collapsed="true"]:not([data-agent-collapsed="false"]) .crucible-studio-side {
   display: none;
 }
 /* A docked column runs the whole window height, so the Scene list takes more of it and less is left empty under a short Properties panel. */

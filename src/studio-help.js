@@ -14,8 +14,8 @@ const SHEET_GROUPS = Object.freeze([
   Object.freeze({ title: 'Clipboard and objects', icon: 'duplicate' }),
   Object.freeze({ title: 'Hierarchy', icon: 'link' }),
   Object.freeze({ title: 'Transform and tools', icon: 'translate' }),
-  Object.freeze({ title: 'View', icon: 'camera' }),
   Object.freeze({ title: 'Animation', icon: 'keyframe' }),
+  Object.freeze({ title: 'View', icon: 'camera' }),
   Object.freeze({ title: 'Mesh editing', icon: 'meshVertex' }),
   Object.freeze({ title: 'Mesh tools', icon: 'meshEdge' }),
   Object.freeze({ title: 'Mesh selection', icon: 'meshFace' }),
@@ -60,9 +60,12 @@ const GROUP_BY_ACTION = Object.freeze({
   'mesh.growSelection': 'Mesh selection',
   'mesh.shrinkSelection': 'Mesh selection',
   'mesh.separate': 'Mesh tools',
+  'mesh.makeFace': 'Mesh tools',
   'mesh.deleteMenu': 'Mesh tools',
   'mesh.mergeMenu': 'Mesh tools',
   'mesh.proportional': 'Mesh tools',
+  'mesh.bevel': 'Mesh tools',
+  'mesh.loopCut': 'Mesh tools',
   'modal.axisX': 'Axis or plane while holding',
   'modal.axisY': 'Axis or plane while holding',
   'modal.axisZ': 'Axis or plane while holding',
@@ -106,9 +109,10 @@ function mouseRows(keymap) {
  * person is doing. Settings reads the same groups with `includeUnbound`, so an action whose key was cleared can still be set again;
  * the mouse rows have no `actionId`.
  */
-export function shortcutSheetGroups(keymap, { includeUnbound = false } = {}) {
+export function shortcutSheetGroups(keymap, { includeUnbound = false, omittedActionIds = [] } = {}) {
   const rowsByGroup = new Map(SHEET_GROUPS.map(group => [group.title, []]));
   for (const item of keymap.actions) {
+    if (omittedActionIds.includes(item.id)) continue;
     if (item.bindings.length === 0 && !includeUnbound) continue;
     if (includeUnbound && SETTINGS_HIDDEN_ACTIONS.includes(item.id)) continue;
     const title = sheetGroupOf(item.id);

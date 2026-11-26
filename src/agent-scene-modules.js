@@ -56,6 +56,7 @@ const MODULE_LOADERS = {
   grass: () => import('./agent-grass.js'),
   crowd: () => import('./agent-crowd.js'),
   lineArt: () => import('./line-art.js'),
+  rain: () => import('./rain.js'),
   viewTransform: () => import('./view-transform-shader.js'),
   coplanar: () => import('./coplanar-overlap.js'),
   unsupportedPart: () => import('./unsupported-part.js'),
@@ -119,7 +120,7 @@ const MODULE_MARKERS = {
   reflections: [/"metallic":(0\.[5-9]|1(?![0-9]))/],
   // Wet ground mirrors the scene in its puddles through the water mirror (src/water-reflection.js).
   waterReflection: ['"puddles":'],
-  patterns: ['"pattern"', '"preset":"wood"', '"preset":"grass"', '"preset":"brick"', '"preset":"glass"'],
+  patterns: ['"pattern"', '"layers"', '"preset":"wood"', '"preset":"grass"', '"preset":"brick"', '"preset":"glass"'],
   // Any preset name loads it, so a wrong name gets the error that lists the right ones.
   materialPresets: ['"preset":'],
   // Only a graph on a placed asset needs it: the placement's "pattern" comes after its "asset":{ in the JSON.
@@ -155,6 +156,7 @@ const MODULE_MARKERS = {
   grass: ['"grass":{'],
   crowd: ['"crowd":{'],
   lineArt: ['"lines":{', '"toon":'],
+  rain: ['"rain":{'],
   viewTransform: ['"viewTransform":"agx"', '"viewTransform":"neutral"', '"viewTransform":"standard"', '"look":"'],
   // Flush faces are ranked whenever this is loaded (issue #751): the MCP preview registers it, loadAllAgentSceneModules loads it,
   // and so does a recipe that names resolveCoplanar or places an asset, since glTF models nest facades a few millimetres apart.

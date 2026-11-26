@@ -81,6 +81,12 @@ const EXAMPLES = {
     // The Cracks example is a whole scene, so it goes to scene_create unchanged (#3245).
     block => create(block),
     block => create(baseRecipe({ geometries: [block], nodes: [boxNode('a', { geometry: block.id })] })),
+    // The material slots example names the materials "wood" and "gold", so the wrapper defines them.
+    block => create(baseRecipe({
+      geometries: [block],
+      materials: ['wood', 'gold'].map((id, index) => ({ id, color: [0.4 + index * 0.3, 0.4, 0.2] })),
+      nodes: [boxNode('a', { geometry: block.id, material: 'wood' })],
+    })),
     block => create(baseRecipe({ geometries: [block], nodes: [boxNode('a', { geometry: block.id })] })),
     'a mesh_inspect result, not an input',
   ],

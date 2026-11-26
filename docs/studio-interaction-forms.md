@@ -83,6 +83,8 @@ Pick the form by how a person reaches the feature:
 | --- | --- | --- | --- |
 | Move picked vertices, edges and faces | tool | `src/studio-mesh-edit.js:562`, `src/studio.js:1943` | The Move tool shows handles on the pick and owns the pointer, the same tool as in object mode. At most 19 loose vertices at a time. |
 | Proportional editing | toggle | `src/studio-proportional.js:36`, `src/studio.js:4706`, `src/studio-keymap.js:65` | A state the held move obeys: O or the rail button turns it on, a popover sets the falloff curve and size, and the wheel sets the size while a move is held. It is not a tool of its own. |
+| Make face or edge, fill, grid fill, bridge, subdivide, symmetrize | operator | `F`, right click or Mesh tools menu; `src/studio-mesh-tools.js`, `src/studio-mesh-menus.js` | Single topology actions on the selection (or the whole mesh for Symmetrize) that write one edit-log entry and one undo step. |
+| Bevel and loop cut | operator | `Ctrl+B`, `Ctrl+R`, Mesh tools menu; `src/studio-mesh-bevel-loop.js` | Interactive operators in edit mode: Bevel sets width by pointer drag and segments by wheel or `+` / `-`, Loop cut picks an edge ring on hover, sets cuts by wheel or `+` / `-` and slides on click, each writing one edit-log entry and one undo step. |
 
 ## Panels, animation and keys
 
@@ -106,3 +108,4 @@ Pick the form by how a person reaches the feature:
 | Keyboard settings | panel | Settings > Keyboard, `src/studio-keyboard-settings.js` | Every shortcut of the preset by area, a filter above, a warning on a clash and Reset shortcuts with a confirm that defaults to Keep; nothing leaves the panel until a key is chosen. |
 | Each key binding | setting | Settings > Keyboard, `src/studio-key-overrides.js` | A stored choice per preset and action: click the key, press the new combination; Esc cancels, Backspace clears, Swap or Cancel settles a clash, the row's reset returns the preset key. |
 | History | panel | `src/studio.js` (the History card in the right column), View > History, Edit > History | A log of the edits that stays on screen beside Properties: a viewer of a recording follows it downward, and the person editing steps back or forward from it. A tab of Properties would be swapped out when the selection changes tabs, so it is its own card, shown and hidden by a toggle. |
+| Agent | panel | `src/studio-agent-chat.js` (the Agent card at the foot of the right column), View > Agent, Alt+M | A conversation with an agent the host runs stays on screen while the person works on the scene, so it is a card of its own under Scene, Properties and History, not a dialog that hides the viewport. It exists only when the host offers a chat, and it is hidden and shown by a toggle, like History. |

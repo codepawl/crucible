@@ -1,0 +1,1 @@
+- Fix inverted perspective `depthAt` in line-art outlines to match `eyeDepth` using harmonic-mean perspective depth interpolation in `depthEdge`, and collapse narrow 45-degree chamfer bevels into one centred outline instead of twin shimmering edges (#3490).

@@ -143,9 +143,10 @@ Edits (names follow Blender's `bmesh.ops` where they match):
 | `transform_selection` | one of `select`, `verts` or `edges`, optional `pivot` [x, y, z] (default: mean of the selected vertices), `rotation` `{ axis, angle }` (angle in radians), `scale` (above 0, up to 1000; one number or [x, y, z]), the same `falloff` as `translate` | Needs `rotation` or `scale`. Scales, then rotates about the pivot. With `falloff`, a vertex follows by its curve weight: it turns by weight times the angle and scales by 1 + weight times (scale - 1). |
 | `merge_by_distance` | `distance` (default 1e-4) | |
 | `tag` | `select`, `name` (required) | `<name>` |
+| `material_slot` | `select` (required), `slot` (0 to 15) | |
 | `boolean` | `operation` (`union`, `difference`, `intersect`), `cutter`, optional `translation`, `rotation` (XYZW), `scale`, `name` | `<name>.cut` |
 
-- `select` defaults to every face, except for `delete` and `tag`.
+- `select` defaults to every face, except for `delete`, `tag` and `material_slot`.
 - `translate` and `transform_selection` move vertices as well as faces. Give exactly one of `select` (the vertices of the
   faces), `verts` (a vertex rule: `{ "vertices": [0, 5] }`, `{ "all": true }`, `{ "valence": 4 }` or `{ "inside": { min, max } }`)
   or `edges` (an edge rule; both ends of each selected edge move). A vertex that belongs to several selected edges moves
@@ -452,6 +453,7 @@ boundary edges whose midpoint is in a box, which picks one hole among several.
 | Edit | Fields | Tags | What it does |
 | --- | --- | --- | --- |
 | `fill_holes` | `sides` | `fill` | Caps each closed boundary loop with one polygon; `sides` skips loops with more edges. |
+| `make_face` | `vertices` (2 to 4096 distinct indices) | `fill` | Makes one polygon face from 3 or more picked vertices (closing a boundary loop, chain or planar cycle with consistent winding), or splits a shared face with an edge between 2 non-adjacent vertices. |
 | `dissolve_faces` | `select` | `merged` | Merges connected selected faces into one polygon each. |
 | `dissolve_edges` | `edges`, `removeStraight` (default false) | `merged` | Merges the two faces beside each selected edge. Boundary edges are ignored. With `removeStraight` a vertex the dissolve leaves with two edges goes too, so a dissolved loop leaves clean polygons; the result lists `removedStraight`. |
 | `dissolve_verts` | `verts` | `merged` | Removes vertices: a vertex with two edges just leaves its faces, one with more merges the faces around it. |
@@ -626,6 +628,22 @@ Two `scene_apply` operations split a mesh object in two or merge several into on
 
 - `separate-faces { node, faces, id }`: `faces` are face numbers of the mesh the edit log builds (the numbers edit mode and `mesh_inspect` use). They become a new node `id` (default `<node>-part`) with the same parent, transform and material, so nothing moves in the world. The new node's geometry is a copy of the mesh with a `delete` edit on every face but the picked ones; the node keeps the rest through a `delete` edit on the picked ones. A geometry another node uses is copied for the node first. Needs a mesh geometry; no faces, a repeated or missing face number, or every face is refused with the fix.
 - `join-meshes { node, nodes }`: the meshes of `nodes` (1 to 32) are added to the mesh of `node` with one `join` edit each, placed by the matrix that takes them from their world position into the space of `node`, and the nodes go. They need the same material as `node` (a mesh draws with one material); a node with children, motion or a physics body is refused. `node` needs a mesh geometry, which is copied first when another node uses it.
+
+### Material slots
+
+A recipe `mesh` geometry can draw several materials. Name the slots in `slots` (1 to 16 distinct material IDs) and point faces at one with the `material_slot` edit; every face starts in slot 0.
+
+```json
+{ "id": "crate", "type": "mesh", "base": { "type": "box" }, "slots": ["wood", "gold"],
+  "edits": [{ "op": "material_slot", "select": { "tag": "top" }, "slot": 1 }] }
+```
+
+- Each slot draws with its own material, and the node's `material` is not used for that mesh. A slot no face uses draws nothing. A recipe with no `slots` is unchanged.
+- The slot is a face attribute, so extrude, inset, subdivide, mirror, array, solidify, loop cut, bevel, triangulate, weld, delete and `separate-faces` carry it with the face: a face made from a slot-1 face is in slot 1. Faces a boolean or a fill creates start in slot 0.
+- An operation that rebuilds the mesh from its shape cannot keep slots yet and throws instead of dropping them: `decimate`, `remesh`, `wireframe`, `screw`, `convex_hull` and `bounding_box`. Run them before the `material_slot` edits. `join` and `join-meshes` refuse meshes with slots until the slot lists can merge.
+- A slot ID must name a material of the recipe, a `material_slot` edit needs `slots`, and every face must point at a slot the list names. Each error says what to pass.
+- The raster renderer draws one batch per slot (one part per slot, all with the node's name and transform), and the glTF export writes one mesh with one primitive and material per slot. The path tracer does not read slots yet.
+- A node with slots is several parts of one name, so `inspect().counts.parts` counts one per slot; world bounds list the node once; a game physics body is built from every slot's triangles. A node with a `skin` cannot use a geometry with slots: the scene refuses it and says to remove one of them.
 
 ## MCP
 

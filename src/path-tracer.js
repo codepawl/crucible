@@ -793,8 +793,8 @@ function createPathTracer(scene, options) {
     // A path that bends through glass and reaches the sky is already counted in full (addEscape after a mirror or glass bounce), so
     // the sky's shadow ray stops at glass: letting it through as well would count that light twice.
     lightIsEnvironment = true;
-    // The sky is indirect light, so the occlusion map darkens it; the sun and the lights above are direct and are not.
-    const { occlusion } = hit;
+    // The sky is indirect light, so the occlusion map darkens surface hits; free-space fog scattering is unoccluded.
+    const occlusion = inMedium ? 1 : hit.occlusion;
     const [pathRed, pathGreen, pathBlue] = throughput;
     throughput[0] = pathRed * occlusion;
     throughput[1] = pathGreen * occlusion;
@@ -1185,6 +1185,7 @@ export function describeIgnoredFeatures(parts, environment, backend = 'cpu', { k
     if (!hasSun) notes.add('No sun is set: set keyColor, keyIntensity and lightDirection to add a sun.');
   }
   if (environment?.fillIntensity > 0) notes.add('fillIntensity is ignored: the two fixed fill lights are rasterizer only. Add a point or area light, or raise environmentIntensity, to light the shadow side of a trace.');
+  if (environment?.rain && (environment.rain.intensity > 0 || environment.rain.intensityCurve)) notes.add('environment.rain is ignored: only the realtime rasterizer draws rain streaks and splashes, the path tracers render without rain.');
   if (environment?.world === true) notes.add('world: true is ignored: the outdoor haze shading is rasterizer only, and a trace draws the environment map behind the picture and lights with it.');
   if (environment?.world === false && kernelMaterials) notes.add('world: false draws the flat background colour behind the picture in the CPU, "gpu" (WebGL) and "webgpu" tracers only: the native cycles kernel draws the environment map there, as it lights with it.');
   if (environment?.cameraIntensity !== undefined && !kernelMaterials) notes.add('cameraIntensity is ignored: only the native cycles kernel draws the sky a camera ray sees at its own strength, the other tracers use the map intensity.');

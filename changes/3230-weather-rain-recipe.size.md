@@ -1,0 +1,1 @@
+- scene:agent-scene+lazy: loads src/rain.js on demand only when a recipe or host uses environment.rain

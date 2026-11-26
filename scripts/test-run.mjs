@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { lowerOwnPriority } from './machine-lock.mjs';
 import { testConcurrencyArguments } from './test-concurrency.mjs';
 
 export const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -24,6 +25,7 @@ function timestampForFileName() {
 // Runs the files in one node process. Returns the exit code, the failures the reporter recorded and the TAP log path.
 export function runTestFiles(testFiles, { folder = repositoryRoot, quiet = false } = {}) {
   if (testFiles.length === 0) throw new Error('No test files to run. Pass at least one tests/<name>.test.js.');
+  if (!process.env.CI) lowerOwnPriority();
   const logFolder = join(folder, 'artifacts', 'test-logs');
   mkdirSync(logFolder, { recursive: true });
   const stamp = timestampForFileName();

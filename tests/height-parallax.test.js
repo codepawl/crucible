@@ -108,10 +108,12 @@ test('the height map sampler has a unit of its own, past every other registered 
   const declared = [];
   for (const entry of readdirSync(new URL('../src/', import.meta.url)).filter(name => name.endsWith('.js'))) {
     const source = readFileSync(new URL(`../src/${entry}`, import.meta.url), 'utf8');
+    // Only scan files that bind or declare WebGL texture samplers, skipping UI/simulation units like FALLBACK_PIXELS_PER_UNIT.
+    if (!/(?:TEXTURE0|activeTexture|sampler2D|sampler3D|sampler2DArray|samplerCube)/.test(source)) continue;
     for (const match of source.matchAll(/^(?:export )?const (\w+_UNIT) = (\d+);/gm)) declared.push([entry, match[1], Number(match[2])]);
   }
-  assert.ok(declared.length > 10, 'the scan finds the unit constants');
-  for (const [entry, name, unit] of declared.filter(([, name]) => name !== 'GAS_SIM_TEMPERATURE_UNIT')) {
+  assert.ok(declared.length >= 20, 'the scan finds all fragment texture unit constants');
+  for (const [entry, name, unit] of declared) {
     assert.ok(unit < HEIGHT_MAP_UNIT, `${name} (${entry}) is unit ${unit}; the height map unit ${HEIGHT_MAP_UNIT} must stay past it`);
   }
   assert.ok(HEIGHT_MAP_UNIT < 32, 'WebGL2 guarantees 32 combined texture units');

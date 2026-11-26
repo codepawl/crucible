@@ -7,6 +7,7 @@ import { extractRender } from './mesh-render.js';
 import { normalizeShapeKeys, shapeKeyTargets } from './mesh-shape-keys.js';
 import { realizedGeometry } from './mesh-instances.js';
 import { createHeightSourceResolver } from './mesh-displace-source.js';
+import { checkFaceSlots, faceSlotsOf, groupGeometryBySlot } from './mesh-material-slots.js';
 import { MESH_SMOOTH_ANGLE_DEFAULT } from './agent-scene-capabilities.js';
 
 export { MESH_SMOOTH_ANGLE_DEFAULT };
@@ -109,7 +110,7 @@ export function defaultSmoothAngle(edits = [], stack = []) {
  * does. `cacheKey` identifies the base; the edit result and every stack prefix are cached under it.
  */
 export function generateMeshGeometry(baseGeometry, edits, {
-  maxVertices, stack = [], smoothAngle = defaultSmoothAngle(edits, stack), resolveCutter, heightSources, cacheKey, shapeKeys = [],
+  maxVertices, stack = [], smoothAngle = defaultSmoothAngle(edits, stack), resolveCutter, heightSources, cacheKey, shapeKeys = [], slots,
 }) {
   const realized = cacheKey && realizedGeometry(cacheKey);
   if (realized) {
@@ -133,7 +134,11 @@ export function generateMeshGeometry(baseGeometry, edits, {
     if (editsKey !== undefined) evaluationCache.set(editsKey, edited);
   }
   const evaluated = evaluateMeshStack(edited.mesh, stack, { maxVertices, maxFaces: maxVertices, cache: evaluationCache, cacheKey: editsKey, resolveHeight });
-  const { geometry, renderVertexSource } = extractRender(evaluated.mesh, { sharpAngle: smoothAngle * Math.PI / 180 });
+  const { geometry, renderVertexSource, triangleFaces } = extractRender(evaluated.mesh, { sharpAngle: smoothAngle * Math.PI / 180 });
+  if (slots) {
+    checkFaceSlots(evaluated.mesh, slots.length);
+    groupGeometryBySlot(geometry, triangleFaces, faceSlotsOf(evaluated.mesh), slots);
+  }
   if (geometry.positions.length / 3 > maxVertices) {
     throw invalidField('edits', geometry.positions.length / 3, `an edited mesh of at most ${maxVertices} render vertices (maxVertices); use fewer subdivisions or segments`);
   }

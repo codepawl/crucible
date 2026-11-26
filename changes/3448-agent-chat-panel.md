@@ -1,0 +1,1 @@
+- Studio shows an Agent card in the right column, filled by a host app that offers `crucibleShell.agentChat`: the person types, the reply streams in, each step shows as it happens and Stop ends the run (#3448)
