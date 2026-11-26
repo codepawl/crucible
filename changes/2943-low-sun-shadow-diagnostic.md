@@ -1,0 +1,1 @@
+- Raster frame diagnostics and `scene_inspect` warn when a low sun (0 to 15 degrees) lights a wide scene (> 40 m) with fewer than 4 shadow cascades (#2943)
