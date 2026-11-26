@@ -1,0 +1,1 @@
+- Overlapping closed glass now draws in back-to-front screen-overlap layers with color and depth resolves between layers so shapes behind a glass object stay visible in its refraction (#3408).

@@ -3,7 +3,7 @@ import { createSharedTextures, loadGltf } from './gltf.js';
 import { loadHdri } from './hdri.js';
 import { withReflectionEnvironment } from './reflection-environment.js';
 import { loadViewTransformForRendererOptions } from './view-transform-loading.js';
-import { createCascadedShadows } from './cascaded-shadows.js';
+import { resolveSceneFileCascades } from './cascaded-shadows.js';
 import { applyWaterReflection, attachWaterReflection } from './water-reflection.js';
 import { createCameraSampler } from './camera-track.js';
 import { inWholeWorldOrder, readPartRanks } from './showcase-download.js';
@@ -85,7 +85,7 @@ function lodTiming() {
 function swapInLevels({ renderer, plan, sourceParts, rendererParts, levelsByGeometry, sky }) {
   const planned = new Set(plan.parts);
   const withLevels = sourceParts.map(part => (planned.has(part) ? { ...part, lods: levelsByGeometry.get(part.geometry) } : part));
-  const levelled = sky ? sky.applyDefaultFloorSky(withLevels, sky.environment).parts : withLevels;
+  const levelled = sky ? sky.applyDefaultFloorSky(withLevels, sky.environment, { largeScenes: 'proxy' }).parts : withLevels;
   levelled.forEach((part, index) => {
     if (!planned.has(sourceParts[index])) return;
     const rendererPart = rendererParts[index];
@@ -156,7 +156,6 @@ async function start() {
   // An effect the file asks for that reads depth (ambient occlusion, depth of field, motion blur, sun rays) turns the depth buffer on (#3388).
   const rendererOptions = withDepthForRequestedEffects(withSceneFileRendererDefaults(description.renderer), description.frame?.effects);
   await loadViewTransformForRendererOptions(rendererOptions);
-  const shadowCascades = rendererOptions.shadowCascades ? createCascadedShadows(rendererOptions.shadowCascades) : undefined;
   const reflection = description.waterReflection ? applyWaterReflection(asset.parts) : { parts: asset.parts, surface: null };
   // The GLB's punctual lights light the scene, for the drawn frame and the native trace alike (#2664).
   const sceneEnvironment = withSceneFileLights(asset.lights, rendererOptions.environment);
@@ -166,15 +165,21 @@ async function start() {
   const viewport = document.querySelector('#file-viewport');
   const deferLods = lodTiming() === 'deferred';
   const plan = deferLods ? planLodsForRendererOptions(reflection.parts, viewport, rendererOptions) : null;
-  const interior = await withFileSceneInteriorLight(deferLods ? reflection.parts : partsForRendererOptions(reflection.parts, viewport, rendererOptions), drawn.environment);
+  const preparedParts = deferLods ? reflection.parts : partsForRendererOptions(reflection.parts, viewport, rendererOptions);
+  const interiorStarted = performance.now();
+  const interior = await withFileSceneInteriorLight(preparedParts, { ...drawn.environment, map: drawn.map });
+  const interiorLight = { sky: interior.skyReport, bounce: interior.bounceReport, seconds: (performance.now() - interiorStarted) / 1000 };
   const rendererParts = interior.parts;
+  const rendererMap = interior.environment.map ?? drawn.map;
+  const shadowBounds = drawn.sunSplit ? sunShadowBounds(reflection.parts, drawn.environment.lightDirection) : {};
+  const shadowCascades = resolveSceneFileCascades(rendererOptions, interior.environment, rendererOptions.shadowBounds ?? shadowBounds);
   const renderer = new CrucibleRenderer(viewport, rendererParts, {
     ground: false, hdr: true, samples: 4, memoryBudgetMiB: DEFAULT_MEMORY_BUDGET_MIB,
-    shadowBounds: drawn.sunSplit ? sunShadowBounds(reflection.parts, drawn.environment.lightDirection) : {},
+    shadowBounds,
     ...rendererOptions,
     shadowCascades,
     // "reflectionHdri" gives glass and water a sky of their own; the diffuse light and the native trace keep the lighting map (#3396).
-    environment: { ...environmentForRenderer(interior.environment), map: reflectionMap ? withReflectionEnvironment(drawn.map, reflectionMap) : drawn.map },
+    environment: { ...environmentForRenderer(interior.environment), map: reflectionMap ? withReflectionEnvironment(rendererMap, reflectionMap) : rendererMap },
   });
   attachWaterReflection(renderer, reflection.surface, { updateEvery: 1 });
   const frame = { exposure: description.exposure ?? 1, ...(description.frame ?? {}) };
@@ -187,7 +192,7 @@ async function start() {
   // `parts` and `environment` let scripts/render-file-native.mjs pack the same scene for the native path tracer.
   const sky = interior.skyReport ? { ...(await import('./floor-sky-visibility.js')), environment: drawn.environment } : null;
   const lodsReady = plan?.geometries.length ? deferLevels({ plan, sourceParts: reflection.parts, rendererParts, renderer, sky }) : Promise.resolve();
-  window.__scene = { renderer, lodsReady, duration: camera?.duration, renderAt, poseClipAt: seconds => renderAt.clipPlayer?.applyAt(seconds), pause() {}, parts: reflection.parts, environment: { ...sceneEnvironment, map }, warnings };
+  window.__scene = { renderer, lodsReady, duration: camera?.duration, renderAt, poseClipAt: seconds => renderAt.clipPlayer?.applyAt(seconds), pause() {}, parts: reflection.parts, interiorLight, environment: { ...sceneEnvironment, map }, warnings };
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {

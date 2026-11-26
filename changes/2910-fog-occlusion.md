@@ -1,0 +1,1 @@
+- Keep volume fog sky lighting unaffected by surface occlusion maps in the CPU path tracer (#2910)

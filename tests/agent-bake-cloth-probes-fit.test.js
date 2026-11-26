@@ -29,6 +29,19 @@ test('a bake places a room probe unless bake.probes is false', () => {
   assert.equal(optedOut.probes, false);
 });
 
+test('bake.probes and automatic object reflections work together when a room has a smooth metal part (#3523)', () => {
+  const recipe = closedRoom({ bake: { preset: 'draft', probes: 'room' } });
+  recipe.materials.push({ id: 'chrome', color: [0.95, 0.95, 0.95], metallic: 1, roughness: 0.05 });
+  recipe.nodes[6].material = 'chrome';
+  const scene = createAgentScene(recipe);
+  const report = scene.inspect();
+  assert.equal(report.bake.probes.placed.length, 1);
+  assert.equal(report.reflections.placed, 1);
+  const blockPart = scene.parts.find(part => part.name === 'block');
+  assert.ok(blockPart.material.environmentProbe);
+  assert.notEqual(blockPart.material.environmentProbe, scene.parts.find(part => part.name === 'floor').material.environmentProbe);
+});
+
 
 function syntheticPlan(partAreas) {
   return {

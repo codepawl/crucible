@@ -310,3 +310,70 @@ test('createTemporalAccumulator refuses an edge clamp or history cap it cannot u
   assert.throws(() => createTemporalAccumulator({ width: 4, height: 4, edgeHistoryFrames: 0 }), /edgeHistoryFrames/);
   assert.doesNotThrow(() => createTemporalAccumulator({ width: 4, height: 4, edgeClampDeviations: 0 }));
 });
+
+test('a pixel whose clean corners already reach minimumFetchWeight keeps full unclamped history (#1214)', () => {
+  const stepPixel = 5 * WIDTH + 6;
+  const targetPixel = 5 * WIDTH + 7;
+  const accumulator = createTemporalAccumulator({ width: WIDTH, height: HEIGHT, edgeHistoryFrames: 1, viewAgreement: WIDE_VIEW_AGREEMENT });
+  for (let frame = 0; frame < 6; frame++) {
+    const initial = flatFrame(1);
+    initial.depth[stepPixel] *= 0.5;
+    initial.color.fill(10, stepPixel * 3, stepPixel * 3 + 3);
+    accumulator.accumulate({ ...initial, kernelParams: paramsForCamera([0, 0, 0], { seed: frame + 1 }) });
+  }
+  // Shift right by 0.25 of a pixel (0.0625 world units at wall distance 5) so sourceX = x - 0.25:
+  // 0.75 of the weight lands on targetPixel (same wall) and 0.25 on stepPixel (nearer step).
+  const moved = wallFrame([0.0625, 0, 0]);
+  moved.color.fill(0);
+  moved.depth[stepPixel] *= 0.5;
+  const result = accumulator.accumulate({ ...moved, kernelParams: paramsForCamera([0.0625, 0, 0]) });
+  // With 6 clean frames of 1 and 1 new frame of 0 (minimumWeight 0.1 -> share 1/7), value is 6/7.
+  // Mixing stepPixel (10) or capping edgeHistoryFrames=1 (share 0.5) would move it far from 6/7.
+  assert.ok(Math.abs(result.color[targetPixel * 3] - 6 / 7) < 1e-4, `expected clean 6/7, got ${result.color[targetPixel * 3]}`);
+});
+
+test('a pixel on a depth step with matching depth and a turned normal keeps clamped history, while a flat surface still drops it (#1214)', () => {
+  const neighbourPixel = 5 * WIDTH + 6;
+  const turnedPixel = 5 * WIDTH + 7;
+  const kernelParams = paramsForCamera([0, 0, 0]);
+
+  const onStep = createTemporalAccumulator({ width: WIDTH, height: HEIGHT });
+  onStep.accumulate({ ...flatFrame(0.5), kernelParams });
+  const stepFrame = flatFrame(0.5);
+  stepFrame.depth[neighbourPixel] *= 0.5;
+  stepFrame.normal.set([1, 0, 0], turnedPixel * 3);
+  const kept = onStep.accumulate({ ...stepFrame, kernelParams });
+  assert.equal(kept.historyShare, 1, 'turned normal on a depth step is rescued');
+
+  const onFlat = createTemporalAccumulator({ width: WIDTH, height: HEIGHT });
+  const centerPixel = (HEIGHT / 2) * WIDTH + WIDTH / 2;
+  onFlat.accumulate({ ...flatFrame(0.5), kernelParams });
+  const flatTurned = flatFrame(0.5);
+  flatTurned.normal.set([1, 0, 0], centerPixel * 3);
+  const dropped = onFlat.accumulate({ ...flatTurned, kernelParams });
+  assert.equal(dropped.historyShare, (PIXEL_COUNT - 1) / PIXEL_COUNT, 'turned normal without a depth step still restarts');
+});
+
+test('depth-step rescues weight texels closer to the expected depth above the opposite surface (#1214)', () => {
+  const nearCorner = 5 * WIDTH + 6;
+  const farCorner = 5 * WIDTH + 7;
+  // Moving left by 0.125 world units (0.5 px at wall distance 5) makes sourceX = 6.5 (equal bilinear weight on nearCorner and farCorner).
+  const accumulator = createTemporalAccumulator({ width: WIDTH, height: HEIGHT, edgeClampDeviations: 10, viewAgreement: WIDE_VIEW_AGREEMENT });
+  const pastFrame = flatFrame(0.2);
+  const expectedDepth = pastFrame.depth[farCorner];
+  pastFrame.depth[nearCorner] = expectedDepth * 1.02;
+  pastFrame.normal.set([1, 0, 0], nearCorner * 3);
+  pastFrame.depth[farCorner] = expectedDepth * 2;
+  pastFrame.color.fill(0.8, farCorner * 3, farCorner * 3 + 3);
+  accumulator.accumulate({ ...pastFrame, kernelParams: paramsForCamera([0, 0, 0]) });
+
+  const nextFrame = wallFrame([-0.125, 0, 0]);
+  nextFrame.color.fill(0.5);
+  nextFrame.color.fill(0.2, nearCorner * 3, nearCorner * 3 + 3);
+  nextFrame.color.fill(0.8, (farCorner + 1) * 3, (farCorner + 1) * 3 + 3);
+  nextFrame.depth[farCorner + 1] = expectedDepth * 2;
+  const blended = accumulator.accumulate({ ...nextFrame, kernelParams: paramsForCamera([-0.125, 0, 0]) });
+  // Equal bilinear weights on nearCorner (0.2, ~1.02x expectedDepth -> weight ~1.0) and farCorner (0.8, 2x expectedDepth -> weight 0.5):
+  // unweighted history would be 0.50 (blended 0.50); depth weighting pulls history to ~0.40 (blended ~0.45 < 0.48).
+  assert.ok(blended.color[farCorner * 3] < 0.48, `expected near-depth corner to dominate, got ${blended.color[farCorner * 3]}`);
+});

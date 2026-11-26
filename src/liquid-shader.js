@@ -173,7 +173,8 @@ void main() {
     vec3 rayDirection = bent;
     float reach = thickness;
     if (glassMediumContinues < 0.5) {
-      ballLensRay(worldPosition, normal, viewDirection, indexOfRefraction, curvatureRadius(positionStep, normalStep, thickness), thickness, rayOrigin, rayDirection);
+      float bodyDepth = glassBackEnabled > 0.5 ? glassBodyDepth(worldPosition, normal, thickness) : 0.0;
+      ballLensRay(worldPosition, normal, viewDirection, indexOfRefraction, curvatureRadius(positionStep, normalStep, thickness), thickness, bodyDepth, rayOrigin, rayDirection);
       reach = thickness * SCENE_REACH_PER_THICKNESS;
       // A closed shape's own back face gives the real exit; where none is found the ball lens estimate above stays.
       vec3 backExit;

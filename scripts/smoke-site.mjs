@@ -95,7 +95,7 @@ try {
     if (['/', '/downloads.html'].includes(route)) {
       if (route === '/downloads.html') assert.match(page.url(), /\/#install$/);
       await page.waitForFunction(() => window.__home.state.status === 'ready');
-      assert.equal(await page.locator('.managers [data-package-manager] .pixel-icon').count(), 4);
+      assert.equal(await page.locator('.managers [data-package-manager] .icon').count(), 4);
       assert.equal(await page.locator('[data-package-manager]').count(), 4);
       assert.equal(await page.locator('[data-release-tarball], [data-release-module]').count(), 0);
       for (const [manager, prefix] of [['npm', 'npm install'], ['pnpm', 'pnpm add'], ['yarn', 'yarn add'], ['bun', 'bun add']]) {

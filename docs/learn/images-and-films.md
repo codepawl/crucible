@@ -124,6 +124,8 @@ Install the checkout's dependencies and provide Chrome and FFmpeg. The exporter 
 
 `--scene file --config scene.json [--root public] [--camera keys.json]` renders a showcase `scene.json`. A staged scene renders headless too: each `glbRest` path is routed like `glb`, its parts load with the first file's shared textures and join in the page's rank order, so a frame matches the page. Optional `materials` entries in `scene.json` (keyed by glTF material name) override material fields such as `tag: "water"` and `waterRamp` before reflection setup, glTF loader warnings surface via `console.warn`, `window.__scene.warnings`, and `render-media`, and `maxTexturePixels` scales proportionally when `renderer.memoryBudgetMiB` exceeds 384 MiB unless set in `gltfOptions`. `hdriPreview` and `glbFirstView` only speed up the page's first frame and are ignored. A `glbRest` that is not a list of paths fails with an error that names it. An asset above 32 MiB streams from a local server instead of through the browser protocol, so a 200 MB GLB loads.
 
+For multi-shot pipelines, `--batch shots.json` renders 1 to 500 shots in one persistent Vite and Chromium session (one fresh page per shot) instead of restarting the browser for each shot; see [Render jobs](../agent-render-jobs.md#batch-rendering-with---batch-3520) for the manifest format and CLI options.
+
 The presets come from `RENDER_PRESETS`:
 
 | Preset | Size | Samples | fps | Budget |

@@ -26,24 +26,49 @@ function sceneBoundsOf(boundsList) {
   return { minimum, maximum }
 }
 
-// The mean of a base-colour texture in linear space, found once per image. Null for an image that is not raw RGBA bytes.
+// The mean of a base-colour texture in linear space, found once per image. Null for an unreadable or compressed image.
 const textureMeans = new WeakMap()
+const DRAWABLE_SAMPLE_SIDE = 32
+
+function sampleDrawablePixels(image) {
+  const side = DRAWABLE_SAMPLE_SIDE
+  const canvas = typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(side, side) : globalThis.document?.createElement('canvas')
+  if (!canvas) {
+    return null
+  }
+  canvas.width = side
+  canvas.height = side
+  const context = canvas.getContext?.('2d', { willReadFrequently: true })
+  if (!context) {
+    return null
+  }
+  context.drawImage(image, 0, 0, side, side)
+  return { data: context.getImageData(0, 0, side, side).data, pixelCount: side * side }
+}
 
 function textureMeanAlbedo(map) {
   const image = map.image
-  if (!image?.data || !(image.width > 0) || image.data.length < image.width * image.height * 4) {
+  if (!image || !(image.width > 0) || !(image.height > 0)) {
     return null
   }
   if (!textureMeans.has(image)) {
+    let source = null
+    if (image.data && image.data.length >= image.width * image.height * 4) {
+      source = { data: image.data, pixelCount: image.width * image.height }
+    } else if (!image.data && !image.compressed) {
+      source = sampleDrawablePixels(image)
+    }
+    if (!source) {
+      return null
+    }
     const exponent = map.colorSpace === 'linear' ? 1 : DISPLAY_GAMMA
     const sums = [0, 0, 0]
-    const pixelCount = image.width * image.height
-    for (let pixel = 0; pixel < pixelCount; pixel++) {
+    for (let pixel = 0; pixel < source.pixelCount; pixel++) {
       for (let channel = 0; channel < 3; channel++) {
-        sums[channel] += (image.data[pixel * 4 + channel] / 255) ** exponent
+        sums[channel] += (source.data[pixel * 4 + channel] / 255) ** exponent
       }
     }
-    textureMeans.set(image, sums.map(sum => sum / pixelCount))
+    textureMeans.set(image, sums.map(sum => sum / source.pixelCount))
   }
   return textureMeans.get(image)
 }
@@ -304,6 +329,12 @@ function irradianceWithBounce(irradiance) {
 // the colour. The map's data stays shared, so a lamp whose power changes every frame costs no new prefilter.
 function withBounce(map, bounce) {
   return { ...map, bounce, irradianceWithBounce }
+}
+
+/** Returns `map` with `bounce` added to its diffuse room bounce colour, preserving any existing `map.bounce`. */
+export function withMapBounce(map, bounce) {
+  const combined = map.bounce ? bounce.map((channel, index) => channel + map.bounce[index]) : bounce
+  return withBounce(map, combined)
 }
 
 function roomBounceEnvironment(parts, environment) {

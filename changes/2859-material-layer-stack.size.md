@@ -1,0 +1,1 @@
+- scene:agent-scene+lazy: Loads `src/material-stack.js` lazily only when a recipe uses `pattern` or `layers`.

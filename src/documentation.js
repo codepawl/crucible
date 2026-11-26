@@ -3,13 +3,14 @@ import './site.css';
 import './documentation.css';
 import guide from '../docs/guide.md?raw';
 import { highlightCode } from './code-highlight.js';
-import { createLiveExample, autoRunVisibleExamples } from './docs-live.js';
+import { createLiveExample } from './docs-live.js';
 import { createApiReference } from './docs-api.js';
-import { topicAliases, topicSlug, guideTopics, learnTopics, orderTopics } from './documentation-topics.js';
+import { topicAliases, topicSlug, guideTopics, orderTopics } from './documentation-topics.js';
 import { figureMatch } from './documentation-figure.js';
 import { parseDocumentationHash } from './documentation-hash.js';
+import learnIndex from 'virtual:doc-learn-index';
 
-const learnSources = import.meta.glob('../docs/learn/*.md', { query: '?raw', import: 'default', eager: true });
+const learnLoaders = import.meta.glob('../docs/learn/*.md', { query: '?raw', import: 'default' });
 
 const article = document.querySelector('#doc-article');
 const topicNavigation = document.querySelector('#doc-toc');
@@ -64,9 +65,37 @@ function inline(value) {
     : inlineText(piece)).join('');
 }
 
-const { groups, topics } = orderTopics([...guideTopics(guide), ...learnTopics(learnSources)].filter(topic => !(topic.id in topicAliases)));
+const loaderById = new Map(Object.entries(learnLoaders).map(([filePath, load]) => [filePath.match(/([\w-]+)\.md$/)[1], load]));
+const learnStubs = learnIndex.map(({ id, title }) => ({
+  id,
+  title,
+  raw: null,
+  load: loaderById.get(id),
+  loading: null,
+}));
+const { groups, topics } = orderTopics([...guideTopics(guide), ...learnStubs].filter(topic => !(topic.id in topicAliases)));
 let currentTopic;
 let exampleStarter;
+let allTopicsPromise = null;
+let openSequence = 0;
+
+async function ensureTopicLoaded(topic) {
+  if (topic.raw !== null) return topic.raw;
+  if (!topic.loading) {
+    topic.loading = topic.load().then(text => {
+      topic.raw = text.replace(/\r\n/g, '\n');
+      return topic.raw;
+    });
+  }
+  return topic.loading;
+}
+
+function ensureAllTopicsLoaded() {
+  if (!allTopicsPromise) {
+    allTopicsPromise = Promise.all(topics.map(ensureTopicLoaded));
+  }
+  return allTopicsPromise;
+}
 
 async function copyText(button, text, code) {
   try {
@@ -191,7 +220,7 @@ function cardList(info) {
     const card = document.createElement('a');
     card.className = picture ? 'doc-card has-picture' : 'doc-card';
     card.href = href;
-    card.innerHTML = `${picture ? `<img src="${escapeHtml(picture)}" alt="" loading="lazy" decoding="async">` : ''}<strong>${inline(title)} ${icon('arrow')}</strong><span>${inline(description)}</span>`;
+    card.innerHTML = `${picture ? `<img src="${escapeHtml(picture)}" width="960" height="540" alt="" loading="lazy" decoding="async">` : ''}<strong>${inline(title)} ${icon('arrow')}</strong><span>${inline(description)}</span>`;
     list.append(card);
   }
   return list;
@@ -236,7 +265,7 @@ function figure(paragraph) {
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
     element.innerHTML = `<video src="${source}" ${still ? 'controls' : 'autoplay loop'} muted playsinline preload="metadata" aria-label="${escapeHtml(alt)}"></video>`;
   } else {
-    element.innerHTML = `<img src="${source}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async">`;
+    element.innerHTML = `<img src="${source}" width="960" height="540" alt="${escapeHtml(alt)}" loading="lazy" decoding="async">`;
   }
   if (caption) element.insertAdjacentHTML('beforeend', `<figcaption>${inline(caption)}</figcaption>`);
   return element;
@@ -308,7 +337,7 @@ function renderParagraph(paragraph, section) {
 
 function renderNavigation() {
   const words = search.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
-  const matching = topics.filter(topic => words.every(word => topic.raw.toLowerCase().includes(word) || topic.title.toLowerCase().includes(word)));
+  const matching = topics.filter(topic => words.every(word => (topic.raw?.toLowerCase().includes(word) ?? false) || topic.title.toLowerCase().includes(word)));
   topicNavigation.replaceChildren();
   for (const group of groups) {
     const members = matching.filter(topic => group.ids.includes(topic.id));
@@ -361,15 +390,19 @@ function stopExamples() {
   for (const example of article.querySelectorAll('.live-example')) example.liveExample.dispose();
 }
 
-function openTopic(focus = false) {
+async function openTopic(focus = false) {
   const { hashTopic, requestedTopic, requestedSection } = parseHash();
   const sameTopic = currentTopic && currentTopic.id === requestedTopic;
   if (sameTopic && requestedSection) {
     document.getElementById(requestedSection)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     return;
   }
+  const sequence = ++openSequence;
+  const targetTopic = topics.find(topic => topic.id === requestedTopic) ?? topics.find(topic => topic.id === 'introduction');
+  await ensureTopicLoaded(targetTopic);
+  if (sequence !== openSequence) return;
   stopExamples();
-  currentTopic = topics.find(topic => topic.id === requestedTopic) ?? topics.find(topic => topic.id === 'introduction');
+  currentTopic = targetTopic;
   // Compare the raw hash, so an alias such as #getting-started is rewritten to the topic it names.
   if (hashTopic !== currentTopic.id) history.replaceState(null, '', `#${currentTopic.id}`);
   const section = document.createElement('section');
@@ -403,7 +436,6 @@ function openTopic(focus = false) {
   copyPage.innerHTML = `${icon('copy')}Copy page`;
   renderNavigation();
   renderOutline(section);
-  exampleStarter = autoRunVisibleExamples(article);
   section.addEventListener('api-ready', () => {
     renderOutline(section);
     if (requestedSection) document.getElementById(requestedSection)?.scrollIntoView();
@@ -422,14 +454,17 @@ function openTopic(focus = false) {
 
 copyPage.innerHTML = `${icon('copy')}Copy page`;
 document.querySelector('#doc-topic-menu summary > :last-child').innerHTML = icon('chevron');
-copyPage.addEventListener('click', () => copyText(copyPage, currentTopic.raw));
+copyPage.addEventListener('click', () => currentTopic?.raw && copyText(copyPage, currentTopic.raw));
 search.addEventListener('input', () => {
-  if (search.value.trim()) topicMenu.open = true;
+  if (search.value.trim()) {
+    topicMenu.open = true;
+    ensureAllTopicsLoaded().then(() => renderNavigation());
+  }
   renderNavigation();
 });
-window.addEventListener('hashchange', () => openTopic(true));
+window.addEventListener('hashchange', () => { void openTopic(true); });
 const openedWithoutAnchor = !location.hash;
-openTopic();
+void openTopic();
 // openTopic writes #introduction into the address, and the browser then scrolls to that section when the page finishes loading, past the
 // sidebar on a phone. A visit with no anchor starts at the top.
 if (openedWithoutAnchor) addEventListener('load', () => scrollTo({ top: 0 }), { once: true });

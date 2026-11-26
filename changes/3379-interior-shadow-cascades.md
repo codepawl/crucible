@@ -1,0 +1,1 @@
+- Soft sun shadows (`environment.sunAngularRadius`) now work automatically in scene files and showcase pages, and avoid grazing-wall self-shadowing speckles and clipped penumbras in close cascade slices (#3379)

@@ -34,6 +34,9 @@ function probedMaterial(liveMaterial, probeMap, wrappers) {
   if (!byProbe.has(probeMap)) {
     const wrapper = {};
     for (const field of Object.keys(liveMaterial)) {
+      if (field === 'environmentProbe') {
+        continue;
+      }
       Object.defineProperty(wrapper, field, { enumerable: true, get: () => liveMaterial[field] });
     }
     Object.defineProperty(wrapper, 'environmentProbe', { enumerable: true, value: probeMap });

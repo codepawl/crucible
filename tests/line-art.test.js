@@ -412,6 +412,7 @@ test('drawPolylines binds style uniforms, per-segment offsets for dashed/dotted,
 function createOutlineStageMock() {
   const passes = [];
   const texImageUploads = [];
+  const shaderSources = [];
   let objectNodesCalls = 0;
   const groups = { wall: [1], hero: [2] };
   const passTextures = { objectId: 'id-tex', normal: 'normal-tex' };
@@ -425,7 +426,7 @@ function createOutlineStageMock() {
     TRIANGLES: 22, DEPTH_TEST: 23, CULL_FACE: 24, TEXTURE0: 100,
     VERTEX_SHADER: 25, FRAGMENT_SHADER: 26, COMPILE_STATUS: 27, LINK_STATUS: 28,
     createShader: () => ({}),
-    shaderSource() {},
+    shaderSource: (shader, source) => shaderSources.push(source),
     compileShader() {},
     getShaderParameter: () => true,
     createProgram: () => ({}),
@@ -491,6 +492,7 @@ function createOutlineStageMock() {
     renderer,
     passes,
     texImageUploads,
+    shaderSources,
     getActivePassTexture: () => activePassTexture,
     getObjectNodesCalls: () => objectNodesCalls,
   };
@@ -546,4 +548,28 @@ test('nodeTexture upload and objectNodes lookup are cached across unchanged fram
   renderer.postStages[0].releaseTargets(renderer.context);
   renderer.render({ lines: changedNodes });
   assert.equal(countNodeUploads(), 6, 'releaseTargets clears the cached nodeTexture');
+});
+
+test('outline depthAt matches eyeDepth and depthEdge compares against perspective-linear harmonic depth (#3490)', () => {
+  const { renderer, shaderSources } = createOutlineStageMock();
+  renderer.render({ lines: resolveLineArt({ width: 1.5, depthJump: 0.08 }) });
+  const fragmentSource = shaderSources.find(source => source.includes('depthAt('));
+  assert.ok(fragmentSource, 'outline fragment shader was compiled');
+  assert.match(fragmentSource, /projectionDepth\.y \/ \(ndc \+ projectionDepth\.x\)/);
+  assert.doesNotMatch(fragmentSource, /\(ndc \+ projectionDepth\.x\) \/ projectionDepth\.y/);
+  assert.match(fragmentSource, /bool centerIsNearer = centerDepth <= otherDepth;/);
+  assert.match(fragmentSource, /2\.0 \* plusDepth \* minusDepth/);
+  assert.match(fragmentSource, /float farthestDepth = max\(plusDepth, minusDepth\);\s*float nearerBy = farthestDepth - centerDepth;/);
+});
+
+test('outline shader collapses narrow 45-degree chamfer bevels to a single centred line (#3490)', () => {
+  const { renderer, shaderSources } = createOutlineStageMock();
+  renderer.render({ lines: resolveLineArt({ width: 1.5, creaseAngle: 35 }) });
+  const fragmentSource = shaderSources.find(source => source.includes('depthAt('));
+  assert.ok(fragmentSource, 'outline fragment shader was compiled');
+  assert.match(fragmentSource, /walkBevelSide/);
+  assert.match(fragmentSource, /bevelAlongAxis/);
+  assert.match(fragmentSource, /bevelOnAnyAxis/);
+  assert.match(fragmentSource, /checkInteriorBevel/);
+  assert.match(fragmentSource, /recordBevelCoverage/);
 });

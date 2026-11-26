@@ -1,2 +1,10 @@
+- entry:core: throughGlass additive pass gating and runtime material swaps in replaceParts (shared renderer cleanups from #3500 already landed on main)
+- entry:core+lazy: throughGlass additive pass gating and runtime material swaps in replaceParts alongside the lazy liquid pass changes
+- scene:lit-box: inherits throughGlass additive gating and runtime material swap support in the core renderer
+- scene:lit-box+lazy: inherits throughGlass additive gating and runtime material swap support in the core renderer
+- scene:gltf-box: inherits throughGlass additive gating and runtime material swap support in the core renderer
 - scene:gltf-box+lazy: adds back-to-front liquid pass sorting, doubleSided/mirrored face state, premultiplied coverage blending, throughGlass depth-mask handling, and extent-scaled closed-surface detection in the lazy liquid shader chunk
 - scene:agent-scene+lazy: adds back-to-front liquid pass sorting, doubleSided/mirrored face state, premultiplied coverage blending, throughGlass depth-mask handling, and extent-scaled closed-surface detection in the lazy liquid shader chunk
+- goal:lit-box: owner approved PR #3517; accepts +101 B core renderer cost for throughGlass and runtime material swaps
+- goal:gltf-box: owner approved PR #3517; accepts +100 B core renderer cost for throughGlass and runtime material swaps
+- goal:agent-scene: owner approved PR #3517; accepts +64 B core renderer and recipe schema cost for throughGlass and runtime material swaps

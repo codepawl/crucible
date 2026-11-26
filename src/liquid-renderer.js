@@ -3,7 +3,7 @@ import { CLIP_PLANES_FEATURE, addClipPlanesToLiquidShader, bindClipPlanes, clipP
 import { resolveLiquidOptics } from './liquid-optics.js';
 import { batchesNeedRefractionMips, mipLevelCount } from './transmission-blur.js';
 import { depthMapping } from './glass-depth-march.js';
-import { drawsBackFaces, glassShellsNested } from './glass-back-face.js';
+import { drawsBackFaces, glassShellsNested, planGlassRefractionLayers } from './glass-back-face.js';
 import { geometryBoundingSphere } from './render-culling.js';
 import { liquidProbeSupport, liquidWaterSupport, registeredFeatureCode, requireDeformationSupport } from './shader-registry.js';
 
@@ -252,7 +252,7 @@ function invertMatrix4(matrix) {
 export function closedGlassShells(closedBatches) {
   const shells = [];
   for (const batch of closedBatches) {
-    for (const part of batch.parts) {
+    batch.parts.forEach((part, instanceIndex) => {
       const { minimum, maximum } = geometryBoundingSphere(part.geometry);
       const matrix = part.matrix;
       const low = [Infinity, Infinity, Infinity];
@@ -265,14 +265,30 @@ export function closedGlassShells(closedBatches) {
           high[axis] = Math.max(high[axis], world);
         }
       }
-      shells.push({ minimum: low, maximum: high, localMinimum: minimum, localMaximum: maximum, matrix, inverseMatrix: invertMatrix4(matrix) });
-    }
+      shells.push({ minimum: low, maximum: high, localMinimum: minimum, localMaximum: maximum, matrix, inverseMatrix: invertMatrix4(matrix), batch, instanceIndex });
+    });
   }
   return shells;
 }
 
 function sameBatchList(first, second) {
   return first.length === second.length && first.every((batch, index) => batch === second[index]);
+}
+
+function resolveClosedGlassMetadata(renderer, liquids) {
+  const moveCount = renderer.partsMoveCount ?? 0;
+  const cache = renderer.glassBackCache;
+  if (cache && cache.batches === renderer.batches && cache.moveCount === moveCount && sameBatchList(cache.liquids, liquids)) {
+    return cache;
+  }
+  const closedBatches = liquids.filter(batchDrawsBackFaces);
+  const firstInstances = closedBatches.length > 0 ? firstInstanceOfEachBatch(closedBatches) : null;
+  const shells = closedBatches.length > 0 ? closedGlassShells(closedBatches) : [];
+  const farLayer = shells.length > 0 ? glassShellsNested(shells) : false;
+  renderer.glassBackShellWalkCount = (renderer.glassBackShellWalkCount ?? 0) + 1;
+  const entry = { batches: renderer.batches, moveCount, liquids: [...liquids], closedBatches, firstInstances, farLayer, shells };
+  renderer.glassBackCache = entry;
+  return entry;
 }
 
 function unbindBackFaceTextures(context) {
@@ -283,8 +299,26 @@ function unbindBackFaceTextures(context) {
   context.activeTexture(context.TEXTURE0);
 }
 
+function drawBatchInstance(context, batch, instanceIndex) {
+  context.bindVertexArray(batch.vertexArray);
+  if (batch.instanceCount <= 1 || instanceIndex == null || !batch.instanceBuffer || !batch.instanceData) {
+    context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
+    return;
+  }
+  const stride = batch.instanceData.length / batch.instanceCount;
+  const start = instanceIndex * stride;
+  context.bindBuffer(context.ARRAY_BUFFER, batch.instanceBuffer);
+  if (instanceIndex > 0) context.bufferSubData(context.ARRAY_BUFFER, 0, batch.instanceData.subarray(start, start + stride));
+  try {
+    context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, 1);
+  } finally {
+    if (instanceIndex > 0) context.bufferSubData(context.ARRAY_BUFFER, 0, batch.instanceData.subarray(0, stride));
+    context.bindBuffer(context.ARRAY_BUFFER, null);
+  }
+}
+
 /** Draws one layer of back faces into its target: the nearest per pixel, or with `far` the farthest. */
-function drawBackLayer(renderer, target, closedBatches, firstInstances, width, height, far) {
+function drawBackLayer(renderer, target, items, firstInstances, width, height, far) {
   const context = renderer.context;
   const uniforms = renderer.liquidUniforms;
   const reversed = Boolean(renderer.reversedDepth);
@@ -300,13 +334,14 @@ function drawBackLayer(renderer, target, closedBatches, firstInstances, width, h
   if (far) context.depthFunc(farthestFunction);
   context.cullFace(context.FRONT);
   context.uniform1f(uniforms.glassBackPass, 1);
-  for (const batch of closedBatches) {
+  for (const item of items) {
+    const batch = item.batch ?? item;
+    const instanceIndex = item.batch ? item.instanceIndex : null;
     bindLiquidMorph(renderer, batch, uniforms);
     context.uniform1f(uniforms.glassBackFirst, firstInstances.get(batch));
     if (renderer.liquidClipLocations) bindClipPlanes(renderer, batch, renderer.liquidClipLocations);
     if (batch.mirrored) context.frontFace(context.CW);
-    context.bindVertexArray(batch.vertexArray);
-    context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
+    drawBatchInstance(context, batch, instanceIndex);
     if (batch.mirrored) context.frontFace(context.CCW);
   }
   if (uniforms.morphEnabled) context.uniform1f(uniforms.morphEnabled, 0);
@@ -315,28 +350,26 @@ function drawBackLayer(renderer, target, closedBatches, firstInstances, width, h
   if (far) context.depthFunc(nearestFunction);
 }
 
+function bindBackFaceTarget(context, renderer, target, farTarget = null) {
+  // With no second layer the far units hold the first one, which the shader never reads there; they only keep the samplers valid.
+  const farSource = farTarget ?? target;
+  const bindings = [[BACK_DEPTH_UNIT, target.depthTexture], [BACK_NORMAL_UNIT, target.normalTexture], [BACK_FAR_DEPTH_UNIT, farSource.depthTexture], [BACK_FAR_NORMAL_UNIT, farSource.normalTexture]];
+  for (const [unit, texture] of bindings) {
+    context.activeTexture(context.TEXTURE0 + unit);
+    context.bindTexture(context.TEXTURE_2D, texture);
+  }
+  context.activeTexture(context.TEXTURE0);
+  context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
+}
+
 /**
  * Draws the back faces (front-face culling) of every closed glass batch into the back-face target and binds it for the glass pass.
  * When one closed shell is inside another (glassShellsNested) a second pass keeps the farthest back face per pixel in a second target, so
  * the outer shell's exit is found behind the inner one's. Returns `{ firstInstances, farLayer }` (the first-instance number of each drawn
  * batch as a Map), or null, and draws nothing, when no batch is closed glass. The liquid program is in use with its frame uniforms set.
  */
-export function drawGlassBackFaces(renderer, liquids, width, height) {
-  const moveCount = renderer.partsMoveCount ?? 0;
-  const cache = renderer.glassBackCache;
-  const cacheHit = cache && cache.batches === renderer.batches && cache.moveCount === moveCount && sameBatchList(cache.liquids, liquids);
-  let closedBatches;
-  let firstInstances;
-  let farLayer;
-  if (cacheHit) {
-    ({ closedBatches, firstInstances, farLayer } = cache);
-  } else {
-    closedBatches = liquids.filter(batchDrawsBackFaces);
-    firstInstances = closedBatches.length > 0 ? firstInstanceOfEachBatch(closedBatches) : null;
-    farLayer = closedBatches.length > 0 ? glassShellsNested(closedGlassShells(closedBatches)) : false;
-    renderer.glassBackShellWalkCount = (renderer.glassBackShellWalkCount ?? 0) + 1;
-    renderer.glassBackCache = { batches: renderer.batches, moveCount, liquids: [...liquids], closedBatches, firstInstances, farLayer };
-  }
+export function drawGlassBackFaces(renderer, liquids, width, height, cachedMetadata = null) {
+  const { closedBatches, firstInstances, farLayer } = cachedMetadata ?? resolveClosedGlassMetadata(renderer, liquids);
   const context = renderer.context;
   if (closedBatches.length === 0) {
     if (renderer.glassBackFarFaces) {
@@ -352,16 +385,76 @@ export function drawGlassBackFaces(renderer, liquids, width, height) {
   const farTarget = farLayer ? ensureGlassBackTarget(renderer, width, height, true) : null;
   drawBackLayer(renderer, target, closedBatches, firstInstances, width, height, false);
   if (farTarget) drawBackLayer(renderer, farTarget, closedBatches, firstInstances, width, height, true);
-  // With no second layer the far units hold the first one, which the shader never reads there; they only keep the samplers valid.
-  const farSource = farTarget ?? target;
-  const bindings = [[BACK_DEPTH_UNIT, target.depthTexture], [BACK_NORMAL_UNIT, target.normalTexture], [BACK_FAR_DEPTH_UNIT, farSource.depthTexture], [BACK_FAR_NORMAL_UNIT, farSource.normalTexture]];
-  for (const [unit, texture] of bindings) {
-    context.activeTexture(context.TEXTURE0 + unit);
-    context.bindTexture(context.TEXTURE_2D, texture);
-  }
-  context.activeTexture(context.TEXTURE0);
-  context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
+  bindBackFaceTarget(context, renderer, target, farTarget);
   return { firstInstances, farLayer };
+}
+
+function drawLayerBackFaces(renderer, layerShells, firstInstances, width, height) {
+  const context = renderer.context;
+  const target = ensureGlassBackTarget(renderer, width, height);
+  unbindBackFaceTextures(context);
+  renderer.glassBackFarFaces?.release();
+  drawBackLayer(renderer, target, layerShells, firstInstances, width, height, false);
+  bindBackFaceTarget(context, renderer, target);
+}
+
+function resolveRefractionTargets(renderer, width, height, needsRefractionMips, hasGlass) {
+  const context = renderer.context;
+  // Liquids refract the opaque scene (or already-drawn glass layers), so resolve it into frameTexture before drawing on top.
+  context.bindFramebuffer(context.READ_FRAMEBUFFER, renderer.multisampleFramebuffer);
+  context.bindFramebuffer(context.DRAW_FRAMEBUFFER, renderer.resolveFramebuffer);
+  context.blitFramebuffer(0, 0, width, height, 0, 0, width, height, context.COLOR_BUFFER_BIT, context.NEAREST);
+  const sceneTexture = needsRefractionMips ? copySceneIntoMipChain(renderer, width, height) : renderer.frameTexture;
+  const sceneDepthTexture = hasGlass ? resolveSceneDepth(renderer, width, height) : null;
+  context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
+  context.viewport(0, 0, width, height);
+  return { sceneTexture, sceneDepthTexture };
+}
+
+function bindRefractionTargets(context, uniforms, sceneTexture, sceneDepthTexture, reversed) {
+  context.activeTexture(context.TEXTURE0);
+  context.bindTexture(context.TEXTURE_2D, sceneTexture);
+  context.uniform1i(uniforms.sceneColor, 0);
+  if (!sceneDepthTexture) return;
+  const mapping = depthMapping(reversed);
+  context.activeTexture(context.TEXTURE0 + SCENE_DEPTH_UNIT);
+  context.bindTexture(context.TEXTURE_2D, sceneDepthTexture);
+  context.activeTexture(context.TEXTURE0);
+  context.uniform3f(uniforms.depthMapping, mapping.scale, mapping.bias, reversed ? 1 : 0);
+}
+
+function drawGlassBatchFront(renderer, uniforms, batch, backFirstInstances, maximumDistance, instanceIndex = null, skipDepthWrite = false) {
+  const context = renderer.context;
+  const part = batch.parts[instanceIndex ?? 0];
+  bindLiquidMorph(renderer, batch, uniforms);
+  const layers = batch.layerState;
+  context.uniform4f(uniforms.glassState, layers[9], layers[10], layers[11] * partScale(part.matrix), Math.min(layers[12], maximumDistance));
+  context.uniform3f(uniforms.glassTint, layers[13], layers[14], layers[15]);
+  // Blended glass covers the refracted picture by its alpha, over the opaque scene already in the frame.
+  context.uniform1f(uniforms.glassBackFirst, backFirstInstances?.get(batch) ?? 0);
+  context.uniform1f(uniforms.glassMediumContinues, part.material.mediumContinues === true ? 1 : 0);
+  context.uniform1f(uniforms.materialEmissionFresnel, layers[24]);
+  const covering = batch.opacity < 1;
+  context.uniform1f(uniforms.glassCoverage, covering ? batch.opacity : 1);
+  if (covering) {
+    context.enable(context.BLEND);
+    context.blendFuncSeparate(context.ONE, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
+  }
+  if (skipDepthWrite) context.depthMask(false);
+  if (batch.doubleSided) context.disable(context.CULL_FACE);
+  if (batch.mirrored) context.frontFace(context.CW);
+  const metallicRoughnessState = batch.mapState[METALLIC_ROUGHNESS_MAP_INDEX];
+  context.activeTexture(context.TEXTURE0 + METALLIC_ROUGHNESS_UNIT);
+  context.bindTexture(context.TEXTURE_2D, batch.textures[METALLIC_ROUGHNESS_MAP_INDEX]);
+  context.uniform1f(uniforms.hasMetallicRoughnessMap, metallicRoughnessState ? 1 + (metallicRoughnessState.uvChannel ?? 0) : 0);
+  if (renderer.liquidClipLocations) bindClipPlanes(renderer, batch, renderer.liquidClipLocations);
+  liquidWaterSupport.bind?.(renderer, uniforms, batch);
+  liquidProbeSupport.bind?.(renderer, uniforms, batch);
+  drawBatchInstance(context, batch, instanceIndex);
+  if (batch.mirrored) context.frontFace(context.CCW);
+  if (batch.doubleSided) context.enable(context.CULL_FACE);
+  if (skipDepthWrite) context.depthMask(true);
+  if (covering) context.disable(context.BLEND);
 }
 
 // KHR_materials_volume gives the thickness in the mesh's own units, so a placed or scaled asset thickens with its transform.
@@ -382,20 +475,15 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
   const context = renderer.context;
   const width = renderer.canvas.width;
   const height = renderer.canvas.height;
-  // Liquids refract the opaque scene, so resolve it into frameTexture before drawing them on top.
-  context.bindFramebuffer(context.READ_FRAMEBUFFER, renderer.multisampleFramebuffer);
-  context.bindFramebuffer(context.DRAW_FRAMEBUFFER, renderer.resolveFramebuffer);
-  context.blitFramebuffer(0, 0, width, height, 0, 0, width, height, context.COLOR_BUFFER_BIT, context.NEAREST);
-  const sceneTexture = batchesNeedRefractionMips(liquids, width, height) ? copySceneIntoMipChain(renderer, width, height) : renderer.frameTexture;
+  const needsRefractionMips = batchesNeedRefractionMips(liquids, width, height);
   const hasGlass = liquids.some(batch => batch.layerState[9] > 0);
-  const sceneDepthTexture = hasGlass ? resolveSceneDepth(renderer, width, height) : null;
-  context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
-  context.viewport(0, 0, width, height);
+  const { sceneTexture, sceneDepthTexture } = resolveRefractionTargets(renderer, width, height, needsRefractionMips, hasGlass);
   context.enable(context.DEPTH_TEST);
   context.enable(context.CULL_FACE);
   context.useProgram(renderer.liquidProgram);
   const uniforms = renderer.liquidUniforms;
-  context.uniformMatrix4fv(uniforms.viewProjection, false, renderer.rasterViewProjection ?? renderer.viewProjection);
+  const viewProjection = renderer.rasterViewProjection ?? renderer.viewProjection;
+  context.uniformMatrix4fv(uniforms.viewProjection, false, viewProjection);
   context.uniformMatrix4fv(uniforms.lightProjection, false, renderer.lightProjection);
   context.uniform3fv(uniforms.eye, frame.eye);
   context.uniform2f(uniforms.resolution, width, height);
@@ -418,59 +506,48 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
   context.uniform1f(uniforms.assemblyAmount, assemblyAmount);
   if (uniforms.skinEnabled) context.uniform1f(uniforms.skinEnabled, 0);
   if (uniforms.morphEnabled) context.uniform1f(uniforms.morphEnabled, 0);
-  context.activeTexture(context.TEXTURE0);
-  context.bindTexture(context.TEXTURE_2D, sceneTexture);
-  context.uniform1i(uniforms.sceneColor, 0);
-  if (sceneDepthTexture) {
-    const reversed = Boolean(renderer.reversedDepth);
-    const mapping = depthMapping(reversed);
-    context.activeTexture(context.TEXTURE0 + SCENE_DEPTH_UNIT);
-    context.bindTexture(context.TEXTURE_2D, sceneDepthTexture);
-    context.activeTexture(context.TEXTURE0);
-    context.uniform3f(uniforms.depthMapping, mapping.scale, mapping.bias, reversed ? 1 : 0);
-  }
+  const reversed = Boolean(renderer.reversedDepth);
+  bindRefractionTargets(context, uniforms, sceneTexture, sceneDepthTexture, reversed);
   context.uniform1f(uniforms.glassBackPass, 0);
-  const backFaces = sceneDepthTexture ? drawGlassBackFaces(renderer, liquids, width, height) : null;
-  const backFirstInstances = backFaces?.firstInstances ?? null;
-  context.uniform1f(uniforms.glassBackEnabled, backFaces ? 1 : 0);
-  context.uniform1f(uniforms.glassBackFarEnabled, backFaces?.farLayer ? 1 : 0);
-  const orderedLiquids = liquids.length > 1 && renderer.view
-    ? [...liquids].sort((first, second) => batchViewDepth(first, renderer.view) - batchViewDepth(second, renderer.view))
-    : liquids;
   const hasThroughGlass = renderer.batches?.some(batch => batch.alphaMode === 'add' && batch.throughGlass);
   const hasAdditiveAfter = hasThroughGlass || renderer.batches?.some(batch => batch.alphaMode === 'add' && batch.depthTest !== false && !renderer.additiveBehindShells?.has(batch));
-  for (const batch of orderedLiquids) {
-    bindLiquidMorph(renderer, batch, uniforms);
-    const layers = batch.layerState;
-    context.uniform4f(uniforms.glassState, layers[9], layers[10], layers[11] * partScale(batch.parts[0].matrix), Math.min(layers[12], maximumDistance));
-    context.uniform3f(uniforms.glassTint, layers[13], layers[14], layers[15]);
-    // Blended glass covers the refracted picture by its alpha, over the opaque scene already in the frame.
-    context.uniform1f(uniforms.glassBackFirst, backFirstInstances?.get(batch) ?? 0);
-    context.uniform1f(uniforms.glassMediumContinues, batch.parts[0].material.mediumContinues === true ? 1 : 0);
-    context.uniform1f(uniforms.materialEmissionFresnel, layers[24]);
-    const covering = batch.opacity < 1;
-    context.uniform1f(uniforms.glassCoverage, covering ? batch.opacity : 1);
-    if (covering) {
-      context.enable(context.BLEND);
-      context.blendFuncSeparate(context.ONE, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
+  const skipDepthWriteFor = batch => hasThroughGlass || (hasAdditiveAfter && batch.alphaMode === 'blend');
+  const metadata = sceneDepthTexture ? resolveClosedGlassMetadata(renderer, liquids) : null;
+  const refractionLayers = metadata && metadata.closedBatches.length > 0 ? planGlassRefractionLayers(metadata.shells, viewProjection, frame.eye) : null;
+  if (refractionLayers) {
+    const closedSet = new Set(metadata.closedBatches);
+    const otherLiquids = liquids.filter(batch => !closedSet.has(batch));
+    context.uniform1f(uniforms.glassBackEnabled, 1);
+    context.uniform1f(uniforms.glassBackFarEnabled, 0);
+    for (let layerIndex = 0; layerIndex < refractionLayers.length; layerIndex++) {
+      if (layerIndex > 0) {
+        const resolved = resolveRefractionTargets(renderer, width, height, needsRefractionMips, true);
+        bindRefractionTargets(context, uniforms, resolved.sceneTexture, resolved.sceneDepthTexture, reversed);
+      }
+      drawLayerBackFaces(renderer, refractionLayers[layerIndex], metadata.firstInstances, width, height);
+      for (const shell of refractionLayers[layerIndex]) {
+        drawGlassBatchFront(renderer, uniforms, shell.batch, metadata.firstInstances, maximumDistance, shell.instanceIndex, skipDepthWriteFor(shell.batch));
+      }
     }
-    const skipDepthWrite = hasThroughGlass || (hasAdditiveAfter && batch.alphaMode === 'blend');
-    if (skipDepthWrite) context.depthMask(false);
-    if (batch.doubleSided) context.disable(context.CULL_FACE);
-    if (batch.mirrored) context.frontFace(context.CW);
-    const metallicRoughnessState = batch.mapState[METALLIC_ROUGHNESS_MAP_INDEX];
-    context.activeTexture(context.TEXTURE0 + METALLIC_ROUGHNESS_UNIT);
-    context.bindTexture(context.TEXTURE_2D, batch.textures[METALLIC_ROUGHNESS_MAP_INDEX]);
-    context.uniform1f(uniforms.hasMetallicRoughnessMap, metallicRoughnessState ? 1 + (metallicRoughnessState.uvChannel ?? 0) : 0);
-    if (renderer.liquidClipLocations) bindClipPlanes(renderer, batch, renderer.liquidClipLocations);
-    liquidWaterSupport.bind?.(renderer, uniforms, batch);
-    liquidProbeSupport.bind?.(renderer, uniforms, batch);
-    context.bindVertexArray(batch.vertexArray);
-    context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
-    if (batch.mirrored) context.frontFace(context.CCW);
-    if (batch.doubleSided) context.enable(context.CULL_FACE);
-    if (skipDepthWrite) context.depthMask(true);
-    if (covering) context.disable(context.BLEND);
+    if (otherLiquids.length > 0) {
+      const resolved = resolveRefractionTargets(renderer, width, height, needsRefractionMips, true);
+      bindRefractionTargets(context, uniforms, resolved.sceneTexture, resolved.sceneDepthTexture, reversed);
+      context.uniform1f(uniforms.glassBackEnabled, 0);
+      for (const batch of otherLiquids) {
+        drawGlassBatchFront(renderer, uniforms, batch, metadata.firstInstances, maximumDistance, null, skipDepthWriteFor(batch));
+      }
+    }
+  } else {
+    const backFaces = sceneDepthTexture ? drawGlassBackFaces(renderer, liquids, width, height, metadata) : null;
+    const backFirstInstances = backFaces?.firstInstances ?? null;
+    context.uniform1f(uniforms.glassBackEnabled, backFaces ? 1 : 0);
+    context.uniform1f(uniforms.glassBackFarEnabled, backFaces?.farLayer ? 1 : 0);
+    const orderedLiquids = liquids.length > 1 && renderer.view
+      ? [...liquids].sort((first, second) => batchViewDepth(first, renderer.view) - batchViewDepth(second, renderer.view))
+      : liquids;
+    for (const batch of orderedLiquids) {
+      drawGlassBatchFront(renderer, uniforms, batch, backFirstInstances, maximumDistance, null, skipDepthWriteFor(batch));
+    }
   }
   liquidProbeSupport.finish?.(renderer, uniforms);
   if (uniforms.morphEnabled) context.uniform1f(uniforms.morphEnabled, 0);

@@ -373,3 +373,40 @@ test('an asset scene answers an edit with the findings inspect reports', async (
   const { diagnostics } = scene.inspect();
   assert.deepEqual(scene.editDiagnostics(), diagnostics?.length ? { diagnostics } : {});
 });
+
+test('raster look, frame and inspect report low-sun shadow cascade warnings, while path-tracer findings and castShadow: false scenery skip them', () => {
+  const { preview } = previewHarness();
+  const sessionId = 'low-sun-cascades';
+  const lowSunRadians = 8 * Math.PI / 180;
+  const wideRecipe = {
+    format: 'crucible.scene',
+    schemaVersion: 1,
+    geometries: [{ id: 'box', type: 'box' }],
+    materials: [{ id: 'stone', color: [0.5, 0.5, 0.5] }],
+    nodes: [
+      { id: 'hero', geometry: 'box', material: 'stone', scale: [2, 2, 2], translation: [0, 1, 0] },
+      { id: 'far-scenery', geometry: 'box', material: 'stone', scale: [20, 4, 20], translation: [120, 2, 0] },
+    ],
+    camera: { eye: [0, 3, 10], target: [0, 1, 0], fov: 45, near: 0.1, far: 500 },
+    environment: { lightDirection: [-Math.cos(lowSunRadians), Math.sin(lowSunRadians), 0], keyIntensity: 1 },
+  };
+  preview.create({ recipe: wideRecipe, sessionId, backend: 'cpu', memoryBudgetMiB: 192 });
+
+  const inspected = preview.inspect({ sessionId });
+  const inspectWarning = inspected.diagnostics?.find(problem => problem.kind === 'low-sun-shadow-cascades');
+  assert.ok(inspectWarning, 'scene_inspect reports low-sun-shadow-cascades');
+  assert.match(inspectWarning.message, /8 degrees/);
+
+  const looked = preview.look({ sessionId });
+  assert.ok(looked.metadata.diagnostics?.some(problem => problem.kind === 'low-sun-shadow-cascades'), 'scene_look reports low-sun-shadow-cascades');
+
+  const framed = preview.frame({ sessionId, diagnose: true });
+  assert.ok(framed.diagnostics?.some(problem => problem.kind === 'low-sun-shadow-cascades'), 'raster frame() reports low-sun-shadow-cascades');
+
+  const pathTraced = preview.findings({ sessionId });
+  assert.equal(pathTraced.diagnostics?.some(problem => problem.kind === 'low-sun-shadow-cascades') ?? false, false, 'path-tracer findings() omits low-sun-shadow-cascades');
+
+  preview.apply({ sessionId, expectedRevision: 0, operations: [{ type: 'set-node', id: 'far-scenery', castShadow: false }] });
+  assert.equal(preview.inspect({ sessionId }).diagnostics?.some(problem => problem.kind === 'low-sun-shadow-cascades') ?? false, false);
+  assert.equal(preview.frame({ sessionId, diagnose: true }).diagnostics?.some(problem => problem.kind === 'low-sun-shadow-cascades') ?? false, false);
+});
