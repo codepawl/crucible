@@ -6,7 +6,7 @@ import { invalidField, withFieldPrefix } from './field-error.js';
 import { createRepeatTracker, partFingerprint, unchangedFindingsLine } from './diagnostic-repeats.js';
 import { applyProjection, validateCameraShift, CAMERA_LENS_FIELDS } from './camera.js';
 import { checkLocalVolumePartNames } from './local-volume-resolve.js';
-import { normalizeAgentLook, environmentPatchWithSetup, environmentLinksLights, agentEnvironmentMap, agentEnvironmentKey, SKY_OVERRIDABLE_FIELDS, VOLUME_FOG_FIELDS, EFFECT_GROUP_FIELDS } from './agent-look.js';
+import { normalizeAgentLook, environmentPatchWithSetup, environmentLinksLights, agentEnvironmentMap, agentEnvironmentKey, ENVIRONMENT_FIELDS, SKY_OVERRIDABLE_FIELDS, VOLUME_FOG_FIELDS, EFFECT_GROUP_FIELDS } from './agent-look.js';
 import { cameraFieldsToClear, splitClearedLookFields, mergeGroupPatch } from './agent-clear-fields.js';
 import { postStepSupport } from './shader-registry.js';
 import { agentSceneModule, agentSceneModuleActive, agentSceneModuleLoaded, defaultStageModulesNamed } from './agent-scene-modules.js';
@@ -1264,11 +1264,14 @@ function normalizeRecipe(input, limits, { alreadyCopied = false } = {}) {
   if (Object.hasOwn(recipe, 'motion')) {
     recipe.motion = recipe.motion === null || recipe.motion === undefined ? null : agentSceneModule('motion').normalizeAgentMotion(recipe.motion, recipe);
   }
-  if (Object.hasOwn(recipe, 'physics')) {
-    recipe.physics = agentSceneModule('physics').normalizeAgentPhysics(recipe.physics, recipe);
-  }
-  if (Object.hasOwn(recipe, 'cloth')) {
-    recipe.cloth = agentSceneModule('cloth').normalizeAgentCloth(recipe.cloth, recipe);
+  for (const [section, moduleName, normalizer] of [
+    ['physics', 'physics', 'normalizeAgentPhysics'],
+    ['cloth', 'cloth', 'normalizeAgentCloth'],
+    ['particles', 'particles', 'normalizeAgentParticles'],
+  ]) {
+    if (Object.hasOwn(recipe, section)) {
+      recipe[section] = agentSceneModule(moduleName)[normalizer](recipe[section], recipe);
+    }
   }
   if (Object.hasOwn(recipe, 'timeline')) {
     if (recipe.timeline === null) {
@@ -1277,23 +1280,20 @@ function normalizeRecipe(input, limits, { alreadyCopied = false } = {}) {
       recipe.timeline = agentSceneModule('timeline').normalizeFilmTimeline(recipe.timeline, recipe, { checkCamera: shotCameraOverrides => cameraOverridesFrom(recipe.camera, shotCameraOverrides) });
     }
   }
-  if (Object.hasOwn(recipe, 'particles')) {
-    recipe.particles = agentSceneModule('particles').normalizeAgentParticles(recipe.particles, recipe);
-  }
   if (Object.hasOwn(recipe, 'bake')) {
     recipe.bake = recipe.bake === null ? null : agentSceneModule('bake').normalizeAgentBake(recipe.bake);
   }
   if (Object.hasOwn(recipe, 'postPasses')) recipe.postPasses = agentSceneModule('userPass').normalizeUserPasses(recipe.postPasses ?? []);
   if (Object.hasOwn(recipe, 'postPassesAntialias')) recipe.postPassesAntialias = agentSceneModule('userPass').normalizePostPassesAntialias(recipe.postPassesAntialias);
-  if (Object.hasOwn(recipe, 'pixelGrid')) {
-    // Cleared with null, the recipe reads as if it never had a grid, and the on-demand grid module is not needed.
-    if (recipe.pixelGrid === null) delete recipe.pixelGrid;
-    else recipe.pixelGrid = agentSceneModule('pixelGrid').normalizePixelGrid(recipe.pixelGrid);
-  }
   if (recipe.nodes.some(node => node.billboard)) agentSceneModule('textBillboard').checkBillboardMaterials(recipe);
-  if (Object.hasOwn(recipe, 'game')) {
-    if (recipe.game === null) delete recipe.game;
-    else recipe.game = agentSceneModule('game').normalizeGameSetup(recipe.game, recipe.nodes);
+  // Cleared with null, pixelGrid and game read as if unset, and the on-demand module is not needed.
+  for (const [section, moduleName, normalizer, extra] of [
+    ['pixelGrid', 'pixelGrid', 'normalizePixelGrid'],
+    ['game', 'game', 'normalizeGameSetup', recipe.nodes],
+  ]) {
+    if (!Object.hasOwn(recipe, section)) continue;
+    if (recipe[section] === null) delete recipe[section];
+    else recipe[section] = agentSceneModule(moduleName)[normalizer](recipe[section], extra);
   }
   if (alreadyCopied) {
     // The input was checked JSON and each step above returns checked JSON, so only the size can have grown.
@@ -2339,7 +2339,8 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   // Wet ground with puddles mirrors the scene in them: the water mirror module flags the flat ground parts, and the host attaches the mirror.
   function stageWetMirror(recipe, parts) {
     const environment = recipe.environment;
-    return environment.wetness > 0 && environment.puddles && agentSceneModuleActive('waterReflection', requestedModules) ? agentSceneModule('waterReflection').flagWetMirrorParts(parts) : parts;
+    const hasWetSurface = environment.wetness > 0 || (environment.rain?.wetness > 0 && (environment.rain.intensity > 0 || environment.rain.intensityCurve));
+    return hasWetSurface && environment.puddles && agentSceneModuleLoaded('waterReflection') ? agentSceneModule('waterReflection').flagWetMirrorParts(parts) : parts;
   }
 
   // A closed room a sun lights gets the sky each floor texel sees; the lazy module decides, keeps its result and honours environment.floorSkyTrace.
@@ -2547,6 +2548,8 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     return coplanarReportCache.problems;
   }
 
+  const geometryMap = geometryRecords => new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
+
   // A bake costs a solver run, so an unchanged section on unchanged geometry reuses the last one.
   function stagePhysics(recipe, geometryRecords) {
     if (!recipe.physics) {
@@ -2554,8 +2557,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     }
     const key = agentSceneModule('physics').physicsBakeKey(recipe, geometryRecords);
     if (physicsBake?.key !== key) {
-      const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
-      physicsBake = { key, sampler: agentSceneModule('physics').bakeAgentPhysics(recipe.physics, recipe, geometries) };
+      physicsBake = { key, sampler: agentSceneModule('physics').bakeAgentPhysics(recipe.physics, recipe, geometryMap(geometryRecords)) };
     }
     return physicsBake.sampler;
   }
@@ -2570,8 +2572,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const followsMotion = recipe.cloth.sheets.some(sheet => sheet.pinTo) || (recipe.cloth.colliders ?? []).some(collider => collider.node === undefined);
     const key = JSON.stringify([recipe.cloth, involvedNodes, involvedNodes.map(node => geometryRecords.get(node.geometry)?.signature), followsMotion ? [recipe.motion, recipe.nodes, recipe.armatures] : null]);
     if (clothBake?.key !== key) {
-      const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
-      clothBake = { key, sampler: agentSceneModule('cloth').bakeAgentCloth(recipe.cloth, recipe, geometries, motionSampler) };
+      clothBake = { key, sampler: agentSceneModule('cloth').bakeAgentCloth(recipe.cloth, recipe, geometryMap(geometryRecords), motionSampler) };
     }
     return clothBake.sampler;
   }
@@ -2589,13 +2590,12 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const followedPose = followsNode ? [recipe.motion, recipe.physics, recipe.armatures, recipe.nodes.map(node => [node.id, node.parent, node.translation, node.rotation, node.scale])] : null;
     const key = JSON.stringify([recipe.particles, involvedNodes, involvedNodes.map(node => geometryRecords.get(node.geometry).signature), oceanTracks, followedPose]);
     if (particleBake?.key !== key) {
-      const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
       // An emitter on a sea with an oceanTime track samples the sea at the ocean time of each particle's birth (#2152).
       const sea = {
         oceanTimeAt: (geometryId, time) => stagedState.motionSampler?.sample(time)?.geometries?.get(geometryId)?.oceanTime ?? null,
         geometryAt: (geometryId, oceanTime) => oceanTimeGeometry(recipe, stagedState.maxGeometryVertices, geometryId, oceanTime),
       };
-      particleBake = { key, sampler: agentSceneModule('particles').bakeAgentParticles(recipe.particles, recipe, geometries, sea, { matrixAt: (nodeId, time) => worldMatrixAt(stagedState, nodeId, time) }) };
+      particleBake = { key, sampler: agentSceneModule('particles').bakeAgentParticles(recipe.particles, recipe, geometryMap(geometryRecords), sea, { matrixAt: (nodeId, time) => worldMatrixAt(stagedState, nodeId, time) }) };
     }
     return particleBake.sampler;
   }
@@ -2603,8 +2603,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   // A billboard node turns to the camera at each sampled time, so its sheet is rebuilt per pose (#3237).
   function stageBillboards(recipe, geometryRecords, stagedState) {
     if (!recipe.nodes.some(node => node.billboard)) return null;
-    const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
-    return agentSceneModule('textBillboard').bakeTextBillboards(recipe, geometries, { matrixAt: (nodeId, time) => worldMatrixAt(stagedState, nodeId, time) });
+    return agentSceneModule('textBillboard').bakeTextBillboards(recipe, geometryMap(geometryRecords), { matrixAt: (nodeId, time) => worldMatrixAt(stagedState, nodeId, time) });
   }
 
   // An edit keeps the time the scene was sampled at (#2730): posing it at 0 again rebuilt and ranked every animated part,
@@ -2857,9 +2856,10 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           knownKeys(operation, ['type', lookField], 'operation');
           const patch = operation[lookField];
           // Spot and area lights, cascades and sun links are absent from a recipe until it sets them.
-          const optionalFields = lookField === 'environment' ? ['ground', 'spotLights', 'areaLights', 'shadowCascades', 'localVolumes', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'hdri', 'reflectionHdri', 'keyFromHdri', 'sky', 'wetness', 'puddles', 'ambientColor', 'ambientMix', 'fillColor', 'environmentDiffuseScale', 'skybox'] : lookField === 'effects' ? postStepSupport.fields : lookField === 'shadow' ? ['hard'] : [];
-          knownKeys(patch, [...Object.keys(candidate[lookField]), ...optionalFields], lookField);
-          requireChange(Object.keys(patch).length > 0, operation, [...Object.keys(candidate[lookField]), ...optionalFields]);
+          const optionalFields = lookField === 'environment' ? ENVIRONMENT_FIELDS : lookField === 'effects' ? postStepSupport.fields : lookField === 'shadow' ? ['hard'] : [];
+          const allowedLookFields = [...Object.keys(candidate[lookField]), ...optionalFields];
+          knownKeys(patch, allowedLookFields, lookField);
+          requireChange(Object.keys(patch).length > 0, operation, allowedLookFields);
           const { kept: keptPatch, cleared: clearedFields } = splitClearedLookPatch(lookField, patch);
           const merged = { ...candidate[lookField], ...(lookField === 'environment' ? environmentPatchWithSetup(keptPatch) : keptPatch) };
           for (const field of clearedFields) delete merged[field];

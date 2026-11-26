@@ -652,7 +652,7 @@ function initializeRenderer(scene, { memoryBudgetMiB, backend, transparent = fal
   // Mesh blend installs before line art, so its stage runs first and the lines draw over the blended colour; it blends only the
   // parts whose nodes carry `blend` (syncMeshBlend), so a recipe without it draws as before.
   // The pixel grid installs last: its blit must follow the user passes.
-  return agentSceneModule('pixelGrid').installPixelGrid(agentSceneModule('userPass').installUserPasses(agentSceneModule('lineArt').installLineArt(installMeshBlend(renderer))));
+  return agentSceneModule('pixelGrid').installPixelGrid(agentSceneModule('userPass').installUserPasses(agentSceneModule('lineArt').installLineArt(agentSceneModule('rain').installRain(installMeshBlend(renderer)))));
 }
 
 // Camera fields from a timeline shot on top of the sampled camera, checked with the scene's own camera rules.

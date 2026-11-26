@@ -68,6 +68,7 @@ export function previewHarness({ createImageBitmap = async () => { throw new Err
     splatBytes = 1024;
     resize() {}
     updateParts() {}
+    drawBlendBatches() {}
     replaceParts() {
       if (replacementError) throw new Error('Injected replacement allocation failure');
       replacementCount++;

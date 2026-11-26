@@ -313,6 +313,23 @@ const volumeFog = z.strictObject({
 });
 const affects = z.array(z.string()).optional();
 const iesProfile = z.any().optional();
+const rain = z.strictObject({
+  intensity: unit.optional().describe('Rain scale 0 to 1; default 0.6.'),
+  intensityCurve: z.array(z.strictObject({ time: bounded(0, 1e6), value: unit })).min(2).max(64).nullable().optional().describe('Deterministic keyframes [{ time, value }] evaluated on rendererTime.'),
+  density: z.number().int().min(100).max(6000).optional(),
+  volume: z.tuple([bounded(2, 120), bounded(2, 120), bounded(2, 120)]).optional(),
+  speed: bounded(2, 40).optional(),
+  streakLength: bounded(0.05, 2).optional(),
+  streakWidth: bounded(0.002, 0.06).optional(),
+  wind: z.tuple([bounded(-20, 20), bounded(-20, 20)]).optional(),
+  color: z.tuple([bounded(0, 2), bounded(0, 2), bounded(0, 2)]).optional(),
+  opacity: unit.optional(),
+  splashes: z.boolean().optional(),
+  splashCount: z.number().int().min(0).max(1200).optional(),
+  groundHeight: bounded(-1e4, 1e4).optional(),
+  wetness: unit.nullable().optional().describe('Pairs with environment.wetness scaled by intensity when environment.wetness is unset.'),
+  seed: z.number().int().min(-2147483647).max(2147483647).optional(),
+}).describe('Camera-local rain streaks, splashes and wetness; null clears. Details: scene_capabilities rain.');
 const lines = z.record(z.string(), z.unknown()).describe('Outlines, toon light and polylines as plain JSON; fields and limits in scene_capabilities lineArt. null clears.');
 // An invalid name says which names work. The union alone reports only its 64-hex branch (issue 2049).
 function catalogReference(names, fileKind) {
@@ -397,6 +414,7 @@ const environment = z.strictObject({
   specularAntiAliasing: z.number().min(0).max(4).optional().describe('Specular anti-aliasing: 0 off, 1 default; widens highlights that sparkle on grainy normal-mapped metal.'),
   wetness: z.number().min(0).max(1).nullable().optional().describe('Wet ground: 0 dry, 0.5 damp, 1 soaked; darkens porous surfaces and lowers roughness, metals untouched. null clears.'),
   puddles: z.strictObject({ coverage: bounded(0, 1).optional(), from: z.literal('height').optional() }).nullable().optional().describe('Puddles on wet ground: coverage 0 to 1 (scaled by wetness), from "height" (low spots). Flat water that mirrors the sky.'),
+  rain: rain.nullable().optional(),
   resolveCoplanar: z.union([z.literal('offset'), z.literal(false)]).optional().describe("Flush faces are ranked at draw time by default ('offset'); false opts out."),
   viewTransform: z.enum(VIEW_TRANSFORM_NAMES).optional().describe('Display transform, agx or standard to compare with Blender.'),
   look: catalogReference([...LOOK_NAMES, ...BUNDLED_CUBE_LOOK_NAMES], '.cube').nullable().optional().describe('Look preset or .cube; scene_capabilities catalogLooks. null clears.'),
@@ -404,7 +422,7 @@ const environment = z.strictObject({
   wind: z.strictObject({ strength: bounded(0, 4).optional(), direction: bounded(-360, 360).optional().describe('Degrees: 0 toward +x, 90 toward +z.') }).optional().describe('Sway of foliage and grass materials; strength defaults to 0.3.'),
 });
 // Every tool lists the same short environment; the full schema is served by scene_capabilities topic environment.
-const environmentListed = listed('environment', environment, 'Lighting and sky. More fields: sky (physicalSky), hdri, reflectionHdri, look, viewTransform, keyColor, keyIntensity, fillIntensity, ambientIntensity, ambientColor, ambientMix, fillColor, environmentDiffuseScale, daylight, keyAffects, shadowCascades, pointLights, spotLights, areaLights, skyTop, skyBottom, fogColor, fogDensity, volumeFog (density, scatterOctaves, multiScatter, keyTransmittance, surfaceTransmittance and more: scene_capabilities environment), liquid, lines, wind, objectReflections, floorSkyTrace, sunBounce, specularAntiAliasing, wetness, puddles, resolveCoplanar; see scene_capabilities environment.', coreOf(environment.shape, ['setup', 'world', 'ground', 'lightDirection', 'environmentIntensity']));
+const environmentListed = listed('environment', environment, 'Lighting and sky. More fields: sky (physicalSky), hdri, reflectionHdri, look, viewTransform, keyColor, keyIntensity, fillIntensity, ambientIntensity, ambientColor, ambientMix, fillColor, environmentDiffuseScale, daylight, keyAffects, shadowCascades, pointLights, spotLights, areaLights, skyTop, skyBottom, fogColor, fogDensity, volumeFog (density, scatterOctaves, multiScatter, keyTransmittance, surfaceTransmittance and more: scene_capabilities environment), liquid, lines, wind, objectReflections, floorSkyTrace, sunBounce, specularAntiAliasing, wetness, puddles, rain, resolveCoplanar; see scene_capabilities environment.', coreOf(environment.shape, ['setup', 'world', 'ground', 'lightDirection', 'environmentIntensity']));
 // Named post steps are checked by the engine and listed in docs/agent-look.md; every tool that takes a recipe repeats this schema.
 const looseField = z.unknown().optional();
 const effects = z.strictObject({
