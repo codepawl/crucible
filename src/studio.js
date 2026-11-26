@@ -1439,12 +1439,12 @@ export function createStudio(container, {
     host: globalThis.crucibleShell?.agentChat,
     root,
     readPreferences: () => preferences,
-    setPreference,
-    applyPreferences,
-    showPanelMinimized,
-    syncMenuToggles,
+    setPreference: (name, value) => setPreference(name, value),
+    applyPreferences: () => applyPreferences(),
+    showPanelMinimized: (...argumentsList) => showPanelMinimized(...argumentsList),
+    syncMenuToggles: () => syncMenuToggles(),
     onStep: nodeId => showAgentEdit({ nodeIds: [nodeId] }),
-    setInspectorCollapsed,
+    setInspectorCollapsed: collapsed => setInspectorCollapsed(collapsed),
     hideHistory: () => setHistoryShown(false, { remember: false }),
   });
   // Whether the History panel is shown, and the edits it last drew, so a notification that changed no edit draws nothing.
