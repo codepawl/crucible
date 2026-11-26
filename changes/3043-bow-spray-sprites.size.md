@@ -1,0 +1,2 @@
+- goal:agent-scene: lead-approved +42 B gzip for `physicsSampler.withSprayPart` dispatch in `publishPose` (and `partsWithCloth` length check / `part.matrix` reuse in `closedRoomProblems`), keeping `entry:core`, `scene:lit-box`, and `scene:gltf-box` at 0 B.
+- scene:agent-scene+lazy: +3477 B gzip for deterministic bow spray billboard sprites and validation in `src/boat-bow-spray.js`, `src/physics-boat.js`, `src/ocean-wake.js`, and `src/agent-physics.js` (#3043).

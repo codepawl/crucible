@@ -1,0 +1,1 @@
+- A boat `wake` with `slamSpeed` or `bowSpray` emits deterministic camera-facing bow spray sprites driven by hull closing velocity (`heave + pitch`) and forward speed, fading over `slamDecay` with zero spray on calm water or at rest (#3043).

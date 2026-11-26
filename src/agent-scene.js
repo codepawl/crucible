@@ -1699,14 +1699,12 @@ function withTerrainLod(geometries, stagedState, graph, camera) {
 }
 
 function partsWithCloth(restParts, clothGeometries, previousParts) {
-  if (!clothGeometries) {
-    return restParts;
-  }
+  if (!clothGeometries) return restParts;
   const next = restParts.map((part, index) => {
     const geometry = clothGeometries.get(part.name);
     return !geometry ? part : previousParts[index]?.geometry === geometry ? previousParts[index] : Object.freeze({ ...part, geometry });
   });
-  return next.every((part, index) => part === previousParts[index]) ? previousParts : Object.freeze(next);
+  return next.length === previousParts.length && next.every((part, index) => part === previousParts[index]) ? previousParts : Object.freeze(next);
 }
 
 // A shape key weighs what its morph track samples at this time, or its starting value when no track names it.
@@ -1751,7 +1749,8 @@ function publishPose(stagedState, pose) {
   const previousParts = stagedState.parts;
   const sampledParts = partsWithCloth(stagedState.restParts, pose.clothGeometries && (stagedState.recipe.motion ? agentSceneModule('motion').seasKeptInPlace(stagedState, pose.clothGeometries) : pose.clothGeometries), previousParts);
   // Ranked also when the parts did not change: staging an edit ranks the rest parts, so the drawn parts get their ranks back.
-  stagedState.parts = stagedState.rankFlushParts ? stagedState.rankFlushParts(sampledParts) : sampledParts;
+  const ranked = stagedState.rankFlushParts ? stagedState.rankFlushParts(sampledParts) : sampledParts;
+  stagedState.parts = pose.time === null ? ranked : stagedState.physicsSampler?.withSprayPart(ranked, pose.time, pose.camera, previousParts) ?? ranked;
   return stagedState.parts !== previousParts;
 }
 
@@ -2282,7 +2281,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   let closedRoomCache = null;
   function closedRoomProblems() {
     if (closedRoomCache?.revision !== revision) {
-      const worldMatrices = new Map(state.parts.map(part => [part, state.graph.getNode(part.name).worldMatrix]));
+      const worldMatrices = new Map(state.parts.map(part => [part, part.matrix]));
       closedRoomCache = { revision, share: closedRoomShare(state.parts, worldMatrices) };
     }
     const { share } = closedRoomCache;
