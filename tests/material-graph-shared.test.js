@@ -223,3 +223,54 @@ test('snow-on-mountain graph with shared slope, height, fine noise and sparkle f
   assert.ok(compiled.cost * 1024 * 1024 <= MATERIAL_GRAPH_LIMITS.maxWork, `${compiled.cost * 1024 * 1024} over ${MATERIAL_GRAPH_LIMITS.maxWork}`);
   assert.doesNotThrow(() => checkMaterialGraphWork(compiled, 1024));
 });
+
+test('snow-on-mountain graph using layer nodes on colour, roughness and height fits at 1024 (#3147)', () => {
+  const height = { surface: { output: 'height', space: 'world', range: [0, 10] } };
+  const macroNoise = { noise: { scale: 6, seed: 1, octaves: 2 } };
+  const fineNoise = { noise: { scale: 32, seed: 2, octaves: 1 } };
+  const sparkle = { whiteNoise: { scale: 64, seed: 3 } };
+  const snowMask = {
+    smoothstep: [0.35, 0.55, {
+      add: [
+        { invert: SLOPE },
+        { add: [
+          { mul: [{ sub: [macroNoise, 0.5] }, 0.3] },
+          { add: [{ mul: [{ sub: [fineNoise, 0.5] }, 0.15] }, { mul: [height, 0.2] }] },
+        ] },
+      ],
+    }],
+  };
+  const layeredMountain = {
+    color: {
+      layer: {
+        base: { mix: [[0.18, 0.16, 0.14], [0.32, 0.29, 0.25], macroNoise] },
+        top: { mix: [[0.85, 0.9, 0.96], [1, 1, 1], { mul: [sparkle, 0.3] }] },
+        mask: snowMask,
+        edge: 0.5,
+        softness: 0.1,
+      },
+    },
+    roughness: {
+      layer: {
+        base: 0.92,
+        top: { mix: [0.55, 0.15, { smoothstep: [0.92, 0.99, sparkle] }] },
+        mask: snowMask,
+        edge: 0.5,
+        softness: 0.1,
+      },
+    },
+    height: {
+      layer: {
+        base: macroNoise,
+        top: { mul: [fineNoise, 0.2] },
+        mask: snowMask,
+        edge: 0.5,
+        softness: 0.1,
+      },
+    },
+  };
+  const compiled = compileMaterialGraph(layeredMountain);
+  assert.ok(compiled.nodeCount <= MATERIAL_GRAPH_LIMITS.maxNodes, `${compiled.nodeCount} nodes`);
+  assert.ok(compiled.cost * 1024 * 1024 <= MATERIAL_GRAPH_LIMITS.maxWork, `${compiled.cost * 1024 * 1024} over ${MATERIAL_GRAPH_LIMITS.maxWork}`);
+  assert.doesNotThrow(() => checkMaterialGraphWork(compiled, 1024));
+});

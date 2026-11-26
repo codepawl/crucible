@@ -1,0 +1,1 @@
+- Calibrate material graph `layer` node work cost to match `smoothstep` and `mix`, letting mask-gated snow layers bake at 1024 (#3147)
