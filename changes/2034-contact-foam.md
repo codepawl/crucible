@@ -1,0 +1,1 @@
+- Draw `contactFoam` against grazing vertical hulls and emergent rocks in addition to sloped shores (#2034)

@@ -1,0 +1,6 @@
+- entry:world-material-shader: encodes above-water scene height into alpha and adds bounded screen-space waterline sampling in `waterContactFoam` so grazing hulls and rocks get a steady foam rim (+945 bytes gzip).
+- entry:nature: imports `world-material-shader.js`, carrying the updated `waterContactFoam` shader (+905 bytes gzip).
+- entry:terrain: imports `world-material-shader.js`, carrying the updated `waterContactFoam` shader (+990 bytes gzip).
+- entry:grass: imports `world-material-shader.js`, carrying the updated `waterContactFoam` shader (+950 bytes gzip).
+- entry:clutter: imports `world-material-shader.js`, carrying the updated `waterContactFoam` shader (+958 bytes gzip).
+- scene:agent-scene+lazy: loads `world-material-shader.js` lazily for water scenes (+942 bytes gzip; core `scene:agent-scene`, `scene:lit-box`, `scene:gltf-box`, and `entry:core` are unchanged at 0 bytes).

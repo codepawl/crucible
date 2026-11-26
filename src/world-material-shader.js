@@ -546,7 +546,7 @@ vec3 refractedBackground(vec3 fallback, vec3 surfacePosition, vec3 normal, vec3 
   float depth = 0.0;
   for (int pass = 0; pass < 2; pass++) {
     float stored = textureLod(waterScene, uv, 0.0).a;
-    depth = stored < 0.999 ? (stored - 0.5) / 0.498 * 8.0 : 0.0;
+    depth = stored > 0.5 && stored < 0.999 ? (stored - 0.5) / 0.498 * 8.0 : 0.0;
     vec4 clip = viewProjection * vec4(surfacePosition + bent * (depth / max(-bent.y, 0.1)), 1.0);
     uv = clip.xy / clip.w * 0.5 + 0.5;
   }
@@ -560,34 +560,99 @@ vec3 refractedBackground(vec3 fallback, vec3 surfacePosition, vec3 normal, vec3 
     vec4 sampled = textureLod(waterScene, position, 0.0);
     // A lookup that leaves the picture has nothing to show, so the water keeps its own colour there.
     float inside = all(greaterThan(position, vec2(0.0))) && all(lessThan(position, vec2(1.0))) ? 1.0 : 0.0;
-    float below = sampled.a < 0.999 ? inside : 0.0;
+    float below = sampled.a > 0.5 && sampled.a < 0.999 ? inside : 0.0;
     seenColor += waterDecode(sampled.rgb) * below;
     seen += below;
   }
   // Average only the taps that saw something below the water: a tap past the bed edge must not pull the blur toward the water colour.
   return seen > 0.5 ? seenColor / seen : fallback;
 }
-// Contact foam: a line where the water meets what lies behind it. The opaque pass left the depth below the water level of each
-// surface it drew in the alpha channel, so the gap between this water point and the scene point seen through the same pixel is
-// known; foam is where that gap, measured in screen pixels, is under the width, so the line keeps one width at any distance.
+// Contact foam: a line where the water meets what lies behind or beside it. The opaque pass left the signed height relative to
+// waterBody.x in alpha (< 0.5 above water, > 0.5 below water, >= 0.999 sky), so depth-based shore foam and screen-space grazing
+// waterline edges around vertical hulls and rocks share one steady screen-pixel width.
 // waterContact is (width in pixels, hardness, noise, 1 when on); noiseValue is 0 to 1 and breaks the edge up.
+float waterContactDepthFoam(vec3 surfacePosition, float pixelsPerMetre, float edge, float softness, float stored);
+float waterContactEdgeFoam(vec3 surfacePosition, float pixelsPerMetre, float edge, float softness, ivec2 texSize);
 float waterContactFoam(vec3 surfacePosition, float noiseValue) {
   if (waterContact.w < 0.5 || waterBody.w < 0.5) return 0.0;
-  vec2 size = vec2(textureSize(waterScene, 0));
-  float stored = textureLod(waterScene, gl_FragCoord.xy / size, 0.0).a;
-  if (stored >= 0.999) return 0.0;
-  float sceneDepth = max(stored - 0.5, 0.0) / 0.498 * 8.0;
-  float gap = abs(surfacePosition.y - waterBody.x + sceneDepth);
-  // A pixel far away spans metres, so a width in pixels alone would foam open water up to the horizon, where the scene behind is deep
-  // water, the far plane or the sky. Foam only where the scene is within half a metre of the water surface.
-  if (gap > 0.5) return 0.0;
+  ivec2 texSize = textureSize(waterScene, 0);
+  float stored = texelFetch(waterScene, clamp(ivec2(gl_FragCoord.xy), ivec2(0), texSize - 1), 0).a;
   vec4 above = viewProjection * vec4(surfacePosition + vec3(0.0, 1.0, 0.0), 1.0);
   vec4 here = viewProjection * vec4(surfacePosition, 1.0);
-  float pixelsPerMetre = max(abs(above.y / above.w - here.y / here.w) * 0.5 * size.y, 0.001);
-  float gapPixels = gap * pixelsPerMetre;
+  float pixelsPerMetre = max(abs(above.y / above.w - here.y / here.w) * 0.5 * float(texSize.y), 0.001);
   float edge = waterContact.x * (1.0 + (noiseValue - 0.5) * 2.0 * waterContact.z);
   float softness = mix(0.6 * waterContact.x, 0.0, waterContact.y) + 1.0;
+  float depthFoam = waterContactDepthFoam(surfacePosition, pixelsPerMetre, edge, softness, stored);
+  if (depthFoam >= 0.999) return 1.0;
+  return max(depthFoam, waterContactEdgeFoam(surfacePosition, pixelsPerMetre, edge, softness, texSize));
+}
+float waterContactDepthFoam(vec3 surfacePosition, float pixelsPerMetre, float edge, float softness, float stored) {
+  if (stored < 0.5 || stored >= 0.999) return 0.0;
+  float sceneDepth = max(stored - 0.5, 0.0) / 0.498 * 8.0;
+  float gap = abs(surfacePosition.y - waterBody.x + sceneDepth);
+  if (gap > 0.5) return 0.0;
+  float gapPixels = gap * pixelsPerMetre;
   return 1.0 - smoothstep(edge - softness, edge + softness, gapPixels);
+}
+bool waterSceneEmergent(ivec2 coord, float minY, out float sceneY) {
+  float sampleAlpha = texelFetch(waterScene, coord, 0).a;
+  if (sampleAlpha >= 0.999) return false;
+  sceneY = waterBody.x + (0.5 - sampleAlpha) / 0.498 * 8.0;
+  return sceneY >= minY;
+}
+float waterContactEdgeFoam(vec3 surfacePosition, float pixelsPerMetre, float edge, float softness, ivec2 texSize) {
+  float reach = min(min(max(edge + softness, 1.0), max(4.0 * pixelsPerMetre, 2.0)), 80.0);
+  float maxAbove = clamp(3.0 / pixelsPerMetre, 0.35, 1.0);
+  float minY = surfacePosition.y - 0.08;
+  ivec2 center = ivec2(gl_FragCoord.xy);
+  float closest = reach + 1.0;
+  int stepCount = clamp(int(ceil(reach)), 1, 6);
+  for (int direction = 0; direction < 16; direction++) {
+    float angle = float(direction) * 0.392699082;
+    vec2 stepVector = vec2(cos(angle), sin(angle));
+    float previousDistance = 0.0;
+    for (int stepIndex = 0; stepIndex < 6; stepIndex++) {
+      if (stepIndex >= stepCount) break;
+      float fraction = float(stepIndex + 1) / float(stepCount);
+      float distancePixels = mix(1.0, reach, fraction * sqrt(fraction));
+      if (distancePixels >= closest) break;
+      ivec2 coord = center + ivec2(round(stepVector * distancePixels));
+      if (coord.x < 0 || coord.y < 0 || coord.x >= texSize.x || coord.y >= texSize.y) break;
+      float hitSceneY;
+      if (waterSceneEmergent(coord, minY, hitSceneY)) {
+        float low = previousDistance;
+        float high = distancePixels;
+        ivec2 hitCoord = coord;
+        if (stepIndex > 0) {
+          for (int refine = 0; refine < 2; refine++) {
+            float middle = 0.5 * (low + high);
+            ivec2 midCoord = clamp(center + ivec2(round(stepVector * middle)), ivec2(0), texSize - 1);
+            float midSceneY;
+            if (waterSceneEmergent(midCoord, minY, midSceneY)) {
+              high = middle;
+              hitCoord = midCoord;
+              hitSceneY = midSceneY;
+            } else {
+              low = middle;
+            }
+          }
+        }
+        if (hitSceneY <= surfacePosition.y + maxAbove) {
+          float peakNeighborY = hitSceneY;
+          for (int axis = 0; axis < 4; axis++) {
+            ivec2 side = axis == 0 ? ivec2(1, 0) : axis == 1 ? ivec2(-1, 0) : axis == 2 ? ivec2(0, 1) : ivec2(0, -1);
+            float sideAlpha = texelFetch(waterScene, clamp(hitCoord + side, ivec2(0), texSize - 1), 0).a;
+            if (sideAlpha < 0.999) peakNeighborY = max(peakNeighborY, waterBody.x + (0.5 - sideAlpha) / 0.498 * 8.0);
+          }
+          if (peakNeighborY <= surfacePosition.y + maxAbove * 1.5) closest = min(closest, length(vec2(hitCoord - center)));
+        }
+        break;
+      }
+      previousDistance = distancePixels;
+    }
+  }
+  if (closest > reach) return 0.0;
+  return 1.0 - smoothstep(edge - softness, edge + softness, closest);
 }
 #ifndef shadowVisibility
 float softShadowVisibility(vec3 normal, float radiusTexels) {
@@ -936,7 +1001,13 @@ vec3 waterRampRadianceFor(vec3 asked) {
 `,
   worldFinal: `  // A ramp stands clear of the distance haze, which would shift the colour it was asked to show: a local density of 0 shadows the uniform.
   float fogDensity = waterRampOwns > 0.5 ? 0.0 : fogDensity;
-  if (waterDepth > 0.0 && waterBody.w > 0.5 && alphaMode < 0.5) alpha = 0.5 + 0.498 * clamp(waterDepth / 8.0, 0.0, 1.0);
+  if (waterBody.w > 0.5 && !TAG_WATER && compositeMode < 0.5 && (alphaMode < 0.5 || (alphaMode < 1.5 && alphaToCoverage < 0.5))) {
+    if (waterDepth > 0.0) {
+      alpha = 0.5 + 0.498 * clamp(waterDepth / 8.0, 0.0, 1.0);
+    } else if (worldPosition.y >= waterBody.x - 0.02) {
+      alpha = 0.5 - 0.498 * clamp(max(worldPosition.y - waterBody.x, 0.0) / 8.0, 0.0, 1.0);
+    }
+  }
   if (TAG_FIRE) {
     float turbulence = sin(worldPosition.x * 3.0 + time * 4.0) * sin(worldPosition.y * 4.2 - time * 3.0) * sin(worldPosition.z * 3.7);
     float heat = pow(clamp(0.55 + turbulence * 0.5 - explosionProgress * 0.12, 0.0, 1.0), 3.0);
