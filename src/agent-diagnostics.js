@@ -96,6 +96,12 @@ export function recipeDiagnostics(recipe) {
   }
   problems.push(...recipe.geometries.filter(geometry => geometry.type === 'terrain').flatMap(geometry => agentSceneModule('terrain').terrainHoleDiagnostics(geometry)));
   problems.push(...realismDiagnostics(recipe));
+  if (typeof recipe.camera?.roll === 'number' && Math.abs(recipe.camera.roll) > Math.PI) {
+    problems.push(diagnostic('camera-roll-range', 'warning', 'camera.roll',
+      `camera.roll value ${recipe.camera.roll} exceeds +/-pi; camera roll is in radians, not degrees.`,
+      'Convert degrees to radians (degrees * Math.PI / 180) with scene_apply set-camera.'));
+  }
+  if (recipe.motion) problems.push(...agentSceneModule('motion').cameraRollDiagnostics(recipe));
   problems.push(...portalProblems(recipe.environment?.areaLights ?? []));
   return problems;
 }

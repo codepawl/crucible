@@ -72,7 +72,7 @@ Material properties are `color`, `emissiveColor`, `emission`, `metallic`, and `r
 A material track names a recipe material, or the `id` of an `asset.materials[]` override on a placed asset (docs/agent-scene.md), which is how an imported part heats and cools.
 Camera properties are `eye`, `target`, `fov`, and `roll`.
 Untracked properties retain authored base values.
-Clipping planes retain authored values. Roll rotates the authored camera up direction.
+Clipping planes retain authored values. Roll rotates the authored camera up direction in radians (`scene_inspect` warns when a roll value exceeds ±pi radians in case degrees were passed).
 
 Tracks support `LINEAR`, `STEP`, `SMOOTH`, and `CUBICSPLINE` interpolation.
 Cubic keys require both `inTangent` and `outTangent`, with the same dimensions as the value.
@@ -80,7 +80,7 @@ Tangents use change per second.
 Quaternion values normalize through the existing animation core.
 Quaternion tangents retain their authored values.
 Other interpolation modes reject tangents.
-A `visible` track takes `STEP` only, since it is 1 or 0 and cannot blend.
+A `visible` track takes `STEP` only, since it is 1 or 0 and cannot blend, and both `scene_create` and `set-motion` accept `visible` tracks and up to 256 keyframes per track.
 
 A motion is checked when it is set: every track is sampled at 33 evenly spaced times across the clip, so interpolation,
 `modifiers` and `extrapolation` that leave a property's range (a `generator` pushing `roughness` past 1, linear extrapolation
