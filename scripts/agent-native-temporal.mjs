@@ -199,10 +199,24 @@ function clampChannel(value, mean, deviation, deviations) {
   return Math.min(mean + spread, Math.max(mean - spread, value));
 }
 
+const EDGE_DEPTH_WEIGHT_SCALE = 1;
+
 function insideDepthRange(pastDistance, depthRange, pixel, tolerance) {
   const nearest = depthRange[pixel * 2];
   const farthest = depthRange[pixel * 2 + 1];
   return farthest > 0 && pastDistance >= nearest * (1 - tolerance) && pastDistance <= farthest * (1 + tolerance);
+}
+
+function hasDepthStep(depthRange, pixel, tolerance) {
+  const nearest = depthRange[pixel * 2];
+  const farthest = depthRange[pixel * 2 + 1];
+  return farthest > 0 && farthest > nearest * (1 + tolerance);
+}
+
+function rescuedCornerWeight(weight, pastDistance, expectedDistance) {
+  const relativeDifference = Math.abs(pastDistance - expectedDistance) / Math.max(1e-4, expectedDistance);
+  const scale = relativeDifference / EDGE_DEPTH_WEIGHT_SCALE;
+  return weight / (1 + scale * scale);
 }
 
 function validateNonShare(value, name, zeroAllowed) {
@@ -308,12 +322,17 @@ export function createTemporalAccumulator(options = {}) {
         const pixel = y * width + x;
         const colorIndex = pixel * 3;
         const distance = depth[pixel];
-        let pastRed = 0;
-        let pastGreen = 0;
-        let pastBlue = 0;
-        let pastCount = 0;
-        let fetchWeight = 0;
+        let cleanRed = 0;
+        let cleanGreen = 0;
+        let cleanBlue = 0;
+        let cleanCount = 0;
+        let cleanWeight = 0;
+        let rescuedRed = 0;
+        let rescuedGreen = 0;
+        let rescuedBlue = 0;
+        let rescuedCount = 0;
         let rescuedWeight = 0;
+        let rescuedRawWeight = 0;
         if (distance > 0) {
           const sensorX = ((x + 0.5) / width) * 2 - 1 + 2 * lensShift[0];
           let directionX = forward[0] + right[0] * sensorX + up[0] * sensorY;
@@ -345,7 +364,9 @@ export function createTemporalAccumulator(options = {}) {
               const normalX = normal[colorIndex];
               const normalY = normal[colorIndex + 1];
               const normalZ = normal[colorIndex + 2];
-              // A bilinear fetch that leaves out the texels of another surface.
+              const edgeClampEnabled = settings.edgeClampDeviations > 0;
+              const normalStepAllowed = edgeClampEnabled && hasDepthStep(depthRange, pixel, settings.depthTolerance);
+              // A bilinear fetch that keeps clean same-surface texels separate from depth-step edge rescues.
               for (let corner = 0; corner < 4; corner++) {
                 const cornerX = corner & 1;
                 const cornerY = corner >> 1;
@@ -354,39 +375,52 @@ export function createTemporalAccumulator(options = {}) {
                 const sourceRow = Math.min(height - 1, Math.max(0, top + cornerY));
                 const source = sourceRow * width + sourceColumn;
                 const sourceIndex = source * 3;
-                const sameSurface = Math.abs(past.depth[source] - expectedDistance) <= allowedDifference;
-                if (!sameSurface) {
-                  if (!(settings.edgeClampDeviations > 0) || !insideDepthRange(past.depth[source], depthRange, pixel, settings.depthTolerance)) {
-                    continue;
-                  }
-                  rescuedWeight += weight;
-                } else {
-                  const agreement = normalX * past.normal[sourceIndex] + normalY * past.normal[sourceIndex + 1] + normalZ * past.normal[sourceIndex + 2];
-                  if (agreement < settings.normalAgreement) {
-                    continue;
-                  }
+                const pastDistance = past.depth[source];
+                const sameSurface = Math.abs(pastDistance - expectedDistance) <= allowedDifference;
+                const agreement = normalX * past.normal[sourceIndex] + normalY * past.normal[sourceIndex + 1] + normalZ * past.normal[sourceIndex + 2];
+                if (sameSurface && agreement >= settings.normalAgreement) {
+                  cleanRed += past.color[sourceIndex] * weight;
+                  cleanGreen += past.color[sourceIndex + 1] * weight;
+                  cleanBlue += past.color[sourceIndex + 2] * weight;
+                  cleanCount += past.counts[source] * weight;
+                  cleanWeight += weight;
+                } else if (edgeClampEnabled && ((sameSurface && normalStepAllowed) || (!sameSurface && insideDepthRange(pastDistance, depthRange, pixel, settings.depthTolerance)))) {
+                  const cornerWeight = rescuedCornerWeight(weight, pastDistance, expectedDistance);
+                  rescuedRed += past.color[sourceIndex] * cornerWeight;
+                  rescuedGreen += past.color[sourceIndex + 1] * cornerWeight;
+                  rescuedBlue += past.color[sourceIndex + 2] * cornerWeight;
+                  rescuedCount += past.counts[source] * cornerWeight;
+                  rescuedWeight += cornerWeight;
+                  rescuedRawWeight += weight;
                 }
-                pastRed += past.color[sourceIndex] * weight;
-                pastGreen += past.color[sourceIndex + 1] * weight;
-                pastBlue += past.color[sourceIndex + 2] * weight;
-                pastCount += past.counts[source] * weight;
-                fetchWeight += weight;
               }
             }
           }
         }
-        if (fetchWeight > settings.minimumFetchWeight) {
-          if (rescuedWeight > 0) {
-            [pastRed, pastGreen, pastBlue] = clampToNeighbourhood(pastRed / fetchWeight, pastGreen / fetchWeight, pastBlue / fetchWeight, colorStatistics, pixel, settings.edgeClampDeviations)
-              .map(channel => channel * fetchWeight);
-            pastCount = Math.min(pastCount / fetchWeight, settings.edgeHistoryFrames) * fetchWeight;
-          }
-          const count = pastCount / fetchWeight + 1;
+        if (cleanWeight > settings.minimumFetchWeight) {
+          const count = cleanCount / cleanWeight + 1;
           const share = Math.max(1 / count, minimumShare);
-          const kept = (1 - share) / fetchWeight;
-          blended[colorIndex] = pastRed * kept + color[colorIndex] * share;
-          blended[colorIndex + 1] = pastGreen * kept + color[colorIndex + 1] * share;
-          blended[colorIndex + 2] = pastBlue * kept + color[colorIndex + 2] * share;
+          const kept = (1 - share) / cleanWeight;
+          blended[colorIndex] = cleanRed * kept + color[colorIndex] * share;
+          blended[colorIndex + 1] = cleanGreen * kept + color[colorIndex + 1] * share;
+          blended[colorIndex + 2] = cleanBlue * kept + color[colorIndex + 2] * share;
+          counts[pixel] = count;
+          pixelsWithHistory += 1;
+        } else if (cleanWeight + rescuedRawWeight > settings.minimumFetchWeight && cleanWeight + rescuedWeight > 0) {
+          const fetchWeight = cleanWeight + rescuedWeight;
+          const [pastRed, pastGreen, pastBlue] = clampToNeighbourhood(
+            (cleanRed + rescuedRed) / fetchWeight,
+            (cleanGreen + rescuedGreen) / fetchWeight,
+            (cleanBlue + rescuedBlue) / fetchWeight,
+            colorStatistics,
+            pixel,
+            settings.edgeClampDeviations,
+          );
+          const count = Math.min((cleanCount + rescuedCount) / fetchWeight, settings.edgeHistoryFrames) + 1;
+          const share = Math.max(1 / count, minimumShare);
+          blended[colorIndex] = pastRed * (1 - share) + color[colorIndex] * share;
+          blended[colorIndex + 1] = pastGreen * (1 - share) + color[colorIndex + 1] * share;
+          blended[colorIndex + 2] = pastBlue * (1 - share) + color[colorIndex + 2] * share;
           counts[pixel] = count;
           pixelsWithHistory += 1;
         } else {
