@@ -146,7 +146,25 @@ export function buildTriangleBvh(positions, indices, options) {
 }
 
 /** buildTriangleBvh as steps (#3052): the same hierarchy, with a checkpoint every few thousand triangles for a build run in slices. */
-export function* buildTriangleBvhSteps(positions, indices, { leafSize = 8, maxDepth = 64 } = {}) {
+export function buildTriangleBvhSteps(positions, indices, { leafSize = 8, maxDepth = 64 } = {}) {
+  if (!positions || positions.length % 3 !== 0) throw new RangeError('Triangle BVH positions length must be a multiple of 3.');
+  if (!indices || indices.length % 3 !== 0) throw new RangeError('Triangle BVH indices length must be a multiple of 3.');
+  if (!Number.isInteger(leafSize) || leafSize < 1) throw new RangeError('Triangle BVH leafSize must be a positive integer.');
+  if (!Number.isInteger(maxDepth) || maxDepth < 0) throw new RangeError('Triangle BVH maxDepth must be a non-negative integer.');
+  const vertexCount = positions.length / 3;
+  for (let index = 0; index < positions.length; index++) {
+    if (!Number.isFinite(positions[index])) throw new RangeError('Triangle BVH positions must be finite.');
+  }
+  for (let index = 0; index < indices.length; index++) {
+    const vertex = indices[index];
+    if (!Number.isInteger(vertex) || vertex < 0 || vertex >= vertexCount) {
+      throw new RangeError(`Triangle BVH index ${vertex} is out of range [0, ${vertexCount}).`);
+    }
+  }
+  return buildTriangleBvhGenerator(positions, indices, leafSize, maxDepth);
+}
+
+function* buildTriangleBvhGenerator(positions, indices, leafSize, maxDepth) {
   const triangleCount = indices.length / 3;
   const { bounds: triangleBounds, centroids } = triangleBoundsAndCentroids(positions, indices);
   const triangleOrder = Uint32Array.from({ length: triangleCount }, (value, slot) => slot);

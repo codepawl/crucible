@@ -22,12 +22,14 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('tool.translate', 'Pick up to move', 'Tools', 'normal', binding('g')),
   action('tool.rotate', 'Pick up to rotate', 'Tools', 'normal', binding('r')),
   action('tool.scale', 'Pick up to scale', 'Tools', 'normal', binding('s')),
-  action('tool.snap', 'Snap to a surface', 'Tools', 'normal', binding('t')),
+  action('snap.toggle', 'Snapping on or off', 'Tools', 'normal', binding('Tab', { shift: true })),
   action('add.open', 'Add an object or a light', 'Tools', 'normal', binding('a', { shift: true })),
   action('edit.copy', 'Copy', 'Edit', 'normal', binding('c', { ctrl: true, shift: false })),
   action('edit.paste', 'Paste', 'Edit', 'normal', binding('v', { ctrl: true, shift: false })),
   action('edit.duplicate', 'Duplicate', 'Edit', 'normal', binding('d', { shift: true }), binding('d', { ctrl: true })),
   action('edit.join', 'Join the selected objects', 'Edit', 'normal', binding('j', { ctrl: true })),
+  action('edit.parent', 'Parent to active object', 'Edit', 'normal', binding('p', { ctrl: true, shift: false })),
+  action('edit.clearParent', 'Clear parent', 'Edit', 'normal', binding('p', { alt: true, shift: false })),
   action('edit.delete', 'Delete', 'Edit', 'normal', binding('x'), binding('Delete'), binding('Backspace')),
   action('edit.rename', 'Rename', 'Edit', 'normal', binding('F2')),
   action('edit.deselect', 'Deselect', 'Edit', 'normal', binding('Escape')),
@@ -52,13 +54,14 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('view.seeThrough', 'See through the surface', 'View', 'normal', { code: 'KeyZ', alt: true }),
   action('animate.keyframe', 'Insert a keyframe', 'Animate', 'normal', binding('i'), binding('k')),
   action('animate.play', 'Play', 'Animate', 'normal', binding(' ')),
-  action('mesh.enter', 'Edit the mesh', 'Edit', 'normal', binding('Tab')),
+  // Shift left up: Shift+Tab is the snapping key.
+  action('mesh.enter', 'Edit the mesh', 'Edit', 'normal', binding('Tab', { shift: false })),
   action('file.open', 'Open', 'File', 'normal', binding('o', { ctrl: true })),
   action('file.save', 'Save', 'File', 'normal', binding('s', { ctrl: true, shift: false })),
   action('file.saveAs', 'Save as', 'File', 'normal', binding('s', { ctrl: true, shift: true })),
   action('settings.open', 'Settings', 'File', 'normal', binding(',', { ctrl: true })),
   action('help.shortcuts', 'Keyboard shortcuts', 'Help', 'normal', binding('?')),
-  action('mesh.leave', 'Leave edit mode', 'Edit mode', 'mesh', binding('Tab')),
+  action('mesh.leave', 'Leave edit mode', 'Edit mode', 'mesh', binding('Tab', { shift: false })),
   action('mesh.escape', 'Clear the selection, then leave', 'Edit mode', 'mesh', binding('Escape')),
   action('mesh.vertexMode', 'Select vertices', 'Edit mode', 'mesh', binding('1')),
   action('mesh.edgeMode', 'Select edges', 'Edit mode', 'mesh', binding('2')),
@@ -98,12 +101,13 @@ export const SHORTCUT_ROWS = Object.freeze([
   Object.freeze({ keys: 'Shift + {modal.axisX} / {modal.axisY} / {modal.axisZ}', label: 'While holding: keep to the plane across that axis' }),
   Object.freeze({ keys: '0-9 . -', label: 'While holding: type the amount, Backspace to correct' }),
   Object.freeze({ keys: 'Click or {modal.place} / {modal.cancel}', label: 'While holding: place / put back' }),
-  Object.freeze({ keys: '{tool.snap}', label: 'Snap to a surface' }),
-  Object.freeze({ keys: 'Shift + drag', label: 'Snap to a step or an angle' }),
+  Object.freeze({ keys: '{snap.toggle}', label: 'Snapping on or off' }),
+  Object.freeze({ keys: 'Ctrl + drag', label: 'Flip snapping while dragging' }),
   Object.freeze({ keys: '{add.open}', label: 'Add an object or a light' }),
   Object.freeze({ keys: '{edit.copy} / {edit.paste}', label: 'Copy / Paste' }),
   Object.freeze({ keys: '{edit.duplicate} / {edit.duplicate#1}', label: 'Duplicate' }),
   Object.freeze({ keys: '{edit.join}', label: 'Join the selected objects into the last one picked' }),
+  Object.freeze({ keys: '{edit.parent} / {edit.clearParent}', label: 'Parent to active object / clear parent' }),
   Object.freeze({ keys: '{edit.delete} / {edit.delete#1}', label: 'Delete' }),
   Object.freeze({ keys: '{edit.deselect}', label: 'Deselect' }),
   Object.freeze({ keys: '{select.all} / {select.none} / {select.invert}', label: 'Select all / none / invert' }),
@@ -139,7 +143,7 @@ function describeBinding(value) {
   return JSON.stringify(value);
 }
 
-function validateBinding(actionId, value) {
+export function validateBinding(actionId, value) {
   const expected = 'pass { key: "g" } or { code: "KeyG" } with optional boolean ctrl, shift and alt';
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new TypeError(`Keymap binding for "${actionId}" is ${describeBinding(value)}: ${expected}.`);
@@ -166,7 +170,7 @@ function shiftsOverlap(first, second) {
   return first === undefined || second === undefined || first === second;
 }
 
-function bindingsOverlap(first, second) {
+export function bindingsOverlap(first, second) {
   return (first.key?.toLowerCase() ?? null) === (second.key?.toLowerCase() ?? null)
     && (first.code ?? null) === (second.code ?? null)
     && Boolean(first.ctrl) === Boolean(second.ctrl)
@@ -308,7 +312,7 @@ const MAYA_BINDINGS = Object.freeze({
   'tool.translate': binding('w'),
   'tool.rotate': binding('e'),
   'tool.scale': binding('r'),
-  'tool.snap': binding('j'),
+  'snap.toggle': binding('j'),
   'edit.duplicate': binding('d', { ctrl: true }),
   'edit.delete': [binding('Delete'), binding('Backspace')],
   'edit.undo': binding('z', { ctrl: true, shift: false }),
@@ -334,7 +338,7 @@ const CINEMA_4D_BINDINGS = Object.freeze({
   'tool.translate': binding('e'),
   'tool.rotate': binding('r'),
   'tool.scale': binding('t'),
-  'tool.snap': binding('s', { shift: true }),
+  'snap.toggle': binding('s', { shift: true }),
   'edit.delete': [binding('Backspace'), binding('Delete')],
   'edit.deselect': [binding('a', { ctrl: true, shift: true }), binding('Escape')],
   'view.frame': [binding('o'), binding('s', { shift: false })],
@@ -359,13 +363,27 @@ export const KEYMAP_PRESETS = Object.freeze({
 
 export const KEYMAP_PRESET_IDS = Object.freeze(Object.keys(KEYMAP_PRESETS));
 
-/** The keymap of a preset, resolved over the defaults. */
-export function resolveKeymapPreset(presetId) {
+/**
+ * The keymap of a preset, resolved over the defaults. `overrides` is what a person changed in that preset:
+ * `{ actionId: binding | [bindings] | null }`, where null leaves the action without a key.
+ */
+export function resolveKeymapPreset(presetId, overrides = {}) {
   const preset = KEYMAP_PRESETS[presetId];
   if (!preset) {
     throw new RangeError(`Unknown keymap preset "${presetId}": pass one of ${KEYMAP_PRESET_IDS.join(', ')}.`);
   }
-  return resolveKeymap(preset.bindings, { unbound: preset.unbound, toolKeysGrab: preset.toolKeysGrab, mouse: preset.mouse });
+  const bindings = { ...preset.bindings };
+  const unbound = new Set(preset.unbound ?? []);
+  for (const [actionId, replacement] of Object.entries(overrides)) {
+    if (replacement === null) {
+      delete bindings[actionId];
+      unbound.add(actionId);
+    } else {
+      bindings[actionId] = replacement;
+      unbound.delete(actionId);
+    }
+  }
+  return resolveKeymap(bindings, { unbound: [...unbound], toolKeysGrab: preset.toolKeysGrab, mouse: preset.mouse });
 }
 
 /** The camera move a mouse press starts under this keymap ('orbit', 'pan' or 'zoom'), or null for the default drag. */

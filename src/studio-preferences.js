@@ -2,6 +2,9 @@
 // same scene keep their own snap steps and their own panels.
 
 import { KEYMAP_PRESET_IDS } from './studio-keymap.js';
+import { normalizeKeyOverrides } from './studio-key-overrides.js';
+import { SNAP_TARGET_IDS } from './studio-snapping.js';
+import { STUDIO_LENGTH_UNITS } from './studio-units.js';
 
 export const STUDIO_PREFERENCES_KEY = 'crucible-studio-preferences';
 
@@ -10,6 +13,8 @@ export const STUDIO_GIZMO_PIXELS = Object.freeze({ small: 58, medium: 74, large:
 export const STUDIO_PREFERENCE_CHOICES = Object.freeze({
   moveSnapStep: Object.freeze([0.05, 0.1, 0.25, 0.5, 1]),
   rotateSnapDegrees: Object.freeze([5, 10, 15, 30, 45, 90]),
+  lengthUnit: STUDIO_LENGTH_UNITS,
+  snapTarget: SNAP_TARGET_IDS,
   gizmoSize: Object.freeze(Object.keys(STUDIO_GIZMO_PIXELS)),
   startWorkspace: Object.freeze(['build', 'look', 'animate']),
   theme: Object.freeze(['system', 'light', 'dark']),
@@ -80,11 +85,16 @@ export const STUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   panelsFloating: false,
   moveSnapStep: 0.25,
   rotateSnapDegrees: 15,
+  lengthUnit: 'm',
+  snapEnabled: false,
+  snapTarget: 'increment',
   gizmoSize: 'medium',
   startWorkspace: 'build',
   theme: 'system',
   performance: 'automatic',
   keymap: 'crucible',
+  // What a person changed in each keymap preset, by preset: { crucible: { 'tool.select': { key: 'v' } } }.
+  keyOverrides: Object.freeze({}),
   motion: 'system',
   zoomDirection: 'normal',
   setupDone: false,
@@ -114,6 +124,8 @@ export function normalizeStudioPreferences(value) {
     const sizeInRange = STUDIO_PREFERENCE_SIZES[name];
     if (name === 'propertyGroupsOpen') {
       preferences[name] = propertyGroupStatesOf(candidate);
+    } else if (name === 'keyOverrides') {
+      preferences[name] = normalizeKeyOverrides(candidate);
     } else if (sizeInRange) {
       if (Number.isFinite(candidate)) {
         preferences[name] = sizeInRange(candidate);

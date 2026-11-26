@@ -2,6 +2,7 @@ import { cameraFieldOfView } from './camera.js';
 import { DEFAULT_SUN_ANGULAR_RADIUS } from './environment-shading.js';
 import { BUNDLED_ENVIRONMENT_NAMES } from './look-catalog.js';
 import { DEFAULT_SPECULAR_ANTI_ALIASING, MAXIMUM_SPECULAR_ANTI_ALIASING } from './lighting.js';
+import { formatLengthInputValue, lengthFromUnit, lengthToUnit, parseLengthInput } from './studio-units.js';
 
 // The properties of the camera, the sun and the lights that Studio lets a person edit, as one declarative table.
 // Studio draws its property panels from these rows, so a later area (world, effects) adds rows and no panel code.
@@ -84,25 +85,53 @@ function displayScaleOf(field) {
   return field.displayScale ?? 1;
 }
 
-/** The value a row shows for the recipe's value, in the unit the row names (degrees for a radian field). */
-export function propertyDisplayValue(field, storedValue) {
-  return storedValue * displayScaleOf(field);
+/** The value a row shows for the recipe's value, in the unit the row names (degrees for a radian field, display length unit for metres). */
+export function propertyDisplayValue(field, storedValue, lengthUnit = 'm') {
+  return field.unit === 'm' ? lengthToUnit(storedValue, lengthUnit) : storedValue * displayScaleOf(field);
 }
 
 /** The recipe's value for what a person typed in the row's unit; the inverse of propertyDisplayValue. */
-export function propertyStoredValue(field, displayedValue) {
-  return displayedValue / displayScaleOf(field);
+export function propertyStoredValue(field, displayedValue, lengthUnit = 'm') {
+  return field.unit === 'm' ? lengthFromUnit(displayedValue, lengthUnit) : displayedValue / displayScaleOf(field);
 }
 
 /** The range and step a number control of this row takes, in the shown unit. */
-export function propertyDisplayRange(field) {
+export function propertyDisplayRange(field, lengthUnit = 'm') {
+  if (field.unit === 'm') {
+    return {
+      min: lengthToUnit(field.min, lengthUnit),
+      max: lengthToUnit(field.max, lengthUnit),
+      step: lengthToUnit(field.step, lengthUnit),
+    };
+  }
   const scale = displayScaleOf(field);
   return { min: field.min * scale, max: field.max * scale, step: field.displayStep ?? field.step * scale };
 }
 
 /** The text a row shows for its value: the number in its unit's scale, three decimals at most (the unit is drawn apart). */
-export function propertyValueText(field, storedValue) {
+export function propertyValueText(field, storedValue, lengthUnit = 'm') {
+  if (field.unit === 'm') {
+    return formatLengthInputValue(storedValue, lengthUnit);
+  }
   return formatPropertyNumber(propertyDisplayValue(field, storedValue));
+}
+
+/** Parses what a person typed into the recipe's stored value (accepting length unit suffixes when `field.unit === 'm'`). */
+export function parsePropertyInput(field, rawText, lengthUnit = 'm') {
+  if (field.unit === 'm') {
+    return parseLengthInput(rawText, lengthUnit);
+  }
+  const text = String(rawText ?? '').trim();
+  if (text === '') {
+    return null;
+  }
+  const typed = Number(text);
+  return Number.isFinite(typed) ? propertyStoredValue(field, typed) : null;
+}
+
+/** The unit symbol displayed next to a row's digits. */
+export function propertyUnitMark(field, lengthUnit = 'm') {
+  return field.unit === 'm' ? lengthUnit : (field.unit ?? '');
 }
 
 /** The name a screen reader and a test finds a row by; it keeps the group word the short visible label drops. */
@@ -196,7 +225,7 @@ const LIGHT_ROWS = [
   }),
   lightRow('position', 'Position', 'vector', 'transform', LIGHT_KINDS, {
     name: 'Light position',
-    min: -POSITION_LIMIT, max: POSITION_LIMIT, step: 0.05,
+    unit: 'm', min: -POSITION_LIMIT, max: POSITION_LIMIT, step: 0.05,
     read: light => light.position,
     write: value => ({ position: value }),
   }),
@@ -302,13 +331,13 @@ const CAMERA_ROWS = [
   },
   {
     id: 'eye', label: 'Eye', control: 'vector', section: 'transform', appliesTo: ['camera'],
-    min: -POSITION_LIMIT, max: POSITION_LIMIT, step: 0.05,
+    unit: 'm', min: -POSITION_LIMIT, max: POSITION_LIMIT, step: 0.05,
     read: camera => camera.eye,
     write: value => ({ eye: value }),
   },
   {
     id: 'target', label: 'Target', control: 'vector', section: 'transform', appliesTo: ['camera'],
-    min: -POSITION_LIMIT, max: POSITION_LIMIT, step: 0.05,
+    unit: 'm', min: -POSITION_LIMIT, max: POSITION_LIMIT, step: 0.05,
     read: camera => camera.target,
     write: value => ({ target: value }),
   },
@@ -415,7 +444,7 @@ function shadowRow(field, label, control, extra = {}) {
 }
 
 const SHADOW_ROWS = [
-  shadowRow('target', 'Target', 'vector', { name: 'Shadow target', min: -POSITION_LIMIT, max: POSITION_LIMIT, step: 0.05, read: shadow => shadow.target ?? [0, 1, 0] }),
+  shadowRow('target', 'Target', 'vector', { name: 'Shadow target', unit: 'm', min: -POSITION_LIMIT, max: POSITION_LIMIT, step: 0.05, read: shadow => shadow.target ?? [0, 1, 0] }),
   shadowRow('extent', 'Extent', 'number', { name: 'Shadow extent', unit: 'm', min: 0.01, max: 1e5, step: 0.1, read: shadow => shadow.extent ?? 3.5 }),
   shadowRow('distance', 'Distance', 'number', { name: 'Shadow distance', unit: 'm', min: 0.01, max: 1e6, step: 0.1, read: shadow => shadow.distance ?? 8 }),
   shadowRow('near', 'Clip start', 'number', { name: 'Shadow clip start', unit: 'm', min: 0.001, max: 1e6, step: 0.01, read: shadow => shadow.near ?? 0.1 }),

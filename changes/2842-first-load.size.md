@@ -1,0 +1,3 @@
+- entry:coplanar-overlap: the typed pair set and the inlined grid walk replace a Set of boxed numbers, which cut the flush search of two million triangles from about 10 s to about 6 s
+- scene:gltf-box+lazy: tangents are made from typed arrays and no per-corner vectors, 15 times faster on a scan, for about 100 bytes
+- scene:agent-scene+lazy: the flush search and the tangent code together; the first load of two scans of a million triangles each drops from about 20 s to about 10 s

@@ -98,6 +98,9 @@ export function setBoatControls(boat, controls, label = 'setBoatControls') {
 
 /** Throttle and rudder at a physics time: the live values when set, else the keyframes linearly, held after the last one. */
 export function boatControlsAt(boat, time) {
+  if (typeof time !== 'number' || !Number.isFinite(time)) {
+    throw new RangeError('boatControlsAt time must be a finite number.');
+  }
   if (boat.live.set) return boat.live;
   const keys = boat.controls;
   if (!keys?.length) return boat.live;

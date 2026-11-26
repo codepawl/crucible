@@ -1,0 +1,1 @@
+- Added `findSurfaceDecalOverlaps` to `addons/scene-query` to detect overlaps and clearance gaps between 2D surface decals or border frames and projected 3D parts, wires, and board edges (#3494).

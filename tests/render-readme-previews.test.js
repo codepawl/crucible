@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import test from 'node:test';
-import { KEPT_README_PICTURES, PREVIEWS, PREVIEW_STILL_WIDTH, needsCook, parseArguments, previewNamesInReadme, drawSize, renderSize, selectPreviews } from '../scripts/readme-previews-plan.mjs';
+import { DEMO_SOURCES, KEPT_README_PICTURES, PREVIEWS, PREVIEW_STILL_WIDTH, needsCook, parseArguments, previewNamesInReadme, drawSize, renderSize, selectPreviews } from '../scripts/readme-previews-plan.mjs';
+import { demoDownloadArguments } from '../scripts/render-readme-previews.mjs';
 
 const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
 
@@ -56,4 +58,18 @@ test('drawSize draws everything but the Cook stills at twice the published size'
   assert.deepEqual(drawSize(byName('hero-classroom'), false), { width: 1600, height: 900 });
   assert.deepEqual(drawSize(byName('feature-clockwork'), false), { width: 960, height: 540 });
   assert.deepEqual(drawSize(byName('feature-clockwork'), true), { width: 480, height: 270 });
+});
+
+test('demoDownloadArguments builds bounded https curl arguments and rejects unknown sources or traversal', () => {
+  const cacheFolder = resolve('artifacts', 'test-demo-cache');
+  const destination = join(cacheFolder, 'classroom', 'classroom.zip');
+  const args = demoDownloadArguments('classroom', cacheFolder, destination);
+  assert.ok(args.includes('--fail'));
+  assert.ok(args.includes('=https'));
+  assert.ok(args.includes('--max-filesize'));
+  assert.equal(args[args.indexOf('--output') + 1], resolve(destination));
+  assert.equal(args.at(-1), DEMO_SOURCES.classroom.url);
+
+  assert.throws(() => demoDownloadArguments('unknown', cacheFolder, destination), /Untrusted demo source/);
+  assert.throws(() => demoDownloadArguments('classroom', cacheFolder, join(cacheFolder, '..', 'escape.zip')), /Refusing to write outside cache folder/);
 });

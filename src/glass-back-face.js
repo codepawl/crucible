@@ -25,18 +25,45 @@ export function backIdentifier(firstInstance, instanceIndex) {
 /** More shells than this are not compared pair by pair; the frame then keeps the single back-face layer. */
 export const SHELL_PAIR_LIMIT = 64;
 
+const ORIENTED_CONTAINMENT_EPSILON = 1e-5;
+
 const boxContains = (outer, inner) => [0, 1, 2].every(axis => outer.minimum[axis] <= inner.minimum[axis] && inner.maximum[axis] <= outer.maximum[axis]);
+
+// When both shells carry oriented bounds (`matrix`, `inverseMatrix`, `localMinimum`, `localMaximum`), transform all 8 corners of
+// `inner` into `outer`'s local space so a small shell sitting in the corner of a rotated box's world AABB is not marked nested (#3411).
+function orientedBoxContains(outer, inner) {
+  const inverse = outer.inverseMatrix;
+  const matrix = inner.matrix;
+  if (!inverse || !matrix || !outer.localMinimum || !outer.localMaximum || !inner.localMinimum || !inner.localMaximum) return true;
+  const { localMinimum: outerMin, localMaximum: outerMax } = outer;
+  const { localMinimum: innerMin, localMaximum: innerMax } = inner;
+  for (let corner = 0; corner < 8; corner++) {
+    const localX = corner & 1 ? innerMax[0] : innerMin[0];
+    const localY = corner & 2 ? innerMax[1] : innerMin[1];
+    const localZ = corner & 4 ? innerMax[2] : innerMin[2];
+    const worldX = matrix[0] * localX + matrix[4] * localY + matrix[8] * localZ + matrix[12];
+    const worldY = matrix[1] * localX + matrix[5] * localY + matrix[9] * localZ + matrix[13];
+    const worldZ = matrix[2] * localX + matrix[6] * localY + matrix[10] * localZ + matrix[14];
+    const inX = inverse[0] * worldX + inverse[4] * worldY + inverse[8] * worldZ + inverse[12];
+    const inY = inverse[1] * worldX + inverse[5] * worldY + inverse[9] * worldZ + inverse[13];
+    const inZ = inverse[2] * worldX + inverse[6] * worldY + inverse[10] * worldZ + inverse[14];
+    if (inX < outerMin[0] - ORIENTED_CONTAINMENT_EPSILON || inX > outerMax[0] + ORIENTED_CONTAINMENT_EPSILON) return false;
+    if (inY < outerMin[1] - ORIENTED_CONTAINMENT_EPSILON || inY > outerMax[1] + ORIENTED_CONTAINMENT_EPSILON) return false;
+    if (inZ < outerMin[2] - ORIENTED_CONTAINMENT_EPSILON || inZ > outerMax[2] + ORIENTED_CONTAINMENT_EPSILON) return false;
+  }
+  return true;
+}
 
 /**
  * Whether one closed glass shell lies inside another, so the nearest back face per pixel is the inner shell's where the outer ray needs its own
- * and a second layer (the farthest back face) is worth drawing. `shells` are world boxes `{ minimum, maximum }`, one per glass instance; a
- * shell counts as inside another when its box is inside the other's box. Overlapping shells that do not nest stay on the single layer: an exact
+ * and a second layer (the farthest back face) is worth drawing. `shells` hold world boxes `{ minimum, maximum }` and optional oriented bounds; a
+ * shell counts as inside another when its oriented box fits inside the other's. Overlapping shells that do not nest stay on the single layer: an exact
  * exit there makes the picture worse, because the raster draws the larger shell's front over the smaller one (#3340). A frame with one shell,
  * or more than SHELL_PAIR_LIMIT, needs no second layer.
  */
 export function glassShellsNested(shells) {
   if (shells.length < 2 || shells.length > SHELL_PAIR_LIMIT) return false;
-  return shells.some((inner, innerIndex) => shells.some((outer, outerIndex) => innerIndex !== outerIndex && boxContains(outer, inner)));
+  return shells.some((inner, innerIndex) => shells.some((outer, outerIndex) => innerIndex !== outerIndex && boxContains(outer, inner) && orientedBoxContains(outer, inner)));
 }
 
 const scale = (vector, factor) => [vector[0] * factor, vector[1] * factor, vector[2] * factor];

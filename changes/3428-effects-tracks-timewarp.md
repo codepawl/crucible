@@ -1,0 +1,1 @@
+- Support keyable `bloomStrength`, `glareStreaks`, and `lensDispersion` tracks on `effects` and `settings.motion.timeWarp` scene-time remapping on video and stills render jobs (#3428)

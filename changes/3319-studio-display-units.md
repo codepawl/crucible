@@ -1,0 +1,1 @@
+- Add a **Units** preference (`m`, `cm`, `mm`, `ft`, `in`) in Studio Settings with one shared length formatter and unit-suffix parser for the size readout, drag labels and length number fields (#3319).
