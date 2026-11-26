@@ -3,7 +3,7 @@ import { createSharedTextures, loadGltf } from './gltf.js';
 import { loadHdri } from './hdri.js';
 import { withReflectionEnvironment } from './reflection-environment.js';
 import { loadViewTransformForRendererOptions } from './view-transform-loading.js';
-import { createCascadedShadows } from './cascaded-shadows.js';
+import { resolveSceneFileCascades } from './cascaded-shadows.js';
 import { applyWaterReflection, attachWaterReflection } from './water-reflection.js';
 import { createCameraSampler } from './camera-track.js';
 import { inWholeWorldOrder, readPartRanks } from './showcase-download.js';
@@ -156,7 +156,6 @@ async function start() {
   // An effect the file asks for that reads depth (ambient occlusion, depth of field, motion blur, sun rays) turns the depth buffer on (#3388).
   const rendererOptions = withDepthForRequestedEffects(withSceneFileRendererDefaults(description.renderer), description.frame?.effects);
   await loadViewTransformForRendererOptions(rendererOptions);
-  const shadowCascades = rendererOptions.shadowCascades ? createCascadedShadows(rendererOptions.shadowCascades) : undefined;
   const reflection = description.waterReflection ? applyWaterReflection(asset.parts) : { parts: asset.parts, surface: null };
   // The GLB's punctual lights light the scene, for the drawn frame and the native trace alike (#2664).
   const sceneEnvironment = withSceneFileLights(asset.lights, rendererOptions.environment);
@@ -168,9 +167,11 @@ async function start() {
   const plan = deferLods ? planLodsForRendererOptions(reflection.parts, viewport, rendererOptions) : null;
   const interior = await withFileSceneInteriorLight(deferLods ? reflection.parts : partsForRendererOptions(reflection.parts, viewport, rendererOptions), drawn.environment);
   const rendererParts = interior.parts;
+  const shadowBounds = drawn.sunSplit ? sunShadowBounds(reflection.parts, drawn.environment.lightDirection) : {};
+  const shadowCascades = resolveSceneFileCascades(rendererOptions, interior.environment, rendererOptions.shadowBounds ?? shadowBounds);
   const renderer = new CrucibleRenderer(viewport, rendererParts, {
     ground: false, hdr: true, samples: 4, memoryBudgetMiB: DEFAULT_MEMORY_BUDGET_MIB,
-    shadowBounds: drawn.sunSplit ? sunShadowBounds(reflection.parts, drawn.environment.lightDirection) : {},
+    shadowBounds,
     ...rendererOptions,
     shadowCascades,
     // "reflectionHdri" gives glass and water a sky of their own; the diffuse light and the native trace keep the lighting map (#3396).

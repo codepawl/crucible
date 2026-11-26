@@ -194,7 +194,7 @@ test('scene_create names the valid kinds and properties for a motion track with 
     const wrongKind = await createdWith({ kind: 'sky', id: 'a', property: 'translation', keyframes });
     assert.match(wrongKind.text, /Unknown motion track kind: "sky"\. Kinds: node, material/);
     const wrongProperty = await createdWith({ kind: 'node', id: 'a', property: 'bogus', keyframes });
-    assert.match(wrongProperty.text, /Unknown node track property: "bogus"\. node properties: translation, rotation, scale, opacity\./);
+    assert.match(wrongProperty.text, /Unknown node track property: "bogus"\. node properties: translation, rotation, scale, opacity, visible\./);
   });
 });
 
@@ -368,5 +368,68 @@ test('the physics body schema error and scene_capabilities list every accepted s
     const capabilities = await call(client, 'scene_capabilities', { topic: 'physics' });
     for (const shape of ['cylinder', 'cone', 'compound']) assert.match(capabilities.text, new RegExp(shape));
     assert.match(capabilities.text, /shapes/);
+  });
+});
+
+test('scene_create accepts node visible tracks and up to 256 keys per track, and refuses over 256 with the cap (#3427)', async () => {
+  await withRoundTripClient(async client => {
+    const keys256 = Array.from({ length: 256 }, (_, index) => ({ time: index / 255, value: index % 2 }));
+    const visibleRecipe = oneBoxRecipe({
+      motion: {
+        duration: 1,
+        tracks: [{ kind: 'node', id: 'a', property: 'visible', interpolation: 'STEP', keyframes: keys256 }],
+      },
+    });
+    await assertAccepted(client, visibleRecipe);
+    const badValue = oneBoxRecipe({
+      motion: { duration: 1, tracks: [{ kind: 'node', id: 'a', property: 'visible', keyframes: [{ time: 0, value: 0.5 }] }] },
+    });
+    const refusedValue = await call(client, 'scene_create', { recipe: badValue });
+    assert.equal(refusedValue.isError, true);
+    assert.match(refusedValue.text, /visible.*1.*0/);
+    const keys257 = Array.from({ length: 257 }, (_, index) => ({ time: index / 256, value: 1 }));
+    const tooMany = oneBoxRecipe({
+      motion: { duration: 1, tracks: [{ kind: 'node', id: 'a', property: 'visible', keyframes: keys257 }] },
+    });
+    const refusedCount = await call(client, 'scene_create', { recipe: tooMany });
+    assert.equal(refusedCount.isError, true);
+    assert.match(refusedCount.text, /256/);
+  });
+});
+
+test('scene_capabilities camera topic clarifies that roll is in radians (#3444)', async () => {
+  await withRoundTripClient(async client => {
+    const cameraTopic = await call(client, 'scene_capabilities', { topic: 'camera' });
+    assert.equal(cameraTopic.isError, false);
+    assert.match(cameraTopic.text, /roll.*radians/i);
+  });
+});
+
+test('scene_create map.sequence schema accepts frames or catalog and rejects neither or both (#3434)', async () => {
+  await withRoundTripClient(async client => {
+    const frameIds = ['a'.repeat(64), 'b'.repeat(64)];
+    const withCatalog = oneBoxRecipe({
+      materials: [{ id: 'red', map: { sequence: { catalog: 'frame_####.png', fps: 24, loop: true } } }],
+    });
+    // The mock runtime does not resolve catalog names, so reaching createAgentScene proves the MCP schema accepted catalog.
+    const catalogResult = await call(client, 'scene_create', { recipe: withCatalog });
+    assert.match(catalogResult.text, /the MCP server turns a catalog sequence name into its frame IDs/);
+    const withFrames = oneBoxRecipe({
+      materials: [{ id: 'red', map: { sequence: { frames: frameIds, fps: 12 } } }],
+    });
+    const framesResult = await call(client, 'scene_create', { recipe: withFrames });
+    assert.match(framesResult.text, /was not loaded/);
+    const withBoth = oneBoxRecipe({
+      materials: [{ id: 'red', map: { sequence: { frames: frameIds, catalog: 'frame_####.png', fps: 12 } } }],
+    });
+    const refusedBoth = await call(client, 'scene_create', { recipe: withBoth });
+    assert.equal(refusedBoth.isError, true);
+    assert.match(refusedBoth.text, /frames.*catalog|not both/i);
+    const withNeither = oneBoxRecipe({
+      materials: [{ id: 'red', map: { sequence: { fps: 12 } } }],
+    });
+    const refusedNeither = await call(client, 'scene_create', { recipe: withNeither });
+    assert.equal(refusedNeither.isError, true);
+    assert.match(refusedNeither.text, /frames.*catalog|not both/i);
   });
 });

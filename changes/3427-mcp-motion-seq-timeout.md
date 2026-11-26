@@ -1,0 +1,1 @@
+- Fix MCP `visible` and 256-keyframe track validation, camera `roll` radians guidance and warning, `map.sequence` catalog/unlit/emissive support, and preview timeout resilience under shared-GPU contention (#3427, #3444, #3434, #3462)

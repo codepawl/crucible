@@ -1,7 +1,9 @@
+import './support/load-agent-scene-modules.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { constants, setPriority } from 'node:os';
 import { normalizeAgentMotion, compileAgentMotion } from '../src/agent-motion.js';
+import { recipeDiagnostics } from '../src/agent-diagnostics.js';
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
 const recipe = {
@@ -120,7 +122,7 @@ test('strict schema, final references, duplicate tracks and allocation bounds re
   assert.throws(() => normalizeAgentMotion(motion([{ ...track('emission', 0, 1), interpolation: 'CUBICSPLINE' }]), recipe), /tangent/i);
   assert.throws(() => normalizeAgentMotion(motion(Array(129)), recipe), /bounded/);
   const tooManyKeys = Array.from({ length: 257 }, (_, index) => ({ time: index / 256, value: 0 }));
-  assert.throws(() => normalizeAgentMotion(motion([{ ...track('emission', 0, 1), keyframes: tooManyKeys }]), recipe), /bounded/);
+  assert.throws(() => normalizeAgentMotion(motion([{ ...track('emission', 0, 1), keyframes: tooManyKeys }]), recipe), /bounded.*256/);
   const manyNodes = Array.from({ length: 33 }, (_, index) => ({ id: `node-${index}` }));
   const manyTracks = manyNodes.map(node => ({
     kind: 'node', id: node.id, property: 'translation',
@@ -196,6 +198,29 @@ test('a keyframe time a rounding error past either end snaps to it; a time clear
   assert.equal(normalizeAgentMotion(motion([belowZero]), recipe).tracks[0].keyframes[0].time, 0);
   const past = track('roughness', 0, 1, { keyframes: [{ time: 0, value: 0 }, { time: 1.001, value: 1 }] });
   assert.throws(() => normalizeAgentMotion(motion([past]), recipe), /keyframes\[1\]\.time: got 1\.001; expected a number from 0 to 1/);
+});
+
+test('recipeDiagnostics warns when camera roll or a camera roll track key exceeds +/-pi radians (#3444)', () => {
+  const base = { geometries: [], materials: [], nodes: [] };
+  const inRange = recipeDiagnostics({
+    ...base,
+    motion: { duration: 1, tracks: [{ kind: 'camera', property: 'roll', keyframes: [{ time: 0, value: -Math.PI }, { time: 1, value: Math.PI }] }] },
+  });
+  assert.equal(inRange.some(entry => entry.kind === 'camera-roll-range'), false);
+
+  const trackOver = recipeDiagnostics({
+    ...base,
+    motion: { duration: 1, tracks: [{ kind: 'camera', property: 'roll', keyframes: [{ time: 0, value: 0 }, { time: 1, value: 45 }] }] },
+  });
+  const trackWarning = trackOver.find(entry => entry.kind === 'camera-roll-range');
+  assert.equal(trackWarning?.severity, 'warning');
+  assert.equal(trackWarning?.target, 'motion.tracks[0]');
+  assert.match(trackWarning?.message ?? '', /radians.*degrees/i);
+
+  const staticOver = recipeDiagnostics({ ...base, camera: { roll: -90 } });
+  const staticWarning = staticOver.find(entry => entry.kind === 'camera-roll-range');
+  assert.equal(staticWarning?.severity, 'warning');
+  assert.equal(staticWarning?.target, 'camera.roll');
 });
 
 test('compileAgentMotion with normalized: true matches the uncached compilation', () => {

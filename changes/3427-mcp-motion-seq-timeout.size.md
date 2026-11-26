@@ -1,0 +1,3 @@
+- scene:agent-scene: allow unlit and emissive map sequences, document camera roll in radians and warn on degree-scale roll (#3427, #3434, #3444)
+- scene:agent-scene+lazy: add cameraRollDiagnostics track range warning and 256-keyframe cap error (#3427, #3444)
+- goal:agent-scene: allow unlit and emissive map sequences, document camera roll in radians and warn on degree-scale roll (#3427, #3434, #3444)

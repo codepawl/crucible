@@ -10,8 +10,8 @@ function runInFreshProcess(script) {
 }
 
 const RELIEF_FEATURES = ['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap', 'heightMap'];
-// The sha256 of createFragmentShader(RELIEF_FEATURES) when height-parallax-shader.js was a static import of shaders.js (origin/main at #3359).
-const RELIEF_SHADER_HASH_BEFORE_THE_MOVE = '22937848b211fd711a0ae91f10a9a9980bde13477640a05bd80cf9b642c9b001';
+// The sha256 of createFragmentShader(RELIEF_FEATURES), updated after src/shaders.js packed grazing F90 into materialDielectric in #3525.
+const RELIEF_SHADER_HASH_BEFORE_THE_MOVE = '19fe50817918bd2b44fcb2df48b2443a5fb863ea5bb1d3f12390f872858887c8';
 
 test('a recipe without a height scale does not ask for the relief module, and one with it does', () => {
   const recipe = materialFields => ({ materials: [{ id: 'rock', roughness: 0.5, ...materialFields }] });

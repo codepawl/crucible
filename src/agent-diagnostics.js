@@ -82,7 +82,7 @@ function geometryIdsInUse({ geometries, nodes }) {
 /** Material and resource diagnostics for a normalized procedural recipe. */
 export function recipeDiagnostics(recipe) {
   const problems = recipe.materials.flatMap(materialProblems);
-  const usedMaterials = new Set(recipe.nodes.map(node => node.material).filter(Boolean));
+  const usedMaterials = new Set([...recipe.nodes.map(node => node.material), ...recipe.geometries.flatMap(geometry => geometry.slots ?? [])].filter(Boolean));
   const usedGeometries = geometryIdsInUse(recipe);
   for (const material of recipe.materials.filter(candidate => !usedMaterials.has(candidate.id))) {
     problems.push(diagnostic('unused-material', 'info', material.id,
@@ -96,6 +96,12 @@ export function recipeDiagnostics(recipe) {
   }
   problems.push(...recipe.geometries.filter(geometry => geometry.type === 'terrain').flatMap(geometry => agentSceneModule('terrain').terrainHoleDiagnostics(geometry)));
   problems.push(...realismDiagnostics(recipe));
+  if (typeof recipe.camera?.roll === 'number' && Math.abs(recipe.camera.roll) > Math.PI) {
+    problems.push(diagnostic('camera-roll-range', 'warning', 'camera.roll',
+      `camera.roll value ${recipe.camera.roll} exceeds +/-pi; camera roll is in radians, not degrees.`,
+      'Convert degrees to radians (degrees * Math.PI / 180) with scene_apply set-camera.'));
+  }
+  if (recipe.motion) problems.push(...agentSceneModule('motion').cameraRollDiagnostics(recipe));
   problems.push(...portalProblems(recipe.environment?.areaLights ?? []));
   return problems;
 }

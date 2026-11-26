@@ -39,7 +39,8 @@ function bloomKeepsHue(value) {
   throw new TypeError(`Bloom keepHue must be true or false, got ${JSON.stringify(value)}.`);
 }
 
-export function resolveEffects(effects = {}) {
+export function resolveEffects(effects) {
+  if (effects === undefined) return EFFECT_PRESETS.neutral;
   if (!effects || typeof effects !== 'object' || Array.isArray(effects)) throw new Error('Effects must be an object.');
   const bloom = effects.bloom ?? {};
   if (!bloom || typeof bloom !== 'object' || Array.isArray(bloom)) throw new Error('Bloom must be an object.');

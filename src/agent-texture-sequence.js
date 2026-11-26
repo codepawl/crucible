@@ -109,7 +109,7 @@ export function sequenceFrameIds(value) {
 
 /** The material `map` field of a recipe material: validates it against the rest of the material and stores it on `result`. */
 export function applyMapSequence(value, result) {
-  if (result.tag !== 'surface') throw invalidField('map', value.map, 'a material with the surface tag; remove map or use the surface tag');
+  if (result.tag !== 'surface' && result.tag !== 'unlit') throw invalidField('map', value.map, 'a material with the surface or unlit tag; remove map or set tag to surface or unlit');
   if (value.pattern !== undefined) throw invalidField('pattern', value.pattern, 'nothing, because a material takes a pattern or a map sequence, not both', TypeError);
   result.map = normalizeMapSequence(value.map);
   // Like a pattern, the frames bring their own colours, so color tints them and defaults to white.

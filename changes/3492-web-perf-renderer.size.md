@@ -1,0 +1,11 @@
+- entry:core: Detects software WebGL renderers to cap default MSAA, bypasses unused offscreen FBO/post blits, and removes per-frame `render()` allocations (+143 B gzip).
+- entry:core+lazy: Same renderer software-MSAA cap, direct-to-canvas bypass, and per-frame allocation removal (+140 B gzip).
+- scene:lit-box: Includes software WebGL detection and direct-to-canvas fast path in core `CrucibleRenderer` (+164 B gzip).
+- scene:lit-box+lazy: Includes software WebGL detection and direct-to-canvas fast path in core `CrucibleRenderer` (+166 B gzip).
+- scene:gltf-box: Includes software WebGL detection and direct-to-canvas fast path in core `CrucibleRenderer` (+129 B gzip).
+- scene:gltf-box+lazy: Includes software WebGL detection and direct-to-canvas fast path in core `CrucibleRenderer` (+129 B gzip).
+- scene:agent-scene: Includes software WebGL detection and direct-to-canvas fast path in core `CrucibleRenderer` (+126 B gzip).
+- scene:agent-scene+lazy: Includes software WebGL detection and direct-to-canvas fast path in core `CrucibleRenderer` (+125 B gzip).
+- goal:lit-box: Core `CrucibleRenderer` additions for software WebGL MSAA capping, direct-to-canvas bypass, and zero-alloc `renderFrame` diagnostics (+164 B gzip).
+- goal:gltf-box: Core `CrucibleRenderer` additions for software WebGL MSAA capping, direct-to-canvas bypass, and zero-alloc `renderFrame` diagnostics (+129 B gzip).
+- goal:agent-scene: Core `CrucibleRenderer` additions for software WebGL MSAA capping, direct-to-canvas bypass, and zero-alloc `renderFrame` diagnostics (+126 B gzip).

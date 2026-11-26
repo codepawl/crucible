@@ -11,31 +11,27 @@
 .landing h1, .landing h2, .landing h3, .landing p, .landing ul, .landing ol, .landing figure, .landing pre { margin: 0; padding: 0; }
 .landing ul, .landing ol { list-style: none; }
 
-@media (prefers-color-scheme: dark) {
-  .landing .frame .poster { display: none; }
-}
-
 .landing .story { position: relative; height: 640vh; }
 .landing .pin { position: sticky; top: var(--nav-height); height: calc(100vh - var(--nav-height)); height: calc(100svh - var(--nav-height)); max-width: 1400px; margin: 0 auto; padding: 0 var(--side-right) 12px var(--side-left); display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr); gap: 28px; }
 .landing .words { display: grid; align-content: center; min-height: 0; }
 .landing .beat { grid-area: 1 / 1; display: grid; gap: 16px; align-content: center; justify-items: start; visibility: hidden; opacity: 0; transform: translateY(12px); }
 .landing .beat.on { visibility: visible; opacity: 1; transform: none; transition: opacity 260ms ease, transform 340ms var(--ease-out); }
-.landing .beat h1 { font: var(--heading-weight) clamp(32px, 4.3vw, 62px)/1.02 var(--display); letter-spacing: -0.01em; text-wrap: balance; }
-.landing .beat h2 { font: var(--heading-weight) clamp(44px, 6.4vw, 92px)/0.95 var(--display); }
+.landing .beat h1 { font: var(--heading-weight) clamp(32px, 4.3vw, 62px)/1.02 var(--display); letter-spacing: var(--display-tracking); text-wrap: balance; }
+.landing .beat h2 { font: var(--heading-weight) clamp(44px, 6.4vw, 92px)/0.95 var(--display); letter-spacing: var(--display-tracking); }
 .landing .beat p { font-size: clamp(15px, 1.25vw, 18px); max-width: 40ch; color: var(--fg); }
 .landing .beat p.explain { font-size: 14px; max-width: 44ch; color: var(--soft); }
 .landing .beat p.rename-note { font-size: 13px; max-width: none; color: var(--soft); }
 .landing .rename-note a { text-underline-offset: 4px; }
 .landing .rename-note code { font: 500 12px/1 var(--mono); }
 .landing .calls { display: flex; flex-wrap: wrap; gap: 8px; font: 500 13px/1 var(--mono); }
-.landing .calls li { padding: 8px 10px; border: var(--edge-width) solid var(--edge); border-radius: var(--round); background: var(--card); }
+.landing .calls li { padding: 8px 10px; border: var(--edge-width) solid var(--edge); border-radius: var(--chip-round); background: var(--card); }
 .landing .calls li::before { content: '> '; color: var(--accent); }
 .landing .actions { display: flex; flex-wrap: wrap; gap: 10px; }
-.landing .command { display: flex; align-items: stretch; width: 100%; max-width: 470px; border-radius: var(--round); background: var(--code-bg); color: var(--code-fg); overflow: hidden; }
+.landing .command { display: flex; align-items: stretch; width: 100%; max-width: 470px; border: 1px solid var(--code-border); border-radius: var(--card-round); background: var(--code-bg); color: var(--code-fg); overflow: hidden; }
 .landing .command code { flex: 1; min-width: 0; padding: 11px 12px; font: 500 13px/1.45 var(--mono); overflow-wrap: anywhere; user-select: all; }
 .landing .command code::before { content: '$ '; color: var(--accent); user-select: none; }
 .landing .copy { flex: none; width: 44px; display: grid; place-items: center; border: 0; background: transparent; color: var(--code-fg); cursor: pointer; }
-.landing .copy .pixel-icon { grid-area: 1 / 1; transition: opacity 160ms ease, transform 200ms var(--ease-out); }
+.landing .copy .icon { grid-area: 1 / 1; transition: opacity 160ms ease, transform 200ms var(--ease-out); }
 .landing .copy .done-mark { opacity: 0; transform: scale(0.6); }
 .landing .copy.copied .copy-mark { opacity: 0; transform: scale(0.6); }
 .landing .copy.copied .done-mark { opacity: 1; transform: none; fill: var(--accent); }
@@ -64,12 +60,12 @@
 
 .landing .section { padding: clamp(56px, 8vw, 112px) var(--side-right) 0 var(--side-left); scroll-margin-top: var(--nav-height); }
 .landing .inner { max-width: 1180px; margin: 0 auto; display: grid; gap: 24px; }
-.landing .section h2 { font: var(--heading-weight) clamp(30px, 3.6vw, 48px)/1.05 var(--display); }
-.landing .section h3 { font: var(--heading-weight) 20px/1.2 var(--display); }
+.landing .section h2 { font: var(--heading-weight) clamp(30px, 3.6vw, 48px)/1.05 var(--display); letter-spacing: var(--display-tracking); }
+.landing .section h3 { font: 600 20px/1.2 var(--display); letter-spacing: -0.015em; }
 .landing .heading-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap; }
 .landing .heading-row nav { display: flex; gap: 18px; font-size: 14px; text-underline-offset: 4px; }
 .landing .split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 40px; align-items: start; }
-.landing .stack { display: grid; gap: 14px; justify-items: start; min-width: 0; }
+.landing .stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; justify-items: start; min-width: 0; }
 .landing .stack .command { max-width: none; }
 .landing .managers { display: flex; flex-wrap: wrap; gap: 6px 18px; }
 .landing .managers button { display: inline-flex; align-items: center; gap: 7px; padding: 6px 0; border: 0; background: none; cursor: pointer; font: 500 14px/1 var(--body); color: var(--soft); }
@@ -77,24 +73,24 @@
 .landing .named { display: inline-flex; align-items: center; gap: 8px; font: 600 14px/1.2 var(--body); }
 .landing .release-feedback { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--soft); }
 .landing .release-feedback button { padding: 4px 10px; border: var(--edge-width) solid var(--edge); background: transparent; cursor: pointer; }
-.landing .code-wrap { position: relative; width: 100%; }
+.landing .code-wrap { position: relative; width: 100%; min-width: 0; }
 .landing .code-wrap .copy { position: absolute; top: 4px; right: 4px; width: 36px; height: 36px; }
-.landing .code-block { width: 100%; padding: 16px; border-radius: var(--round); background: var(--code-bg); color: var(--code-fg); font: 400 13px/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.landing .code-block { box-sizing: border-box; width: 100%; max-width: 100%; padding: 16px; border: 1px solid var(--code-border); border-radius: var(--card-round); background: var(--code-bg); color: var(--code-fg); font: 400 13px/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: auto; }
 .landing .code-wrap .code-block { padding-right: 44px; }
-.landing .shot { position: relative; display: block; overflow: hidden; border-radius: var(--round); border: var(--edge-width) solid var(--edge); background: var(--card); aspect-ratio: 16 / 9; }
+.landing .shot { position: relative; display: block; overflow: hidden; border-radius: var(--card-round); border: var(--edge-width) solid var(--edge); background: var(--card); aspect-ratio: 16 / 9; }
 .landing .shot img, .landing .shot canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .landing .shot canvas { image-rendering: pixelated; }
 .landing .chips { display: flex; flex-wrap: wrap; gap: 6px; font: 500 12px/1 var(--mono); }
-.landing .chips li { padding: 7px 9px; border-radius: var(--round); background: var(--card); border: var(--edge-width) solid var(--edge); }
+.landing .chips li { padding: 7px 9px; border-radius: var(--chip-round); background: var(--card); border: var(--edge-width) solid var(--edge); }
 .landing .gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
 .landing .work { display: grid; gap: 10px; text-decoration: none; }
-.landing .work b { display: block; font: var(--heading-weight) 18px/1.2 var(--display); }
+.landing .work b { display: block; font: 600 18px/1.2 var(--display); letter-spacing: -0.015em; }
 .landing .work span { color: var(--soft); font-size: 14px; }
 .landing .work:hover b { text-decoration: underline; text-underline-offset: 4px; }
 .landing .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.landing .card { display: grid; gap: 8px; align-content: start; padding: 18px; border-radius: var(--round); border: var(--edge-width) solid var(--edge); background: var(--card); text-decoration: none; }
+.landing .card { display: grid; gap: 8px; align-content: start; padding: 18px; border-radius: var(--card-round); border: var(--edge-width) solid var(--edge); background: var(--card); text-decoration: none; }
 .landing .card p { font-size: 14px; color: var(--soft); }
-.landing .card .pixel-icon { width: 32px; height: 32px; fill: var(--accent); }
+.landing .card .icon { width: 24px; height: 24px; color: var(--accent); }
 .landing a.card:hover h3 { text-decoration: underline; text-underline-offset: 4px; }
 .landing .meter { display: grid; gap: 4px; width: 100%; font: 500 12px/1.3 var(--mono); }
 .landing .meter span { display: flex; justify-content: space-between; gap: 12px; }
@@ -102,8 +98,8 @@
 .landing .meter i.ours { background: var(--accent); }
 .landing .meter i.range { margin-left: var(--from); }
 .landing .tiers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
-.landing .tier { display: grid; gap: 12px; align-content: start; padding: 18px; border-radius: var(--round); border: var(--edge-width) solid var(--edge); background: var(--card); }
-.landing .tier h3 .pixel-icon { margin-right: 6px; vertical-align: -2px; fill: var(--accent); }
+.landing .tier { display: grid; gap: 12px; align-content: start; padding: 18px; border-radius: var(--card-round); border: var(--edge-width) solid var(--edge); background: var(--card); }
+.landing .tier h3 .icon { margin-right: 6px; vertical-align: -2px; color: var(--accent); }
 .landing .tier .big { font: 600 clamp(22px, 2.2vw, 30px)/1 var(--data); font-variant-numeric: tabular-nums; }
 .landing .tier .big span { display: block; margin-top: 8px; font: 500 12px/1 var(--mono); color: var(--soft); }
 .landing .tier p { font-size: 13px; color: var(--soft); }
@@ -115,11 +111,11 @@
 
 /* The scene fills the pin; the hero words fade when the story starts and each beat is named inside the scene. */
 .landing .cue { display: inline-flex; align-items: center; gap: 8px; font: 600 13px/1 var(--mono); color: var(--fg); text-decoration: none; }
-.landing .cue .pixel-icon:last-child { fill: var(--accent); animation: landing-cue-bob 0.9s steps(2, jump-none) infinite; }
+.landing .cue .icon:last-child { color: var(--accent); animation: landing-cue-bob 0.9s steps(2, jump-none) infinite; }
 .landing .cue.gone { visibility: hidden; }
 @keyframes landing-cue-bob { to { transform: translateY(4px); } }
 .landing .ladder { display: flex; gap: 4px; }
-.landing .ladder button { padding: 6px 8px; border: var(--edge-width) solid transparent; border-radius: 0; background: transparent; color: var(--soft); font: 600 12px/1 var(--mono); cursor: pointer; }
+.landing .ladder button { padding: 6px 8px; border: var(--edge-width) solid transparent; border-radius: var(--chip-round); background: transparent; color: var(--soft); font: 600 12px/1 var(--mono); cursor: pointer; }
 .landing .ladder button.done { color: var(--fg); }
 .landing .ladder button.on { background: var(--fg); border-color: var(--fg); color: var(--bg); }
 .landing .scene { grid-column: 1 / -1; grid-row: 1; }
@@ -133,7 +129,7 @@
 .landing .leader rect { fill: var(--accent); }
 .landing .callout { position: absolute; top: 20px; right: max(16px, 4%); width: min(280px, 44%); display: grid; gap: 6px; visibility: hidden; }
 .landing .callout.on { visibility: visible; }
-.landing .callout h2 { font: var(--heading-weight) 26px/1 var(--display); }
+.landing .callout h2 { font: var(--heading-weight) 26px/1.05 var(--display); letter-spacing: var(--display-tracking); }
 .landing .callout p { font-size: 14px; line-height: 1.4; color: var(--fg); clip-path: inset(0 100% 0 0); }
 .landing .callout.on p { clip-path: inset(0); transition: clip-path 480ms steps(12, jump-none); }
 .landing .callout p.tools { font: 500 12px/1.4 var(--mono); color: var(--soft); }
@@ -158,6 +154,8 @@
 }
 @media (max-width: 520px) {
   .landing .tiers { grid-template-columns: minmax(0, 1fr); }
+  .landing .actions { gap: 8px; }
+  .landing .actions .button { padding: 0 11px; font-size: 13px; }
   .landing .beat p.explain { display: none; }
   .landing .hud span { display: none; }
   .landing .callout { top: auto; bottom: 14px; right: auto; left: 0; width: 66%; gap: 4px; }

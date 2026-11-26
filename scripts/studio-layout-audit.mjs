@@ -42,10 +42,11 @@ const PANELS_TOGGLE = 'button[title="Show or hide the panels"]';
 const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|keyboard|studio|rename|popover|export|newscene|dialog|notice|notices|editmenu|history|agent|helpmenu] [--width pixels] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
-// A signed-in host with every optional field, so the Account section of Settings is on screen and measured.
+// A signed-in host (isSignedIn, sign out, billing) with every optional field, so the Account section of Settings is on screen and measured.
 const SAMPLE_ACCOUNT_HOST = `globalThis.crucibleShell = { account: {
-  get: async () => ({ signedIn: true, name: 'Sample Person', email: 'sample.person@example.com', remainingText: '1,240 credits left', planText: 'Studio plan' }),
-  signIn: async () => {}, signOut: async () => {}, buyCredits: () => {}, manageBilling: () => {},
+  isSignedIn: async () => true,
+  get: async () => ({ name: 'Sample Person', email: 'sample.person@example.com', remainingText: '1,240 credits left', planText: 'Studio plan' }),
+  signIn: async () => {}, signOut: async () => {}, buyCredits: () => {}, manageBilling: async () => ({ opened: true }),
 } };`;
 // A host that offers an agent chat, only for the screens of the Agent card: the reply is scripted, with two steps, and
 // window.__sampleChat.emit lets the audit push an event of its own.
@@ -1170,12 +1171,14 @@ async function checkAgentLayout(page, step) {
       listHeight: Math.round(list.clientHeight),
       sidewaysScroll: list.scrollWidth > list.clientWidth + 1,
       fieldFits: document.querySelector('.crucible-studio-agent-field').getBoundingClientRect().right <= card.right,
+      lastRowInside: card.height <= 60 ? null : Math.round(card.bottom - Math.max(...['.crucible-studio-agent-status', '.crucible-studio-agent-field'].map(selector => rectOf(selector)?.bottom ?? 0))),
     };
   });
   const expect = (condition, message) => {
     if (!condition) throw new Error(`Agent card layout (${step}): ${message}: ${JSON.stringify(found)}`);
   };
   expect(found.bottomGap >= (found.compact ? 0 : 7), 'the card ends past the column bottom or without its bottom gap');
+  expect(found.lastRowInside === null || found.lastRowInside >= 7, 'the last row of the bar (the status row, or the field) is under 7 px from the card bottom, so it is cut or touches the edge');
   expect(!found.sidewaysScroll, 'the list scrolls sideways');
   expect(found.fieldFits, 'the message field runs past the card');
   expect(found.listHeight >= 112 || found.card.height <= 60, 'the list is under four whole rows');
@@ -1185,6 +1188,84 @@ async function checkAgentLayout(page, step) {
     expect(found.tight ? found.properties !== null && found.properties.height <= 60 : found.properties.height >= 239, 'Properties is under its floor, or is not folded to its title row while the card has the turn');
   }
   return found;
+}
+
+// The host's status: the row of model, effort and mode and the usage ring, at each level, with the popover of its numbers. The
+// ring stands in the middle of the field's height, the row has the room it needs, and the popover stays inside the window.
+const STATUS_LEVELS = Object.freeze([['plenty', 10], ['half', 30], ['low', 42], ['empty', 50]]);
+async function checkStatusBar(page, capture) {
+  await page.evaluate(() => window.__sampleChat.emit({ type: 'status', model: 'Fable 5.2', effort: 'high', mode: 'Plan' }));
+  for (const [level, used] of STATUS_LEVELS) {
+    await page.evaluate(spent => window.__sampleChat.emit({ type: 'usage', used: spent, limit: 50, resetsAt: Date.UTC(2026, 11, 1, 12) }), used);
+    await page.waitForTimeout(300);
+    await capture(`agent card status ${level}`, '.crucible-studio-agent');
+    const found = await page.evaluate(() => {
+      const ring = document.querySelector('.crucible-studio-agent-usage');
+      const field = document.querySelector('.crucible-studio-agent-field');
+      const svg = ring.querySelector('svg').getBoundingClientRect();
+      const fieldBox = field.getBoundingClientRect();
+      const items = [...document.querySelectorAll('.crucible-studio-agent-status-item')];
+      const cardBox = document.querySelector('.crucible-studio-agent').getBoundingClientRect();
+      return {
+        level: ring.dataset.level,
+        name: ring.getAttribute('aria-label'),
+        centreOffset: Math.round(Math.abs((svg.top + svg.bottom) / 2 - (fieldBox.top + fieldBox.bottom) / 2)),
+        items: items.map(item => item.dataset.field),
+        itemsInside: items.every(item => item.getBoundingClientRect().right <= cardBox.right && item.getBoundingClientRect().left >= cardBox.left),
+        fieldWidth: Math.round(fieldBox.width),
+      };
+    });
+    if (found.level !== level) throw new Error(`Agent status behavior: the ring is at level ${found.level}, not ${level}: ${JSON.stringify(found)}`);
+    if (found.centreOffset > 1) throw new Error(`Agent status layout (${level}): the ring is off the middle of the field: ${JSON.stringify(found)}`);
+    if (found.items.join() !== 'model,effort,mode' || !found.itemsInside) throw new Error(`Agent status layout (${level}): the row is not the three values inside the card: ${JSON.stringify(found)}`);
+    if (found.fieldWidth < 120) throw new Error(`Agent status layout (${level}): the field is under 120 px wide: ${JSON.stringify(found)}`);
+    await checkAgentLayout(page, `status ${level}`);
+  }
+  await page.evaluate(() => window.__sampleChat.emit({ type: 'status', model: 'W'.repeat(40), effort: 'high', mode: 'Plan' }));
+  await page.waitForTimeout(150);
+  const longName = await page.evaluate(() => {
+    const row = document.querySelector('.crucible-studio-agent-status');
+    const values = row.querySelector('.crucible-studio-agent-status-values').getBoundingClientRect();
+    const shownItems = [...row.querySelectorAll('.crucible-studio-agent-status-item')].map(item => item.getBoundingClientRect()).filter(box => box.top < values.bottom);
+    return { rowHeight: Math.round(row.getBoundingClientRect().height), shownItems: shownItems.length, cutItem: shownItems.some(box => box.right > values.right + 1) };
+  });
+  if (longName.rowHeight > 18 || longName.shownItems < 1 || longName.cutItem) throw new Error(`Agent status layout: a long model name does not keep the row to one line, with whole values only: ${JSON.stringify(longName)}`);
+  await page.evaluate(() => window.__sampleChat.emit({ type: 'status', model: 'Fable 5.2', effort: 'high', mode: 'Plan' }));
+  await page.locator('.crucible-studio-agent-usage').focus();
+  await page.waitForSelector('.crucible-studio-agent-usage-tip:popover-open');
+  await page.waitForTimeout(250);
+  const tip = await page.evaluate(() => {
+    const box = document.querySelector('.crucible-studio-agent-usage-tip').getBoundingClientRect();
+    return { left: box.left, top: box.top, right: box.right, bottom: box.bottom, text: document.querySelector('.crucible-studio-agent-usage-tip').textContent, width: window.innerWidth, height: window.innerHeight };
+  });
+  if (tip.left < 0 || tip.top < 0 || tip.right > tip.width || tip.bottom > tip.height) throw new Error(`Agent status layout: the popover runs outside the window: ${JSON.stringify(tip)}`);
+  if (!/^0 of 50 credits left/.test(tip.text) || !/Resets \d+ Dec/.test(tip.text)) throw new Error(`Agent status behavior: the popover does not say the numbers: ${tip.text}`);
+  await capture('agent card status popover', '.crucible-studio-side');
+  await page.keyboard.press('Escape');
+  const stillOpen = await page.evaluate(() => document.querySelector('.crucible-studio-agent-usage-tip').matches(':popover-open'));
+  if (stillOpen) throw new Error('Agent status behavior: Esc does not close the popover');
+  await page.evaluate(() => window.__sampleChat.emit({ type: 'usage', used: 10, limit: 50 }));
+}
+
+// An error the host says is free to repeat: the button and its word sit under the message inside the card, and pressing it
+// takes the offer away and starts the run again.
+async function checkFreeRetry(page, capture) {
+  await page.evaluate(() => window.__sampleChat.emit({ type: 'error', message: 'The agent stopped before it finished', retryFree: true }));
+  await page.waitForSelector('.crucible-studio-agent-retry button');
+  await capture('agent card retry free', '.crucible-studio-agent');
+  const found = await page.evaluate(() => {
+    const row = document.querySelector('.crucible-studio-agent-outcome[data-retry="true"]');
+    const button = row.querySelector('button').getBoundingClientRect();
+    const hint = row.querySelector('.crucible-studio-agent-retry-hint').getBoundingClientRect();
+    const card = document.querySelector('.crucible-studio-agent').getBoundingClientRect();
+    const message = row.querySelector('.crucible-studio-agent-line').getBoundingClientRect();
+    return { buttonText: row.querySelector('button').textContent, hintText: row.querySelector('.crucible-studio-agent-retry-hint').textContent, inside: button.right <= card.right && hint.right <= card.right, belowMessage: button.top >= message.bottom - 1, sameLine: Math.abs((button.top + button.bottom) / 2 - (hint.top + hint.bottom) / 2) <= 1 };
+  });
+  if (found.buttonText !== 'Try again' || found.hintText !== 'Free' || !found.inside || !found.belowMessage || !found.sameLine) throw new Error(`Agent card layout: the free retry is not laid out: ${JSON.stringify(found)}`);
+  await checkAgentLayout(page, 'retry free');
+  await page.locator('.crucible-studio-agent-retry button').click();
+  await page.waitForFunction(() => !document.querySelector('.crucible-studio-agent-retry'));
+  await page.waitForFunction(() => document.querySelector('.crucible-studio-agent-send').textContent === 'Send', null, { timeout: 5000 });
 }
 
 // In a window too short to stack the cards, both title rows stay in the column, each with a name a screen reader says, and
@@ -1233,6 +1314,7 @@ async function measureAgentCard(page, theme, label) {
   await checkShortWindowTurns(page, capture);
   await capture('agent card empty', '.crucible-studio-agent');
   await checkAgentLayout(page, 'empty');
+  await checkStatusBar(page, capture);
   await page.locator('.crucible-studio-agent-field').fill('Lift the cube and make it a little larger');
   await page.locator('.crucible-studio-agent-field').press('Enter');
   await page.waitForSelector('.crucible-studio-agent-step');
@@ -1243,8 +1325,10 @@ async function measureAgentCard(page, theme, label) {
   await checkAgentLayout(page, 'replied');
   await checkScrollCue(page, 'Agent replied');
   await capture('agent card replied', '.crucible-studio-agent');
+  await checkFreeRetry(page, capture);
   const notices = [
     ['signedOut', 'Sign in to keep working', 'Sign in'],
+    ['quota-warning', 'Credits are running low this month', 'Buy credits'],
     ['quota', 'No credits left for this month', 'Buy credits'],
     ['error', 'The agent could not be reached', 'Try again'],
   ];

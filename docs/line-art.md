@@ -16,7 +16,7 @@ That draws a dark outline at silhouettes, part boundaries, creases and depth jum
 | `color` | `[0.02, 0.02, 0.02]` | Linear RGB of the line, 0 to 4. The colour is drawn before tone mapping, so a bright line reads a little darker than written. |
 | `boundaries` | `true` | A line where the object ID changes: silhouettes and the edge between two parts. |
 | `creaseAngle` | 35 | Degrees. A line where the surface normal turns by more than this between neighbouring pixels. 0 turns creases off. |
-| `depthJump` | 0.08 | A line where one surface sits in front of another of the same part. Relative step of the inverse depth. 0 turns it off. |
+| `depthJump` | 0.08 | A line where one surface sits in front of another of the same part. Relative step of the eye depth (measured against the screen-linear perspective interpolation so flat grazing surfaces do not trigger). 0 turns it off. |
 | `colorMode` | `"solid"` | `"darken"` inks each line pixel with the colour of the surface under it times `darkenFactor`, so foliage, roofs and stone get their own dark ink. Replaces `color` and the `color` of `nodes`. |
 | `darkenFactor` | 0.54 | 0 to 1. The share of the body colour that stays in the ink when `colorMode` is `"darken"`. |
 | `silhouetteSide` | `"both"` | `"front"` draws the boundary and depth-step lines on the nearer surface only: 1 px at `width` 2, where `"both"` draws 1 px on each side. A boundary between two parts at the same depth with parallel normals (a road beside a pavement) draws no line. |
@@ -88,7 +88,7 @@ Dashes and dots advance continuously around polyline corners in screen pixels.
 - Outlines and polylines draw only for a frame that carries `lines`. They read the opaque and cutout geometry only (like render passes), so blended and translucent parts get no outline.
 - An outline costs up to two extra draws of the opaque geometry (normal and object ID passes, with `objectId` drawn last so `passSupport.texture` stays valid for user passes) plus one full-screen pass. Setting `creaseAngle: 0` with `silhouetteSide: 'both'` skips the normal pass. Frames without lines cost nothing.
 - Outlines need `depth: true` on the renderer and `installRenderPasses` first. A render job writes the pass files without lines.
-- Creases are found from the picture, not from the mesh: a bevel wider than a few pixels turns its normal slowly and draws no line. Lower `creaseAngle` or use a sharper edge.
+- Creases are found from the picture, not from the mesh: narrow chamfer bevels up to 10 pixels wide collapse to a single centred outline at `creaseAngle` 35 instead of twin edges, while wider smooth multi-segment bevels turn their normal slowly and draw no line unless you lower `creaseAngle` or use a sharper edge.
 - Through the MCP server, `scene_create` and `set-environment` take `environment.lines`, and a material takes `toon`. `scene_capabilities` reports both.
 
 ## Code

@@ -793,8 +793,8 @@ function createPathTracer(scene, options) {
     // A path that bends through glass and reaches the sky is already counted in full (addEscape after a mirror or glass bounce), so
     // the sky's shadow ray stops at glass: letting it through as well would count that light twice.
     lightIsEnvironment = true;
-    // The sky is indirect light, so the occlusion map darkens it; the sun and the lights above are direct and are not.
-    const { occlusion } = hit;
+    // The sky is indirect light, so the occlusion map darkens surface hits; free-space fog scattering is unoccluded.
+    const occlusion = inMedium ? 1 : hit.occlusion;
     const [pathRed, pathGreen, pathBlue] = throughput;
     throughput[0] = pathRed * occlusion;
     throughput[1] = pathGreen * occlusion;

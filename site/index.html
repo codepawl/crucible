@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="theme-color" content="#f8f7f1" media="(prefers-color-scheme: light)" /><meta name="theme-color" content="#17161a" media="(prefers-color-scheme: dark)" />
+    <link rel="preload" href="/fonts/plus-jakarta-sans-latin-3.woff2" as="font" type="font/woff2" crossorigin /><link rel="preload" href="/fonts/inter-latin-6.woff2" as="font" type="font/woff2" crossorigin />
     <meta name="description" content="Crucible is a 3D engine that AI agents drive: the Glaze rasterizer on WebGL2, the Cook path tracer on CPU and WebGL2 (Vulkan with the optional Cook package), GLB, PNG and MP4 export, and an MCP server. Install with npm i @codepawlhq/crucible." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="crucible" />
@@ -22,21 +23,45 @@
 <a class="skip-link" href="#content">Skip to content</a>
 <!-- site-chrome:header -->
 <header class="nav">
-  <a class="brand" href="/" aria-label="Crucible home"><img src="/brand/crucible-mark.svg" alt="">Crucible</a>
+  <a class="brand" href="/" aria-label="Crucible home"><picture><source media="(prefers-color-scheme: dark)" srcset="/brand/crucible-mark-64-dark.webp"><img src="/brand/crucible-mark-64.webp" alt="" width="28" height="28" decoding="async"></picture>Crucible</a>
   <span class="version" data-release-version>Loading release</span>
   <nav class="nav-links" aria-label="Site">
-    <a href="/docs.html"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 1h11v1h-11zM2 2h12v1h-12zM2 3h2v1h-2zM12 3h2v1h-2zM2 4h2v1h-2zM5 4h6v1h-6zM12 4h2v1h-2zM2 5h2v1h-2zM5 5h6v1h-6zM12 5h2v1h-2zM2 6h2v1h-2zM12 6h2v1h-2zM2 7h2v1h-2zM12 7h2v1h-2zM2 8h2v1h-2zM12 8h2v1h-2zM2 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM12 10h2v1h-2zM2 11h2v1h-2zM11 11h3v1h-3zM2 12h12v1h-12zM2 13h11v1h-11zM2 14h2v1h-2z"/></svg>Docs</a>
-    <a class="wide" href="/recipes.html"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M7 1h2v1h-2zM5 2h6v1h-6zM3 3h4v1h-4zM9 3h4v1h-4zM1 4h5v1h-5zM10 4h5v1h-5zM0 5h5v1h-5zM11 5h5v1h-5zM2 6h4v1h-4zM10 6h4v1h-4zM1 7h2v1h-2zM4 7h8v1h-8zM13 7h2v1h-2zM1 8h3v1h-3zM6 8h4v1h-4zM12 8h3v1h-3zM2 9h4v1h-4zM7 9h2v1h-2zM10 9h4v1h-4zM1 10h2v1h-2zM4 10h8v1h-8zM13 10h2v1h-2zM1 11h3v1h-3zM6 11h4v1h-4zM12 11h3v1h-3zM2 12h4v1h-4zM7 12h2v1h-2zM10 12h4v1h-4zM4 13h8v1h-8zM6 14h4v1h-4zM7 15h2v1h-2z"/></svg>Recipes</a>
-    <a class="wide" href="/showcase.html"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M1 2h14v1h-14zM1 3h14v1h-14zM1 4h2v1h-2zM13 4h2v1h-2zM1 5h2v1h-2zM13 5h2v1h-2zM1 6h2v1h-2zM13 6h2v1h-2zM1 7h2v1h-2zM4 7h2v1h-2zM13 7h2v1h-2zM1 8h6v1h-6zM9 8h2v1h-2zM13 8h2v1h-2zM1 9h11v1h-11zM13 9h2v1h-2zM1 10h3v1h-3zM6 10h9v1h-9zM1 11h3v1h-3zM7 11h2v1h-2zM11 11h4v1h-4zM1 12h14v1h-14zM1 13h14v1h-14z"/></svg>Showcase</a>
-    <a class="wide" href="/marketplace.html"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 2h12v1h-12zM2 3h12v1h-12zM2 4h2v1h-2zM6 4h4v1h-4zM12 4h2v1h-2zM2 5h2v1h-2zM5 5h6v1h-6zM12 5h2v1h-2zM2 6h12v1h-12zM2 7h5v1h-5zM9 7h5v1h-5zM2 8h5v1h-5zM9 8h5v1h-5zM2 9h12v1h-12zM2 10h2v1h-2zM5 10h6v1h-6zM12 10h2v1h-2zM2 11h2v1h-2zM6 11h4v1h-4zM12 11h2v1h-2zM2 12h12v1h-12zM2 13h12v1h-12z"/></svg>Marketplace</a>
-    <a class="wide" href="/changelog.html"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 3h12v1h-12zM2 4h12v1h-12zM2 7h12v1h-12zM2 8h12v1h-12zM2 11h12v1h-12zM2 12h12v1h-12z"/></svg>Changelog</a>
-    <a href="https://github.com/codepawl/crucible" aria-label="GitHub"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M6 0h4v1h-4zM4 1h8v1h-8zM2 2h12v1h-12zM1 3h14v1h-14zM1 4h3v1h-3zM12 4h3v1h-3zM0 5h4v1h-4zM12 5h4v1h-4zM0 6h3v1h-3zM13 6h3v1h-3zM0 7h3v1h-3zM13 7h3v1h-3zM0 8h3v1h-3zM13 8h3v1h-3zM0 9h3v1h-3zM13 9h3v1h-3zM0 10h4v1h-4zM12 10h4v1h-4zM1 11h5v1h-5zM10 11h5v1h-5zM1 12h2v1h-2zM4 12h2v1h-2zM10 12h5v1h-5zM2 13h2v1h-2zM10 13h4v1h-4zM3 14h3v1h-3zM10 14h3v1h-3zM5 15h1v1h-1zM10 15h1v1h-1z"/></svg><span class="wide">GitHub</span></a>
+    <a href="/docs.html"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>Docs</a>
+    <a class="wide" href="/recipes.html"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>Recipes</a>
+    <a class="wide" href="/showcase.html"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="9.5" r="1.2"/></svg>Showcase</a>
+    <a class="wide" href="/marketplace.html"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>Marketplace</a>
+    <a class="wide" href="/changelog.html"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Changelog</a>
+    <a href="https://github.com/codepawl/crucible" aria-label="GitHub"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg><span class="wide">GitHub</span></a>
     <a class="button" href="#install">Install</a>
   </nav>
 </header>
 <!-- /site-chrome:header -->
 
 <main id="content">
+<svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+  <symbol id="ic-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="ic-npm" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 9v6M12 9v6M16 9v6M8 9h8"/></symbol>
+  <symbol id="ic-pnpm" viewBox="0 0 24 24"><rect x="4" y="4" width="5" height="5" rx="1"/><rect x="10" y="4" width="5" height="5" rx="1"/><rect x="16" y="4" width="5" height="5" rx="1"/><rect x="10" y="10" width="5" height="5" rx="1"/><rect x="16" y="10" width="5" height="5" rx="1"/><rect x="4" y="16" width="5" height="5" rx="1"/><rect x="10" y="16" width="5" height="5" rx="1"/><rect x="16" y="16" width="5" height="5" rx="1"/></symbol>
+  <symbol id="ic-yarn" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5 9c4 0 10 4 14 2M6 15c5-1 8-6 12-5M9 4c1 5 4 11 2 16"/></symbol>
+  <symbol id="ic-bun" viewBox="0 0 24 24"><path d="M4 13a8 8 0 0 1 16 0c0 3.5-3.6 6-8 6s-8-2.5-8-6Z"/><circle cx="9.5" cy="12" r="1"/><circle cx="14.5" cy="12" r="1"/></symbol>
+  <symbol id="ic-flame" viewBox="0 0 24 24"><path d="M12 3c2.5 3.2 6 5.5 6 10a6 6 0 1 1-12 0c0-2.8 1.5-5 3-6.5.2 1.8 1.4 2.8 2.5 2.5C11 6.5 11.4 4.8 12 3Z"/></symbol>
+  <symbol id="ic-down" viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></symbol>
+  <symbol id="ic-mcp" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></symbol>
+  <symbol id="ic-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
+  <symbol id="ic-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></symbol>
+  <symbol id="ic-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-14.07 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2M20 12h2m-14.07 7.07 1.41-1.41m11.32-11.32 1.41-1.41"/></symbol>
+  <symbol id="ic-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="ic-zap" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></symbol>
+  <symbol id="ic-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
+  <symbol id="ic-sparkles" viewBox="0 0 24 24"><path d="m12 3-1.8 4.8L5.5 9.5l4.7 1.7L12 16l1.8-4.8 4.7-1.7-4.7-1.7L12 3Z"/><path d="M19 15v4M17 17h4M5 16v3M3.5 17.5h3"/></symbol>
+  <symbol id="ic-award" viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9l4-6Z"/><path d="M2 9h20"/></symbol>
+  <symbol id="ic-docs" viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></symbol>
+  <symbol id="ic-changelog" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+  <symbol id="ic-github" viewBox="0 0 24 24"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></symbol>
+  <symbol id="ic-recipes" viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></symbol>
+  <symbol id="ic-heart" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></symbol>
+</svg>
   <section class="story" id="story" aria-label="Crucible introduction">
     <div class="pin">
       <div class="words">
@@ -44,55 +69,55 @@
           <h1>3D engine that AI agents drive</h1>
           <p>Glaze draws real-time frames. Cook path traces stills. 26 MCP tools drive them.</p>
           <p class="explain">Crucible is a free, MIT licensed 3D engine on npm. An AI agent builds the scene through MCP tools, and you keep the creative choices.</p>
-          <div class="command"><code>npm i @codepawlhq/crucible</code><button class="copy" type="button" aria-label="Copy the npm command"><svg class="pixel-icon copy-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 2h8v1h-8zM2 3h9v1h-9zM2 4h3v1h-3zM2 5h2v1h-2zM5 5h9v1h-9zM2 6h2v1h-2zM5 6h9v1h-9zM2 7h2v1h-2zM5 7h2v1h-2zM12 7h2v1h-2zM2 8h2v1h-2zM5 8h2v1h-2zM12 8h2v1h-2zM2 9h2v1h-2zM5 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM5 10h2v1h-2zM12 10h2v1h-2zM5 11h2v1h-2zM12 11h2v1h-2zM5 12h9v1h-9zM5 13h9v1h-9z"/></svg><svg class="pixel-icon done-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M12 3h1v1h-1zM11 4h3v1h-3zM11 5h2v1h-2zM10 6h2v1h-2zM2 7h2v1h-2zM9 7h3v1h-3zM2 8h3v1h-3zM8 8h3v1h-3zM3 9h3v1h-3zM7 9h3v1h-3zM4 10h5v1h-5zM5 11h3v1h-3zM6 12h1v1h-1z"/></svg></button></div>
-          <div class="command"><code>npx crucible-mcp</code><button class="copy" type="button" aria-label="Copy the MCP server command"><svg class="pixel-icon copy-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 2h8v1h-8zM2 3h9v1h-9zM2 4h3v1h-3zM2 5h2v1h-2zM5 5h9v1h-9zM2 6h2v1h-2zM5 6h9v1h-9zM2 7h2v1h-2zM5 7h2v1h-2zM12 7h2v1h-2zM2 8h2v1h-2zM5 8h2v1h-2zM12 8h2v1h-2zM2 9h2v1h-2zM5 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM5 10h2v1h-2zM12 10h2v1h-2zM5 11h2v1h-2zM12 11h2v1h-2zM5 12h9v1h-9zM5 13h9v1h-9z"/></svg><svg class="pixel-icon done-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M12 3h1v1h-1zM11 4h3v1h-3zM11 5h2v1h-2zM10 6h2v1h-2zM2 7h2v1h-2zM9 7h3v1h-3zM2 8h3v1h-3zM8 8h3v1h-3zM3 9h3v1h-3zM7 9h3v1h-3zM4 10h5v1h-5zM5 11h3v1h-3zM6 12h1v1h-1z"/></svg></button></div>
+          <div class="command"><code>npm i @codepawlhq/crucible</code><button class="copy" type="button" aria-label="Copy the npm command"><svg class="icon copy-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-copy"/></svg><svg class="icon done-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-check"/></svg></button></div>
+          <div class="command"><code>npx crucible-mcp</code><button class="copy" type="button" aria-label="Copy the MCP server command"><svg class="icon copy-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-copy"/></svg><svg class="icon done-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-check"/></svg></button></div>
           <div class="actions">
             <a class="button" href="#install">Install</a>
             <a class="button quiet" href="/docs.html#getting-started">Docs</a>
             <a class="button quiet" href="#showcase">Showcase</a>
-            <a class="button quiet" href="https://www.npmjs.com/package/@codepawlhq/crucible"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h16v1h-16zM0 1h16v1h-16zM0 2h16v1h-16zM0 3h16v1h-16zM0 4h3v1h-3zM13 4h3v1h-3zM0 5h3v1h-3zM13 5h3v1h-3zM0 6h3v1h-3zM8 6h2v1h-2zM13 6h3v1h-3zM0 7h3v1h-3zM8 7h2v1h-2zM13 7h3v1h-3zM0 8h3v1h-3zM8 8h2v1h-2zM13 8h3v1h-3zM0 9h3v1h-3zM8 9h2v1h-2zM13 9h3v1h-3zM0 10h3v1h-3zM8 10h2v1h-2zM13 10h3v1h-3zM0 11h3v1h-3zM8 11h2v1h-2zM13 11h3v1h-3zM0 12h4v1h-4zM8 12h3v1h-3zM12 12h4v1h-4zM0 13h16v1h-16zM0 14h16v1h-16zM0 15h16v1h-16z"/></svg>npm</a>
+            <a class="button quiet" href="https://www.npmjs.com/package/@codepawlhq/crucible"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-npm"/></svg>npm</a>
           </div>
           <p class="rename-note"><a href="/changelog.html">67js is now Crucible: install <code>@codepawlhq/crucible</code></a></p>
-          <a class="cue" id="cue" href="#story"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M6 1h4v1h-4zM5 2h6v1h-6zM4 3h3v1h-3zM9 3h3v1h-3zM4 4h2v1h-2zM7 4h2v1h-2zM10 4h2v1h-2zM4 5h2v1h-2zM7 5h2v1h-2zM10 5h2v1h-2zM4 6h2v1h-2zM7 6h2v1h-2zM10 6h2v1h-2zM4 7h2v1h-2zM7 7h2v1h-2zM10 7h2v1h-2zM4 8h2v1h-2zM10 8h2v1h-2zM4 9h2v1h-2zM10 9h2v1h-2zM4 10h2v1h-2zM10 10h2v1h-2zM4 11h2v1h-2zM10 11h2v1h-2zM4 12h3v1h-3zM9 12h3v1h-3zM5 13h6v1h-6zM6 14h4v1h-4z"/></svg>Scroll to pour<svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M7 2h2v1h-2zM7 3h2v1h-2zM7 4h2v1h-2zM7 5h2v1h-2zM7 6h2v1h-2zM7 7h2v1h-2zM3 8h2v1h-2zM7 8h2v1h-2zM11 8h2v1h-2zM3 9h3v1h-3zM7 9h2v1h-2zM10 9h3v1h-3zM4 10h8v1h-8zM5 11h6v1h-6zM6 12h4v1h-4zM7 13h2v1h-2z"/></svg></a>
-          <img class="still" src="/previews/foundry-splats-0.png" alt="A crucible with a pour spout, full of molten metal" loading="lazy">
+          <a class="cue" id="cue" href="#story"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-flame"/></svg>Scroll to pour<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-down"/></svg></a>
+          <img class="still" src="/previews/foundry-splats-0.webp" width="960" height="540" alt="A crucible with a pour spout, full of molten metal" loading="lazy">
         </div>
         <div class="beat" data-beat="1">
           <h2>Pour</h2>
           <p>An agent gets a live scene to edit.</p>
           <p class="explain">It starts from a recipe, one JSON file of geometries, materials and nodes, and changes it in small batches.</p>
           <ul class="calls" aria-label="MCP tools"><li>scene_create</li><li>scene_apply</li></ul>
-          <img class="still" src="/previews/foundry-splats-1.png" alt="The crucible tilts and molten metal leaves the spout" loading="lazy">
+          <img class="still" src="/previews/foundry-splats-1.webp" width="960" height="540" alt="The crucible tilts and molten metal leaves the spout" loading="lazy">
         </div>
         <div class="beat" data-beat="2">
           <h2>Fill</h2>
           <p>It draws the scene with Glaze or Cook.</p>
           <p class="explain">scene_look returns a PNG, so the agent sees what it built. Render jobs export stills and video.</p>
           <ul class="calls" aria-label="MCP tools"><li>scene_look</li><li>scene_render_submit</li></ul>
-          <img class="still" src="/previews/foundry-splats-2.png" alt="The stream fills an icosahedron mould" loading="lazy">
+          <img class="still" src="/previews/foundry-splats-2.webp" width="960" height="540" alt="The stream fills an icosahedron mould" loading="lazy">
         </div>
         <div class="beat" data-beat="3">
           <h2>Cool</h2>
           <p>It reviews the result.</p>
           <p class="explain">scene_review shows several angles at once, and scene_inspect reports bounds and diagnostics.</p>
           <ul class="calls" aria-label="MCP tools"><li>scene_review</li><li>scene_inspect</li></ul>
-          <img class="still" src="/previews/foundry-splats-3.png" alt="The cast cools from orange to dark metal" loading="lazy">
+          <img class="still" src="/previews/foundry-splats-3.webp" width="960" height="540" alt="The cast cools from orange to dark metal" loading="lazy">
         </div>
         <div class="beat" data-beat="4">
           <h2>Cast</h2>
           <p>Out comes a PNG or an MP4. Install it and pour your own.</p>
           <p class="explain">The scene stays a recipe you can export and edit again.</p>
-          <div class="command"><code>npm i @codepawlhq/crucible</code><button class="copy" type="button" aria-label="Copy the npm command"><svg class="pixel-icon copy-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 2h8v1h-8zM2 3h9v1h-9zM2 4h3v1h-3zM2 5h2v1h-2zM5 5h9v1h-9zM2 6h2v1h-2zM5 6h9v1h-9zM2 7h2v1h-2zM5 7h2v1h-2zM12 7h2v1h-2zM2 8h2v1h-2zM5 8h2v1h-2zM12 8h2v1h-2zM2 9h2v1h-2zM5 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM5 10h2v1h-2zM12 10h2v1h-2zM5 11h2v1h-2zM12 11h2v1h-2zM5 12h9v1h-9zM5 13h9v1h-9z"/></svg><svg class="pixel-icon done-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M12 3h1v1h-1zM11 4h3v1h-3zM11 5h2v1h-2zM10 6h2v1h-2zM2 7h2v1h-2zM9 7h3v1h-3zM2 8h3v1h-3zM8 8h3v1h-3zM3 9h3v1h-3zM7 9h3v1h-3zM4 10h5v1h-5zM5 11h3v1h-3zM6 12h1v1h-1z"/></svg></button></div>
+          <div class="command"><code>npm i @codepawlhq/crucible</code><button class="copy" type="button" aria-label="Copy the npm command"><svg class="icon copy-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-copy"/></svg><svg class="icon done-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-check"/></svg></button></div>
           <div class="actions"><a class="button" href="#install">Install</a></div>
-          <img class="still" src="/previews/foundry-splats-4.png" alt="The mould opens and the cast icosahedron turns" loading="lazy">
+          <img class="still" src="/previews/foundry-splats-4.webp" width="960" height="540" alt="The mould opens and the cast icosahedron turns" loading="lazy">
         </div>
       </div>
       <div class="scene">
-        <div class="frame"><img class="poster" src="/previews/foundry-splats-0.png" alt="" aria-hidden="true" fetchpriority="high" decoding="async"><canvas id="foundry" role="img" aria-label="A crucible pours molten metal into an icosahedron mould as the page scrolls, rendered live by Crucible"></canvas><div class="callouts"><svg class="leader" id="leader" aria-hidden="true"><polyline points="0,0"></polyline><rect width="6" height="6"></rect></svg><div class="callout" data-anchor="pour" data-aside data-from="0.12" data-to="0.31"><h2>Pour</h2><p>An agent gets a live scene to edit.</p><p class="tools">scene_create · scene_apply</p></div><div class="callout" data-anchor="fill" data-from="0.39" data-to="0.59"><h2>Fill</h2><p>It draws the scene with Glaze or Cook.</p><p class="tools">scene_look · scene_render_submit</p></div><div class="callout" data-anchor="cool" data-from="0.61" data-to="0.78"><h2>Cool</h2><p>It reviews the result from several angles.</p><p class="tools">scene_review · scene_inspect</p></div><div class="callout" data-anchor="cast" data-from="0.9" data-to="1"><h2>Cast</h2><p>Out comes a PNG or an MP4.</p></div></div></div>
+        <div class="frame"><img class="poster" src="/previews/foundry-splats-0.webp" width="960" height="540" alt="" aria-hidden="true" fetchpriority="high" decoding="async"><canvas id="foundry" role="img" aria-label="A crucible pours molten metal into an icosahedron mould as the page scrolls, rendered live by Crucible"></canvas><div class="callouts"><svg class="leader" id="leader" aria-hidden="true"><polyline points="0,0"></polyline><rect width="6" height="6"></rect></svg><div class="callout" data-anchor="pour" data-aside data-from="0.12" data-to="0.31"><h2>Pour</h2><p>An agent gets a live scene to edit.</p><p class="tools">scene_create · scene_apply</p></div><div class="callout" data-anchor="fill" data-from="0.39" data-to="0.59"><h2>Fill</h2><p>It draws the scene with Glaze or Cook.</p><p class="tools">scene_look · scene_render_submit</p></div><div class="callout" data-anchor="cool" data-from="0.61" data-to="0.78"><h2>Cool</h2><p>It reviews the result from several angles.</p><p class="tools">scene_review · scene_inspect</p></div><div class="callout" data-anchor="cast" data-from="0.9" data-to="1"><h2>Cast</h2><p>Out comes a PNG or an MP4.</p></div></div></div>
         <div class="hud">
           <div class="ladder" id="ladder" role="group" aria-label="Story steps"><button type="button" class="on" data-jump="0">Pot</button><button type="button" data-jump="0.24">Pour</button><button type="button" data-jump="0.48">Fill</button><button type="button" data-jump="0.7">Cool</button><button type="button" data-jump="0.95">Cast</button></div>
           <span><b id="hud-fill">0%</b>fill</span>
           <span><b id="hud-heat">1400°C</b>cast</span>
-          <a class="skip" href="#install">Skip the story<svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M7 2h2v1h-2zM7 3h2v1h-2zM7 4h2v1h-2zM7 5h2v1h-2zM7 6h2v1h-2zM7 7h2v1h-2zM3 8h2v1h-2zM7 8h2v1h-2zM11 8h2v1h-2zM3 9h3v1h-3zM7 9h2v1h-2zM10 9h3v1h-3zM4 10h8v1h-8zM5 11h6v1h-6zM6 12h4v1h-4zM7 13h2v1h-2z"/></svg></a>
+          <a class="skip" href="#install">Skip the story<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-down"/></svg></a>
         </div>
       </div>
     </div>
@@ -105,20 +130,20 @@
       <div class="split">
         <div class="stack">
           <div class="managers" role="group" aria-label="Package manager">
-            <button type="button" data-package-manager="npm" aria-pressed="true"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h16v1h-16zM0 1h16v1h-16zM0 2h16v1h-16zM0 3h16v1h-16zM0 4h3v1h-3zM13 4h3v1h-3zM0 5h3v1h-3zM13 5h3v1h-3zM0 6h3v1h-3zM8 6h2v1h-2zM13 6h3v1h-3zM0 7h3v1h-3zM8 7h2v1h-2zM13 7h3v1h-3zM0 8h3v1h-3zM8 8h2v1h-2zM13 8h3v1h-3zM0 9h3v1h-3zM8 9h2v1h-2zM13 9h3v1h-3zM0 10h3v1h-3zM8 10h2v1h-2zM13 10h3v1h-3zM0 11h3v1h-3zM8 11h2v1h-2zM13 11h3v1h-3zM0 12h4v1h-4zM8 12h3v1h-3zM12 12h4v1h-4zM0 13h16v1h-16zM0 14h16v1h-16zM0 15h16v1h-16z"/></svg>npm</button>
-            <button type="button" data-package-manager="pnpm" aria-pressed="false"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h16v1h-16zM0 1h16v1h-16zM0 2h16v1h-16zM0 3h16v1h-16zM0 4h16v1h-16zM6 5h4v1h-4zM11 5h5v1h-5zM5 6h11v1h-11zM5 7h11v1h-11zM5 8h11v1h-11zM5 9h11v1h-11zM6 10h4v1h-4zM11 10h5v1h-5zM0 11h16v1h-16zM0 12h16v1h-16zM0 13h16v1h-16zM0 14h16v1h-16zM0 15h16v1h-16z"/></svg>pnpm</button>
-            <button type="button" data-package-manager="yarn" aria-pressed="false"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M5 0h6v1h-6zM3 1h10v1h-10zM2 2h12v1h-12zM1 3h14v1h-14zM1 4h14v1h-14zM0 5h16v1h-16zM0 6h16v1h-16zM0 7h16v1h-16zM0 8h16v1h-16zM0 9h16v1h-16zM0 10h10v1h-10zM11 10h5v1h-5zM1 11h14v1h-14zM1 12h3v1h-3zM5 12h10v1h-10zM2 13h12v1h-12zM3 14h10v1h-10zM5 15h6v1h-6z"/></svg>Yarn</button>
-            <button type="button" data-package-manager="bun" aria-pressed="false"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M6 1h3v1h-3zM5 2h6v1h-6zM3 3h10v1h-10zM2 4h12v1h-12zM1 5h14v1h-14zM0 6h16v1h-16zM0 7h4v1h-4zM6 7h4v1h-4zM12 7h4v1h-4zM0 8h4v1h-4zM6 8h4v1h-4zM12 8h4v1h-4zM0 9h16v1h-16zM0 10h7v1h-7zM9 10h7v1h-7zM1 11h6v1h-6zM9 11h6v1h-6zM2 12h12v1h-12zM3 13h10v1h-10zM5 14h6v1h-6z"/></svg>Bun</button>
+            <button type="button" data-package-manager="npm" aria-pressed="true"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-npm"/></svg>npm</button>
+            <button type="button" data-package-manager="pnpm" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-pnpm"/></svg>pnpm</button>
+            <button type="button" data-package-manager="yarn" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-yarn"/></svg>Yarn</button>
+            <button type="button" data-package-manager="bun" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-bun"/></svg>Bun</button>
           </div>
-          <div class="command"><code id="package-command" data-install-command>npm i @codepawlhq/crucible</code><button class="copy" type="button" aria-label="Copy the install command"><svg class="pixel-icon copy-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 2h8v1h-8zM2 3h9v1h-9zM2 4h3v1h-3zM2 5h2v1h-2zM5 5h9v1h-9zM2 6h2v1h-2zM5 6h9v1h-9zM2 7h2v1h-2zM5 7h2v1h-2zM12 7h2v1h-2zM2 8h2v1h-2zM5 8h2v1h-2zM12 8h2v1h-2zM2 9h2v1h-2zM5 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM5 10h2v1h-2zM12 10h2v1h-2zM5 11h2v1h-2zM12 11h2v1h-2zM5 12h9v1h-9zM5 13h9v1h-9z"/></svg><svg class="pixel-icon done-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M12 3h1v1h-1zM11 4h3v1h-3zM11 5h2v1h-2zM10 6h2v1h-2zM2 7h2v1h-2zM9 7h3v1h-3zM2 8h3v1h-3zM8 8h3v1h-3zM3 9h3v1h-3zM7 9h3v1h-3zM4 10h5v1h-5zM5 11h3v1h-3zM6 12h1v1h-1z"/></svg></button></div>
+          <div class="command"><code id="package-command" data-install-command>npm i @codepawlhq/crucible</code><button class="copy" type="button" aria-label="Copy the install command"><svg class="icon copy-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-copy"/></svg><svg class="icon done-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-check"/></svg></button></div>
           <div class="release-feedback" hidden><p data-release-status role="status">Loading release information</p><button type="button" data-release-retry hidden>Retry</button></div>
-          <span class="named"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M8 0h3v1h-3zM7 1h1v1h-1zM10 1h2v1h-2zM6 2h1v1h-1zM9 2h1v1h-1zM11 2h1v1h-1zM5 3h1v1h-1zM8 3h1v1h-1zM11 3h3v1h-3zM4 4h1v1h-1zM7 4h1v1h-1zM10 4h2v1h-2zM13 4h2v1h-2zM3 5h1v1h-1zM6 5h1v1h-1zM9 5h2v1h-2zM12 5h1v1h-1zM14 5h1v1h-1zM2 6h1v1h-1zM5 6h1v1h-1zM8 6h2v1h-2zM11 6h2v1h-2zM14 6h1v1h-1zM1 7h1v1h-1zM4 7h1v1h-1zM7 7h2v1h-2zM10 7h2v1h-2zM13 7h2v1h-2zM3 8h2v1h-2zM6 8h2v1h-2zM9 8h2v1h-2zM12 8h2v1h-2zM3 9h2v1h-2zM8 9h2v1h-2zM11 9h2v1h-2zM4 10h2v1h-2zM7 10h2v1h-2zM10 10h2v1h-2zM5 11h2v1h-2zM9 11h2v1h-2zM8 12h2v1h-2zM8 13h1v1h-1zM8 14h1v1h-1zM9 15h1v1h-1z"/></svg>MCP server</span>
-          <div class="command"><code>npx crucible-mcp --backend gpu --memory 192</code><button class="copy" type="button" aria-label="Copy the MCP server command"><svg class="pixel-icon copy-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 2h8v1h-8zM2 3h9v1h-9zM2 4h3v1h-3zM2 5h2v1h-2zM5 5h9v1h-9zM2 6h2v1h-2zM5 6h9v1h-9zM2 7h2v1h-2zM5 7h2v1h-2zM12 7h2v1h-2zM2 8h2v1h-2zM5 8h2v1h-2zM12 8h2v1h-2zM2 9h2v1h-2zM5 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM5 10h2v1h-2zM12 10h2v1h-2zM5 11h2v1h-2zM12 11h2v1h-2zM5 12h9v1h-9zM5 13h9v1h-9z"/></svg><svg class="pixel-icon done-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M12 3h1v1h-1zM11 4h3v1h-3zM11 5h2v1h-2zM10 6h2v1h-2zM2 7h2v1h-2zM9 7h3v1h-3zM2 8h3v1h-3zM8 8h3v1h-3zM3 9h3v1h-3zM7 9h3v1h-3zM4 10h5v1h-5zM5 11h3v1h-3zM6 12h1v1h-1z"/></svg></button></div>
+          <span class="named"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-mcp"/></svg>MCP server</span>
+          <div class="command"><code>npx crucible-mcp --backend gpu --memory 192</code><button class="copy" type="button" aria-label="Copy the MCP server command"><svg class="icon copy-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-copy"/></svg><svg class="icon done-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-check"/></svg></button></div>
         </div>
         <div class="stack">
-          <span class="named"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M4 0h1v1h-1zM9 0h1v1h-1zM4 1h2v1h-2zM9 1h1v1h-1zM4 2h2v1h-2zM8 2h2v1h-2zM12 2h2v1h-2zM1 3h2v1h-2zM5 3h2v1h-2zM8 3h2v1h-2zM11 3h3v1h-3zM2 4h2v1h-2zM5 4h2v1h-2zM8 4h1v1h-1zM10 4h3v1h-3zM3 5h9v1h-9zM4 6h7v1h-7zM14 6h2v1h-2zM0 7h2v1h-2zM6 7h9v1h-9zM1 8h11v1h-11zM5 9h11v1h-11zM3 10h9v1h-9zM2 11h2v1h-2zM6 11h1v1h-1zM8 11h5v1h-5zM5 12h1v1h-1zM7 12h2v1h-2zM10 12h2v1h-2zM13 12h1v1h-1zM4 13h1v1h-1zM7 13h2v1h-2zM11 13h1v1h-1zM4 14h1v1h-1zM7 14h1v1h-1zM11 14h1v1h-1zM7 15h1v1h-1z"/></svg>Claude Code</span>
-          <div class="command"><code>claude mcp add --transport stdio crucible-scene -- npx -y --package @codepawlhq/crucible crucible-mcp --backend gpu --memory 192</code><button class="copy" type="button" aria-label="Copy the Claude Code command"><svg class="pixel-icon copy-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 2h8v1h-8zM2 3h9v1h-9zM2 4h3v1h-3zM2 5h2v1h-2zM5 5h9v1h-9zM2 6h2v1h-2zM5 6h9v1h-9zM2 7h2v1h-2zM5 7h2v1h-2zM12 7h2v1h-2zM2 8h2v1h-2zM5 8h2v1h-2zM12 8h2v1h-2zM2 9h2v1h-2zM5 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM5 10h2v1h-2zM12 10h2v1h-2zM5 11h2v1h-2zM12 11h2v1h-2zM5 12h9v1h-9zM5 13h9v1h-9z"/></svg><svg class="pixel-icon done-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M12 3h1v1h-1zM11 4h3v1h-3zM11 5h2v1h-2zM10 6h2v1h-2zM2 7h2v1h-2zM9 7h3v1h-3zM2 8h3v1h-3zM8 8h3v1h-3zM3 9h3v1h-3zM7 9h3v1h-3zM4 10h5v1h-5zM5 11h3v1h-3zM6 12h1v1h-1z"/></svg></button></div>
-          <span class="named"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 2h3v1h-3zM10 2h3v1h-3zM2 3h4v1h-4zM10 3h4v1h-4zM2 4h2v1h-2zM12 4h2v1h-2zM2 5h2v1h-2zM12 5h2v1h-2zM2 6h2v1h-2zM12 6h2v1h-2zM2 7h2v1h-2zM12 7h2v1h-2zM2 8h2v1h-2zM12 8h2v1h-2zM2 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM12 10h2v1h-2zM2 11h2v1h-2zM12 11h2v1h-2zM2 12h4v1h-4zM10 12h4v1h-4zM3 13h3v1h-3zM10 13h3v1h-3z"/></svg>Any MCP client</span>
+          <span class="named"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-terminal"/></svg>Claude Code</span>
+          <div class="command"><code>claude mcp add --transport stdio crucible-scene -- npx -y --package @codepawlhq/crucible crucible-mcp --backend gpu --memory 192</code><button class="copy" type="button" aria-label="Copy the Claude Code command"><svg class="icon copy-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-copy"/></svg><svg class="icon done-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-check"/></svg></button></div>
+          <span class="named"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-code"/></svg>Any MCP client</span>
           <div class="code-wrap"><pre class="code-block" id="client-config">{
   "mcpServers": {
     "crucible-scene": {
@@ -127,7 +152,7 @@
                "crucible-mcp", "--backend", "gpu", "--memory", "192"]
     }
   }
-}</pre><button class="copy" type="button" aria-label="Copy the MCP client configuration"><svg class="pixel-icon copy-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 2h8v1h-8zM2 3h9v1h-9zM2 4h3v1h-3zM2 5h2v1h-2zM5 5h9v1h-9zM2 6h2v1h-2zM5 6h9v1h-9zM2 7h2v1h-2zM5 7h2v1h-2zM12 7h2v1h-2zM2 8h2v1h-2zM5 8h2v1h-2zM12 8h2v1h-2zM2 9h2v1h-2zM5 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM5 10h2v1h-2zM12 10h2v1h-2zM5 11h2v1h-2zM12 11h2v1h-2zM5 12h9v1h-9zM5 13h9v1h-9z"/></svg><svg class="pixel-icon done-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M12 3h1v1h-1zM11 4h3v1h-3zM11 5h2v1h-2zM10 6h2v1h-2zM2 7h2v1h-2zM9 7h3v1h-3zM2 8h3v1h-3zM8 8h3v1h-3zM3 9h3v1h-3zM7 9h3v1h-3zM4 10h5v1h-5zM5 11h3v1h-3zM6 12h1v1h-1z"/></svg></button></div>
+}</pre><button class="copy" type="button" aria-label="Copy the MCP client configuration"><svg class="icon copy-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-copy"/></svg><svg class="icon done-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-check"/></svg></button></div>
         </div>
       </div>
     </div>
@@ -148,8 +173,8 @@ const renderer = new Glaze(canvas, parts, {
   ground: false,
   environment: { map },
 });
-renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class="copy" type="button" aria-label="Copy the code example"><svg class="pixel-icon copy-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 2h8v1h-8zM2 3h9v1h-9zM2 4h3v1h-3zM2 5h2v1h-2zM5 5h9v1h-9zM2 6h2v1h-2zM5 6h9v1h-9zM2 7h2v1h-2zM5 7h2v1h-2zM12 7h2v1h-2zM2 8h2v1h-2zM5 8h2v1h-2zM12 8h2v1h-2zM2 9h2v1h-2zM5 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM5 10h2v1h-2zM12 10h2v1h-2zM5 11h2v1h-2zM12 11h2v1h-2zM5 12h9v1h-9zM5 13h9v1h-9z"/></svg><svg class="pixel-icon done-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M12 3h1v1h-1zM11 4h3v1h-3zM11 5h2v1h-2zM10 6h2v1h-2zM2 7h2v1h-2zM9 7h3v1h-3zM2 8h3v1h-3zM8 8h3v1h-3zM3 9h3v1h-3zM7 9h3v1h-3zM4 10h5v1h-5zM5 11h3v1h-3zM6 12h1v1h-1z"/></svg></button></div>
-        <figure class="shot"><img data-dither src="/previews/showcase-datacenter.webp" alt="A cutaway AI data center hall rendered by Crucible from a GLB and an HDRI" loading="lazy"></figure>
+renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class="copy" type="button" aria-label="Copy the code example"><svg class="icon copy-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-copy"/></svg><svg class="icon done-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-check"/></svg></button></div>
+        <figure class="shot"><img data-dither src="/previews/showcase-datacenter.webp" width="960" height="540" alt="A cutaway AI data center hall rendered by Crucible from a GLB and an HDRI" loading="lazy"></figure>
       </div>
     </div>
   </section>
@@ -161,9 +186,9 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
         <nav aria-label="Showcase links"><a href="/showcase.html#community">Submit your work</a><a href="/showcase.html">Open the live scenes</a></nav>
       </div>
       <div class="gallery">
-        <a class="work" href="/showcase.html?scene=airport"><span class="shot"><img data-dither src="/previews/showcase-airport.webp" alt="Airport ramp, rendered by Crucible" loading="lazy"></span><span><b>Airport ramp</b>A widebody at the stand with its service trucks</span></a>
-        <a class="work" href="/showcase.html?scene=datacenter"><span class="shot"><img data-dither src="/previews/showcase-datacenter.webp" alt="AI data center, rendered by Crucible" loading="lazy"></span><span><b>AI data center</b>Rows of racks, power and cooling, cut open</span></a>
-        <a class="work" href="/showcase.html?scene=port"><span class="shot"><img data-dither src="/previews/showcase-port.webp" alt="Container port, rendered by Crucible" loading="lazy"></span><span><b>Container port</b>A ship at berth under the quay cranes</span></a>
+        <a class="work" href="/showcase.html?scene=airport"><span class="shot"><img data-dither src="/previews/showcase-airport.webp" width="960" height="540" alt="Airport ramp, rendered by Crucible" loading="lazy"></span><span><b>Airport ramp</b>A widebody at the stand with its service trucks</span></a>
+        <a class="work" href="/showcase.html?scene=datacenter"><span class="shot"><img data-dither src="/previews/showcase-datacenter.webp" width="960" height="540" alt="AI data center, rendered by Crucible" loading="lazy"></span><span><b>AI data center</b>Rows of racks, power and cooling, cut open</span></a>
+        <a class="work" href="/showcase.html?scene=port"><span class="shot"><img data-dither src="/previews/showcase-port.webp" width="960" height="540" alt="Container port, rendered by Crucible" loading="lazy"></span><span><b>Container port</b>A ship at berth under the quay cranes</span></a>
       </div>
       <ul class="chips" aria-label="Engine capabilities">
         <li>PBR materials</li><li>Shadows</li><li>HDR and bloom</li><li>MSAA</li><li>Mesh blend</li><li>Live cloth</li><li>Volumetric fog</li><li>Skinning and morphs</li><li>Physics</li><li>Spume liquid</li><li>Glass and leaf cutouts</li><li>HDRI lighting</li><li>Textured terrain</li><li>Trees and grass</li><li>Vehicles</li><li>GLB import and export</li><li>Cook path tracer</li>
@@ -177,18 +202,18 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
       <div class="split">
         <div class="stack">
           <p>An agent gets a live scene to edit, draws it with Glaze or Cook, and reviews the result.</p>
-          <div class="command"><code>npx crucible-mcp --backend gpu --memory 192</code><button class="copy" type="button" aria-label="Copy the MCP server command"><svg class="pixel-icon copy-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 2h8v1h-8zM2 3h9v1h-9zM2 4h3v1h-3zM2 5h2v1h-2zM5 5h9v1h-9zM2 6h2v1h-2zM5 6h9v1h-9zM2 7h2v1h-2zM5 7h2v1h-2zM12 7h2v1h-2zM2 8h2v1h-2zM5 8h2v1h-2zM12 8h2v1h-2zM2 9h2v1h-2zM5 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM5 10h2v1h-2zM12 10h2v1h-2zM5 11h2v1h-2zM12 11h2v1h-2zM5 12h9v1h-9zM5 13h9v1h-9z"/></svg><svg class="pixel-icon done-mark" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M12 3h1v1h-1zM11 4h3v1h-3zM11 5h2v1h-2zM10 6h2v1h-2zM2 7h2v1h-2zM9 7h3v1h-3zM2 8h3v1h-3zM8 8h3v1h-3zM3 9h3v1h-3zM7 9h3v1h-3zM4 10h5v1h-5zM5 11h3v1h-3zM6 12h1v1h-1z"/></svg></button></div>
+          <div class="command"><code>npx crucible-mcp --backend gpu --memory 192</code><button class="copy" type="button" aria-label="Copy the MCP server command"><svg class="icon copy-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-copy"/></svg><svg class="icon done-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-check"/></svg></button></div>
           <div class="meter" role="img" aria-label="Measured gzip bundle size on lit-box: Crucible 58.8 kB, three.js 133.8 kB">
             <span><span>Crucible (lit-box)</span><span>58.8 kB gzip · 2.28× smaller</span></span><i class="ours" style="--share: 44%"></i>
             <span><span>three.js (lit-box)</span><span>133.8 kB gzip</span></span><i style="--share: 100%"></i>
           </div>
         </div>
-        <figure class="shot"><img data-dither src="/previews/cook-monk.webp" alt="A monk statue path traced by Cook" loading="lazy"></figure>
+        <figure class="shot"><img data-dither src="/previews/cook-monk.webp" width="960" height="720" alt="A monk statue path traced by Cook" loading="lazy"></figure>
       </div>
       <div class="cards">
-        <a class="card" href="/mcp.md"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M7 1h2v1h-2zM5 2h6v1h-6zM3 3h4v1h-4zM9 3h4v1h-4zM2 4h4v1h-4zM10 4h4v1h-4zM1 5h5v1h-5zM10 5h5v1h-5zM2 6h5v1h-5zM9 6h5v1h-5zM2 7h2v1h-2zM5 7h6v1h-6zM12 7h2v1h-2zM2 8h2v1h-2zM7 8h2v1h-2zM12 8h2v1h-2zM2 9h2v1h-2zM7 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM7 10h2v1h-2zM12 10h2v1h-2zM2 11h4v1h-4zM7 11h2v1h-2zM10 11h4v1h-4zM3 12h10v1h-10zM5 13h6v1h-6zM7 14h2v1h-2z"/></svg><h3>25 MCP tools</h3><p>Create, edit, explode, blend and render over stdio.</p></a>
-        <a class="card" href="/path-tracer.md"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M7 1h2v1h-2zM5 2h6v1h-6zM3 3h4v1h-4zM9 3h4v1h-4zM1 4h5v1h-5zM10 4h5v1h-5zM0 5h5v1h-5zM11 5h5v1h-5zM2 6h4v1h-4zM10 6h4v1h-4zM1 7h2v1h-2zM4 7h8v1h-8zM13 7h2v1h-2zM1 8h3v1h-3zM6 8h4v1h-4zM12 8h3v1h-3zM2 9h4v1h-4zM7 9h2v1h-2zM10 9h4v1h-4zM1 10h2v1h-2zM4 10h8v1h-8zM13 10h2v1h-2zM1 11h3v1h-3zM6 11h4v1h-4zM12 11h3v1h-3zM2 12h4v1h-4zM7 12h2v1h-2zM10 12h4v1h-4zM4 13h8v1h-8zM6 14h4v1h-4zM7 15h2v1h-2z"/></svg><h3>Glaze + Cook</h3><p>Real-time frames, or path-traced stills.</p></a>
-        <a class="card" href="/agent-review.md"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M6 2h4v1h-4zM4 3h8v1h-8zM3 4h4v1h-4zM9 4h4v1h-4zM2 5h3v1h-3zM6 5h4v1h-4zM11 5h3v1h-3zM1 6h3v1h-3zM5 6h6v1h-6zM12 6h3v1h-3zM0 7h3v1h-3zM5 7h2v1h-2zM9 7h2v1h-2zM13 7h3v1h-3zM0 8h3v1h-3zM5 8h2v1h-2zM9 8h2v1h-2zM13 8h3v1h-3zM1 9h3v1h-3zM5 9h6v1h-6zM12 9h3v1h-3zM2 10h3v1h-3zM6 10h4v1h-4zM11 10h3v1h-3zM3 11h4v1h-4zM9 11h4v1h-4zM4 12h8v1h-8zM6 13h4v1h-4z"/></svg><h3>Visual review</h3><p>Compare labeled views and normals from one snapshot.</p></a>
+        <a class="card" href="/mcp.md"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-mcp"/></svg><h3>25 MCP tools</h3><p>Create, edit, explode, blend and render over stdio.</p></a>
+        <a class="card" href="/path-tracer.md"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-sun"/></svg><h3>Glaze + Cook</h3><p>Real-time frames, or path-traced stills.</p></a>
+        <a class="card" href="/agent-review.md"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-eye"/></svg><h3>Visual review</h3><p>Compare labeled views and normals from one snapshot.</p></a>
       </div>
     </div>
   </section>
@@ -201,7 +226,7 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
       <ol class="tiers">
         <!-- tier-cards:start (written by bench/tiers/make-home-tiers.mjs) -->
         <li class="tier" data-tier="draft" data-glaze-ms="0.54-1.04" data-eevee-ms="56-59" data-flip-glaze="0.045-0.188" data-flip-eevee="0.041-0.562">
-          <h3><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M10 1h1v1h-1zM9 2h3v1h-3zM8 3h5v1h-5zM7 4h7v1h-7zM6 5h9v1h-9zM5 6h3v1h-3zM10 6h4v1h-4zM4 7h3v1h-3zM10 7h3v1h-3zM3 8h3v1h-3zM9 8h3v1h-3zM2 9h3v1h-3zM8 9h3v1h-3zM2 10h2v1h-2zM7 10h3v1h-3zM2 11h2v1h-2zM6 11h3v1h-3zM2 12h6v1h-6zM2 13h5v1h-5z"/></svg>draft</h3><p>A quick look while editing</p>
+          <h3><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-zap"/></svg>draft</h3><p>A quick look while editing</p>
           <p class="big">0.54–1.04 <span>ms a frame</span></p>
           <div class="meter" role="img" aria-label="Glaze 0.54 to 1.04 ms a frame; EEVEE 1 sample 56 to 59 ms a render call">
             <span><span>Crucible Glaze</span><span>0.54–1.04 ms</span></span><i class="ours" style="--share: 1.8%"></i>
@@ -213,7 +238,7 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
           </div>
         </li>
         <li class="tier" data-tier="realtime" data-glaze-ms="0.77-0.98" data-eevee-ms="288-363" data-flip-glaze="0.03-0.197" data-flip-eevee="0.042-0.562">
-          <h3><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M6 4h4v1h-4zM4 5h8v1h-8zM3 6h4v1h-4zM9 6h4v1h-4zM2 7h3v1h-3zM9 7h5v1h-5zM2 8h2v1h-2zM8 8h3v1h-3zM12 8h2v1h-2zM2 9h2v1h-2zM8 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM7 10h2v1h-2zM12 10h2v1h-2zM2 11h1v1h-1zM7 11h2v1h-2zM13 11h1v1h-1z"/></svg>realtime</h3><p>Interactive use</p>
+          <h3><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gauge"/></svg>realtime</h3><p>Interactive use</p>
           <p class="big">0.77–0.98 <span>ms a frame</span></p>
           <div class="meter" role="img" aria-label="Glaze 0.77 to 0.98 ms a frame; EEVEE 64 samples 288 to 363 ms a render call">
             <span><span>Crucible Glaze</span><span>0.77–0.98 ms</span></span><i class="ours" style="--share: 0.3%"></i>
@@ -225,12 +250,12 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
           </div>
         </li>
         <li class="tier" data-tier="realtime-high" data-status="planned">
-          <h3><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M7 1h2v1h-2zM5 2h6v1h-6zM3 3h4v1h-4zM9 3h4v1h-4zM1 4h5v1h-5zM10 4h5v1h-5zM0 5h5v1h-5zM11 5h5v1h-5zM2 6h4v1h-4zM10 6h4v1h-4zM1 7h2v1h-2zM4 7h8v1h-8zM13 7h2v1h-2zM1 8h3v1h-3zM6 8h4v1h-4zM12 8h3v1h-3zM2 9h4v1h-4zM7 9h2v1h-2zM10 9h4v1h-4zM1 10h2v1h-2zM4 10h8v1h-8zM13 10h2v1h-2zM1 11h3v1h-3zM6 11h4v1h-4zM12 11h3v1h-3zM2 12h4v1h-4zM7 12h2v1h-2zM10 12h4v1h-4zM4 13h8v1h-8zM6 14h4v1h-4zM7 15h2v1h-2z"/></svg>realtime-high</h3><p>Better live frames</p>
+          <h3><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-sparkles"/></svg>realtime-high</h3><p>Better live frames</p>
           <p class="big">Planned <span>not measured</span></p>
           <p>WebGPU, GI cache, upscaling. Issues <a href="https://github.com/codepawl/crucible/issues/901">901</a> and <a href="https://github.com/codepawl/crucible/issues/902">902</a>.</p>
         </li>
         <li class="tier" data-tier="final" data-cook-ms="1.73-4.24" data-cycles-ms="6.81-26.41" data-noise-time-x="1.05-4.02">
-          <h3><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M7 1h2v1h-2zM7 2h2v1h-2zM6 3h4v1h-4zM6 4h4v1h-4zM0 5h16v1h-16zM1 6h6v1h-6zM9 6h6v1h-6zM2 7h3v1h-3zM11 7h3v1h-3zM3 8h3v1h-3zM10 8h3v1h-3zM4 9h2v1h-2zM10 9h2v1h-2zM4 10h2v1h-2zM7 10h2v1h-2zM10 10h2v1h-2zM4 11h8v1h-8zM3 12h10v1h-10zM3 13h3v1h-3zM10 13h3v1h-3zM3 14h2v1h-2zM11 14h2v1h-2z"/></svg>final</h3><p>Finished stills</p>
+          <h3><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-award"/></svg>final</h3><p>Finished stills</p>
           <p class="big">1.73–4.24 <span>ms per sample</span></p>
           <div class="meter" role="img" aria-label="Per sample: Cook native 1.73 to 4.24 ms, Cycles OptiX 6.81 to 26.41 ms">
             <span><span>Cook native</span><span>1.73–4.24 ms</span></span><i class="ours" style="--share: 16.1%"></i>
@@ -254,25 +279,25 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
         <h2>Documentation</h2>
         <p class="lede">Guides for the engine, the MCP server and the addons.</p>
         <nav class="links" aria-label="Documentation">
-          <a href="/docs.html#getting-started"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 1h11v1h-11zM2 2h12v1h-12zM2 3h2v1h-2zM12 3h2v1h-2zM2 4h2v1h-2zM5 4h6v1h-6zM12 4h2v1h-2zM2 5h2v1h-2zM5 5h6v1h-6zM12 5h2v1h-2zM2 6h2v1h-2zM12 6h2v1h-2zM2 7h2v1h-2zM12 7h2v1h-2zM2 8h2v1h-2zM12 8h2v1h-2zM2 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM12 10h2v1h-2zM2 11h2v1h-2zM11 11h3v1h-3zM2 12h12v1h-12zM2 13h11v1h-11zM2 14h2v1h-2z"/></svg>Getting started</a>
-          <a href="/docs.html#models-and-ai-agents"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M7 1h2v1h-2zM5 2h6v1h-6zM3 3h4v1h-4zM9 3h4v1h-4zM2 4h4v1h-4zM10 4h4v1h-4zM1 5h5v1h-5zM10 5h5v1h-5zM2 6h5v1h-5zM9 6h5v1h-5zM2 7h2v1h-2zM5 7h6v1h-6zM12 7h2v1h-2zM2 8h2v1h-2zM7 8h2v1h-2zM12 8h2v1h-2zM2 9h2v1h-2zM7 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM7 10h2v1h-2zM12 10h2v1h-2zM2 11h4v1h-4zM7 11h2v1h-2zM10 11h4v1h-4zM3 12h10v1h-10zM5 13h6v1h-6zM7 14h2v1h-2z"/></svg>Models and agents</a>
-          <a href="/docs.html#performance-and-memory"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M6 4h4v1h-4zM4 5h8v1h-8zM3 6h4v1h-4zM9 6h4v1h-4zM2 7h3v1h-3zM9 7h5v1h-5zM2 8h2v1h-2zM8 8h3v1h-3zM12 8h2v1h-2zM2 9h2v1h-2zM8 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM7 10h2v1h-2zM12 10h2v1h-2zM2 11h1v1h-1zM7 11h2v1h-2zM13 11h1v1h-1z"/></svg>Performance and memory</a>
-          <a href="/changelog.md"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 3h12v1h-12zM2 4h12v1h-12zM2 7h12v1h-12zM2 8h12v1h-12zM2 11h12v1h-12zM2 12h12v1h-12z"/></svg>Changelog</a>
+          <a href="/docs.html#getting-started"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-docs"/></svg>Getting started</a>
+          <a href="/docs.html#models-and-ai-agents"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-mcp"/></svg>Models and agents</a>
+          <a href="/docs.html#performance-and-memory"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gauge"/></svg>Performance and memory</a>
+          <a href="/changelog.md"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-changelog"/></svg>Changelog</a>
         </nav>
       </div>
       <div class="stack" id="help">
         <h2>Help</h2>
         <p class="lede">Report a bug or ask a question on GitHub.</p>
         <nav class="links" aria-label="Help">
-          <a href="https://github.com/codepawl/crucible/issues"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M6 0h4v1h-4zM4 1h8v1h-8zM2 2h12v1h-12zM1 3h14v1h-14zM1 4h3v1h-3zM12 4h3v1h-3zM0 5h4v1h-4zM12 5h4v1h-4zM0 6h3v1h-3zM13 6h3v1h-3zM0 7h3v1h-3zM13 7h3v1h-3zM0 8h3v1h-3zM13 8h3v1h-3zM0 9h3v1h-3zM13 9h3v1h-3zM0 10h4v1h-4zM12 10h4v1h-4zM1 11h5v1h-5zM10 11h5v1h-5zM1 12h2v1h-2zM4 12h2v1h-2zM10 12h5v1h-5zM2 13h2v1h-2zM10 13h4v1h-4zM3 14h3v1h-3zM10 14h3v1h-3zM5 15h1v1h-1zM10 15h1v1h-1z"/></svg>GitHub issues</a>
-          <a href="/docs.html"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 1h11v1h-11zM2 2h12v1h-12zM2 3h2v1h-2zM12 3h2v1h-2zM2 4h2v1h-2zM5 4h6v1h-6zM12 4h2v1h-2zM2 5h2v1h-2zM5 5h6v1h-6zM12 5h2v1h-2zM2 6h2v1h-2zM12 6h2v1h-2zM2 7h2v1h-2zM12 7h2v1h-2zM2 8h2v1h-2zM12 8h2v1h-2zM2 9h2v1h-2zM12 9h2v1h-2zM2 10h2v1h-2zM12 10h2v1h-2zM2 11h2v1h-2zM11 11h3v1h-3zM2 12h12v1h-12zM2 13h11v1h-11zM2 14h2v1h-2z"/></svg>Docs</a>
-          <a href="/recipes.html"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M7 1h2v1h-2zM5 2h6v1h-6zM3 3h4v1h-4zM9 3h4v1h-4zM1 4h5v1h-5zM10 4h5v1h-5zM0 5h5v1h-5zM11 5h5v1h-5zM2 6h4v1h-4zM10 6h4v1h-4zM1 7h2v1h-2zM4 7h8v1h-8zM13 7h2v1h-2zM1 8h3v1h-3zM6 8h4v1h-4zM12 8h3v1h-3zM2 9h4v1h-4zM7 9h2v1h-2zM10 9h4v1h-4zM1 10h2v1h-2zM4 10h8v1h-8zM13 10h2v1h-2zM1 11h3v1h-3zM6 11h4v1h-4zM12 11h3v1h-3zM2 12h4v1h-4zM7 12h2v1h-2zM10 12h4v1h-4zM4 13h8v1h-8zM6 14h4v1h-4zM7 15h2v1h-2z"/></svg>Recipes</a>
+          <a href="https://github.com/codepawl/crucible/issues"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-github"/></svg>GitHub issues</a>
+          <a href="/docs.html"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-docs"/></svg>Docs</a>
+          <a href="/recipes.html"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-recipes"/></svg>Recipes</a>
         </nav>
       </div>
       <div class="stack" id="sponsors">
         <h2>Sponsors</h2>
         <p>Crucible is free and MIT licensed. Sponsors pay for GPU time, test hardware and the hours that go into it. Company sponsors get their logo here from $100 a month.</p>
-        <a class="button" href="https://github.com/sponsors/codepawl"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 1h4v1h-4zM10 1h4v1h-4zM1 2h14v1h-14zM0 3h2v1h-2zM6 3h4v1h-4zM14 3h2v1h-2zM0 4h2v1h-2zM7 4h2v1h-2zM14 4h2v1h-2zM0 5h2v1h-2zM14 5h2v1h-2zM0 6h2v1h-2zM14 6h2v1h-2zM0 7h2v1h-2zM14 7h2v1h-2zM1 8h2v1h-2zM13 8h2v1h-2zM1 9h2v1h-2zM13 9h2v1h-2zM2 10h2v1h-2zM12 10h2v1h-2zM3 11h2v1h-2zM11 11h2v1h-2zM4 12h3v1h-3zM9 12h3v1h-3zM5 13h6v1h-6zM7 14h2v1h-2z"/></svg>Sponsor on GitHub</a>
+        <a class="button" href="https://github.com/sponsors/codepawl"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-heart"/></svg>Sponsor on GitHub</a>
       </div>
     </div>
   </section>
@@ -281,7 +306,7 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
 <!-- site-chrome:footer -->
 <footer class="footer">
   <div class="inner">
-    <p><a class="brand" href="/" aria-label="Crucible home"><img src="/brand/crucible-mark.svg" alt="">Crucible</a></p>
+    <p><a class="brand" href="/" aria-label="Crucible home"><picture><source media="(prefers-color-scheme: dark)" srcset="/brand/crucible-mark-64-dark.webp"><img src="/brand/crucible-mark-64.webp" alt="" width="28" height="28" decoding="async"></picture>Crucible</a></p>
     <p>by <a href="https://codepawl.com">CodePawl</a>, formerly 67js</p>
     <nav aria-label="Site pages">
       <a href="/docs.html">Docs</a>
@@ -292,8 +317,8 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
       <a href="/changelog.html">Changelog</a>
     </nav>
     <nav aria-label="Project links">
-      <a href="https://github.com/codepawl/crucible"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M6 0h4v1h-4zM4 1h8v1h-8zM2 2h12v1h-12zM1 3h14v1h-14zM1 4h3v1h-3zM12 4h3v1h-3zM0 5h4v1h-4zM12 5h4v1h-4zM0 6h3v1h-3zM13 6h3v1h-3zM0 7h3v1h-3zM13 7h3v1h-3zM0 8h3v1h-3zM13 8h3v1h-3zM0 9h3v1h-3zM13 9h3v1h-3zM0 10h4v1h-4zM12 10h4v1h-4zM1 11h5v1h-5zM10 11h5v1h-5zM1 12h2v1h-2zM4 12h2v1h-2zM10 12h5v1h-5zM2 13h2v1h-2zM10 13h4v1h-4zM3 14h3v1h-3zM10 14h3v1h-3zM5 15h1v1h-1zM10 15h1v1h-1z"/></svg>GitHub</a>
-      <a href="https://www.npmjs.com/package/@codepawlhq/crucible"><svg class="pixel-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h16v1h-16zM0 1h16v1h-16zM0 2h16v1h-16zM0 3h16v1h-16zM0 4h3v1h-3zM13 4h3v1h-3zM0 5h3v1h-3zM13 5h3v1h-3zM0 6h3v1h-3zM8 6h2v1h-2zM13 6h3v1h-3zM0 7h3v1h-3zM8 7h2v1h-2zM13 7h3v1h-3zM0 8h3v1h-3zM8 8h2v1h-2zM13 8h3v1h-3zM0 9h3v1h-3zM8 9h2v1h-2zM13 9h3v1h-3zM0 10h3v1h-3zM8 10h2v1h-2zM13 10h3v1h-3zM0 11h3v1h-3zM8 11h2v1h-2zM13 11h3v1h-3zM0 12h4v1h-4zM8 12h3v1h-3zM12 12h4v1h-4zM0 13h16v1h-16zM0 14h16v1h-16zM0 15h16v1h-16z"/></svg>npm</a>
+      <a href="https://github.com/codepawl/crucible"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>GitHub</a>
+      <a href="https://www.npmjs.com/package/@codepawlhq/crucible"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 9v6M12 9v6M16 9v6M8 9h8"/></svg>npm</a>
       <a data-release-commit href="https://github.com/codepawl/crucible">Release commit</a>
       <a href="/license.txt">MIT license</a>
       <a href="/logo.svg" download>Logo SVG</a>

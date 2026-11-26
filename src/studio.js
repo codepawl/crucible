@@ -35,6 +35,7 @@ import { createPropertyLine, createPropertyPanel } from './studio-property-panel
 import './studio-features.js';
 import { hasStudioTab, registeredStudioMenuEntries, registeredStudioStyles, registeredStudioTabIds, registeredStudioTabs, registeredStudioWorkspaces, registerStudioTab } from './studio-registry.js';
 import { createShapeSettings } from './studio-shape-settings.js';
+import { MIXED_PROPERTY_LABEL, MIXED_SELECT_VALUE, summarizeNodeSelection, syncObjectAndMaterialPanels } from './studio-multi-edit.js';
 import { createKeyMarkers } from './studio-timeline-keys.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
 import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, describeBounds, describeCamera, describeGridStep, gridLayout, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart } from './studio-viewport-aids.js';
@@ -246,6 +247,7 @@ function wireRovingFocusFallback(container, items, { vertical = false, followFoc
 
 function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02, minimumComponent = -Infinity, lockToggle = null, axisNames = AXIS_NAMES, accessibleTitle = title, getLengthUnit = null, onGestureStart, onGestureEnd } = {}) {
   let latestValues = axisNames.map(() => 0);
+  let mixedAxes = axisNames.map(() => false);
   let locked = false;
   let disabled = false;
   const inputs = axisNames.map(axis => createElement(documentReference, 'input', {
@@ -266,15 +268,15 @@ function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02
 
   function emitEditedAxis(axisIndex, rawNumeric) {
     const clamped = Math.max(minimumComponent, rawNumeric);
-    if (locked && latestValues[axisIndex] > 0) {
+    if (locked && !mixedAxes[axisIndex] && latestValues[axisIndex] > 0) {
       const ratio = clamped / latestValues[axisIndex];
       const scaled = latestValues.map(component => Math.max(minimumComponent, component * ratio));
-      onInput(scaled, axisIndex);
+      onInput(scaled, axisIndex, { locked: true });
       return;
     }
-    const parsed = inputs.map((field, index) => (index === axisIndex ? clamped : readAxisInput(field)));
-    if (parsed.every(component => component !== null && Number.isFinite(component))) {
-      onInput(parsed, axisIndex);
+    const parsed = inputs.map((field, index) => (index === axisIndex ? clamped : (mixedAxes[index] && field.value === '' ? null : readAxisInput(field))));
+    if (parsed[axisIndex] !== null && parsed.every((component, index) => (component === null && mixedAxes[index]) || (component !== null && Number.isFinite(component)))) {
+      onInput(parsed, axisIndex, { locked: false });
     }
   }
 
@@ -370,6 +372,14 @@ function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02
           : String(roundValue(values[index] ?? 0, precision));
       });
     },
+    setMixed(mixed = axisNames.map(() => false)) {
+      mixedAxes = axisNames.map((_, index) => Boolean(mixed[index]));
+      inputs.forEach((input, index) => {
+        input.dataset.mixed = mixedAxes[index] ? 'true' : 'false';
+        input.placeholder = mixedAxes[index] ? MIXED_PROPERTY_LABEL : '';
+        if (mixedAxes[index]) input.value = '';
+      });
+    },
   };
 }
 
@@ -403,6 +413,10 @@ function createSliderField(documentReference, labelText, { min, max, step, value
     setValue(nextValue) {
       input.value = String(nextValue);
       output.textContent = Number(nextValue).toFixed(decimals);
+    },
+    setMixed(isMixed) {
+      container.dataset.mixed = isMixed ? 'true' : 'false';
+      if (isMixed) output.textContent = MIXED_PROPERTY_LABEL;
     },
   };
 }
@@ -1617,6 +1631,7 @@ export function createStudio(container, {
     openPopoverAt,
     getMeshEditor: () => meshEditor,
     separateMeshSelection: () => separateMeshSelection(),
+    onStartTool: kind => startFaceTool(kind),
     onTopologyApplied: () => {
       syncUi();
       requestFrame();
@@ -1628,9 +1643,13 @@ export function createStudio(container, {
     lastObjectMenuPoint = [clientX, clientY];
     openPopoverAt(objectPopover, clientX, clientY);
   }
+  function selectedTargets() {
+    return controller.selectedNodeIds.length > 0 ? controller.selectedNodeIds : (controller.selectedNodeId ? [controller.selectedNodeId] : []);
+  }
   function hideSelection() {
-    if (!controller.selectedNodeId) return;
-    controller.updateNodeTransform(controller.selectedNodeId, { visible: false });
+    const targets = selectedTargets();
+    if (targets.length === 0) return;
+    controller.updateNodesTransform(targets, { visible: false });
     announce(`Hidden. ${keyLabel(keymap, 'edit.showAll')} shows everything again`);
   }
   function showAllHidden() {
@@ -1639,16 +1658,13 @@ export function createStudio(container, {
       announce('Nothing is hidden');
       return;
     }
-    controller.beginUndoGroup();
-    for (const node of hiddenNodes) {
-      controller.updateNodeTransform(node.id, { visible: true });
-    }
-    controller.endUndoGroup();
+    controller.updateNodesTransform(hiddenNodes.map(node => node.id), { visible: true });
     announce(`Showing ${hiddenNodes.length} hidden ${hiddenNodes.length === 1 ? 'object' : 'objects'}`);
   }
   function resetSelectionTransform(part) {
-    if (!controller.selectedNodeId) return;
-    controller.updateNodeTransform(controller.selectedNodeId, { [part]: [...TRANSFORM_AT_REST[part]] });
+    const targets = selectedTargets();
+    if (targets.length === 0) return;
+    controller.updateNodesTransform(targets, { [part]: [...TRANSFORM_AT_REST[part]] });
     announce(`${TRANSFORM_PART_WORDS[part]} reset`);
   }
   // Shown only while a motion track drives the camera: off means the viewport looks around on its own.
@@ -1984,7 +2000,7 @@ export function createStudio(container, {
   const swatchContainer = createElement(documentReference, 'div', { className: 'crucible-studio-swatches crucible-studio-scroll' });
   const newMaterialQuickButton = createIconButton(documentReference, 'add', 'New material', { className: 'crucible-studio-swatch-add' });
   newMaterialQuickButton.addEventListener('click', () => {
-    const created = controller.createMaterial({ assignToNodeId: controller.selectedNodeId });
+    const created = controller.createMaterial({ assignToNodeIds: selectedTargets() });
     selectInspectorTab('material');
     announceSuccess(`Created ${created.id}`);
   });
@@ -2345,6 +2361,15 @@ export function createStudio(container, {
   const castShadowToggle = createElement(documentReference, 'button', { type: 'button', textContent: 'Casts shadow', attributes: { 'aria-pressed': 'true' } });
   const receiveShadowToggle = createElement(documentReference, 'button', { type: 'button', textContent: 'Receives shadow', attributes: { 'aria-pressed': 'true' } });
 
+  const applyNodeTargets = patch => {
+    const targets = selectedTargets();
+    if (targets.length === 1) controller.updateNodeTransform(targets[0], patch);
+    else if (targets.length > 1) controller.updateNodesTransform(targets, patch);
+  };
+  const vectorPatchFor = (values, axisIndex, { locked = false } = {}) => (
+    selectedTargets().length > 1 && !locked ? values.map((component, index) => (index === axisIndex ? component : null)) : values
+  );
+
   nodeLabelInput.addEventListener('change', () => {
     if (!controller.selectedNodeId) return;
     const checked = validateNodeLabel(nodeLabelInput.value);
@@ -2353,42 +2378,39 @@ export function createStudio(container, {
       nodeLabelInput.value = selectedNodeLabel();
       return;
     }
-    controller.updateNodeTransform(controller.selectedNodeId, { label: checked.value });
+    applyNodeTargets({ label: checked.value });
   });
   nodeParentSelect.addEventListener('change', () => {
-    if (!controller.selectedNodeId) return;
+    if (!controller.selectedNodeId || nodeParentSelect.value === MIXED_SELECT_VALUE) return;
     try {
-      controller.updateNodeTransform(controller.selectedNodeId, { parent: nodeParentSelect.value || null });
+      applyNodeTargets({ parent: nodeParentSelect.value || null });
     } catch (error) {
       announceError(error.message);
       syncUi();
     }
   });
   visibleToggle.addEventListener('click', () => {
-    if (!controller.selectedNodeId) return;
     const node = controller.exportRecipe().nodes.find(candidate => candidate.id === controller.selectedNodeId);
-    controller.updateNodeTransform(controller.selectedNodeId, { visible: !(node?.visible ?? true) });
+    if (node) applyNodeTargets({ visible: !(node.visible ?? true) });
   });
   castShadowToggle.addEventListener('click', () => {
-    if (!controller.selectedNodeId) return;
     const node = controller.exportRecipe().nodes.find(candidate => candidate.id === controller.selectedNodeId);
-    controller.updateNodeTransform(controller.selectedNodeId, { castShadow: !(node?.castShadow ?? true) });
+    if (node) applyNodeTargets({ castShadow: !(node.castShadow ?? true) });
   });
   receiveShadowToggle.addEventListener('click', () => {
-    if (!controller.selectedNodeId) return;
     const node = controller.exportRecipe().nodes.find(candidate => candidate.id === controller.selectedNodeId);
-    controller.updateNodeTransform(controller.selectedNodeId, { receiveShadow: !(node?.receiveShadow ?? true) });
+    if (node) applyNodeTargets({ receiveShadow: !(node.receiveShadow ?? true) });
   });
 
-  const positionRow = createVectorRow(documentReference, 'Position', values => {
-    if (controller.selectedNodeId) controller.updateNodeTransform(controller.selectedNodeId, { translation: values });
+  const positionRow = createVectorRow(documentReference, 'Position', (values, axisIndex, extra) => {
+    if (controller.selectedNodeId) applyNodeTargets({ translation: vectorPatchFor(values, axisIndex, extra) });
   }, { sensitivity: 0.015, getLengthUnit: () => preferences.lengthUnit });
-  const rotationRow = createVectorRow(documentReference, 'Rotation °', values => {
-    if (controller.selectedNodeId) controller.updateNodeTransform(controller.selectedNodeId, { rotationDegrees: values });
+  const rotationRow = createVectorRow(documentReference, 'Rotation °', (values, axisIndex, extra) => {
+    if (controller.selectedNodeId) applyNodeTargets({ rotationDegrees: vectorPatchFor(values, axisIndex, extra) });
   }, { sensitivity: 0.5 });
-  const scaleRow = createVectorRow(documentReference, 'Scale', values => {
-    if (controller.selectedNodeId && values.every(component => component > 0.001)) {
-      controller.updateNodeTransform(controller.selectedNodeId, { scale: values });
+  const scaleRow = createVectorRow(documentReference, 'Scale', (values, axisIndex, extra) => {
+    if (controller.selectedNodeId && values.every(component => component === null || component > 0.001)) {
+      applyNodeTargets({ scale: vectorPatchFor(values, axisIndex, extra) });
     }
   }, { sensitivity: 0.01, minimumComponent: 0.02, lockToggle: true });
 
@@ -2431,89 +2453,81 @@ export function createStudio(container, {
   // Tab 2: Material Panel
   const materialSelect = createElement(documentReference, 'select', { attributes: { 'aria-label': 'Assigned material' } });
   materialSelect.addEventListener('change', () => {
-    if (controller.selectedNodeId && materialSelect.value) {
+    const targets = selectedTargets();
+    if (targets.length > 0 && materialSelect.value && materialSelect.value !== MIXED_SELECT_VALUE) {
       try {
-        controller.assignNodeMaterial(controller.selectedNodeId, materialSelect.value);
+        if (targets.length === 1) controller.assignNodeMaterial(targets[0], materialSelect.value);
+        else controller.assignNodesMaterial(targets, materialSelect.value);
       } catch (error) {
         announceError(error.message);
       }
     }
   });
+  const activeMaterialIds = () => {
+    const targets = new Set(selectedTargets());
+    const nodes = controller.exportRecipe().nodes;
+    const ids = [...new Set(nodes.filter(node => targets.has(node.id) && node.geometry !== undefined && node.material).map(node => node.material))];
+    if (ids.length > 0) return ids;
+    const fallback = materialSelect.value && materialSelect.value !== MIXED_SELECT_VALUE ? materialSelect.value : null;
+    return fallback ? [fallback] : [];
+  };
+  const applyMaterialsPatch = patchOrFactory => {
+    const ids = activeMaterialIds();
+    if (ids.length === 0) return;
+    if (ids.length === 1 && typeof patchOrFactory !== 'function') controller.updateMaterial(ids[0], patchOrFactory);
+    else controller.updateMaterials(ids, patchOrFactory);
+  };
   const materialPresetChips = Object.entries(STUDIO_MATERIAL_PRESETS).map(([presetKey, preset]) => {
     const button = createElement(documentReference, 'button', { type: 'button', textContent: preset.label, dataset: { preset: presetKey } });
     button.addEventListener('click', () => {
-      const targetNode = controller.exportRecipe().nodes.find(candidate => candidate.id === controller.selectedNodeId);
-      const materialId = targetNode?.material ?? materialSelect.value;
-      if (materialId) {
-        controller.applyMaterialPreset(materialId, presetKey);
+      const ids = activeMaterialIds();
+      if (ids.length > 0) {
+        if (ids.length === 1) controller.applyMaterialPreset(ids[0], presetKey);
+        else controller.applyMaterialsPreset(ids, presetKey);
         announce(`Applied ${preset.label} preset`);
       }
     });
     return button;
   });
-  const activeMaterialId = () => {
-    const selected = controller.exportRecipe().nodes.find(candidate => candidate.id === controller.selectedNodeId);
-    return selected?.material ?? materialSelect.value;
-  };
   const colorInput = createElement(documentReference, 'input', { type: 'color', value: '#cccccc', attributes: { 'aria-label': 'Base color' } });
   const emissiveColorInput = createElement(documentReference, 'input', { type: 'color', value: '#000000', attributes: { 'aria-label': 'Emissive color' } });
-  colorInput.addEventListener('input', () => {
-    const materialId = activeMaterialId();
-    if (materialId) controller.updateMaterial(materialId, { hexColor: colorInput.value });
-  });
-  emissiveColorInput.addEventListener('input', () => {
-    const materialId = activeMaterialId();
-    if (materialId) controller.updateMaterial(materialId, { emissiveHex: emissiveColorInput.value });
-  });
-  const roughnessField = createSliderField(documentReference, 'Roughness', { min: 0.02, max: 1, step: 0.02, value: 0.5 }, value => {
-    const materialId = activeMaterialId();
-    if (materialId) controller.updateMaterial(materialId, { roughness: value });
-  });
-  const metallicField = createSliderField(documentReference, 'Metallic', { min: 0, max: 1, step: 0.02, value: 0 }, value => {
-    const materialId = activeMaterialId();
-    if (materialId) controller.updateMaterial(materialId, { metallic: value });
-  });
+  const colorMixedTag = createElement(documentReference, 'output', { className: 'crucible-studio-mixed-tag', hidden: true });
+  const emissiveMixedTag = createElement(documentReference, 'output', { className: 'crucible-studio-mixed-tag', hidden: true });
+  colorInput.addEventListener('input', () => applyMaterialsPatch({ hexColor: colorInput.value }));
+  emissiveColorInput.addEventListener('input', () => applyMaterialsPatch({ emissiveHex: emissiveColorInput.value }));
+  const roughnessField = createSliderField(documentReference, 'Roughness', { min: 0.02, max: 1, step: 0.02, value: 0.5 }, value => applyMaterialsPatch({ roughness: value }));
+  const metallicField = createSliderField(documentReference, 'Metallic', { min: 0, max: 1, step: 0.02, value: 0 }, value => applyMaterialsPatch({ metallic: value }));
   const clearcoatField = createSliderField(documentReference, 'Clearcoat', { min: 0, max: 1, step: 0.02, value: 0 }, value => {
-    const materialId = activeMaterialId();
-    if (!materialId) return;
-    const material = controller.exportRecipe().materials.find(candidate => candidate.id === materialId);
-    // A coat starts glossy, but a roughness the person already chose stays.
-    const coatPatch = material?.clearcoatRoughness === undefined ? { clearcoat: value, clearcoatRoughness: DEFAULT_CLEARCOAT_ROUGHNESS } : { clearcoat: value };
-    controller.updateMaterial(materialId, coatPatch);
+    applyMaterialsPatch(material => (material.clearcoatRoughness === undefined ? { clearcoat: value, clearcoatRoughness: DEFAULT_CLEARCOAT_ROUGHNESS } : { clearcoat: value }));
   });
-  const clearcoatRoughnessField = createSliderField(documentReference, 'Clearcoat roughness', { min: 0, max: 1, step: 0.02, value: 0 }, value => {
-    const materialId = activeMaterialId();
-    if (materialId) controller.updateMaterial(materialId, { clearcoatRoughness: value });
-  });
+  const clearcoatRoughnessField = createSliderField(documentReference, 'Clearcoat roughness', { min: 0, max: 1, step: 0.02, value: 0 }, value => applyMaterialsPatch({ clearcoatRoughness: value }));
   const doubleSidedToggle = createElement(documentReference, 'button', { type: 'button', textContent: 'Double sided', attributes: { 'aria-pressed': 'false' } });
   doubleSidedToggle.addEventListener('click', () => {
-    const materialId = activeMaterialId();
-    if (!materialId) return;
-    const material = controller.exportRecipe().materials.find(candidate => candidate.id === materialId);
-    controller.updateMaterial(materialId, { doubleSided: !(material?.doubleSided ?? false) });
+    const ids = activeMaterialIds();
+    if (ids.length === 0) return;
+    const activeNode = controller.exportRecipe().nodes.find(candidate => candidate.id === controller.selectedNodeId);
+    const activeId = activeNode?.material ?? ids[0];
+    const material = controller.exportRecipe().materials.find(candidate => candidate.id === activeId);
+    applyMaterialsPatch({ doubleSided: !(material?.doubleSided ?? false) });
   });
-  const opacityField = createSliderField(documentReference, 'Opacity', { min: 0.05, max: 1, step: 0.02, value: 1 }, value => {
-    const materialId = activeMaterialId();
-    if (materialId) controller.updateMaterial(materialId, { opacity: value });
-  });
-  const emissionField = createSliderField(documentReference, 'Emission', { min: 0, max: 12, step: 0.1, value: 0 }, value => {
-    const materialId = activeMaterialId();
-    if (materialId) controller.updateMaterial(materialId, { emission: value });
-  });
+  const opacityField = createSliderField(documentReference, 'Opacity', { min: 0.05, max: 1, step: 0.02, value: 1 }, value => applyMaterialsPatch({ opacity: value }));
+  const emissionField = createSliderField(documentReference, 'Emission', { min: 0, max: 12, step: 0.1, value: 0 }, value => applyMaterialsPatch({ emission: value }));
+  const colorField = createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'div', { className: 'crucible-studio-field-head' }, createElement(documentReference, 'span', { textContent: 'Color' }), colorMixedTag), colorInput);
+  const emissiveField = createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'div', { className: 'crucible-studio-field-head' }, createElement(documentReference, 'span', { textContent: 'Glow color' }), emissiveMixedTag), emissiveColorInput);
   const materialPanelBody = createElement(
     documentReference,
     'div',
     { className: 'crucible-studio-panel-body' },
     createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'span', { className: 'crucible-studio-field-head', textContent: 'Material' }), materialSelect),
     createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'span', { className: 'crucible-studio-field-head', textContent: 'Presets' }), createElement(documentReference, 'div', { className: 'crucible-studio-chips' }, ...materialPresetChips)),
-    createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'span', { className: 'crucible-studio-field-head', textContent: 'Color' }), colorInput),
+    colorField,
     roughnessField.container,
     metallicField.container,
     clearcoatField.container,
     clearcoatRoughnessField.container,
     opacityField.container,
     emissionField.container,
-    createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'span', { className: 'crucible-studio-field-head', textContent: 'Glow color' }), emissiveColorInput),
+    emissiveField,
     createElement(documentReference, 'div', { className: 'crucible-studio-chips' }, doubleSidedToggle),
   );
 
@@ -4017,7 +4031,7 @@ export function createStudio(container, {
   }
 
   function syncRendererParts(activeRenderer) {
-    const topology = `${controller.scene.topologyRevision}|${gridVisible && !drawingTheShot()}|${Boolean(meshEditor?.active && meshEditor.seeThrough)}`;
+    const topology = `${controller.scene.topologyRevision}|${gridVisible && !drawingTheShot()}|${meshEditor?.active ? meshEditor.viewKey : ''}`;
     const revisionKey = `${controller.motionTime}|${controller.scene.motionTime}`;
     const parts = partsToDraw();
     if (partSync.needsReplace(controller.scene, topology)) {
@@ -4628,9 +4642,11 @@ export function createStudio(container, {
         });
         swatch.style.background = hex;
         swatch.addEventListener('click', () => {
-          if (controller.selectedNodeId) {
+          const targets = selectedTargets();
+          if (targets.length > 0) {
             try {
-              controller.assignNodeMaterial(controller.selectedNodeId, material.id);
+              if (targets.length === 1) controller.assignNodeMaterial(targets[0], material.id);
+              else controller.assignNodesMaterial(targets, material.id);
             } catch {
               // group node has no geometry; still open material tab
             }
@@ -4814,13 +4830,15 @@ export function createStudio(container, {
 
     renderOutliner(recipe);
 
-    const parentOptionsKey = `${controller.selectedNodeId ?? ''}|${recipe.nodes.map(node => `${node.id}:${node.label ?? ''}`).join('|')}`;
+    const selectedIds = controller.selectedNodeIds;
+    const parentOptionsKey = `${selectedIds.join(',')}|${recipe.nodes.map(node => `${node.id}:${node.label ?? ''}`).join('|')}`;
     if (parentOptionsKey !== lastParentOptionsKey) {
       lastParentOptionsKey = parentOptionsKey;
+      const excludedParents = new Set(selectedIds);
       nodeParentSelect.replaceChildren(
         createElement(documentReference, 'option', { value: '', textContent: 'Scene root' }),
         ...recipe.nodes
-          .filter(node => node.id !== controller.selectedNodeId && !node.assetPart)
+          .filter(node => !excludedParents.has(node.id) && !node.assetPart)
           .map(node => createElement(documentReference, 'option', { value: node.id, textContent: node.label ?? node.id })),
       );
       materialSelect.replaceChildren(
@@ -4828,60 +4846,32 @@ export function createStudio(container, {
       );
     }
 
-    nodeLabelInput.disabled = !hasNode;
-    nodeParentSelect.disabled = !hasNode;
-    visibleToggle.setAttribute('aria-disabled', hasNode ? 'false' : 'true');
-    castShadowToggle.setAttribute('aria-disabled', hasNode ? 'false' : 'true');
-    receiveShadowToggle.setAttribute('aria-disabled', hasNode ? 'false' : 'true');
-    if (selectedNode) {
-      nodeLabelInput.value = selectedNode.label ?? selectedNode.id;
-      nodeParentSelect.value = selectedNode.parent ?? '';
-      setButtonIcon(visibleToggle, selectedNode.visible === false ? 'eyeOff' : 'eye', selectedNode.visible === false ? 'Show' : 'Hide');
-      castShadowToggle.setAttribute('aria-pressed', selectedNode.castShadow === false ? 'false' : 'true');
-      receiveShadowToggle.setAttribute('aria-pressed', selectedNode.receiveShadow === false ? 'false' : 'true');
-    } else {
-      nodeLabelInput.value = '';
-      nodeParentSelect.value = '';
-    }
-    // A keyed node shows the pose its tracks give at the playhead, so a typed edit starts from what is on screen.
-    const animatedProperties = selectedNode ? controller.animatedNodeProperties(selectedNode.id) : [];
-    const shownPose = animatedProperties.length > 0 ? controller.nodePose(selectedNode.id) : selectedNode;
-    positionRow.setValues(shownPose?.translation ?? [0, 0, 0]);
-    rotationRow.setValues(quaternionToEulerDegrees(shownPose?.rotation ?? [0, 0, 0, 1]), DEGREE_PRECISION);
-    scaleRow.setValues(shownPose?.scale ?? [1, 1, 1]);
-    // An edit of a keyed property lands as a key only with Auto-key on; without it the track would put the old pose back.
-    setRowLockedByTrack(positionRow, !controller.autoKey && animatedProperties.includes('translation'));
-    setRowLockedByTrack(rotationRow, !controller.autoKey && animatedProperties.includes('rotation'));
-    setRowLockedByTrack(scaleRow, !controller.autoKey && animatedProperties.includes('scale'));
-    syncTreeInspector(selectedNode);
-    shapeSettings.sync();
-
-    const boundMaterial = selectedNode?.material ? recipe.materials.find(material => material.id === selectedNode.material) : null;
-    renderPaletteSwatches(recipe, boundMaterial?.id ?? null);
-    const activeMaterial = boundMaterial ?? recipe.materials[0] ?? null;
-    const hasMaterial = Boolean(activeMaterial);
-    materialSelect.disabled = !hasMaterial;
-    colorInput.disabled = !hasMaterial;
-    emissiveColorInput.disabled = !hasMaterial;
-    roughnessField.input.disabled = !hasMaterial;
-    metallicField.input.disabled = !hasMaterial;
-    clearcoatField.input.disabled = !hasMaterial;
-    clearcoatRoughnessField.input.disabled = !hasMaterial;
-    doubleSidedToggle.disabled = !hasMaterial;
-    opacityField.input.disabled = !hasMaterial;
-    emissionField.input.disabled = !hasMaterial;
-    if (activeMaterial) {
-      materialSelect.value = activeMaterial.id;
-      colorInput.value = linearRgbToHex(activeMaterial.color);
-      emissiveColorInput.value = linearRgbToHex(activeMaterial.emissiveColor ?? activeMaterial.color);
-      roughnessField.setValue(activeMaterial.roughness ?? 0.5);
-      metallicField.setValue(activeMaterial.metallic ?? 0);
-      clearcoatField.setValue(activeMaterial.clearcoat ?? 0);
-      clearcoatRoughnessField.setValue(activeMaterial.clearcoatRoughness ?? 0);
-      doubleSidedToggle.setAttribute('aria-pressed', activeMaterial.doubleSided === true ? 'true' : 'false');
-      opacityField.setValue(activeMaterial.opacity ?? 1);
-      emissionField.setValue(activeMaterial.emission ?? 0);
-    }
+    const selectionSummary = summarizeNodeSelection(recipe, selectedIds, controller.selectedNodeId, {
+      animatedNodeProperties: controller.animatedNodeProperties,
+      nodePose: controller.nodePose,
+      quaternionToEulerDegrees,
+      linearRgbToHex,
+    });
+    syncObjectAndMaterialPanels({
+      recipe,
+      controller,
+      summary: selectionSummary,
+      documentReference,
+      createElement,
+      degreePrecision: DEGREE_PRECISION,
+      linearRgbToHex,
+      setButtonIcon,
+      setRowLockedByTrack,
+      syncTreeInspector,
+      shapeSettings,
+      renderPaletteSwatches,
+      controls: {
+        nodeLabelInput, nodeParentSelect, visibleToggle, castShadowToggle, receiveShadowToggle,
+        positionRow, rotationRow, scaleRow, materialSelect, colorInput, colorMixedTag, colorField,
+        emissiveColorInput, emissiveMixedTag, emissiveField, roughnessField, metallicField,
+        clearcoatField, clearcoatRoughnessField, doubleSidedToggle, opacityField, emissionField,
+      },
+    });
 
     const environment = recipe.environment ?? {};
     const activeSetup = environment.setup ?? 'daylight';
@@ -5475,12 +5465,13 @@ export function createStudio(container, {
     if (!targetPassesThroughViewport(event.target, { checkScroll: true })) return;
     event.preventDefault();
     if (viewingShot()) return;
+    if (faceToolInput?.handleWheel(event)) return;
     if (meshEditor?.circleSelecting) {
       meshEditor.wheelCircleBrush(event.deltaY, event.deltaMode);
       requestFrame();
       return;
     }
-    if (proportionalHoldsWheel()) {
+    if (meshEditor?.holdingMove && meshEditor.proportional?.enabled) {
       meshEditor.proportional.resize(event.deltaY < 0 ? 1 : -1);
       return;
     }
@@ -5553,15 +5544,17 @@ export function createStudio(container, {
 
   function copySelection() {
     if (!controller.selectedNodeId) return;
+    const copyCount = controller.selectedNodeIds.length;
     controller.copySelected();
-    announceSuccess('Copied');
+    announceSuccess(copyCount > 1 ? `Copied ${copyCount} objects` : 'Copied');
   }
 
   function pasteCopy() {
     if (!controller.canPaste) return;
     try {
       const pasted = controller.pasteCopy();
-      announceSuccess(`Pasted ${pasted.label}`);
+      const pastedCount = controller.selectedNodeIds.length;
+      announceSuccess(pastedCount > 1 ? `Pasted ${pastedCount} objects` : `Pasted ${pasted.label}`);
     } catch (error) {
       announceError(error.message);
     }
@@ -5571,10 +5564,6 @@ export function createStudio(container, {
   function pageTextIsSelected() {
     const selection = documentReference.defaultView?.getSelection?.();
     return Boolean(selection && !selection.isCollapsed && selection.toString() !== '');
-  }
-
-  function proportionalHoldsWheel() {
-    return Boolean(meshEditor?.holdingMove && meshEditor.proportional?.enabled);
   }
 
   function toggleProportional() {
@@ -5853,8 +5842,10 @@ export function createStudio(container, {
     endCircleSelect();
   }, true);
 
-  // E and I hold the picked faces at the pointer; with the pointer outside the viewport the middle of it stands in.
+  // E, I, Ctrl+B and Ctrl+R hold the mesh tool at the pointer; with the pointer outside the viewport the middle stands in.
   function startFaceTool(kind) {
+    if (meshEditor?.circleSelecting) endCircleSelect();
+    if (meshEditor?.boxSelecting) cancelBoxSelect();
     const bounds = viewportElement.getBoundingClientRect();
     faceToolInput.start(kind, viewportPointer ?? { x: bounds.width / 2, y: bounds.height / 2 });
   }
@@ -5938,7 +5929,7 @@ export function createStudio(container, {
     },
     'mesh.separate': preventDefaultThen(openSeparateMenu),
   };
-  for (const kind of ['extrude', 'inset']) {
+  for (const kind of ['extrude', 'inset', 'bevel', 'loopCut']) {
     meshKeyHandlers[`mesh.${kind}`] = event => {
       event.preventDefault();
       startFaceTool(kind);
