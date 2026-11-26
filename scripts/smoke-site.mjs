@@ -78,7 +78,7 @@ try {
       await showcase.goto(origin + '/showcase.html?scene=datacenter');
       await showcase.waitForFunction(() => window.__showcase?.renderer, null, { timeout:60000 });
       assert.equal(await showcase.evaluate(() => window.__showcase.renderer.context.getError()), 0);
-      assert.equal(await showcase.locator('#showcase-tabs button').count(), 3);
+      assert.equal(await showcase.locator('#showcase-tabs button').count(), 6);
       await showcase.locator('#showcase-reset').waitFor();
       await showcase.evaluate(() => { window.__firstRenderer = window.__showcase.renderer; });
       await showcase.locator('#showcase-tabs button[data-scene="airport"]').click();

@@ -22,8 +22,22 @@ import { createDownloadMeter, downloadBlob, inWholeWorldOrder, readByteLength, r
 // A world can load in stages (scripts/split-showcase-glb.mjs): "glb" is then the first part, the ground and the hero the opening
 // camera frames, "glbRest" lists the other parts and "hdriPreview" is a small sky for the first frame. The page draws the first
 // frame from those two, then streams the rest in and swaps in the full sky.
-const SCENE_LABELS = { airport: 'Airport ramp', datacenter: 'AI data center', port: 'Container port' };
-const SCENE_GLOWS = { airport: '#ff6a2b', datacenter: '#3b82f6', port: '#f59e0b' };
+const SCENE_LABELS = {
+  airport: 'Airport ramp',
+  datacenter: 'AI data center',
+  port: 'Container port',
+  chipfab: 'Chip fab',
+  darkstore: 'Dark store',
+  warehouse: 'Warehouse',
+};
+const SCENE_GLOWS = {
+  airport: '#ff6a2b',
+  datacenter: '#3b82f6',
+  port: '#f59e0b',
+  chipfab: '#eab308',
+  darkstore: '#10b981',
+  warehouse: '#6366f1',
+};
 const SCENE_IDS = Object.keys(SCENE_LABELS);
 const MIN_PITCH = 0.05;
 const MAX_PITCH = 1.45;

@@ -61,7 +61,16 @@ function codeBlock({ id, heading, source }) {
       </section>`;
 }
 
+function cardImageOf(recipe) {
+  if (recipe.frames.length === 1) return recipe.frames[0].image ?? `/recipes/${recipe.slug}.webp`;
+  return `/recipes/${recipe.slug}-after.webp`;
+}
+
 function mediaSection(recipe) {
+  if (recipe.frames.length === 1) {
+    const [frame] = recipe.frames;
+    return `      <figure class="recipe-still"><img src="${cardImageOf(recipe)}" width="960" height="540" alt="${escapeHtml(`${recipe.title}: ${frame.label}`)}" /></figure>`;
+  }
   const [before, after] = recipe.frames;
   const compare = `      <div class="recipe-compare" data-recipe-compare style="--compare: 50%">
         <img class="recipe-compare-after" src="/recipes/${recipe.slug}-${after.id}.webp" width="960" height="540" alt="${escapeHtml(`${recipe.title}: ${after.label}`)}" />
@@ -91,12 +100,12 @@ ${mediaSection(recipe)}
       <div class="recipe-why">${whyLines}</div>
 ${blocks.join('\n')}
       <p class="recipe-file"><a href="/recipes/${recipe.slug}.json" download>Download ${recipe.slug}.json</a><span>Paste it into <code>scene_create</code> as <code>recipe</code>.</span></p>`;
-  return pageShell({ title: recipe.title, description: recipe.summary, path, image: `/recipes/${recipe.slug}-after.webp`, body });
+  return pageShell({ title: recipe.title, description: recipe.summary, path, image: cardImageOf(recipe), body });
 }
 
 export function renderIndexPage() {
   const cards = RECIPES.map(recipe => `        <a class="recipe-card" href="/${pageFileName(recipe.slug)}">
-          <img src="/recipes/${recipe.slug}-after.webp" width="960" height="540" alt="" loading="lazy" />
+          <img src="${cardImageOf(recipe)}" width="960" height="540" alt="" loading="lazy" />
           <h2>${escapeHtml(recipe.title)}</h2>
           <p>${escapeHtml(recipe.summary)}</p>
         </a>`).join('\n');

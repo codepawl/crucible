@@ -2,6 +2,8 @@
   "id": "chipfab",
   "title": "Chip fab",
   "blurb": "A semiconductor cleanroom bay: lithography scanners under yellow light, etch clusters, wet benches, stockers and overhead hoist rails carrying wafer pods.",
+  "eye": [20, 2.2, 0.5],
+  "target": [30, 2.6, 6],
   "glb": "/showcase/chipfab/scene.glb",
   "hdri": "/showcase/chipfab/sky.hdr",
   "hdriOptions": {
