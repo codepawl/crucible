@@ -313,7 +313,7 @@ Limits known today:
 - There is no camera near clip, so geometry between the eye and the target is drawn.
 - Bloom and colour grade are not drawn (see above).
 
-Lights go in the scene description under `renderer.environment`: `keyColor` and `lightDirection` for the sun (`sunAngularRadius` sets its size), `areaLights` (`position`, `direction`, `width`, `height`, `color`, `intensity`; `portal: true` makes a window portal instead of an emitter) and `pointLights` (`position`, `color`, `intensity`, `radius`). The HDRI is the `hdri` path of the same file.
+Lights go in the scene description under `renderer.environment`: `keyColor` and `lightDirection` for the sun (`sunAngularRadius` sets its size), `areaLights` (`position`, `direction`, `width`, `height`, `color`, `intensity`; `portal: true` makes a window portal instead of an emitter) and `pointLights` (`position`, `color`, `intensity`, `radius`). The HDRI is the `hdri` path of the same file. When a physical sky or `keyFromHdri` removes the sun disc from the environment map, camera rays draw the analytic sun cone at `sunAngularRadius` (and `sky.sunDisc: false` hides it while keeping the key light).
 
 ## Measured
 

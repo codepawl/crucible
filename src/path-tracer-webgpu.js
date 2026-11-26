@@ -4,7 +4,7 @@ import { gpuTriangleCapacity, OCCLUSION_TEXELS, packAtlas, packEnvironment, pack
 import { MATERIAL_TEXELS } from './path-tracer-gpu-shader.js';
 import { WEBGPU_INSTANCE_VECTORS } from './path-tracer-webgpu-instancing.js';
 import { packInstancedScene } from './path-tracer-gpu-instance-pack.js';
-import { cameraBackgroundWords, isInstancedScene, MAX_GPU_TRACE_TRIANGLES, MAX_TRACE_TRIANGLES, uniqueTriangleCount } from './path-tracer-scene.js';
+import { cameraBackgroundWords, isInstancedScene, MAX_GPU_TRACE_TRIANGLES, MAX_TRACE_TRIANGLES, sunDiscScaleOf, uniqueTriangleCount } from './path-tracer-scene.js';
 import { assertWebGpuLocalVolumes, packWebGpuLocalVolumes, webGpuVolumeFeatures } from './path-tracer-webgpu-local-volumes.js';
 
 // The WebGPU backend of the path tracer (issue #625): the same scene tables, camera, options and random numbers as the
@@ -228,8 +228,8 @@ function createParameterTemplate(scene, camera, options, uploaded, emitterCount)
   floats.set([...camera.forward, camera.clipStart ?? 0], 4);
   floats.set([...camera.right, 0], 8);
   floats.set([...camera.above, 0], 12);
-  floats.set([...(sun?.direction ?? [0, 1, 0]), 0], 16);
-  floats.set([...(sun?.color ?? [0, 0, 0]), Math.cos(Math.PI / 360)], 20);
+  floats.set([...(sun?.direction ?? [0, 1, 0]), sunDiscScaleOf(sun)], 16);
+  floats.set([...(sun?.color ?? [0, 0, 0]), Math.cos(sun?.angularRadius ?? Math.PI / 360)], 20);
   floats.set([environment?.width ?? 1, environment?.height ?? 1, environment?.intensity ?? 1, environment?.total ?? 1], 24);
   floats.set([environment?.cosine ?? 1, environment?.sine ?? 0, scene.surfaceOffset, scene.farDistance], 28);
   floats.set([camera.halfWidth, camera.halfHeight, options.fireflyClamp, uploaded.lightTreeBase], 32);

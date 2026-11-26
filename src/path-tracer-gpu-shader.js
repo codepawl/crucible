@@ -242,6 +242,7 @@ uniform bool uHasSun;
 uniform vec3 uSunDirection;
 uniform vec3 uSunColor;
 uniform float uSunCosineMax;
+uniform vec3 uSunDiscRadiance;
 uniform bool uHasEnvironment;
 uniform vec4 uEnvironmentShape;
 uniform vec4 uCameraBackground;
@@ -1197,14 +1198,18 @@ void addEscape(int depth, float previousPdf, bool afterMirror, bool isCameraRay)
     addRadiance(depth, throughput * uCameraBackground.rgb);
     return;
   }
-  if (!uHasEnvironment) return;
+  vec3 sunDisc = isCameraRay && uHasSun && dot(direction, uSunDirection) >= uSunCosineMax ? uSunDiscRadiance : vec3(0.0);
+  if (!uHasEnvironment) {
+    addRadiance(depth, throughput * sunDisc);
+    return;
+  }
   vec3 sky = environmentRadiance(direction);
   float weight = 1.0;
   if (!afterMirror) {
     float environmentSide = environmentPdf(direction) * selectionProbability;
     weight = previousPdf * previousPdf / (previousPdf * previousPdf + environmentSide * environmentSide);
   }
-  addRadiance(depth, throughput * sky * weight);
+  addRadiance(depth, throughput * (sky * weight + sunDisc));
 }
 
 bool survivesRoulette(int depth) {
@@ -1225,7 +1230,6 @@ bool scatterInFog(vec3 origin, float segmentLength) {
 }
 
 ${hasSubsurface ? SUBSURFACE_FUNCTIONS : ''}
-// cameraRays is true when the path starts at the camera, so its first leg steps through shadow-only parts.
 void tracePath(vec3 origin, vec3 startDirection, uint pixel, uint sampleIndex, bool cameraRays) {
   resetRandom(pixel, sampleIndex, uSeed);
   radiance = vec3(0.0);
@@ -1327,7 +1331,6 @@ ${radianceCache ? CACHE_RECORD : ''}
 }
 
 ${texelBake ? TEXEL_MAIN : CAMERA_MAIN}
-  // A sample that went through a NaN or an infinity (a grazing ray, a zero pdf) counts as black, so it cannot spread through the denoiser.
   if (!(all(greaterThanEqual(radiance, vec3(0.0))) && all(lessThan(radiance, vec3(1e30))))) radiance = vec3(0.0);
   if (!(featureDepth >= 0.0 && featureDepth < 1e30)) featureDepth = 0.0;
   if (!(all(greaterThanEqual(featureNormal, vec3(-1.5))) && all(lessThan(featureNormal, vec3(1.5))))) featureNormal = vec3(0.0, 0.0, 1.0);
