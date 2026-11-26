@@ -34,7 +34,7 @@ export const MODIFIER_OPERATIONS = /* @__PURE__ */ Object.freeze({
   wave: operation(['height', 'width', 'narrowness', 'speed', 'time', 'timeOffset', 'start', 'cyclic', 'axes', 'normal']),
   weighted_normal: operation(['angle', 'weight']),
   smooth_by_angle: operation(['angle', 'ignoreSharp']),
-  join: operation(['geometry', 'matrix']),
+  join: operation(['geometry', 'matrix', 'slotMap']),
   bounding_box: operation(),
   convex_hull: operation(),
   build: operation(['order', 'axis', 'seed', 'frame', 'start', 'length', 'reverse']),

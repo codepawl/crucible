@@ -1,6 +1,7 @@
 import { createMeshData, deriveEdges } from './mesh-data.js';
 import { registerModifierNormalizer, registerModifierRunner } from './mesh-modifiers.js';
-import { refuseSlottedJoin } from './mesh-material-slots.js';
+import { faceSlotsOf, refuseSlottedJoin } from './mesh-material-slots.js';
+import { MAX_MATERIAL_SLOTS, MATERIAL_SLOT_ATTRIBUTE } from './mesh-operations.js';
 import { editField } from './mesh-edit-field.js';
 
 // The `join` modifier: the faces of another recipe geometry are added to this mesh, placed by a 4x4 matrix that takes the
@@ -36,6 +37,17 @@ export function normalizeJoinEdit(edit, normalized, index, { finiteNumber }) {
   }
   if (Math.abs(determinant3(normalized.matrix)) < SINGULAR_LIMIT) {
     throw editField(index, 'matrix', normalized.matrix, 'a matrix that does not flatten the geometry: no scale of 0');
+  }
+  if (edit.slotMap !== undefined) {
+    if (!Array.isArray(edit.slotMap) || edit.slotMap.length < 1 || edit.slotMap.length > MAX_MATERIAL_SLOTS) {
+      throw editField(index, 'slotMap', edit.slotMap, `an array of 1 to ${MAX_MATERIAL_SLOTS} slot indices from 0 to ${MAX_MATERIAL_SLOTS - 1}`);
+    }
+    normalized.slotMap = edit.slotMap.map((slot, slotIndex) => {
+      if (!Number.isInteger(slot) || slot < 0 || slot >= MAX_MATERIAL_SLOTS) {
+        throw editField(index, `slotMap[${slotIndex}]`, slot, `a whole number from 0 to ${MAX_MATERIAL_SLOTS - 1}`);
+      }
+      return slot;
+    });
   }
 }
 
@@ -108,11 +120,33 @@ function joinedCornerAttributes(first, second, matrix) {
 
 const identityPlacement = (count, offset = 0) => ({ count, source: item => item, destination: item => item + offset });
 
+function joinFaceSlotAttribute(first, second, slotMap) {
+  const firstSlots = faceSlotsOf(first);
+  const secondSlots = faceSlotsOf(second);
+  if (!slotMap && !firstSlots && !secondSlots) return null;
+  if (!slotMap) {
+    refuseSlottedJoin(first, second);
+    return null;
+  }
+  const totalFaces = first.faceCount + second.faceCount;
+  const merged = new Uint8Array(totalFaces);
+  if (firstSlots) merged.set(firstSlots, 0);
+  for (let face = 0; face < second.faceCount; face++) {
+    const sourceSlot = secondSlots ? secondSlots[face] : 0;
+    if (sourceSlot >= slotMap.length) {
+      throw new RangeError(`join slotMap has ${slotMap.length} entries, but a joined face points at slot ${sourceSlot}; pass a slotMap covering slots 0 to ${sourceSlot}.`);
+    }
+    merged[first.faceCount + face] = slotMap[sourceSlot];
+  }
+  return { data: merged, size: 1 };
+}
+
 /**
  * The first mesh and the second one placed by `matrix`, as one mesh. A matrix that mirrors the second mesh flips its faces
  * so they keep facing outward.
  */
-export function joinMeshes(first, second, matrix) {
+export function joinMeshes(first, second, matrix, slotMap = null) {
+  const joinedSlots = joinFaceSlotAttribute(first, second, slotMap);
   const mirrored = determinant3(matrix) < 0;
   const vertexCount = first.vertexCount + second.vertexCount;
   const positions = new Float32Array(vertexCount * 3);
@@ -154,6 +188,7 @@ export function joinMeshes(first, second, matrix) {
     corner: mergedAttributes(firstCornerAttributes, secondCornerAttributes, cornerVertices.length, identityPlacement(first.cornerCount), secondCornerPlacement),
     edge: mergedAttributes(first.attributes.edge, second.attributes.edge, edges.edgeCount, firstEdgePlacement, secondEdgePlacement),
   };
+  if (joinedSlots) attributes.face[MATERIAL_SLOT_ATTRIBUTE] = joinedSlots;
   return createMeshData({ positions, faceOffsets, cornerVertices, edgeVertices: edges.edgeVertices, cornerEdges: edges.cornerEdges, attributes });
 }
 
@@ -162,11 +197,11 @@ function runJoinEdit(mesh, edit, { maxVertices, maxFaces, resolveJoinMesh } = {}
     throw new TypeError('join reads another recipe geometry, so it works as an edit of a recipe mesh, not in the modifier stack.');
   }
   const other = resolveJoinMesh(edit.geometry);
-  refuseSlottedJoin(mesh, other);
+  if (!edit.slotMap) refuseSlottedJoin(mesh, other);
   if (mesh.vertexCount + other.vertexCount > maxVertices || mesh.faceCount + other.faceCount > maxFaces) {
     throw new RangeError(`join would make ${mesh.vertexCount + other.vertexCount} vertices and ${mesh.faceCount + other.faceCount} faces, over the limit of ${maxVertices} vertices and ${maxFaces} faces. Join a smaller geometry or simplify one of them.`);
   }
-  return { mesh: joinMeshes(mesh, other, edit.matrix), result: { joinedFaces: other.faceCount, joinedVertices: other.vertexCount } };
+  return { mesh: joinMeshes(mesh, other, edit.matrix, edit.slotMap ?? null), result: { joinedFaces: other.faceCount, joinedVertices: other.vertexCount } };
 }
 
 registerModifierNormalizer('join', normalizeJoinEdit);

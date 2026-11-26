@@ -137,9 +137,17 @@ function bindLocalVolumeGrids(volumes, label, time, shutter) {
 }
 
 function findPart(parts, name, label) {
-  const part = parts.find(candidate => candidate.name === name);
-  if (part) return part;
-  throw new RangeError(missingPartMessage(label, name, parts.map(candidate => candidate.name)));
+  const matching = parts.filter(candidate => candidate.name === name);
+  if (matching.length === 0) throw new RangeError(missingPartMessage(label, name, parts.map(candidate => candidate.name)));
+  if (matching.length === 1) return matching[0];
+  const indices = new Uint32Array(matching.reduce((total, part) => total + (part.geometry?.indices?.length ?? 0), 0));
+  let offset = 0;
+  for (const part of matching) {
+    if (!part.geometry?.indices) continue;
+    indices.set(part.geometry.indices, offset);
+    offset += part.geometry.indices.length;
+  }
+  return { ...matching[0], geometry: { ...matching[0].geometry, indices } };
 }
 
 /**

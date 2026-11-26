@@ -141,12 +141,16 @@ test('a join edit with a flattening matrix or a missing geometry is refused with
   assert.throws(() => createAgentScene(missing), /ID of a geometry in geometries/);
 });
 
-test('join-meshes refuses meshes with different materials and says how to go on', () => {
+test('join-meshes combines meshes with different materials into one slotted mesh', () => {
   const recipe = twoBoxScene();
   recipe.nodes[1].material = 'gold';
   const scene = createAgentScene(recipe);
-  assert.throws(() => applyOperations(scene, [{ type: 'join-meshes', node: 'a', nodes: ['b'] }]), /same one with set-node first/);
-  assert.deepEqual(scene.exportRecipe().nodes.map(node => node.id), ['a', 'b'], 'nothing changed');
+  applyOperations(scene, [{ type: 'join-meshes', node: 'a', nodes: ['b'] }]);
+  assert.deepEqual(scene.exportRecipe().nodes.map(node => node.id), ['a']);
+  const joinedParts = scene.parts.filter(part => part.name === 'a');
+  assert.equal(joinedParts.length, 2);
+  assert.deepEqual(joinedParts.map(part => part.materialSlot), [0, 1]);
+  assert.equal(joinedParts.reduce((total, part) => total + part.geometry.indices.length / 3, 0), 24);
 });
 
 test('join-meshes refuses bad input', () => {

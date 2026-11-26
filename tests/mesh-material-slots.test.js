@@ -138,7 +138,7 @@ test('validation says what to pass for a bad slot list, a bad slot number and a 
   assert.throws(() => createAgentScene(withoutSlotsList()), /slots.*material_slot edits point at/);
 });
 
-test('separate-faces keeps the slots of the faces it takes, and join-meshes refuses slotted meshes', () => {
+test('separate-faces keeps the slots of the faces it takes, and join-meshes merges slotted meshes', () => {
   const scene = createAgentScene({
     ...slottedRecipe(),
     geometries: [
@@ -154,7 +154,9 @@ test('separate-faces keeps the slots of the faces it takes, and join-meshes refu
   assert.ok(drawnSlots.every(slot => slot === 0 || slot === 1) && drawnSlots.includes(1), 'both nodes draw by slot');
   const triangles = ['block', 'piece'].flatMap(id => scene.parts.filter(part => part.name === id)).reduce((total, part) => total + part.geometry.indices.length / 3, 0);
   assert.equal(triangles, 12);
-  assert.throws(() => scene.apply([{ type: 'join-meshes', node: 'block', nodes: ['other'] }], { expectedRevision: scene.revision }), /material slots/);
+  scene.apply([{ type: 'join-meshes', node: 'block', nodes: ['other'] }], { expectedRevision: scene.revision });
+  assert.deepEqual(slotsDrawn('block'), [0, 2]);
+  assert.equal(scene.parts.filter(part => part.name === 'block').reduce((total, part) => total + part.geometry.indices.length / 3, 0), 14);
 });
 
 function withoutSlotsList() {

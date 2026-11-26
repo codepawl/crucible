@@ -889,10 +889,17 @@ function bakeWorldGeometry(part, geometry) {
   return world;
 }
 
-// The native packer reads the second UV set from `uv1s`. One view per shared geometry keeps copies sharing one geometry.
+// The native packer reads the second UV set from `uv1s` and expects un-offset `indices`. One view per shared geometry keeps copies sharing one geometry.
 function nativeGeometryView(geometry, views) {
-  if (!geometry.lightUvs) return geometry;
-  if (!views.has(geometry)) views.set(geometry, { ...geometry, uv1s: geometry.lightUvs });
+  const needsCopy = Boolean(geometry.lightUvs) || geometry.indices.byteOffset !== 0;
+  if (!needsCopy) return geometry;
+  if (!views.has(geometry)) {
+    views.set(geometry, {
+      ...geometry,
+      ...(geometry.lightUvs ? { uv1s: geometry.lightUvs } : {}),
+      ...(geometry.indices.byteOffset !== 0 ? { indices: geometry.indices.slice() } : {}),
+    });
+  }
   return views.get(geometry);
 }
 

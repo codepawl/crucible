@@ -627,11 +627,12 @@ Cutting by a plane or a path is in the edit table: `bisect_plane` and `knife_pro
 Two `scene_apply` operations split a mesh object in two or merge several into one. Both write ordinary recipe data, so the result saves, replays and undoes as one revision.
 
 - `separate-faces { node, faces, id }`: `faces` are face numbers of the mesh the edit log builds (the numbers edit mode and `mesh_inspect` use). They become a new node `id` (default `<node>-part`) with the same parent, transform and material, so nothing moves in the world. The new node's geometry is a copy of the mesh with a `delete` edit on every face but the picked ones; the node keeps the rest through a `delete` edit on the picked ones. A geometry another node uses is copied for the node first. Needs a mesh geometry; no faces, a repeated or missing face number, or every face is refused with the fix.
-- `join-meshes { node, nodes }`: the meshes of `nodes` (1 to 32) are added to the mesh of `node` with one `join` edit each, placed by the matrix that takes them from their world position into the space of `node`, and the nodes go. They need the same material as `node` (a mesh draws with one material); a node with children, motion or a physics body is refused. `node` needs a mesh geometry, which is copied first when another node uses it.
+- `join-meshes { node, nodes }`: the meshes of `nodes` (1 to 32) are added to the mesh of `node` with one `join` edit each, placed by the matrix that takes them from their world position into the space of `node`, and the nodes go. Objects with different materials or material slots merge into one slotted mesh preserving each face's material (up to 16 distinct slots); a node with children, motion or a physics body is refused. `node` needs a mesh geometry, which is copied first when another node uses it.
+- `assign-face-material { node, faces, slot | material }`: points the picked faces (1 to 65,536 whole face numbers) at an existing slot (`slot`) or a recipe material ID (`material`, adding a new slot when needed, up to 16). A shared mesh geometry is copied first.
 
 ### Material slots
 
-A recipe `mesh` geometry can draw several materials. Name the slots in `slots` (1 to 16 distinct material IDs) and point faces at one with the `material_slot` edit; every face starts in slot 0.
+A recipe `mesh` geometry can draw several materials. Name the slots in `slots` (1 to 16 distinct material IDs) and point faces at one with the `material_slot` edit (or `assign-face-material` in `scene_apply`); every face starts in slot 0.
 
 ```json
 { "id": "crate", "type": "mesh", "base": { "type": "box" }, "slots": ["wood", "gold"],
@@ -639,10 +640,10 @@ A recipe `mesh` geometry can draw several materials. Name the slots in `slots` (
 ```
 
 - Each slot draws with its own material, and the node's `material` is not used for that mesh. A slot no face uses draws nothing. A recipe with no `slots` is unchanged.
-- The slot is a face attribute, so extrude, inset, subdivide, mirror, array, solidify, loop cut, bevel, triangulate, weld, delete and `separate-faces` carry it with the face: a face made from a slot-1 face is in slot 1. Faces a boolean or a fill creates start in slot 0.
-- An operation that rebuilds the mesh from its shape cannot keep slots yet and throws instead of dropping them: `decimate`, `remesh`, `wireframe`, `screw`, `convex_hull` and `bounding_box`. Run them before the `material_slot` edits. `join` and `join-meshes` refuse meshes with slots until the slot lists can merge.
+- The slot is a face attribute, so extrude, inset, subdivide, mirror, array, solidify, loop cut, bevel, triangulate, weld, delete, `separate-faces` and `join-meshes` carry it with the face: a face made from a slot-1 face is in slot 1. Faces a boolean or a fill creates start in slot 0.
+- An operation that rebuilds the mesh from its shape cannot keep slots yet and throws instead of dropping them: `decimate`, `remesh`, `wireframe`, `screw`, `convex_hull` and `bounding_box`. Run them before the `material_slot` edits. A bare `join` edit without `slotMap` also refuses slotted meshes.
 - A slot ID must name a material of the recipe, a `material_slot` edit needs `slots`, and every face must point at a slot the list names. Each error says what to pass.
-- The raster renderer draws one batch per slot (one part per slot, all with the node's name and transform), and the glTF export writes one mesh with one primitive and material per slot. The path tracer does not read slots yet.
+- The raster renderer, the path tracer (CPU, WebGL2, WebGPU and native export) and the glTF export all draw each slot with its own material (glTF writes one mesh with one primitive and material per slot).
 - A node with slots is several parts of one name, so `inspect().counts.parts` counts one per slot; world bounds list the node once; a game physics body is built from every slot's triangles. A node with a `skin` cannot use a geometry with slots: the scene refuses it and says to remove one of them.
 
 ## MCP
