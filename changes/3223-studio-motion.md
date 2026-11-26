@@ -1,0 +1,1 @@
+- Studio dialogs, their backdrop, the file drop overlay, secondary viewport notices, expanded card bodies and primary/tool button presses now ease with compositor `opacity`, `translate` and `scale`, keeping panel collapse instant and reduced motion fade-only or still (#3223).
