@@ -1617,6 +1617,7 @@ export function createStudio(container, {
     openPopoverAt,
     getMeshEditor: () => meshEditor,
     separateMeshSelection: () => separateMeshSelection(),
+    onStartTool: kind => startFaceTool(kind),
     onTopologyApplied: () => {
       syncUi();
       requestFrame();
@@ -4019,7 +4020,7 @@ export function createStudio(container, {
   }
 
   function syncRendererParts(activeRenderer) {
-    const topology = `${controller.scene.topologyRevision}|${gridVisible && !drawingTheShot()}|${Boolean(meshEditor?.active && meshEditor.seeThrough)}`;
+    const topology = `${controller.scene.topologyRevision}|${gridVisible && !drawingTheShot()}|${meshEditor?.active ? meshEditor.viewKey : ''}`;
     if (renderedScene !== controller.scene || renderedTopology !== topology) {
       activeRenderer.replaceParts(partsToDraw());
       renderedScene = controller.scene;
@@ -5478,12 +5479,13 @@ export function createStudio(container, {
     if (!targetPassesThroughViewport(event.target, { checkScroll: true })) return;
     event.preventDefault();
     if (viewingShot()) return;
+    if (faceToolInput?.handleWheel(event)) return;
     if (meshEditor?.circleSelecting) {
       meshEditor.wheelCircleBrush(event.deltaY, event.deltaMode);
       requestFrame();
       return;
     }
-    if (proportionalHoldsWheel()) {
+    if (meshEditor?.holdingMove && meshEditor.proportional?.enabled) {
       meshEditor.proportional.resize(event.deltaY < 0 ? 1 : -1);
       return;
     }
@@ -5574,10 +5576,6 @@ export function createStudio(container, {
   function pageTextIsSelected() {
     const selection = documentReference.defaultView?.getSelection?.();
     return Boolean(selection && !selection.isCollapsed && selection.toString() !== '');
-  }
-
-  function proportionalHoldsWheel() {
-    return Boolean(meshEditor?.holdingMove && meshEditor.proportional?.enabled);
   }
 
   function toggleProportional() {
@@ -5856,8 +5854,10 @@ export function createStudio(container, {
     endCircleSelect();
   }, true);
 
-  // E and I hold the picked faces at the pointer; with the pointer outside the viewport the middle of it stands in.
+  // E, I, Ctrl+B and Ctrl+R hold the mesh tool at the pointer; with the pointer outside the viewport the middle stands in.
   function startFaceTool(kind) {
+    if (meshEditor?.circleSelecting) endCircleSelect();
+    if (meshEditor?.boxSelecting) cancelBoxSelect();
     const bounds = viewportElement.getBoundingClientRect();
     faceToolInput.start(kind, viewportPointer ?? { x: bounds.width / 2, y: bounds.height / 2 });
   }
@@ -5941,7 +5941,7 @@ export function createStudio(container, {
     },
     'mesh.separate': preventDefaultThen(openSeparateMenu),
   };
-  for (const kind of ['extrude', 'inset']) {
+  for (const kind of ['extrude', 'inset', 'bevel', 'loopCut']) {
     meshKeyHandlers[`mesh.${kind}`] = event => {
       event.preventDefault();
       startFaceTool(kind);

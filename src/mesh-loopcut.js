@@ -165,3 +165,23 @@ export function loopCut(mesh, edgeRule, { cuts = 1, factor = 0.5, name = 'loop' 
     splitEdges: edgePoints.size,
   };
 }
+
+/**
+ * Trace the quad edge ring through `seedEdge` without modifying the mesh.
+ * Returns `{ edges, quads, closed, lowVertex }` matching `loopCut` exactly.
+ */
+export function traceLoopCutRing(mesh, seedEdge) {
+  const edit = editMesh(mesh);
+  const loops = edit.loops.arrays;
+  const [ring] = edgeRings(edit, [seedEdge], vertex => edit.vertexPosition(vertex));
+  return {
+    edges: ring.edges,
+    quads: ring.quads.map(quad => ({
+      face: quad.face,
+      entryEdge: loops.edge[quad.entryLoop],
+      oppositeEdge: loops.edge[loops.next[loops.next[quad.entryLoop]]],
+    })),
+    closed: ring.closed,
+    lowVertex: ring.edges.get(seedEdge),
+  };
+}

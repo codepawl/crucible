@@ -19,6 +19,7 @@ export function createMeshMenus({
   openPopoverAt,
   getMeshEditor,
   separateMeshSelection,
+  onStartTool = () => {},
   onTopologyApplied,
 }) {
   let lastMenuPoint = null;
@@ -107,6 +108,8 @@ export function createMeshMenus({
 
   const meshToolsPopover = createMenuPopover(
     'crucible-studio-pop-mesh-tools',
+    createMenuItem('Bevel', 'mesh.bevel', () => onStartTool('bevel'), 'angle'),
+    createMenuItem('Loop cut', 'mesh.loopCut', () => onStartTool('loopCut'), 'meshEdge'),
     createMenuItem('Make face / edge', 'mesh.makeFace', () => applyEdit(editor => editor.makeFace()), 'meshFace'),
     createMenuItem('Fill', '', () => applyEdit(editor => editor.fill()), 'meshFace'),
     createMenuItem('Grid fill', '', () => applyEdit(editor => editor.gridFill()), 'grid'),
