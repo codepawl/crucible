@@ -144,3 +144,82 @@ test('plain objects with the same keys in a different order share one subgraph (
   const single = compileMaterialGraph({ roughness: { noise: { scale: 6, seed: 1 } } });
   assert.equal(swappedOrder.nodeCount, single.nodeCount);
 });
+
+test('nested shared subgraphs keep nodeCount bounded and still enforce maxDepth at reuse sites (#3147)', () => {
+  let dag = { noise: { scale: 4, octaves: 1 } };
+  for (let level = 0; level < 6; level++) dag = { add: [dag, dag] };
+  const single = compileMaterialGraph({ color: dag });
+  const shared = compileMaterialGraph({ color: dag, roughness: dag });
+  assert.equal(single.nodeCount, 7);
+  assert.equal(shared.nodeCount, single.nodeCount);
+  assert.ok(Math.abs(shared.cost - single.cost) < 1e-9);
+
+  // Inner shared node compiled at depth 0, then wrapped and reused past maxDepth.
+  const inner = { abs: { abs: 0.5 } };
+  const outer = { abs: inner };
+  let deepOk = outer;
+  for (let level = 0; level < MATERIAL_GRAPH_LIMITS.maxDepth - 3; level++) deepOk = { abs: deepOk };
+  assert.doesNotThrow(() => compileMaterialGraph({ metallic: inner, color: outer, roughness: deepOk }));
+  assert.throws(
+    () => compileMaterialGraph({ metallic: inner, color: outer, roughness: { abs: deepOk } }),
+    /nesting deeper than 12/,
+  );
+});
+
+test('colour ramp and scalar warp evaluate their scalar input once per texel (#3147)', () => {
+  let reads = 0;
+  const data = new Proxy(new Uint8ClampedArray(4 * 4 * 4).fill(120), {
+    get(target, key) {
+      if (typeof key === 'string' && /^\d+$/.test(key)) reads++;
+      return target[key];
+    },
+  });
+  const surfaceNode = { surface: { output: 'slope' } };
+  const groups = new Map([[surfaceMapKey({ output: 'slope', space: 'world' }), { width: 4, height: 4, data }]]);
+  const scalarRamp = { roughness: { ramp: { value: surfaceNode, stops: [[0, 0.2], [1, 0.9]] } } };
+  const colorRamp = { color: { ramp: { value: surfaceNode, stops: [[0, [0.1, 0.2, 0.3]], [1, [0.8, 0.9, 1]]] } } };
+  reads = 0;
+  bakeMaterialGraph(scalarRamp, { resolution: 8, bump: 1 }, undefined, groups);
+  const scalarReads = reads;
+  reads = 0;
+  bakeMaterialGraph(colorRamp, { resolution: 8, bump: 1 }, undefined, groups);
+  assert.equal(reads, scalarReads);
+
+  const warped = { roughness: { noise: { scale: 4, octaves: 1, warp: { node: surfaceNode, strength: 0.5 } } } };
+  reads = 0;
+  bakeMaterialGraph(warped, { resolution: 8, bump: 1 }, undefined, groups);
+  assert.equal(reads, scalarReads);
+});
+
+test('snow-on-mountain graph with shared slope, height, fine noise and sparkle fits at 1024 (#3147)', () => {
+  const height = { surface: { output: 'height', space: 'world', range: [0, 10] } };
+  const macroNoise = { noise: { scale: 6, seed: 1, octaves: 2 } };
+  const fineNoise = { noise: { scale: 32, seed: 2, octaves: 1 } };
+  const sparkle = { whiteNoise: { scale: 64, seed: 3 } };
+  const snowMask = {
+    smoothstep: [0.35, 0.55, {
+      add: [
+        { invert: SLOPE },
+        { add: [
+          { mul: [{ sub: [macroNoise, 0.5] }, 0.3] },
+          { add: [{ mul: [{ sub: [fineNoise, 0.5] }, 0.15] }, { mul: [height, 0.2] }] },
+        ] },
+      ],
+    }],
+  };
+  const mountainGraph = {
+    color: {
+      mix: [
+        { mix: [[0.18, 0.16, 0.14], [0.32, 0.29, 0.25], macroNoise] },
+        { mix: [[0.85, 0.9, 0.96], [1, 1, 1], { mul: [sparkle, 0.3] }] },
+        snowMask,
+      ],
+    },
+    roughness: { mix: [0.92, { mix: [0.55, 0.15, { smoothstep: [0.92, 0.99, sparkle] }] }, snowMask] },
+    height: { mix: [macroNoise, { mul: [fineNoise, 0.2] }, snowMask] },
+  };
+  const compiled = compileMaterialGraph(mountainGraph);
+  assert.ok(compiled.nodeCount <= MATERIAL_GRAPH_LIMITS.maxNodes, `${compiled.nodeCount} nodes`);
+  assert.ok(compiled.cost * 1024 * 1024 <= MATERIAL_GRAPH_LIMITS.maxWork, `${compiled.cost * 1024 * 1024} over ${MATERIAL_GRAPH_LIMITS.maxWork}`);
+  assert.doesNotThrow(() => checkMaterialGraphWork(compiled, 1024));
+});

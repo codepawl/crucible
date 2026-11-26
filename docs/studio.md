@@ -12,12 +12,13 @@ The scene fills the window and the controls float on top of it.
 
 | Where | What it does |
 | --- | --- |
-| Top left | The menus. **File**: New scene, Open, Open recent, Save, Save as, **Export…** (opens the Export workspace) and the recipe JSON (see [New scene and recent scenes](#new-scene-and-recent-scenes)). **Edit**: undo, redo, the history of edits, copy, paste, duplicate, delete, deselect and Settings. **View**: front, right and top view, perspective or orthographic, frame the selection, the grid and the panels, History among them. **Agent**: copy a prompt for an AI agent and reload when it edits the file. **Help**: the keyboard shortcuts. Each row shows its key. |
+| Top left | The menus. **File**: New scene, Open, Open recent, Save, Save as, **Export…** (opens the Export workspace) and the recipe JSON (see [New scene and recent scenes](#new-scene-and-recent-scenes)). **Edit**: undo, redo, the history of edits, copy, paste, duplicate, delete, deselect and Settings. **View**: front, right and top view, perspective or orthographic, frame the selection, the grid and the panels, History among them (and Agent, when the host offers a chat). **Agent**: copy a prompt for an AI agent and reload when it edits the file. **Help**: the keyboard shortcuts. Each row shows its key. |
 | Top centre | The workspaces, in the order the work runs: **Build** (objects and their place), **Look** (materials, lighting, sun, exposure, fog), **Animate** (camera, lens, shots and the timeline) and **Export** (a picture, a model, a web pack). Each one shows only the panels its step needs. Opening a panel from anywhere, or adding a keyframe, brings its workspace forward. A workspace is a way of looking at the scene: it is not saved in the recipe and undo does not touch it. |
 | Top right | The file name (click it to rename the scene). A green dot beside the name means Studio reloads the file when an agent edits it. |
 | Left rail | The tools that change the scene come first: select, move, rotate, scale, then the snapping magnet and its target menu, then add an object or a light, undo and redo. Under one line sit the switches that only change what you see: show or hide the grid, see through the surface (edit mode, **Alt+Z**), show or hide the panels. |
 | Scene card | At the top of the right column, across from the rail. The list shows whole rows only: it scrolls a row at a time and the rows stretch by a pixel or two so a whole number of them fills it. The materials are one row of swatches that scrolls sideways, with the add button fixed beside it. Its head has a search button, which opens a box that filters the list as you type (Esc closes it and clears the filter), and an add button with the same menu as the rail. Every object in the scene, drawn as the shape of its geometry (cube, sphere, cylinder, cone, torus, plane, or a stack for a group) in the colour of its material, an eye to hide each one, and the scene materials as swatches. |
 | Properties | Under the Scene card, in the same column. The panels of the open workspace: the object in Build, material and look in Look, the camera (views, lens, shots) in Animate, with the object one tab away: picking an object there opens its panel and stays in Animate. Build also has a Modifiers tab (wrench icon): an Add Modifier menu (subdivision, mirror, array, bevel, solidify) and one collapsible block per modifier of the selected mesh, with a show-in-viewport switch, move up and down (or drag the grip), Apply and Delete. A shape of the Add menu becomes a mesh with its first modifier. Apply bakes that one modifier into the mesh as if it were first, and the others stay in the stack. Each change is one undo step. A mesh with modifiers still cannot enter edit mode. In Export the panel is titled Export, the Scene card is hidden and it holds one group for each export, in the order Image, Model, Web pack. Each group has an icon at its title, the facts about what will be written (the shape and pixel size of the picture, the parts and triangles of the model, what a still pack leaves out) and one button: Save PNG, Save GLB or Save pack. The facts stay in view. Under the button a line with a check and the file name and size says what was written, or a warning mark and the reason when it failed; its row is reserved, so nothing moves when it appears, and a save in Export draws no toast because that line is the report (a screen reader still hears it); a line clears when the scene changes, when you start another save of that group and when you leave the workspace. A scene with no parts disables Save GLB and Save pack and says why at the group; a pack whose facts cannot be worked out shows the reason there too. The facts of the pack are worked out only while Export is open. The viewport draws the saved shot while Export is open: the scene camera, with no grid, object marks or handles, inside a frame that is exactly the canvas, the pixels written. Below the compact width the panel is a column beside the picture, not a card over it, and the picture takes the free space. Export is a read-only look at the shot: editing shortcuts, the tool buttons, edit mode, picking, dragging, the context menu and the Add menu do nothing, and the grid toggle and the menu rows that edit or change the view look disabled, and the viewport does not orbit, pan or zoom, so a free view of an animated camera is kept as it was and comes back with the grid, the tool and the selection when you leave. Undo, redo, Open, Save and Settings still work. The PNG is the size of the viewport, drawn at the screen's pixel ratio; Studio has no size or transparency setting yet. |
+| Agent card | At the foot of the right column, under Scene, Properties and History, and only when the host page offers a chat (see [Agent chat](#agent-chat)); without one there is no card, no View row and no key. Its title row has the chat icon and a minimize button, with no close button: **View > Agent** and **Alt+M** show and hide it. It holds the conversation (your messages, the reply as it streams, and quiet one-line rows for each step and each outcome), then a message field with Send, which becomes Stop while a run goes on. Drag its top edge to resize it; the height, the minimized state and whether it is shown are remembered. The column holds Scene (at least 192 px), Properties (at least 240 px) and the card (at least 232 px, 288 px while a notice shows), so the card stacks under them only in a window at least 820 px tall. In a shorter window the card and Properties take turns: both keep their title row in the column, and pressing the one that is folded opens it and folds the other (this turn is not remembered; only a fold you made in a tall window is). In a window under the compact width the card lies over the scene and takes turns by being put away. Stacked, it ends inside the column with the same gap as the other cards. |
 | Bottom, in Animate | Play, add a keyframe, switch Auto-key, scrub the time, jump to a saved shot. The selected object's keys are diamonds on the scrub track: click one to select it and move the playhead there, drag it or press Left and Right (Shift for finer) to retime it, Delete to remove that key. The readout moves up to make room for it, and floating panels stop above it. |
 | Bottom left | The camera (perspective and lens, or orthographic), the grid step, and the size of the selected object in metres. |
 | Top right, beside the right column | The view widget: the X, Y and Z axes as the camera sees them. Click an end to look from the right, left, top, front or back. |
@@ -84,7 +85,8 @@ Not there yet, and said so on screen when you reach it:
 - **B** starts box select: drag one rectangle with the left button and everything of the mode that lies wholly inside it is selected (**Shift** adds to the selection instead of replacing it). The key is spent after one rectangle, and **Esc** drops it.
 - **Alt+Z** turns **see-through** on or off, and so does the button in the rail's lower group. While it is on, the surface of the object you edit is drawn faint, the far side of the cage is drawn as strongly as the near side, and a click, the circle and a box reach the far side too: from the front, a box over a cube takes all 8 vertices instead of the 4 facing you. It is a view setting, kept while Studio is open and for the next edit session: it changes nothing in the recipe, adds no undo step, and `studio.setSeeThrough(true)` sets it from code. In face mode a click takes the face whose centre is nearest the pointer among those drawn under it.
 - **O** turns proportional editing on or off, from the button at the foot of the edit mode group (it lights while on). While it is on, a move also takes the vertices around the picked ones along, by a curve that fades to nothing at a radius, and a circle around the pick shows that radius. Turn the wheel while you hold a move to widen or narrow it (a factor of 1.15 a notch, from 0.01 to 100 in the mesh's own units, 0.5 to start). The button beside it opens a popover with the curve (smooth, round, root, sharp, linear or flat, each drawn) and a size slider. The move is written as one `translate` with a `falloff` of `{ radius, curve }`, the falloff a recipe or an agent writes, so an undo, a save and a replay give the same hill. A pick that is not whole faces is named by its vertices (`verts: { "vertices": [..] }`, up to 4096) because it has no face to select. In a keymap preset where O frames the object, O is proportional editing inside edit mode and S still frames.
-- Rotate, scale, box select, extrude and the other tools come next.
+- **E** extrudes the picked faces as one region and **I** insets them. Each is held, like a move: the faces follow the pointer while the key is down, and nothing is written yet. For an extrude the pointer sets the distance along the faces' average normal (drag along the normal's line on screen; when the normal points straight at you, drag up for outward); for an inset it sets the thickness of the rim, growing with the pointer's distance from where you pressed the key. A click or **Enter** confirms it as one `extrude_face_region` or `inset_region` entry of the mesh edit log, so one undo takes it back and a redo gives the same positions; **Esc** or a right click puts the faces back and writes nothing. An inset past what the faces hold is written at the largest thickness that works. While the tool is held the faces show the cap, the inner faces of an inset or the moved faces of an extrude; the new side faces appear when you confirm. The pick must be whole faces (in vertex or edge mode, vertices that make up whole faces, and nothing else): anything else shows a notice that says to press 3 and click the faces. Faces that form a connected band whose normals cancel out, such as the ring of side faces of a cylinder, cannot extrude as one region and say so; pick faces that face one way. A mesh holds at most 64 edits, and a tool needs one. After the edit the pick is cleared, because the numbers of the old mesh mean nothing in the new one.
+- Rotate, scale and the other tools come next.
 
 **P** in edit mode opens a small menu at the middle of the viewport with **Selection**: the picked faces (in vertex or edge mode, the faces whose vertices are all picked) become a new object named `<name>-part`, with the same position, size, parent and material, so nothing moves. The object keeps its other faces and stays in edit mode; with nothing picked, or every face picked, it says what to do and changes nothing. It is one undo step.
 
@@ -203,6 +205,7 @@ While an input method composes text (Japanese, Chinese, Korean), Enter picks the
 | ], Ctrl+Numpad + | In edit mode: grow the selection by one step |
 | [, Ctrl+Numpad - | In edit mode: shrink the selection by one step |
 | O | In edit mode: proportional editing on or off (see Proportional editing) |
+| E, I | In edit mode: extrude or inset the picked faces, held at the pointer (click or Enter confirms, Esc or right click cancels) |
 | Alt+Z | See through the surface |
 | H, Alt+H | Hide the selection, show everything that is hidden |
 | Alt+G, Alt+R, Alt+S | Reset the position, rotation or scale of the selection |
@@ -212,6 +215,7 @@ While an input method composes text (Japanese, Chinese, Korean), Enter picks the
 | 1, 3, 7 | Front, right and top view |
 | 5 | Perspective or orthographic |
 | N | Show or hide Properties |
+| Alt+M | Show or hide Agent, when the host offers a chat |
 | I or K | Insert a keyframe |
 | Space | Play |
 | Ctrl+Z, Ctrl+Shift+Z | Undo, redo |
@@ -263,6 +267,7 @@ The last menu of the top bar, **Help**, has four rows, each with an icon.
 | Apply transforms | Ctrl+A | Ctrl+Alt+A | Ctrl+A |
 | See through the surface | Alt+Z | Alt+Z | Alt+Z |
 | Box select (edit mode) | B | B | B |
+| Extrude, Inset (edit mode) | E, I | E, I | E, I |
 | Insert a keyframe | I, K | S | F9 |
 | Play | Space | Alt+V | F8 |
 
@@ -329,6 +334,35 @@ Signed out, the section shows a lock mark, "Signed out" and one **Sign in** butt
 **Theme** forces the Studio light or dark whatever the system says; System follows the system. The dialogs and menus follow it too. An app that wants to theme its own frame passes `onThemeChange(theme)` to `createStudio`; it is called with `'light'` or `'dark'` at the start and on each change.
 
 **Performance** sets what the viewport draws with, by the tier. Light draws at 0.75 of the screen's pixel ratio (never above 1) with 2x anti-aliasing, Balanced at the screen's ratio up to 1.5 with 2x, and Sharp at the screen's ratio up to 2 with 4x, which is what Studio always drew. Automatic picks a tier from the graphics card the browser reports and the cores: software renderers and small integrated chips go Light, other integrated chips Balanced, dedicated cards and Apple M-series Sharp, and a card the browser hides Balanced. A new pixel ratio is set on the live renderer; a new anti-aliasing count makes Studio build a new renderer. The tier changes only the viewport; it is never written into the scene recipe, so renders and exports look the same on every machine. A `pixelRatio` or `samples` passed in `rendererOptions` stays as given.
+
+## Agent chat
+
+When the host page provides `globalThis.crucibleShell.agentChat`, Studio shows an **Agent** card in the right column and fills it from that object. Studio holds no key, ships no model client and makes no network call: it sends what the person types to the host and shows what the host reports. Without the object the page has no card, no View > Agent row and no key row on the shortcut sheet.
+
+```js
+globalThis.crucibleShell = {
+  agentChat: {
+    // Required. Resolves when the run ends; rejecting shows the message in the list as a failed outcome.
+    async send(text) {},
+    stop() {},                  // Required. Called by the Stop button; end the run with a 'stopped' event.
+    subscribe(listener) {       // Required. Call listener(event) for each event; return the function that stops it.
+      return () => {};
+    },
+  },
+};
+```
+
+The listener takes plain JSON events, checked at this boundary (a bad one shows as an error notice that says what was wrong, and the rest carry on). An event type or a notice kind this Studio does not know is skipped without a notice, so a newer host can send more than an older Studio shows:
+
+| Event | Shows |
+| --- | --- |
+| `{ type: 'text', text }` | A piece of the reply, appended to the reply being written (up to 20,000 characters per reply, 20,000 per piece). |
+| `{ type: 'step', label, nodeId? }` | A one-line row such as "Moved the lamp" (up to 120 characters). With `nodeId` the agent pointer walks to that object, as it does for an edit read from the scene file. |
+| `{ type: 'done' }`, `{ type: 'stopped' }` | An outcome row with its own mark: a check for done, a square for stopped. The run ends. |
+| `{ type: 'error', message }` | An outcome row with the error mark. The run ends. |
+| `{ type: 'notice', kind, message, actionLabel?, action? }` | `kind` is `signedOut`, `quota` or `error`. The notice sits in its own area of the card under the list, never as a row of the conversation, with a mark per kind. With `actionLabel` and an `action` function it carries that button; pressing it clears the notice and calls `action()`. A notice of the same kind replaces the one before, and sending a new message clears them all. |
+
+Text is shown as text, never as markup. The list keeps the 200 newest messages and a message is at most 4,000 characters. The list sticks to the bottom while a reply streams, unless the person scrolled up. Enter sends and Shift+Enter makes a new line. A host whose `agentChat` lacks one of the three functions gets no card, and the console says which.
 
 ## Spacing
 

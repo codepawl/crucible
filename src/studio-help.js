@@ -107,9 +107,10 @@ function mouseRows(keymap) {
  * person is doing. Settings reads the same groups with `includeUnbound`, so an action whose key was cleared can still be set again;
  * the mouse rows have no `actionId`.
  */
-export function shortcutSheetGroups(keymap, { includeUnbound = false } = {}) {
+export function shortcutSheetGroups(keymap, { includeUnbound = false, omittedActionIds = [] } = {}) {
   const rowsByGroup = new Map(SHEET_GROUPS.map(group => [group.title, []]));
   for (const item of keymap.actions) {
+    if (omittedActionIds.includes(item.id)) continue;
     if (item.bindings.length === 0 && !includeUnbound) continue;
     if (includeUnbound && SETTINGS_HIDDEN_ACTIONS.includes(item.id)) continue;
     const title = sheetGroupOf(item.id);
