@@ -2254,9 +2254,9 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     return objectReflectionCache.result;
   }
 
-  // Wet ground with puddles mirrors the scene in them: the water mirror module flags the flat ground parts, and the host attaches the mirror.
   function stageWetMirror(recipe, parts) {
     const environment = recipe.environment;
+    if (environment.puddles?.mask && agentSceneModuleLoaded('wetnessPuddles')) agentSceneModule('wetnessPuddles').registerMaskFromPool(environment.puddles.mask, options.sequenceFrames);
     const hasWetSurface = environment.wetness > 0 || (environment.rain?.wetness > 0 && (environment.rain.intensity > 0 || environment.rain.intensityCurve));
     return hasWetSurface && environment.puddles && agentSceneModuleLoaded('waterReflection') ? agentSceneModule('waterReflection').flagWetMirrorParts(parts) : parts;
   }

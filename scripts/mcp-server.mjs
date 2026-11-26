@@ -417,7 +417,7 @@ const environment = z.strictObject({
   sunBounce: z.number().min(0).optional().describe('Sun bounce in a closed room: 0 off, 1 default.'),
   specularAntiAliasing: z.number().min(0).max(4).optional().describe('Specular anti-aliasing: 0 off, 1 default; widens highlights that sparkle on grainy normal-mapped metal.'),
   wetness: z.number().min(0).max(1).nullable().optional().describe('Wet ground: 0 dry, 0.5 damp, 1 soaked; darkens porous surfaces and lowers roughness, metals untouched. null clears.'),
-  puddles: z.strictObject({ coverage: bounded(0, 1).optional(), from: z.literal('height').optional() }).nullable().optional().describe('Puddles on wet ground: coverage 0 to 1 (scaled by wetness), from "height" (low spots). Flat water that mirrors the sky.'),
+  puddles: z.strictObject({ coverage: bounded(0, 1).optional(), from: z.enum(['height', 'cavity', 'mask']).optional(), mask: z.string().regex(/^[a-f0-9]{64}$/i).optional() }).nullable().optional().describe('Puddles on wet ground: coverage 0 to 1, from "height", "cavity", or "mask" (with catalog image ID mask). Flat water that mirrors the sky.'),
   rain: rain.nullable().optional(),
   resolveCoplanar: z.union([z.literal('offset'), z.literal(false)]).optional().describe("Flush faces are ranked at draw time by default ('offset'); false opts out."),
   viewTransform: z.enum(VIEW_TRANSFORM_NAMES).optional().describe('Display transform, agx or standard to compare with Blender.'),

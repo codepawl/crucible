@@ -5,13 +5,13 @@ import { puddleFillLevel } from './wetness-shader.js';
 // and `environment.puddles` pools flat water that mirrors the sky, on at most a quarter of the ground (PUDDLE_SHARE_CAP). Both are absent by default, and a scene without them
 // compiles none of the wetness shader (src/wetness-shader.js). The realtime rasterizer draws it; the path tracers do not.
 
-export const WETNESS_RANGE = Object.freeze([0, 1]);
+export const WETNESS_RANGE = /* @__PURE__ */ Object.freeze([0, 1]);
 /** The share of the ground that standing water covers at coverage 1 and wetness 1: the rest stays road, so puddles never flood it. */
 export const PUDDLE_SHARE_CAP = 0.25;
-export const PUDDLE_SOURCES = Object.freeze(['height']);
-export const PUDDLE_DEFAULTS = Object.freeze({ coverage: 0.5, from: 'height' });
+export const PUDDLE_SOURCES = /* @__PURE__ */ Object.freeze(['height', 'cavity', 'mask']);
+export const PUDDLE_DEFAULTS = /* @__PURE__ */ Object.freeze({ coverage: 0.5, from: 'height' });
 
-const PUDDLE_FIELDS = ['coverage', 'from'];
+const PUDDLE_FIELDS = ['coverage', 'from', 'mask'];
 
 /** Validate `environment.wetness` and return it. */
 export function normalizeWetness(value) {
@@ -37,7 +37,17 @@ export function normalizePuddles(value) {
   }
   const from = value.from ?? PUDDLE_DEFAULTS.from;
   if (!PUDDLE_SOURCES.includes(from)) {
-    throw invalidField('environment.puddles.from', from, `"height" (water pools in the low spots of the ground by world height); the "cavity" and mask sources are not available yet, so pass from: "height"`, TypeError);
+    throw invalidField('environment.puddles.from', from, 'one of "height", "cavity", or "mask"', TypeError);
+  }
+  const mask = value.mask;
+  if (from === 'mask') {
+    if (typeof mask !== 'string' || !/^[a-f0-9]{64}$/i.test(mask)) {
+      throw invalidField('environment.puddles.mask', mask, '64 hexadecimal chars (catalog ID, no URLs)', TypeError);
+    }
+    return Object.freeze({ coverage, from, mask: mask.toLowerCase() });
+  }
+  if (mask !== undefined) {
+    throw invalidField('environment.puddles.mask', mask, 'nothing when from is not "mask"', TypeError);
   }
   return Object.freeze({ coverage, from });
 }

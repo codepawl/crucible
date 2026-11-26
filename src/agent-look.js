@@ -398,7 +398,10 @@ function environmentFrom(input = {}) {
   }
   // Wet ground (src/wetness.js): wetness darkens porous surfaces and lowers their roughness, puddles pool sky-mirroring water; both are off when absent.
   if (input.wetness !== undefined) environment.wetness = normalizeWetness(input.wetness);
-  if (input.puddles !== undefined) environment.puddles = normalizePuddles(input.puddles);
+  if (input.puddles !== undefined) {
+    environment.puddles = normalizePuddles(input.puddles);
+    if (environment.puddles && environment.puddles.from !== 'height') agentSceneModule('wetnessPuddles');
+  }
   for (const [field, moduleName, resolver] of [['lines', 'lineArt', 'resolveLineArt'], ['rain', 'rain', 'resolveRain']]) {
     if (isSet(input[field])) environment[field] = copiedJson(agentSceneModule(moduleName)[resolver](input[field]));
   }

@@ -57,6 +57,7 @@ const MODULE_LOADERS = {
   crowd: () => import('./agent-crowd.js'),
   lineArt: () => import('./line-art.js'),
   rain: () => import('./rain.js'),
+  wetnessPuddles: () => import('./wetness-puddles.js'),
   viewTransform: () => import('./view-transform-shader.js'),
   coplanar: () => import('./coplanar-overlap.js'),
   unsupportedPart: () => import('./unsupported-part.js'),
@@ -158,6 +159,7 @@ const MODULE_MARKERS = {
   crowd: ['"crowd":{'],
   lineArt: ['"lines":{', '"toon":'],
   rain: ['"rain":{'],
+  wetnessPuddles: [/"from":"(?:cavity|mask)"/],
   viewTransform: ['"viewTransform":"agx"', '"viewTransform":"neutral"', '"viewTransform":"standard"', '"look":"'],
   // Flush faces are ranked whenever this is loaded (issue #751): the MCP preview registers it, loadAllAgentSceneModules loads it,
   // and so does a recipe that names resolveCoplanar or places an asset, since glTF models nest facades a few millimetres apart.

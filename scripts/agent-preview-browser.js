@@ -49,6 +49,7 @@ import { registerCatalogEnvironment, registerCatalogLook } from '../src/look-cat
 import { registerVolumeGrid } from '../src/volume-grid.js';
 import { parseRadianceHdr } from '../src/hdri.js';
 import { registerSkyboxFace } from '../src/skybox.js';
+import { registerPuddleMask } from '../src/wetness-puddles.js';
 import { parseCube } from '../src/view-transform.js';
 import { weightTracksFromGltfAnimation } from '../src/export-skeleton.js';
 import { clipFromGltfAnimation } from '../src/skeleton-pose.js';
@@ -290,6 +291,7 @@ async function loadSequenceFrames(pool, sequenceData) {
     try {
       pool.set(id, await decodeSequenceFrame(id, base64));
       registerSkyboxFace(id, pool.get(id));
+      registerPuddleMask(id, pool.get(id));
     } catch (error) {
       if (error instanceof RangeError) throw error;
       throw new Error(`Sequence frame ${id.slice(0, 12)} is not a PNG, JPEG or WebP image the browser can decode.`);
