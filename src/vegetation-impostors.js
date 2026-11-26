@@ -351,7 +351,12 @@ const REFERENCE_PIXEL_ERROR = 4;
  * (`{ pixels = 4, height, fov }`: the view's height in pixels and its vertical field of view in degrees).
  * A finer error or a taller view switches later; an instance's own scale multiplies the distance too, since its errors grow with it.
  */
-export function pixelErrorScale({ pixels = REFERENCE_PIXEL_ERROR, height = 1080, fov = 60 } = {}) {
+export function pixelErrorScale(options = {}) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('pixelError options must be an object.');
+  const { pixels = REFERENCE_PIXEL_ERROR, height = 1080, fov = 60 } = options;
+  if (typeof pixels !== 'number' || !Number.isFinite(pixels) || pixels <= 0) throw new RangeError('pixelError.pixels must be > 0.');
+  if (typeof height !== 'number' || !Number.isFinite(height) || height <= 0) throw new RangeError('pixelError.height must be > 0.');
+  if (typeof fov !== 'number' || !Number.isFinite(fov) || fov <= 0 || fov >= 180) throw new RangeError('pixelError.fov must be in (0, 180).');
   const pixelsPerRadian = height / (2 * Math.tan(fov * Math.PI / 360));
   return pixelsPerRadian / REFERENCE_PIXELS_PER_RADIAN * REFERENCE_PIXEL_ERROR / pixels;
 }

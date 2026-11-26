@@ -1,0 +1,1 @@
+- scene:agent-scene+lazy: cache adjacent bump edge samples in `normalMapFromHeightFunction` and compile `height` after other outputs so gated snow graphs fit the 1024 bake budget

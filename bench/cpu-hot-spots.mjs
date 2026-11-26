@@ -14,6 +14,7 @@ import { loadAllAgentSceneModules } from '../src/agent-scene.js';
 import { bakeLightmaps } from '../src/light-bake.js';
 import { buildTriangleBvh } from '../src/triangle-bvh.js';
 import { applyMeshEdits, selectFaces, meshFromGeometry } from '../src/mesh.js';
+import { growSelection, selectLinked, shrinkSelection } from '../src/mesh-select-topology.js';
 import { loadMeshBooleans } from '../src/mesh-boolean.js';
 import { createTerrain } from '../src/terrain.js';
 import { surfaceMap } from '../src/material-surface-map.js';
@@ -28,7 +29,7 @@ const SIZES = {
   full: {
     bakeSamples: 32, bakeTexelsPerUnit: 8, bakeMaxResolution: 128,
     bvhSegments: 360, bvhRings: 180,
-    meshSegments: 192, meshRings: 96,
+    meshSegments: 640, meshRings: 320,
     terrainSize: 1024, terrainChunks: 8, terrainResolution: 48, snowMaskResolution: 512,
     treeCount: 24, scatterArea: 300, scatterDensity: 0.02, coverHalfWidth: 40, coverDensity: 150,
   },
@@ -44,7 +45,7 @@ const SIZES = {
 const SIZE_CAPS = {
   bakeSamples: 256, bakeTexelsPerUnit: 32, bakeMaxResolution: 512,
   bvhSegments: 1000, bvhRings: 500,
-  meshSegments: 512, meshRings: 256,
+  meshSegments: 800, meshRings: 400,
   terrainSize: 4096, terrainChunks: 16, terrainResolution: 128, snowMaskResolution: 2048,
   treeCount: 200, scatterArea: 1000, scatterDensity: 0.1, coverHalfWidth: 200, coverDensity: 500,
 };
@@ -81,6 +82,14 @@ function heavyMesh(sizes) {
   return meshFromGeometry(sphere(sizes.meshSegments, sizes.meshRings));
 }
 
+function meshLabel(sizes) {
+  return `${(sizes.meshSegments * sizes.meshRings).toLocaleString('en-US')}-face sphere`;
+}
+
+// Faces whose normal is within 37 degrees of straight up: the cap covers (1 - cos 37) / 2, about 10 percent, of the surface,
+// but holds about 20% of the faces of a latitude and longitude sphere, whose faces crowd near the poles (1664 of 8192 at 128x64).
+const CAP_OF_FACES_RULE = { normal: [0, 1, 0], maxAngle: 37 };
+
 function terrainOptions(sizes) {
   return {
     size: sizes.terrainSize, chunks: sizes.terrainChunks, resolution: sizes.terrainResolution, levels: 3,
@@ -116,16 +125,16 @@ export const CANDIDATES = [
   },
   {
     id: 'mesh-extrude', group: 'mesh edit', frequency: 'every Studio extrude and every extrude_face_region edit',
-    describe: sizes => `extrude the upper cap of a ${sizes.meshSegments} by ${sizes.meshRings} sphere`,
+    describe: sizes => `extrude the faces in a cap holding about 20% of the faces of a ${meshLabel(sizes)}`,
     prepare: sizes => {
       const mesh = heavyMesh(sizes);
-      const edits = [{ op: 'extrude_face_region', select: { normal: [0, 1, 0], maxAngle: 60 }, offset: 0.2 }];
+      const edits = [{ op: 'extrude_face_region', select: CAP_OF_FACES_RULE, offset: 0.2 }];
       return () => applyMeshEdits(mesh, edits);
     },
   },
   {
     id: 'mesh-dissolve', group: 'mesh edit', frequency: 'a Studio dissolve, less often than extrude',
-    describe: sizes => `dissolve the faces in a box on a ${sizes.meshSegments} by ${sizes.meshRings} sphere`,
+    describe: sizes => `dissolve the faces in a box on a ${meshLabel(sizes)}`,
     prepare: sizes => {
       const mesh = heavyMesh(sizes);
       const edits = [{ op: 'dissolve_faces', select: { inside: { min: [-1, 0.2, -1], max: [1, 1, 1] } } }];
@@ -134,7 +143,7 @@ export const CANDIDATES = [
   },
   {
     id: 'mesh-boolean', group: 'mesh edit', frequency: 'every boolean edit; runs inside a WebAssembly library plus a JavaScript round trip',
-    describe: sizes => `subtract a box from a ${sizes.meshSegments} by ${sizes.meshRings} sphere`,
+    describe: sizes => `subtract a box from a ${meshLabel(sizes)}`,
     prepare: sizes => {
       const mesh = heavyMesh(sizes);
       const edits = [{ op: 'boolean', operation: 'difference', cutter: { type: 'box' }, translation: [0.3, 0.3, 0.3], scale: [0.8, 0.8, 0.8] }];
@@ -143,11 +152,40 @@ export const CANDIDATES = [
   },
   {
     id: 'mesh-select-grow', group: 'mesh edit', frequency: 'every selection by rule and every Studio select-linked or grow',
-    describe: sizes => `grow a normal-based selection five steps on a ${sizes.meshSegments} by ${sizes.meshRings} sphere`,
+    describe: sizes => `grow a normal-based selection five steps on a ${meshLabel(sizes)}`,
     prepare: sizes => {
       const mesh = heavyMesh(sizes);
       const rule = { grow: { normal: [0, 1, 0], maxAngle: 20 }, steps: 5 };
       return () => selectFaces(mesh, rule);
+    },
+  },
+  {
+    id: 'mesh-select-by-normal', group: 'mesh edit', frequency: 'every selection by normal rule and every Studio select-similar-normal',
+    describe: sizes => `select the faces within 37 degrees of up on a ${meshLabel(sizes)}`,
+    prepare: sizes => {
+      const mesh = heavyMesh(sizes);
+      return () => selectFaces(mesh, CAP_OF_FACES_RULE);
+    },
+  },
+  {
+    id: 'mesh-select-linked', group: 'mesh edit', frequency: 'every Studio select-linked (the L key) and every agent selection of a whole part',
+    describe: sizes => `select every face linked to one face on a ${meshLabel(sizes)}`,
+    prepare: sizes => {
+      const mesh = heavyMesh(sizes);
+      return () => selectLinked(mesh, 'face', [0]);
+    },
+  },
+  {
+    id: 'mesh-select-grow-shrink', group: 'mesh edit', frequency: 'every Studio grow or shrink of a selection; one of each is timed',
+    describe: sizes => `grow then shrink a face selection (one grow, one shrink) of about 20% of the faces of a ${meshLabel(sizes)}`,
+    prepare: sizes => {
+      const mesh = heavyMesh(sizes);
+      const selected = [];
+      selectFaces(mesh, CAP_OF_FACES_RULE).forEach((isSelected, face) => { if (isSelected) selected.push(face); });
+      return () => {
+        const grown = growSelection(mesh, 'face', selected);
+        shrinkSelection(mesh, 'face', grown);
+      };
     },
   },
   {

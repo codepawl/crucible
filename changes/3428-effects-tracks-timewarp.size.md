@@ -1,0 +1,1 @@
+- scene:agent-scene+lazy: keyable `bloomStrength`, `glareStreaks` and `lensDispersion` tracks in lazy `agent-motion.js` (+267 bytes gzip)

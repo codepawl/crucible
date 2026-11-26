@@ -299,8 +299,9 @@ function facesWoundAgainstNeighbours(mesh, table, facesOfCorners, facePart, part
  * Check a mesh for problems that break later operations or rendering.
  * Returns { ok, counts, parts, tags, bounds, problems }, where each problem has kind, severity, count, a sample of
  * element indices (faces, edges or vertices by kind; for inconsistent-winding the faces to flip) and a suggested fix. ok is false when any error is present.
+ * `topology: false` leaves out valence, quadQuality and topologyScore, for callers that read only the problems.
  */
-export function lintMesh(mesh, { geometry = false } = {}) {
+export function lintMesh(mesh, { geometry = false, topology: withTopology = true } = {}) {
   const problems = new Map();
   const table = edgeCornerTable(mesh);
   const facesOfCorners = cornerFaces(mesh);
@@ -356,7 +357,7 @@ export function lintMesh(mesh, { geometry = false } = {}) {
     if (insideOtherPart(mesh, facePart, part)) cavities++;
     else addProblem(problems, 'inverted-part', part);
   }
-  const topology = meshTopologyMetrics(mesh, table, geometry ? problems : null);
+  const topology = withTopology ? meshTopologyMetrics(mesh, table, geometry ? problems : null) : null;
   const problemList = [...problems.values()];
   let skippedChecks;
   if (geometry) {
@@ -369,9 +370,7 @@ export function lintMesh(mesh, { geometry = false } = {}) {
     ok,
     counts: { vertices: mesh.vertexCount, edges: mesh.edgeCount, faces: mesh.faceCount, corners: mesh.cornerCount },
     parts: { count: partCount, closed: closedParts, cavities },
-    valence: topology.valence,
-    quadQuality: topology.quadQuality,
-    topologyScore: computeTopologyScore(mesh, ok, topology),
+    ...(topology ? { valence: topology.valence, quadQuality: topology.quadQuality, topologyScore: computeTopologyScore(mesh, ok, topology) } : {}),
     tags: tagCounts(mesh),
     bounds,
     problems: problemList,

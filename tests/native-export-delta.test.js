@@ -121,6 +121,74 @@ test('a table that grows or shrinks keeps going whole when its shared prefix cha
   assert.deepEqual(planExportDelta({ triangles: before }, { triangles: after }), { triangles: [[0, after.byteLength]] });
 });
 
+test('a growing table merges a trailing prefix change within DELTA_GAP_BYTES across the old end and splits past it', () => {
+  const before = patternBytes(4096, 2);
+  const merged = new Uint8Array(before.byteLength + 24);
+  const mergedChangeOffset = before.byteLength - 4 - DELTA_GAP_BYTES;
+  merged.set(withChanges(before, [[mergedChangeOffset, 255]]));
+  merged.set(patternBytes(24, 7), before.byteLength);
+  const mergedRoundTrip = roundTrip({ triangles: before }, { triangles: merged });
+  assert.deepEqual(mergedRoundTrip.ranges.triangles, [[mergedChangeOffset, 4 + DELTA_GAP_BYTES + 24]]);
+  assert.deepEqual(mergedRoundTrip.rebuilt.triangles, merged);
+
+  const split = new Uint8Array(before.byteLength + 24);
+  const splitChangeOffset = mergedChangeOffset - 4;
+  split.set(withChanges(before, [[splitChangeOffset, 255]]));
+  split.set(patternBytes(24, 7), before.byteLength);
+  const splitRoundTrip = roundTrip({ triangles: before }, { triangles: split });
+  assert.deepEqual(splitRoundTrip.ranges.triangles, [[splitChangeOffset, 4], [before.byteLength, 24]]);
+  assert.deepEqual(splitRoundTrip.rebuilt.triangles, split);
+});
+
+test('a growing table enforces DELTA_MAXIMUM_RANGES when the appended tail cannot merge into the last prefix range', () => {
+  const stride = DELTA_GAP_BYTES + 8;
+  const before = new Uint8Array(DELTA_MAXIMUM_RANGES * stride);
+  const afterSplit = new Uint8Array(before.byteLength + 16);
+  for (let index = 0; index < DELTA_MAXIMUM_RANGES; index++) afterSplit[index * stride] = 1;
+  afterSplit.set(patternBytes(16, 5), before.byteLength);
+  assert.equal(prefixPatchRanges(before, afterSplit), null);
+  assert.deepEqual(planExportDelta({ triangles: before }, { triangles: afterSplit }), { triangles: [[0, afterSplit.byteLength]] });
+
+  const closeBefore = new Uint8Array((DELTA_MAXIMUM_RANGES - 1) * stride + 16);
+  const closeAfter = new Uint8Array(closeBefore.byteLength + 16);
+  for (let index = 0; index < DELTA_MAXIMUM_RANGES; index++) closeAfter[index * stride] = 1;
+  closeAfter.set(patternBytes(16, 5), closeBefore.byteLength);
+  const mergedRanges = prefixPatchRanges(closeBefore, closeAfter);
+  assert.equal(mergedRanges.length, DELTA_MAXIMUM_RANGES);
+  const { rebuilt } = roundTrip({ triangles: closeBefore }, { triangles: closeAfter });
+  assert.deepEqual(rebuilt.triangles, closeAfter);
+});
+
+test('empty-to-nonempty, nonempty-to-empty, empty-to-empty, and unaligned tables round-trip byte for byte', () => {
+  const empty = new Uint8Array(0);
+  const nonEmpty = patternBytes(37, 6);
+  const grown = roundTrip({ triangles: empty }, { triangles: nonEmpty });
+  assert.deepEqual(grown.ranges.triangles, [[0, nonEmpty.byteLength]]);
+  assert.deepEqual(grown.rebuilt.triangles, nonEmpty);
+
+  const shrunk = roundTrip({ triangles: nonEmpty }, { triangles: empty });
+  assert.deepEqual(shrunk.ranges.triangles, []);
+  assert.deepEqual(shrunk.rebuilt.triangles, empty);
+  assert.notEqual(shrunk.rebuilt.triangles, nonEmpty);
+
+  const stayedEmpty = roundTrip({ triangles: empty }, { triangles: new Uint8Array(0) });
+  assert.deepEqual(stayedEmpty.ranges.triangles, []);
+  assert.equal(stayedEmpty.rebuilt.triangles, empty);
+
+  const unalignedBefore = patternBytes(1010, 3).subarray(1, 504);
+  const unalignedAfter = patternBytes(1010, 9).subarray(3, 706);
+  unalignedAfter.set(unalignedBefore);
+  unalignedAfter[10] ^= 1;
+  unalignedAfter[502] ^= 1;
+  const unalignedGrown = roundTrip({ triangles: unalignedBefore }, { triangles: unalignedAfter });
+  assert.ok(unalignedGrown.sent.byteLength < unalignedAfter.byteLength);
+  assert.deepEqual(unalignedGrown.rebuilt.triangles, unalignedAfter);
+
+  const unalignedShrunk = roundTrip({ triangles: unalignedAfter }, { triangles: unalignedBefore });
+  assert.ok(unalignedShrunk.sent.byteLength < unalignedBefore.byteLength);
+  assert.deepEqual(unalignedShrunk.rebuilt.triangles, unalignedBefore);
+});
+
 test('a growing table with the tail the delta lacks is refused, and an unchanged table that shrinks is cut', () => {
   const previous = { triangles: patternBytes(16, 1) };
   assert.throws(() => applyExportDelta({ previous, lengths: { triangles: 24 }, ranges: { triangles: [[0, 4]] }, sent: new Uint8Array(4) }), /grew table "triangles" from 16 to 24 bytes/);

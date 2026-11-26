@@ -241,7 +241,7 @@ test('the job report keeps a note only for what the kernel does not shade', () =
   ], { map: {} }, 'cpu', { kernelMaterials: true });
   assert.deepEqual(left.sort(), [
     'A graph opacity output is traced as a cutout at 0.5.', 'lightMap is ignored.', 'liquid materials are traced as plain surfaces.', 'moss is ignored.',
-    'occlusionMap is ignored by the native cycles kernel: its material record has no occlusion slot (codepawl/cook#71). Use backend "cpu" to trace it.', 'splat layers is ignored.',
+    'occlusionMap is ignored by the native cycles kernel: its material record has no occlusion slot (codepawl/cook#71). Use backend "cpu" or "webgpu" to trace it.', 'splat layers is ignored.',
   ].sort());
 });
 

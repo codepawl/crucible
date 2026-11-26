@@ -2,7 +2,7 @@ import './support/load-agent-scene-modules.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAgentScene } from '../src/agent-scene.js';
-import { exposureProblems, framingProblems, lumaShares, mergeFrameDiagnostics, pathTracerFindingsLimit, pathTracerSkippedPassesWarning, placementProblems, textureProblems } from '../src/frame-checks.js';
+import { exposureProblems, framingProblems, lumaShares, mergeFrameDiagnostics, pathTracerFindingsLimit, pathTracerReflectionHdriWarning, pathTracerSkippedPassesWarning, placementProblems, textureProblems } from '../src/frame-checks.js';
 import { closedRoom, closedRoomWithoutBake, freezeBakeClockForFile } from './support/agent-bake-rooms.mjs';
 
 freezeBakeClockForFile();
@@ -298,6 +298,19 @@ test('a path traced job names the postPasses it skipped, and says nothing when t
   assert.match(warning.fix, /raster job/);
   assert.equal(pathTracerSkippedPassesWarning([]), undefined);
   assert.equal(pathTracerSkippedPassesWarning(undefined), undefined);
+});
+
+test('a path traced job warns that environment.reflectionHdri is ignored, and says nothing without it', () => {
+  const warning = pathTracerReflectionHdriWarning({ hdri: 'studio', reflectionHdri: 'sunset' });
+  assert.equal(warning.kind, 'reflection-hdri-ignored');
+  assert.equal(warning.severity, 'warning');
+  assert.match(warning.message, /environment\.reflectionHdri/);
+  assert.match(warning.message, /lighting hdri/);
+  assert.match(warning.fix, /same map/);
+  assert.match(warning.fix, /raster job/);
+  assert.equal(pathTracerReflectionHdriWarning({ hdri: 'studio' }), undefined);
+  assert.equal(pathTracerReflectionHdriWarning({ reflectionHdri: null }), undefined);
+  assert.equal(pathTracerReflectionHdriWarning(undefined), undefined);
 });
 
 test('the path traced exposure advice says a daylit interior traces brighter and to lower the exposure, not raise it', () => {

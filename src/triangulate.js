@@ -142,11 +142,15 @@ function assertFinitePoints(ring, label) {
 }
 
 /** Vertex numbers follow the contour, then each hole in order. Returns counter-clockwise [a, b, c] triples. */
-export function triangulate(contour, holes) {
-  if (contour.length === 0) throw new RangeError('triangulate needs a contour with points, got an empty contour. Pass [[x, y], ...].');
+export function triangulate(contour, holes = []) {
+  if (!Array.isArray(contour) || contour.length === 0) throw new RangeError('triangulate needs a contour with points, got an empty contour. Pass [[x, y], ...].');
+  if (!Array.isArray(holes)) throw new TypeError('triangulate holes must be an array.');
   if (contour.length < 3) return [];
   assertFinitePoints(contour, 'contour');
-  holes.forEach((hole, index) => assertFinitePoints(hole, `hole ${index}`));
+  holes.forEach((hole, index) => {
+    if (!Array.isArray(hole) || hole.length < 3) throw new RangeError(`triangulate hole ${index} needs at least 3 points.`);
+    assertFinitePoints(hole, `hole ${index}`);
+  });
   const points = [...contour, ...holes.flat()];
   const outerRing = contour.map((_, index) => index);
   if (signedArea(contour) < 0) outerRing.reverse();

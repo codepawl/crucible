@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isVersionBump, manualChecksFor, planChecks } from '../scripts/preflight.mjs';
+import { DEFAULT_CONCURRENCY, isVersionBump, manualChecksFor, planChecks, runChecks } from '../scripts/preflight.mjs';
 
 function checkNamed(checks, name) {
   return checks.find(check => check.name === name);
@@ -81,4 +81,69 @@ test('the add-on python tests run only when a file under packages/blender-addon/
 test('the names check runs for a changed source file and is skipped for docs', () => {
   assert.equal(checkNamed(planChecks(['src/camera.js']), 'names').skipped, null);
   assert.match(checkNamed(planChecks(['docs/guide.md']), 'names').skipped, /no scanned source/);
+});
+
+test('planChecks orders unit tests after build library and build library after package links', () => {
+  const checks = planChecks(['src/camera.js', 'docs/guide.md', 'changes/1.md']);
+  assert.equal(checkNamed(checks, 'unit tests and coverage').dependsOn, 'build library');
+  assert.deepEqual(checkNamed(checks, 'build library').after, ['package links']);
+});
+
+test('runChecks runs ready checks concurrently within the concurrency cap and preserves check order', async () => {
+  assert.equal(DEFAULT_CONCURRENCY, 4);
+  let active = 0;
+  let peakActive = 0;
+  const delays = new Map([['slow', 40], ['medium', 15], ['fast', 5], ['tail', 5]]);
+  const checks = [
+    { name: 'inline ok', kind: 'inline', skipped: null, failure: null },
+    { name: 'slow', command: ['node', 'slow'], skipped: null },
+    { name: 'medium', command: ['node', 'medium'], skipped: null },
+    { name: 'fast', command: ['node', 'fast'], skipped: null },
+    { name: 'tail', command: ['node', 'tail'], skipped: null },
+  ];
+  const outputs = [];
+  const results = await runChecks(checks, {
+    concurrency: 2,
+    writeOutput: text => outputs.push(text),
+    readLog: () => '',
+    rootFolder: '/repo',
+    runCommand: async check => {
+      active++;
+      peakActive = Math.max(peakActive, active);
+      await new Promise(resolveWait => setTimeout(resolveWait, delays.get(check.name)));
+      active--;
+      return { code: 0, logPath: `/repo/artifacts/preflight/${check.name}.log` };
+    },
+  });
+  assert.equal(peakActive, 2);
+  assert.deepEqual(results.map(result => result.name), ['inline ok', 'slow', 'medium', 'fast', 'tail']);
+  assert.deepEqual(results.map(result => result.status), ['ok', 'ok', 'ok', 'ok', 'ok']);
+});
+
+test('runChecks skips dependents on failure but still runs after-ordered checks when the prior check fails', async () => {
+  const events = [];
+  const checks = [
+    { name: 'package links', command: ['node', 'links'], skipped: null, fix: 'fix links' },
+    { name: 'build library', command: ['node', 'build'], skipped: null, after: ['package links'], fix: 'fix build' },
+    { name: 'unit tests', command: ['node', 'test'], skipped: null, dependsOn: 'build library', fix: 'fix tests' },
+    { name: 'coverage gate', command: ['node', 'cov'], skipped: null, dependsOn: 'unit tests', fix: 'fix cov' },
+  ];
+  const outputs = [];
+  const results = await runChecks(checks, {
+    concurrency: 4,
+    writeOutput: text => outputs.push(text),
+    readLog: path => `line 1 of ${path}\nline 2 of ${path}\n`,
+    rootFolder: '/repo',
+    runCommand: async check => {
+      events.push(`start:${check.name}`);
+      await new Promise(resolveWait => setTimeout(resolveWait, check.name === 'package links' ? 20 : 5));
+      events.push(`end:${check.name}`);
+      return { code: check.name === 'unit tests' ? 0 : 1, logPath: `/repo/artifacts/preflight/${check.name}.log` };
+    },
+  });
+  assert.ok(events.indexOf('end:package links') < events.indexOf('start:build library'), 'build library waited for package links');
+  assert.deepEqual(results.map(result => result.status), ['fail', 'fail', 'skip', 'skip']);
+  assert.equal(results[2].detail, 'build library did not pass');
+  assert.equal(results[3].detail, 'unit tests did not pass');
+  assert.ok(outputs.some(text => text.includes('line 2 of /repo/artifacts/preflight/package links.log')));
 });

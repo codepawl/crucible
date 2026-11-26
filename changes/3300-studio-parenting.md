@@ -1,0 +1,1 @@
+- Keep world transforms when setting or clearing node parents, add `Ctrl+P` / `Alt+P` parenting operators, and support drag-and-drop parenting in the Scene list (#3300).

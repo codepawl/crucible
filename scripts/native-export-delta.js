@@ -57,8 +57,9 @@ export function changedRanges(before, after) {
 
 /**
  * The ranges that turn `before` into `after` when the two tables have different lengths: the changes inside the bytes both hold
- * (the shared prefix), then everything past the old end when `after` is longer. A shorter `after` needs no more ranges, since the
- * applier cuts the old table to the new length. Returns null when the prefix changes in too many places.
+ * (the shared prefix), then everything past the old end when `after` is longer (merged into the trailing range when within
+ * DELTA_GAP_BYTES). A shorter `after` needs no more ranges, since the applier cuts the old table to the new length. Returns null
+ * when the result would exceed DELTA_MAXIMUM_RANGES.
  */
 export function prefixPatchRanges(before, after) {
   const sharedBytes = Math.min(before.byteLength, after.byteLength);
@@ -66,11 +67,12 @@ export function prefixPatchRanges(before, after) {
   if (ranges === null) return null;
   if (after.byteLength === sharedBytes) return ranges;
   const last = ranges[ranges.length - 1];
-  if (last && last[0] + last[1] === sharedBytes) {
+  if (last && sharedBytes - (last[0] + last[1]) <= DELTA_GAP_BYTES) {
     last[1] = after.byteLength - last[0];
-  } else {
-    ranges.push([sharedBytes, after.byteLength - sharedBytes]);
+    return ranges;
   }
+  if (ranges.length >= DELTA_MAXIMUM_RANGES) return null;
+  ranges.push([sharedBytes, after.byteLength - sharedBytes]);
   return ranges;
 }
 

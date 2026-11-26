@@ -30,7 +30,11 @@ const CONTACT_OFFSET = 1e-4;
 const SEED_MIXER = 0x9e3779b1;
 
 export function createGenerator(seed, index) {
-  let state = (Math.imul(index + 1, SEED_MIXER) ^ Math.floor(seed)) >>> 0;
+  if (typeof seed !== 'number' || !Number.isFinite(seed)) throw new TypeError('Particle seed must be a finite number.');
+  const low = seed >>> 0;
+  const high = Math.floor(seed / 4294967296) | 0;
+  const fraction = seed === Math.trunc(seed) ? 0 : Math.imul(Math.round((seed - Math.trunc(seed)) * 4294967296), 0x85ebca6b);
+  let state = (Math.imul(index + 1, SEED_MIXER) ^ low ^ Math.imul(high, 0xc2b2ae35) ^ fraction) >>> 0;
   return () => {
     state = (state + 0x6d2b79f5) >>> 0;
     let mixed = Math.imul(state ^ state >>> 15, state | 1);
@@ -87,6 +91,10 @@ function pointInEmitter(emitter, fractions) {
 
 // Rotation (row major) that turns +Y onto the unit `normal`.
 function rotationFromUp(normal, matrix) {
+  if (!normal || Math.hypot(normal[0], normal[1], normal[2]) < 1e-12) {
+    matrix.set(IDENTITY);
+    return;
+  }
   const cosine = normal[1];
   if (cosine < -0.9999) {
     matrix.set([1, 0, 0, 0, -1, 0, 0, 0, -1]);
@@ -270,7 +278,7 @@ const contact = { fraction: Infinity, normal: [0, 1, 0], onFloor: false };
 // The earliest surface the path from `from` to `to` crosses: the floor plane or a collider triangle.
 function earliestContact(forces, from, to) {
   contact.fraction = Infinity;
-  if (forces.floor !== undefined && to[1] <= forces.floor) {
+  if (forces.floor !== undefined && from[1] >= forces.floor && to[1] <= forces.floor) {
     contact.fraction = from[1] > forces.floor ? (from[1] - forces.floor) / (from[1] - to[1]) : 0;
     contact.normal[0] = 0;
     contact.normal[1] = 1;
@@ -287,7 +295,7 @@ function earliestContact(forces, from, to) {
 // scaled by `bounce`. Coulomb friction removes `friction` times the normal impulse from the speed along the surface
 // (a particle resting under gravity loses friction * g per second, so a slider slows and stops, never glides). The spin
 // is damped by the same contact. Returns true when the particle has come to rest.
-function resolveContact(forces, position, velocity, from, to, spin, step) {
+function resolveContact(forces, position, velocity, from, to, spin, step, bounceDepth = 0) {
   for (let axis = 0; axis < 3; axis++) {
     position[axis] = from[axis] + (to[axis] - from[axis]) * contact.fraction;
   }
@@ -321,8 +329,16 @@ function resolveContact(forces, position, velocity, from, to, spin, step) {
   const atRest = outward === 0 && Math.sqrt(sliding) < REST_SPEED;
   if (atRest) spin[1] = 0;
   if (!atRest) {
-    // The rest of the step is spent moving along the response velocity, so a slider keeps its distance.
-    for (let axis = 0; axis < 3; axis++) position[axis] += velocity[axis] * step * (1 - contact.fraction);
+    // The rest of the step is spent moving along the response velocity, checking colliders/floor so fast bounces cannot tunnel.
+    const remaining = step * (1 - contact.fraction);
+    if (remaining > 1e-12) {
+      const postFrom = [position[0], position[1], position[2]];
+      const postTo = [position[0] + velocity[0] * remaining, position[1] + velocity[1] * remaining, position[2] + velocity[2] * remaining];
+      if (bounceDepth < 4 && earliestContact(forces, postFrom, postTo)) {
+        return resolveContact(forces, position, velocity, postFrom, postTo, spin, remaining, bounceDepth + 1);
+      }
+      for (let axis = 0; axis < 3; axis++) position[axis] = postTo[axis];
+    }
   }
   return atRest;
 }

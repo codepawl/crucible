@@ -28,7 +28,7 @@ Pick the form by how a person reaches the feature:
 ## How to write a row
 
 - Name the feature, its form, where it lives and why that form fits.
-- `Where` is a code or doc anchor. A row for a rail tool (`STUDIO_TOOLS` in `src/studio-templates.js`) carries its id there, such as `tool:snap`, and its form contains `tool`.
+- `Where` is a code or doc anchor. A row for a rail tool (`STUDIO_TOOLS` in `src/studio-templates.js`) carries its id there, such as `tool:translate`, and its form contains `tool`.
 - `Reason` says in plain words why the form fits. It is never empty.
 - Add or update the row in the same pull request that changes the feature. `tests/studio-interaction-forms.test.js` checks the rail tools, the form words and the reasons on every unit pass.
 
@@ -40,7 +40,7 @@ Pick the form by how a person reaches the feature:
 | Move | tool + operator | `tool:translate`, `src/studio-keymap.js:22`, `src/studio.js:1935`, `src/studio.js:4660` | The rail tool shows handles. The G key is the same action as an operator: it picks the object up under the pointer with no handle to aim at. |
 | Rotate | tool + operator | `tool:rotate`, `src/studio-keymap.js:23` | Same as Move: handles from the tool, a held phase from the R key. |
 | Scale | tool + operator | `tool:scale`, `src/studio-keymap.js:24` | Same as Move: handles from the tool, a held phase from the S key. |
-| Snap | tool | `tool:snap`, `src/studio-keymap.js:25`, `src/studio-controller.js:1584`, `docs/studio.md:37` | A surface snap tool on T owns the pointer to drop an object on a surface. Step snap while Shift is held is part of the transform tools (`src/studio-controller.js:1755`). |
+| Snapping | toggle + setting | the magnet on the rail, Shift+Tab, `src/studio-snapping.js` | A state every transform obeys; the target (Increment, Vertex, Face) is a setting of that state. |
 | Add primitive | operator | `src/studio.js:1375` | One action that drops a shape in at a default size. |
 | Add menu | operator | `src/studio-keymap.js:26`, `src/studio-templates.js:5` | Shift+A and the rail button open the same menu of eight mesh shapes, 3D text and three lights. |
 | Measure readout | panel | `src/studio.js:2064` | The size of the selected object is a value to read, so it sits in a panel and owns no pointer. |
@@ -63,6 +63,7 @@ Pick the form by how a person reaches the feature:
 | Grid | toggle | `toggle:grid`, `src/studio.js:1976`, `src/studio.js:1505` | A state every tool obeys. The rail button, the View menu item and a Settings row show the same state. |
 | Statistics readout | setting | `src/studio.js:1189`, `src/studio.js:2064` | The camera and size readout is a stored choice in Settings. |
 | Show or hide the panels | toggle | `toggle:toggleDocks`, `src/studio.js:1975`, `src/studio-keymap.js:48` | A state of the layout. The rail button and the N key flip the same state. |
+| Export workspace | mode | the Export tab, `src/studio.js`, `src/studio-export.js` | One action per export. The scene is read-only and navigation is off there, because the viewport shows exactly the saved shot. |
 
 ## Object mode operators
 
@@ -101,4 +102,6 @@ Pick the form by how a person reaches the feature:
 | Motion | setting | `src/studio-preferences.js`, `src/studio-settings.js` | A stored choice made once: follow the system or reduce Studio's own motion. |
 | Zoom direction | setting | `src/studio-preferences.js`, `src/studio-settings.js` | A stored choice made once for which way the wheel and a pinch zoom. |
 | Account | panel | Settings > Account, `src/studio-account.js` | Shows who is signed in and the host's sign-in and sign-out actions in one section; Studio holds no token. |
+| Keyboard settings | panel | Settings > Keyboard, `src/studio-keyboard-settings.js` | Every shortcut of the preset by area, a filter above, a warning on a clash and Reset shortcuts with a confirm that defaults to Keep; nothing leaves the panel until a key is chosen. |
+| Each key binding | setting | Settings > Keyboard, `src/studio-key-overrides.js` | A stored choice per preset and action: click the key, press the new combination; Esc cancels, Backspace clears, Swap or Cancel settles a clash, the row's reset returns the preset key. |
 | History | panel | `src/studio.js` (the History card in the right column), View > History, Edit > History | A log of the edits that stays on screen beside Properties: a viewer of a recording follows it downward, and the person editing steps back or forward from it. A tab of Properties would be swapped out when the selection changes tabs, so it is its own card, shown and hidden by a toggle. |

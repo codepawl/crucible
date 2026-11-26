@@ -4,6 +4,7 @@ import {
   formatPropertyNumber,
   hdriChoiceLabel,
   motionPropertyOf,
+  parsePropertyInput,
   propertyDisplayRange,
   propertyDisplayValue,
   propertyIsEnabled,
@@ -11,6 +12,7 @@ import {
   propertyNameOf,
   propertySectionsFor,
   propertyStoredValue,
+  propertyUnitMark,
   propertyValueText,
 } from './studio-properties.js';
 
@@ -37,10 +39,11 @@ export function createPropertyLine(documentReference, createElement, label, ...c
  * `catalogNames` ({ [id]: name }) names the catalog HDRIs a scene may use.
  * `prepareRecipe` loads what a choice needs before it is written (the file of an HDRI), for a row that names a `preparation`.
  */
-export function createPropertyPanel({ documentReference, controller, announce, builders, resolveKey, groups, prepareRecipe, opensFirstGroup = false, leadingRows = {}, catalogNames = {} }) {
+export function createPropertyPanel({ documentReference, controller, announce, builders, resolveKey, groups, prepareRecipe, opensFirstGroup = false, leadingRows = {}, catalogNames = {}, getLengthUnit = () => 'm' }) {
   const { createElement, createIcon, createVectorRow, createSunPad } = builders;
   const element = createElement(documentReference, 'div', { className: 'crucible-studio-properties' });
   let shownKind = null;
+  let shownLengthUnit = getLengthUnit();
   let controls = new Map();
   // The last number each clearable row showed, so a cleared row can show it again and a switch can write it back.
   let lastShownNumbers = new Map();
@@ -104,47 +107,56 @@ export function createPropertyPanel({ documentReference, controller, announce, b
 
   // Every numeric row has the slot, empty when it has no unit, so its digits end at the same place as the rows that do.
   function createUnitMark(field) {
-    return createElement(documentReference, 'span', { className: 'crucible-studio-prop-unit', textContent: field.unit ?? '', attributes: { 'aria-hidden': 'true' } });
+    return createElement(documentReference, 'span', {
+      className: 'crucible-studio-prop-unit',
+      textContent: propertyUnitMark(field, getLengthUnit()),
+      attributes: { 'aria-hidden': 'true' },
+    });
   }
 
   function numberControl(field) {
-    const range = propertyDisplayRange(field);
+    const isLength = field.unit === 'm';
+    const range = propertyDisplayRange(field, getLengthUnit());
     const input = createElement(documentReference, 'input', {
-      type: 'number',
-      min: String(range.min),
-      max: String(range.max),
-      step: String(range.step),
+      type: isLength ? 'text' : 'number',
+      ...(isLength ? { dataset: { length: 'true' } } : { min: String(range.min), max: String(range.max), step: String(range.step) }),
       placeholder: field.clearable && field.offValue === undefined ? 'Off' : '',
-      attributes: { 'aria-label': propertyNameOf(field) },
+      attributes: isLength ? { 'aria-label': propertyNameOf(field), inputmode: 'decimal' } : { 'aria-label': propertyNameOf(field) },
     });
     input.addEventListener('change', () => {
       if (input.value === '' && field.clearable) {
         commit(field, null);
         return;
       }
-      const typed = Number(input.value);
-      if (input.value !== '' && Number.isFinite(typed)) {
-        commit(field, propertyStoredValue(field, typed));
+      const parsed = parsePropertyInput(field, input.value, getLengthUnit());
+      if (parsed !== null) {
+        commit(field, parsed);
+      } else if (input.value !== '') {
+        sync();
       }
     });
+    const unitMark = createUnitMark(field);
     return {
-      container: createPropertyLine(documentReference, createElement, field.label, input, createUnitMark(field)),
+      container: createPropertyLine(documentReference, createElement, field.label, input, unitMark),
       setValue: value => {
         if (value !== null) {
           lastShownNumbers.set(field.id, value);
         }
         const shownValue = value ?? lastShownNumbers.get(field.id) ?? field.offValue ?? null;
-        input.value = shownValue === null ? '' : propertyValueText(field, shownValue);
+        input.value = shownValue === null ? '' : propertyValueText(field, shownValue, getLengthUnit());
       },
       setDisabled: disabled => {
         input.disabled = disabled;
+      },
+      setUnit: unit => {
+        unitMark.textContent = propertyUnitMark(field, unit);
       },
     };
   }
 
   // A bounded number: a slim slider with its value beside it on the same line.
   function sliderControl(field) {
-    const range = propertyDisplayRange(field);
+    const range = propertyDisplayRange(field, getLengthUnit());
     const output = createElement(documentReference, 'output');
     const input = createElement(documentReference, 'input', {
       type: 'range',
@@ -157,16 +169,25 @@ export function createPropertyPanel({ documentReference, controller, announce, b
     input.addEventListener('input', () => {
       const shown = Number(input.value);
       output.textContent = formatPropertyNumber(shown);
-      commit(field, propertyStoredValue(field, shown));
+      commit(field, propertyStoredValue(field, shown, getLengthUnit()));
     });
+    const unitMark = createUnitMark(field);
     return {
-      container: createPropertyLine(documentReference, createElement, field.label, input, output, createUnitMark(field)),
+      container: createPropertyLine(documentReference, createElement, field.label, input, output, unitMark),
       setValue: value => {
-        input.value = String(propertyDisplayValue(field, value));
-        output.textContent = propertyValueText(field, value);
+        const unit = getLengthUnit();
+        input.value = String(propertyDisplayValue(field, value, unit));
+        output.textContent = propertyValueText(field, value, unit);
       },
       setDisabled: disabled => {
         input.disabled = disabled;
+      },
+      setUnit: unit => {
+        unitMark.textContent = propertyUnitMark(field, unit);
+        const nextRange = propertyDisplayRange(field, unit);
+        input.min = String(nextRange.min);
+        input.max = String(nextRange.max);
+        input.step = String(nextRange.step);
       },
     };
   }
@@ -209,6 +230,7 @@ export function createPropertyPanel({ documentReference, controller, announce, b
     const row = createVectorRow(documentReference, field.label, values => commit(field, values), {
       axisNames,
       accessibleTitle: propertyNameOf(field),
+      getLengthUnit: field.unit === 'm' ? getLengthUnit : null,
       onGestureStart: () => controller.beginUndoGroup(),
       onGestureEnd: () => controller.endUndoGroup(),
     });
@@ -317,11 +339,17 @@ export function createPropertyPanel({ documentReference, controller, announce, b
 
   function sync() {
     const description = controller.describeSceneObject(resolveKey());
+    const lengthUnit = getLengthUnit();
+    const unitChanged = lengthUnit !== shownLengthUnit;
+    shownLengthUnit = lengthUnit;
     if (description.kind !== shownKind) {
       rebuild(description.kind);
     }
     const context = currentContext();
-    for (const { field, container, mark, setValue, setDisabled } of controls.values()) {
+    for (const { field, container, mark, setValue, setDisabled, setUnit } of controls.values()) {
+      if (unitChanged) {
+        setUnit?.(lengthUnit);
+      }
       container.hidden = !propertyIsVisible(field, description.source);
       const driven = description.drivenProperties.has(motionPropertyOf(field));
       container.dataset.driven = driven ? 'true' : 'false';

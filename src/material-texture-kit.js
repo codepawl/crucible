@@ -152,18 +152,20 @@ export function createImage(data, width, height) {
   return typeof ImageData === 'function' ? new ImageData(data, width, height) : { width, height, data };
 }
 
+function writeNormalSample(normalData, offset, slopeAcross, slopeUp) {
+  const length = Math.hypot(slopeAcross, slopeUp, 1);
+  normalData[offset] = Math.round((-slopeAcross / length * 0.5 + 0.5) * 255);
+  normalData[offset + 1] = Math.round((-slopeUp / length * 0.5 + 0.5) * 255);
+  normalData[offset + 2] = Math.round((1 / length * 0.5 + 0.5) * 255);
+  normalData[offset + 3] = 255;
+}
+
 function normalMapFromSlopes(resolution, slopeU, slopeV) {
   const normalData = new Uint8ClampedArray(resolution * resolution * 4);
   for (let row = 0; row < resolution; row++) {
     for (let column = 0; column < resolution; column++) {
-      const slopeAcross = slopeU(column, row);
-      const slopeUp = slopeV(column, row);
-      const length = Math.hypot(slopeAcross, slopeUp, 1);
       const offset = (row * resolution + column) * 4;
-      normalData[offset] = Math.round((-slopeAcross / length * 0.5 + 0.5) * 255);
-      normalData[offset + 1] = Math.round((-slopeUp / length * 0.5 + 0.5) * 255);
-      normalData[offset + 2] = Math.round((1 / length * 0.5 + 0.5) * 255);
-      normalData[offset + 3] = 255;
+      writeNormalSample(normalData, offset, slopeU(column, row), slopeV(column, row));
     }
   }
   return normalData;
@@ -185,10 +187,22 @@ export function normalMapFromHeights(heights, resolution, bump) {
 export function normalMapFromHeightFunction(heightAt, resolution, bump) {
   const halfStep = 0.5 / resolution;
   const slopeScale = bump * resolution / 32;
-  const slopeAt = (column, row, acrossStep, upStep) => {
-    const u = (column + 0.5) / resolution;
+  const normalData = new Uint8ClampedArray(resolution * resolution * 4);
+  const topHeights = new Float64Array(resolution);
+  for (let row = 0; row < resolution; row++) {
     const v = (row + 0.5) / resolution;
-    return (heightAt(u + acrossStep, v + upStep) - heightAt(u - acrossStep, v - upStep)) * slopeScale;
-  };
-  return normalMapFromSlopes(resolution, (column, row) => slopeAt(column, row, halfStep, 0), (column, row) => slopeAt(column, row, 0, halfStep));
+    let leftHeight = heightAt(0.5 / resolution - halfStep, v);
+    for (let column = 0; column < resolution; column++) {
+      const u = (column + 0.5) / resolution;
+      const rightHeight = heightAt(u + halfStep, v);
+      const topHeight = row === 0 ? heightAt(u, v - halfStep) : topHeights[column];
+      const bottomHeight = heightAt(u, v + halfStep);
+      topHeights[column] = bottomHeight;
+      const slopeAcross = (rightHeight - leftHeight) * slopeScale;
+      const slopeUp = (bottomHeight - topHeight) * slopeScale;
+      leftHeight = rightHeight;
+      writeNormalSample(normalData, (row * resolution + column) * 4, slopeAcross, slopeUp);
+    }
+  }
+  return normalData;
 }

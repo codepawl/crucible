@@ -27,7 +27,7 @@ export { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS };
  * shares geometry buffers with the live scene, so four cost little; their geometry still counts in the allocation budget.
  */
 export const REVISION_HISTORY_LIMIT = 4;
-const FIELD_EDIT_OPERATIONS = new Set(['set-node', 'set-material', 'set-camera']);
+const FIELD_EDIT_OPERATIONS = new Set(['set-node', 'set-material', 'set-camera', 'set-motion']);
 // Fields of a set-node operation that move or show a node without changing the graph's shape, the geometry or the materials.
 const POSE_EDIT_FIELDS = new Set(['type', 'id', 'translation', 'rotation', 'scale', 'visible']);
 const TRANSFORM_FIELDS = ['translation', 'rotation', 'scale'];
@@ -1880,13 +1880,13 @@ function fieldEditCandidate(recipe, operations) {
     recipe.nodes.every(node => NODE_KEYS_NEEDING_OWN_COPY.every(key => node[key] === undefined));
   if (!sharesSafely) return null;
   const touchedNodes = new Set(operations.filter(operation => operation.type === 'set-node').map(operation => operation.id));
-  const candidate = {};
-  for (const [key, value] of Object.entries(recipe)) {
-    if (key === 'geometries') candidate[key] = [...value];
-    else if (key === 'nodes') candidate[key] = value.map(node => (touchedNodes.has(node.id) ? structuredClone(node) : node));
-    else candidate[key] = structuredClone(value);
-  }
-  return candidate;
+  return {
+    ...recipe,
+    geometries: [...recipe.geometries],
+    nodes: recipe.nodes.map(node => (touchedNodes.has(node.id) ? structuredClone(node) : node)),
+    materials: structuredClone(recipe.materials),
+    camera: structuredClone(recipe.camera),
+  };
 }
 
 // The mesh geometry an edit names; `remedy` tells what to do when it is another type.
@@ -2232,7 +2232,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     stagedState.localBounds = localBounds;
     stagedState.skinBindings = skinBindings;
     stagedState.skinStages = createSkinStages(skinBindings);
-    stagedState.motionSampler = recipe.motion ? agentSceneModule('motion').compileAgentMotion(recipe.motion, recipe) : null;
+    stagedState.motionSampler = recipe.motion ? agentSceneModule('motion').compileAgentMotion(recipe.motion, recipe, { normalized: true }) : null;
     stagedState.physicsSampler = stagePhysics(recipe, geometryRecords);
     stagedState.clothSampler = stageCloth(recipe, geometryRecords, stagedState.motionSampler);
     stagedState.particleSampler = stageParticles(recipe, geometryRecords, stagedState);
@@ -2832,14 +2832,14 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       }
       const operations = copiedJson(inputOperations, limits.maxRecipeBytes);
       for (const name of defaultStageModulesNamed(operations)) requestedModules.add(name);
-      const onlyFieldEdits = operations.every(operation => FIELD_EDIT_OPERATIONS.has(operation.type));
+      const onlyFieldEdits = operations.every(operation => FIELD_EDIT_OPERATIONS.has(operation.type) && !('removeTracks' in operation));
       const candidate = (onlyFieldEdits && fieldEditCandidate(state.recipe, operations)) || authoredRecipe(state.recipe);
       const removedNodes = new Set();
       const removedMaterials = new Set();
       const removals = [];
       for (const operation of operations) {
         const section = Object.hasOwn(NULLABLE_SECTION_OPERATIONS, operation.type) ? NULLABLE_SECTION_OPERATIONS[operation.type] : null;
-        if (operation.type === 'set-motion' && Object.hasOwn(operation, 'removeTracks')) {
+        if (section === 'motion' && 'removeTracks' in operation) {
           candidate.motion = agentSceneModule('motionTrackRemoval').removeMotionTracks(operation, candidate.motion);
           continue;
         }
