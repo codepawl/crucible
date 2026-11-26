@@ -14,9 +14,15 @@ export const FACE_TOOLS = Object.freeze({
 });
 
 export const PICK_FACES_FIRST = verb => `Pick whole faces to ${verb}: press 3 for face mode, then click the faces.`;
+export const MAX_LOG_ENTRIES = 64;
 
 // Amounts are written to the recipe at this many decimals, and the preview uses the same rounded number.
 const AMOUNT_DECIMALS = 4;
+const WHEEL_PIXELS_PER_STEP = 100;
+const WHEEL_PIXELS_PER_LINE = WHEEL_PIXELS_PER_STEP / 3;
+const WHEEL_PIXELS_PER_PAGE = WHEEL_PIXELS_PER_STEP * 3;
+const WHEEL_DELTA_LINE = 1;
+const WHEEL_DELTA_PAGE = 2;
 
 export function roundAmount(amount) {
   return Number(amount.toFixed(AMOUNT_DECIMALS));
@@ -103,21 +109,32 @@ export function faceToolAmount(kind, frame, project, start, pointer) {
  */
 export function createFaceToolInput({ documentReference, editor, localCoordinates, onChange = () => {} }) {
   let held = false;
+  let activeKind = null;
+  let wheelTravel = 0;
   let swallowClick = false;
   let swallowContextMenu = false;
   const windowReference = documentReference.defaultView;
+  const isTopologyTool = kind => kind === 'bevel' || kind === 'loopCut';
 
-  // The scene can change under a held tool (a reload, an undo from outside): the editor has put the faces away, so the tool is over.
+  // The scene can change under a held tool (a reload, an undo from outside): the editor has put the tool away, so it is over.
   function stopWhenEditorLetGo() {
-    if (held && !editor.holdingFaceTool) stop(false);
+    const active = isTopologyTool(activeKind) ? editor.holdingTopologyTool : editor.holdingFaceTool;
+    if (held && !active) stop(false);
     return !held;
   }
 
   function onPointerMove(event) {
     if (stopWhenEditorLetGo()) return;
     const { x, y } = localCoordinates(event);
-    editor.moveFaceTool(x, y);
+    if (isTopologyTool(activeKind)) editor.moveTopologyTool(x, y);
+    else editor.moveFaceTool(x, y);
     onChange();
+  }
+
+  function detachListeners() {
+    documentReference.removeEventListener('pointermove', onPointerMove);
+    documentReference.removeEventListener('pointerdown', onPointerDown, true);
+    windowReference?.removeEventListener?.('blur', onBlur);
   }
 
   function onPointerDown(event) {
@@ -125,7 +142,23 @@ export function createFaceToolInput({ documentReference, editor, localCoordinate
     event.stopPropagation();
     swallowClick = event.button === 0;
     swallowContextMenu = event.button === 2;
-    if (event.button === 0 || event.button === 2) stop(event.button === 0);
+    if (event.button === 2) {
+      stop(false);
+      return;
+    }
+    if (event.button !== 0) return;
+    if (isTopologyTool(activeKind)) {
+      const { x, y } = localCoordinates(event);
+      if (editor.clickTopologyTool(x, y)) {
+        held = false;
+        activeKind = null;
+        wheelTravel = 0;
+        detachListeners();
+      }
+      onChange();
+      return;
+    }
+    stop(true);
   }
 
   function onContextMenu(event) {
@@ -146,11 +179,15 @@ export function createFaceToolInput({ documentReference, editor, localCoordinate
 
   function stop(confirmed) {
     if (!held) return;
+    const kind = activeKind;
     held = false;
-    documentReference.removeEventListener('pointermove', onPointerMove);
-    documentReference.removeEventListener('pointerdown', onPointerDown, true);
-    windowReference?.removeEventListener?.('blur', onBlur);
-    if (confirmed) {
+    activeKind = null;
+    wheelTravel = 0;
+    detachListeners();
+    if (isTopologyTool(kind)) {
+      if (confirmed) editor.finishTopologyTool();
+      else editor.cancelTopologyTool();
+    } else if (confirmed) {
       editor.finishFaceTool();
     } else {
       editor.cancelFaceTool();
@@ -166,24 +203,58 @@ export function createFaceToolInput({ documentReference, editor, localCoordinate
     /** Starts the tool at the pointer; false (with a notice from the editor) when the pick cannot take it. */
     start(kind, pointer) {
       if (held || !pointer) return false;
-      if (!editor.beginFaceTool(kind, pointer.x, pointer.y).ok) {
+      const result = isTopologyTool(kind)
+        ? editor.beginTopologyTool(kind, pointer.x, pointer.y)
+        : editor.beginFaceTool(kind, pointer.x, pointer.y);
+      if (!result.ok) {
         onChange();
         return false;
       }
       held = true;
+      activeKind = kind;
+      wheelTravel = 0;
       documentReference.addEventListener('pointermove', onPointerMove);
       documentReference.addEventListener('pointerdown', onPointerDown, true);
       windowReference?.addEventListener?.('blur', onBlur);
       onChange();
       return true;
     },
-    /** Enter confirms, Esc cancels; every other key is spent so it cannot act on the object meanwhile. */
+    /** Enter confirms, Esc cancels, + / - step segments or cuts; every other key is spent so it cannot act on the object meanwhile. */
     handleKey(event) {
       if (stopWhenEditorLetGo()) return false;
       if (event.key !== 'Shift') event.preventDefault();
+      if (isTopologyTool(activeKind)) {
+        if (event.key === '+' || event.key === '=' || event.code === 'NumpadAdd') {
+          editor.stepTopologyTool(1);
+          onChange();
+          return true;
+        }
+        if (event.key === '-' || event.code === 'NumpadSubtract') {
+          editor.stepTopologyTool(-1);
+          onChange();
+          return true;
+        }
+      }
       if (event.repeat) return true;
       if (event.key === 'Enter') stop(true);
       if (event.key === 'Escape') stop(false);
+      return true;
+    },
+    /** Wheel adjusts bevel segments or loop-cut count while one of those tools is held. */
+    handleWheel(event) {
+      if (stopWhenEditorLetGo()) return false;
+      if (!isTopologyTool(activeKind)) return false;
+      if (!Number.isFinite(event.deltaY) || event.deltaY === 0) return true;
+      const pixelsPerUnit = event.deltaMode === WHEEL_DELTA_PAGE ? WHEEL_PIXELS_PER_PAGE : event.deltaMode === WHEEL_DELTA_LINE ? WHEEL_PIXELS_PER_LINE : 1;
+      const travel = -event.deltaY * pixelsPerUnit;
+      if (Math.sign(travel) !== Math.sign(wheelTravel)) wheelTravel = 0;
+      wheelTravel += travel;
+      const steps = Math.trunc(wheelTravel / WHEEL_PIXELS_PER_STEP);
+      if (steps !== 0) {
+        wheelTravel -= steps * WHEEL_PIXELS_PER_STEP;
+        editor.stepTopologyTool(steps);
+        onChange();
+      }
       return true;
     },
     cancel() {

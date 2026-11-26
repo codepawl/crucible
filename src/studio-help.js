@@ -64,6 +64,8 @@ const GROUP_BY_ACTION = Object.freeze({
   'mesh.deleteMenu': 'Mesh tools',
   'mesh.mergeMenu': 'Mesh tools',
   'mesh.proportional': 'Mesh tools',
+  'mesh.bevel': 'Mesh tools',
+  'mesh.loopCut': 'Mesh tools',
   'modal.axisX': 'Axis or plane while holding',
   'modal.axisY': 'Axis or plane while holding',
   'modal.axisZ': 'Axis or plane while holding',

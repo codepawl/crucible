@@ -13,26 +13,33 @@ import { updatePartVertices } from './update-part-vertices.js';
 import { edgeLoop, edgeRing, faceLoop, growSelection, selectLinked, shrinkSelection } from './mesh-select-topology.js';
 import { DEFAULT_MAX_FALLOFF_VISITS, spatialFalloffWeights } from './mesh-ops.js';
 import { proportionalCirclePath } from './studio-proportional.js';
-import { MAX_SELECTED_ELEMENTS, MERGE_TARGETS } from './mesh-operations.js';
-import { FACE_TOOLS, PICK_FACES_FIRST, faceToolAmount, faceToolEdit, faceToolFrame, faceToolTargets, roundAmount } from './studio-mesh-tool.js';
+import { MAX_SELECTED_ELEMENTS } from './mesh-operations.js';
+import { FACE_TOOLS, MAX_LOG_ENTRIES, PICK_FACES_FIRST, faceToolAmount, faceToolEdit, faceToolFrame, faceToolTargets, roundAmount } from './studio-mesh-tool.js';
 import { CONVERTIBLE_PRIMITIVES, meshGeometryOfPrimitive, planOwnMesh } from './studio-own-mesh.js';
+import { createBevelLoopTools } from './studio-mesh-bevel-loop.js';
 import {
   edgesOfSelection,
+  facesInsideVertexSet,
   planMeshBridge,
+  planMeshDissolve,
   planMeshFill,
   planMeshGridFill,
   planMeshMakeFace,
+  planMeshMerge,
   planMeshSubdivide,
   planMeshSymmetrize,
   verticesOfSelection,
 } from './studio-mesh-tools.js';
 
 export {
+  MAX_LOG_ENTRIES,
   meshGeometryOfPrimitive,
   planMeshBridge,
+  planMeshDissolve,
   planMeshFill,
   planMeshGridFill,
   planMeshMakeFace,
+  planMeshMerge,
   planMeshSubdivide,
   planMeshSymmetrize,
   verticesOfSelection,
@@ -40,7 +47,6 @@ export {
 
 export const MESH_SELECTION_MODES = Object.freeze(['vertex', 'edge', 'face']);
 export const MAX_MASK_VERTICES = 19;
-export const MAX_LOG_ENTRIES = 64;
 // The cage of a larger mesh is not drawn, as the selection outline of Studio is not (SILHOUETTE_TRIANGLE_BUDGET).
 export const CAGE_TRIANGLE_BUDGET = 8000;
 const VERTEX_PICK_RADIUS_PIXELS = 14;
@@ -83,23 +89,6 @@ function indexMask(vertices) {
     terms = groups;
   }
   return terms[0];
-}
-
-function facesInsideVertexSet(mesh, vertexSet) {
-  const faces = [];
-  const covered = new Set();
-  for (let face = 0; face < mesh.faceCount; face += 1) {
-    const first = mesh.faceOffsets[face];
-    const end = mesh.faceOffsets[face + 1];
-    let inside = true;
-    for (let corner = first; corner < end && inside; corner += 1) {
-      inside = vertexSet.has(mesh.cornerVertices[corner]);
-    }
-    if (!inside) continue;
-    faces.push(face);
-    for (let corner = first; corner < end; corner += 1) covered.add(mesh.cornerVertices[corner]);
-  }
-  return { faces, covered };
 }
 
 /**
@@ -208,59 +197,6 @@ export function previewNormalsOf(indices, positions, normals) {
   return normals;
 }
 
-// The faces a selection dissolves: the picked ones, or those whose every corner is picked.
-function facesOfSelection(mesh, mode, selected) {
-  if (mode === 'face') return [...selected].sort((first, second) => first - second);
-  return facesInsideVertexSet(mesh, verticesOfSelection(mesh, mode, selected)).faces;
-}
-
-function refuseTooMany(count, noun) {
-  if (count > MAX_SELECTED_ELEMENTS) throw new RangeError(`Dissolving more than ${MAX_SELECTED_ELEMENTS} ${noun} at once is not possible; pick fewer.`);
-}
-
-/**
- * The log entry that dissolves the selection as `kind` ("vertices", "edges" or "faces"), from the Delete menu. Dissolving
- * edges also removes the vertices that are left with two edges, so a dissolved loop leaves clean polygons. Throws a sentence that
- * says what to pick when the selection holds none of that kind.
- */
-export function planMeshDissolve(mesh, mode, selected, kind) {
-  if (kind === 'vertices') {
-    const vertices = [...verticesOfSelection(mesh, mode, selected)].sort((first, second) => first - second);
-    if (vertices.length === 0) throw new RangeError('Pick a vertex, edge or face to dissolve first.');
-    refuseTooMany(vertices.length, 'vertices');
-    return { op: 'dissolve_verts', verts: { vertices } };
-  }
-  if (kind === 'edges') {
-    const edges = edgesOfSelection(mesh, mode, selected);
-    if (edges.length === 0) throw new RangeError('Dissolve Edges needs at least one edge: pick an edge, two vertices that share one, or a face.');
-    refuseTooMany(edges.length, 'edges');
-    const pairs = edges.map(edge => [mesh.edgeVertices[edge * 2], mesh.edgeVertices[edge * 2 + 1]]);
-    return { op: 'dissolve_edges', edges: { edges: pairs }, removeStraight: true };
-  }
-  if (kind === 'faces') {
-    const faces = facesOfSelection(mesh, mode, selected);
-    if (faces.length === 0) throw new RangeError('Dissolve Faces needs at least one whole face: pick a face, or every vertex of one.');
-    refuseTooMany(faces.length, 'faces');
-    return { op: 'dissolve_faces', select: { faces } };
-  }
-  throw new RangeError(`Unknown dissolve kind "${String(kind)}"; use one of vertices, edges, faces.`);
-}
-
-/**
- * The log entry that merges the selected vertices at `at` (center, first, last or collapse), from the Merge menu. First
- * and last follow the order of the picks, which only vertex mode keeps, so the other modes refuse them.
- */
-export function planMeshMerge(mesh, mode, selected, at) {
-  if (!MERGE_TARGETS.includes(at)) throw new RangeError(`Unknown merge target "${String(at)}"; use one of ${MERGE_TARGETS.join(', ')}.`);
-  if ((at === 'first' || at === 'last') && mode !== 'vertex') {
-    throw new RangeError('At First and At Last follow the order the vertices were picked, so they work in vertex mode (key 1).');
-  }
-  const vertices = mode === 'vertex' ? [...selected] : [...verticesOfSelection(mesh, mode, selected)].sort((first, second) => first - second);
-  if (vertices.length < 2) throw new RangeError('Pick at least two vertices to merge.');
-  if (vertices.length > MAX_SELECTED_ELEMENTS) throw new RangeError(`Merging more than ${MAX_SELECTED_ELEMENTS} vertices at once is not possible; pick fewer.`);
-  return { op: 'merge_verts', vertices, at };
-}
-
 function triangleCountOf(mesh) {
   let triangles = 0;
   for (let face = 0; face < mesh.faceCount; face += 1) {
@@ -298,6 +234,22 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   let boxArmed = false;
   let boxRectangle = null;
   let wheelTravel = 0;
+  const bevelLoop = createBevelLoopTools({
+    getState: () => state,
+    isBusy: () => drag !== null || bevelLoop.active,
+    controller,
+    announce,
+    getRenderer,
+    getSeeThrough: () => seeThrough,
+    writeEntry: edit => writeEntry(edit),
+    projectCage: () => projectCage(),
+    faceUnderPointer: (pixelX, pixelY) => faceUnderPointer(pixelX, pixelY),
+    faceBehindPointer: (pixelX, pixelY) => faceBehindPointer(pixelX, pixelY),
+    nearestEdge: (pixelX, pixelY, projected) => nearestEdge(pixelX, pixelY, projected),
+    nearestEdgeOfFace: (face, pixelX, pixelY, projected) => nearestEdgeOfFace(face, pixelX, pixelY, projected),
+    transformPoint,
+  });
+  const isBusy = () => drag !== null || bevelLoop.active;
 
   function refuse(message) {
     announce(message);
@@ -400,6 +352,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     endBoxSelect();
     // The controller drag goes first, through the session, so the cage, the buffers and the pointer state are put back.
     if (controller.dragging) controller.cancelGizmoDrag();
+    bevelLoop.cancel();
     cancelDrag();
     state = null;
     controller.setElementSession(null);
@@ -427,8 +380,10 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     });
   }
 
-  /** The parts Studio draws: the same list, with the edited part faint while see-through is on. */
+  /** The parts Studio draws: the same list, with the edited part faint while see-through is on, or a live bevel preview. */
   function partsToDraw(parts) {
+    const previewed = bevelLoop.partsToDraw(parts);
+    if (previewed) return previewed;
     if (!state?.ghostPart) return parts;
     return parts.map(part => (part === state.part ? state.ghostPart : part));
   }
@@ -465,7 +420,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     if (!MESH_SELECTION_MODES.includes(mode)) {
       throw new RangeError(`Unknown selection mode "${String(mode)}"; use one of ${MESH_SELECTION_MODES.join(', ')}.`);
     }
-    if (!state || state.mode === mode || drag) return;
+    if (!state || state.mode === mode || isBusy()) return;
     const vertices = selectedVertices();
     const { mesh } = state;
     const converted = new Set();
@@ -505,7 +460,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
 
   /** Ctrl+I: every element of the current mode that was not selected becomes selected, and the selected ones are not. */
   function invertSelection() {
-    if (!state || drag) return false;
+    if (!state || isBusy()) return false;
     const { mesh } = state;
     const count = state.mode === 'vertex' ? mesh.vertexCount : state.mode === 'edge' ? mesh.edgeCount : mesh.faceCount;
     const inverted = new Set();
@@ -519,7 +474,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
 
   /** C: the brush. Returns false outside edit mode or in the middle of a drag. */
   function beginCircleSelect() {
-    if (!state || drag) return false;
+    if (!state || isBusy()) return false;
     if (circle) return true;
     endBoxSelect();
     circle = { centre: null };
@@ -617,7 +572,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
 
   /** One dab of the brush at a pixel: every element of the mode under it joins the selection, or leaves it with `deselect`. Returns how many changed. */
   function paintCircle(pixelX, pixelY, { deselect = false } = {}) {
-    if (!state || !circle || drag) return 0;
+    if (!state || !circle || isBusy()) return 0;
     circle.centre = { x: pixelX, y: pixelY };
     let changed = 0;
     for (const element of circleHits(pixelX, pixelY)) {
@@ -697,7 +652,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   }
 
   function beginBoxSelect() {
-    if (!state || drag) return false;
+    if (!state || isBusy()) return false;
     circle = null;
     boxArmed = true;
     return true;
@@ -719,7 +674,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
    * joins only while see-through is on. `additive` keeps the current selection. Returns how many elements are selected afterwards.
    */
   function selectInRectangle(firstX, firstY, secondX, secondY, { additive = false } = {}) {
-    if (!state || drag) return 0;
+    if (!state || isBusy()) return 0;
     for (const value of [firstX, firstY, secondX, secondY]) {
       if (!Number.isFinite(value)) throw new RangeError(`Pass the rectangle as four finite pixel values, not ${String(value)}.`);
     }
@@ -840,7 +795,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
 
   /** Picks the element of the current mode under the pixel; `additive` (Shift) toggles it, a click on nothing clears. */
   function pick(pixelX, pixelY, { additive = false } = {}) {
-    if (!state || drag) return null;
+    if (!state || isBusy()) return null;
     const { hit } = elementUnderPointer(pixelX, pixelY);
     if (hit === null) {
       if (!additive) state.selected = new Set();
@@ -918,7 +873,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
    * the next edge round the face. Returns how many elements are selected, or null when nothing is under the pixel.
    */
   function pickLoop(pixelX, pixelY, { ring = false, additive = false } = {}) {
-    if (!state || drag) return null;
+    if (!state || isBusy()) return null;
     const { mesh } = state;
     let found = null;
     if (state.mode === 'face') {
@@ -945,7 +900,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
 
   /** L: everything joined to the element under the pixel joins the selection. Returns how many are selected, or null when nothing is there. */
   function selectLinkedAt(pixelX, pixelY) {
-    if (!state || drag) return null;
+    if (!state || isBusy()) return null;
     const { hit } = elementUnderPointer(pixelX, pixelY);
     if (hit === null) return null;
     applySelection(selectLinked(state.mesh, state.mode, [hit]), true);
@@ -954,14 +909,14 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
 
   /** Ctrl+L: everything joined to the selection joins it. Returns how many are selected. */
   function selectLinkedFromSelection() {
-    if (!state || drag || state.selected.size === 0) return 0;
+    if (!state || isBusy() || state.selected.size === 0) return 0;
     applySelection(selectLinked(state.mesh, state.mode, [...state.selected]), false);
     return state.selected.size;
   }
 
   /** One step of adjacency outward (direction 1) or inward (direction -1) in the current mode. Returns how many are selected. */
   function stepSelection(direction) {
-    if (!state || drag || state.selected.size === 0) return 0;
+    if (!state || isBusy() || state.selected.size === 0) return 0;
     const step = direction > 0 ? growSelection : shrinkSelection;
     applySelection(step(state.mesh, state.mode, [...state.selected]), false);
     return state.selected.size;
@@ -1114,7 +1069,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   // the numbers of the old mesh mean nothing in the new one.
   function runTopologyEdit(plan, done) {
     if (!state) return refuse('Enter edit mode before dissolving or merging.');
-    if (drag) return refuse('Let go of the move before dissolving or merging.');
+    if (isBusy()) return refuse('Let go of the move before dissolving or merging.');
     if (state.editCount >= MAX_LOG_ENTRIES) return refuse(LOG_IS_FULL_FOR_EDIT);
     try {
       writeEntry(plan());
@@ -1205,7 +1160,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     const tool = FACE_TOOLS[kind];
     if (!tool) throw new RangeError(`Unknown face tool "${String(kind)}"; use extrude or inset.`);
     if (!state) return refuse(`Enter edit mode on a mesh to ${tool.verb} faces.`);
-    if (drag) return refuse(`Let go of the move before you ${tool.verb}.`);
+    if (isBusy()) return refuse(`Let go of the move before you ${tool.verb}.`);
     const faces = pickedWholeFaces();
     if (!faces) return refuse(PICK_FACES_FIRST(tool.verb));
     if (state.editCount >= MAX_LOG_ENTRIES) return refuse(LOG_IS_FULL_FOR_TOOL);
@@ -1281,6 +1236,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     if (controller.dragging) {
       controller.cancelGizmoDrag();
     } else {
+      bevelLoop.cancel();
       cancelDrag();
     }
   }
@@ -1288,11 +1244,11 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
   /** Reads the cage again after the scene changed under it (undo, redo, a load); the selection stays while its indices still fit. */
   function refresh() {
     if (!state) return;
-    if (drag) {
+    if (isBusy()) {
       // A drag keeps its cage while the scene under it is the same one it began on. An undo, a redo or a load that replaced or
       // removed the edited geometry puts the drag away first, then the cage is read again (or edit mode ends) below.
       if (!sceneStillHoldsDraggedPart()) cancelRunningDrag();
-      if (drag) return;
+      if (isBusy()) return;
     }
     if (controller.selectedNodeId !== state.nodeId) {
       leave();
@@ -1357,7 +1313,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       return visible[start] && visible[end] ? `M${point(start)}L${point(end)}` : '';
     };
     const dot = vertex => (visible[vertex] ? `M${point(vertex)}h0` : '');
-    if (!state.tooLarge) {
+    if (!state.tooLarge && !bevelLoop.hideDefaultCage) {
       let nearEdges = '';
       let farEdges = '';
       for (let edge = 0; edge < mesh.edgeCount; edge += 1) {
@@ -1379,23 +1335,25 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
         paths.push({ className: 'crucible-studio-cage-vertices', pathData: nearDots, layer: 'under' });
       }
     }
-    let selectedShape = '';
-    for (const element of state.selected) {
-      if (state.mode === 'vertex') {
-        selectedShape += dot(element);
-      } else if (state.mode === 'edge') {
-        selectedShape += edgeSegment(element);
-      } else {
-        const corners = [];
-        for (let corner = mesh.faceOffsets[element]; corner < mesh.faceOffsets[element + 1]; corner += 1) corners.push(mesh.cornerVertices[corner]);
-        if (corners.every(vertex => visible[vertex])) selectedShape += `M${corners.map(point).join('L')}Z`;
+    if (!bevelLoop.hideDefaultCage) {
+      let selectedShape = '';
+      for (const element of state.selected) {
+        if (state.mode === 'vertex') {
+          selectedShape += dot(element);
+        } else if (state.mode === 'edge') {
+          selectedShape += edgeSegment(element);
+        } else {
+          const corners = [];
+          for (let corner = mesh.faceOffsets[element]; corner < mesh.faceOffsets[element + 1]; corner += 1) corners.push(mesh.cornerVertices[corner]);
+          if (corners.every(vertex => visible[vertex])) selectedShape += `M${corners.map(point).join('L')}Z`;
+        }
       }
-    }
-    if (state.mode === 'face') {
-      paths.push({ className: 'crucible-studio-cage-selected crucible-studio-cage-selected-face', pathData: selectedShape, layer: 'under' });
-    } else {
-      paths.push({ className: `crucible-studio-cage-selected-halo crucible-studio-cage-selected-halo-${state.mode}`, pathData: selectedShape, layer: 'over' });
-      paths.push({ className: `crucible-studio-cage-selected crucible-studio-cage-selected-${state.mode}`, pathData: selectedShape, layer: 'over' });
+      if (state.mode === 'face') {
+        paths.push({ className: 'crucible-studio-cage-selected crucible-studio-cage-selected-face', pathData: selectedShape, layer: 'under' });
+      } else {
+        paths.push({ className: `crucible-studio-cage-selected-halo crucible-studio-cage-selected-halo-${state.mode}`, pathData: selectedShape, layer: 'over' });
+        paths.push({ className: `crucible-studio-cage-selected crucible-studio-cage-selected-${state.mode}`, pathData: selectedShape, layer: 'over' });
+      }
     }
     const reach = proportionalReachPath();
     if (reach) paths.push({ className: 'crucible-studio-proportional-reach', pathData: reach, layer: 'over' });
@@ -1409,6 +1367,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       const outline = `M${(x - brushRadius).toFixed(1)} ${y.toFixed(1)}a${brushRadius} ${brushRadius} 0 1 0 ${diameter} 0a${brushRadius} ${brushRadius} 0 1 0 ${-diameter} 0`;
       paths.push({ className: 'crucible-studio-cage-brush', pathData: outline, layer: 'over' });
     }
+    paths.push(...bevelLoop.previewPaths());
     return paths;
   }
 
@@ -1444,7 +1403,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
 
   // The picked faces become a node of their own, in one scene change (one undo step); the object keeps the rest and edit mode stays on it.
   function separateSelection() {
-    if (!state || drag) return refuse('Enter edit mode on a mesh to separate part of it.');
+    if (!state || isBusy()) return refuse('Enter edit mode on a mesh to separate part of it.');
     const faces = selectedFaces();
     if (faces.length === 0) return refuse('Pick the faces to separate first.');
     if (faces.length === state.mesh.faceCount) return refuse('Pick part of the mesh: separating every face would leave this object empty.');
@@ -1516,8 +1475,16 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     moveFaceTool,
     finishFaceTool,
     cancelFaceTool,
+    beginTopologyTool: (kind, pixelX, pixelY) => bevelLoop.begin(kind, pixelX, pixelY),
+    moveTopologyTool: (pixelX, pixelY) => bevelLoop.move(pixelX, pixelY),
+    stepTopologyTool: delta => bevelLoop.stepCount(delta),
+    clickTopologyTool: (pixelX, pixelY) => bevelLoop.click(pixelX, pixelY),
+    finishTopologyTool: () => bevelLoop.confirm(),
+    cancelTopologyTool: () => bevelLoop.cancel(),
     get holdingFaceTool() { return Boolean(drag?.tool); },
+    get holdingTopologyTool() { return bevelLoop.active; },
     get holdingMove() { return drag !== null && !drag.tool; },
+    get viewKey() { return `${seeThrough}|${bevelLoop.viewRevision}`; },
     proportional,
     draw,
   });
