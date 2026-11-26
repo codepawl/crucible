@@ -57,6 +57,11 @@ import { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, 
 import { createStudioController, hasAnimatedData, linearRgbToHex, quaternionToEulerDegrees, roundValue } from './studio-controller.js';
 import { createPartSyncTracker } from './studio-live-parts.js';
 import { assignSwatchMaterialInEditMode, createFaceMaterialPanel, planJoinOperations } from './studio-material-slots.js';
+import {
+  BASE_STUDIO_WORKSPACES,
+  createWorkspaceTabBar,
+  createWorkspaceTabController,
+} from './studio-workspace-tabs.js';
 
 const CORE_STUDIO_TABS = [
   { id: 'node', label: 'Object', order: 10, workspaces: [{ id: 'build', order: 10 }, { id: 'animate', order: 20 }], createPanel: ({ inlinePanels }) => ({ element: inlinePanels.node }) },
@@ -103,14 +108,6 @@ function matchingViewChip(camera) {
 const STUDIO_STYLE_ID = 'crucible-studio-styles';
 const COMPACT_WIDTH = 820;
 const TIGHT_WIDTH = 920;
-// The work runs left to right: build the scene, give it its look, set it in motion, then write it out. Each workspace shows
-// only the panels its step needs.
-const BASE_STUDIO_WORKSPACES = Object.freeze([
-  Object.freeze({ id: 'build', label: 'Build', icon: 'node' }),
-  Object.freeze({ id: 'look', label: 'Look', icon: 'material' }),
-  Object.freeze({ id: 'animate', label: 'Animate', icon: 'play' }),
-  Object.freeze({ id: 'export', label: 'Export', icon: 'export' }),
-]);
 const STUDIO_WORKSPACES = registeredStudioWorkspaces(BASE_STUDIO_WORKSPACES);
 const DEFAULT_CLEARCOAT_ROUGHNESS = 0.08;
 const PRIMITIVE_LABELS = Object.freeze({ icoSphere: 'Icosphere', disc: 'Circle' });
@@ -1859,25 +1856,13 @@ export function createStudio(container, {
     });
   }
 
-  const workspaceButtons = STUDIO_WORKSPACES.map(workspace => createElement(
+  const { workspaceButtons, workspaceList } = createWorkspaceTabBar({
     documentReference,
-    'button',
-    { type: 'button', dataset: { workspace: workspace.id }, attributes: { role: 'tab', 'aria-selected': 'false', 'aria-label': workspace.label } },
-    createIcon(documentReference, workspace.icon),
-    createElement(documentReference, 'span', { className: 'crucible-studio-workspace-label', textContent: workspace.label }),
-  ));
-  const workspaceList = createElement(
-    documentReference,
-    'div',
-    { className: 'crucible-studio-island crucible-studio-workspaces', attributes: { role: 'tablist', 'aria-label': 'Workspace' } },
-    ...workspaceButtons,
-  );
-  workspaceButtons.forEach(button => {
-    button.addEventListener('click', () => selectWorkspace(button.dataset.workspace));
-  });
-  wireRovingFocusFallback(workspaceList, workspaceButtons, {
-    followFocus: true,
-    onSelect: button => selectWorkspace(button.dataset.workspace),
+    createElement,
+    createIcon,
+    wireRovingFocusFallback,
+    workspaces: STUDIO_WORKSPACES,
+    onSelectWorkspace: workspaceId => selectWorkspace(workspaceId),
   });
 
   const menubarElement = createElement(
@@ -2202,6 +2187,7 @@ export function createStudio(container, {
     requestFrame();
   }
   seeThroughButton.addEventListener('click', () => {
+    if (seeThroughButton.hidden || viewingShot()) return;
     setSeeThrough(!seeThrough);
     announce(seeThrough ? 'See-through on' : 'See-through off');
   });
@@ -2246,6 +2232,8 @@ export function createStudio(container, {
     setInspectorCollapsed(!collapsed);
   });
 
+  const toolGroup = createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Transform tool' } }, ...toolButtons);
+  const snapGroup = createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Snapping' } }, snapToggleButton, snapTargetButton);
   const toolbarElement = createElement(
     documentReference,
     'div',
@@ -2253,8 +2241,8 @@ export function createStudio(container, {
       className: 'crucible-studio-toolbar crucible-studio-island',
       attributes: { role: 'toolbar', focusgroup: 'toolbar wrap', 'aria-orientation': 'vertical', 'aria-label': 'Tools', 'aria-controls': canvas.id },
     },
-    createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Transform tool' } }, ...toolButtons),
-    createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Snapping' } }, snapToggleButton, snapTargetButton),
+    toolGroup,
+    snapGroup,
     meshModeGroup,
     createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Edit the scene' } }, addMenuButton, undoButton, redoButton),
     // Above the line: what changes the scene. Below it: what only shows or hides parts of Studio.
@@ -2437,10 +2425,15 @@ export function createStudio(container, {
 
   const shapeSettings = createShapeSettings({ documentReference, createElement, createPropertyLine, controller, announce: announceError });
 
-  const nodePanelBody = createElement(
+  const nodeEmptyPrompt = createElement(documentReference, 'p', {
+    className: 'crucible-studio-panel-empty',
+    textContent: 'Select an object in the viewport or Scene list to edit its transform and settings.',
+    hidden: true,
+  });
+  const nodeControls = createElement(
     documentReference,
     'div',
-    { className: 'crucible-studio-panel-body' },
+    { className: 'crucible-studio-panel-controls' },
     createElement(documentReference, 'div', { className: 'crucible-studio-name-row' }, nodeLabelInput, visibleToggle, frameButton, duplicateButton, deleteButton),
     treeSection,
     shapeSettings.element,
@@ -2449,6 +2442,13 @@ export function createStudio(container, {
     rotationRow.container,
     scaleRow.container,
     createElement(documentReference, 'div', { className: 'crucible-studio-chips' }, castShadowToggle, receiveShadowToggle),
+  );
+  const nodePanelBody = createElement(
+    documentReference,
+    'div',
+    { className: 'crucible-studio-panel-body' },
+    nodeEmptyPrompt,
+    nodeControls,
   );
 
   // Tab 2: Material Panel
@@ -2516,10 +2516,15 @@ export function createStudio(container, {
   const colorField = createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'div', { className: 'crucible-studio-field-head' }, createElement(documentReference, 'span', { textContent: 'Color' }), colorMixedTag), colorInput);
   const emissiveField = createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'div', { className: 'crucible-studio-field-head' }, createElement(documentReference, 'span', { textContent: 'Glow color' }), emissiveMixedTag), emissiveColorInput);
   const faceMaterialPanel = createFaceMaterialPanel({ documentReference, createElement, controller, getMeshEditor: () => meshEditor, announceError, onAssigned: () => updateMeshSelectionView() });
-  const materialPanelBody = createElement(
+  const materialEmptyPrompt = createElement(documentReference, 'p', {
+    className: 'crucible-studio-panel-empty',
+    textContent: 'Select an object with a material, or pick a swatch in Scene.',
+    hidden: true,
+  });
+  const materialControls = createElement(
     documentReference,
     'div',
-    { className: 'crucible-studio-panel-body' },
+    { className: 'crucible-studio-panel-controls' },
     faceMaterialPanel.element,
     createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'span', { className: 'crucible-studio-field-head', textContent: 'Material' }), materialSelect),
     createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'span', { className: 'crucible-studio-field-head', textContent: 'Presets' }), createElement(documentReference, 'div', { className: 'crucible-studio-chips' }, ...materialPresetChips)),
@@ -2532,6 +2537,13 @@ export function createStudio(container, {
     emissionField.container,
     emissiveField,
     createElement(documentReference, 'div', { className: 'crucible-studio-chips' }, doubleSidedToggle),
+  );
+  const materialPanelBody = createElement(
+    documentReference,
+    'div',
+    { className: 'crucible-studio-panel-body' },
+    materialEmptyPrompt,
+    materialControls,
   );
 
   // Tab 3: Look Panel
@@ -2657,61 +2669,29 @@ export function createStudio(container, {
     exportPanel.sync = () => syncExportFacts();
   }
 
-  // Opening a panel brings its workspace forward, so nothing changes off screen. The open workspace keeps the panel when it holds it.
-  function selectInspectorTab(nextTab) {
-    const holdsTab = workspace => workspace.tabs.includes(nextTab);
-    const openWorkspace = workspaces.find(workspace => workspace.id === root.dataset.workspace);
-    const owner = openWorkspace && holdsTab(openWorkspace) ? openWorkspace : workspaces.find(holdsTab) ?? workspaces[0];
-    selectWorkspace(owner.id, nextTab);
-  }
-
-  // The workspace is a way of looking at the scene, not part of it: it stays out of the recipe and out of undo.
-  function selectWorkspace(nextWorkspace, preferredTab) {
-    const workspace = workspaces.find(candidate => candidate.id === nextWorkspace);
-    if (!workspace) {
-      throw new RangeError(`Unknown Studio workspace "${String(nextWorkspace)}". Use one of ${workspaces.map(candidate => candidate.id).join(', ')}.`);
-    }
-    const workspaceWasOpen = root.dataset.workspace === workspace.id;
-    const firstWorkspace = root.dataset.workspace === undefined;
-    root.dataset.workspace = workspace.id;
-    const inExport = workspace.id === 'export';
-    if (!inExport) exportPanel?.clearResults();
-    outlinerDock.inert = inExport;
-    for (const button of [...toolButtons, addMenuButton]) button.toggleAttribute('hidden', inExport);
-    for (const control of [...shotLockedControls, gridButton]) control.setAttribute('aria-disabled', inExport ? 'true' : 'false');
-    showInspectorTitle(inExport);
-    // A change of tab asks for no frame of its own, and the viewport draws the shot differently in Export.
-    if (!workspaceWasOpen && !firstWorkspace) requestFrame();
-    for (const button of workspaceButtons) {
-      button.setAttribute('aria-selected', button.dataset.workspace === workspace.id ? 'true' : 'false');
-    }
-    for (const button of tabButtons) {
-      button.toggleAttribute('hidden', !workspace.tabs.includes(button.dataset.tab));
-    }
-    tabListElement.toggleAttribute('hidden', workspace.tabs.length < 2);
-    // A workspace opens on its first panel; only a call for the workspace already open keeps the panel in view.
-    const keptTab = workspaceWasOpen && workspace.tabs.includes(controller.activeTab) ? controller.activeTab : workspace.tabs[0];
-    showInspectorTab(preferredTab ?? keptTab);
-  }
-
-  function showInspectorTab(nextTab) {
-    controller.setActiveTab(nextTab);
-    syncPropertyPanels();
-    for (const button of tabButtons) {
-      const selected = button.dataset.tab === nextTab;
-      button.setAttribute('aria-selected', selected ? 'true' : 'false');
-      button.toggleAttribute('focusgroupstart', selected);
-    }
-    for (const [tab, panel] of Object.entries(panelsByTab)) {
-      if (tab === nextTab) {
-        panel.removeAttribute('hidden');
-        panel.tabIndex = 0;
-      } else {
-        panel.setAttribute('hidden', 'until-found');
-        panel.removeAttribute('tabindex');
-      }
-    }
-  }
+  const workspaceTabController = createWorkspaceTabController({
+    root,
+    controller,
+    workspaces,
+    workspaceButtons,
+    tabButtons,
+    tabListElement,
+    panelsByTab,
+    outlinerDock,
+    getExportPanel: () => exportPanel,
+    getMeshEditor: () => meshEditor,
+    leaveMeshEdit: () => leaveMeshEdit(),
+    showInspectorTitle: exporting => showInspectorTitle(exporting),
+    syncPropertyPanels: () => syncPropertyPanels(),
+    requestFrame: () => requestFrame(),
+    getToolbarControls: () => ({ toolButtons, toolGroup, snapToggleButton, snapTargetButton, snapGroup, addMenuButton, seeThroughButton, shotLockedControls, gridButton }),
+    preferenceStorage,
+    getFileContext: () => ({ filePath: activeFilePath, fileName: activeFileName }),
+  });
+  const selectInspectorTab = workspaceTabController.selectInspectorTab;
+  const selectWorkspace = workspaceTabController.selectWorkspace;
+  const persistCurrentWorkspaceTab = workspaceTabController.persistCurrent;
+  const restoreSavedWorkspaceTab = workspaceTabController.restoreForFile;
   tabButtons.forEach(button => {
     button.addEventListener('click', () => selectInspectorTab(button.dataset.tab));
   });
@@ -3289,10 +3269,7 @@ export function createStudio(container, {
     return preferences[name];
   }
 
-  selectInspectorTab(controller.activeTab);
-  if (preferences.startWorkspace !== 'build') {
-    selectWorkspace(preferences.startWorkspace);
-  }
+  workspaceTabController.initialize(preferences.startWorkspace);
   // The panel column and its grips live in their own module; Studio gives it the saved preferences and a way to save changes.
   const { sideColumn, showPanelSizes } = createPanelGrips({
     documentReference,
@@ -3468,12 +3445,16 @@ export function createStudio(container, {
     } else {
       agentPresence.hide();
     }
+    const sameOpenFile = filePath !== null && filePath === activeFilePath;
     cancelNameEditing();
     activeFilePath = filePath;
     activeFileName = fileName;
     activeFileSuffix = extensionOf(fileName);
     renameWaitsForSave = false;
     isDirty = false;
+    if (!madeByAgent && !sameOpenFile) {
+      restoreSavedWorkspaceTab(activeFilePath, activeFileName);
+    }
     syncFileBanner();
     if (replacedUnsavedChanges) announce('Replaced unsaved changes. Undo brings them back.');
   }
@@ -3700,6 +3681,7 @@ export function createStudio(container, {
       writeDraftNow();
     }
     syncFileBanner();
+    persistCurrentWorkspaceTab();
     await renameRecentEntry(previousFileName);
     return null;
   }
@@ -3771,6 +3753,7 @@ export function createStudio(container, {
       renameWaitsForSave = false;
       isDirty = false;
       discardDraft();
+      persistCurrentWorkspaceTab();
       syncFileBanner();
       rememberFile({ name: activeFileName, text: recipeText, filePath: activeFilePath });
       announceSuccess(`Saved ${activeFileName}`);
@@ -3779,6 +3762,7 @@ export function createStudio(container, {
     triggerBlobDownload(recipeText, activeFileName, 'application/json');
     isDirty = false;
     discardDraft();
+    persistCurrentWorkspaceTab();
     syncFileBanner();
     rememberFile({ name: activeFileName, text: recipeText });
     announceSuccess(`Downloaded ${activeFileName}`);
@@ -4874,8 +4858,8 @@ export function createStudio(container, {
       shapeSettings,
       renderPaletteSwatches,
       controls: {
-        nodeLabelInput, nodeParentSelect, visibleToggle, castShadowToggle, receiveShadowToggle,
-        positionRow, rotationRow, scaleRow, materialSelect, colorInput, colorMixedTag, colorField,
+        nodeEmptyPrompt, nodeControls, nodeLabelInput, nodeParentSelect, visibleToggle, castShadowToggle, receiveShadowToggle,
+        positionRow, rotationRow, scaleRow, materialEmptyPrompt, materialControls, materialSelect, colorInput, colorMixedTag, colorField,
         emissiveColorInput, emissiveMixedTag, emissiveField, roughnessField, metallicField,
         clearcoatField, clearcoatRoughnessField, doubleSidedToggle, opacityField, emissionField,
       },
@@ -5667,6 +5651,7 @@ export function createStudio(container, {
   }
 
   async function enterMeshEdit() {
+    if (viewingShot()) return;
     if (meshEnterPending) {
       meshEnterPending = false;
       return;
@@ -5680,6 +5665,7 @@ export function createStudio(container, {
     meshEnterPending = false;
     // The generator code that was loaded belongs to the object Tab was pressed on: another selection by now gets nothing.
     if (editor.active || controller.selectedNodeId !== pressedOnNodeId) return;
+    if (root.dataset.workspace !== 'build') selectWorkspace('build');
     editor.enter();
     updateMeshSelectionView();
   }
@@ -6126,7 +6112,10 @@ export function createStudio(container, {
 
   function writeDraftNow() {
     draftTimer = 0;
-    saveStudioDraft(preferenceStorage, controller.exportRecipe(), activeFileName);
+    saveStudioDraft(preferenceStorage, controller.exportRecipe(), activeFileName, {
+      workspace: root.dataset.workspace,
+      activeTab: controller.activeTab,
+    });
   }
 
   function scheduleDraftSave() {
@@ -6165,6 +6154,11 @@ export function createStudio(container, {
     try {
       await prepareRecipe(draft.recipe);
       controller.loadRecipe(draft.recipe);
+      if (draft.workspace && workspaces.some(workspace => workspace.id === draft.workspace)) {
+        const targetWorkspace = workspaces.find(workspace => workspace.id === draft.workspace);
+        const targetTab = draft.activeTab && targetWorkspace.tabs.includes(draft.activeTab) ? draft.activeTab : targetWorkspace.tabs[0];
+        selectWorkspace(targetWorkspace.id, targetTab);
+      }
       isDirty = true;
       syncFileBanner();
       announceSuccess('Restored the unsaved changes');
@@ -6299,6 +6293,8 @@ export function createStudio(container, {
     get setupDone() { return preferences.setupDone; },
     selectNode: nodeId => controller.selectNode(nodeId),
     setTool: tool => controller.setTool(tool),
+    get activeWorkspace() { return root.dataset.workspace; },
+    setWorkspace: (workspace, tab) => selectWorkspace(workspace, tab),
     setActiveTab: tab => selectInspectorTab(tab),
     pickAt: (pixelX, pixelY, options) => controller.pickAt(pixelX, pixelY, options),
     selectNodes: (nodeIds, options) => controller.selectNodes(nodeIds, options),

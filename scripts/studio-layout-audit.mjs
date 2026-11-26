@@ -3,7 +3,7 @@
 // studio-layout-rules.mjs: unequal insets around the content of a padded container, a gap or padding off the spacing
 // scale, or a gap between groups smaller than the gap inside one. Every failure names the selector, the numbers and the fix.
 //
-//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|keyboard|studio|rename|popover|export|newscene|dialog|notice|notices|editmenu|history|agent|helpmenu] [--width pixels] [--records file.json]
+//   node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|keyboard|studio|rename|popover|export|workspaces|newscene|dialog|notice|notices|editmenu|history|agent|helpmenu] [--width pixels] [--records file.json]
 //
 // Without --origin it starts a Vite dev server on a free port and stops it (by its own PID) at the end. Screens: the Studio
 // page, each of its popover menus, the five steps of the setup dialog, and the New scene chooser with its unsaved-changes
@@ -39,7 +39,7 @@ const DIALOG_SELECTORS = Object.freeze({
 });
 const SERVER_START_TIMEOUT_MS = 60000;
 const PANELS_TOGGLE = 'button[title="Show or hide the panels"]';
-const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|keyboard|studio|rename|popover|export|newscene|dialog|notice|notices|editmenu|history|agent|helpmenu] [--width pixels] [--records file.json]';
+const USAGE = 'Usage: node scripts/studio-layout-audit.mjs [--json] [--origin url] [--only setup|settings|keyboard|studio|rename|popover|export|workspaces|newscene|dialog|notice|notices|editmenu|history|agent|helpmenu] [--width pixels] [--records file.json]';
 const CHROME_PATH = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined);
 const GPU_ARGUMENTS = ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--disable-audio-output'];
 // A signed-in host (isSignedIn, sign out, billing) with every optional field, so the Account section of Settings is on screen and measured.
@@ -104,8 +104,9 @@ function collectSpacingRecords(rootElement, selectableSelector) {
     return Number.isFinite(number) ? number : 0;
   };
   const isVisible = element => {
+    if (element.closest('[hidden="until-found"]')) return false;
     const style = getComputedStyle(element);
-    if (style.display === 'none' || style.display === 'contents' || style.visibility === 'hidden') return false;
+    if (style.display === 'none' || style.display === 'contents' || style.visibility === 'hidden' || style.contentVisibility === 'hidden') return false;
     const box = element.getBoundingClientRect();
     return box.width > 0 && box.height > 0;
   };
@@ -1380,6 +1381,58 @@ async function measureNoticesAndDialogs(page, theme, label) {
   return screens;
 }
 
+// The four workspace tabs in order with icons, plus the empty-selection panel state in Build/Look/Animate/Export at 1280 and 720 px (#3370).
+async function measureWorkspaceTabs(page, theme, viewport) {
+  const screens = [];
+  await page.evaluate(() => {
+    window.__studioPage.selectNode(null);
+    window.__studioPage.setInspectorCollapsed(false);
+  });
+  await waitForSettledLayout(page);
+  for (const workspaceId of ['build', 'look', 'animate', 'export']) {
+    await page.click(`.crucible-studio-workspaces button[data-workspace="${workspaceId}"]`);
+    if (workspaceId === 'animate') {
+      await page.click('#crucible-studio-tab-node');
+    }
+    await waitForSettledLayout(page);
+    await page.waitForTimeout(200);
+    const barState = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('.crucible-studio-workspaces button'));
+      const bar = document.querySelector('.crucible-studio-workspaces').getBoundingClientRect();
+      return {
+        order: buttons.map(button => button.dataset.workspace),
+        labels: buttons.map(button => button.getAttribute('aria-label')),
+        items: buttons.map(button => {
+          const box = button.getBoundingClientRect();
+          const icon = button.querySelector('svg')?.getBoundingClientRect();
+          return {
+            id: button.dataset.workspace,
+            width: box.width,
+            height: box.height,
+            insideBar: box.left >= bar.left - 0.5 && box.right <= bar.right + 0.5,
+            iconWidth: icon?.width ?? 0,
+            iconHeight: icon?.height ?? 0,
+          };
+        }),
+      };
+    });
+    if (barState.order.join(',') !== 'build,look,animate,export' || barState.labels.join(',') !== 'Build,Look,Animate,Export') {
+      throw new Error(`Workspace tab order mismatch at ${viewport.width} (${theme}): ${JSON.stringify(barState)}`);
+    }
+    for (const item of barState.items) {
+      if (!(item.width > 0 && item.height > 0 && item.height <= 36 && item.insideBar && item.iconWidth > 0 && item.iconHeight > 0)) {
+        throw new Error(`Workspace tab "${item.id}" failed fit/icon check at ${viewport.width} (${theme}): ${JSON.stringify(item)}`);
+      }
+    }
+    screens.push({
+      name: `workspace ${workspaceId} empty ${viewport.width} (${theme})`,
+      records: await measure(page, '.crucible-studio'),
+      overlaps: await measureBarOverlaps(page),
+    });
+  }
+  return screens;
+}
+
 // `extraCss` is added to the page before measuring: the test uses it to seed a spacing mistake the audit must catch.
 export async function runAudit({ origin, only, extraCss, viewport = VIEWPORT } = {}) {
   const server = origin ? { origin, stop: () => {} } : await startDevServer();
@@ -1400,6 +1453,13 @@ export async function runAudit({ origin, only, extraCss, viewport = VIEWPORT } =
         const narrow = await openStudio(browser, server.origin, theme, extraCss, { viewport: NARROW_VIEWPORT });
         screens.push(...await measureExportScreens(narrow.page, theme, NARROW_VIEWPORT));
         await narrow.context.close();
+      }
+      if (!only || only === 'workspaces') {
+        for (const targetViewport of [VIEWPORT, NARROW_VIEWPORT]) {
+          const opened = await openStudio(browser, server.origin, theme, extraCss, { viewport: targetViewport });
+          screens.push(...await measureWorkspaceTabs(opened.page, theme, targetViewport));
+          await opened.context.close();
+        }
       }
       if (!only || only === 'editmenu') {
         for (const [viewport, label] of [[VIEWPORT, ''], [NARROW_VIEWPORT, ' 720']]) {

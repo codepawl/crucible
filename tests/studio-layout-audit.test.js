@@ -156,6 +156,16 @@ test('a Save button taller than Cancel and Discard fails the audit (#3327)', { t
   assert.ok(findings.some(finding => finding.kind === 'uneven-height' && finding.message.includes('39 px')), 'the uneven button height is reported');
 });
 
+test('the four workspace tabs and empty-selection panels pass the layout audit at 1280 and 720 px in both themes (#3370)', { timeout: 240000 }, async context => {
+  const screens = await auditSetup(context, '', 'workspaces');
+  if (!screens) return;
+  assert.equal(screens.length, 16, 'four workspaces at two widths in two themes');
+  const { findings } = summarize(screens);
+  assert.deepEqual(findings.map(finding => finding.message), []);
+  const overlaps = screens.flatMap(screen => (screen.overlaps ?? []).map(problem => `${screen.name}: ${problem}`));
+  assert.deepEqual(overlaps, []);
+});
+
 function pageShowing(signatures) {
   let frame = 0;
   return { frames: () => frame, evaluate: async () => signatures[Math.min(frame++, signatures.length - 1)] };
