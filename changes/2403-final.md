@@ -1,0 +1,1 @@
+- Format `Float32Array` material colors cleanly in `exportObj` MTL output and key `generateMeshGeometry` edit cache by `maxVertices` (#2403)

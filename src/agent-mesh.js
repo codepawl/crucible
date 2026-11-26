@@ -130,7 +130,7 @@ export function generateMeshGeometry(baseGeometry, edits, {
     return realized;
   }
   const resolveHeight = heightSources ? createHeightSourceResolver(heightSources) : undefined;
-  const editsKey = cacheKey === undefined ? undefined : `${cacheKey}|edits|${JSON.stringify(edits)}`;
+  const editsKey = cacheKey === undefined ? undefined : `${cacheKey}|${maxVertices}|edits|${JSON.stringify(edits)}`;
   let edited = editsKey === undefined ? undefined : evaluationCache.get(editsKey);
   if (!edited) {
     const base = meshFromGeometry(baseGeometry());

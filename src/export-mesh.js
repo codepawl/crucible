@@ -176,10 +176,11 @@ function dissolve(material) {
 
 function mtlBlock(name, material) {
   const color = material?.color ?? [0.8, 0.8, 0.8];
-  const lines = [`newmtl ${name}`, `Kd ${color.map(formatNumber).join(' ')}`];
+  const lines = [`newmtl ${name}`, `Kd ${Array.from(color, formatNumber).join(' ')}`];
   if ((material?.emission ?? 0) > 0) {
-    const emissive = (material.emissiveColor ?? color).map(value => value * Math.min(material.emission, 1));
-    lines.push(`Ke ${emissive.map(formatNumber).join(' ')}`);
+    const emissionScale = Math.min(material.emission, 1);
+    const emissive = Array.from(material.emissiveColor ?? color, value => formatNumber(value * emissionScale));
+    lines.push(`Ke ${emissive.join(' ')}`);
   }
   lines.push(`Pr ${formatNumber(material?.roughness ?? 0.5)}`, `Pm ${formatNumber(material?.metallic ?? 0)}`, `d ${formatNumber(dissolve(material))}`);
   return lines.join('\n');
