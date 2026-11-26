@@ -242,7 +242,6 @@ export function updateLightingState(state, environment, { world = false } = {}) 
   writePointLights(state, pointLights);
   writeSpotLights(state, spotLights);
   writeAreaLights(state, areaLights);
-  lightShapeSupport.update?.(state, spotLights, areaLights);
   for (let axis = 0; axis < 3; axis++) state.keyColor[axis] = keyColor[axis] * keyIntensity;
   state.pointCount = pointLights.length;
   state.spotCount = spotLights.length;
@@ -254,5 +253,6 @@ export function updateLightingState(state, environment, { world = false } = {}) 
   state.specularAntiAliasing = specularAntiAliasing;
   state.wetnessState.set(wetnessUniformValues(environment));
   state.wetness = state.wetnessState[0];
+  lightShapeSupport.update?.(state, spotLights, areaLights, environment);
   return state;
 }

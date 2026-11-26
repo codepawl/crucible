@@ -2,12 +2,16 @@ import './support/load-agent-scene-modules.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAgentScene } from '../src/agent-scene.js';
+import { agentSceneModulesNeeded } from '../src/agent-scene-modules.js';
+import { sequenceFrameIds } from '../src/agent-texture-sequence.js';
 import { createLightingState, updateLightingState } from '../src/lighting.js';
-import { createFragmentShader, fragmentShader, WETNESS_FEATURE, SHADER_FEATURES } from '../src/shaders.js';
+import { createFragmentShader, fragmentShader, HEIGHT_MAP_FEATURE, WETNESS_FEATURE, SHADER_FEATURES } from '../src/shaders.js';
 import { normalizeAgentLook } from '../src/agent-look.js';
 import { AGENT_SCENE_CAPABILITIES } from '../src/agent-scene-capabilities.js';
 import { wetnessUniformValues, wetnessResponse, puddleShare, PUDDLE_SOURCES, PUDDLE_SHARE_CAP } from '../src/wetness.js';
 import { puddleFillLevel, PUDDLE_LEVEL_TABLE, SOAKED_ROAD_ROUGHNESS_SCALE, WATER_BED_TRANSMITTANCE, WATER_SURFACE_ROUGHNESS } from '../src/wetness-shader.js';
+import { groundMaskBounds, PUDDLE_CAVITY_FEATURE, PUDDLE_MASK_FEATURE, PUDDLE_MASK_UNIT, registerPuddleMask, rewriteWetnessPuddles } from '../src/wetness-puddles.js';
+import { HEIGHT_MAP_UNIT, lightShapeSupport } from '../src/shader-registry.js';
 import { wetnessKeepOutBoxes, wetnessGroundHeight, KEEP_OUT_LIMIT } from '../src/wetness-keep-out.js';
 import { findWaterSurface, flagWetMirrorParts, wetMirrorSurface } from '../src/water-reflection.js';
 import { wetStone } from './support/wetness-noise-port.mjs';
@@ -39,11 +43,20 @@ test('wetness and puddles are bounded, and puddles fill in their defaults', () =
   assert.throws(() => normalizeAgentLook({ environment: { puddles: 'many' } }), /environment\.puddles/);
 });
 
-test('an unknown puddle source is refused with the one to pass', () => {
-  for (const from of ['cavity', 'mask', 'noise']) {
-    assert.throws(() => normalizeAgentLook({ environment: { puddles: { from } } }), /puddles\.from.*pass from: "height"/);
+const MASK_ASSET_ID = 'b'.repeat(64);
+
+test('puddle sources validate height, cavity, and mask with strict input checks', () => {
+  assert.deepEqual(PUDDLE_SOURCES, ['height', 'cavity', 'mask']);
+  assert.equal(normalizeAgentLook({ environment: { puddles: { from: 'cavity' } } }).environment.puddles.from, 'cavity');
+  const normalizedMask = normalizeAgentLook({ environment: { puddles: { coverage: 0.7, from: 'mask', mask: MASK_ASSET_ID.toUpperCase() } } }).environment.puddles;
+  assert.deepEqual({ ...normalizedMask }, { coverage: 0.7, from: 'mask', mask: MASK_ASSET_ID });
+  for (const from of ['noise', 'slope', 42]) {
+    assert.throws(() => normalizeAgentLook({ environment: { puddles: { from } } }), /puddles\.from.*height.*cavity.*mask/);
   }
-  assert.deepEqual(PUDDLE_SOURCES, ['height']);
+  assert.throws(() => normalizeAgentLook({ environment: { puddles: { from: 'mask' } } }), /puddles\.mask.*64 hexadecimal/);
+  assert.throws(() => normalizeAgentLook({ environment: { puddles: { from: 'mask', mask: 'https://example.com/puddles.png' } } }), /puddles\.mask.*no URLs/);
+  assert.throws(() => normalizeAgentLook({ environment: { puddles: { from: 'height', mask: MASK_ASSET_ID } } }), /puddles\.mask.*not "mask"/);
+  assert.throws(() => normalizeAgentLook({ environment: { puddles: { from: 'cavity', mask: MASK_ASSET_ID } } }), /puddles\.mask.*not "mask"/);
 });
 
 test('the puddle share is a quarter of the ground at most, and grows with wetness and coverage', () => {
@@ -373,4 +386,160 @@ test('the basin detail fades on the longest pixel footprint axis, so far grazing
   const [fadeStart, fadeEnd] = wetShader.WET_DETAIL_FADE.map(Number);
   assert.ok(fadeEnd <= 0.0833, 'the detail (period about 17 cm) is gone before a footprint reaches half its period (' + fadeEnd + ')');
   assert.ok(fadeStart < fadeEnd);
+});
+
+test('cavity and mask puddle sources load on demand, collect mask IDs, and activate extra shader features only when wet', () => {
+  assert.equal(agentSceneModulesNeeded({ environment: { wetness: 1, puddles: { from: 'height' } } }).includes('wetnessPuddles'), false);
+  assert.equal(agentSceneModulesNeeded({ environment: { wetness: 1, puddles: { from: 'cavity' } } }).includes('wetnessPuddles'), true);
+  assert.equal(agentSceneModulesNeeded({ environment: { wetness: 1, puddles: { from: 'mask', mask: MASK_ASSET_ID } } }).includes('wetnessPuddles'), true);
+  assert.deepEqual(sequenceFrameIds({ environment: { wetness: 1, puddles: { from: 'mask', mask: MASK_ASSET_ID.toUpperCase() } } }), [MASK_ASSET_ID]);
+
+  const dryCavity = updateLightingState(createLightingState(), { wetness: 0, puddles: { from: 'cavity' } });
+  assert.equal(dryCavity.wetness, 0);
+  assert.deepEqual(dryCavity.extraFeatures ?? [], []);
+
+  const wetHeight = updateLightingState(createLightingState(), { wetness: 1, puddles: { from: 'height', coverage: 0.5 } });
+  assert.deepEqual(wetHeight.extraFeatures ?? [], []);
+
+  const wetCavity = updateLightingState(createLightingState(), { wetness: 1, puddles: { from: 'cavity', coverage: 0.5 } });
+  assert.ok(wetCavity.extraFeatures.includes(PUDDLE_CAVITY_FEATURE));
+
+  const wetMask = updateLightingState(createLightingState(), { wetness: 1, puddles: { from: 'mask', coverage: 1, mask: MASK_ASSET_ID } });
+  assert.ok(wetMask.extraFeatures.includes(PUDDLE_MASK_FEATURE));
+  assert.ok(Math.abs(wetMask.wetnessState[1] - 0.15) < 1e-6);
+
+  const zeroMask = updateLightingState(createLightingState(), { wetness: 1, puddles: { from: 'mask', coverage: 0, mask: MASK_ASSET_ID } });
+  assert.equal(zeroMask.wetnessState[1], 0);
+  assert.equal((zeroMask.extraFeatures ?? []).includes(PUDDLE_MASK_FEATURE), false);
+});
+
+test('cavity shader reads occlusionMap when present, falls back to crevices otherwise, and preserves height-mode GLSL when inactive', () => {
+  const heightOnly = createFragmentShader([...SHADER_FEATURES, WETNESS_FEATURE]);
+  assert.equal(rewriteWetnessPuddles(heightOnly), heightOnly);
+  assert.equal(heightOnly.includes('puddleSource'), false);
+
+  const cavityShader = rewriteWetnessPuddles(createFragmentShader([...SHADER_FEATURES, WETNESS_FEATURE, PUDDLE_CAVITY_FEATURE]));
+  assert.match(cavityShader, /uniform float puddleSource;/);
+  assert.match(cavityShader, /if \(USES_OCCLUSION_MAP\)/);
+  assert.match(cavityShader, /texture\(occlusionMap, mapUV\(hasOcclusionMap\)\)/);
+  assert.match(cavityShader, /stoneCrevice = smoothstep\(0\.62, 0\.25, stoneHeight\)/);
+  assert.match(cavityShader, /splatCrevice = smoothstep\(0\.95, 0\.60, splatCavity\)/);
+  assert.match(cavityShader, /skyCrevice = smoothstep\(0\.95, 0\.55, vertexSkyVisibility\)/);
+
+  const parallaxCavity = rewriteWetnessPuddles(createFragmentShader([...SHADER_FEATURES, HEIGHT_MAP_FEATURE, WETNESS_FEATURE, PUDDLE_CAVITY_FEATURE]));
+  assert.match(parallaxCavity, /mappedSample\(occlusionMap, hasOcclusionMap\)\.r/);
+});
+
+test('mask shader declares sampler and bounds on its own texture unit and combines cleanly with cavity', () => {
+  assert.ok(PUDDLE_MASK_UNIT > HEIGHT_MAP_UNIT && PUDDLE_MASK_UNIT < 32);
+  const maskShader = rewriteWetnessPuddles(createFragmentShader([...SHADER_FEATURES, WETNESS_FEATURE, PUDDLE_MASK_FEATURE]));
+  assert.match(maskShader, /uniform sampler2D puddleMask;/);
+  assert.match(maskShader, /uniform vec4 puddleMaskBounds;/);
+  assert.match(maskShader, /texture\(puddleMask, maskUv\)\.r/);
+  assert.match(maskShader, /float edgeWidth = clamp\(2\.0 \* fwidth\(puddleDepth\), 0\.006, puddleEdgeCap\)/);
+
+  const combined = rewriteWetnessPuddles(createFragmentShader([...SHADER_FEATURES, WETNESS_FEATURE, PUDDLE_CAVITY_FEATURE, PUDDLE_MASK_FEATURE]));
+  assert.match(combined, /if \(puddleSource > 1\.5\)/);
+  assert.match(combined, /else if \(puddleSource > 0\.5\)/);
+  assert.match(combined, /puddleSignal = wetBasin\(worldPosition, detailFade\)/);
+});
+
+test('groundMaskBounds maps flat ground XZ footprint while ignoring tall props and handles missing masks cleanly', () => {
+  assert.deepEqual(groundMaskBounds([]), [-1, -1, 1, 1]);
+  const road = groundPart(-10, -20, 10, 20);
+  const kerb = groundPart(10, -20, 12, 20);
+  const tower = { geometry: { positions: new Float32Array([-2, 0, -2, 2, 15, 2]) }, matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 30, 0, 30, 1], material: { roughness: 0.5, metallic: 0 } };
+  assert.deepEqual(groundMaskBounds([road, kerb, tower]), [-10, -20, 12, 20]);
+
+  const missingId = 'c'.repeat(64);
+  const state = updateLightingState(createLightingState(), { wetness: 1, puddles: { from: 'mask', coverage: 0.8, mask: missingId } });
+  const fakeRenderer = {
+    shaderFeatures: new Set([WETNESS_FEATURE, PUDDLE_MASK_FEATURE]),
+    program: {},
+    fitParts: [road],
+    whiteTexture: {},
+    context: {
+      TEXTURE0: 0x84c0,
+      TEXTURE_2D: 0x0de1,
+      getUniformLocation: (_program, name) => ({ name }),
+      uniform1f() {},
+      uniform1i() {},
+      uniform4f() {},
+      activeTexture() {},
+      bindTexture() {},
+    },
+    createTexture(descriptor) { return descriptor; },
+  };
+  assert.throws(() => state.bind(fakeRenderer), /environment\.puddles\.mask.*was not loaded/);
+
+  const maskData = new Uint8ClampedArray([255, 255, 255, 255, 0, 0, 0, 255, 255, 255, 255, 255, 0, 0, 0, 255]);
+  const scene = createAgentScene({
+    format: 'crucible.scene',
+    schemaVersion: 1,
+    geometries: [{ id: 'road', type: 'box' }],
+    materials: [{ id: 'asphalt', roughness: 0.9 }],
+    nodes: [{ id: 'road', geometry: 'road', material: 'asphalt', scale: [20, 0.2, 40] }],
+    environment: { wetness: 1, puddles: { coverage: 0.75, from: 'mask', mask: MASK_ASSET_ID } },
+  }, {}, { sequenceFrames: new Map([[MASK_ASSET_ID, { width: 2, height: 2, data: maskData }]]) });
+  assert.equal(scene.exportRecipe().environment.puddles.mask, MASK_ASSET_ID);
+  assert.equal(scene.parts[0].material.waterReflection, true);
+
+  const bound = [];
+  fakeRenderer.context.uniform1f = (location, value) => bound.push([location.name, value]);
+  fakeRenderer.context.uniform4f = (location, ...values) => bound.push([location.name, ...values]);
+  fakeRenderer.context.bindTexture = (_target, texture) => bound.push(['texture', texture]);
+  registerPuddleMask(MASK_ASSET_ID, { width: 2, height: 2, data: maskData });
+  const maskState = updateLightingState(createLightingState(), scene.environment);
+  maskState.bind(fakeRenderer);
+  assert.ok(bound.some(([name, value]) => name === 'puddleSource' && value === 2));
+  assert.ok(bound.some(([name, minX, minZ, maxX, maxZ]) => name === 'puddleMaskBounds' && minX === -10 && minZ === -20 && maxX === 10 && maxZ === 20));
+  assert.ok(bound.some(([name, value]) => name === 'texture' && value?.colorSpace === 'linear'));
+});
+
+test('lightShapeSupport.update wrapper composes light shapes and puddle sources in any assignment order', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(lightShapeSupport, 'update');
+  assert.equal(descriptor?.configurable, true);
+  assert.equal(descriptor?.enumerable, true);
+
+  const areaEnvironment = {
+    wetness: 1,
+    puddles: { from: 'cavity', coverage: 0.6 },
+    areaLights: [{ position: [0, 3, 0], direction: [0, -1, 0], color: [1, 1, 1], intensity: 2, width: 1, height: 1, castShadow: true }],
+  };
+  const combinedState = updateLightingState(createLightingState(), areaEnvironment);
+  assert.ok(combinedState.extraFeatures?.includes('areaShadows'));
+  assert.ok(combinedState.extraFeatures?.includes(PUDDLE_CAVITY_FEATURE));
+
+  const wrapper = lightShapeSupport.update;
+  const seenCalls = [];
+  try {
+    // Setting lightShapeSupport.update after wetness-puddles loads (simulating late light-shapes import) keeps both hooks active.
+    lightShapeSupport.update = (state, spotLights, areaLights) => {
+      seenCalls.push({ spotCount: spotLights.length, areaCount: areaLights.length });
+      state.extraFeatures = ['lateCustomFeature'];
+    };
+    assert.equal(lightShapeSupport.update, wrapper);
+    const lateState = updateLightingState(createLightingState(), {
+      wetness: 1,
+      puddles: { from: 'cavity', coverage: 0.5 },
+      spotLights: [{ position: [1, 3, 1], direction: [0, -1, 0], color: [1, 1, 1], intensity: 3 }],
+    });
+    assert.deepEqual(seenCalls, [{ spotCount: 1, areaCount: 0 }]);
+    assert.deepEqual(lateState.extraFeatures, ['lateCustomFeature', PUDDLE_CAVITY_FEATURE]);
+
+    // Clearing the base updater (standalone wetness-puddles without light-shapes) resets extraFeatures cleanly on dry frames.
+    lightShapeSupport.update = undefined;
+    const wetThenDry = createLightingState();
+    wetThenDry.extraFeatures = ['staleFeature'];
+    updateLightingState(wetThenDry, { wetness: 0 });
+    assert.equal(wetThenDry.extraFeatures, undefined);
+    updateLightingState(wetThenDry, { wetness: 1, puddles: { from: 'cavity', coverage: 0.5 } });
+    assert.deepEqual(wetThenDry.extraFeatures, [PUDDLE_CAVITY_FEATURE]);
+  } finally {
+    await import('../src/light-shapes.js?restore=1');
+  }
+
+  const afterLateImport = updateLightingState(createLightingState(), areaEnvironment);
+  assert.ok(afterLateImport.extraFeatures?.includes('areaShadows'));
+  assert.ok(afterLateImport.extraFeatures?.includes(PUDDLE_CAVITY_FEATURE));
 });

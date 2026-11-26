@@ -146,7 +146,8 @@ Base color, metallic, and roughness range from zero to one.
 Emission and independent emissive color must be nonnegative finite Float32 numbers.
 Their component products must also remain finite at Float32 precision.
 Unlit emissive radiance is capped at 65500 per component to fit the half-float HDR target.
-Image textures come from catalog images (a colour map sequence, and scanned texture sets under "Scanned texture sets" below); the other procedural material tags are outside this version.
+Image textures come from catalog images (a colour map sequence, `environment.skybox`, `environment.puddles.mask`, and scanned texture sets under "Scanned texture sets" below); the other procedural material tags are outside this version.
+`environment.wetness` (`0` to `1`) and `environment.puddles` (`{ coverage, from, mask }`, with `from` as `"height"`, `"cavity"`, or `"mask"`) add wet ground and mirrored puddles in the rasterizer ([agent-look](agent-look.md#environment)); `"cavity"` and `"mask"` load on demand via `loadAgentSceneModules`.
 
 
 ### Material presets

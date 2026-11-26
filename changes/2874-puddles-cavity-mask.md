@@ -1,0 +1,1 @@
+- `environment.puddles.from` supports `"cavity"` (pooling in `occlusionMap` or crevice hollows) and `"mask"` with `environment.puddles.mask` catalog image mapping (#2874)
