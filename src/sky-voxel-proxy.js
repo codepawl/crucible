@@ -11,8 +11,22 @@ import { radicalInverse, cosineDirection } from './light-bake.js';
 export const PROXY_MAXIMUM_CELLS = 2_000_000;
 /** Cosine-weighted rays traced from each (cell, normal direction) pair. */
 export const PROXY_RAYS = 32;
+/** The fewest (cell, normal direction) pairs a trace may take, however small the scene. */
+export const PROXY_MINIMUM_PAIRS = 400_000;
 /** The most (cell, normal direction) pairs traced: the ray budget is this times PROXY_RAYS, whatever the triangle count. */
-export const PROXY_MAXIMUM_PAIRS = 400_000;
+export const PROXY_MAXIMUM_PAIRS = 1_500_000;
+// Surface cells are each seen from a few of the normal bins; this many pairs per occupied cell is room for a rough room with props.
+const PAIRS_PER_OCCUPIED_CELL = 6;
+
+/**
+ * The pair budget of a grid: it grows with the cells the scene occupies, so a large room is not cut off at the cap a small one
+ * needs, between PROXY_MINIMUM_PAIRS and PROXY_MAXIMUM_PAIRS (#2771). It reads the grid only, so the same scene gets the same budget.
+ */
+export function proxyPairBudget(grid) {
+  let occupiedCells = 0;
+  for (let index = 0; index < grid.occupied.length; index++) occupiedCells += grid.occupied[index];
+  return Math.min(PROXY_MAXIMUM_PAIRS, Math.max(PROXY_MINIMUM_PAIRS, occupiedCells * PAIRS_PER_OCCUPIED_CELL));
+}
 // Normals are grouped on an octahedral map of this many bins a side.
 const NORMAL_BINS = 6;
 // A ray starts this many cells off the surface so the surface's own cell does not block it.
@@ -55,16 +69,18 @@ export function proxyGridLayout(minimum, maximum, maximumCells = PROXY_MAXIMUM_C
   return { minimum: minimum.slice(), cellSize, size };
 }
 
-function markPoint(grid, x, y, z) {
-  const { minimum, cellSize, size, occupied } = grid;
+function markPoint(grid, x, y, z, owner) {
+  const { minimum, cellSize, size, occupied, owners } = grid;
   const cellX = Math.min(size[0] - 1, Math.max(0, Math.floor((x - minimum[0]) / cellSize)));
   const cellY = Math.min(size[1] - 1, Math.max(0, Math.floor((y - minimum[1]) / cellSize)));
   const cellZ = Math.min(size[2] - 1, Math.max(0, Math.floor((z - minimum[2]) / cellSize)));
-  occupied[(cellZ * size[1] + cellY) * size[0] + cellX] = 1;
+  const cell = (cellZ * size[1] + cellY) * size[0] + cellX;
+  occupied[cell] = 1;
+  if (owners) owners[cell] = owner;
 }
 
 // Marks every cell a triangle passes through, sampled at half a cell so the marked cells touch one another.
-function markTriangle(grid, corners) {
+function markTriangle(grid, corners, owner) {
   const [ax, ay, az, bx, by, bz, cx, cy, cz] = corners;
   const longest = Math.max(Math.hypot(bx - ax, by - ay, bz - az), Math.hypot(cx - bx, cy - by, cz - bz), Math.hypot(ax - cx, ay - cy, az - cz));
   const steps = Math.max(1, Math.ceil(longest / (grid.cellSize * 0.5)));
@@ -73,22 +89,24 @@ function markTriangle(grid, corners) {
       const weightB = first / steps;
       const weightC = second / steps;
       const weightA = 1 - weightB - weightC;
-      markPoint(grid, weightA * ax + weightB * bx + weightC * cx, weightA * ay + weightB * by + weightC * cy, weightA * az + weightB * bz + weightC * cz);
+      markPoint(grid, weightA * ax + weightB * bx + weightC * cx, weightA * ay + weightB * by + weightC * cy, weightA * az + weightB * bz + weightC * cz, owner);
     }
   }
 }
 
 /**
  * The occupancy grid of the parts' opaque triangles. `maximumCells` bounds its memory; the cell size follows the scene's
- * bounds, so a larger scene gets coarser cells and the same build time.
+ * bounds, so a larger scene gets coarser cells and the same build time. With `recordOwners` the grid also keeps, per cell,
+ * the index of the last part in `parts` that marked it plus one (`grid.owners`, 0 where empty), for the sun bounce's albedo.
  */
-export function buildOccupancyGrid(parts, { maximumCells = PROXY_MAXIMUM_CELLS } = {}) {
+export function buildOccupancyGrid(parts, { maximumCells = PROXY_MAXIMUM_CELLS, recordOwners = false } = {}) {
   if (!Array.isArray(parts) || parts.length === 0) rejectBadOption('parts', parts, 'a non-empty array of parts');
   const { minimum, maximum } = boundsOfParts(parts);
   const layout = proxyGridLayout(minimum, maximum, maximumCells);
-  const grid = { ...layout, occupied: new Uint8Array(layout.size[0] * layout.size[1] * layout.size[2]) };
+  const cellCount = layout.size[0] * layout.size[1] * layout.size[2];
+  const grid = { ...layout, occupied: new Uint8Array(cellCount), owners: recordOwners ? new Int32Array(cellCount) : null };
   const corners = new Float64Array(9);
-  for (const part of parts) {
+  for (const [partIndex, part] of parts.entries()) {
     const { positions, indices } = part.geometry;
     const matrix = part.matrix;
     const triangleCount = indices ? indices.length / 3 : positions.length / 9;
@@ -100,7 +118,7 @@ export function buildOccupancyGrid(parts, { maximumCells = PROXY_MAXIMUM_CELLS }
         const z = positions[vertex * 3 + 2];
         for (let axis = 0; axis < 3; axis++) corners[slot * 3 + axis] = matrix[axis] * x + matrix[4 + axis] * y + matrix[8 + axis] * z + matrix[12 + axis];
       }
-      markTriangle(grid, corners);
+      markTriangle(grid, corners, partIndex + 1);
     }
   }
   return grid;
@@ -108,6 +126,14 @@ export function buildOccupancyGrid(parts, { maximumCells = PROXY_MAXIMUM_CELLS }
 
 /** True when a ray from (x, y, z) along the unit direction leaves the grid without entering an occupied cell. */
 export function rayEscapes(grid, x, y, z, directionX, directionY, directionZ) {
+  return rayHitDistance(grid, x, y, z, directionX, directionY, directionZ) === Infinity;
+}
+
+/**
+ * How far a ray from (x, y, z) along the unit direction goes before it enters an occupied cell, or Infinity when it leaves
+ * the grid first (what `rayEscapes` tests). The distance is to the cell's face, to within a cell.
+ */
+export function rayHitDistance(grid, x, y, z, directionX, directionY, directionZ) {
   const { minimum, cellSize, size, occupied } = grid;
   let cellX = Math.floor((x - minimum[0]) / cellSize);
   let cellY = Math.floor((y - minimum[1]) / cellSize);
@@ -124,23 +150,27 @@ export function rayEscapes(grid, x, y, z, directionX, directionY, directionZ) {
   let nextX = directionX !== 0 ? (boundaryX - x) / directionX : Infinity;
   let nextY = directionY !== 0 ? (boundaryY - y) / directionY : Infinity;
   let nextZ = directionZ !== 0 ? (boundaryZ - z) / directionZ : Infinity;
+  let travelled = 0;
   for (;;) {
     const inside = cellX >= 0 && cellY >= 0 && cellZ >= 0 && cellX < size[0] && cellY < size[1] && cellZ < size[2];
-    if (inside && occupied[(cellZ * size[1] + cellY) * size[0] + cellX]) return false;
+    if (inside && occupied[(cellZ * size[1] + cellY) * size[0] + cellX]) return travelled;
     if (nextX < nextY && nextX < nextZ) {
+      travelled = nextX;
       cellX += stepX;
       nextX += deltaX;
     } else if (nextY < nextZ) {
+      travelled = nextY;
       cellY += stepY;
       nextY += deltaY;
     } else {
+      travelled = nextZ;
       cellZ += stepZ;
       nextZ += deltaZ;
     }
     // Once a ray is outside the grid and moving away on that axis it cannot come back.
-    if ((cellX < 0 && stepX < 0) || (cellX >= size[0] && stepX > 0)) return true;
-    if ((cellY < 0 && stepY < 0) || (cellY >= size[1] && stepY > 0)) return true;
-    if ((cellZ < 0 && stepZ < 0) || (cellZ >= size[2] && stepZ > 0)) return true;
+    if ((cellX < 0 && stepX < 0) || (cellX >= size[0] && stepX > 0)) return Infinity;
+    if ((cellY < 0 && stepY < 0) || (cellY >= size[1] && stepY > 0)) return Infinity;
+    if ((cellZ < 0 && stepZ < 0) || (cellZ >= size[2] && stepZ > 0)) return Infinity;
   }
 }
 
@@ -186,7 +216,7 @@ function fixedSamples(rays) {
  * cell's centre, by `rays` cosine rays; `maximumPairs` bounds the total work, and `lookup` returns null once it is spent so
  * the caller can report it instead of tracing on.
  */
-export function createSkyProxy(grid, { rays = PROXY_RAYS, maximumPairs = PROXY_MAXIMUM_PAIRS } = {}) {
+export function createSkyProxy(grid, { rays = PROXY_RAYS, maximumPairs = proxyPairBudget(grid) } = {}) {
   if (!(rays >= 1 && rays <= 1024)) rejectBadOption('rays', rays, 'between 1 and 1024');
   const samples = fixedSamples(rays);
   const cache = new Map();
