@@ -1,0 +1,2 @@
+- scene:gltf-box+lazy: adds back-to-front liquid pass sorting, doubleSided/mirrored face state, premultiplied coverage blending, throughGlass depth-mask handling, and extent-scaled closed-surface detection in the lazy liquid shader chunk
+- scene:agent-scene+lazy: adds back-to-front liquid pass sorting, doubleSided/mirrored face state, premultiplied coverage blending, throughGlass depth-mask handling, and extent-scaled closed-surface detection in the lazy liquid shader chunk

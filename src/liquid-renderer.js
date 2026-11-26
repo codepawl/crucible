@@ -84,6 +84,13 @@ function ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fr
   context.uniform1i(renderer.liquidUniforms.environmentSpecular, environmentSpecularUnit);
 }
 
+function configureTexture2D(context, minFilter, magFilter = minFilter) {
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, minFilter);
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, magFilter);
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+}
+
 /**
  * Copies the resolved opaque scene into a texture with a full mip chain and returns it. Rough glass samples its blurrier levels.
  * The chain lives apart from frameTexture, which post and bloom read with a plain filter, and it is only built (once per frame, on
@@ -99,10 +106,7 @@ export function copySceneIntoMipChain(renderer, width, height) {
     const texture = context.createTexture();
     context.bindTexture(context.TEXTURE_2D, texture);
     context.texStorage2D(context.TEXTURE_2D, mipLevelCount(width, height), hdr ? context.RGBA16F : context.RGBA8, width, height);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR_MIPMAP_LINEAR);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+    configureTexture2D(context, context.LINEAR_MIPMAP_LINEAR, context.LINEAR);
     const framebuffer = context.createFramebuffer();
     context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
     context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
@@ -140,10 +144,7 @@ export function resolveSceneDepth(renderer, width, height) {
     context.bindTexture(context.TEXTURE_2D, texture);
     const internalFormat = reversed ? context.DEPTH_COMPONENT32F : context.DEPTH_COMPONENT24;
     context.texImage2D(context.TEXTURE_2D, 0, internalFormat, width, height, 0, context.DEPTH_COMPONENT, reversed ? context.FLOAT : context.UNSIGNED_INT, null);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+    configureTexture2D(context, context.NEAREST);
     const framebuffer = context.createFramebuffer();
     context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
     context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, texture, 0);
@@ -184,10 +185,7 @@ function ensureGlassBackTarget(renderer, width, height, far = false) {
   const makeTexture = () => {
     const texture = context.createTexture();
     context.bindTexture(context.TEXTURE_2D, texture);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+    configureTexture2D(context, context.NEAREST);
     return texture;
   };
   const normalTexture = makeTexture();
@@ -306,8 +304,10 @@ function drawBackLayer(renderer, target, closedBatches, firstInstances, width, h
     bindLiquidMorph(renderer, batch, uniforms);
     context.uniform1f(uniforms.glassBackFirst, firstInstances.get(batch));
     if (renderer.liquidClipLocations) bindClipPlanes(renderer, batch, renderer.liquidClipLocations);
+    if (batch.mirrored) context.frontFace(context.CW);
     context.bindVertexArray(batch.vertexArray);
     context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
+    if (batch.mirrored) context.frontFace(context.CCW);
   }
   if (uniforms.morphEnabled) context.uniform1f(uniforms.morphEnabled, 0);
   context.uniform1f(uniforms.glassBackPass, 0);
@@ -371,6 +371,11 @@ function partScale(matrix) {
   return (columnLength(0) + columnLength(1) + columnLength(2)) / 3;
 }
 
+function batchViewDepth(batch, view) {
+  const matrix = batch.parts[0].matrix;
+  return view[2] * matrix[12] + view[6] * matrix[13] + view[10] * matrix[14] + view[14];
+}
+
 export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, environmentMap, liquids, foams, environmentSpecularUnit, maximumDistance, vertexSource, fragmentSource }) {
   const optics = resolveLiquidOptics({ ...environment.liquid, ...frame.liquid });
   ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fragmentSource);
@@ -429,7 +434,12 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
   const backFirstInstances = backFaces?.firstInstances ?? null;
   context.uniform1f(uniforms.glassBackEnabled, backFaces ? 1 : 0);
   context.uniform1f(uniforms.glassBackFarEnabled, backFaces?.farLayer ? 1 : 0);
-  for (const batch of liquids) {
+  const orderedLiquids = liquids.length > 1 && renderer.view
+    ? [...liquids].sort((first, second) => batchViewDepth(first, renderer.view) - batchViewDepth(second, renderer.view))
+    : liquids;
+  const hasThroughGlass = renderer.batches?.some(batch => batch.alphaMode === 'add' && batch.throughGlass);
+  const hasAdditiveAfter = hasThroughGlass || renderer.batches?.some(batch => batch.alphaMode === 'add' && batch.depthTest !== false && !renderer.additiveBehindShells?.has(batch));
+  for (const batch of orderedLiquids) {
     bindLiquidMorph(renderer, batch, uniforms);
     const layers = batch.layerState;
     context.uniform4f(uniforms.glassState, layers[9], layers[10], layers[11] * partScale(batch.parts[0].matrix), Math.min(layers[12], maximumDistance));
@@ -442,8 +452,12 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
     context.uniform1f(uniforms.glassCoverage, covering ? batch.opacity : 1);
     if (covering) {
       context.enable(context.BLEND);
-      context.blendFuncSeparate(context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
+      context.blendFuncSeparate(context.ONE, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
     }
+    const skipDepthWrite = hasThroughGlass || (hasAdditiveAfter && batch.alphaMode === 'blend');
+    if (skipDepthWrite) context.depthMask(false);
+    if (batch.doubleSided) context.disable(context.CULL_FACE);
+    if (batch.mirrored) context.frontFace(context.CW);
     const metallicRoughnessState = batch.mapState[METALLIC_ROUGHNESS_MAP_INDEX];
     context.activeTexture(context.TEXTURE0 + METALLIC_ROUGHNESS_UNIT);
     context.bindTexture(context.TEXTURE_2D, batch.textures[METALLIC_ROUGHNESS_MAP_INDEX]);
@@ -453,6 +467,9 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
     liquidProbeSupport.bind?.(renderer, uniforms, batch);
     context.bindVertexArray(batch.vertexArray);
     context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
+    if (batch.mirrored) context.frontFace(context.CCW);
+    if (batch.doubleSided) context.enable(context.CULL_FACE);
+    if (skipDepthWrite) context.depthMask(true);
     if (covering) context.disable(context.BLEND);
   }
   liquidProbeSupport.finish?.(renderer, uniforms);

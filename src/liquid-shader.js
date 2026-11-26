@@ -203,8 +203,8 @@ void main() {
   reflectance = mix(reflectance, 1.0, metallic);
   vec3 reflectionTint = mix(vec3(1.0), color, metallic);
   vec3 inScatter = color * (ambientLight(normal) + keyColor * max(dot(normal, light), 0.0) * 0.2) * (glass ? 0.0 : liquidOptics.w) * (1.0 - transmittance);
-  // The share of a PBR material that does not transmit is lit like a diffuse surface.
-  vec3 diffuseShare = glass ? color * (1.0 - transmissionShare) * (1.0 - metallic) * (ambientLight(normal) + keyColor * max(dot(normal, light), 0.0) / PI) : vec3(0.0);
+  // The share of a PBR material that does not transmit is lit like a diffuse surface, weighted by blended coverage.
+  vec3 diffuseShare = glass ? color * (1.0 - transmissionShare) * (1.0 - metallic) * glassCoverage * (ambientLight(normal) + keyColor * max(dot(normal, light), 0.0) / PI) : vec3(0.0);
   vec3 reflection = environmentColor(reflect(-viewDirection, normal), roughness) * ambientIntensity;
   if (waterReflectionEnabled > 0.5) reflection = mix(reflection, waterMirrorColor(worldPosition, roughness), waterMirrorWeight(roughness));
   vec3 highlight = keyColor * specularLobe(normal, viewDirection, light, roughness);

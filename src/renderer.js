@@ -112,6 +112,7 @@ export function additiveBatchesBehindShells(renderer, additiveBatches, shells) {
     farthestShellDepth = Math.min(farthestShellDepth, order.depthRange(shell, view, range)[0]);
   }
   return additiveBatches.filter(batch => {
+    if (batch.throughGlass) return false;
     batch.sortCenter ??= boundsCenterOf(batch.parts[0].geometry);
     return order.depthRange(batch, view, range)[1] < farthestShellDepth;
   });
@@ -414,11 +415,6 @@ function renderPass(material) {
   return TRANSLUCENT_TAGS.has(material.tag) ? material.tag : 'opaque';
 }
 
-// Regrouping parts that already draw (a mirrored sign change) reuses their cached textures, so it needs no texture bookkeeping.
-function partNeedsFullUpload(part, texturesReplaceable = Boolean(texturedReplaceSupport.begin)) {
-  return Boolean(part.skin || part.morph || part.geometry.morphTargets || part.geometry.skinIndices || hasMaterialMap(part.material) && !texturesReplaceable);
-}
-
 // A shadow-only part joins the shadow passes and none of the colour, depth or ID passes, so the camera never sees it.
 function partPass(part) {
   return part.shadowOnly === true ? 'shadowOnly' : renderPass(part.material);
@@ -532,8 +528,7 @@ function validateAlphaMaterial(material) {
     const value = material[field] ?? 1;
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) throw new Error(`${field} must be a number within zero and one.`);
   }
-  if (material.doubleSided !== undefined && typeof material.doubleSided !== 'boolean') throw new TypeError('doubleSided must be a boolean');
-  if (material.depthTest !== undefined && typeof material.depthTest !== 'boolean') throw new TypeError('depthTest must be a boolean');
+  for (const flag of ['doubleSided', 'depthTest', 'throughGlass']) if (material[flag] !== undefined && typeof material[flag] !== 'boolean') throw new TypeError(`${flag} must be a boolean`);
 }
 
 /** Opacity of one instance: blend and add parts carry it per instance, so it never splits a batch. A part's `opacityScale.value` (0 to 1) multiplies it. */
@@ -549,7 +544,7 @@ function materialAlphaState(material) {
   const alphaCutoff = alphaMode === 'mask' ? material.alphaCutoff ?? 0.5 : 0;
   // Glass that blends keeps its alpha as coverage over the refracted picture (the liquid pass reads it); other blend parts carry alpha in the shader.
   const opacity = alphaMode === 'mask' || (alphaMode === 'blend' && material.transmission > 0) ? (material.opacity ?? 1) + (material.opacityBias ?? 0) : 1;
-  return [alphaMode, alphaCutoff, opacity, material.doubleSided === true, material.retro, material.waterGlint, material.depthTest !== false];
+  return [alphaMode, alphaCutoff, opacity, material.doubleSided === true, material.retro, material.waterGlint, material.depthTest !== false, material.throughGlass === true];
 }
 
 // A decal or depth layer draws with a scoped polygon offset so it wins against the surface it lies on (z-fighting).
@@ -1061,6 +1056,20 @@ export function samplesForDensity(parts, canvas, pixelRatio, samples, denseSampl
   return triangles / pixels > DENSE_TRIANGLES_PER_PIXEL ? Math.min(samples, denseSamples) : samples;
 }
 
+function bindTextureUnit(context, unit, texture) {
+  context.activeTexture(context.TEXTURE0 + unit);
+  context.bindTexture(context.TEXTURE_2D, texture);
+}
+
+function configureSampler2D(context, filter, wrap) {
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, filter);
+  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, filter);
+  if (wrap) {
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, wrap);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, wrap);
+  }
+}
+
 export class CrucibleRenderer {
   constructor(canvas, parts, { batching = true, pixelRatio = 1.5, benchmark = false, world = false, ground = true, transparent = false, samples = 4, denseSamples = null, hdr = false, compactColor = true, depth = false, memoryBudgetMiB, environment = {}, shadowBounds = {}, shadowCascades = null, clipPlanes = null, culling = true, lodPixelError = 1, createGpuTimer = null, skyOpenness = null, fogSkyVisibility = null, shading = 'full', viewTransform = 'aces', look = null, resolveCoplanar = false, reversedDepth = 'auto', exactFrames = false, deferProgramLink = false, deferEnvironmentPrefilter = false, background = null, maximumMemoryBudgetMiB, maxAnisotropy = DEFAULT_TEXTURE_ANISOTROPY } = {}) {
     this.background = background ? resolveBackground(background) : null;
@@ -1304,10 +1313,7 @@ export class CrucibleRenderer {
       this.context.useProgram(program);
       this.context.uniform1i(uniforms.morphTargets, 8);
     }
-    for (const unit of [6, 7, 8]) {
-      this.context.activeTexture(this.context.TEXTURE0 + unit);
-      this.context.bindTexture(this.context.TEXTURE_2D, this.whiteTexture);
-    }
+    for (const unit of [6, 7, 8]) bindTextureUnit(this.context, unit, this.whiteTexture);
     if (this.shaderFeatures.has('splat')) requireSplatSupport().initializePlaceholders(this);
     this.initializeEnvironment(environment.map);
     this.createShadowMap();
@@ -1486,12 +1492,8 @@ export class CrucibleRenderer {
 
   finishMainProgram(pendingProgram) {
     this.program = this.backend.finishProgram(pendingProgram);
-    this.uniforms = Object.fromEntries(['materialDielectric', 'materialEmissionFresnel', 'materialSoftEdge', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'lightLinkMask', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'heightMap', 'heightState', 'viewProjection', 'flushBias', 'clipPerMetre', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'shadowBiasPerSlope', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', 'wetnessState', 'wetnessKeepOut[0]', 'wearEnabled', 'wearMetal', 'wearDirt', 'wearShape', 'wearDirtShape', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', 'baseColor', 'surface', 'instanceEmission', 'instanceOpacity', 'boxNormalMatrix', 'shadowBlind', 'compositeMode', 'tintShadowMap', 'tintBlind', ...ALPHA_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
+    this.uniforms = Object.fromEntries(['materialDielectric', 'materialEmissionFresnel', 'materialSoftEdge', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'lightLinkMask', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'heightMap', 'heightState', 'viewProjection', 'flushBias', 'clipPerMetre', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'shadowBiasPerSlope', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', 'wetnessState', 'wetnessKeepOut[0]', 'wearEnabled', 'wearMetal', 'wearDirt', 'wearShape', 'wearDirtShape', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', 'baseColor', 'surface', 'instanceEmission', 'instanceOpacity', 'boxNormalMatrix', 'shadowBlind', 'compositeMode', 'tintShadowMap', 'tintBlind', ...ALPHA_UNIFORMS, ...LIGHT_UNIFORMS, ...ENVIRONMENT_UNIFORMS].map((name) => [name, this.context.getUniformLocation(this.program, name)]));
     Object.assign(this.uniforms, clipPlaneLocations(this.context, this.program));
-    for (const name of LIGHT_UNIFORMS) {
-      this.uniforms[name] = this.context.getUniformLocation(this.program, name);
-    }
-    for (const name of ENVIRONMENT_UNIFORMS) this.uniforms[name] = this.context.getUniformLocation(this.program, name);
     this.keepSamplerTypesApart();
   }
 
@@ -1569,8 +1571,7 @@ export class CrucibleRenderer {
         configureTexture(this, info, { bakesNormalVariance: isNormalMap && !map.image.compressed && map.colorSpace === 'linear' });
       } else {
         context.texImage2D(context.TEXTURE_2D, 0, context.RGBA8, 1, 1, 0, context.RGBA, context.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
-        context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
-        context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
+        configureSampler2D(context, context.LINEAR);
       }
     } catch (error) {
       context.deleteTexture(texture);
@@ -1904,10 +1905,10 @@ export class CrucibleRenderer {
     const morph = parts[0].morph ?? null;
     const morphTexture = morph ? this.createMorphTexture(geometry, morph) : null;
     const morphWeights = morph ? new Float32Array(morph.weights) : null;
-    const [alphaMode, alphaCutoff, opacity, doubleSided, retro, waterGlint, depthTest] = materialAlphaState(parts[0].material);
+    const [alphaMode, alphaCutoff, opacity, doubleSided, retro, waterGlint, depthTest, throughGlass] = materialAlphaState(parts[0].material);
     const layerState = materialLayerState(parts[0].material);
     const culling = this.createCullingState(parts);
-    const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, retro, waterGlint, depthTest, mirrored: isMirroredMatrix(parts[0].matrix), layerState, wear: parts[0].material.wear ?? null, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, lightMapTexture, heightTexture, texture: textures[0], map, skin, skinTexture, influenceTexture, crowd, crowdTexture, morph, morphTexture, morphWeights, indexCount: flushOrder?.indices.length ?? geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), tintedShadow: castsTintedShadow(parts[0]), tintBlind: Object.keys(parts[0].material.layerMaps ?? {}).length >= 3, receivesShadow: receivesShadow(parts[0]), compositeMode: compositeModeOf(parts[0]), depthLayer: depthLayerOf(parts[0]), flushOrder, flushIndexBuffer, pass: partPass(parts[0]), clipPlanes: parts[0].clipPlanes ?? null };
+    const batch = { ...culling, alphaMode, alphaCutoff, opacity, doubleSided, retro, waterGlint, depthTest, throughGlass, mirrored: isMirroredMatrix(parts[0].matrix), layerState, wear: parts[0].material.wear ?? null, parts: [...parts], vertexArray, instanceBuffer, instanceData, textures, mapState, splat, lightMapTexture, heightTexture, texture: textures[0], map, skin, skinTexture, influenceTexture, crowd, crowdTexture, morph, morphTexture, morphWeights, indexCount: flushOrder?.indices.length ?? geometry.indices.length, instanceCount: parts.length, floor: parts[0].material.tag === 'floor', castShadow: castsShadow(parts[0]), tintedShadow: castsTintedShadow(parts[0]), tintBlind: Object.keys(parts[0].material.layerMaps ?? {}).length >= 3, receivesShadow: receivesShadow(parts[0]), compositeMode: compositeModeOf(parts[0]), depthLayer: depthLayerOf(parts[0]), flushOrder, flushIndexBuffer, pass: partPass(parts[0]), clipPlanes: parts[0].clipPlanes ?? null };
     if (parts[0].lods) culling.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level));
     culling.shadowLevels?.levelGeometries.forEach((geometryOfLevel, level) => this.levelDraw(batch, level, batch.shadowLevels));
     parts.forEach((part, index) => this.partLocations.set(part, { batch, index, geometry: part.geometry, map, mapState, layerState, skin, jointMatrices: skin?.jointMatrices, skinIndices: geometry.skinIndices, skinWeights: geometry.skinWeights, morph, morphWeights: morph?.weights, morphTargets: geometry.morphTargets, normalMatrix: mat3.create(), committedMatrix: batch.instanceData.subarray(index * INSTANCE_STRIDE, index * INSTANCE_STRIDE + 16) }));
@@ -1966,7 +1967,7 @@ export class CrucibleRenderer {
       // A batch keeps its winding: a group that flipped sign with the same members is a new batch, or the update would regroup forever (#3059).
       const sameState = location?.geometry === first.geometry && batch?.castShadow === castsShadow(first) && batch.mirrored === isMirroredMatrix(first.matrix) && batch.receivesShadow === receivesShadow(first) && batch.compositeMode === compositeModeOf(first) && (batch.depthLayer ?? 0) === depthLayerOf(first) && (batch.flushOrder ?? null) === flushOrderOf(first) &&
         batch.floor === (first.material.tag === 'floor') && batchPass(batch) === partPass(first) &&
-        [batch.alphaMode, batch.alphaCutoff, batch.opacity, batch.doubleSided, batch.retro, batch.waterGlint, batch.depthTest !== false].every((value, index) => value === alphaState[index]) &&
+        [batch.alphaMode, batch.alphaCutoff, batch.opacity, batch.doubleSided, batch.retro, batch.waterGlint, batch.depthTest !== false, batch.throughGlass === true].every((value, index) => value === alphaState[index]) &&
         batch.mapState.every((value, index) => value === mapState[index]) &&
         batch.layerState.every((value, index) => value === layerStateOf(first.material)[index]);
       if (sameParts && sameState) {
@@ -1975,15 +1976,20 @@ export class CrucibleRenderer {
       }
       return { group, batch: null };
     });
-    // Skinned and morphed batches stay valid only while retained unchanged. Textured ones need the replace-textured-parts addon to be added or dropped.
+    const incomingParts = new Set(renderParts);
+    const canSwap = part => {
+      const location = this.partLocations.get(part);
+      return Boolean(location && location.geometry === part.geometry && location.skin === (part.skin ?? null) && location.morph === (part.morph ?? null) && MATERIAL_MAPS.every(field => !part.material[field] || this.textures?.has(part.material[field])));
+    };
+    const texturesReplaceable = regroupOnly || Boolean(texturedReplaceSupport.begin);
     for (const item of replacements) {
-      if (!item.batch && item.group.some(part => partNeedsFullUpload(part, regroupOnly || Boolean(texturedReplaceSupport.begin)))) {
+      if (!item.batch && item.group.some(part => !canSwap(part) && (part.skin || part.morph || part.geometry.morphTargets || part.geometry.skinIndices || (!texturesReplaceable && hasMaterialMap(part.material))))) {
         throw new Error('replaceParts can add or change only rigid, untextured parts. Keep textured, skinned and morphed parts unchanged, or import replace-textured-parts to add textured ones.');
       }
     }
     for (const [part, location] of this.partLocations) {
-      if (retained.has(location.batch)) continue;
-      if (location.skin || location.morph || location.morphTargets || location.skinIndices || (location.mapState.slice(0, 5).some(Boolean) && !texturedReplaceSupport.begin && !regroupOnly)) {
+      if (retained.has(location.batch) || (incomingParts.has(part) && canSwap(part))) continue;
+      if (location.skin || location.morph || location.morphTargets || location.skinIndices || (location.mapState.slice(0, 5).some(Boolean) && !texturesReplaceable)) {
         throw new Error(`replaceParts can remove or regroup only existing rigid, untextured parts; ${part.name} is textured, skinned or morphed and needs a new renderer.`);
       }
     }
@@ -2094,10 +2100,7 @@ export class CrucibleRenderer {
     context.bindTexture(context.TEXTURE_2D, texture);
     try {
       context.texImage2D(context.TEXTURE_2D, 0, context.RGBA32F, layout.width, layout.height, 0, context.RGBA, context.FLOAT, data);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+      configureSampler2D(context, context.NEAREST, context.CLAMP_TO_EDGE);
     } catch (error) {
       context.deleteTexture(texture);
       throw error;
@@ -2137,7 +2140,7 @@ export class CrucibleRenderer {
       const materialUnchanged = location.materialSnapshot?.matches(part.material) === true;
       if (!materialUnchanged) {
         const alphaState = materialAlphaState(part.material);
-        const batchAlphaState = [location.batch.alphaMode, location.batch.alphaCutoff, location.batch.opacity, location.batch.doubleSided, location.batch.retro, location.batch.waterGlint, location.batch.depthTest !== false];
+        const batchAlphaState = [location.batch.alphaMode, location.batch.alphaCutoff, location.batch.opacity, location.batch.doubleSided, location.batch.retro, location.batch.waterGlint, location.batch.depthTest !== false, location.batch.throughGlass === true];
         if (alphaState.some((value, index) => value !== batchAlphaState[index])) throw new Error(`Alpha mode, cutoff, double-sided, depthTest, retro and mask opacity changes require a new renderer: set them when the part is made (blend and add opacity may change): ${part.name}`);
       }
       if (part.geometry !== location.geometry) throw new Error(`Geometry changes require a new renderer: ${part.name}`);
@@ -2256,19 +2259,14 @@ export class CrucibleRenderer {
     const context = this.context;
     const mapSize = this.shadowMapSizeWanted();
     this.shadowTexture ??= context.createTexture();
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
+    bindTextureUnit(context, 0, this.shadowTexture);
     if (mapSize !== this.shadowMapSize) {
       this.shadowMapSize = mapSize;
       context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, mapSize, mapSize, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
       this.renderTargets.record('shadowMap', { width: mapSize, height: mapSize, format: 'DEPTH_COMPONENT24' });
     }
-    // Compare on fetch (the default function is LEQUAL) with linear filtering gives a 2 x 2 percentage-closer result from one fetch.
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
+    configureSampler2D(context, context.LINEAR, context.CLAMP_TO_EDGE);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_COMPARE_MODE, context.COMPARE_REF_TO_TEXTURE);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
     if (!this.shadowFramebuffer) this.shadowFramebuffer = context.createFramebuffer();
     context.bindFramebuffer(context.FRAMEBUFFER, this.shadowFramebuffer);
     context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, this.shadowTexture, 0);
@@ -2310,8 +2308,7 @@ export class CrucibleRenderer {
       this.placeholderShadowTexture = context.createTexture();
       context.bindTexture(context.TEXTURE_2D, this.placeholderShadowTexture);
       context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, 1, 1, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+      configureSampler2D(context, context.NEAREST);
       context.texParameteri(context.TEXTURE_2D, context.TEXTURE_COMPARE_MODE, context.COMPARE_REF_TO_TEXTURE);
     }
     context.bindTexture(context.TEXTURE_2D, this.placeholderShadowTexture);
@@ -2321,13 +2318,9 @@ export class CrucibleRenderer {
   allocateTintTarget() {
     const context = this.context;
     this.tintTexture = context.createTexture();
-    context.activeTexture(context.TEXTURE0 + TINT_UNIT);
-    context.bindTexture(context.TEXTURE_2D, this.tintTexture);
+    bindTextureUnit(context, TINT_UNIT, this.tintTexture);
     context.texImage2D(context.TEXTURE_2D, 0, context.RGBA16F, TINT_MAP_SIZE, TINT_MAP_SIZE, 0, context.RGBA, context.HALF_FLOAT, null);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+    configureSampler2D(context, context.LINEAR, context.CLAMP_TO_EDGE);
     this.renderTargets.record('tintShadow', { width: TINT_MAP_SIZE, height: TINT_MAP_SIZE, format: 'RGBA16F' });
     this.tintFramebuffer = context.createFramebuffer();
     context.bindFramebuffer(context.FRAMEBUFFER, this.tintFramebuffer);
@@ -2348,8 +2341,7 @@ export class CrucibleRenderer {
     if (!this.tintFramebuffer) this.allocateTintTarget();
     context.bindFramebuffer(context.FRAMEBUFFER, this.tintFramebuffer);
     context.viewport(0, 0, TINT_MAP_SIZE, TINT_MAP_SIZE);
-    context.activeTexture(context.TEXTURE0 + OPAQUE_SHADOW_UNIT);
-    context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
+    bindTextureUnit(context, OPAQUE_SHADOW_UNIT, this.shadowTexture);
     context.activeTexture(context.TEXTURE0);
     context.useProgram(this.depthProgram);
     const uniforms = this.depthAlphaUniforms;
@@ -2381,8 +2373,7 @@ export class CrucibleRenderer {
   bindTintedShadows() {
     if (!this.tintedShadowsActive || !this.tintTexture) return;
     const context = this.context;
-    context.activeTexture(context.TEXTURE0 + TINT_UNIT);
-    context.bindTexture(context.TEXTURE_2D, this.tintTexture);
+    bindTextureUnit(context, TINT_UNIT, this.tintTexture);
     context.uniform1i(this.uniforms.tintShadowMap, TINT_UNIT);
     context.activeTexture(context.TEXTURE0);
   }
@@ -2492,14 +2483,10 @@ export class CrucibleRenderer {
     if (this.localShadowFramebuffer) context.deleteFramebuffer(this.localShadowFramebuffer);
     this.localShadowAtlasHeight = Math.ceil(tileCount / SHADOW_TILES_PER_ROW) * SHADOW_TILE_SIZE;
     this.localShadowTexture = context.createTexture();
-    context.activeTexture(context.TEXTURE0 + LOCAL_SHADOW_UNIT);
-    context.bindTexture(context.TEXTURE_2D, this.localShadowTexture);
+    bindTextureUnit(context, LOCAL_SHADOW_UNIT, this.localShadowTexture);
     context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, SHADOW_ATLAS_WIDTH, this.localShadowAtlasHeight, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
     this.renderTargets.record('localShadowAtlas', { width: SHADOW_ATLAS_WIDTH, height: this.localShadowAtlasHeight, format: 'DEPTH_COMPONENT24' });
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+    configureSampler2D(context, context.NEAREST, context.CLAMP_TO_EDGE);
     this.localShadowFramebuffer = context.createFramebuffer();
     context.bindFramebuffer(context.FRAMEBUFFER, this.localShadowFramebuffer);
     context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, this.localShadowTexture, 0);
@@ -2669,10 +2656,7 @@ export class CrucibleRenderer {
     context.bindTexture(context.TEXTURE_2D, texture);
     context.texImage2D(context.TEXTURE_2D, 0, context.R8, width, height, 0, context.RED, context.UNSIGNED_BYTE, null);
     this.renderTargets.record('ambientOcclusion', { width, height, format: 'R8' });
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+    configureSampler2D(context, context.LINEAR, context.CLAMP_TO_EDGE);
     const framebuffer = context.createFramebuffer();
     context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
     context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
@@ -2765,10 +2749,8 @@ export class CrucibleRenderer {
 
   bindEnvironmentTextures(specularTexture, brdfTexture) {
     const context = this.context;
-    context.activeTexture(context.TEXTURE0 + ENVIRONMENT_SPECULAR_UNIT);
-    context.bindTexture(context.TEXTURE_2D, specularTexture);
-    context.activeTexture(context.TEXTURE0 + ENVIRONMENT_BRDF_UNIT);
-    context.bindTexture(context.TEXTURE_2D, brdfTexture);
+    bindTextureUnit(context, ENVIRONMENT_SPECULAR_UNIT, specularTexture);
+    bindTextureUnit(context, ENVIRONMENT_BRDF_UNIT, brdfTexture);
     context.activeTexture(context.TEXTURE0);
   }
 
@@ -3043,7 +3025,7 @@ export class CrucibleRenderer {
     const liquids = this.batches.filter(batch => batchPass(batch) === 'liquid');
     const foams = this.batches.filter(batch => batchPass(batch) === 'foam');
     this.additiveBehindShells = null;
-    if (liquids.length === 0 && foams.length === 0) return;
+    if (liquids.length === 0 && foams.length === 0) { this.glassBackCache = null; this.refractionDepth?.release(); this.refractionChain?.release(); return; }
     this.drawAdditiveBehindShells(liquids);
     liquidPassDrawer()(this, { frame, environment, assemblyAmount, environmentMap, liquids, foams, environmentSpecularUnit: ENVIRONMENT_SPECULAR_UNIT, maximumDistance: MAX_FINITE_DISTANCE, vertexSource: vertexShader, fragmentSource: liquidFragmentSource() });
   }
@@ -3274,8 +3256,7 @@ export class CrucibleRenderer {
         this.context.uniform1i(uniforms.morphTargetCount, slotCount);
         this.context.uniform1fv(uniforms['morphWeights[0]'], selected ? MORPH_SLOT_WEIGHTS : batch.morphWeights);
         this.context.uniform1fv(uniforms['morphSlotTargets[0]'], selected ? MORPH_SLOT_TARGETS : IDENTITY_MORPH_SLOTS);
-        this.context.activeTexture(this.context.TEXTURE0 + 8);
-        this.context.bindTexture(this.context.TEXTURE_2D, batch.morphTexture.texture);
+        bindTextureUnit(this.context, 8, batch.morphTexture.texture);
       }
     }
     if (this.hasSkins) {
@@ -3283,15 +3264,12 @@ export class CrucibleRenderer {
       this.context.uniform1f(uniforms.crowdEnabled, batch.crowd ? 1 : 0);
       this.context.uniform1f(uniforms.skinEnabled, batch.skin ? 1 : 0);
       if (batch.crowd) {
-        this.context.activeTexture(this.context.TEXTURE0 + 7);
-        this.context.bindTexture(this.context.TEXTURE_2D, batch.crowdTexture.texture);
+        bindTextureUnit(this.context, 7, batch.crowdTexture.texture);
         this.context.uniform1i(uniforms.jointPalette, 7);
       } else if (batch.skin) {
-        this.context.activeTexture(this.context.TEXTURE0 + 6);
-        this.context.bindTexture(this.context.TEXTURE_2D, batch.influenceTexture.texture);
+        bindTextureUnit(this.context, 6, batch.influenceTexture.texture);
         this.context.uniform1i(uniforms.skinInfluences, 6);
-        this.context.activeTexture(this.context.TEXTURE0 + 7);
-        this.context.bindTexture(this.context.TEXTURE_2D, batch.skinTexture.texture);
+        bindTextureUnit(this.context, 7, batch.skinTexture.texture);
         this.context.uniform1i(uniforms.jointPalette, 7);
       }
     }
@@ -3300,8 +3278,7 @@ export class CrucibleRenderer {
       this.context.uniform1f(this.uniforms.tintBlind, batch.tintBlind ? 1 : 0);
       this.context.uniform1f(this.uniforms.compositeMode, batch.compositeMode ?? 0);
       for (let index = 0; index < MATERIAL_MAPS.length; index++) {
-        this.context.activeTexture(this.context.TEXTURE0 + index + 1);
-        this.context.bindTexture(this.context.TEXTURE_2D, batch.textures[index]);
+        bindTextureUnit(this.context, index + 1, batch.textures[index]);
         this.context.uniform1i(this.uniforms[MAP_UNIFORMS[index]], index + 1);
         this.context.uniform1f(this.uniforms[MAP_FLAGS[index]], batch.mapState[index] ? 1 + (batch.mapState[index].uvChannel ?? 0) : 0);
       }
@@ -3327,8 +3304,7 @@ export class CrucibleRenderer {
       this.bindBatchWind(batch);
       this.context.uniform1f(this.uniforms.hasLightMap, batch.lightMapTexture ? 1 : 0);
       if (batch.lightMapTexture) {
-        this.context.activeTexture(this.context.TEXTURE0 + LIGHT_MAP_UNIT);
-        this.context.bindTexture(this.context.TEXTURE_2D, batch.lightMapTexture);
+        bindTextureUnit(this.context, LIGHT_MAP_UNIT, batch.lightMapTexture);
         this.context.uniform1i(this.uniforms.lightMap, LIGHT_MAP_UNIT);
         this.context.uniform1f(this.uniforms.lightMapScale, batch.mapState[15]);
       }
@@ -3504,8 +3480,7 @@ export class CrucibleRenderer {
     context.uniform1f(this.uniforms.explosionProgress, frame.explosionProgress ?? 1);
     context.uniform3fv(this.uniforms.explosionCenter, environment.explosionCenter);
     context.uniform1f(this.uniforms.assemblyAmount, assemblyAmount);
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, this.shadowTexture);
+    bindTextureUnit(context, 0, this.shadowTexture);
     context.uniform1i(this.uniforms.shadowMap, 0);
     this.bindTintedShadows();
     this.applyEnvironmentUniforms(environmentMap);
@@ -3620,34 +3595,20 @@ export class CrucibleRenderer {
     this.releaseFrameTargets();
     this.shadowCascades?.dispose(this.context, this.renderTargets);
     viewTransformShader.dispose?.(this);
-    if (this.localShadowTexture) this.context.deleteTexture(this.localShadowTexture);
-    if (this.localShadowFramebuffer) this.context.deleteFramebuffer(this.localShadowFramebuffer);
-    if (this.placeholderShadowTexture) this.context.deleteTexture(this.placeholderShadowTexture);
-    if (this.tintFramebuffer) {
-      this.context.deleteTexture(this.tintTexture);
-      this.context.deleteFramebuffer(this.tintFramebuffer);
-    }
+    for (const texture of [this.localShadowTexture, this.placeholderShadowTexture, this.tintTexture, this.shadowTexture]) if (texture) this.context.deleteTexture(texture);
+    for (const framebuffer of [this.localShadowFramebuffer, this.tintFramebuffer, this.shadowFramebuffer]) if (framebuffer) this.context.deleteFramebuffer(framebuffer);
     this.batches.forEach((batch) => {
       this.context.deleteVertexArray(batch.vertexArray);
       this.releaseLevelDraws(batch);
     });
     this.buffers.forEach((buffer) => this.context.deleteBuffer(buffer));
     this.geometryBuffers?.clear();
-    this.context.deleteTexture(this.shadowTexture);
-    this.context.deleteFramebuffer(this.shadowFramebuffer);
-    this.context.deleteProgram(this.program);
-    if (this.liquidProgram) this.context.deleteProgram(this.liquidProgram);
-    this.context.deleteProgram(this.depthProgram);
-    if (this.postProgram) this.context.deleteProgram(this.postProgram);
+    for (const program of [this.program, this.liquidProgram, this.depthProgram, this.postProgram, this.skyProgram, this.bloomProgram, this.occlusionProgram, this.environmentBackgroundProgram]) if (program) this.context.deleteProgram(program);
     // A program still linking must finish first: deleting it mid-link leaves a GL error that the next renderer on this context sees.
     for (const variant of this.postVariants?.values() ?? []) this.context.deleteProgram(variant.pending ? this.backend.finishProgram(variant.pending) : variant.program);
-    if (this.skyProgram) this.context.deleteProgram(this.skyProgram);
-    if (this.bloomProgram) this.context.deleteProgram(this.bloomProgram);
-    if (this.occlusionProgram) this.context.deleteProgram(this.occlusionProgram);
     this.passSupport?.dispose(this.context);
     for (const stage of this.postStages ?? []) stage.dispose(this.context);
     if (this.localVolumeComposite) requireFeatureCode('volumeFog').support.releaseLocalVolumeComposite(this, true);
-    if (this.environmentBackgroundProgram) this.context.deleteProgram(this.environmentBackgroundProgram);
     this.environmentResources?.dispose();
     for (const texture of this.textures.values()) this.context.deleteTexture(texture);
     if (this.splatPlaceholder) requireSplatSupport().dispose(this);

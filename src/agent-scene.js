@@ -114,6 +114,7 @@ const MATERIAL_FIELDS = [
   'alphaCutoff',
   'doubleSided',
   'depthTest',
+  'throughGlass',
   'pattern',
   'map',
   'text',
@@ -444,20 +445,16 @@ function materialFrom(recipeValue) {
   result.alphaMode = (result.opacity < 1 || graphHasOpacity) && requestedAlphaMode === 'opaque' ? 'blend' : requestedAlphaMode;
   applyAlphaCutoff(value, result);
   result.doubleSided = defaultValue(value.doubleSided, false);
-  if (typeof result.doubleSided !== 'boolean') {
-    throw invalidField('doubleSided', result.doubleSided, 'true or false', TypeError);
-  }
-  if (value.depthTest !== undefined) {
-    if (typeof value.depthTest !== 'boolean') {
-      throw invalidField('depthTest', value.depthTest, 'true or false', TypeError);
+  for (const flag of ['doubleSided', 'depthTest', 'throughGlass']) {
+    const candidate = flag === 'doubleSided' ? result.doubleSided : value[flag];
+    if (candidate !== undefined) {
+      if (typeof candidate !== 'boolean') throw invalidField(flag, candidate, 'true or false', TypeError);
+      result[flag] = candidate;
     }
-    result.depthTest = value.depthTest;
   }
   for (const field of ['metallic', 'roughness']) {
     finite(result[field], field);
-    if (result[field] < 0 || result[field] > 1) {
-      throw invalidField(field, result[field], 'a number from 0 to 1, such as 0.5');
-    }
+    if (result[field] < 0 || result[field] > 1) throw invalidField(field, result[field], 'a number from 0 to 1, such as 0.5');
   }
   finite(result.emission, 'emission');
   if (result.emission < 0) {
@@ -1423,7 +1420,7 @@ function batchSignature(material) {
   // Textures are fixed per renderer, so a changed pattern rebuilds it like a changed tag does.
   // Transmission moves a material to the pass that sees the opaque scene, which is fixed per renderer.
   // Snippet uniform values bind per draw, so only changing the compiled feature or mask needs a new handle (#3163).
-  return `${material.tag}|${material.alphaMode}|${material.alphaCutoff}|${material.opacity}|${material.transmission > 0}|${material.doubleSided}|${material.depthTest !== false}|${JSON.stringify(material.pattern ?? material.map ?? material.text ?? null)}|${material.snippet?.feature}|${material.snippet?.mask}${textureMapSignature(material)}`;
+  return `${material.tag}|${material.alphaMode}|${material.alphaCutoff}|${material.opacity}|${material.transmission > 0}|${material.doubleSided}|${material.depthTest !== false}|${material.throughGlass === true}|${JSON.stringify(material.pattern ?? material.map ?? material.text ?? null)}|${material.snippet?.feature}|${material.snippet?.mask}${textureMapSignature(material)}`;
 }
 
 // A material's uvScale, uvOffset, uvRotation and worldScale are baked into the UVs of the geometry it draws, like glTF KHR_texture_transform.
