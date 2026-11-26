@@ -1,0 +1,1 @@
+- Add `<crucible-scene>` and idle-sleep learn pages, refresh docs preview cards with ocean, explosion and baked-light renders, and link every published guide in the docs navigation (#2219)

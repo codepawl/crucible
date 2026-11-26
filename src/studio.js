@@ -54,6 +54,7 @@ import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, 
 import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgentEdit, diffRecipeNodes } from './studio-agent-presence.js';
 import { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, primitiveGeometrySpec, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, buildTemplateRecipe } from './studio-templates.js';
 import { createStudioController, hasAnimatedData, linearRgbToHex, quaternionToEulerDegrees, roundValue } from './studio-controller.js';
+import { createPartSyncTracker } from './studio-live-parts.js';
 
 const CORE_STUDIO_TABS = [
   { id: 'node', label: 'Object', order: 10, workspaces: [{ id: 'build', order: 10 }, { id: 'animate', order: 20 }], createPanel: ({ inlinePanels }) => ({ element: inlinePanels.node }) },
@@ -1274,7 +1275,7 @@ export function createStudio(container, {
   const pendingRecipe = suppliedRecipe && !suppliedScene && recipeNeedsFetching(suppliedRecipe) ? suppliedRecipe : null;
   const initialRecipe = pendingRecipe ? buildTemplateRecipe(template) : suppliedRecipe ?? (suppliedScene ? null : buildTemplateRecipe(template));
   // The scene reads catalog assets and images from the pool, so an import into the first scene can place them.
-  const initialScene = suppliedScene ?? createAgentScene(initialRecipe, {}, { assets: catalog.pool, sequenceFrames: catalog.pool });
+  const initialScene = suppliedScene ?? createAgentScene(initialRecipe, {}, { assets: catalog.pool, sequenceFrames: catalog.pool, deferInitialFlush: true });
   let handleChange = () => {};
   const studioDiagnostics = createStudioDiagnostics({
     limit: diagnosticsOptions.limit,
@@ -1316,8 +1317,7 @@ export function createStudio(container, {
   let rendererFloorHeight = null;
   let sceneLoadedSinceFloorFit = false;
   let floorDecision = { scene: null, revision: -1, drawsFloor: true };
-  let renderedScene = initialScene;
-  let renderedTopology = initialScene.topologyRevision;
+  const partSync = createPartSyncTracker(initialScene);
   let gridVisible = preferences.gridVisible;
   let gridParts = null;
   let gridPartsByName = null;
@@ -3350,11 +3350,10 @@ export function createStudio(container, {
 
   function capturePngDataUrl() {
     // Nothing draws while the context is gone, so a still taken then would be a blank picture.
-    if (contextLost) {
-      throw new Error(CONTEXT_LOST_MESSAGE);
-    }
-    // A still has the light a fresh build has, so a bake that is still running finishes first.
+    if (contextLost) throw new Error(CONTEXT_LOST_MESSAGE);
+    // A still has the light and flush ranks a fresh build has, so any pending bake or flush finishes first.
     controller.settleBake();
+    controller.scene.settleFlush?.();
     bakeMark.show(controller.bakePending);
     capturingStill = true;
     try {
@@ -3941,8 +3940,7 @@ export function createStudio(container, {
       ground: rendererHasFloor && viewportFloorPart(rendererFloorHeight),
       ...rendererOptions,
     });
-    renderedScene = controller.scene;
-    renderedTopology = controller.scene.topologyRevision;
+    partSync.reset(controller.scene, controller.scene.topologyRevision);
     return installPostPasses(renderer);
   }
 
@@ -4021,14 +4019,14 @@ export function createStudio(container, {
 
   function syncRendererParts(activeRenderer) {
     const topology = `${controller.scene.topologyRevision}|${gridVisible && !drawingTheShot()}|${meshEditor?.active ? meshEditor.viewKey : ''}`;
-    if (renderedScene !== controller.scene || renderedTopology !== topology) {
-      activeRenderer.replaceParts(partsToDraw());
-      renderedScene = controller.scene;
-      renderedTopology = topology;
+    const revisionKey = `${controller.motionTime}|${controller.scene.motionTime}`;
+    const parts = partsToDraw();
+    if (partSync.needsReplace(controller.scene, topology)) {
+      partSync.replace(activeRenderer, controller.scene, topology, revisionKey, parts);
       return activeRenderer;
     }
     try {
-      activeRenderer.updateParts(partsToDraw());
+      partSync.update(activeRenderer, revisionKey, parts);
       return activeRenderer;
     } catch (error) {
       if (error instanceof ProgramNotReady) {
@@ -4215,8 +4213,7 @@ export function createStudio(container, {
   // The scene, selection and camera stay in the controller. Only what the renderer holds is rebuilt, from the current scene.
   function recoverFromContextLoss() {
     contextLost = false;
-    renderedScene = null;
-    renderedTopology = null;
+    partSync.reset();
     renderedShadowKey = null;
     pausedNotice.hide();
     requestFrame();

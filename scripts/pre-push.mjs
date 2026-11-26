@@ -1,6 +1,6 @@
 // Git pre-push hook body. Runs `npm run preflight -- --skip-tests` so a branch that would fail the fast gates of the
-// `Test` workflow (protected files, change note, links, tool schemas, size, tool cost) stops on this machine instead of
-// on CI. The unit tests stay on CI and in the full `npm run preflight`, because they take minutes.
+// `Test` workflow (protected files, change note, links, tool schemas, size, tool cost) or its affected unit tests
+// (`scripts/test-affected.mjs`) stops on this machine instead of on CI. The full suite stays on CI and in `npm run preflight`.
 // Git passes one line per pushed ref on stdin: "<local ref> <local sha> <remote ref> <remote sha>".
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';

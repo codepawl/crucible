@@ -330,6 +330,13 @@ function integer(value, minimum, maximum, label) {
   return value;
 }
 
+function optionalBoolean(value, label, fallback) {
+  if (value !== undefined && typeof value !== 'boolean') {
+    throw invalidField(label, value, 'true or false', TypeError);
+  }
+  return value === undefined ? fallback : value;
+}
+
 function identifier(value, label = 'id') {
   if (typeof value !== 'string' || !value.trim() || value.length > 128) {
     throw invalidField(label,value, 'a string of 1 to 128 characters, such as "wall-left"', TypeError);
@@ -443,16 +450,8 @@ function materialFrom(recipeValue) {
   const graphHasOpacity = graphFactor('opacity', 0);
   result.alphaMode = (result.opacity < 1 || graphHasOpacity) && requestedAlphaMode === 'opaque' ? 'blend' : requestedAlphaMode;
   applyAlphaCutoff(value, result);
-  result.doubleSided = defaultValue(value.doubleSided, false);
-  if (typeof result.doubleSided !== 'boolean') {
-    throw invalidField('doubleSided', result.doubleSided, 'true or false', TypeError);
-  }
-  if (value.depthTest !== undefined) {
-    if (typeof value.depthTest !== 'boolean') {
-      throw invalidField('depthTest', value.depthTest, 'true or false', TypeError);
-    }
-    result.depthTest = value.depthTest;
-  }
+  result.doubleSided = optionalBoolean(value.doubleSided, 'doubleSided', false);
+  if (value.depthTest !== undefined) result.depthTest = optionalBoolean(value.depthTest, 'depthTest');
   for (const field of ['metallic', 'roughness']) {
     finite(result[field], field);
     if (result[field] < 0 || result[field] > 1) {
@@ -543,9 +542,7 @@ function nodeFrom(value) {
   if (value.vegetation !== undefined) result.vegetation = agentSceneModule('vegetation').normalizeVegetation(value.vegetation, value);
   if (value.clutter !== undefined) result.clutter = agentSceneModule('clutter').normalizeClutter(value.clutter, value);
   if (value.grass !== undefined) result.grass = agentSceneModule('grass').normalizeGrass(value.grass, value);
-  if (value.decal !== undefined && typeof value.decal !== 'boolean') {
-    throw invalidField('decal', value.decal, 'true or false', TypeError);
-  }
+  optionalBoolean(value.decal, 'decal');
   if (value.billboard !== undefined) {
     if (value.geometry === undefined) throw invalidField('billboard', value.billboard, 'a field on a mesh node whose geometry is a plane; remove it from group nodes', TypeError);
     result.billboard = agentSceneModule('textBillboard').normalizeBillboard(value.billboard);
@@ -556,7 +553,7 @@ function nodeFrom(value) {
     integer(value.depthLayer, 0, MAXIMUM_DEPTH_LAYER, 'depthLayer');
   }
   for (const flag of RENDER_FLAG_FIELDS) {
-    if (value[flag] !== undefined && typeof value[flag] !== 'boolean') throw invalidField(flag, value[flag], 'true or false', TypeError);
+    optionalBoolean(value[flag], flag);
     const placesAsset = value.asset !== undefined && ASSET_PLACEMENT_FLAG_FIELDS.includes(flag);
     if (flag !== 'visible' && value[flag] !== undefined && value.geometry === undefined && !placesAsset) throw invalidField(flag, value[flag], 'a flag on a mesh node with geometry and material; remove it from group nodes', TypeError);
   }
@@ -807,9 +804,7 @@ function geometryEstimate(value, scope = PENDING_CUTTER_SCOPE) {
     }
     case 'tube':
       points(value.path, 3, value.closed ? 3 : 2, 'path');
-      if (value.closed !== undefined && typeof value.closed !== 'boolean') {
-        throw invalidField('closed', value.closed, 'true or false', TypeError);
-      }
+      optionalBoolean(value.closed, 'closed');
       agentSceneModule('modeling').checkTubeInputs(value.path, value.radius ?? 0.1, value.closed ?? false);
       return (detail('segments', 64, 3, 2048) + 1) * (detail('radialSegments', 12, 3, 128) + 1);
     case 'curve': {
@@ -1697,7 +1692,7 @@ function oceanTimeGeometries(stagedState, sampled, time) {
       // A water part draws the ocean's foam group as foam, as the first build of the part does.
       const material = stagedState.recipe.materials?.find(candidate => candidate.id === node.material);
       const drawn = material && frame.geometry.vertexGroups?.foam ? agentSceneModule('mesh').waterFoamGeometry(frame.geometry, material) : frame.geometry;
-      geometries.set(node.id, drawn);
+      geometries.set(node.id, keepSeaInPlace(stagedState, node.id, drawn));
     }
   }
   return geometries;
@@ -1711,54 +1706,42 @@ function oceanTrackNodeIds(recipe) {
 
 // What an ocean time moves in a sea geometry. The triangle indices move too: the diagonal of each quad follows the waves.
 const SEA_MOVING_FIELDS = ['positions', 'normals', 'skyVisibility', 'indices'];
+const SEA_MOVING_MAPS = ['vertexGroups', 'vertexVectors'];
 
-// True when the two seas differ only in what an ocean time moves: the same fields and vertex groups, the same array sizes and
-// types, and the same UVs, so the arrays of one can be overwritten with the other. Any other field (surface masks, colours) is
-// not known to stay put, so it sends the sea to the part swap.
+const sameTypedArray = (liveArray, nextArray) => liveArray?.length === nextArray.length && liveArray.constructor === nextArray.constructor;
+
+// True when the two seas differ only in what an ocean time moves, so the arrays of one can be overwritten with the other.
 function seaOnlyMoved(live, next) {
   const fields = Object.keys(next);
-  if (fields.length !== Object.keys(live).length || !fields.every(field => field in live && (SEA_MOVING_FIELDS.includes(field) || field === 'uvs' || field === 'vertexGroups'))) return false;
+  if (fields.length !== Object.keys(live).length || !fields.every(field => field in live && (SEA_MOVING_FIELDS.includes(field) || field === 'uvs' || SEA_MOVING_MAPS.includes(field)))) return false;
   if (next.uvs && (live.uvs.length !== next.uvs.length || next.uvs.some((value, index) => value !== live.uvs[index]))) return false;
-  if (!SEA_MOVING_FIELDS.every(field => !next[field] || (live[field].length === next[field].length && live[field].constructor === next[field].constructor))) return false;
-  const groups = Object.keys(next.vertexGroups ?? {});
-  return groups.length === Object.keys(live.vertexGroups ?? {}).length && groups.every(name => live.vertexGroups[name]?.length === next.vertexGroups[name].length);
+  if (!SEA_MOVING_FIELDS.every(field => !next[field] || sameTypedArray(live[field], next[field]))) return false;
+  return SEA_MOVING_MAPS.every((map) => {
+    const names = Object.keys(next[map] ?? {});
+    return names.length === Object.keys(live[map] ?? {}).length && names.every(name => sameTypedArray(live[map][name], next[map][name]));
+  });
 }
 
 // A copy of a sea with its own moving arrays, which later times overwrite. The geometry a frame cache holds stays untouched.
 function liveSea(sea) {
-  const vertexGroups = sea.vertexGroups && Object.fromEntries(Object.entries(sea.vertexGroups).map(([name, weights]) => [name, weights.slice()]));
-  const copy = { ...sea, ...(vertexGroups && { vertexGroups }) };
-  for (const field of SEA_MOVING_FIELDS) {
-    if (sea[field]) copy[field] = sea[field].slice();
-  }
+  const copy = { ...sea };
+  for (const field of SEA_MOVING_FIELDS) if (sea[field]) copy[field] = sea[field].slice();
+  for (const map of SEA_MOVING_MAPS) if (sea[map]) copy[map] = Object.fromEntries(Object.entries(sea[map]).map(([name, values]) => [name, values.slice()]));
   return markLiveGeometry(Object.freeze(copy), { reindexed: true });
 }
 
-/**
- * Each sea an ocean time track drives keeps one geometry per node, so a renderer keeps its part and uploads new positions,
- * normals, foam and triangle indices (updatePartVertices) instead of building a batch for every time. A sea that changed in any
- * other way, such as its vertex or triangle count, replaces the kept one and the renderer swaps its parts as before.
- */
-function seasKeptInPlace(stagedState, geometries) {
-  const seaNodeIds = oceanTrackNodeIds(stagedState.recipe);
+// Each sea an ocean time track drives keeps one geometry per node, so a renderer keeps its part and uploads new positions,
+// normals, foam and triangle indices (updatePartVertices) instead of building a batch for every time.
+function keepSeaInPlace(stagedState, nodeId, next) {
   const kept = stagedState.liveSeas ??= new Map();
-  let result = geometries;
-  for (const nodeId of seaNodeIds) {
-    const next = geometries.get(nodeId);
-    if (!next) continue;
-    const live = kept.get(nodeId);
-    if (live && seaOnlyMoved(live, next)) {
-      for (const field of SEA_MOVING_FIELDS) {
-        if (next[field]) live[field].set(next[field]);
-      }
-      for (const [name, weights] of Object.entries(next.vertexGroups ?? {})) live.vertexGroups[name].set(weights);
-    } else {
-      kept.set(nodeId, liveSea(next));
-    }
-    if (result === geometries) result = new Map(geometries);
-    result.set(nodeId, kept.get(nodeId));
+  const live = kept.get(nodeId);
+  if (live && seaOnlyMoved(live, next)) {
+    for (const field of SEA_MOVING_FIELDS) if (next[field]) live[field].set(next[field]);
+    for (const map of SEA_MOVING_MAPS) for (const [name, values] of Object.entries(next[map] ?? {})) live[map][name].set(values);
+  } else {
+    kept.set(nodeId, liveSea(next));
   }
-  return result;
+  return kept.get(nodeId);
 }
 
 // Cloth and particles replace the geometry of their own nodes at a sampled time; no node belongs to both.
@@ -1926,7 +1909,7 @@ function publishPose(stagedState, pose) {
   stagedState.movedLook = pose.movedLook;
   stagedState.motionTime = pose.time;
   const previousParts = stagedState.parts;
-  const sampledParts = partsWithCloth(stagedState.restParts, pose.clothGeometries && seasKeptInPlace(stagedState, pose.clothGeometries), previousParts);
+  const sampledParts = partsWithCloth(stagedState.restParts, pose.clothGeometries, previousParts);
   // Ranked also when the parts did not change: staging an edit ranks the rest parts, so the drawn parts get their ranks back.
   stagedState.parts = stagedState.rankFlushParts ? stagedState.rankFlushParts(sampledParts) : sampledParts;
   return stagedState.parts !== previousParts;
@@ -1991,10 +1974,7 @@ function meshGeometryTarget(candidate, operation, remedy) {
 function removeNode(candidate, operation) {
   knownKeys(operation, ['type', 'id', 'recursive'], 'operation');
   identifier(operation.id);
-  const recursive = operation.recursive === undefined ? false : operation.recursive;
-  if (typeof recursive !== 'boolean') {
-    throw invalidField('recursive', recursive, 'true or false', TypeError);
-  }
+  const recursive = optionalBoolean(operation.recursive, 'recursive', false);
   if (!candidate.nodes.some(node => node.id === operation.id)) {
     throw invalidField('id', operation.id, 'the ID of a node in nodes; scene_inspect lists them');
   }
@@ -2026,6 +2006,7 @@ function removeNode(candidate, operation) {
 /** A bounded CPU authoring session. Render adapters must treat geometry as immutable. */
 export function createAgentScene(input, inputLimits = {}, options = {}) {
   const limits = resolveLimits(inputLimits);
+  const deferInitialFlush = optionalBoolean(options.deferInitialFlush, 'deferInitialFlush', false);
   const assetOutputCache = new Map();
   // The on-demand modules this scene's recipe and edits named. Default stages (flush ranking, floor sky) run only for these.
   const requestedModules = new Set(defaultStageModulesNamed(input));
@@ -2480,10 +2461,8 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     return first.length === second.length && first.every((part, index) => part === second[index]);
   }
 
-  // An edit of a scene that holds this many triangles to rank does not wait for the search (#2905): it returns with the parts
-  // unranked and the search runs right after, on the next turn of the event loop. A new scene is still ranked inside the call,
-  // so a render job built from a recipe never misses an offset. A scene whose parts move (#2787) searches its still parts the
-  // same way; the rest parts and the posed parts of that edit share the one search (see joinPendingFlush).
+  // Heavy scenes (>= DEFERRED_FLUSH_TRIANGLES) defer flush on edits (#2905) and initial build if `options.deferInitialFlush` (#2842).
+  // Moving scenes (#2787) share one search across rest and posed parts (see joinPendingFlush).
   const DEFERRED_FLUSH_TRIANGLES = 100_000;
   let pendingFlush = null;
 
@@ -2492,14 +2471,14 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   }
 
   function cancelPendingFlush() {
-    if (pendingFlush) {
-      pendingFlush.runner.cancel();
-      pendingFlush = null;
-    }
+    if (!pendingFlush) return;
+    pendingFlush.runner.cancel();
+    pendingFlush = null;
   }
 
   function shouldDeferFlush(rankedParts) {
-    return state !== null && triangleCountOf(rankedParts) >= (options.deferFlushTriangles ?? DEFERRED_FLUSH_TRIANGLES)
+    return (state !== null || deferInitialFlush)
+      && triangleCountOf(rankedParts) >= (options.deferFlushTriangles ?? DEFERRED_FLUSH_TRIANGLES)
       && !rankedLists().some(candidate => sameParts(candidate.rankedParts, rankedParts));
   }
 
@@ -2526,12 +2505,9 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     return staged;
   }
 
-  // Finishes the deferred search now, whether the slices ran out or a caller needs the ranks first. It is the same search a cold
-  // edit runs, so the result is byte for byte the same.
+  // Finishes the deferred search now; it is the same search a cold build runs, so the result is byte for byte the same.
   function settleFlush() {
-    if (!pendingFlush) {
-      return false;
-    }
+    if (!pendingFlush) return false;
     pendingFlush.runner.drain();
     return true;
   }
@@ -2539,6 +2515,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   // The drawn parts are swapped for the ranked list as a topology change.
   function finishFlush(pending, searched) {
     pendingFlush = null;
+    if (!state) return;
     let regrouped = false;
     for (const { parts, rest } of pending.targets) {
       const staged = rankAndStage(agentSceneModule('coplanar'), pending.recipe, parts, rest, searched);
@@ -2549,15 +2526,11 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         regrouped = true;
       }
     }
-    if (regrouped) {
-      topologyRevision++;
-    }
+    if (regrouped) topologyRevision++;
   }
 
   function stageCoplanarOffsets(recipe, parts, { rest = false } = {}) {
-    if (options.recipeOnly || !agentSceneModuleActive('coplanar', requestedModules)) {
-      return parts;
-    }
+    if (options.recipeOnly || !agentSceneModuleActive('coplanar', requestedModules)) return parts;
     const coplanar = agentSceneModule('coplanar');
     if (recipe.environment.resolveCoplanar === false) {
       cancelPendingFlush();
@@ -2572,9 +2545,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     }
     const rankedParts = partsToRank(recipe, parts);
     if (pendingFlush && sameParts(pendingFlush.rankedParts, rankedParts)) {
-      if (!pendingFlush.targets.some(target => target.parts === parts)) {
-        joinPendingFlush(parts, rest);
-      }
+      if (!pendingFlush.targets.some(target => target.parts === parts)) joinPendingFlush(parts, rest);
       return parts;
     }
     if (flushCache?.parts !== parts && flushCache?.staged !== parts) {
@@ -2761,7 +2732,12 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     }
   }
 
-  commit(stage(input), false);
+  try {
+    commit(stage(input), false);
+  } catch (error) {
+    cancelPendingFlush();
+    throw error;
+  }
   return Object.freeze({
     capabilities: AGENT_SCENE_CAPABILITIES,
     limits,
@@ -3021,9 +2997,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         if (operation.type === 'edit-mesh') {
           knownKeys(operation, ['type', 'geometry', 'edits', 'replace'], 'operation');
           const target = meshGeometryTarget(candidate, operation, type => `Add a mesh geometry with base: { type: '${type}', ... } to edit it.`);
-          if (operation.replace !== undefined && typeof operation.replace !== 'boolean') {
-            throw invalidField('replace', operation.replace, 'true or false', TypeError);
-          }
+          optionalBoolean(operation.replace, 'replace');
           if (!Array.isArray(operation.edits)) {
             throw invalidField('edits', operation.edits, 'an array of mesh edits, such as [{ "op": "extrude" }]', TypeError);
           }
@@ -3114,9 +3088,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     inspect(options = {}) {
       knownKeys(options, ['ids', 'limit', 'includeBounds', 'path'], 'inspection');
       const maximum = integer(options.limit ?? Math.min(64, limits.maxNodes), 1, limits.maxNodes, 'inspection limit');
-      if (options.includeBounds !== undefined && typeof options.includeBounds !== 'boolean') {
-        throw invalidField('includeBounds', options.includeBounds, 'true or false', TypeError);
-      }
+      optionalBoolean(options.includeBounds, 'includeBounds');
       if (options.ids !== undefined && (!Array.isArray(options.ids) || options.ids.length > limits.maxNodes)) {
         throw invalidField('ids', Array.isArray(options.ids) ? `${options.ids.length} IDs` : options.ids, `a list of at most ${limits.maxNodes} node IDs, such as ["body"]`);
       }

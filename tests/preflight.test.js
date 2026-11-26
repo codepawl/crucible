@@ -66,6 +66,16 @@ test('--skip-tests skips the build, the tests and the coverage gate', () => {
   }
 });
 
+test('preflight runs affected tests only when --skip-tests is set', () => {
+  const skipped = checkNamed(planChecks(['docs/guide.md'], { skipTests: true, baseRef: 'origin/main' }), 'affected tests');
+  assert.equal(skipped.skipped, null);
+  assert.deepEqual(skipped.command, ['node', 'scripts/test-affected.mjs', '--base', 'origin/main']);
+  const defaultBase = checkNamed(planChecks(['docs/guide.md'], { skipTests: true }), 'affected tests');
+  assert.deepEqual(defaultBase.command, ['node', 'scripts/test-affected.mjs']);
+  const full = checkNamed(planChecks(['docs/guide.md']), 'affected tests');
+  assert.match(full.skipped, /full unit test pass/);
+});
+
 test('manual GPU checks are pointed out by the files they cover', () => {
   const commands = manualChecksFor(['src/cascaded-shadows.js', 'src/gltf-loader.js']).map(check => check.command);
   assert.deepEqual(commands, ['npm run reference', 'npm run smoke:character']);

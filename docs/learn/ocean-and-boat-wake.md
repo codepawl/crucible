@@ -1,5 +1,7 @@
 # Ocean and boat wake
 
+![A boat riding ocean waves with a churned white wake behind it, rendered in Crucible](/previews/ocean-boat-wake.webp)
+
 The `ocean` mesh edit draws a sea, and a crate or a boat that you mark as floating rides its waves.
 
 - Draw the sea with the `ocean` stack operation (wind speed, choppiness, size, seed, resolution). See [mesh editing](/mesh.md).
