@@ -15,6 +15,7 @@ import { liftRankedTriangles } from './flush-lift.js';
 import { RAY_VISIBILITY_BITS } from './ray-visibility.js';
 import { DEFAULT_BACKGROUND } from './clear-colour.js';
 import { lampLightMasks } from './lamp-mesh.js';
+import { displaceTraceParts } from './path-tracer-displacement.js';
 
 // The scene a path trace reads: every part flattened into one world-space triangle soup with per-vertex normals, UVs
 // and colours, one resolved material per part, the lights in plain arrays, and the environment map as a sampling table.
@@ -1022,14 +1023,14 @@ export function uniqueTriangleCount(scene) {
  * still, the real-time tracer and the light bake. A page with no device builds with the default bound, so a scene error
  * reaches the caller before the device error of the trace.
  */
-export async function buildTraceSceneForDevice(allParts, environment, gpuModule) {
+export async function buildTraceSceneForDevice(allParts, environment, gpuModule, traceOptions = {}) {
   let deviceLimit;
   try {
     deviceLimit = await gpuModule.gpuTriangleLimit();
   } catch {
     deviceLimit = undefined;
   }
-  const options = deviceLimit === undefined ? {} : { gpuTriangleLimit: deviceLimit };
+  const options = { ...traceOptions, ...(deviceLimit === undefined ? {} : { gpuTriangleLimit: deviceLimit }) };
   if (gpuModule.supportsInstancing === true) options.instancing = true;
   return buildTraceScene(allParts, environment, options);
 }
@@ -1133,19 +1134,17 @@ export function buildTraceScene(allParts, environment = {}, options = {}) {
   // A frame where every part is hidden traces the sky or background alone, like the rasterizer (#1806). The BVH and the native kernel need one triangle.
   const parts = Array.isArray(allParts) && allParts.length > 0 && shownParts.length === 0 ? [UNHITTABLE_PLACEHOLDER_PART] : shownParts;
   const tryInstancing = (options.instancing === true || options.instanceNormalMappedParts === true) && Array.isArray(parts) && parts.length > 0;
-  const geometries = tryInstancing ? parts.map(traceGeometry) : undefined;
+  const geometries = tryInstancing ? displaceTraceParts(parts, parts.map(traceGeometry), limits, options, validatePart, resolveTexture) : undefined;
   const instancesWanted = options.instancing === true && countSharedGeometries(parts, geometries) > 0;
   const tiltNeedsInstances = tryInstancing && options.instanceNormalMappedParts === true && parts.some((part, index) => needsInstanceForNormalMap(part, geometries[index]));
   if (instancesWanted || tiltNeedsInstances) return buildInstancedTraceScene(parts, geometries, environment, localVolumes, limits);
   if (!Array.isArray(parts) || parts.length < 1 || parts.length > limits.parts.count) {
-    if (!Array.isArray(parts) || parts.length < 1) {
-      if (limits.parts.native) throw new RangeError(`A native path trace takes 1 to ${limits.parts.count} parts, got ${Array.isArray(parts) ? 0 : parts}. Pass at least one part with geometry.`);
-    } else if (limits.parts.native) {
-      throw new RangeError(`A native path trace takes 1 to ${limits.parts.count} parts, got ${parts.length}. Merge small meshes into one part.`);
-    }
-    throw new RangeError(`A path trace takes 1 to ${MAX_TRACE_PARTS} parts.`);
+    const nativeError = !Array.isArray(parts) || parts.length < 1
+      ? `A native path trace takes 1 to ${limits.parts.count} parts, got ${Array.isArray(parts) ? 0 : parts}. Pass at least one part with geometry.`
+      : `A native path trace takes 1 to ${limits.parts.count} parts, got ${parts.length}. Merge small meshes into one part.`;
+    throw new RangeError(limits.parts.native ? nativeError : `A path trace takes 1 to ${MAX_TRACE_PARTS} parts.`);
   }
-  const geometry = flattenParts(parts, geometries, limits);
+  const geometry = flattenParts(parts, geometries ?? displaceTraceParts(parts, parts.map(traceGeometry), limits, options, validatePart, resolveTexture), limits);
   const bvh = buildTriangleBvh(geometry.positions, geometry.indices);
   const bounds = boundingBoxOf(geometry.positions);
   const extent = extentOf(bounds);

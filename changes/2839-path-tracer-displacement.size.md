@@ -1,0 +1,8 @@
+- entry:light-bake-gpu: pulls `path-tracer-displacement.js` via `buildTraceScene` for `heightMap` subdivision and displacement (#2839)
+- entry:light-bake-gpu+lazy: pulls `path-tracer-displacement.js` via `buildTraceScene` for `heightMap` subdivision and displacement (#2839)
+- entry:path-tracer: adds `path-tracer-displacement.js` for bounded triangle subdivision, welded normals and displaced normal recalculation (#2839)
+- entry:path-tracer+lazy: adds `path-tracer-displacement.js` for bounded triangle subdivision, welded normals and displaced normal recalculation (#2839)
+- entry:path-tracer-progressive: pulls `path-tracer-displacement.js` via `buildTraceScene` for `heightMap` displacement (#2839)
+- entry:path-tracer-progressive+lazy: pulls `path-tracer-displacement.js` via `buildTraceScene` for `heightMap` displacement (#2839)
+- entry:path-tracer-realtime: pulls `path-tracer-displacement.js` via `buildTraceScene` for `heightMap` displacement (#2839)
+- entry:path-tracer-realtime+lazy: pulls `path-tracer-displacement.js` via `buildTraceScene` for `heightMap` displacement (#2839)

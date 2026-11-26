@@ -16,6 +16,7 @@ import { buildLightTree, chooseLightFromTree, LIGHT_TREE_FIRST_HIT_LIGHTS, resol
 import { createRandomWalk, WALK_OUTCOME } from './path-tracer-subsurface.js';
 import { describeUntracedWater } from './path-tracer-water.js';
 import { henyeyGreensteinPhase, sampleHenyeyGreensteinCosine, volumeInterval, createLocalVolumeCrossing, createLocalVolumeSurfaceShadow, meanEnvironmentRadiance } from './path-tracer-volume.js';
+import { heightMapIgnoredNote } from './path-tracer-displacement.js';
 
 // Offline still renderer: unidirectional path tracing on the CPU with next-event estimation for every light, the
 // environment map drawn by importance, and a wavelet denoiser. It reads the same parts, materials, lights and camera
@@ -47,7 +48,7 @@ const ADAPTIVE_MINIMUM_SAMPLES = 16;
 const ADAPTIVE_BATCH_SAMPLES = 8;
 // Mean luminance added to the standard error's reference, so very dark pixels are not held to a relative error.
 const CONVERGENCE_LUMINANCE_FLOOR = 0.05;
-const IGNORED_MAP_FIELDS = ['heightMap'];
+const IGNORED_MAP_FIELDS = [];
 // Shading layers of the rasterizer that the tracer's surface model has no term for.
 const IGNORED_LAYERS = [
   ['anisotropy', material => material.anisotropy > 0, true],
@@ -1215,6 +1216,8 @@ export function describeIgnoredFeatures(parts, environment, backend = 'cpu', { k
     if (material.tag === 'water' && backend === 'gpu') notes.add('The depth tint under a thin water sheet is not drawn: the CPU, WebGPU and native cycles tracers add an absorbing medium under it, the WebGL tracer draws the water clear.');
     if (partUsesVertexAlpha(part)) notes.add(vertexAlphaNote(backend, kernelMaterials, material.alphaMode));
     for (const field of IGNORED_MAP_FIELDS) if (material[field]) notes.add(`${field} is ignored.`);
+    const heightNote = heightMapIgnoredNote(part);
+    if (heightNote) notes.add(heightNote);
     if (material.occlusionMap && (kernelMaterials || (backend !== 'cpu' && backend !== 'webgpu'))) notes.add(kernelMaterials ? 'occlusionMap is ignored by the native cycles kernel: its material record has no occlusion slot (codepawl/cook#71). Use backend "cpu" or "webgpu" to trace it.' : `occlusionMap is ignored by the ${backend} tracer: only the CPU and WebGPU tracers read it. Use backend "cpu" or "webgpu" to trace it.`);
     if (material.tag && material.tag !== 'surface' && material.tag !== 'water') notes.add(`${material.tag} materials are traced as plain surfaces.`);
     if (material.alphaMode === 'blend' && hasGraphOpacity(material)) notes.add('A graph opacity output is traced as a cutout at 0.5.');
@@ -1228,11 +1231,6 @@ export function describeIgnoredFeatures(parts, environment, backend = 'cpu', { k
   return [...notes];
 }
 
-/**
- * Renders rows `rowStart` up to `rowEnd` and returns their buffers (colour, albedo, normal, depth, variance), row
- * major from the band's first row. A pixel's random numbers depend only on its place in the whole image, so bands
- * can be drawn in any order, on any thread, and give the same pixels.
- */
 /**
  * True when the mean luminance of a pixel is known well enough: its standard error, relative to the mean plus a small
  * floor so that near-black pixels do not ask for endless samples, is under `threshold`. It reads only the pixel's own
@@ -1407,7 +1405,7 @@ export async function renderPathTracedImage({ parts, environment = {}, camera },
   const gpuModule = options.backend === 'gpu' || options.backend === 'webgpu'
     ? await (options.backend === 'webgpu' ? import('./path-tracer-webgpu.js') : import('./path-tracer-gpu.js'))
     : null;
-  const scene = gpuModule ? await buildTraceSceneForDevice(parts, environment, gpuModule) : buildTraceScene(parts, environment);
+  const scene = gpuModule ? await buildTraceSceneForDevice(parts, environment, gpuModule, { eye: view.eye }) : buildTraceScene(parts, environment, { eye: view.eye });
   if (options.backend !== 'cpu' && options.backend !== 'webgpu') refuseLocalVolumes(scene, `backend "${options.backend}"`);
   const pixelCount = width * height;
   const buffers = {
