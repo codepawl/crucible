@@ -5,7 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="theme-color" content="#f8f7f1" media="(prefers-color-scheme: light)" /><meta name="theme-color" content="#17161a" media="(prefers-color-scheme: dark)" />
     <link rel="preload" href="/fonts/plus-jakarta-sans-latin-3.woff2" as="font" type="font/woff2" crossorigin /><link rel="preload" href="/fonts/inter-latin-6.woff2" as="font" type="font/woff2" crossorigin />
     <meta name="description" content="Load a GLB asset into Crucible, inspect its materials and scrub rigid node animation." />
-    <title>Asset viewer · Crucible</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Crucible" />
+    <meta property="og:title" content="Asset viewer - Crucible" />
+    <meta property="og:description" content="Load a GLB asset into Crucible, inspect its materials and scrub rigid node animation." />
+    <meta property="og:url" content="https://crucible.codepawl.com/assets.html" />
+    <meta property="og:image" content="https://crucible.codepawl.com/og.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://crucible.codepawl.com/assets.html" />
+    <title>Asset viewer - Crucible</title>
   <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" /><link rel="icon" href="/favicon.ico?v=2" sizes="48x48" /><link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   </head>
   <body class="themed viewer viewer-screen assets">
@@ -45,7 +53,7 @@
       </section>
       <section class="stage" aria-label="3D asset"><canvas id="viewport" tabindex="0" aria-label="Asset view. Drag to orbit, scroll to zoom."></canvas><p id="notice" class="notice" role="status" hidden></p></section>
       <div class="timeline"><button id="play" disabled>▶ Play</button><label for="time">Timeline</label><input id="time" type="range" min="0" max="1" step="0.01" value="0" disabled /><output id="time-value">0.00 s</output><span class="metrics" id="metrics"></span></div>
-      <p class="hint"><span>Drag to orbit · Scroll to zoom · Drop a GLB file</span><a href="./docs.html#import-and-export-models">API guide ↗</a></p>
+      <p class="hint"><span>Drag to orbit, scroll to zoom, drop a GLB file</span><a href="./docs.html#import-and-export-models">API guide ↗</a></p>
     </main>
     <script type="module" src="/src/asset-viewer.js"></script>
   </body>

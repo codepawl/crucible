@@ -17,11 +17,11 @@
 </p>
 
 <p align="center">
-  <a href="https://crucible.codepawl.com">Website</a> ·
-  <a href="https://crucible.codepawl.com/docs.html">Docs</a> ·
-  <a href="https://crucible.codepawl.com/showcase.html">Showcase</a> ·
-  <a href="https://crucible.codepawl.com/llms.txt">Guide for agents</a> ·
-  <a href="https://github.com/codepawl/crucible/blob/main/CHANGELOG.md">Changelog</a> ·
+  <a href="https://crucible.codepawl.com">Website</a>
+  <a href="https://crucible.codepawl.com/docs.html">Docs</a>
+  <a href="https://crucible.codepawl.com/showcase.html">Showcase</a>
+  <a href="https://crucible.codepawl.com/llms.txt">Guide for agents</a>
+  <a href="https://github.com/codepawl/crucible/blob/main/CHANGELOG.md">Changelog</a>
   <a href="https://github.com/codepawl/crucible/discussions">Discussions</a>
 </p>
 
@@ -310,9 +310,10 @@ Company sponsors get their logo here from $100 a month.
   <sub>Crucible is made by CodePawl, an independent 3D studio in Vietnam.</sub>
   <br>
   <sub>
-    <a href="https://x.com/codepawl">X</a> ·
-    <a href="https://github.com/codepawl">GitHub</a> ·
-    <a href="https://www.youtube.com/@codepawlhq">YouTube</a> ·
+    <a href="https://x.com/anxuanng">X</a>
+    <a href="https://github.com/codepawl">GitHub</a>
+    <a href="https://www.youtube.com/@codepawlhq">YouTube</a>
     <a href="https://www.threads.com/@codepawl">Threads</a>
+    <a href="https://huggingface.co/codepawl">Hugging Face</a>
   </sub>
 </p>

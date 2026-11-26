@@ -123,8 +123,8 @@ function initialize() {
   document.querySelector('#view-controls').hidden = state.scene === 'poster';
   document.querySelectorAll('[data-view]').forEach(control => control.setAttribute('aria-pressed', String(control.dataset.view === state.view)));
   document.querySelector('#scene-title').textContent = state.scene === 'poster' ? 'Orbital field' : 'Microscope study';
-  document.querySelector('#view-title').textContent = state.scene === 'poster' ? 'Flat vector geometry · orthographic' : `${state.view[0].toUpperCase()}${state.view.slice(1)} · ${state.view === 'perspective' ? 'perspective' : 'orthographic'}`;
-  document.querySelector('#metrics').textContent = `${parts.length} parts · ${renderer.batches.length} draws`;
+  document.querySelector('#view-title').textContent = state.scene === 'poster' ? 'Flat vector geometry, orthographic' : `${state.view[0].toUpperCase()}${state.view.slice(1)}, ${state.view === 'perspective' ? 'perspective' : 'orthographic'}`;
+  document.querySelector('#metrics').textContent = `${parts.length} parts, ${renderer.batches.length} draws`;
   document.querySelector('#time').disabled = state.scene === 'model';
   document.querySelector('#play').disabled = state.scene === 'model';
   canvas.setAttribute('aria-label', `${state.scene === 'poster' ? 'Vector poster' : 'Microscope camera view'}. Drag to pan, scroll to zoom. Arrow keys pan, plus and minus zoom.`);
@@ -142,7 +142,7 @@ document.querySelectorAll('[data-view]').forEach(button => button.addEventListen
   state.pan = [0, 0];
   state.zoom = 1;
   document.querySelectorAll('[data-view]').forEach(control => control.setAttribute('aria-pressed', String(control === button)));
-  document.querySelector('#view-title').textContent = `${button.textContent} · ${state.view === 'perspective' ? 'perspective' : 'orthographic'}`;
+  document.querySelector('#view-title').textContent = `${button.textContent}, ${state.view === 'perspective' ? 'perspective' : 'orthographic'}`;
   invalidate();
 }));
 document.querySelector('#time').addEventListener('input', event => {

@@ -93,11 +93,17 @@ export function renderFooter() {
     `      <a href="https://www.npmjs.com/package/@codepawlhq/crucible">${icon('npm')}npm</a>`,
     '      <a data-release-commit href="https://github.com/codepawl/crucible">Release commit</a>',
     '      <a href="/license.txt">MIT license</a>',
-    '      <a href="/logo.svg" download>Logo SVG</a>',
-    '      <a href="https://github.com/sponsors/codepawl">Sponsor</a>',
-    '    </nav>',
-    '  </div>',
-    '</footer>',
+      '      <a href="/logo.svg" download>Logo SVG</a>',
+      '      <a href="https://github.com/sponsors/codepawl">Sponsor</a>',
+      '    </nav>',
+      '    <nav aria-label="Social links">',
+      '      <a href="https://x.com/anxuanng">X</a>',
+      '      <a href="https://www.threads.com/@codepawl">Threads</a>',
+      '      <a href="https://www.youtube.com/@codepawlhq">YouTube</a>',
+      '      <a href="https://huggingface.co/codepawl">Hugging Face</a>',
+      '    </nav>',
+      '  </div>',
+      '</footer>',
   ].join('\n');
 }
 

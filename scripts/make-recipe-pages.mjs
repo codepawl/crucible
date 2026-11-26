@@ -18,7 +18,10 @@ export function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function pageShell({ title, description, path, body }) {
+function pageShell({ title, description, path, image = '/og.jpg', body }) {
+  const canonicalUrl = `${ORIGIN}${path}`;
+  const imageUrl = `${ORIGIN}${image}`;
+  const fullTitle = `${title} - Crucible`;
   const page = `<!doctype html>
 <html lang="en" data-theme="crucible">
   <head>
@@ -26,8 +29,15 @@ function pageShell({ title, description, path, body }) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     ${THEME_COLOR_META}
     <meta name="description" content="${escapeHtml(description)}" />
-    <link rel="canonical" href="${ORIGIN}${path}" />
-    <title>${escapeHtml(title)} · Crucible</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Crucible" />
+    <meta property="og:title" content="${escapeHtml(fullTitle)}" />
+    <meta property="og:description" content="${escapeHtml(description)}" />
+    <meta property="og:url" content="${canonicalUrl}" />
+    <meta property="og:image" content="${imageUrl}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="${canonicalUrl}" />
+    <title>${escapeHtml(fullTitle)}</title>
     <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" /><link rel="icon" href="/favicon.ico?v=2" sizes="48x48" /><link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   </head>
   <body class="site themed recipes">
@@ -81,7 +91,7 @@ ${mediaSection(recipe)}
       <div class="recipe-why">${whyLines}</div>
 ${blocks.join('\n')}
       <p class="recipe-file"><a href="/recipes/${recipe.slug}.json" download>Download ${recipe.slug}.json</a><span>Paste it into <code>scene_create</code> as <code>recipe</code>.</span></p>`;
-  return pageShell({ title: recipe.title, description: recipe.summary, path, body });
+  return pageShell({ title: recipe.title, description: recipe.summary, path, image: `/recipes/${recipe.slug}-after.webp`, body });
 }
 
 export function renderIndexPage() {

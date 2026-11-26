@@ -8,17 +8,17 @@ No. You can use them side by side. three.js is a general 3D library that you pro
 
 ## Is there a visual editor?
 
-Yes, Studio, an optional addon that edits the same scene recipe as the MCP tools. It is not a page of the public site. The [Studio guide](https://github.com/codepawl/crucible/blob/main/docs/studio.md) says how to use it.
+Yes, Studio is an editor built on the same scene recipe as the MCP tools. The [Studio guide](https://github.com/codepawl/crucible/blob/main/docs/studio.md) says how to use it.
 
 ## Is it faster or smaller than three.js?
 
-It is smaller. A lit box is 49,858 bytes gzip in Crucible and 133,652 bytes in three.js 0.186.1. A box loaded from a GLB is 77,122 against 155,814 bytes. Both were measured on 2026-11-03 ([size bench](https://github.com/codepawl/crucible/blob/main/bench/size/README.md)).
+It is smaller. On `lit-box`, Crucible is 58,788 bytes gzip and three.js is 133,797 bytes (2.28× smaller), measured on 2026-11-11 ([size bench](https://github.com/codepawl/crucible/blob/main/bench/size/README.md)).
 
 It is not faster in general. On 2026-11-04, three.js drew the faster full frame in most runtime bench scenes. Crucible was faster on two of them: many copies of one object, and moving shadows. The [performance page](#performance-and-memory/where-three-js-still-wins) has the numbers.
 
 ## Why JavaScript, and why not Vulkan or DirectX?
 
-Crucible draws in the browser, so it uses WebGL2, which every current desktop and phone browser has. A page or an agent can show a scene with no install. A native Vulkan or DirectX backend is not planned. A native path tracer package is an open idea in issue #626.
+Crucible draws real-time frames in the browser on WebGL2, so a page or an agent can show a scene with no install. For offline rendering, the optional Cook package (`@codepawlhq/cook`) adds a native Vulkan ray-query path tracer ([path tracer guide](#cook-path-tracer)).
 
 ## What is the benefit over asking an agent to "make it in three.js"?
 
@@ -62,4 +62,4 @@ This is not measured yet. Issue #746 adds an opt-in local log of tool calls, and
 
 ## How do I help?
 
-Read the [contributing guide](https://github.com/codepawl/crucible/blob/main/CONTRIBUTING.md) and pick an issue. Issues marked `good first issue` are small and self-contained, such as OBJ and STL export (issue #747).
+Read the [contributing guide](https://github.com/codepawl/crucible/blob/main/CONTRIBUTING.md) and pick an open [`good first issue`](https://github.com/codepawl/crucible/issues?q=is%3Aopen+label%3A%22good+first+issue%22).

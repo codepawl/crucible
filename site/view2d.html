@@ -4,7 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f8f7f1" media="(prefers-color-scheme: light)" /><meta name="theme-color" content="#17161a" media="(prefers-color-scheme: dark)" />
     <link rel="preload" href="/fonts/plus-jakarta-sans-latin-3.woff2" as="font" type="font/woff2" crossorigin /><link rel="preload" href="/fonts/inter-latin-6.woff2" as="font" type="font/woff2" crossorigin />
-    <title>2D & orthographic views · Crucible</title>
+    <meta name="description" content="Inspect flat vector geometry and orthographic camera views in Crucible." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Crucible" />
+    <meta property="og:title" content="2D & orthographic views - Crucible" />
+    <meta property="og:description" content="Inspect flat vector geometry and orthographic camera views in Crucible." />
+    <meta property="og:url" content="https://crucible.codepawl.com/view2d.html" />
+    <meta property="og:image" content="https://crucible.codepawl.com/og.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://crucible.codepawl.com/view2d.html" />
+    <title>2D & orthographic views - Crucible</title>
   <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" /><link rel="icon" href="/favicon.ico?v=2" sizes="48x48" /><link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   </head>
   <body class="themed viewer viewer-screen view2d">
@@ -38,7 +47,7 @@
       </header>
       <section class="stage" aria-label="Interactive scene">
         <canvas id="viewport" tabindex="0" aria-label="Vector poster. Drag to pan, scroll to zoom. Arrow keys pan, plus and minus zoom."></canvas>
-        <div class="scene-caption"><strong id="scene-title">Orbital field</strong><span id="view-title">Flat vector geometry · orthographic</span></div>
+        <div class="scene-caption"><strong id="scene-title">Orbital field</strong><span id="view-title">Flat vector geometry, orthographic</span></div>
         <p class="notice" id="notice" role="status" hidden></p>
       </section>
       <div class="timeline">
@@ -48,7 +57,7 @@
         <output id="time-value" for="time">0.00 / 8.00 s</output>
         <span class="metrics" id="metrics"></span>
       </div>
-      <p class="hint">Drag to pan · Scroll to zoom · F to fit <a href="/object.html">Open 3D studio ↗</a></p>
+      <p class="hint">Drag to pan, scroll to zoom, F to fit <a href="/object.html">Open 3D studio ↗</a></p>
     </main>
     <script type="module" src="/src/view2d.js"></script>
   </body>

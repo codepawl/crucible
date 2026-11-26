@@ -97,7 +97,7 @@ function updateMotionButton() {
 }
 
 function updateStatistics() {
-  document.querySelector('#geometry-stat').textContent = `${Math.round(renderer.triangles / 1000)}k triangles · ${renderer.batches.length} draws`;
+  document.querySelector('#geometry-stat').textContent = `${Math.round(renderer.triangles / 1000)}k triangles, ${renderer.batches.length} draws`;
   document.querySelector('#memory-stat').textContent = `${Math.round(renderer.memoryPlan.estimatedBytes / 1048576)} MB estimated`;
 }
 
