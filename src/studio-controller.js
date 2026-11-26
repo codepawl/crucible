@@ -8,22 +8,12 @@ import { operationsBetweenRecipes, sameRecipeValue } from './studio-history-diff
 import { EDIT_LABEL_FALLBACK, GIZMO_EDIT_LABELS, nameEditOperations, nameEditTarget, nodeLabelIn } from './studio-edit-names.js';
 import { MAX_POINT_LIGHTS, MAX_AREA_LIGHTS, MAX_SPOT_LIGHTS } from './light-limits.js';
 import { registeredStudioTabIds } from './studio-registry.js';
-import {
-  STUDIO_MATERIAL_PRESETS,
-  STUDIO_PRIMITIVE_GROUPS,
-  STUDIO_PRIMITIVES,
-  STUDIO_TABS,
-  STUDIO_TEMPLATES,
-  STUDIO_TOOLS,
-  STUDIO_VIEW_PRESETS,
-  primitiveGeometrySpec,
-} from './studio-templates.js';
+import { STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, STUDIO_TABS, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, primitiveGeometrySpec } from './studio-templates.js';
 import {
   OWN_VERTEX_LIMIT,
   SNAP_TARGET_IDS,
   SCALE_SNAP_STEP,
-  findVertexUnderPointer,
-  moveToLandVertex,
+  resolvePointerSnapDelta,
   sampleVertices,
   snapDegrees,
   snapIsActive,
@@ -1793,28 +1783,29 @@ export function createStudioController({
     return snapped;
   }
 
-  // The world point a vertex target would land on: the vertex of another object nearest the pointer within reach, or null.
-  function vertexUnderPointer(pixelX, pixelY) {
-    const candidateParts = currentScene.parts.filter(part => !ownsPart(dragState.selectionIds, part));
-    const projectPoint = worldPointProjector();
-    const found = findVertexUnderPointer({
-      parts: candidateParts,
-      pointer: { x: pixelX, y: pixelY },
-      project: worldPoint => {
-        const projected = projectPoint(worldPoint);
-        return projected.visible ? projected : null;
-      },
-    });
-    return found ? found.point : null;
-  }
-
   // The world move that snapping a free move onto a vertex or a surface makes of it, or null when nothing is in reach: the
   // move is then left free. `freeWorldDelta` is the free move from where the drag began.
   function snappedWorldDelta(target, pixelX, pixelY, freeWorldDelta) {
-    if (target === 'vertex') {
-      const landing = vertexUnderPointer(pixelX, pixelY);
-      dragState.snapMarker = landing;
-      return landing ? moveToLandVertex(dragState.ownPoints, freeWorldDelta, landing) : null;
+    if (dragState.elementDrag || target === 'vertex') {
+      const editSources = dragState.elementDrag ? (elementSession?.snapSources?.() ?? null) : null;
+      const excludedIds = dragState.elementDrag ? new Set([dragState.nodeId]) : dragState.selectionIds;
+      const otherParts = currentScene.parts.filter(part => !ownsPart(excludedIds, part));
+      const ownPart = editSources ? (target === 'vertex' ? editSources.unmovedVertexPart : editSources.unmovedFacePart) : null;
+      const candidateParts = ownPart ? [...otherParts, ownPart] : otherParts;
+      const resolved = resolvePointerSnapDelta({
+        target,
+        pointer: { x: pixelX, y: pixelY },
+        ray: target === 'face' ? screenRay(pixelX, pixelY) : null,
+        freeWorldDelta,
+        basePivot: dragState.basePivot,
+        ownPoints: editSources ? editSources.ownPoints : dragState.ownPoints,
+        candidateParts,
+        projectPoint: worldPointProjector(),
+        queryCache: dragState,
+        cacheKey: ownPart ?? null,
+      });
+      dragState.snapMarker = resolved.marker;
+      return resolved.delta;
     }
     const translation = computeSnapTranslation(dragState.nodeId, pixelX, pixelY, dragState.selectionIds);
     if (!translation) {
@@ -1903,7 +1894,7 @@ export function createStudioController({
     const snapping = !isTyped && snapIsActive(snapEnabled, ctrlKey);
     const incrementSnap = snapping && snapTarget === 'increment';
     // Vertex and Face place a free move; a move kept to an axis or a plane has no free place to land, so it stays free.
-    const landingTarget = snapping && dragState.axis === 'screen' && !dragState.elementDrag && snapTarget !== 'increment' ? snapTarget : null;
+    const landingTarget = snapping && dragState.axis === 'screen' && snapTarget !== 'increment' ? snapTarget : null;
     dragState.snapMarker = null;
     if (dragState.tool === 'translate' && dragState.planeNormal) {
       const ray = screenRay(pixelX, pixelY);
@@ -1929,10 +1920,10 @@ export function createStudioController({
         rawWorldDelta[1] *= factor;
         rawWorldDelta[2] *= factor;
       }
-      if (dragState.elementDrag) {
-        return moveElementSelection(rawWorldDelta, incrementSnap, planeDeltaLabel());
-      }
       const landedDelta = landingTarget ? snappedWorldDelta(landingTarget, pixelX, pixelY, rawWorldDelta) : null;
+      if (dragState.elementDrag) {
+        return moveElementSelection(landedDelta ?? rawWorldDelta, incrementSnap, planeDeltaLabel());
+      }
       const localDelta = toNodeLocalDelta(landedDelta ?? rawWorldDelta, dragState.parentInverse);
       const rawTranslation = [
         dragState.baseTranslation[0] + localDelta[0],
@@ -2066,7 +2057,8 @@ export function createStudioController({
     if (!dragState) {
       return false;
     }
-    const { baseRecipe, changed, nodeId, authoredPose, elementDrag, companions } = dragState;
+    const { baseRecipe, changed, nodeId, authoredPose, elementDrag, companions, snapQuery } = dragState;
+    snapQuery?.dispose();
     dragState = null;
     if (elementDrag) {
       elementSession?.finish(changed);
@@ -2090,7 +2082,8 @@ export function createStudioController({
     if (!dragState) {
       return false;
     }
-    const { nodeId, authoredPose, changed, keyedLive, baseMotion, elementDrag, companions } = dragState;
+    const { nodeId, authoredPose, changed, keyedLive, baseMotion, elementDrag, companions, snapQuery } = dragState;
+    snapQuery?.dispose();
     dragState = null;
     if (elementDrag) {
       elementSession?.cancel();

@@ -1262,3 +1262,117 @@ test('dissolve and merge plans name what to pick', () => {
   assert.deepEqual(planMeshMerge(mesh, 'vertex', new Set([5, 2]), 'last'), { op: 'merge_verts', vertices: [5, 2], at: 'last' });
   assert.deepEqual(planMeshMerge(mesh, 'face', new Set([0]), 'collapse').vertices.length, 4);
 });
+
+function multiObjectEditRecipe() {
+  return {
+    format: 'crucible.scene',
+    schemaVersion: 1,
+    materials: [{ id: 'grey', color: [0.6, 0.6, 0.6] }],
+    geometries: [
+      { id: 'shape', type: 'mesh', base: { type: 'box', bevel: 0 } },
+      { id: 'floor', type: 'box', bevel: 0 },
+      { id: 'target', type: 'box', bevel: 0 },
+    ],
+    nodes: [
+      { id: 'ground', geometry: 'floor', material: 'grey', translation: [0, -0.7, 0], scale: [10, 0.4, 10] },
+      { id: 'hero', geometry: 'shape', material: 'grey' },
+      { id: 'block', geometry: 'target', material: 'grey', translation: [2, 0, 0] },
+    ],
+    camera: { eye: [0.5, 1.8, 5.2], target: [0.8, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 100 },
+  };
+}
+
+test('edit mode Vertex snapping lands on another object or an unmoved mesh vertex, and Ctrl flips it (#3342)', () => {
+  const { controller, editor } = mount(multiObjectEditRecipe());
+  editor.enter();
+  const pickedVertex = vertexAt(controller, [0.5, 0.5, 0.5]);
+  const ownTargetVertex = vertexAt(controller, [-0.5, 0.5, 0.5]);
+  pickVertices(controller, editor, [pickedVertex]);
+  const origin = controller.gizmoHandles().origin;
+  const blockCornerWorld = [1.5, 0.5, 0.5];
+  const blockCornerPixel = controller.projectWorldPoint(blockCornerWorld);
+  const ownTargetPixel = pixelOfVertex(controller, ownTargetVertex);
+  const liveWorldPoint = () => worldPointOf(controller, pickedVertex, editor.cage.positions);
+
+  controller.setInteractionSettings({ snapEnabled: true, snapTarget: 'vertex' });
+  controller.beginGizmoDrag('screen', origin.x, origin.y);
+  controller.updateGizmoDrag(blockCornerPixel.x + 4, blockCornerPixel.y - 3);
+  const blockMarker = controller.snapMarker();
+  assert.ok(blockMarker && Math.hypot(blockMarker.x - blockCornerPixel.x, blockMarker.y - blockCornerPixel.y) < 0.5, 'marker sits on the other object vertex');
+  assert.deepEqual(liveWorldPoint().map(value => Math.round(value * 1000) / 1000), blockCornerWorld, 'vertex snaps onto the other object vertex');
+
+  // Ctrl flips snapping off mid-drag, clearing the marker and moving freely; releasing Ctrl snaps again.
+  controller.updateGizmoDrag(blockCornerPixel.x + 4, blockCornerPixel.y - 3, { ctrlKey: true });
+  assert.equal(controller.snapMarker(), null, 'Ctrl clears the snap marker');
+  assert.ok(Math.hypot(...liveWorldPoint().map((value, axis) => value - blockCornerWorld[axis])) > 0.01, 'Ctrl leaves the vertex free');
+
+  // Snapping onto another unmoved vertex of the same edited mesh works too.
+  controller.updateGizmoDrag(ownTargetPixel.x + 3, ownTargetPixel.y + 3, { ctrlKey: false });
+  const ownMarker = controller.snapMarker();
+  assert.ok(ownMarker && Math.hypot(ownMarker.x - ownTargetPixel.x, ownMarker.y - ownTargetPixel.y) < 0.5, 'marker sits on the unmoved vertex of the same mesh');
+  assert.deepEqual(liveWorldPoint().map(value => Math.round(value * 1000) / 1000), [-0.5, 0.5, 0.5], 'vertex lands on the unmoved mesh vertex');
+
+  controller.endGizmoDrag();
+  assert.equal(controller.snapMarker(), null, 'marker clears after the drag commits');
+  assert.deepEqual(Array.from(editorPositions(controller).slice(pickedVertex * 3, pickedVertex * 3 + 3)).map(value => Math.round(value * 1000) / 1000), [-0.5, 0.5, 0.5]);
+});
+
+test('edit mode Vertex snapping with Ctrl held mid-drag still uses start-of-drag vertex position (#3342)', () => {
+  const { controller, editor } = mount(multiObjectEditRecipe());
+  editor.enter();
+  const pickedVertex = vertexAt(controller, [0.5, 0.5, 0.5]);
+  pickVertices(controller, editor, [pickedVertex]);
+  const origin = controller.gizmoHandles().origin;
+  const blockCornerWorld = [1.5, 0.5, 0.5];
+  const blockCornerPixel = controller.projectWorldPoint(blockCornerWorld);
+
+  controller.setInteractionSettings({ snapEnabled: false, snapTarget: 'vertex' });
+  controller.beginGizmoDrag('screen', origin.x, origin.y);
+  controller.updateGizmoDrag(origin.x + 25, origin.y - 10);
+  controller.updateGizmoDrag(blockCornerPixel.x + 2, blockCornerPixel.y - 2, { ctrlKey: true });
+  assert.ok(controller.snapMarker(), 'Ctrl turns Vertex snap on mid-drag');
+  assert.deepEqual(worldPointOf(controller, pickedVertex, editor.cage.positions).map(value => Math.round(value * 1000) / 1000), blockCornerWorld, 'vertex still lands accurately on the target');
+  controller.cancelGizmoDrag();
+});
+
+test('edit mode Face snapping places the selection on another surface or an unmoved face, and Ctrl flips it (#3342)', () => {
+  const { controller, editor } = mount(multiObjectEditRecipe());
+  editor.enter();
+  const pickedVertex = vertexAt(controller, [0.5, 0.5, 0.5]);
+  pickVertices(controller, editor, [pickedVertex]);
+  const origin = controller.gizmoHandles().origin;
+  const blockTop = controller.projectWorldPoint([2, 0.5, 0]);
+  const groundSpot = controller.projectWorldPoint([0, -0.5, 1.5]);
+  const unmovedBackFace = controller.projectWorldPoint([0, -0.2, -0.5]);
+  const liveWorldPoint = () => worldPointOf(controller, pickedVertex, editor.cage.positions);
+
+  controller.setInteractionSettings({ snapEnabled: true, snapTarget: 'face' });
+  controller.beginGizmoDrag('screen', origin.x, origin.y);
+  controller.updateGizmoDrag(blockTop.x, blockTop.y);
+  const onBlock = liveWorldPoint();
+  assert.ok(Math.abs(onBlock[1] - 0.5) < 1e-3 && Math.abs(onBlock[0] - 2) < 0.05 && Math.abs(onBlock[2]) < 0.05, `lands on top of block: ${onBlock}`);
+
+  controller.updateGizmoDrag(groundSpot.x, groundSpot.y);
+  const onGround = liveWorldPoint();
+  assert.ok(Math.abs(onGround[1] - (-0.5)) < 1e-3, `lands on the ground surface: ${onGround}`);
+
+  const freed = controller.updateGizmoDrag(groundSpot.x, groundSpot.y, { ctrlKey: true });
+  assert.ok(Math.abs(freed.elementDelta[1] - (-1)) > 0.05, 'Ctrl flips Face snapping off for a free move');
+
+  controller.updateGizmoDrag(unmovedBackFace.x, unmovedBackFace.y, { ctrlKey: false });
+  const onOwnFace = liveWorldPoint();
+  assert.ok(Math.abs(onOwnFace[2] - (-0.5)) < 0.05 || Math.abs(onOwnFace[1] - 0.5) < 0.05, `lands on an unmoved face of the mesh: ${onOwnFace}`);
+  controller.endGizmoDrag();
+  assert.ok(Math.abs(editorPositions(controller)[pickedVertex * 3 + 2] - (-0.5)) < 0.05 || Math.abs(editorPositions(controller)[pickedVertex * 3 + 1] - 0.5) < 0.05, 'committed mesh keeps the snapped face landing');
+});
+
+test('Shift+Tab toggles snapping inside edit mode without leaving edit mode (#3342)', async testContext => {
+  const ui = mountStudioWithMesh(testContext);
+  ui.press('Tab');
+  await untilEditing(ui);
+  assert.equal(ui.root.dataset.meshEdit, 'true');
+  assert.equal(ui.controller.interactionSettings.snapEnabled, false);
+  ui.press('Tab', { shiftKey: true });
+  assert.equal(ui.root.dataset.meshEdit, 'true', 'Shift+Tab keeps edit mode open');
+  assert.equal(ui.controller.interactionSettings.snapEnabled, true, 'Shift+Tab turns snapping on in edit mode');
+});

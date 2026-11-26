@@ -16,6 +16,7 @@ import { proportionalCirclePath } from './studio-proportional.js';
 import { MAX_SELECTED_ELEMENTS } from './mesh-operations.js';
 import { FACE_TOOLS, MAX_LOG_ENTRIES, PICK_FACES_FIRST, faceToolAmount, faceToolEdit, faceToolFrame, faceToolTargets, roundAmount } from './studio-mesh-tool.js';
 import { CONVERTIBLE_PRIMITIVES, meshGeometryOfPrimitive, planOwnMesh } from './studio-own-mesh.js';
+import { buildEditSnapSources } from './studio-snapping.js';
 import { createBevelLoopTools } from './studio-mesh-bevel-loop.js';
 import {
   edgesOfSelection,
@@ -1131,6 +1132,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
       for (let axis = 0; axis < 3; axis += 1) state.positions[vertex * 3 + axis] = basePositions[slot * 3 + axis];
     });
     drag.falloff = proportional.falloff() ?? drag.falloff;
+    drag.snapSources = null;
     try {
       Object.assign(drag, dragTargets(drag.seeds, drag.falloff));
     } catch (error) {
@@ -1222,6 +1224,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
 
   const session = {
     pivot: () => (state ? selectionCentreWorld() : null),
+    snapSources: () => (drag ? (drag.snapSources ??= buildEditSnapSources({ mesh: state.mesh, positions: state.positions, basePositions: drag.basePositions, movedVertices: drag.vertices, seedVertices: drag.seeds, matrix: state.part.matrix })) : null),
     begin: beginDrag,
     move: moveDrag,
     finish: finishDrag,

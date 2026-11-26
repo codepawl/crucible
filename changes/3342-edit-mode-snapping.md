@@ -1,0 +1,1 @@
+- Studio mesh edit moves now obey Vertex and Face snapping targets across other objects and unmoved elements of the edited mesh (#3342)
