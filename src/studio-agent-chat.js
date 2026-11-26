@@ -438,10 +438,113 @@ export function createAgentChatCard({ documentReference, createElement, createIc
   };
 }
 
+// Below this window height the column cannot stack Scene (at least 192 px), Properties (240 px) and the open card (252 px, 320 px with a
+// notice) with the gaps and the top bar. Then the card and Properties take turns: both keep their title row in the column and the one
+// that is away folds to it. That turn is not saved: only a fold the person made in a tall window is `agentMinimized`.
+const AGENT_STACK_MINIMUM_HEIGHT = 856;
+
+/**
+ * Wraps `createAgentChatCard` with the column room/visibility state machine (tall stack, short-window turn-taking, compact overlay).
+ * Returns null when the host offers no valid chat.
+ */
+export function createAgentPanel({
+  documentReference,
+  createElement,
+  createIcon,
+  createIconButton,
+  watchScrollFade,
+  host,
+  root,
+  readPreferences,
+  setPreference,
+  applyPreferences,
+  showPanelMinimized,
+  syncMenuToggles,
+  onStep,
+  setInspectorCollapsed,
+  hideHistory,
+}) {
+  let shown = false;
+  let roomState = '';
+  let shortWindow = false;
+  let openInShortWindow = false;
+  let propertiesHeldForAgent = false;
+  const card = createAgentChatCard({
+    documentReference,
+    createElement,
+    createIcon,
+    createIconButton,
+    watchScrollFade,
+    host,
+    onStep,
+    onMinimize: () => (shortWindow ? setOpenInShortWindow(!openInShortWindow) : setPreference('agentMinimized', !readPreferences().agentMinimized)),
+  });
+  if (!card) return null;
+  // A compact window lays its cards over the scene, where they cannot sit as rows, so the card there takes turns by being put away.
+  const takesTurns = () => root.dataset.compact === 'true';
+  const holdsRoom = () => shortWindow && shown && openInShortWindow;
+
+  function setOpenInShortWindow(open) {
+    openInShortWindow = open;
+    applyPreferences();
+  }
+
+  function syncCard() {
+    root.dataset.agentCollapsed = shown ? 'false' : 'true';
+    showPanelMinimized(card.minimizeButton, 'agentMinimized', 'Agent', shortWindow ? !openInShortWindow : readPreferences().agentMinimized);
+  }
+
+  function setShown(nextShown, { remember = true } = {}) {
+    shown = nextShown;
+    if (shown && takesTurns()) {
+      propertiesHeldForAgent ||= root.dataset.inspectorCollapsed !== 'true';
+      setInspectorCollapsed(true);
+      hideHistory();
+    } else if (propertiesHeldForAgent) {
+      propertiesHeldForAgent = false;
+      setInspectorCollapsed(false);
+    }
+    // Asking for the card in a short window opens it, and Properties folds to its title row.
+    if (shown && remember && shortWindow) openInShortWindow = true;
+    if (remember) setPreference('agentVisible', shown);
+    syncCard();
+    syncMenuToggles();
+  }
+
+  function syncRoom() {
+    const compact = takesTurns();
+    shortWindow = !compact && root.clientHeight > 0 && root.clientHeight < AGENT_STACK_MINIMUM_HEIGHT;
+    const state = compact ? 'compact' : shortWindow ? 'short' : 'tall';
+    if (state === roomState) return;
+    roomState = state;
+    root.dataset.agentTight = shortWindow ? 'true' : 'false';
+    openInShortWindow = false;
+    setShown(compact ? false : readPreferences().agentVisible, { remember: false });
+    applyPreferences();
+  }
+
+  return Object.freeze({
+    dock: card.dock,
+    get shown() { return shown; },
+    get takesTurns() { return takesTurns(); },
+    get holdsRoom() { return holdsRoom(); },
+    syncRoom,
+    syncCard,
+    setShown,
+    toggle: () => setShown(!shown),
+    setOpenInShortWindow,
+    mount(sideColumn) {
+      sideColumn.append(card.dock);
+      setShown(readPreferences().agentVisible, { remember: false });
+    },
+    dispose: card.dispose,
+  });
+}
+
 /** The stylesheet of the card, added to Studio's own. Colours, fonts and spacing come from the --studio tokens. */
 export const AGENT_CHAT_CSS = AGENT_STATUS_CSS + `
 /* The card at the foot of the column. Its floors (252 px, 320 px with a notice) keep four whole rows in the list and the status row whole under the field; Scene keeps 192 px and
-   Properties 240 px beside it. When the window is too short for all three the card and Properties take turns, each keeping its title row (studio.js). */
+   Properties 240 px beside it. When the window is too short for all three the card and Properties take turns, each keeping its title row. */
 .crucible-studio-side > .crucible-studio-dock.crucible-studio-agent {
   flex: 0 1 var(--studio-agent-height, 240px);
   min-block-size: 252px;

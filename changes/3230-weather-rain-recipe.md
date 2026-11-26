@@ -1,0 +1,1 @@
+- Support declarative `environment.rain` in agent scenes, MCP tools, and render jobs with wetness and puddle integration (#3230)

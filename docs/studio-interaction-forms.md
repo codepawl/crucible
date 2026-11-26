@@ -83,6 +83,7 @@ Pick the form by how a person reaches the feature:
 | --- | --- | --- | --- |
 | Move picked vertices, edges and faces | tool | `src/studio-mesh-edit.js:562`, `src/studio.js:1943` | The Move tool shows handles on the pick and owns the pointer, the same tool as in object mode. At most 19 loose vertices at a time. |
 | Proportional editing | toggle | `src/studio-proportional.js:36`, `src/studio.js:4706`, `src/studio-keymap.js:65` | A state the held move obeys: O or the rail button turns it on, a popover sets the falloff curve and size, and the wheel sets the size while a move is held. It is not a tool of its own. |
+| Make face or edge, fill, grid fill, bridge, subdivide, symmetrize | operator | `F`, right click or Mesh tools menu; `src/studio-mesh-tools.js`, `src/studio-mesh-menus.js` | Single topology actions on the selection (or the whole mesh for Symmetrize) that write one edit-log entry and one undo step. |
 
 ## Panels, animation and keys
 

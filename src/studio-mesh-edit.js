@@ -14,9 +14,29 @@ import { edgeLoop, edgeRing, faceLoop, growSelection, selectLinked, shrinkSelect
 import { DEFAULT_MAX_FALLOFF_VISITS, spatialFalloffWeights } from './mesh-ops.js';
 import { proportionalCirclePath } from './studio-proportional.js';
 import { MAX_SELECTED_ELEMENTS, MERGE_TARGETS } from './mesh-operations.js';
+import { FACE_TOOLS, PICK_FACES_FIRST, faceToolAmount, faceToolEdit, faceToolFrame, faceToolTargets, roundAmount } from './studio-mesh-tool.js';
 import { CONVERTIBLE_PRIMITIVES, meshGeometryOfPrimitive, planOwnMesh } from './studio-own-mesh.js';
+import {
+  edgesOfSelection,
+  planMeshBridge,
+  planMeshFill,
+  planMeshGridFill,
+  planMeshMakeFace,
+  planMeshSubdivide,
+  planMeshSymmetrize,
+  verticesOfSelection,
+} from './studio-mesh-tools.js';
 
-export { meshGeometryOfPrimitive };
+export {
+  meshGeometryOfPrimitive,
+  planMeshBridge,
+  planMeshFill,
+  planMeshGridFill,
+  planMeshMakeFace,
+  planMeshSubdivide,
+  planMeshSymmetrize,
+  verticesOfSelection,
+};
 
 export const MESH_SELECTION_MODES = Object.freeze(['vertex', 'edge', 'face']);
 export const MAX_MASK_VERTICES = 19;
@@ -31,6 +51,7 @@ const NEEDS_A_MESH = 'Edit mode needs a mesh geometry or a shape of the Add menu
 const NEEDS_NO_MODIFIERS = 'Edit mode does not work on a mesh with modifiers yet. Add a plain shape from the Mesh group and edit that, or have the modifiers applied first.';
 const TOO_MANY_SEEDS = `Proportional editing moves at most ${MAX_SELECTED_ELEMENTS} vertices that are not whole faces; select fewer, or whole faces.`;
 const LOG_IS_FULL = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take another move.`;
+const LOG_IS_FULL_FOR_TOOL = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take an extrude or an inset.`;
 const LOG_IS_FULL_FOR_EDIT = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take a dissolve or a merge.`;
 const TOO_MANY_VERTICES = `Moving more than ${MAX_MASK_VERTICES} vertices that are not whole faces is not possible yet; select whole faces or fewer vertices.`;
 const MESH_CHANGED = 'Edit mode ended because this object uses a different mesh now.';
@@ -185,39 +206,6 @@ export function previewNormalsOf(indices, positions, normals) {
     }
   }
   return normals;
-}
-
-/** The vertices a selection of `mode` covers: the picked ones, the ends of picked edges, or the corners of picked faces. */
-export function verticesOfSelection(mesh, mode, selected) {
-  const vertices = new Set();
-  for (const element of selected) {
-    if (mode === 'vertex') {
-      vertices.add(element);
-    } else if (mode === 'edge') {
-      vertices.add(mesh.edgeVertices[element * 2]);
-      vertices.add(mesh.edgeVertices[element * 2 + 1]);
-    } else {
-      for (let corner = mesh.faceOffsets[element]; corner < mesh.faceOffsets[element + 1]; corner += 1) vertices.add(mesh.cornerVertices[corner]);
-    }
-  }
-  return vertices;
-}
-
-// The edges a selection dissolves: the picked ones, those between two picked vertices, or those around a picked face.
-function edgesOfSelection(mesh, mode, selected) {
-  if (mode === 'edge') return [...selected].sort((first, second) => first - second);
-  if (mode === 'vertex') {
-    const edges = [];
-    for (let edge = 0; edge < mesh.edgeCount; edge += 1) {
-      if (selected.has(mesh.edgeVertices[edge * 2]) && selected.has(mesh.edgeVertices[edge * 2 + 1])) edges.push(edge);
-    }
-    return edges;
-  }
-  const edges = new Set();
-  for (const face of selected) {
-    for (let corner = mesh.faceOffsets[face]; corner < mesh.faceOffsets[face + 1]; corner += 1) edges.add(mesh.cornerEdges[corner]);
-  }
-  return [...edges].sort((first, second) => first - second);
 }
 
 // The faces a selection dissolves: the picked ones, or those whose every corner is picked.
@@ -1059,8 +1047,13 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     const falloff = proportional?.falloff() ?? null;
     // Refused here, before the pointer moves: a finished drag is never thrown away.
     planMeshMove(state.mesh, vertices, [0, 0, 0], falloff);
+    drag = createDrag(vertices, falloff);
+  }
+
+  // What a held change keeps to put the cage and the drawn surface back: where each vertex stood, and the buffers of the preview.
+  function createDrag(vertices, falloff) {
     const previewing = state.previewable && getRenderer() !== null;
-    drag = {
+    return {
       seeds: vertices,
       falloff,
       ...dragTargets(vertices, falloff),
@@ -1142,6 +1135,36 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return runTopologyEdit(() => planMeshMerge(state.mesh, state.mode, state.selected, at), `Merged the vertices ${at === 'collapse' ? 'by collapse' : `at ${at}`}`);
   }
 
+  /** Makes a face from 3+ picked vertices or splits a shared face with an edge between 2 picked vertices (F): one undo step. */
+  function makeFace() {
+    return runTopologyEdit(() => planMeshMakeFace(state.mesh, state.mode, state.selected), 'Created face or edge');
+  }
+
+  /** Fills the selected boundary loop or caps all open boundaries when nothing is picked: one undo step. */
+  function fill() {
+    return runTopologyEdit(() => planMeshFill(state.mesh, state.mode, state.selected), 'Filled selection');
+  }
+
+  /** Fills closed even-sided boundary loops in the selection with quad grids: one undo step. */
+  function gridFill() {
+    return runTopologyEdit(() => planMeshGridFill(state.mesh, state.mode, state.selected), 'Filled with grid');
+  }
+
+  /** Bridges two selected boundary edge loops with a strip of quads: one undo step. */
+  function bridge(options = {}) {
+    return runTopologyEdit(() => planMeshBridge(state.mesh, state.mode, state.selected, options), 'Bridged edge loops');
+  }
+
+  /** Subdivides the selected edges (and splits quads across them): one undo step. */
+  function subdivide(options = {}) {
+    return runTopologyEdit(() => planMeshSubdivide(state.mesh, state.mode, state.selected, options), 'Subdivided selection');
+  }
+
+  /** Symmetrizes the mesh across the chosen axis plane: one undo step. */
+  function symmetrize(options = {}) {
+    return runTopologyEdit(() => planMeshSymmetrize(state.mesh, state.mode, state.selected, options), 'Symmetrized mesh');
+  }
+
   /**
    * The radius or the curve changed while a move is held: the vertices it reaches are chosen again from where they stood before
    * the move, and the move already made is applied to them, so the hill widens under the pointer.
@@ -1162,6 +1185,84 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     }
     moveDrag(drag.worldDelta);
     return true;
+  }
+
+  // The faces a pick stands for when it is whole faces, else null: in face mode the picked faces; in vertex and edge mode the faces
+  // whose vertices are all picked, provided no picked vertex is left over.
+  function pickedWholeFaces() {
+    if (state.mode === 'face') return state.selected.size > 0 ? [...state.selected].sort((first, second) => first - second) : null;
+    const picked = selectedVertices();
+    const { faces, covered } = facesInsideVertexSet(state.mesh, picked);
+    return faces.length > 0 && covered.size === picked.size ? faces : null;
+  }
+
+  /**
+   * E (extrude) and I (inset): holds the picked faces under a tool whose amount the pointer sets (`moveFaceTool`) until
+   * `finishFaceTool` writes it as one entry of the log or `cancelFaceTool` puts everything back. `pointerX` and `pointerY` are
+   * where the amount is zero. Refuses, with a notice, a pick that is not whole faces.
+   */
+  function beginFaceTool(kind, pointerX, pointerY) {
+    const tool = FACE_TOOLS[kind];
+    if (!tool) throw new RangeError(`Unknown face tool "${String(kind)}"; use extrude or inset.`);
+    if (!state) return refuse(`Enter edit mode on a mesh to ${tool.verb} faces.`);
+    if (drag) return refuse(`Let go of the move before you ${tool.verb}.`);
+    const faces = pickedWholeFaces();
+    if (!faces) return refuse(PICK_FACES_FIRST(tool.verb));
+    if (state.editCount >= MAX_LOG_ENTRIES) return refuse(LOG_IS_FULL_FOR_TOOL);
+    let frame;
+    try {
+      frame = faceToolFrame(state.mesh, kind, faces);
+    } catch {
+      return refuse(tool.cannotStart);
+    }
+    const vertices = [...verticesOfSelection(state.mesh, 'face', new Set(faces))];
+    drag = { ...createDrag(vertices, null), tool: { kind, faces, frame, start: { x: pointerX, y: pointerY }, amount: 0 } };
+    announce(tool.hint);
+    return { ok: true };
+  }
+
+  /** The pointer moved while a face tool is held: the faces show what the tool does at the amount it now stands for. */
+  function moveFaceTool(pixelX, pixelY) {
+    if (!drag?.tool) return;
+    const { kind, faces, frame, start } = drag.tool;
+    const project = local => controller.worldPointProjector()(transformPoint(state.part.matrix, local[0], local[1], local[2]));
+    const rawAmount = faceToolAmount(kind, frame, project, start, { x: pixelX, y: pixelY });
+    const amount = roundAmount(kind === 'inset' ? Math.max(0, rawAmount) : rawAmount);
+    let result;
+    try {
+      result = faceToolTargets(state.mesh, kind, faces, amount);
+    } catch {
+      return;
+    }
+    const { targets, usedAmount } = result;
+    // The log keeps the amount the engine used, so an inset the pointer pushed past the limit is written at the limit.
+    drag.tool.amount = roundAmount(usedAmount);
+    drag.vertices.forEach(vertex => {
+      const target = targets.get(vertex);
+      for (let axis = 0; axis < 3; axis += 1) state.positions[vertex * 3 + axis] = target[axis];
+    });
+    writePreview();
+  }
+
+  /** Confirms the held face tool: one entry of the log. An amount that rounds to nothing writes nothing. */
+  function finishFaceTool() {
+    if (!drag?.tool) return;
+    const { kind, faces, amount } = drag.tool;
+    restoreDraggedPositions();
+    drag = null;
+    if (amount === 0) return;
+    try {
+      writeEntry(faceToolEdit(kind, faces, amount));
+    } catch (error) {
+      announce(error);
+      return;
+    }
+    announce(`${FACE_TOOLS[kind].past} ${faces.length} ${faces.length === 1 ? 'face' : 'faces'}`);
+  }
+
+  /** Esc or a right click: the faces go back where they stood and nothing is written. */
+  function cancelFaceTool() {
+    if (drag?.tool) cancelDrag();
   }
 
   const session = {
@@ -1376,6 +1477,12 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     separateSelection,
     dissolve,
     merge,
+    makeFace,
+    fill,
+    gridFill,
+    bridge,
+    subdivide,
+    symmetrize,
     selectNone,
     invertSelection,
     selectInRectangle,
@@ -1405,7 +1512,12 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     selectionScreenRadius,
     selectionCentreLocal,
     reweighDrag,
-    get holdingMove() { return drag !== null; },
+    beginFaceTool,
+    moveFaceTool,
+    finishFaceTool,
+    cancelFaceTool,
+    get holdingFaceTool() { return Boolean(drag?.tool); },
+    get holdingMove() { return drag !== null && !drag.tool; },
     proportional,
     draw,
   });

@@ -60,6 +60,7 @@ const GROUP_BY_ACTION = Object.freeze({
   'mesh.growSelection': 'Mesh selection',
   'mesh.shrinkSelection': 'Mesh selection',
   'mesh.separate': 'Mesh tools',
+  'mesh.makeFace': 'Mesh tools',
   'mesh.deleteMenu': 'Mesh tools',
   'mesh.mergeMenu': 'Mesh tools',
   'mesh.proportional': 'Mesh tools',
@@ -106,7 +107,7 @@ function mouseRows(keymap) {
  * person is doing. Settings reads the same groups with `includeUnbound`, so an action whose key was cleared can still be set again;
  * the mouse rows have no `actionId`.
  */
-export function shortcutSheetGroups(keymap, { omittedActionIds = [], includeUnbound = false } = {}) {
+export function shortcutSheetGroups(keymap, { includeUnbound = false, omittedActionIds = [] } = {}) {
   const rowsByGroup = new Map(SHEET_GROUPS.map(group => [group.title, []]));
   for (const item of keymap.actions) {
     if (omittedActionIds.includes(item.id)) continue;

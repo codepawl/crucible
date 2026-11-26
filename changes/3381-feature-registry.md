@@ -1,0 +1,1 @@
+- Register Studio tabs, panels, menus and renderer post steps from feature modules and keep shared field lists sorted one item per line (#3381)

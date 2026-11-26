@@ -18,6 +18,25 @@ renderer.render({
 });
 ```
 
+## Declarative scenes and MCP render jobs
+
+Add `environment.rain` directly to a `crucible.scene` recipe or update it atomically with `set-environment`:
+
+```json
+{
+  "type": "set-environment",
+  "environment": {
+    "rain": { "intensity": 0.85, "density": 2800, "splashes": true, "wetness": 0.75 },
+    "puddles": { "coverage": 0.5 }
+  }
+}
+```
+
+- `await loadAgentSceneModules(recipe)` loads the rain module on demand when `environment.rain` is present; clearing it with `{ "rain": null }` turns rain off.
+- When `rain.wetness` is set and `environment.wetness` is omitted, each frame pairs surface wetness (and `environment.puddles` mirrors) scaled by the evaluated rain intensity.
+- `scene_review` (`shots[].rendererTime`) and `scene_render_submit` (`rendererTime`, or advancing `video` / `stills` frames) evaluate `intensityCurve` deterministically by time.
+- Path tracers ignore `environment.rain` and report it in `ignored`.
+
 ## Options (`resolveRain`)
 
 - `intensity` (`0..1`, default `0.6`): scales drawn streak and splash counts plus paired wetness.
