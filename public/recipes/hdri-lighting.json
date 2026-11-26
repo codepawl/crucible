@@ -18,7 +18,7 @@
     { "id": "steel", "color": [0.84, 0.85, 0.88], "metallic": 1, "roughness": 0.16 },
     { "id": "brass", "color": [0.76, 0.56, 0.24], "metallic": 0.95, "roughness": 0.24 },
     { "id": "walnut", "color": [0.16, 0.09, 0.055], "metallic": 0, "roughness": 0.42 },
-    { "id": "porcelain", "color": [0.94, 0.92, 0.87], "metallic": 0, "roughness": 0.14 },
+    { "id": "porcelain", "color": [0.84, 0.82, 0.78], "metallic": 0, "roughness": 0.14 },
     { "id": "table", "color": [0.22, 0.23, 0.25], "metallic": 0, "roughness": 0.82 }
   ],
   "nodes": [
