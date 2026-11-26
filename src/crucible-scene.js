@@ -37,9 +37,11 @@ async function createLiveRenderer(canvas, scene) {
   ]);
   const environment = { ...scene.environment, map };
   // Baked lightmaps arrive as plain bytes; the renderer uploads ImageData.
+  const hasBlendedWater = scene.parts.some(part => part.material.tag === 'water' && part.material.alphaMode === 'blend');
   const renderer = new CrucibleRenderer(canvas, partsWithImageData(scene.parts), {
     ground: false,
     hdr: true,
+    compactColor: !hasBlendedWater,
     depth: true,
     world: scene.environment.world,
     environment,

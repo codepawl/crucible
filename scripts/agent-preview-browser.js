@@ -642,9 +642,11 @@ function coplanarCarryFor(scene) {
 function initializeRenderer(scene, { memoryBudgetMiB, backend, transparent = false, tier = 'realtime' }) {
   probeSnippets(scene);
   const placement = automaticGroundPlacement(scene);
+  const hasBlendedWater = scene.parts.some(part => part.material.tag === 'water' && part.material.alphaMode === 'blend');
   const renderer = installCoplanarDiagnostics(installRenderPasses(installCameraEffects(new CrucibleRenderer(canvas, scene.parts, {
     ground: placement ? createAgentGround(placement) : false,
     hdr: true,
+    compactColor: !hasBlendedWater,
     depth: true,
     world: scene.environment.world,
     environment: litEnvironment(scene.parts, scene.environment, Boolean(placement)),

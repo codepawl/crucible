@@ -345,8 +345,9 @@ async function selectScene(id) {
     if (description.environment?.groundCover !== undefined) console.warn('environment.groundCover is drawn only by render-media.mjs --scene file; this page ignores it.');
     if (description.reflectionHdri !== undefined) console.warn('reflectionHdri is drawn only by render-media.mjs --scene file; this page reflects the lighting HDRI.');
     const reflection = description.waterReflection ? applyWaterReflection(asset.parts) : { parts: asset.parts, surface: null };
+    const hasBlendedWater = reflection.parts.some(part => part.material.tag === 'water' && part.material.alphaMode === 'blend');
     renderer = new CrucibleRenderer(canvas, reflection.parts, {
-      ground: false, hdr: true, samples: 4, memoryBudgetMiB: 384,
+      ground: false, hdr: true, compactColor: !hasBlendedWater, samples: 4, memoryBudgetMiB: 384,
       ...rendererOptions,
       shadowCascades,
       environment,

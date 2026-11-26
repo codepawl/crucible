@@ -173,8 +173,9 @@ async function start() {
   const rendererMap = interior.environment.map ?? drawn.map;
   const shadowBounds = drawn.sunSplit ? sunShadowBounds(reflection.parts, drawn.environment.lightDirection) : {};
   const shadowCascades = resolveSceneFileCascades(rendererOptions, interior.environment, rendererOptions.shadowBounds ?? shadowBounds);
+  const hasBlendedWater = rendererParts.some(part => part.material.tag === 'water' && part.material.alphaMode === 'blend');
   const renderer = new CrucibleRenderer(viewport, rendererParts, {
-    ground: false, hdr: true, samples: 4, memoryBudgetMiB: DEFAULT_MEMORY_BUDGET_MIB,
+    ground: false, hdr: true, compactColor: !hasBlendedWater, samples: 4, memoryBudgetMiB: DEFAULT_MEMORY_BUDGET_MIB,
     shadowBounds,
     ...rendererOptions,
     shadowCascades,
