@@ -408,3 +408,142 @@ test('drawPolylines binds style uniforms, per-segment offsets for dashed/dotted,
   renderer.postStages[0].dispose(context);
   assert.equal(deletedBuffers.length, 5);
 });
+
+function createOutlineStageMock() {
+  const passes = [];
+  const texImageUploads = [];
+  let objectNodesCalls = 0;
+  const groups = { wall: [1], hero: [2] };
+  const passTextures = { objectId: 'id-tex', normal: 'normal-tex' };
+  let activePassTexture = null;
+  let nextTextureId = 1;
+  const context = {
+    RGBA16F: 1, RGBA8: 2, RGBA32F: 3, RGBA: 4, HALF_FLOAT: 5, UNSIGNED_BYTE: 6, FLOAT: 7,
+    TEXTURE_2D: 8, TEXTURE_MIN_FILTER: 9, TEXTURE_MAG_FILTER: 10, TEXTURE_WRAP_S: 11, TEXTURE_WRAP_T: 12,
+    NEAREST: 13, LINEAR: 14, CLAMP_TO_EDGE: 15, FRAMEBUFFER: 16, COLOR_ATTACHMENT0: 17,
+    FRAMEBUFFER_COMPLETE: 18, READ_FRAMEBUFFER: 19, DRAW_FRAMEBUFFER: 20, COLOR_BUFFER_BIT: 21,
+    TRIANGLES: 22, DEPTH_TEST: 23, CULL_FACE: 24, TEXTURE0: 100,
+    VERTEX_SHADER: 25, FRAGMENT_SHADER: 26, COMPILE_STATUS: 27, LINK_STATUS: 28,
+    createShader: () => ({}),
+    shaderSource() {},
+    compileShader() {},
+    getShaderParameter: () => true,
+    createProgram: () => ({}),
+    attachShader() {},
+    linkProgram() {},
+    getProgramParameter: () => true,
+    getUniformLocation: (program, name) => name,
+    createTexture: () => ({ id: nextTextureId++ }),
+    deleteTexture() {},
+    createFramebuffer: () => ({}),
+    deleteFramebuffer() {},
+    bindTexture() {},
+    bindFramebuffer() {},
+    framebufferTexture2D() {},
+    blitFramebuffer() {},
+    checkFramebufferStatus: () => 18,
+    texParameteri() {},
+    texImage2D: (...args) => texImageUploads.push({ internalFormat: args[2], width: args[3], height: args[4] }),
+    activeTexture() {},
+    useProgram() {},
+    uniform1i() {},
+    uniform1f() {},
+    uniform3f() {},
+    uniform3fv() {},
+    viewport() {},
+    disable() {},
+    bindVertexArray() {},
+    drawArrays() {},
+  };
+  const view = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  const projection = new Float32Array(16);
+  projection[10] = -1;
+  projection[14] = -0.2;
+  const renderer = {
+    canvas: { width: 64, height: 64 },
+    context,
+    hdr: false,
+    depthTexture: 'depth-tex',
+    view,
+    projection,
+    batches: [{ parts: [] }],
+    postStages: [],
+    passSupport: {
+      framebuffer: 'pass-fbo',
+      get texture() { return activePassTexture; },
+      objectNodes() {
+        objectNodesCalls += 1;
+        return groups;
+      },
+    },
+    render(frame) {
+      passes.push(frame.pass ?? 'main');
+      if (frame.pass) {
+        activePassTexture = passTextures[frame.pass];
+        return;
+      }
+      renderer.postStages[0].apply(renderer, frame, {}, 'scene-tex');
+    },
+    rebuildMainProgram() {},
+  };
+  installLineArt(renderer);
+  return {
+    renderer,
+    passes,
+    texImageUploads,
+    getActivePassTexture: () => activePassTexture,
+    getObjectNodesCalls: () => objectNodesCalls,
+  };
+}
+
+test('drawGuides renders normal before objectId so passSupport.texture holds objectId (#3496)', () => {
+  const { renderer, passes, getActivePassTexture } = createOutlineStageMock();
+  renderer.render({ lines: resolveLineArt({ creaseAngle: 35, boundaries: true }) });
+  assert.deepEqual(passes, ['normal', 'objectId', 'main']);
+  assert.equal(getActivePassTexture(), 'id-tex');
+});
+
+test('creaseAngle 0 with silhouetteSide both skips the normal pass and its target, while front keeps it (#3491)', () => {
+  const { renderer, passes, texImageUploads } = createOutlineStageMock();
+  renderer.render({ lines: resolveLineArt({ creaseAngle: 0, boundaries: true, depthJump: 0 }) });
+  assert.deepEqual(passes, ['objectId', 'main']);
+  const rgba8Targets = texImageUploads.filter(upload => upload.internalFormat === 2);
+  // Output color target + one 'part' guide target (no 'normal' guide target allocated).
+  assert.equal(rgba8Targets.length, 2);
+
+  passes.length = 0;
+  renderer.render({ lines: resolveLineArt({ creaseAngle: 0, boundaries: true, silhouetteSide: 'front' }) });
+  assert.deepEqual(passes, ['normal', 'objectId', 'main']);
+});
+
+test('nodeTexture upload and objectNodes lookup are cached across unchanged frames (#3491)', () => {
+  const { renderer, texImageUploads, getObjectNodesCalls } = createOutlineStageMock();
+  const countNodeUploads = () => texImageUploads.filter(upload => upload.internalFormat === 3).length;
+  const lines = resolveLineArt({ creaseAngle: 0, nodes: { hero: { silhouetteOnly: true } } });
+
+  renderer.render({ lines });
+  assert.equal(countNodeUploads(), 1);
+  assert.equal(getObjectNodesCalls(), 1);
+
+  renderer.render({ lines });
+  renderer.render({ lines });
+  assert.equal(countNodeUploads(), 1, 'identical lines and batches reuse cached nodeTexture');
+  assert.equal(getObjectNodesCalls(), 1, 'identical lines and batches skip objectNodes scan');
+
+  const changedNodes = resolveLineArt({ creaseAngle: 0, nodes: { hero: { lines: false } } });
+  renderer.render({ lines: changedNodes });
+  assert.equal(countNodeUploads(), 2, 'changing lines.nodes invalidates the cache');
+
+  renderer.batches = [{ parts: [] }, { parts: [] }];
+  renderer.render({ lines: changedNodes });
+  assert.equal(countNodeUploads(), 3, 'replacing renderer.batches invalidates the cache');
+
+  renderer.render({ lines: resolveLineArt({ creaseAngle: 0 }) });
+  assert.equal(countNodeUploads(), 4, 'toggling nodes off uploads empty 1x1 table');
+  renderer.render({ lines: changedNodes });
+  assert.equal(countNodeUploads(), 5, 're-enabling nodes after empty frame re-uploads');
+
+  renderer.postStages[0].releaseTargets(renderer.context);
+  renderer.render({ lines: changedNodes });
+  assert.equal(countNodeUploads(), 6, 'releaseTargets clears the cached nodeTexture');
+});

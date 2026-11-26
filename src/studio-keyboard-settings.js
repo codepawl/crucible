@@ -20,7 +20,7 @@ const NOT_SET_LABEL = 'Not set';
  * changes; `onOverridesChange(overrides)` stores new changes and Studio calls `refresh()` once they are in effect.
  * `presetRow` and `showSheetButton` are the existing preset choice and the button that opens the sheet.
  */
-export function createKeyboardSection({ documentReference, createElement, createIcon, getKeymap, getPresetId, getOverrides, onOverridesChange, presetRow, showSheetButton }) {
+export function createKeyboardSection({ documentReference, createElement, createIcon, getKeymap, getPresetId, getNumberPad, getOverrides, onOverridesChange, presetRow, numberPadRow, showSheetButton }) {
   const state = { recordingId: null, note: null, pending: null, confirmingReset: false, query: '', focusActionId: null, rendering: false };
 
   const filterInput = createElement(documentReference, 'input', { type: 'search', placeholder: 'Find a shortcut', attributes: { 'aria-label': 'Filter shortcuts' } });
@@ -33,11 +33,12 @@ export function createKeyboardSection({ documentReference, createElement, create
   const tools = createElement(documentReference, 'div', { className: 'crucible-studio-keyboard-tools' }, filterInput, toolButtons);
   const list = createElement(documentReference, 'div', { className: 'crucible-studio-keyboard-list crucible-studio-fade-scroll' });
   const syncListFades = watchScrollFades(list);
+  const headItems = [presetRow, ...(numberPadRow ? [numberPadRow] : []), tools];
   const element = createElement(
     documentReference,
     'div',
     { className: 'crucible-studio-keyboard' },
-    createElement(documentReference, 'div', { className: 'crucible-studio-keyboard-head' }, presetRow, tools),
+    createElement(documentReference, 'div', { className: 'crucible-studio-keyboard-head' }, ...headItems),
     list,
   );
 
@@ -86,6 +87,8 @@ export function createKeyboardSection({ documentReference, createElement, create
     render();
   }
 
+  const numberPadOption = () => ({ numberPad: Boolean(getNumberPad?.()) });
+
   function recordKey(actionId, event) {
     if (event.repeat) return;
     const bare = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
@@ -96,7 +99,7 @@ export function createKeyboardSection({ documentReference, createElement, create
     }
     if (bare && (event.key === 'Backspace' || event.key === 'Delete')) {
       state.focusActionId = actionId;
-      commit(withActionBindings(getPresetId(), getOverrides(), actionId, null));
+      commit(withActionBindings(getPresetId(), getOverrides(), actionId, null, numberPadOption()));
       return;
     }
     const binding = bindingFromKeyEvent(event);
@@ -111,7 +114,7 @@ export function createKeyboardSection({ documentReference, createElement, create
     const holders = findBindingHolders(getKeymap(), actionId, binding);
     state.focusActionId = actionId;
     if (holders.length === 0) {
-      commit(withActionBindings(getPresetId(), getOverrides(), actionId, [binding]));
+      commit(withActionBindings(getPresetId(), getOverrides(), actionId, [binding], numberPadOption()));
       return;
     }
     state.recordingId = null;
@@ -171,7 +174,7 @@ export function createKeyboardSection({ documentReference, createElement, create
     return noteLine(
       'warning',
       `Used by ${names.join(', ')}`,
-      textButton('Swap', 'check', () => commit(withSwappedBindings(getPresetId(), getOverrides(), keymap, pending.actionId, pending.binding, pending.holders))),
+      textButton('Swap', 'check', () => commit(withSwappedBindings(getPresetId(), getOverrides(), keymap, pending.actionId, pending.binding, pending.holders, numberPadOption()))),
       textButton('Cancel', 'close', stopRecording),
     );
   }

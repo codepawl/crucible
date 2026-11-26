@@ -1,0 +1,1 @@
+- scene:agent-scene+lazy: track relative nesting depth for shared subgraphs (instead of re-compiling unshared copies) and cache scalar inputs for colour ramps and warps once per texel (+82 B gzip)

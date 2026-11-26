@@ -17,7 +17,8 @@ registerShaderFeatureCode('linearOutput', {
     return mainBody.replace(ANCHOR, ANCHOR + EXIT);
   },
   // Checks the frame and returns the name of the post step.
-  step(renderer, frame) {
+  postStep(renderer, frame) {
+    if (!frame.linearOutput) return null;
     if (!renderer.hdr || !frame.outputFramebuffer) throw new Error('linearOutput needs hdr: true and an outputFramebuffer from createFloatOutput; pass both or drop linearOutput.');
     return 'linearOutput';
   },

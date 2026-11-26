@@ -3,9 +3,11 @@
 // Docked, the column is one piece: its inner edge sets the width of both cards and the gap between the cards sets how
 // much of the column the Scene card takes. Floating, each card is its own window: its left edge sets only its width and
 // its bottom edge only its height, and holding Ctrl (Meta on a Mac) works on both cards at once. A drag previews the
-// size and letting go saves it. Arrow keys do the same in steps, and a double click goes back to the automatic size, for both cards with Ctrl.
+// size and letting go saves it. The Agent card, when a host offers one, sits under them and is resized by its top edge.
+// Arrow keys do the same in steps, and a double click goes back to the automatic size, for both cards with Ctrl.
 
 import {
+  STUDIO_AGENT_CARD,
   STUDIO_CARD_SIZE,
   STUDIO_PANEL_WIDTH,
   STUDIO_PREFERENCE_DEFAULTS,
@@ -27,6 +29,14 @@ function bothCardsRequested(event) {
   return Boolean(event.ctrlKey || event.metaKey);
 }
 
+// How far a drag has grown its card: an edge on the left or the top grows it by moving away from the card.
+function growthInPixels(axis, drag, event) {
+  if (axis === 'x') {
+    return drag.clientX - event.clientX;
+  }
+  return axis === 'y-up' ? drag.clientY - event.clientY : event.clientY - drag.clientY;
+}
+
 function measuredHeight(element, fallback) {
   const height = element.getBoundingClientRect?.().height;
   return height > 0 ? Math.round(height) : fallback;
@@ -36,7 +46,7 @@ function measuredHeight(element, fallback) {
  * Builds the panel column from the two cards and wires its grips.
  * `readPreferences` returns the saved preferences and `changePreferences` saves a group of changes at once.
  */
-export function createPanelGrips({ documentReference, createElement, root, outlinerDock, inspectorElement, readPreferences, changePreferences }) {
+export function createPanelGrips({ documentReference, createElement, root, outlinerDock, inspectorElement, agentDock = null, readPreferences, changePreferences }) {
   function createGrip(className, label, orientation, valueRange) {
     const attributes = {
       role: 'separator',
@@ -56,6 +66,8 @@ export function createPanelGrips({ documentReference, createElement, root, outli
   const sceneHeightGrip = createGrip('crucible-studio-grip-card-height crucible-studio-grip-scene-height', 'Resize Scene height', 'horizontal', cardHeightRange);
   const propertiesWidthGrip = createGrip('crucible-studio-grip-card-width', 'Resize Properties width', 'vertical', cardWidthRange);
   const propertiesHeightGrip = createGrip('crucible-studio-grip-card-height crucible-studio-grip-properties-height', 'Resize Properties height', 'horizontal', cardHeightRange);
+  const agentHeightGrip = agentDock ? createGrip('crucible-studio-grip-agent-height', 'Resize Agent height', 'horizontal', cardHeightRange) : null;
+  agentDock?.append(agentHeightGrip);
   outlinerDock.append(sceneWidthGrip, sceneHeightGrip);
   inspectorElement.append(propertiesWidthGrip, propertiesHeightGrip);
   const sideColumn = createElement(documentReference, 'div', { className: 'crucible-studio-side' }, widthGrip, outlinerDock, splitGrip, inspectorElement);
@@ -85,6 +97,7 @@ export function createPanelGrips({ documentReference, createElement, root, outli
     setRootVariable('--studio-properties-width', `${cardWidth(sizes, 'properties')}px`);
     setRootVariable('--studio-scene-height', `${sizes.sceneHeight}px`);
     setRootVariable('--studio-properties-height', `${sizes.propertiesHeight}px`);
+    setRootVariable('--studio-agent-height', `${sizes.agentHeight || STUDIO_AGENT_CARD.automaticHeight}px`);
     root.dataset.sceneSized = sizes.sceneShare > STUDIO_SCENE_SHARE.automatic ? 'true' : 'false';
     root.dataset.sceneHeightSized = sizes.sceneHeight > STUDIO_CARD_SIZE.automatic ? 'true' : 'false';
     root.dataset.propertiesHeightSized = sizes.propertiesHeight > STUDIO_CARD_SIZE.automatic ? 'true' : 'false';
@@ -94,6 +107,7 @@ export function createPanelGrips({ documentReference, createElement, root, outli
     propertiesWidthGrip.setAttribute('aria-valuenow', String(cardWidth(sizes, 'properties')));
     sceneHeightGrip.setAttribute('aria-valuenow', String(cardHeight(sizes, 'scene', outlinerDock)));
     propertiesHeightGrip.setAttribute('aria-valuenow', String(cardHeight(sizes, 'properties', inspectorElement)));
+    agentHeightGrip?.setAttribute('aria-valuenow', String(sizes.agentHeight || measuredHeight(agentDock, STUDIO_AGENT_CARD.automaticHeight)));
   }
 
   function previewChanges(changes) {
@@ -266,7 +280,7 @@ export function createPanelGrips({ documentReference, createElement, root, outli
         return;
       }
       // The column and the cards are on the right, so a left edge moving left grows them; a bottom edge moving down does.
-      const pixels = axis === 'x' ? drag.clientX - event.clientX : event.clientY - drag.clientY;
+      const pixels = growthInPixels(axis, drag, event);
       drag.latestChanges = changesAfterGrowth(drag.start, pixelsToUnits(pixels), bothCardsRequested(event));
       previewChanges(drag.latestChanges);
     });
@@ -300,6 +314,25 @@ export function createPanelGrips({ documentReference, createElement, root, outli
     grip.addEventListener('dblclick', event => {
       const useBothCards = bothCardsRequested(event) && resetBothCardsChanges;
       changePreferences(useBothCards ? resetBothCardsChanges() : resetChanges());
+    });
+  }
+
+  // The card's top edge moving up makes it taller, up to its share of the column.
+  function maximumAgentHeight() {
+    const columnHeight = sideColumn.getBoundingClientRect?.().height;
+    return columnHeight > 0 ? Math.max(STUDIO_CARD_SIZE.leastHeight, Math.round(columnHeight * STUDIO_AGENT_CARD.mostShare)) : Number.POSITIVE_INFINITY;
+  }
+
+  if (agentHeightGrip) {
+    gripBehaviours.push({
+      grip: agentHeightGrip,
+      axis: 'y-up',
+      keyStep: CARD_HEIGHT_KEY_STEP,
+      growKey: 'ArrowUp',
+      shrinkKey: 'ArrowDown',
+      startSizes: () => ({ agentHeight: readPreferences().agentHeight || measuredHeight(agentDock, STUDIO_AGENT_CARD.automaticHeight) }),
+      changesAfterGrowth: (start, growth) => ({ agentHeight: Math.min(start.agentHeight + growth, maximumAgentHeight()) }),
+      resetChanges: () => ({ agentHeight: STUDIO_CARD_SIZE.automatic }),
     });
   }
 

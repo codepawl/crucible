@@ -1,0 +1,1 @@
+- entry:scene-query: Implements `findSurfaceDecalOverlaps` geometry overlap, clearance, wire polyline, hollow frame, and border checks (`18343` to `22842 B` gzip, `+4499 B`; `entry:core` and all `scene:*` bundles `+0 B`).

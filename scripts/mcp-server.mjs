@@ -313,6 +313,23 @@ const volumeFog = z.strictObject({
 });
 const affects = z.array(z.string()).optional();
 const iesProfile = z.any().optional();
+const rain = z.strictObject({
+  intensity: unit.optional().describe('Rain scale 0 to 1; default 0.6.'),
+  intensityCurve: z.array(z.strictObject({ time: bounded(0, 1e6), value: unit })).min(2).max(64).nullable().optional().describe('Deterministic keyframes [{ time, value }] evaluated on rendererTime.'),
+  density: z.number().int().min(100).max(6000).optional(),
+  volume: z.tuple([bounded(2, 120), bounded(2, 120), bounded(2, 120)]).optional(),
+  speed: bounded(2, 40).optional(),
+  streakLength: bounded(0.05, 2).optional(),
+  streakWidth: bounded(0.002, 0.06).optional(),
+  wind: z.tuple([bounded(-20, 20), bounded(-20, 20)]).optional(),
+  color: z.tuple([bounded(0, 2), bounded(0, 2), bounded(0, 2)]).optional(),
+  opacity: unit.optional(),
+  splashes: z.boolean().optional(),
+  splashCount: z.number().int().min(0).max(1200).optional(),
+  groundHeight: bounded(-1e4, 1e4).optional(),
+  wetness: unit.nullable().optional().describe('Pairs with environment.wetness scaled by intensity when environment.wetness is unset.'),
+  seed: z.number().int().min(-2147483647).max(2147483647).optional(),
+}).describe('Camera-local rain streaks, splashes and wetness; null clears. Details: scene_capabilities rain.');
 const lines = z.record(z.string(), z.unknown()).describe('Outlines, toon light and polylines as plain JSON; fields and limits in scene_capabilities lineArt. null clears.');
 // An invalid name says which names work. The union alone reports only its 64-hex branch (issue 2049).
 function catalogReference(names, fileKind) {
@@ -397,6 +414,7 @@ const environment = z.strictObject({
   specularAntiAliasing: z.number().min(0).max(4).optional().describe('Specular anti-aliasing: 0 off, 1 default; widens highlights that sparkle on grainy normal-mapped metal.'),
   wetness: z.number().min(0).max(1).nullable().optional().describe('Wet ground: 0 dry, 0.5 damp, 1 soaked; darkens porous surfaces and lowers roughness, metals untouched. null clears.'),
   puddles: z.strictObject({ coverage: bounded(0, 1).optional(), from: z.literal('height').optional() }).nullable().optional().describe('Puddles on wet ground: coverage 0 to 1 (scaled by wetness), from "height" (low spots). Flat water that mirrors the sky.'),
+  rain: rain.nullable().optional(),
   resolveCoplanar: z.union([z.literal('offset'), z.literal(false)]).optional().describe("Flush faces are ranked at draw time by default ('offset'); false opts out."),
   viewTransform: z.enum(VIEW_TRANSFORM_NAMES).optional().describe('Display transform, agx or standard to compare with Blender.'),
   look: catalogReference([...LOOK_NAMES, ...BUNDLED_CUBE_LOOK_NAMES], '.cube').nullable().optional().describe('Look preset or .cube; scene_capabilities catalogLooks. null clears.'),
@@ -404,7 +422,7 @@ const environment = z.strictObject({
   wind: z.strictObject({ strength: bounded(0, 4).optional(), direction: bounded(-360, 360).optional().describe('Degrees: 0 toward +x, 90 toward +z.') }).optional().describe('Sway of foliage and grass materials; strength defaults to 0.3.'),
 });
 // Every tool lists the same short environment; the full schema is served by scene_capabilities topic environment.
-const environmentListed = listed('environment', environment, 'Lighting and sky. More fields: sky (physicalSky), hdri, reflectionHdri, look, viewTransform, keyColor, keyIntensity, fillIntensity, ambientIntensity, ambientColor, ambientMix, fillColor, environmentDiffuseScale, daylight, keyAffects, shadowCascades, pointLights, spotLights, areaLights, skyTop, skyBottom, fogColor, fogDensity, volumeFog (density, scatterOctaves, multiScatter, keyTransmittance, surfaceTransmittance and more: scene_capabilities environment), liquid, lines, wind, objectReflections, floorSkyTrace, sunBounce, specularAntiAliasing, wetness, puddles, resolveCoplanar; see scene_capabilities environment.', coreOf(environment.shape, ['setup', 'world', 'ground', 'lightDirection', 'environmentIntensity']));
+const environmentListed = listed('environment', environment, 'Lighting and sky. More fields: sky (physicalSky), hdri, reflectionHdri, look, viewTransform, keyColor, keyIntensity, fillIntensity, ambientIntensity, ambientColor, ambientMix, fillColor, environmentDiffuseScale, daylight, keyAffects, shadowCascades, pointLights, spotLights, areaLights, skyTop, skyBottom, fogColor, fogDensity, volumeFog (density, scatterOctaves, multiScatter, keyTransmittance, surfaceTransmittance and more: scene_capabilities environment), liquid, lines, wind, objectReflections, floorSkyTrace, sunBounce, specularAntiAliasing, wetness, puddles, rain, resolveCoplanar; see scene_capabilities environment.', coreOf(environment.shape, ['setup', 'world', 'ground', 'lightDirection', 'environmentIntensity']));
 // Named post steps are checked by the engine and listed in docs/agent-look.md; every tool that takes a recipe repeats this schema.
 const looseField = z.unknown().optional();
 const effects = z.strictObject({
@@ -487,8 +505,8 @@ const meshEdit = z.discriminatedUnion('op', [
   z.strictObject({ op: z.literal('inset_individual'), select: selectRule.optional(), name: editName, thickness: finite, depth: finite.optional() }),
   z.strictObject({ op: z.literal('delete'), select: selectRule }),
   z.strictObject({ op: z.literal('flip_normals'), select: selectRule.optional() }),
-  z.strictObject({ op: z.literal('translate'), select: selectRule.optional(), verts: vertexRule.optional(), edges: edgeRule.optional(), offset: vector3, falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }).describe('Move the vertices of one of select, verts or edges (at most 4096 each); a shared vertex moves once.'),
-  z.strictObject({ op: z.literal('transform_selection'), select: selectRule.optional(), verts: vertexRule.optional(), edges: edgeRule.optional(), pivot: vector3.optional().describe('Point to turn and scale about. Defaults to the mean of the selected vertices.'), rotation: z.strictObject({ axis: vector3, angle: bounded(-6.283185307179586, 6.283185307179586).describe('Radians, not degrees: 90 degrees is 1.5708.') }).optional(), scale: z.union([signedFactor, z.array(signedFactor).length(3)]).optional().describe('Factor other than 0, or one per axis; applied before the rotation. A negative factor mirrors and keeps faces outward (not with a falloff, verts or edges).'), falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }).describe('Rotate and/or scale the vertices of one of select, verts or edges about a pivot; falloff fades to 0 at its radius.'),
+  z.strictObject({ op: z.literal('translate'), select: selectRule.optional(), verts: vertexRule.optional(), edges: edgeRule.optional(), offset: vector3, falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }).describe('Move the vertices of one of select, verts or edges (at most 4096 each).'),
+  z.strictObject({ op: z.literal('transform_selection'), select: selectRule.optional(), verts: vertexRule.optional(), edges: edgeRule.optional(), pivot: vector3.optional().describe('Point to turn and scale about. Defaults to the mean of the selected vertices.'), rotation: z.strictObject({ axis: vector3, angle: bounded(-6.283185307179586, 6.283185307179586).describe('Radians, not degrees: 90 degrees is 1.5708.') }).optional(), scale: z.union([signedFactor, z.array(signedFactor).length(3)]).optional().describe('Factor other than 0, or one per axis; applied before the rotation. A negative factor mirrors and keeps faces outward (not with a falloff, verts or edges).'), falloff: z.strictObject({ radius: finite, curve: z.enum(['smooth', 'sphere', 'root', 'sharp', 'linear', 'constant', 'inverseSquare']).optional(), connected: z.boolean().optional().describe('Measure distance along edges instead of straight lines.') }).optional() }).describe('Rotate or scale selected vertices about a pivot.'),
   z.strictObject({ op: z.literal('merge_by_distance'), distance: finite.optional() }),
   z.strictObject({
     op: z.literal('loop_cut'), name: editName,
@@ -497,9 +515,10 @@ const meshEdit = z.discriminatedUnion('op', [
     factor: bounded(0, 1).optional().describe('Single cut only: position from the low side of each ring edge. Defaults to 0.5.'),
   }).describe('Loop cut across quads. Bands between cuts get <name>.band-0 (low side) to <name>.band-<cuts>.'),
   z.strictObject({ op: z.literal('fill_holes'), name: editName, sides: z.number().int().min(3).max(4096).optional().describe('Skip boundary loops with more edges than this.') }).describe('Cap each closed boundary loop with one polygon, tagged <name>.fill. Fixes the lint boundary-edge warning.'),
-  z.strictObject({ op: z.literal('dissolve_faces'), name: editName, select: selectRule }).describe('Merge connected selected faces into one polygon each, tagged <name>.merged.'),
-  z.strictObject({ op: z.literal('dissolve_edges'), name: editName, edges: edgeRule, removeStraight: z.boolean().optional().describe('Also remove two-edge vertices left.') }).describe('Merge the two faces beside each selected edge, tagged <name>.merged.'),
-  z.strictObject({ op: z.literal('dissolve_verts'), name: editName, verts: z.record(z.string(), z.unknown()).describe('Vertex rule: {"all":true}, {"vertices":[indices]}, {"valence":2} or {"inside":{"min":[x,y,z],"max":[x,y,z]}}.') }).describe('Remove vertices. Two-edge vertices leave their faces; others merge the faces around them.'),
+  z.strictObject({ op: z.literal('make_face'), name: editName, vertices: z.array(z.number().int().min(0).max(16777215)).min(2).max(4096).describe('Picked vertex indices.') }).describe('Make face from 3+ vertices or split face across 2.'),
+  z.strictObject({ op: z.literal('dissolve_faces'), name: editName, select: selectRule }).describe('Merge connected selected faces.'),
+  z.strictObject({ op: z.literal('dissolve_edges'), name: editName, edges: edgeRule, removeStraight: z.boolean().optional().describe('Also remove two-edge vertices left.') }).describe('Merge faces beside each selected edge.'),
+  z.strictObject({ op: z.literal('dissolve_verts'), name: editName, verts: vertexRule }).describe('Remove vertices. Two-edge vertices leave their faces; others merge the faces around them.'),
   z.strictObject({ op: z.literal('dissolve_limited'), name: editName, edges: edgeRule.optional().describe('Defaults to all edges.'), angle: bounded(0, 180).optional().describe('Degrees of bend still counted as flat. Defaults to 5.') }).describe('Dissolve flat edges and straight vertices.'),
   z.strictObject({
     op: z.literal('bisect_plane'), name: editName,

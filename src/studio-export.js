@@ -1,5 +1,6 @@
 // The panel of the Export workspace: one group for each thing Studio writes (a picture, a model, a web pack), each with the
 // facts about what will be written, one action and the result of the last run. It holds no export code; studio.js wires the actions.
+import { hasStudioTab, registerStudioTab } from './studio-registry.js';
 
 const KIND_ROWS = Object.freeze([
   Object.freeze({ id: 'image', title: 'Image', icon: 'image', action: 'Save PNG' }),
@@ -101,4 +102,18 @@ export function createExportPanel({ documentReference, createElement, createIcon
   }
 
   return { element, onAction, showFacts, setBlocked, showResult, clearResult, clearResults, hasResults };
+}
+
+if (!hasStudioTab('export')) {
+  registerStudioTab({
+    id: 'export',
+    label: 'Export',
+    order: 60,
+    workspaces: ['export'],
+    createPanel: ({ documentReference, builders }) => createExportPanel({
+      documentReference,
+      createElement: builders.createElement,
+      createIcon: iconName => builders.createIcon(documentReference, iconName),
+    }),
+  });
 }

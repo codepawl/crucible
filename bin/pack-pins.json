@@ -1,4 +1,11 @@
 {
   "schemaVersion": 1,
-  "packs": {}
+  "packs": {
+    "vegetation-scans": {
+      "version": "1.0.0",
+      "url": "https://github.com/codepawl/crucible/releases/download/vegetation-scans-1.0.0/vegetation-scans-1.0.0.zip",
+      "sha256": "1b1016289e8af5d89d0065a8eb5c9ab7cba816ec8b6accc39f47959b70c7a155",
+      "bytes": 3862765
+    }
+  }
 }
