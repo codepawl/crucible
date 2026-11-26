@@ -77,9 +77,6 @@ const ASSET_PLACEMENT_FLAG_FIELDS = [
   'castShadow',
   'receiveShadow',
 ];
-// New node fields join this sorted list (one per line) so parallel pull requests never collide on the core order below.
-const EXTRA_NODE_FIELDS = [
-];
 const NODE_FIELDS = [
   'translation',
   'rotation',
@@ -100,11 +97,11 @@ const NODE_FIELDS = [
   'billboard',
   'blend',
   'rayVisibility',
-  ...EXTRA_NODE_FIELDS,
   ...RENDER_FLAG_FIELDS,
 ];
-// New material fields join this sorted list (one per line) so parallel pull requests never collide while packed key order stays identical.
+// Optional/newer material fields join this sorted list (one per line) so parallel pull requests never collide while core packed key order stays identical.
 const EXTRA_MATERIAL_FIELDS = [
+  'waterGlint',
 ];
 const MATERIAL_FIELDS = [
   'color',
@@ -141,7 +138,6 @@ const MATERIAL_FIELDS = [
   'emissionMask',
   'toonColors',
   ...MATERIAL_LAYER_FIELDS,
-  'waterGlint',
   ...EXTRA_MATERIAL_FIELDS,
 ];
 const PATTERN_TEXTURE_FIELDS = [

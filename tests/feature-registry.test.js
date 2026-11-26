@@ -154,8 +154,6 @@ test('agent-scene.js and material-patterns.js keep field lists one item per line
 
   const nodeFields = extractArrayItems(agentSceneSource, /const NODE_FIELDS = \[([\s\S]*?)\];/);
   assert.equal(new Set(nodeFields).size, nodeFields.length, 'agent-scene.js NODE_FIELDS must not contain duplicate entries');
-  const extraNodeFields = extractArrayItems(agentSceneSource, /const EXTRA_NODE_FIELDS = \[([\s\S]*?)\];/);
-  assertSortedUnique(extraNodeFields, 'agent-scene.js EXTRA_NODE_FIELDS');
 
   const materialFields = extractArrayItems(agentSceneSource, /const MATERIAL_FIELDS = \[([\s\S]*?)\];/);
   assert.equal(new Set(materialFields).size, materialFields.length, 'agent-scene.js MATERIAL_FIELDS must not contain duplicate entries');
