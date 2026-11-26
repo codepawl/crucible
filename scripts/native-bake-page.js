@@ -4,6 +4,24 @@
 import { appendNativeGridVolumes, nativeGridVolumes, withoutLocalVolumes } from '../src/path-tracer-native-volumes.js';
 import { withoutWaterMedia } from '../src/path-tracer-water-medium.js';
 
+const LIGHT_RECORD_BYTES = 128;
+const LIGHT_TYPE_OFFSET = 12;
+const LIGHT_FLAGS_OFFSET = 28;
+const LIGHT_TYPE_SUN = 4;
+const LIGHT_FLAG_CAMERA_VISIBLE = 4;
+
+// The v1 parameter block has no bit for sun.cameraVisible, so the v1-to-v2 upgrade of a flattened scene drops it.
+function markFlattenedSunCameraVisible(input) {
+  if (!input?.lights || !(input.lightCount > 0)) return;
+  const view = new DataView(input.lights.buffer, input.lights.byteOffset, input.lights.byteLength);
+  for (let index = 0; index < input.lightCount; index++) {
+    const base = index * LIGHT_RECORD_BYTES;
+    if (view.getUint32(base + LIGHT_TYPE_OFFSET, true) === LIGHT_TYPE_SUN) {
+      view.setUint32(base + LIGHT_FLAGS_OFFSET, view.getUint32(base + LIGHT_FLAGS_OFFSET, true) | LIGHT_FLAG_CAMERA_VISIBLE, true);
+    }
+  }
+}
+
 function bytesToBase64(bytes) {
   if (typeof bytes.toBase64 === 'function') return bytes.toBase64();
   const chunkSize = 0x8000;
@@ -192,6 +210,7 @@ export function exportNativeSceneTables({ parts, environment, camera, options, k
   if (wholeMaterials) {
     try {
       const input = withGrids(buildFlattenedJobNativeInput(traceScene, camera, options, pack, resolveTexture));
+      if (traceScene.lights.sun?.cameraVisible === true) markFlattenedSunCameraVisible(input);
       return { ...encodeNativeInputV2(input, tablesForTransport(input, transport)), triangleCount: input.triangleCount, triangles: traceScene.indices.length / 3, wholeMaterials, ...instancingNote };
     } catch (error) {
       if (error.texturePoolFull || error.exportTooLarge) throw error;

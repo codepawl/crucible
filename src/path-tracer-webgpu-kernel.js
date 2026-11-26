@@ -1142,14 +1142,14 @@ fn addEscape(depth: i32, previousPdf: f32, afterMirror: bool, rayOrigin: vec3<f3
     addRadiance(depth, throughput * params.cameraBackground.xyz);
     return;
   }
-  if (params.emittersFlagsSample.z == 0) { return; }
-  let sky = environmentRadiance(direction);
+  let sunDisc = select(vec3<f32>(0.0), params.sunColorAndCosine.rgb * params.sunDirection.w, isCameraRay && params.emittersFlagsSample.y != 0 && params.sunDirection.w > 0.0 && dot(direction, params.sunDirection.xyz) >= params.sunColorAndCosine.w);
+  let sky = select(vec3<f32>(0.0), environmentRadiance(direction), params.emittersFlagsSample.z != 0);
   var weight = 1.0;
-  if (!afterMirror) {
+  if (params.emittersFlagsSample.z != 0 && !afterMirror) {
     let environmentSide = select(environmentPdf(direction), portalPdf(rayOrigin, direction), portalCount() > 0u) * selectionProbability;
     weight = previousPdf * previousPdf / (previousPdf * previousPdf + environmentSide * environmentSide);
   }
-  addRadiance(depth, throughput * sky * weight);
+  addRadiance(depth, throughput * (sky * weight + sunDisc));
 }
 
 fn survivesRoulette(depth: i32) -> bool {

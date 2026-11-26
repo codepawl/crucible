@@ -1,0 +1,1 @@
+- Path tracer backends (CPU, WebGL2, WebGPU, native Cook) draw the analytic sun disc at `sunAngularRadius` on camera rays when `sunDisc` is enabled (#2164)

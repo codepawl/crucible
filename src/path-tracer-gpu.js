@@ -2,7 +2,7 @@ import { resolveLightSelection } from './path-tracer-light-tree.js';
 import { buildFragmentSource, VERTEX_SOURCE } from './path-tracer-gpu-shader.js';
 import { gpuTriangleCapacity, packAtlas, packEnvironment, packLightTree, packLights, packMaterials, packNodes, packSubsurface, packTriangles, packVertexAlpha, sceneUsesSubsurface } from './path-tracer-gpu-pack.js';
 import { packInstancedScene } from './path-tracer-gpu-instance-pack.js';
-import { cameraBackgroundWords, isInstancedScene, MAX_GPU_TRACE_TRIANGLES, MAX_TRACE_TRIANGLES, uniqueTriangleCount } from './path-tracer-scene.js';
+import { cameraBackgroundWords, isInstancedScene, MAX_GPU_TRACE_TRIANGLES, MAX_TRACE_TRIANGLES, sunDiscScaleOf, uniqueTriangleCount } from './path-tracer-scene.js';
 
 // The GPU backend of the path tracer: one WebGL2 fragment pass per sample draws every pixel of a band, and four float
 // targets add the samples up. It needs a page with WebGL2 (a canvas), EXT_color_buffer_float and EXT_float_blend. The
@@ -167,6 +167,8 @@ export function setSceneUniforms(gl, program, scene, camera, options, lightCount
   gl.uniform3fv(location('uSunDirection'), sun?.direction ?? [0, 1, 0]);
   gl.uniform3fv(location('uSunColor'), sun?.color ?? [0, 0, 0]);
   gl.uniform1f(location('uSunCosineMax'), Math.cos(sun?.angularRadius ?? Math.PI / 360));
+  const sunDiscScale = sunDiscScaleOf(sun);
+  gl.uniform3fv(location('uSunDiscRadiance'), sunDiscScale > 0 ? sun.color.map(channel => channel * sunDiscScale) : [0, 0, 0]);
   gl.uniform1i(location('uHasEnvironment'), environment ? 1 : 0);
   gl.uniform4f(location('uEnvironmentShape'), environment?.width ?? 1, environment?.height ?? 1, environment?.intensity ?? 1, environment?.total ?? 1);
   // The flat colour a camera ray sees where it escapes the scene, w set when environment.world is false (#2016).

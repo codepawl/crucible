@@ -201,6 +201,13 @@ export function applyPhysicalSky(input, environment, fail) {
   }
   const sky = resolvePhysicalSky(input, fail);
   const { aerialDensity, ...fields } = physicalSkyFields(sky);
+  if (environment.environmentRotation) {
+    // Keep the key light and Cook's sun cone aligned with the rotated sky map and Glaze's analytic sun disc.
+    const cosine = Math.cos(environment.environmentRotation);
+    const sine = Math.sin(environment.environmentRotation);
+    const [sunX, sunY, sunZ] = fields.lightDirection;
+    fields.lightDirection = [cosine * sunX + sine * sunZ, sunY, -sine * sunX + cosine * sunZ];
+  }
   Object.assign(environment, fields, { sky, fogDensity: aerialDensity });
 }
 

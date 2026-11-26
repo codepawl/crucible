@@ -3,7 +3,7 @@ import { cameraFieldOfView, resolveThinLens } from './camera.js';
 import { fresnelSchlick } from './material-layers.js';
 import { pointLightFalloff } from './ray-query.js';
 import { profileGain } from './light-profile.js';
-import { buildTraceScene, buildTraceSceneForDevice, partUsesVertexAlpha, refuseLocalVolumes, SUN_ANGULAR_RADIUS, uniqueTriangleCount, validateTraceEnvironment } from './path-tracer-scene.js';
+import { buildTraceScene, buildTraceSceneForDevice, partUsesVertexAlpha, refuseLocalVolumes, SUN_ANGULAR_RADIUS, sunDiscScaleOf, uniqueTriangleCount, validateTraceEnvironment } from './path-tracer-scene.js';
 import { denoiseRadiance, estimateRelativeNoise } from './path-tracer-denoise.js';
 import { acesChannel, displayColor } from './view-transform.js';
 import { VIEW_TRANSFORM_NAMES } from './view-transform-names.js';
@@ -167,7 +167,7 @@ export function createCamera(camera, width, height) {
   const up = finiteVector(camera.up ?? [0, 1, 0], 'up');
   if (camera.projection === 'orthographic' || camera.shift) throw new RangeError('The path tracer draws perspective cameras without lens shift. Render those without the renderer option.');
   const fov = camera.focalLength === undefined ? camera.fov : cameraFieldOfView(camera, width / height);
-  if (typeof fov !== 'number' || !(fov > 1 && fov < 170)) throw new RangeError('Path tracer camera fov must be between 1 and 170 degrees.');
+  if (typeof fov !== 'number' || !(fov >= 1 && fov <= 170)) throw new RangeError('Path tracer camera fov must be between 1 and 170 degrees.');
   const forward = [target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]];
   const forwardLength = Math.hypot(...forward);
   if (forwardLength === 0) throw new RangeError('Path tracer camera eye and target must differ.');
@@ -608,6 +608,8 @@ function createPathTracer(scene, options) {
   const portals = environment ? lights.portals ?? [] : [];
   if (lights.sun) buildFrame(lights.sun.direction, sunFrame);
   const sunCosineMax = Math.cos(lights.sun?.angularRadius ?? SUN_ANGULAR_RADIUS);
+  const sunDiscScale = sunDiscScaleOf(lights.sun);
+  const sunDiscRadiance = sunDiscScale > 0 ? lights.sun.color.map(channel => channel * sunDiscScale) : null;
 
   function addRadiance(depth, red, green, blue) {
     let clampedRed = red;
@@ -907,14 +909,25 @@ function createPathTracer(scene, options) {
       addRadiance(depth, throughput[0] * cameraBackground[0], throughput[1] * cameraBackground[1], throughput[2] * cameraBackground[2]);
       return;
     }
-    if (!environment) return;
-    environmentRadiance(environment, direction[0], direction[1], direction[2], sky);
+    const sunDirection = lights.sun?.direction;
+    const hitsSunDisc = isCameraRay && sunDiscRadiance !== null && (direction[0] * sunDirection[0] + direction[1] * sunDirection[1] + direction[2] * sunDirection[2]) >= sunCosineMax;
+    if (!environment && !hitsSunDisc) return;
+    if (environment) {
+      environmentRadiance(environment, direction[0], direction[1], direction[2], sky);
+    } else {
+      sky[0] = 0;
+      sky[1] = 0;
+      sky[2] = 0;
+    }
     let weight = 1;
-    if (!afterMirror) {
+    if (environment && !afterMirror) {
       const environmentSide = (portals.length > 0 ? portalPdf(portals, originX, originY, originZ, direction[0], direction[1], direction[2]) : environmentPdf(environment, direction[0], direction[1], direction[2])) * selectionProbability;
       weight = previousPdf * previousPdf / (previousPdf * previousPdf + environmentSide * environmentSide);
     }
-    addRadiance(depth, throughput[0] * sky[0] * weight, throughput[1] * sky[1] * weight, throughput[2] * sky[2] * weight);
+    const sunRed = hitsSunDisc ? sunDiscRadiance[0] : 0;
+    const sunGreen = hitsSunDisc ? sunDiscRadiance[1] : 0;
+    const sunBlue = hitsSunDisc ? sunDiscRadiance[2] : 0;
+    addRadiance(depth, throughput[0] * (sky[0] * weight + sunRed), throughput[1] * (sky[1] * weight + sunGreen), throughput[2] * (sky[2] * weight + sunBlue));
     if (!featuresRecorded) writeEscapedAlbedo(features.albedo);
   }
 
