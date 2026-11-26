@@ -126,7 +126,7 @@ test('environment memory accounting counts the half-float chain and the lookup t
 test('environment specular adds the energy a rough surface scatters a second time', () => {
   assert.match(environmentShadingGlsl, /missingEnergy/);
   assert.match(environmentShadingGlsl, /return 1\.0 \/ \(1\.0 - missingEnergy \* averageFresnel\)/);
-  assert.match(environmentShadingGlsl, /singleScatter \* multipleScatterGain\(lookup, baseReflectance\)/);
+  assert.match(environmentShadingGlsl, /singleScatter \* multipleScatterGain\(lookup, baseReflectance, grazingReflectance\)/);
 });
 
 test('direct light specular takes the same multiple scatter gain once per fragment', () => {

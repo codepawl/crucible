@@ -21,7 +21,7 @@ import { RenderTargetLedger } from './render-target-ledger.js';
 import { SHADOW_ATLAS_WIDTH, SHADOW_TILE_SIZE, SHADOW_TILES_PER_ROW, tileViewport, writeShadowTile } from './local-shadows.js';
 import { resolveVolumeFog, validateFogField } from './volumetric.js';
 import { requireEnvironmentSupport, DEFAULT_SUN_ANGULAR_RADIUS } from './environment-shading.js';
-import { materialLayerState, materialLayerValue } from './material-layers.js';
+import { DIELECTRIC_GRAZING_STATE_INDEX, materialLayerState, materialLayerValue } from './material-layers.js';
 import { MaterialSnapshot } from './material-snapshot.js';
 import { wearUniformValues } from './material-wear.js';
 import { wetnessKeepOutBoxes, wetnessGroundHeight } from './wetness-keep-out.js';
@@ -3322,7 +3322,7 @@ export class CrucibleRenderer {
       this.context.uniform4f(this.uniforms.materialMoss, batch.mapState[8], batch.mapState[9], batch.mapState[10], batch.mapState[11]);
       this.bindSurfaceWear(batch.wear);
       const layers = batch.layerState;
-      this.context.uniform3f(this.uniforms.materialDielectric, layers[0], layers[1], layers[2]);
+      this.context.uniform4f(this.uniforms.materialDielectric, layers[0], layers[1], layers[2], layers[DIELECTRIC_GRAZING_STATE_INDEX]);
       this.context.uniform2f(this.uniforms.materialCoat, layers[3], layers[4]);
       this.context.uniform4f(this.uniforms.materialSheen, layers[5], layers[6], layers[7], layers[8]);
       this.context.uniform2f(this.uniforms.materialAnisotropy, layers[16], layers[17]);
