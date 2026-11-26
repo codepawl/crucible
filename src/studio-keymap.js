@@ -52,6 +52,8 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('view.top', 'Top view', 'View', 'normal', binding('7')),
   action('view.projection', 'Perspective or orthographic', 'View', 'normal', binding('5')),
   action('view.properties', 'Show or hide Properties', 'View', 'normal', binding('n')),
+  // By code, because Option+M types a letter of its own on a Mac. Only a host that offers an agent chat gives it an effect.
+  action('view.agent', 'Show or hide Agent', 'View', 'normal', { code: 'KeyM', alt: true }),
   action('view.seeThrough', 'See through the surface', 'View', 'normal', { code: 'KeyZ', alt: true }),
   action('animate.keyframe', 'Insert a keyframe', 'Animate', 'normal', binding('i'), binding('k')),
   action('animate.play', 'Play', 'Animate', 'normal', binding(' ')),
@@ -124,6 +126,7 @@ export const SHORTCUT_ROWS = Object.freeze([
   Object.freeze({ keys: '{view.front} / {view.right} / {view.top}', label: 'Front / Right / Top view' }),
   Object.freeze({ keys: '{view.projection}', label: 'Perspective or orthographic' }),
   Object.freeze({ keys: '{view.properties}', label: 'Show or hide Properties' }),
+  Object.freeze({ keys: '{view.agent}', label: 'Show or hide Agent' }),
   Object.freeze({ keys: '{animate.keyframe} / {animate.keyframe#1}', label: 'Insert a keyframe' }),
   Object.freeze({ keys: '{animate.play}', label: 'Play' }),
   Object.freeze({ keys: '{edit.undo} / {edit.redo}', label: 'Undo / Redo' }),
