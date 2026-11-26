@@ -1329,6 +1329,8 @@ export function createStudio(container, {
   // Edit mode (src/studio-mesh-edit.js) is loaded on the first Tab, so the core entry carries none of it.
   let meshEditor = null;
   let meshEditorLoad = null;
+  // The held E and I of edit mode (src/studio-mesh-tool.js); set when the editor loads.
+  let faceToolInput = null;
   let modalTransform = null;
   let swallowContextMenu = false;
   let swallowClick = false;
@@ -5533,7 +5535,7 @@ export function createStudio(container, {
   }
 
   function loadMeshEditor() {
-    meshEditorLoad ??= Promise.all([import('./studio-mesh-edit.js'), import('./studio-proportional.js')]).then(([{ createMeshEditor }, { createProportionalSettings, createProportionalPopover }]) => {
+    meshEditorLoad ??= Promise.all([import('./studio-mesh-edit.js'), import('./studio-proportional.js'), import('./studio-mesh-tool.js')]).then(([{ createMeshEditor }, { createProportionalSettings, createProportionalPopover }, { createFaceToolInput }]) => {
       let proportionalPopover = null;
       const proportional = createProportionalSettings({
         onChange: () => {
@@ -5549,6 +5551,7 @@ export function createStudio(container, {
       bindPopoverAnchor(proportionalMenuButton, proportionalPopover.popover, { beside: true });
       meshEditor = createMeshEditor({ controller, announce, getRenderer: () => renderer, proportional });
       meshEditor.setSeeThrough(seeThrough);
+      faceToolInput = createFaceToolInput({ documentReference, editor: meshEditor, localCoordinates, onChange: updateMeshSelectionView });
       return meshEditor;
     });
     return meshEditorLoad;
@@ -5621,8 +5624,7 @@ export function createStudio(container, {
 
   function separateMeshSelection() {
     meshEditor?.separateSelection();
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   function openSeparateMenu() {
@@ -5644,16 +5646,15 @@ export function createStudio(container, {
     // The generator code that was loaded belongs to the object Tab was pressed on: another selection by now gets nothing.
     if (editor.active || controller.selectedNodeId !== pressedOnNodeId) return;
     editor.enter();
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   function leaveMeshEdit() {
+    faceToolInput?.cancel();
     if (controller.dragging) pointerState = null;
     stopWatchingCircleFocus();
     meshEditor?.leave();
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   // Esc puts a drag back, else ends circle select, else clears the selection, else leaves edit mode.
@@ -5669,8 +5670,7 @@ export function createStudio(container, {
       stopWatchingCircleFocus();
       meshEditor.leave();
     }
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   // Circle select (C): left drag paints the selection, middle drag or Shift paints the deselection, the wheel
@@ -5711,8 +5711,7 @@ export function createStudio(container, {
     stopWatchingCircleFocus();
     circlePaint = null;
     meshEditor.endCircleSelect();
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   function circleSelectOwnsPointer(event) {
@@ -5723,8 +5722,7 @@ export function createStudio(container, {
   function paintCircleAt(event, deselect) {
     const coordinates = localCoordinates(event);
     meshEditor.paintCircle(coordinates.x, coordinates.y, { deselect });
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   viewportElement.addEventListener('pointerdown', event => {
@@ -5794,8 +5792,7 @@ export function createStudio(container, {
     viewportElement.releasePointerCapture?.(event.pointerId);
     meshEditor.selectInRectangle(left, top, right, bottom, { additive: event.shiftKey });
     meshEditor.endBoxSelect();
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   });
 
   // Right click leaves circle select instead of opening a menu.
@@ -5806,6 +5803,12 @@ export function createStudio(container, {
     endCircleSelect();
   }, true);
 
+  // E and I hold the picked faces at the pointer; with the pointer outside the viewport the middle of it stands in.
+  function startFaceTool(kind) {
+    const bounds = viewportElement.getBoundingClientRect();
+    faceToolInput.start(kind, viewportPointer ?? { x: bounds.width / 2, y: bounds.height / 2 });
+  }
+
   function updateMeshSelectionView() {
     syncUi();
     requestFrame();
@@ -5813,8 +5816,7 @@ export function createStudio(container, {
 
   function chooseMeshMode(mode) {
     meshEditor.setMode(mode);
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   // Tab is also how the keyboard moves between controls, so it enters edit mode only from the page or the canvas.
@@ -5886,6 +5888,12 @@ export function createStudio(container, {
     },
     'mesh.separate': preventDefaultThen(openSeparateMenu),
   };
+  for (const kind of ['extrude', 'inset']) {
+    meshKeyHandlers[`mesh.${kind}`] = event => {
+      event.preventDefault();
+      startFaceTool(kind);
+    };
+  }
 
   // Handlers of the normal context by action id. A handler calls preventDefault for the keys the browser would
   // otherwise use itself (save, open, copy, undo and so on).
@@ -5987,20 +5995,15 @@ export function createStudio(container, {
   }
 
   const onWindowKeyDown = async event => {
-    if (!root.isConnected) {
-      return;
-    }
+    if (!root.isConnected) return;
+    if (faceToolInput?.handleKey(event)) return;
     if (modalTransform) {
       handleModalKey(event);
       return;
     }
-    if (isEditableTarget(event.target, event.key)) {
-      return;
-    }
+    if (isEditableTarget(event.target, event.key)) return;
     // Esc or a key pressed over an open mesh menu belongs to the menu, not to edit mode.
-    if (meshMenus.isOpen()) {
-      return;
-    }
+    if (meshMenus.isOpen()) return;
     const editingMesh = Boolean(meshEditor?.active);
     const { match, fromMeshContext } = resolveStudioKeyAction(keymap, event, editingMesh, findKeymapAction, MESH_EDIT_PASS_THROUGH);
     const dialogIsOpen = recipeDialog.open || shortcutsDialog.open || settingsDialog.open || setup.dialog.open || Boolean(newSceneDialogs?.dialogs.some(dialog => dialog.open));
@@ -6302,6 +6305,7 @@ export function createStudio(container, {
       stopFlight();
       finishModalTransform(false);
       stopWatchingCircleFocus();
+      faceToolInput?.dispose();
       documentReference.removeEventListener('contextmenu', onModalContextMenu, true);
       documentReference.removeEventListener('click', onModalClick, true);
       documentReference.removeEventListener('pointerdown', onAnyPointerDown, true);

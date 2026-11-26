@@ -14,6 +14,7 @@ import { edgeLoop, edgeRing, faceLoop, growSelection, selectLinked, shrinkSelect
 import { DEFAULT_MAX_FALLOFF_VISITS, spatialFalloffWeights } from './mesh-ops.js';
 import { proportionalCirclePath } from './studio-proportional.js';
 import { MAX_SELECTED_ELEMENTS, MERGE_TARGETS } from './mesh-operations.js';
+import { FACE_TOOLS, PICK_FACES_FIRST, faceToolAmount, faceToolEdit, faceToolFrame, faceToolTargets, roundAmount } from './studio-mesh-tool.js';
 import { CONVERTIBLE_PRIMITIVES, meshGeometryOfPrimitive, planOwnMesh } from './studio-own-mesh.js';
 import {
   edgesOfSelection,
@@ -50,6 +51,7 @@ const NEEDS_A_MESH = 'Edit mode needs a mesh geometry or a shape of the Add menu
 const NEEDS_NO_MODIFIERS = 'Edit mode does not work on a mesh with modifiers yet. Add a plain shape from the Mesh group and edit that, or have the modifiers applied first.';
 const TOO_MANY_SEEDS = `Proportional editing moves at most ${MAX_SELECTED_ELEMENTS} vertices that are not whole faces; select fewer, or whole faces.`;
 const LOG_IS_FULL = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take another move.`;
+const LOG_IS_FULL_FOR_TOOL = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take an extrude or an inset.`;
 const LOG_IS_FULL_FOR_EDIT = `This mesh already has ${MAX_LOG_ENTRIES} edits, the most one mesh holds, so it cannot take a dissolve or a merge.`;
 const TOO_MANY_VERTICES = `Moving more than ${MAX_MASK_VERTICES} vertices that are not whole faces is not possible yet; select whole faces or fewer vertices.`;
 const MESH_CHANGED = 'Edit mode ended because this object uses a different mesh now.';
@@ -1045,8 +1047,13 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     const falloff = proportional?.falloff() ?? null;
     // Refused here, before the pointer moves: a finished drag is never thrown away.
     planMeshMove(state.mesh, vertices, [0, 0, 0], falloff);
+    drag = createDrag(vertices, falloff);
+  }
+
+  // What a held change keeps to put the cage and the drawn surface back: where each vertex stood, and the buffers of the preview.
+  function createDrag(vertices, falloff) {
     const previewing = state.previewable && getRenderer() !== null;
-    drag = {
+    return {
       seeds: vertices,
       falloff,
       ...dragTargets(vertices, falloff),
@@ -1178,6 +1185,84 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     }
     moveDrag(drag.worldDelta);
     return true;
+  }
+
+  // The faces a pick stands for when it is whole faces, else null: in face mode the picked faces; in vertex and edge mode the faces
+  // whose vertices are all picked, provided no picked vertex is left over.
+  function pickedWholeFaces() {
+    if (state.mode === 'face') return state.selected.size > 0 ? [...state.selected].sort((first, second) => first - second) : null;
+    const picked = selectedVertices();
+    const { faces, covered } = facesInsideVertexSet(state.mesh, picked);
+    return faces.length > 0 && covered.size === picked.size ? faces : null;
+  }
+
+  /**
+   * E (extrude) and I (inset): holds the picked faces under a tool whose amount the pointer sets (`moveFaceTool`) until
+   * `finishFaceTool` writes it as one entry of the log or `cancelFaceTool` puts everything back. `pointerX` and `pointerY` are
+   * where the amount is zero. Refuses, with a notice, a pick that is not whole faces.
+   */
+  function beginFaceTool(kind, pointerX, pointerY) {
+    const tool = FACE_TOOLS[kind];
+    if (!tool) throw new RangeError(`Unknown face tool "${String(kind)}"; use extrude or inset.`);
+    if (!state) return refuse(`Enter edit mode on a mesh to ${tool.verb} faces.`);
+    if (drag) return refuse(`Let go of the move before you ${tool.verb}.`);
+    const faces = pickedWholeFaces();
+    if (!faces) return refuse(PICK_FACES_FIRST(tool.verb));
+    if (state.editCount >= MAX_LOG_ENTRIES) return refuse(LOG_IS_FULL_FOR_TOOL);
+    let frame;
+    try {
+      frame = faceToolFrame(state.mesh, kind, faces);
+    } catch {
+      return refuse(tool.cannotStart);
+    }
+    const vertices = [...verticesOfSelection(state.mesh, 'face', new Set(faces))];
+    drag = { ...createDrag(vertices, null), tool: { kind, faces, frame, start: { x: pointerX, y: pointerY }, amount: 0 } };
+    announce(tool.hint);
+    return { ok: true };
+  }
+
+  /** The pointer moved while a face tool is held: the faces show what the tool does at the amount it now stands for. */
+  function moveFaceTool(pixelX, pixelY) {
+    if (!drag?.tool) return;
+    const { kind, faces, frame, start } = drag.tool;
+    const project = local => controller.worldPointProjector()(transformPoint(state.part.matrix, local[0], local[1], local[2]));
+    const rawAmount = faceToolAmount(kind, frame, project, start, { x: pixelX, y: pixelY });
+    const amount = roundAmount(kind === 'inset' ? Math.max(0, rawAmount) : rawAmount);
+    let result;
+    try {
+      result = faceToolTargets(state.mesh, kind, faces, amount);
+    } catch {
+      return;
+    }
+    const { targets, usedAmount } = result;
+    // The log keeps the amount the engine used, so an inset the pointer pushed past the limit is written at the limit.
+    drag.tool.amount = roundAmount(usedAmount);
+    drag.vertices.forEach(vertex => {
+      const target = targets.get(vertex);
+      for (let axis = 0; axis < 3; axis += 1) state.positions[vertex * 3 + axis] = target[axis];
+    });
+    writePreview();
+  }
+
+  /** Confirms the held face tool: one entry of the log. An amount that rounds to nothing writes nothing. */
+  function finishFaceTool() {
+    if (!drag?.tool) return;
+    const { kind, faces, amount } = drag.tool;
+    restoreDraggedPositions();
+    drag = null;
+    if (amount === 0) return;
+    try {
+      writeEntry(faceToolEdit(kind, faces, amount));
+    } catch (error) {
+      announce(error);
+      return;
+    }
+    announce(`${FACE_TOOLS[kind].past} ${faces.length} ${faces.length === 1 ? 'face' : 'faces'}`);
+  }
+
+  /** Esc or a right click: the faces go back where they stood and nothing is written. */
+  function cancelFaceTool() {
+    if (drag?.tool) cancelDrag();
   }
 
   const session = {
@@ -1427,7 +1512,12 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     selectionScreenRadius,
     selectionCentreLocal,
     reweighDrag,
-    get holdingMove() { return drag !== null; },
+    beginFaceTool,
+    moveFaceTool,
+    finishFaceTool,
+    cancelFaceTool,
+    get holdingFaceTool() { return Boolean(drag?.tool); },
+    get holdingMove() { return drag !== null && !drag.tool; },
     proportional,
     draw,
   });

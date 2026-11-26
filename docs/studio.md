@@ -85,7 +85,8 @@ Not there yet, and said so on screen when you reach it:
 - **B** starts box select: drag one rectangle with the left button and everything of the mode that lies wholly inside it is selected (**Shift** adds to the selection instead of replacing it). The key is spent after one rectangle, and **Esc** drops it.
 - **Alt+Z** turns **see-through** on or off, and so does the button in the rail's lower group. While it is on, the surface of the object you edit is drawn faint, the far side of the cage is drawn as strongly as the near side, and a click, the circle and a box reach the far side too: from the front, a box over a cube takes all 8 vertices instead of the 4 facing you. It is a view setting, kept while Studio is open and for the next edit session: it changes nothing in the recipe, adds no undo step, and `studio.setSeeThrough(true)` sets it from code. In face mode a click takes the face whose centre is nearest the pointer among those drawn under it.
 - **O** turns proportional editing on or off, from the button at the foot of the edit mode group (it lights while on). While it is on, a move also takes the vertices around the picked ones along, by a curve that fades to nothing at a radius, and a circle around the pick shows that radius. Turn the wheel while you hold a move to widen or narrow it (a factor of 1.15 a notch, from 0.01 to 100 in the mesh's own units, 0.5 to start). The button beside it opens a popover with the curve (smooth, round, root, sharp, linear or flat, each drawn) and a size slider. The move is written as one `translate` with a `falloff` of `{ radius, curve }`, the falloff a recipe or an agent writes, so an undo, a save and a replay give the same hill. A pick that is not whole faces is named by its vertices (`verts: { "vertices": [..] }`, up to 4096) because it has no face to select. In a keymap preset where O frames the object, O is proportional editing inside edit mode and S still frames.
-- Rotate, scale, box select, extrude and the other tools come next.
+- **E** extrudes the picked faces as one region and **I** insets them. Each is held, like a move: the faces follow the pointer while the key is down, and nothing is written yet. For an extrude the pointer sets the distance along the faces' average normal (drag along the normal's line on screen; when the normal points straight at you, drag up for outward); for an inset it sets the thickness of the rim, growing with the pointer's distance from where you pressed the key. A click or **Enter** confirms it as one `extrude_face_region` or `inset_region` entry of the mesh edit log, so one undo takes it back and a redo gives the same positions; **Esc** or a right click puts the faces back and writes nothing. An inset past what the faces hold is written at the largest thickness that works. While the tool is held the faces show the cap, the inner faces of an inset or the moved faces of an extrude; the new side faces appear when you confirm. The pick must be whole faces (in vertex or edge mode, vertices that make up whole faces, and nothing else): anything else shows a notice that says to press 3 and click the faces. Faces that form a connected band whose normals cancel out, such as the ring of side faces of a cylinder, cannot extrude as one region and say so; pick faces that face one way. A mesh holds at most 64 edits, and a tool needs one. After the edit the pick is cleared, because the numbers of the old mesh mean nothing in the new one.
+- Rotate, scale and the other tools come next.
 
 **P** in edit mode opens a small menu at the middle of the viewport with **Selection**: the picked faces (in vertex or edge mode, the faces whose vertices are all picked) become a new object named `<name>-part`, with the same position, size, parent and material, so nothing moves. The object keeps its other faces and stays in edit mode; with nothing picked, or every face picked, it says what to do and changes nothing. It is one undo step.
 
@@ -204,6 +205,7 @@ While an input method composes text (Japanese, Chinese, Korean), Enter picks the
 | ], Ctrl+Numpad + | In edit mode: grow the selection by one step |
 | [, Ctrl+Numpad - | In edit mode: shrink the selection by one step |
 | O | In edit mode: proportional editing on or off (see Proportional editing) |
+| E, I | In edit mode: extrude or inset the picked faces, held at the pointer (click or Enter confirms, Esc or right click cancels) |
 | Alt+Z | See through the surface |
 | H, Alt+H | Hide the selection, show everything that is hidden |
 | Alt+G, Alt+R, Alt+S | Reset the position, rotation or scale of the selection |
@@ -265,6 +267,7 @@ The last menu of the top bar, **Help**, has four rows, each with an icon.
 | Apply transforms | Ctrl+A | Ctrl+Alt+A | Ctrl+A |
 | See through the surface | Alt+Z | Alt+Z | Alt+Z |
 | Box select (edit mode) | B | B | B |
+| Extrude, Inset (edit mode) | E, I | E, I | E, I |
 | Insert a keyframe | I, K | S | F9 |
 | Play | Space | Alt+V | F8 |
 
