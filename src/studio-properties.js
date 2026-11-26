@@ -488,3 +488,15 @@ export function propertyIsEnabled(field, source) {
 export function propertyIsVisible(field, source) {
   return field.visibleWhen ? field.visibleWhen(source) : true;
 }
+
+export const MIXED_PROPERTY_LABEL = 'Mixed';
+
+/** Summarizes a list of field values across a selection as `{ value, mixed }`. */
+export function summarizeSharedPropertyValues(values, isEqual = Object.is) {
+  if (!Array.isArray(values) || values.length === 0) {
+    return { value: undefined, mixed: false };
+  }
+  const first = values[0];
+  const mixed = values.slice(1).some(candidate => !isEqual(first, candidate));
+  return { value: first, mixed };
+}
