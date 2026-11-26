@@ -1,5 +1,5 @@
 import { mat4, vec3 } from 'gl-matrix';
-import { registerShaderFeatureCode } from './shader-registry.js';
+import { HEIGHT_MAP_UNIT, registerShaderFeatureCode } from './shader-registry.js';
 import { resolveShadowLight } from './shadow-light.js';
 import { farthestDepthOfBounds } from './near-plane-fit.js';
 
@@ -27,7 +27,7 @@ const DEFAULT_SPLIT_LAMBDA = 0.7;
 const DEFAULT_CASTER_REACH = 200;
 // A sampler that a program never sets reads unit 0, and the cascade array lives on unit 0, so the main program's other
 // samplers are pinned to their own units here. These are the units renderer.js uses: the five maps on 1 to 5, the light map on 6, the local shadow atlas on 15.
-const MAIN_SAMPLER_UNITS = { baseMap: 1, normalMap: 2, metallicRoughnessMap: 3, occlusionMap: 4, emissiveMap: 5, lightMap: 6, localShadowAtlas: 15 };
+const MAIN_SAMPLER_UNITS = { baseMap: 1, normalMap: 2, metallicRoughnessMap: 3, occlusionMap: 4, emissiveMap: 5, lightMap: 6, localShadowAtlas: 15, heightMap: HEIGHT_MAP_UNIT };
 const NDC_CORNERS = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
 
 const CASCADE_DECLARATIONS = `uniform highp sampler2DArray cascadeShadowMap;

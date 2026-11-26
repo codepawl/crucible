@@ -41,9 +41,16 @@ function runNode(scriptAndArguments, label) {
 
 // ---------- Blender demo scenes (Cook) ----------
 
-async function downloadDemoArchive(sourceName, cacheFolder, destination) {
+const DEMO_MAXIMUM_BYTES = 512 * 1024 * 1024;
+
+export function demoDownloadArguments(sourceName, cacheFolder, destination) {
   const source = DEMO_SOURCES[sourceName];
-  const parsed = new URL(source?.url ?? '');
+  let parsed;
+  try {
+    parsed = new URL(source?.url ?? '');
+  } catch {
+    throw new Error(`Untrusted demo source for ${sourceName}.`);
+  }
   if (parsed.protocol !== 'https:' || parsed.hostname !== 'download.blender.org') {
     throw new Error(`Untrusted demo source for ${sourceName}.`);
   }
@@ -52,9 +59,14 @@ async function downloadDemoArchive(sourceName, cacheFolder, destination) {
   if (!safeTarget.startsWith(safeRoot)) {
     throw new Error(`Refusing to write outside cache folder: ${safeTarget}`);
   }
-  const response = await fetch(parsed.href);
-  if (!response.ok) throw new Error(`Download of ${parsed.href} failed with HTTP ${response.status}.`);
-  await writeFile(safeTarget, Buffer.from(await response.arrayBuffer()));
+  return ['--fail', '--silent', '--show-error', '--location', '--proto', '=https', '--proto-redir', '=https', '--max-filesize', String(DEMO_MAXIMUM_BYTES), '--output', safeTarget, parsed.href];
+}
+
+function downloadDemoArchive(sourceName, cacheFolder, destination) {
+  const argumentList = demoDownloadArguments(sourceName, cacheFolder, destination);
+  const result = spawnSync('curl', argumentList, { cwd: root, encoding: 'utf8' });
+  if (result.error) throw new Error(`Download of ${sourceName} failed: could not start curl (${result.error.message}).`);
+  if (result.status !== 0) throw new Error(`Download of ${sourceName} failed (curl exit ${result.status}): ${result.stderr || 'unknown error'}`);
 }
 
 async function findBlendFile(folder) {
@@ -78,7 +90,7 @@ async function prepareDemoGlb(sourceName, cacheFolder) {
   if (existsSync(join(sourceFolder, 'scene.glb'))) return sourceFolder;
   await mkdir(sourceFolder, { recursive: true });
   const downloaded = join(sourceFolder, source.zipped ? `${sourceName}.zip` : `${sourceName}.blend`);
-  if (!existsSync(downloaded)) await downloadDemoArchive(sourceName, cacheFolder, downloaded);
+  if (!existsSync(downloaded)) downloadDemoArchive(sourceName, cacheFolder, downloaded);
   if (source.zipped) {
     await mkdir(join(sourceFolder, 'unzipped'), { recursive: true });
     unzip(downloaded, join(sourceFolder, 'unzipped'));
@@ -268,7 +280,9 @@ async function main() {
   if (failures.length) throw new Error(`${failures.length} preview(s) failed:\n${failures.join('\n')}`);
 }
 
-main().catch(error => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href) {
+  main().catch(error => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
+}

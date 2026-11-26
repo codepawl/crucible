@@ -11,10 +11,32 @@ import { roundVector } from './studio-controller.js';
 import { isLiveGeometry, unmarkLiveGeometry } from './live-geometry.js';
 import { updatePartVertices } from './update-part-vertices.js';
 import { edgeLoop, edgeRing, faceLoop, growSelection, selectLinked, shrinkSelection } from './mesh-select-topology.js';
-import { spatialFalloffWeights } from './mesh-ops.js';
+import { DEFAULT_MAX_FALLOFF_VISITS, spatialFalloffWeights } from './mesh-ops.js';
 import { proportionalCirclePath } from './studio-proportional.js';
 import { MAX_SELECTED_ELEMENTS, MERGE_TARGETS } from './mesh-operations.js';
 import { FACE_TOOLS, PICK_FACES_FIRST, faceToolAmount, faceToolEdit, faceToolFrame, faceToolTargets, roundAmount } from './studio-mesh-tool.js';
+import { CONVERTIBLE_PRIMITIVES, meshGeometryOfPrimitive, planOwnMesh } from './studio-own-mesh.js';
+import {
+  edgesOfSelection,
+  planMeshBridge,
+  planMeshFill,
+  planMeshGridFill,
+  planMeshMakeFace,
+  planMeshSubdivide,
+  planMeshSymmetrize,
+  verticesOfSelection,
+} from './studio-mesh-tools.js';
+
+export {
+  meshGeometryOfPrimitive,
+  planMeshBridge,
+  planMeshFill,
+  planMeshGridFill,
+  planMeshMakeFace,
+  planMeshSubdivide,
+  planMeshSymmetrize,
+  verticesOfSelection,
+};
 
 export const MESH_SELECTION_MODES = Object.freeze(['vertex', 'edge', 'face']);
 export const MAX_MASK_VERTICES = 19;
@@ -186,39 +208,6 @@ export function previewNormalsOf(indices, positions, normals) {
   return normals;
 }
 
-/** The vertices a selection of `mode` covers: the picked ones, the ends of picked edges, or the corners of picked faces. */
-export function verticesOfSelection(mesh, mode, selected) {
-  const vertices = new Set();
-  for (const element of selected) {
-    if (mode === 'vertex') {
-      vertices.add(element);
-    } else if (mode === 'edge') {
-      vertices.add(mesh.edgeVertices[element * 2]);
-      vertices.add(mesh.edgeVertices[element * 2 + 1]);
-    } else {
-      for (let corner = mesh.faceOffsets[element]; corner < mesh.faceOffsets[element + 1]; corner += 1) vertices.add(mesh.cornerVertices[corner]);
-    }
-  }
-  return vertices;
-}
-
-// The edges a selection dissolves: the picked ones, those between two picked vertices, or those around a picked face.
-function edgesOfSelection(mesh, mode, selected) {
-  if (mode === 'edge') return [...selected].sort((first, second) => first - second);
-  if (mode === 'vertex') {
-    const edges = [];
-    for (let edge = 0; edge < mesh.edgeCount; edge += 1) {
-      if (selected.has(mesh.edgeVertices[edge * 2]) && selected.has(mesh.edgeVertices[edge * 2 + 1])) edges.push(edge);
-    }
-    return edges;
-  }
-  const edges = new Set();
-  for (const face of selected) {
-    for (let corner = mesh.faceOffsets[face]; corner < mesh.faceOffsets[face + 1]; corner += 1) edges.add(mesh.cornerEdges[corner]);
-  }
-  return [...edges].sort((first, second) => first - second);
-}
-
 // The faces a selection dissolves: the picked ones, or those whose every corner is picked.
 function facesOfSelection(mesh, mode, selected) {
   if (mode === 'face') return [...selected].sort((first, second) => first - second);
@@ -288,34 +277,12 @@ function logsShareTheirPrefix(first, second) {
   return true;
 }
 
-// The shapes of the Add menu's Mesh group turn into a mesh on the first Tab. A box and a cylinder lose their bevel on the way:
-// as a mesh the bevel is hundreds of tiny faces (a box of 6 faces becomes 1,482), which nobody can pick one by one. A written 0 is
-// needed: without a bevel field the shape builds with its default one.
-// A plane is written back by the recipe as a grid.
-const CONVERTIBLE_PRIMITIVES = new Set(['plane', 'grid', 'box', 'circle', 'sphere', 'icoSphere', 'cylinder', 'cone', 'torus']);
-const PRIMITIVES_WITHOUT_BEVEL = new Set(['box', 'cylinder']);
-
-/** The mesh geometry a shape becomes in edit mode: its own description as the base, or null for a geometry that is no such shape. */
-export function meshGeometryOfPrimitive(geometrySpec) {
-  if (!geometrySpec || !CONVERTIBLE_PRIMITIVES.has(geometrySpec.type)) return null;
-  const { id, ...base } = structuredClone(geometrySpec);
-  if (PRIMITIVES_WITHOUT_BEVEL.has(base.type)) base.bevel = 0;
-  return { type: 'mesh', base };
-}
-
-function uniqueGeometryId(recipe, wanted) {
-  const taken = new Set((recipe.geometries ?? []).map(geometry => geometry.id));
-  let candidate = wanted;
-  for (let suffix = 2; taken.has(candidate); suffix += 1) candidate = `${wanted}-${suffix}`;
-  return candidate;
-}
-
 /**
  * The edit mode of one Studio: `enter()` on the selected node, pick with `pick()`, move with the handles of the
  * controller (this editor installs an element session on it), `leave()`. `updatePart` writes a drag preview into the GPU
  * buffers of the part; `getRenderer` returns the renderer it needs, or null for a headless Studio (the cage still moves).
  */
-export function createMeshEditor({ controller, announce = () => {}, getRenderer = () => null, updatePart = updatePartVertices, proportional = null } = {}) {
+export function createMeshEditor({ controller, announce = () => {}, getRenderer = () => null, updatePart = updatePartVertices, proportional = null, maxFalloffVisits = DEFAULT_MAX_FALLOFF_VISITS } = {}) {
   let state = null;
   let drag = null;
   // True while this editor writes its own entry: the mesh it reads back has the same topology, so the pick stays.
@@ -394,21 +361,10 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return null;
   }
 
-  // The geometry of the node becomes a mesh of its own before the first edit, in one scene change (one undo step). A geometry
-  // another node uses is copied: the preview writes into the geometry's buffers and the edit log belongs to the geometry, so the
-  // twin would move too. A shape becomes the mesh of its own description; the shape itself goes when nothing else uses it.
+  // The geometry of the node becomes a mesh of its own before the first edit, in one scene change (one undo step).
   function giveNodeItsOwnMesh(nodeId) {
-    const recipe = controller.exportRecipe();
-    const node = recipe.nodes.find(candidate => candidate.id === nodeId);
-    const spec = recipe.geometries.find(candidate => candidate.id === node.geometry);
-    const sharing = recipe.nodes.filter(candidate => candidate.geometry === node.geometry).length > 1;
-    const converted = meshGeometryOfPrimitive(spec);
-    if (!sharing && !converted) return;
-    const ownId = uniqueGeometryId(recipe, converted ? `${spec.id}-mesh` : `${spec.id}-${nodeId}`);
-    const ownGeometry = converted ?? structuredClone(spec);
-    const operations = [{ type: 'add-geometry', geometry: { ...ownGeometry, id: ownId } }, { type: 'set-node', id: nodeId, geometry: ownId }];
-    if (converted && !sharing) operations.push({ type: 'remove-geometry', id: spec.id });
-    controller.applyImportOperations(operations, { detail: { kind: 'topology', nodeId } });
+    const { operations } = planOwnMesh(controller.exportRecipe(), nodeId);
+    if (operations.length > 0) controller.applyImportOperations(operations, { detail: { kind: 'topology', nodeId } });
   }
 
   // The mesh the node would become on Tab, or null: Studio loads the code that builds it before it calls enter().
@@ -1072,7 +1028,7 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     let vertices = seeds;
     let weights = null;
     if (falloff) {
-      const weightOf = spatialFalloffWeights(state.positions, state.mesh.vertexCount, new Set(seeds), falloff);
+      const weightOf = spatialFalloffWeights(state.positions, state.mesh.vertexCount, new Set(seeds), falloff, { maxFalloffVisits });
       vertices = [...weightOf.keys()];
       weights = Float32Array.from(weightOf.values());
     }
@@ -1179,19 +1135,56 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     return runTopologyEdit(() => planMeshMerge(state.mesh, state.mode, state.selected, at), `Merged the vertices ${at === 'collapse' ? 'by collapse' : `at ${at}`}`);
   }
 
+  /** Makes a face from 3+ picked vertices or splits a shared face with an edge between 2 picked vertices (F): one undo step. */
+  function makeFace() {
+    return runTopologyEdit(() => planMeshMakeFace(state.mesh, state.mode, state.selected), 'Created face or edge');
+  }
+
+  /** Fills the selected boundary loop or caps all open boundaries when nothing is picked: one undo step. */
+  function fill() {
+    return runTopologyEdit(() => planMeshFill(state.mesh, state.mode, state.selected), 'Filled selection');
+  }
+
+  /** Fills closed even-sided boundary loops in the selection with quad grids: one undo step. */
+  function gridFill() {
+    return runTopologyEdit(() => planMeshGridFill(state.mesh, state.mode, state.selected), 'Filled with grid');
+  }
+
+  /** Bridges two selected boundary edge loops with a strip of quads: one undo step. */
+  function bridge(options = {}) {
+    return runTopologyEdit(() => planMeshBridge(state.mesh, state.mode, state.selected, options), 'Bridged edge loops');
+  }
+
+  /** Subdivides the selected edges (and splits quads across them): one undo step. */
+  function subdivide(options = {}) {
+    return runTopologyEdit(() => planMeshSubdivide(state.mesh, state.mode, state.selected, options), 'Subdivided selection');
+  }
+
+  /** Symmetrizes the mesh across the chosen axis plane: one undo step. */
+  function symmetrize(options = {}) {
+    return runTopologyEdit(() => planMeshSymmetrize(state.mesh, state.mode, state.selected, options), 'Symmetrized mesh');
+  }
+
   /**
    * The radius or the curve changed while a move is held: the vertices it reaches are chosen again from where they stood before
    * the move, and the move already made is applied to them, so the hill widens under the pointer.
    */
   function reweighDrag() {
-    if (!drag || !drag.falloff) return;
+    if (!drag || !drag.falloff) return true;
     const { vertices, basePositions } = drag;
     vertices.forEach((vertex, slot) => {
       for (let axis = 0; axis < 3; axis += 1) state.positions[vertex * 3 + axis] = basePositions[slot * 3 + axis];
     });
     drag.falloff = proportional.falloff() ?? drag.falloff;
-    Object.assign(drag, dragTargets(drag.seeds, drag.falloff));
+    try {
+      Object.assign(drag, dragTargets(drag.seeds, drag.falloff));
+    } catch (error) {
+      cancelDrag();
+      announce(error);
+      return false;
+    }
     moveDrag(drag.worldDelta);
+    return true;
   }
 
   // The faces a pick stands for when it is whole faces, else null: in face mode the picked faces; in vertex and edge mode the faces
@@ -1484,6 +1477,12 @@ export function createMeshEditor({ controller, announce = () => {}, getRenderer 
     separateSelection,
     dissolve,
     merge,
+    makeFace,
+    fill,
+    gridFill,
+    bridge,
+    subdivide,
+    symmetrize,
     selectNone,
     invertSelection,
     selectInRectangle,

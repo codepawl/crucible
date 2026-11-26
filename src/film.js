@@ -981,8 +981,11 @@ function smoothstep(value) {
   return bounded * bounded * (3 - 2 * bounded);
 }
 
-export function sampleFilm(time, { aspect = 16 / 9 } = {}) {
+export function sampleFilm(time, options = {}, arrayArg) {
+  const resolved = Array.isArray(arrayArg) ? {} : options;
   if (!Number.isFinite(time)) throw new TypeError('Film time must be finite.');
+  if (!resolved || typeof resolved !== 'object' || Array.isArray(resolved)) throw new TypeError('Film options must be an object.');
+  const { aspect = 16 / 9 } = resolved;
   if (!Number.isFinite(aspect) || aspect <= 0) throw new RangeError('Film aspect must be positive and finite.');
   const boundedTime = Math.max(0, Math.min(FILM_DURATION, time));
   const shotIndex = FILM_SHOTS.findIndex(candidate => boundedTime < candidate.end);
@@ -1011,7 +1014,7 @@ export function sampleFilm(time, { aspect = 16 / 9 } = {}) {
       camera.eye = camera.target.map((value, axis) => value + direction[axis] * framedDistance);
     } else {
       camera.fov = Math.atan(Math.tan(camera.fov * Math.PI / 360) * (16 / 9) / aspect) * 360 / Math.PI;
-      if (!Number.isFinite(camera.fov) || camera.fov >= 180) {
+      if (!Number.isFinite(camera.fov) || camera.fov >= 175) {
         throw new RangeError('Film aspect exceeds the supported lens range.');
       }
     }

@@ -1,0 +1,268 @@
+<!doctype html>
+<html>
+<head>
+<style>
+html, body { margin: 0; height: 100%; background: #000; }
+canvas { width: 960px; height: 540px; display: block; }
+</style>
+</head>
+<body>
+<canvas width="960" height="540"></canvas>
+<script type="module">
+import { CrucibleRenderer } from '/src/renderer.js';
+import { createGpuTimer } from '/src/adaptive-quality.js';
+import { addMeshletsToDenseParts, installClusterCulling } from '/src/meshlets.js';
+
+function createDisplacedSphere({ stacks, slices, radius = 3, inward = false }) {
+  const vertexCount = (stacks + 1) * (slices + 1);
+  const positions = new Float32Array(vertexCount * 3);
+  const normals = new Float32Array(vertexCount * 3);
+  const indices = new Uint32Array(stacks * slices * 6);
+
+  let vertexCursor = 0;
+  for (let stack = 0; stack <= stacks; stack++) {
+    const phi = (stack / stacks) * Math.PI;
+    const sinPhi = Math.sin(phi);
+    const cosPhi = Math.cos(phi);
+    for (let slice = 0; slice <= slices; slice++) {
+      const theta = (slice / slices) * Math.PI * 2;
+      const unitX = Math.cos(theta) * sinPhi;
+      const unitY = cosPhi;
+      const unitZ = Math.sin(theta) * sinPhi;
+      const ridge = Math.sin(unitX * 6.0 + unitY * 4.0) * Math.cos(unitZ * 5.0) * 0.16
+        + Math.sin(unitZ * 13.0 - unitY * 9.0) * 0.06
+        + Math.cos(unitX * 23.0 + unitZ * 17.0) * 0.025;
+      const scale = radius * (1 + ridge);
+      positions[vertexCursor] = unitX * scale;
+      positions[vertexCursor + 1] = unitY * scale;
+      positions[vertexCursor + 2] = unitZ * scale;
+      vertexCursor += 3;
+    }
+  }
+
+  const ring = slices + 1;
+  let indexCursor = 0;
+  for (let stack = 0; stack < stacks; stack++) {
+    for (let slice = 0; slice < slices; slice++) {
+      const a = stack * ring + slice;
+      const b = a + 1;
+      const c = a + ring;
+      const d = c + 1;
+      if (inward) {
+        indices[indexCursor++] = a;
+        indices[indexCursor++] = c;
+        indices[indexCursor++] = b;
+        indices[indexCursor++] = c;
+        indices[indexCursor++] = d;
+        indices[indexCursor++] = b;
+      } else {
+        indices[indexCursor++] = a;
+        indices[indexCursor++] = b;
+        indices[indexCursor++] = c;
+        indices[indexCursor++] = c;
+        indices[indexCursor++] = b;
+        indices[indexCursor++] = d;
+      }
+    }
+  }
+
+  // Smooth vertex normals from displaced triangle winding so relief catches key and fill light.
+  for (let i = 0; i < indices.length; i += 3) {
+    const i0 = indices[i] * 3;
+    const i1 = indices[i + 1] * 3;
+    const i2 = indices[i + 2] * 3;
+    const abX = positions[i1] - positions[i0];
+    const abY = positions[i1 + 1] - positions[i0 + 1];
+    const abZ = positions[i1 + 2] - positions[i0 + 2];
+    const acX = positions[i2] - positions[i0];
+    const acY = positions[i2 + 1] - positions[i0 + 1];
+    const acZ = positions[i2 + 2] - positions[i0 + 2];
+    const normalX = abY * acZ - abZ * acY;
+    const normalY = abZ * acX - abX * acZ;
+    const normalZ = abX * acY - abY * acX;
+    for (const vertexOffset of [i0, i1, i2]) {
+      normals[vertexOffset] += normalX;
+      normals[vertexOffset + 1] += normalY;
+      normals[vertexOffset + 2] += normalZ;
+    }
+  }
+  for (let i = 0; i < normals.length; i += 3) {
+    const length = Math.hypot(normals[i], normals[i + 1], normals[i + 2]) || 1;
+    normals[i] /= length;
+    normals[i + 1] /= length;
+    normals[i + 2] /= length;
+  }
+
+  return { positions, normals, indices };
+}
+
+function median(values) {
+  const sorted = [...values].sort((first, second) => first - second);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+function pngDataUrlFromPixels(pixels, width, height) {
+  const outputCanvas = document.createElement('canvas');
+  outputCanvas.width = width;
+  outputCanvas.height = height;
+  const outputContext = outputCanvas.getContext('2d');
+  const imageData = outputContext.createImageData(width, height);
+  const rowBytes = width * 4;
+  for (let y = 0; y < height; y++) {
+    const sourceStart = (height - 1 - y) * rowBytes;
+    imageData.data.set(pixels.subarray(sourceStart, sourceStart + rowBytes), y * rowBytes);
+  }
+  outputContext.putImageData(imageData, 0, 0);
+  return outputCanvas.toDataURL('image/png');
+}
+
+async function measureScenario(renderer, clusterCulling, camera, frames) {
+  const context = renderer.context;
+  const width = renderer.canvas.width;
+  const height = renderer.canvas.height;
+  const pixels = new Uint8Array(width * height * 4);
+  const pixelOne = new Uint8Array(4);
+
+  for (let i = 0; i < 6; i++) {
+    renderer.render(camera);
+  }
+  context.readPixels(0, 0, 1, 1, context.RGBA, context.UNSIGNED_BYTE, pixelOne);
+
+  const wallTimes = [];
+  const gpuTimes = [];
+  for (let i = 0; i < frames; i++) {
+    const start = performance.now();
+    renderer.render(camera);
+    // Synchronize the command queue so wall time includes submitted GPU work.
+    context.readPixels(0, 0, 1, 1, context.RGBA, context.UNSIGNED_BYTE, pixelOne);
+    wallTimes.push(performance.now() - start);
+    if (renderer.stats.gpuTimeMs != null) gpuTimes.push(renderer.stats.gpuTimeMs);
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  }
+
+  renderer.render(camera);
+  context.readPixels(0, 0, width, height, context.RGBA, context.UNSIGNED_BYTE, pixels);
+  const glError = context.getError();
+
+  return {
+    medianMs: median(wallTimes),
+    medianGpuMs: gpuTimes.length > 0 ? median(gpuTimes) : null,
+    rendererStats: { ...renderer.stats },
+    clusterStats: clusterCulling.getStats(),
+    glError,
+    pixels,
+    dataUrl: pngDataUrlFromPixels(pixels, width, height),
+  };
+}
+
+function computeRmse(firstPixels, secondPixels) {
+  let sumSquared = 0;
+  for (let i = 0; i < firstPixels.length; i++) {
+    const delta = firstPixels[i] - secondPixels[i];
+    sumSquared += delta * delta;
+  }
+  return Math.sqrt(sumSquared / firstPixels.length);
+}
+
+window.runMeshletBench = async function runMeshletBench(frames = 24) {
+  const canvas = document.querySelector('canvas');
+  const identity = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+
+  const cases = [
+    {
+      name: 'boulder-close',
+      geometry: createDisplacedSphere({ stacks: 480, slices: 540, radius: 3, inward: false }),
+      material: { tag: 'surface', color: [0.56, 0.50, 0.44], metallic: 0, roughness: 0.78 },
+      environment: { lightDirection: [3, 4, 2], ambientIntensity: 0.28, fillIntensity: 0.35, keyIntensity: 2.8, exposure: 1.0 },
+      camera: { eye: [1.4, 1.0, 5.2], target: [2.2, 0.2, 0.0], up: [0, 1, 0], fov: 45, near: 0.1, far: 100 },
+    },
+    {
+      name: 'cave-inside',
+      geometry: createDisplacedSphere({ stacks: 480, slices: 540, radius: 6, inward: true }),
+      material: { tag: 'surface', color: [0.48, 0.45, 0.43], metallic: 0, roughness: 0.85 },
+      environment: {
+        lightDirection: [0.4, 0.8, 0.5],
+        ambientIntensity: 0.18,
+        fillIntensity: 0.22,
+        keyIntensity: 0.9,
+        pointLights: [{ position: [0.6, 0.6, 2.2], color: [1.0, 0.72, 0.45], intensity: 28, distance: 16 }],
+      },
+      camera: { eye: [0, 0, 1.8], target: [1.2, 0.3, 6.2], up: [0, 1, 0], fov: 55, near: 0.1, far: 100 },
+    },
+    {
+      name: 'below-threshold',
+      geometry: createDisplacedSphere({ stacks: 16, slices: 40, radius: 1.5, inward: false }),
+      material: { tag: 'surface', color: [0.62, 0.58, 0.52], metallic: 0, roughness: 0.7 },
+      environment: { lightDirection: [3, 4, 2], ambientIntensity: 0.3, keyIntensity: 2.4 },
+      camera: { eye: [0, 0.6, 4.6], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 100 },
+    },
+  ];
+
+  const results = [];
+  for (const entry of cases) {
+    const baseParts = [{
+      name: entry.name,
+      geometry: entry.geometry,
+      matrix: identity,
+      material: entry.material,
+    }];
+    const buildStart = performance.now();
+    const parts = await addMeshletsToDenseParts(baseParts);
+    const buildMs = performance.now() - buildStart;
+    const hasMeshlets = Boolean(parts[0].meshlets);
+
+    const renderer = new CrucibleRenderer(canvas, parts, {
+      depth: true,
+      hdr: true,
+      culling: true,
+      exactFrames: true,
+      createGpuTimer,
+      background: [0.10, 0.13, 0.18],
+      environment: entry.environment,
+    });
+    const controller = installClusterCulling(renderer);
+
+    controller.setEnabled(false);
+    const withoutClusters = await measureScenario(renderer, controller, entry.camera, frames);
+
+    controller.setEnabled(true);
+    const withClusters = await measureScenario(renderer, controller, entry.camera, frames);
+
+    const rmse = computeRmse(withoutClusters.pixels, withClusters.pixels);
+    const multiDrawSupport = Boolean(renderer.context.getExtension('WEBGL_multi_draw'));
+    renderer.dispose();
+
+    results.push({
+      name: entry.name,
+      sourceTriangles: entry.geometry.indices.length / 3,
+      hasMeshlets,
+      buildMs,
+      meshletCount: parts[0].meshlets?.meshletCount ?? 0,
+      multiDrawSupport,
+      rmse,
+      width: 960,
+      height: 540,
+      withoutClusters: {
+        medianMs: withoutClusters.medianMs,
+        medianGpuMs: withoutClusters.medianGpuMs,
+        trianglesDrawn: withoutClusters.rendererStats.trianglesDrawn,
+        drawCalls: withoutClusters.rendererStats.drawCalls,
+        glError: withoutClusters.glError,
+        dataUrl: withoutClusters.dataUrl,
+      },
+      withClusters: {
+        medianMs: withClusters.medianMs,
+        medianGpuMs: withClusters.medianGpuMs,
+        trianglesDrawn: withClusters.rendererStats.trianglesDrawn,
+        drawCalls: withClusters.rendererStats.drawCalls,
+        clusterStats: withClusters.clusterStats,
+        glError: withClusters.glError,
+        dataUrl: withClusters.dataUrl,
+      },
+    });
+  }
+  return results;
+};
+</script>
+</body>
+</html>

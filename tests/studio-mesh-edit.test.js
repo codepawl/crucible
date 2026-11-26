@@ -1113,6 +1113,28 @@ test('the arrows keep their drawn length in edit mode while the clearance is und
   }
 });
 
+test('edit mode moves obey the snapping toggle and Ctrl flips it for the move (#3342)', () => {
+  const { controller, editor } = mount();
+  editor.enter();
+  pickFront(controller, editor);
+  const onGrid = value => Math.abs(value / 0.25 - Math.round(value / 0.25)) < 1e-6;
+  const origin = controller.gizmoHandles().origin;
+
+  controller.setInteractionSettings({ snapEnabled: false });
+  controller.beginGizmoDrag('screen', origin.x, origin.y);
+  const free = controller.updateGizmoDrag(origin.x + 43, origin.y - 27).elementDelta;
+  assert.equal(free.every(onGrid), false, 'snapping off: the elements move freely');
+  const flipped = controller.updateGizmoDrag(origin.x + 43, origin.y - 27, { ctrlKey: true }).elementDelta;
+  assert.equal(flipped.every(onGrid), true, 'Ctrl with snapping off: the move lands on the step');
+  controller.cancelGizmoDrag();
+
+  controller.setInteractionSettings({ snapEnabled: true });
+  controller.beginGizmoDrag('screen', origin.x, origin.y);
+  assert.equal(controller.updateGizmoDrag(origin.x + 43, origin.y - 27).elementDelta.every(onGrid), true, 'snapping on: the move lands on the step');
+  assert.equal(controller.updateGizmoDrag(origin.x + 43, origin.y - 27, { ctrlKey: true }).elementDelta.every(onGrid), false, 'Ctrl with snapping on: free');
+  controller.cancelGizmoDrag();
+});
+
 function pickVertices(controller, editor, vertices) {
   editor.setMode('vertex');
   vertices.forEach((vertex, order) => {

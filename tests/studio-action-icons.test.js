@@ -47,8 +47,8 @@ const EXPECTED = {
   paused: { Reload: 'reload' },
   draft: { Restore: 'restoreDraft', Discard: 'discardDraft' },
   recipe: { 'Load file…': 'loadFile', Close: null, 'Apply JSON': 'applyJson' },
-  settings: { Reset: 'resetSettings', Done: null },
-  shortcuts: { Done: null },
+  settings: { 'Reset settings': 'resetSettings', Done: null },
+  shortcuts: {},
   setup: { Skip: null, Back: null, Next: null, Done: null, 'Sign in': 'signIn', 'Copy prompt': 'copyPrompt' },
 };
 

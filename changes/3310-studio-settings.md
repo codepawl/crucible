@@ -1,0 +1,2 @@
+- Studio Settings is grouped into Interface, Viewport, Editing and Keys sections with icons, gains an Account section when the host page provides `crucibleShell.account`, and adds Motion, Zoom direction and Run setup again (#3310)
+- The Account buttons and the footer of Studio Settings lead with an icon: Sign in, Sign out, Buy more and Manage billing, then Run setup again and Reset; Done stays text only and no two buttons side by side share an icon (#3310)

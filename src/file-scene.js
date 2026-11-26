@@ -1,6 +1,7 @@
 import { CrucibleRenderer } from './renderer.js';
 import { createSharedTextures, loadGltf } from './gltf.js';
 import { loadHdri } from './hdri.js';
+import { withReflectionEnvironment } from './reflection-environment.js';
 import { loadViewTransformForRendererOptions } from './view-transform-loading.js';
 import { createCascadedShadows } from './cascaded-shadows.js';
 import { applyWaterReflection, attachWaterReflection } from './water-reflection.js';
@@ -11,26 +12,53 @@ import { createFileSceneRenderAt } from './file-scene-clip.js';
 import { startDeferredLods } from './deferred-lods.js';
 import { MEMORY_BUDGET_ERROR_CODE } from './budget.js';
 import { withDepthForRequestedEffects } from './file-scene-depth.js';
+import {
+  applyFileSceneMaterialOverridesWithReplacements,
+  collectFileSceneWarnings,
+  DEFAULT_MEMORY_BUDGET_MIB,
+  needsWorldMaterialsForOverrides,
+  reportFileSceneWarnings,
+  resolveFileSceneGltfOptions,
+} from './file-scene-overrides.js';
 import { partsForRendererOptions, planLodsForRendererOptions, sceneFileLighting, sunShadowBounds, withFileSceneInteriorLight, withSceneFileLights, withSceneFileRendererDefaults } from './dense-lods.js';
 
 // Headless twin of the showcase page for scripts/render-media.mjs (--scene file). The export script serves the scene.json
 // at /__file/config.json with every asset path already pointing at a file it can read, and an optional camera track at
 // /__file/camera.json. The renderer options, sky, exposure and frame effects are read exactly as src/showcase.js reads them.
 
+export { collectFileSceneWarnings, reportFileSceneWarnings, resolveFileSceneGltfOptions };
+
+/**
+ * Applies `description.materials` (keyed by glTF `material.name`) onto `parts`. Returns `{ parts, replaced }` where `replaced`
+ * maps each overridden input part to its updated copy, and preserves shared source material object identity per batch.
+ */
+export async function applyFileSceneMaterials(parts, materials) {
+  if (materials === undefined) {
+    return { parts, replaced: new Map() };
+  }
+  const requiresWater = needsWorldMaterialsForOverrides(materials, parts);
+  const worldMaterialShader = requiresWater ? await import('./world-material-shader.js') : null;
+  return applyFileSceneMaterialOverridesWithReplacements(parts, materials, worldMaterialShader);
+}
+
 // Loads the "glbRest" files with the first file's shared textures and joins every file's parts in the order the showcase page
 // uses, so a headless frame matches the page. A scene with no "glbRest" keeps the first file's parts as they are.
-async function loadStagedParts(description, asset, model, sharedTextures) {
+async function loadStagedParts(description, asset, model, sharedTextures, gltfOptions = {}) {
   const restPaths = description.glbRest ?? [];
-  if (!restPaths.length) return asset.parts;
+  if (!restPaths.length) {
+    return { parts: asset.parts, warnings: [] };
+  }
   const files = [{ parts: asset.parts, ranks: await readPartRanks(model) }];
+  const restWarnings = [];
   for (const restPath of restPaths) {
     const restModel = await fetch(restPath).then(response => response.blob());
     const baseUrl = new URL('.', new URL(restPath, location.href)).href;
-    const rest = await loadGltf(restModel, { baseUrl, sharedTextures, ...(description.gltfOptions ?? {}) });
+    const rest = await loadGltf(restModel, { baseUrl, sharedTextures, ...gltfOptions });
     files.push({ parts: rest.parts, ranks: await readPartRanks(restModel) });
+    restWarnings.push(...(rest.warnings ?? []));
   }
   await import('./replace-textured-parts.js');
-  return inWholeWorldOrder(files);
+  return { parts: inWholeWorldOrder(files), warnings: restWarnings };
 }
 
 // The native path tracer takes more lights of one kind than a drawn frame does. With `?traceLights=1` (set by
@@ -109,15 +137,21 @@ async function start() {
   const description = await readJson('/__file/config.json');
   const cameraResponse = await fetch('/__file/camera.json');
   const camera = cameraResponse.ok ? createCameraSampler(await cameraResponse.json()) : null;
-  const [model, map] = await Promise.all([
+  const [model, map, reflectionMap] = await Promise.all([
     fetch(description.glb).then(response => response.blob()),
     loadHdri(description.hdri, description.hdriOptions ?? {}),
+    description.reflectionHdri ? loadHdri(description.reflectionHdri) : null,
   ]);
   const sharedTextures = createSharedTextures();
-  const gltfOptions = description.gltfOptions ?? {};
+  const gltfOptions = resolveFileSceneGltfOptions(description);
   const asset = await loadGltf(model, { baseUrl: new URL('.', new URL(description.glb, location.href)).href, sharedTextures, ...gltfOptions });
   const assetOwnParts = asset.parts;
-  asset.parts = await loadStagedParts(description, asset, model, sharedTextures);
+  const staged = await loadStagedParts(description, asset, model, sharedTextures, gltfOptions);
+  const warnings = collectFileSceneWarnings(asset.warnings, staged.warnings);
+  reportFileSceneWarnings(warnings);
+  const overridden = await applyFileSceneMaterials(staged.parts, description.materials);
+  asset.parts = overridden.parts;
+  const posedParts = assetOwnParts.map(part => overridden.replaced.get(part) ?? part);
   await addGroundCover(asset, description, camera);
   // An effect the file asks for that reads depth (ambient occlusion, depth of field, motion blur, sun rays) turns the depth buffer on (#3388).
   const rendererOptions = withDepthForRequestedEffects(withSceneFileRendererDefaults(description.renderer), description.frame?.effects);
@@ -135,11 +169,12 @@ async function start() {
   const interior = await withFileSceneInteriorLight(deferLods ? reflection.parts : partsForRendererOptions(reflection.parts, viewport, rendererOptions), drawn.environment);
   const rendererParts = interior.parts;
   const renderer = new CrucibleRenderer(viewport, rendererParts, {
-    ground: false, hdr: true, samples: 4, memoryBudgetMiB: 384,
+    ground: false, hdr: true, samples: 4, memoryBudgetMiB: DEFAULT_MEMORY_BUDGET_MIB,
     shadowBounds: drawn.sunSplit ? sunShadowBounds(reflection.parts, drawn.environment.lightDirection) : {},
     ...rendererOptions,
     shadowCascades,
-    environment: { ...environmentForRenderer(interior.environment), map: drawn.map },
+    // "reflectionHdri" gives glass and water a sky of their own; the diffuse light and the native trace keep the lighting map (#3396).
+    environment: { ...environmentForRenderer(interior.environment), map: reflectionMap ? withReflectionEnvironment(drawn.map, reflectionMap) : drawn.map },
   });
   attachWaterReflection(renderer, reflection.surface, { updateEvery: 1 });
   const frame = { exposure: description.exposure ?? 1, ...(description.frame ?? {}) };
@@ -148,14 +183,16 @@ async function start() {
   const blurModule = description.frame?.effects?.motionBlur ? await import('./file-scene-motion-blur.js') : null;
   const requestedBlur = blurModule?.requestedMotionBlur(frame);
   if (requestedBlur?.shutter > 0) blurModule.installFileSceneMotionBlur(renderer, requestedBlur);
-  const renderAt = createFileSceneRenderAt({ asset, posedParts: assetOwnParts, sceneParts: asset.parts, rendererParts, renderer, camera, description, frame, motionBlur: requestedBlur?.shutter > 0 ? blurModule : null });
+  const renderAt = createFileSceneRenderAt({ asset, posedParts, sceneParts: asset.parts, rendererParts, renderer, camera, description, frame, motionBlur: requestedBlur?.shutter > 0 ? blurModule : null });
   // `parts` and `environment` let scripts/render-file-native.mjs pack the same scene for the native path tracer.
   const sky = interior.skyReport ? { ...(await import('./floor-sky-visibility.js')), environment: drawn.environment } : null;
   const lodsReady = plan?.geometries.length ? deferLevels({ plan, sourceParts: reflection.parts, rendererParts, renderer, sky }) : Promise.resolve();
-  window.__scene = { renderer, lodsReady, duration: camera?.duration, renderAt, poseClipAt: seconds => renderAt.clipPlayer?.applyAt(seconds), pause() {}, parts: reflection.parts, environment: { ...sceneEnvironment, map } };
+  window.__scene = { renderer, lodsReady, duration: camera?.duration, renderAt, poseClipAt: seconds => renderAt.clipPlayer?.applyAt(seconds), pause() {}, parts: reflection.parts, environment: { ...sceneEnvironment, map }, warnings };
 }
 
-start().catch(error => {
-  window.__fileSceneError = error.message;
-  throw error;
-});
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  start().catch(error => {
+    window.__fileSceneError = error.message;
+    throw error;
+  });
+}

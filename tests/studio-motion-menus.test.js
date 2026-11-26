@@ -61,7 +61,7 @@ test('the longest transition duration reads seconds, milliseconds and lists, and
 test('a menu opening downward, leftward and upward writes its origin and shift when it opens (#3223)', testContext => {
   const { root } = mountStudio(testContext);
   const viewPopover = root.querySelector('#crucible-studio-pop-view');
-  const viewButton = byText(root, 'View');
+  const viewButton = byText(root.querySelector('.crucible-studio-menus'), 'View');
   viewButton.box = { left: 100, top: 10, width: 60, height: 30, right: 160, bottom: 40 };
   viewPopover.showPopover();
   assert.equal(viewPopover.style.getPropertyValue('--studio-popover-origin'), '0 0', 'a trigger in the left half opens downward and rightward');
@@ -179,10 +179,10 @@ test('a hover switch between menubar menus is marked only while it flushes style
     markedWhenFlushed.push([element.id, menubar.dataset.switching]);
     return { opacity: '1' };
   };
-  dispatch(byText(root, 'Edit'), 'pointerenter');
+  dispatch(byText(root.querySelector('.crucible-studio-menus'), 'Edit'), 'pointerenter');
   assert.deepEqual(markedWhenFlushed, [], 'with no menu open nothing switches');
   viewPopover.showPopover();
-  dispatch(byText(root, 'Edit'), 'pointerenter');
+  dispatch(byText(root.querySelector('.crucible-studio-menus'), 'Edit'), 'pointerenter');
   assert.equal(viewPopover.popoverOpen, false);
   assert.equal(editPopover.popoverOpen, true);
   assert.deepEqual(markedWhenFlushed, [['crucible-studio-pop-edit', 'true']], 'the incoming menu is read while the bar is marked');
@@ -251,7 +251,7 @@ test('the object menu writes its own opening style, down or up, (#3223)', testCo
 test('every popover is a descendant of the Studio root, and the menubar menus of the menubar, where the CSS selectors look (#3223)', testContext => {
   const { root } = mountStudio(testContext);
   const popovers = root.descendants().filter(element => element.getAttribute('popover') !== null);
-  assert.ok(popovers.length >= 8, `found ${popovers.length} popovers`);
+  assert.ok(popovers.length >= 7, `found ${popovers.length} popovers`);
   const menubar = root.querySelector('.crucible-studio-menubar');
   for (const popover of popovers) {
     assert.ok(String(popover.className).split(/\s+/).includes('crucible-studio-popover'), `${popover.id || popover.className} carries the popover class`);

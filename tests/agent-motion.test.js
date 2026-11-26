@@ -197,3 +197,11 @@ test('a keyframe time a rounding error past either end snaps to it; a time clear
   const past = track('roughness', 0, 1, { keyframes: [{ time: 0, value: 0 }, { time: 1.001, value: 1 }] });
   assert.throws(() => normalizeAgentMotion(motion([past]), recipe), /keyframes\[1\]\.time: got 1\.001; expected a number from 0 to 1/);
 });
+
+test('compileAgentMotion with normalized: true matches the uncached compilation', () => {
+  const input = motion([track('emission', 0, 2), track('roughness', 0.2, 0.8)]);
+  const normalized = normalizeAgentMotion(input, recipe);
+  const direct = compileAgentMotion(input, recipe);
+  const preNormalized = compileAgentMotion(normalized, recipe, { normalized: true });
+  assert.deepEqual(snapshot(preNormalized.sample(0.4)), snapshot(direct.sample(0.4)));
+});

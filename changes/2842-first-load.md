@@ -1,0 +1,1 @@
+- The first load of a scene with heavy textured scans builds tangents about 15 times faster and searches for flush triangles about 40 percent faster, with the same output (#2842)

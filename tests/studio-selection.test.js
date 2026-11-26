@@ -149,11 +149,11 @@ test('a node that is deleted, by delete or by undo, leaves the set', () => {
   controller.redo();
   assert.deepEqual(controller.selectedNodeIds, [], 'redo takes the node out again and restores the set it was undone with');
   const added = controller.addPrimitive('box');
-  controller.selectNodes([added.id, 'hero']);
+  controller.selectNodes([added.id, 'ground']);
   controller.undo();
   assert.ok(!controller.selectedNodeIds.includes(added.id), 'a node an undo removes is never selected');
-  controller.selectNodes(['ground', 'hat']);
-  controller.loadRecipe({ ...makeRecipe(), nodes: makeRecipe().nodes.filter(node => node.id !== 'hat') });
+  controller.selectNodes(['ground', 'ghost']);
+  controller.loadRecipe({ ...makeRecipe(), nodes: makeRecipe().nodes.filter(node => node.id !== 'ghost') });
   assert.deepEqual(controller.selectedNodeIds, ['ground'], 'a node a new recipe lacks falls out of the set');
   assert.equal(controller.selectedNodeId, 'ground');
 });
@@ -338,8 +338,7 @@ test('the shortcuts list has a row for select all, none and invert', testContext
   const ui = mountStudio(testContext);
   ui.pressKey('?');
   const text = ui.root.textContent;
-  assert.match(text, /A \/ Alt\+A \/ Ctrl\+I/);
-  assert.match(text, /Select all \/ none \/ invert/);
+  assert.match(text, /Select allASelect noneAlt[+]AInvert the selectionCtrl[+]I/);
 });
 
 test('the embedder API selects several nodes', testContext => {

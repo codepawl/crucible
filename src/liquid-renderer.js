@@ -5,7 +5,7 @@ import { batchesNeedRefractionMips, mipLevelCount } from './transmission-blur.js
 import { depthMapping } from './glass-depth-march.js';
 import { drawsBackFaces, glassShellsNested } from './glass-back-face.js';
 import { geometryBoundingSphere } from './render-culling.js';
-import { liquidProbeSupport, liquidWaterSupport } from './shader-registry.js';
+import { liquidProbeSupport, liquidWaterSupport, registeredFeatureCode, requireDeformationSupport } from './shader-registry.js';
 
 // The renderer's liquid and foam pass, kept apart from renderer.js so a scene without liquid or foam does not carry it.
 // liquid-shader.js registers drawLiquidPass; the renderer calls it with the frame state it needs.
@@ -31,12 +31,44 @@ const LIQUID_UNIFORMS = [
   'morphEnabled', 'morphVertexCount', 'morphTargetCount', 'morphWeights[0]', 'morphSlotTargets[0]', 'morphTargets',
 ];
 
+const MORPH_STUB = 'vec3 morphedPosition(vec3 base) { return base; }\nvec3 morphedNormal(vec3 base) { return base; }';
+const MORPH_SLOT_COUNT = 64;
+const IDENTITY_MORPH_SLOTS = Float32Array.from({ length: MORPH_SLOT_COUNT }, (_, index) => index);
+const MORPH_SLOT_TARGETS = new Float32Array(MORPH_SLOT_COUNT);
+const MORPH_SLOT_WEIGHTS = new Float32Array(MORPH_SLOT_COUNT);
+
+function bindLiquidMorph(renderer, batch, uniforms) {
+  if (!renderer.hasMorphs || !uniforms?.morphEnabled) return;
+  const context = renderer.context;
+  context.uniform1f(uniforms.morphEnabled, batch.morph ? 1 : 0);
+  if (!batch.morph) return;
+  context.uniform1i(uniforms.morphVertexCount, batch.morphTexture.info.vertexCount);
+  const targetCount = batch.morphWeights.length;
+  const selected = targetCount > MORPH_SLOT_COUNT;
+  const slotCount = selected ? requireDeformationSupport('selectMorphSlots', 'morph.js').selectMorphSlots(batch.morphWeights, MORPH_SLOT_TARGETS, MORPH_SLOT_WEIGHTS) : targetCount;
+  context.uniform1i(uniforms.morphTargetCount, slotCount);
+  context.uniform1fv(uniforms['morphWeights[0]'], selected ? MORPH_SLOT_WEIGHTS : batch.morphWeights);
+  context.uniform1fv(uniforms['morphSlotTargets[0]'], selected ? MORPH_SLOT_TARGETS : IDENTITY_MORPH_SLOTS);
+  context.activeTexture(context.TEXTURE0 + 8);
+  context.bindTexture(context.TEXTURE_2D, batch.morphTexture.texture);
+}
+
+function vertexSourceForLiquid(renderer, vertexSource) {
+  if (!renderer.hasMorphs) return vertexSource;
+  const morphVertex = registeredFeatureCode.get('morph')?.vertex;
+  if (!morphVertex) throw new Error('Liquid morphing requires morph.js to be loaded.');
+  if (!vertexSource.includes('#define USES_MORPH false') || !vertexSource.includes(MORPH_STUB)) {
+    throw new Error('Liquid morph shader splice requires #define USES_MORPH false and the morph stub.');
+  }
+  return vertexSource.replace('#define USES_MORPH false', '#define USES_MORPH (morphEnabled > 0.5)').replace(MORPH_STUB, morphVertex);
+}
+
 // The program compiles when the first liquid or foam batch draws, so a renderer without them never builds it.
 function ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fragmentSource) {
   if (renderer.liquidProgram) return;
   const context = renderer.context;
   const clipped = renderer.shaderFeatures?.has(CLIP_PLANES_FEATURE) && !renderer.benchmark;
-  renderer.liquidProgram = compileProgram(context, vertexSource, renderer.withViewTransform(clipped ? addClipPlanesToLiquidShader(fragmentSource) : fragmentSource, 'liquid'));
+  renderer.liquidProgram = compileProgram(context, vertexSourceForLiquid(renderer, vertexSource), renderer.withViewTransform(clipped ? addClipPlanesToLiquidShader(fragmentSource) : fragmentSource, 'liquid'));
   renderer.liquidClipLocations = clipped ? clipPlaneLocations(context, renderer.liquidProgram) : null;
   renderer.liquidUniforms = Object.fromEntries(LIQUID_UNIFORMS.map(name => [name, context.getUniformLocation(renderer.liquidProgram, name)]));
   context.useProgram(renderer.liquidProgram);
@@ -59,6 +91,7 @@ function ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fr
  */
 export function copySceneIntoMipChain(renderer, width, height) {
   const context = renderer.context;
+  context.activeTexture(context.TEXTURE0);
   const hdr = Boolean(renderer.hdr);
   let chain = renderer.refractionChain;
   if (!chain || chain.width !== width || chain.height !== height || chain.hdr !== hdr) {
@@ -85,6 +118,7 @@ export function copySceneIntoMipChain(renderer, width, height) {
   context.bindFramebuffer(context.READ_FRAMEBUFFER, renderer.resolveFramebuffer);
   context.bindFramebuffer(context.DRAW_FRAMEBUFFER, chain.framebuffer);
   context.blitFramebuffer(0, 0, width, height, 0, 0, width, height, context.COLOR_BUFFER_BIT, context.NEAREST);
+  context.activeTexture(context.TEXTURE0);
   context.bindTexture(context.TEXTURE_2D, chain.texture);
   context.generateMipmap(context.TEXTURE_2D);
   return chain.texture;
@@ -97,6 +131,7 @@ export function copySceneIntoMipChain(renderer, width, height) {
  */
 export function resolveSceneDepth(renderer, width, height) {
   const context = renderer.context;
+  context.activeTexture(context.TEXTURE0);
   const reversed = Boolean(renderer.reversedDepth);
   let target = renderer.refractionDepth;
   if (!target || target.width !== width || target.height !== height || target.reversed !== reversed) {
@@ -195,8 +230,28 @@ function firstInstanceOfEachBatch(closedBatches) {
   return firstInstances;
 }
 
-/** The world bounds of every closed glass instance of the frame: the local box of its geometry carried through the part's matrix. */
-function closedGlassShells(closedBatches) {
+function invertMatrix4(matrix) {
+  const a00 = matrix[0], a01 = matrix[1], a02 = matrix[2], a03 = matrix[3];
+  const a10 = matrix[4], a11 = matrix[5], a12 = matrix[6], a13 = matrix[7];
+  const a20 = matrix[8], a21 = matrix[9], a22 = matrix[10], a23 = matrix[11];
+  const a30 = matrix[12], a31 = matrix[13], a32 = matrix[14], a33 = matrix[15];
+  const b00 = a00 * a11 - a01 * a10, b01 = a00 * a12 - a02 * a10, b02 = a00 * a13 - a03 * a10;
+  const b03 = a01 * a12 - a02 * a11, b04 = a01 * a13 - a03 * a11, b05 = a02 * a13 - a03 * a12;
+  const b06 = a20 * a31 - a21 * a30, b07 = a20 * a32 - a22 * a30, b08 = a20 * a33 - a23 * a30;
+  const b09 = a21 * a32 - a22 * a31, b10 = a21 * a33 - a23 * a31, b11 = a22 * a33 - a23 * a32;
+  const det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
+  if (!det) return null;
+  const inv = 1 / det;
+  return new Float32Array([
+    (a11 * b11 - a12 * b10 + a13 * b09) * inv, (a02 * b10 - a01 * b11 - a03 * b09) * inv, (a31 * b05 - a32 * b04 + a33 * b03) * inv, (a22 * b04 - a21 * b05 - a23 * b03) * inv,
+    (a12 * b08 - a10 * b11 - a13 * b07) * inv, (a00 * b11 - a02 * b08 + a03 * b07) * inv, (a32 * b02 - a30 * b05 - a33 * b01) * inv, (a20 * b05 - a22 * b02 + a23 * b01) * inv,
+    (a10 * b10 - a11 * b08 + a13 * b06) * inv, (a01 * b08 - a00 * b10 - a03 * b06) * inv, (a30 * b04 - a31 * b02 + a33 * b00) * inv, (a21 * b02 - a20 * b04 - a23 * b00) * inv,
+    (a11 * b07 - a10 * b09 - a12 * b06) * inv, (a00 * b09 - a01 * b07 + a02 * b06) * inv, (a31 * b01 - a30 * b03 - a32 * b00) * inv, (a20 * b03 - a21 * b01 + a22 * b00) * inv,
+  ]);
+}
+
+/** The world bounds of every closed glass instance of the frame: the local box of its geometry carried through the part's matrix, plus oriented bounds. */
+export function closedGlassShells(closedBatches) {
   const shells = [];
   for (const batch of closedBatches) {
     for (const part of batch.parts) {
@@ -212,10 +267,22 @@ function closedGlassShells(closedBatches) {
           high[axis] = Math.max(high[axis], world);
         }
       }
-      shells.push({ minimum: low, maximum: high });
+      shells.push({ minimum: low, maximum: high, localMinimum: minimum, localMaximum: maximum, matrix, inverseMatrix: invertMatrix4(matrix) });
     }
   }
   return shells;
+}
+
+function sameBatchList(first, second) {
+  return first.length === second.length && first.every((batch, index) => batch === second[index]);
+}
+
+function unbindBackFaceTextures(context) {
+  for (const unit of [BACK_DEPTH_UNIT, BACK_NORMAL_UNIT, BACK_FAR_DEPTH_UNIT, BACK_FAR_NORMAL_UNIT]) {
+    context.activeTexture(context.TEXTURE0 + unit);
+    context.bindTexture(context.TEXTURE_2D, null);
+  }
+  context.activeTexture(context.TEXTURE0);
 }
 
 /** Draws one layer of back faces into its target: the nearest per pixel, or with `far` the farthest. */
@@ -236,11 +303,13 @@ function drawBackLayer(renderer, target, closedBatches, firstInstances, width, h
   context.cullFace(context.FRONT);
   context.uniform1f(uniforms.glassBackPass, 1);
   for (const batch of closedBatches) {
+    bindLiquidMorph(renderer, batch, uniforms);
     context.uniform1f(uniforms.glassBackFirst, firstInstances.get(batch));
     if (renderer.liquidClipLocations) bindClipPlanes(renderer, batch, renderer.liquidClipLocations);
     context.bindVertexArray(batch.vertexArray);
     context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
   }
+  if (uniforms.morphEnabled) context.uniform1f(uniforms.morphEnabled, 0);
   context.uniform1f(uniforms.glassBackPass, 0);
   context.cullFace(context.BACK);
   if (far) context.depthFunc(nearestFunction);
@@ -253,19 +322,34 @@ function drawBackLayer(renderer, target, closedBatches, firstInstances, width, h
  * batch as a Map), or null, and draws nothing, when no batch is closed glass. The liquid program is in use with its frame uniforms set.
  */
 export function drawGlassBackFaces(renderer, liquids, width, height) {
-  const closedBatches = liquids.filter(batchDrawsBackFaces);
-  if (closedBatches.length === 0) return null;
-  const firstInstances = firstInstanceOfEachBatch(closedBatches);
-  const farLayer = glassShellsNested(closedGlassShells(closedBatches));
-  const context = renderer.context;
-  const target = ensureGlassBackTarget(renderer, width, height);
-  const farTarget = farLayer ? ensureGlassBackTarget(renderer, width, height, true) : null;
-  // The previous frame left these bound to the attachments; drawing into them while the program samples them is a feedback loop.
-  for (const unit of [BACK_DEPTH_UNIT, BACK_NORMAL_UNIT, BACK_FAR_DEPTH_UNIT, BACK_FAR_NORMAL_UNIT]) {
-    context.activeTexture(context.TEXTURE0 + unit);
-    context.bindTexture(context.TEXTURE_2D, null);
+  const moveCount = renderer.partsMoveCount ?? 0;
+  const cache = renderer.glassBackCache;
+  const cacheHit = cache && cache.batches === renderer.batches && cache.moveCount === moveCount && sameBatchList(cache.liquids, liquids);
+  let closedBatches;
+  let firstInstances;
+  let farLayer;
+  if (cacheHit) {
+    ({ closedBatches, firstInstances, farLayer } = cache);
+  } else {
+    closedBatches = liquids.filter(batchDrawsBackFaces);
+    firstInstances = closedBatches.length > 0 ? firstInstanceOfEachBatch(closedBatches) : null;
+    farLayer = closedBatches.length > 0 ? glassShellsNested(closedGlassShells(closedBatches)) : false;
+    renderer.glassBackShellWalkCount = (renderer.glassBackShellWalkCount ?? 0) + 1;
+    renderer.glassBackCache = { batches: renderer.batches, moveCount, liquids: [...liquids], closedBatches, firstInstances, farLayer };
   }
-  context.activeTexture(context.TEXTURE0);
+  const context = renderer.context;
+  if (closedBatches.length === 0) {
+    if (renderer.glassBackFarFaces) {
+      unbindBackFaceTextures(context);
+      renderer.glassBackFarFaces.release();
+    }
+    return null;
+  }
+  const target = ensureGlassBackTarget(renderer, width, height);
+  // The previous frame left these bound to the attachments; drawing into them while the program samples them is a feedback loop.
+  unbindBackFaceTextures(context);
+  if (!farLayer) renderer.glassBackFarFaces?.release();
+  const farTarget = farLayer ? ensureGlassBackTarget(renderer, width, height, true) : null;
   drawBackLayer(renderer, target, closedBatches, firstInstances, width, height, false);
   if (farTarget) drawBackLayer(renderer, farTarget, closedBatches, firstInstances, width, height, true);
   // With no second layer the far units hold the first one, which the shader never reads there; they only keep the samplers valid.
@@ -346,6 +430,7 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
   context.uniform1f(uniforms.glassBackEnabled, backFaces ? 1 : 0);
   context.uniform1f(uniforms.glassBackFarEnabled, backFaces?.farLayer ? 1 : 0);
   for (const batch of liquids) {
+    bindLiquidMorph(renderer, batch, uniforms);
     const layers = batch.layerState;
     context.uniform4f(uniforms.glassState, layers[9], layers[10], layers[11] * partScale(batch.parts[0].matrix), Math.min(layers[12], maximumDistance));
     context.uniform3f(uniforms.glassTint, layers[13], layers[14], layers[15]);
@@ -371,6 +456,7 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
     if (covering) context.disable(context.BLEND);
   }
   liquidProbeSupport.finish?.(renderer, uniforms);
+  if (uniforms.morphEnabled) context.uniform1f(uniforms.morphEnabled, 0);
   if (foams.length > 0) {
     context.enable(context.BLEND);
     context.blendFuncSeparate(context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);

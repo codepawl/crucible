@@ -18,7 +18,14 @@ const METRICS = ['lines', 'branches', 'functions'];
 function collectLcovPaths(inputs) {
   const paths = [];
   for (const input of inputs) {
-    if (statSync(input).isDirectory()) {
+    let stats;
+    try {
+      stats = statSync(input);
+    } catch (error) {
+      if (error.code === 'ENOENT') throw new Error(`Coverage file or folder not found: ${input}`);
+      throw error;
+    }
+    if (stats.isDirectory()) {
       for (const entry of readdirSync(input, { recursive: true })) {
         const name = String(entry);
         if (name.endsWith('.info') || name.endsWith('.lcov')) paths.push(join(input, name));

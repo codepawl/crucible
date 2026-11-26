@@ -3,11 +3,12 @@ import { applyProjection } from './camera.js';
 import { createAgentScene, loadAgentSceneModules, loadMeshBooleans, meshBooleansLoaded, needsMeshBooleans } from './agent-scene.js';
 import { agentEnvironmentMap, fitAgentShadow, resolveAgentShadow } from './agent-look.js';
 import { agentSceneModulesNeeded } from './agent-scene-modules.js';
-import { LIGHTING_SETUP_NAMES } from './agent-scene-capabilities.js';
+import { LIGHTING_SETUP_NAMES } from './lighting-setup-names.js';
 import { VIEW_TRANSFORM_NAMES } from './view-transform-names.js';
 import { CrucibleRenderer, studioFloorHeight } from './renderer.js';
 import { ProgramNotReady, isLinkComplete, setPreparing } from './gl-program.js';
 import { exportGlb } from './export.js';
+import { createExportPanel, dataUrlByteLength, formatFileSize, lastPathName } from './studio-export.js';
 import { encodePack } from './scene-pack-format.js';
 import { checkImageBudget } from './scene-pack-limits.js';
 import { packedSkyOf } from './scene-pack-sky.js';
@@ -15,27 +16,27 @@ import { encodePackOrRefuse } from './studio-pack-refusal.js';
 import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shaders.js';
 import { STUDIO_CSS } from './studio-styles.js';
 import { createApplyMenus } from './studio-apply-menu.js';
+import { createMeshMenus } from './studio-mesh-menus.js';
 import { findKeymapAction, findMouseNavigation, formatShortcutKeys, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
+import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
+import { createStudioSettings } from './studio-settings.js';
+import { createNumberPadNotice, isNumpadKeyEvent, resolveStudioKeyAction } from './studio-numpad.js';
+import { withPresetOverrides } from './studio-key-overrides.js';
 import { detectStudioHardware, gatherStudioHardwareInputs, rendererChangeFor, resolveStudioPerformanceTier, studioViewportSettingsFor } from './studio-hardware.js';
 import { createStudioDiagnostics, describeStudioEnvironment, watchStudioDiagnostics } from './studio-diagnostics.js';
-import {
-  STUDIO_GIZMO_PIXELS,
-  STUDIO_PREFERENCE_CHOICES,
-  STUDIO_PREFERENCE_DEFAULTS,
-  loadStudioPreferences,
-  normalizeStudioPreferences,
-  saveStudioPreferences,
-} from './studio-preferences.js';
+import { STUDIO_GIZMO_PIXELS, STUDIO_PREFERENCE_CHOICES, STUDIO_PREFERENCE_DEFAULTS, loadStudioPreferences, normalizeStudioPreferences, saveStudioPreferences } from './studio-preferences.js';
 import { createOutlineMask } from './studio-outline-mask.js';
 import { createPanelGrips } from './studio-panel-grips.js';
 import { leadWithActionIcon, STUDIO_ACTION_ICONS, STUDIO_BRAND_ICON_NAMES, STUDIO_FILLED_ICON_NAMES, STUDIO_ICON_ACCENTS, STUDIO_LIGHT_ICONS, STUDIO_NOTICE_ICONS, STUDIO_PRIMITIVE_ICONS, studioIconPath } from './studio-icons.js';
 import { createPropertyLine, createPropertyPanel } from './studio-property-panel.js';
+import { createModifierPanel } from './studio-modifier-panel.js';
 import { createShapeSettings } from './studio-shape-settings.js';
 import { createKeyMarkers } from './studio-timeline-keys.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
 import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, describeBounds, describeCamera, describeGridStep, gridLayout, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart } from './studio-viewport-aids.js';
+import { formatLengthInputValue, lengthFromUnit, parseLengthInput } from './studio-units.js';
 // The grid is textured, and replaceParts takes a textured part only with this module loaded.
 import './replace-textured-parts.js';
 import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
@@ -43,42 +44,16 @@ import { createBakeMark } from './studio-bake-mark.js';
 import { watchScrollFade } from './studio-scroll-cue.js';
 import { extensionOf, openNameEditor, splitFileName, validateFileStem, validateNodeLabel, validateShotName } from './studio-name-editor.js';
 import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
+import { SNAP_TARGETS } from './studio-snapping.js';
+import { createOutlinerParentDrag } from './studio-parenting.js';
 import { editIconName } from './studio-edit-names.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, frameFailureReason, watchContextLoss } from './studio-context-loss.js';
 import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgentEdit, diffRecipeNodes } from './studio-agent-presence.js';
-import {
-  STUDIO_LENS_PRESETS,
-  STUDIO_MATERIAL_PRESETS,
-  STUDIO_PRIMITIVE_GROUPS,
-  STUDIO_PRIMITIVES,
-  primitiveGeometrySpec,
-  STUDIO_TABS,
-  STUDIO_TEMPLATES,
-  STUDIO_TOOLS,
-  STUDIO_VIEW_PRESETS,
-  buildTemplateRecipe,
-} from './studio-templates.js';
-import {
-  createStudioController,
-  hasAnimatedData,
-  linearRgbToHex,
-  quaternionToEulerDegrees,
-  roundValue,
-} from './studio-controller.js';
+import { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, primitiveGeometrySpec, STUDIO_TABS, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, buildTemplateRecipe } from './studio-templates.js';
+import { createStudioController, hasAnimatedData, linearRgbToHex, quaternionToEulerDegrees, roundValue } from './studio-controller.js';
 
-export {
-  STUDIO_LENS_PRESETS,
-  STUDIO_MATERIAL_PRESETS,
-  STUDIO_PRIMITIVE_GROUPS,
-  STUDIO_PRIMITIVES,
-  STUDIO_TABS,
-  STUDIO_TEMPLATES,
-  STUDIO_TOOLS,
-  STUDIO_VIEW_PRESETS,
-  buildTemplateRecipe,
-  createStudioController,
-};
+export { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, STUDIO_TABS, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, buildTemplateRecipe, createStudioController };
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
 const STATUS_DEFAULT_MILLISECONDS = 3400;
@@ -111,12 +86,14 @@ function matchingViewChip(camera) {
 }
 const STUDIO_STYLE_ID = 'crucible-studio-styles';
 const COMPACT_WIDTH = 820;
-// The work runs left to right: build the scene, give it its look, then set it in motion. Each workspace shows only the
-// panels its step needs.
+const TIGHT_WIDTH = 920;
+// The work runs left to right: build the scene, give it its look, set it in motion, then write it out. Each workspace shows
+// only the panels its step needs.
 const STUDIO_WORKSPACES = Object.freeze([
-  Object.freeze({ id: 'build', label: 'Build', icon: 'node', tabs: Object.freeze(['node']) }),
+  Object.freeze({ id: 'build', label: 'Build', icon: 'node', tabs: Object.freeze(['node', 'modifiers']) }),
   Object.freeze({ id: 'look', label: 'Look', icon: 'material', tabs: Object.freeze(['material', 'look']) }),
   Object.freeze({ id: 'animate', label: 'Animate', icon: 'play', tabs: Object.freeze(['camera', 'node']) }),
+  Object.freeze({ id: 'export', label: 'Export', icon: 'export', tabs: Object.freeze(['export']) }),
 ]);
 const DEFAULT_CLEARCOAT_ROUGHNESS = 0.08;
 const PRIMITIVE_LABELS = Object.freeze({ icoSphere: 'Icosphere', disc: 'Circle' });
@@ -251,15 +228,25 @@ function wireRovingFocusFallback(container, items, { vertical = false, followFoc
   });
 }
 
-function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02, minimumComponent = -Infinity, lockToggle = null, axisNames = AXIS_NAMES, accessibleTitle = title, onGestureStart, onGestureEnd } = {}) {
+function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02, minimumComponent = -Infinity, lockToggle = null, axisNames = AXIS_NAMES, accessibleTitle = title, getLengthUnit = null, onGestureStart, onGestureEnd } = {}) {
   let latestValues = axisNames.map(() => 0);
   let locked = false;
   let disabled = false;
   const inputs = axisNames.map(axis => createElement(documentReference, 'input', {
-    type: 'number',
-    step: '0.05',
-    attributes: { 'aria-label': `${accessibleTitle} ${axis.toUpperCase()}` },
+    type: getLengthUnit ? 'text' : 'number',
+    ...(getLengthUnit ? { dataset: { length: 'true' } } : { step: '0.05' }),
+    attributes: getLengthUnit
+      ? { 'aria-label': `${accessibleTitle} ${axis.toUpperCase()}`, inputmode: 'decimal' }
+      : { 'aria-label': `${accessibleTitle} ${axis.toUpperCase()}` },
   }));
+
+  function readAxisInput(field) {
+    if (getLengthUnit) {
+      return parseLengthInput(field.value, getLengthUnit());
+    }
+    const numeric = Number(field.value);
+    return Number.isFinite(numeric) ? numeric : null;
+  }
 
   function emitEditedAxis(axisIndex, rawNumeric) {
     const clamped = Math.max(minimumComponent, rawNumeric);
@@ -269,16 +256,16 @@ function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02
       onInput(scaled, axisIndex);
       return;
     }
-    const parsed = inputs.map((field, index) => (index === axisIndex ? clamped : Number(field.value)));
-    if (parsed.every(Number.isFinite)) {
+    const parsed = inputs.map((field, index) => (index === axisIndex ? clamped : readAxisInput(field)));
+    if (parsed.every(component => component !== null && Number.isFinite(component))) {
       onInput(parsed, axisIndex);
     }
   }
 
   inputs.forEach((input, axisIndex) => {
     input.addEventListener('change', () => {
-      const numeric = Number(input.value);
-      if (Number.isFinite(numeric)) {
+      const numeric = readAxisInput(input);
+      if (numeric !== null && Number.isFinite(numeric)) {
         emitEditedAxis(axisIndex, numeric);
       }
     });
@@ -296,7 +283,7 @@ function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02
       event.preventDefault();
       if (disabled) return;
       onGestureStart?.();
-      scrubState = { startX: event.clientX, startValue: Number(inputs[axisIndex].value) || 0 };
+      scrubState = { startX: event.clientX, startValue: getLengthUnit ? (latestValues[axisIndex] ?? 0) : (Number(inputs[axisIndex].value) || 0) };
       badge.setPointerCapture?.(event.pointerId);
     });
     badge.addEventListener('pointermove', event => {
@@ -362,7 +349,9 @@ function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02
     setValues(values, precision = ROUND_PRECISION) {
       latestValues = Array.from(values, component => Number(component) || 0);
       inputs.forEach((input, index) => {
-        input.value = String(roundValue(values[index] ?? 0, precision));
+        input.value = getLengthUnit
+          ? formatLengthInputValue(values[index] ?? 0, getLengthUnit())
+          : String(roundValue(values[index] ?? 0, precision));
       });
     },
   };
@@ -522,6 +511,28 @@ function arrowHeadPoints(origin, tip) {
     [baseX + alongY * ARROW_HEAD_HALF_WIDTH, baseY - alongX * ARROW_HEAD_HALF_WIDTH],
   ];
   return corners.map(corner => `${corner[0].toFixed(1)},${corner[1].toFixed(1)}`).join(' ');
+}
+
+// The ring is a little wider than the 6.5 px centre handle, so a vertex that lands under the handle stays visible, and
+// the dot is the vertex itself. The dark halo is wider than the pale ring by 2 px a side so the ring reads over the
+// accent outline of the selected object and over a pale surface alike.
+const SNAP_MARKER_RING_RADIUS = 10;
+const SNAP_MARKER_DOT_RADIUS = 2.5;
+const SNAP_MARKER_HALO_WIDTH = 6;
+const SNAP_MARKER_RING_WIDTH = 2;
+
+// The vertex a drag is snapping to. Drawn after the handles and the outline, so nothing covers it.
+function appendSnapMarker(documentReference, gizmoSvg, marker) {
+  if (!marker) {
+    return;
+  }
+  const centre = { cx: marker.x.toFixed(1), cy: marker.y.toFixed(1), 'pointer-events': 'none' };
+  gizmoSvg.append(
+    createSvgElement(documentReference, 'circle', { ...centre, r: String(SNAP_MARKER_RING_RADIUS), fill: 'none', stroke: 'var(--studio-trace-edge)', 'stroke-width': String(SNAP_MARKER_HALO_WIDTH), 'data-snap-halo': 'vertex' }),
+    createSvgElement(documentReference, 'circle', { ...centre, r: String(SNAP_MARKER_DOT_RADIUS + 1), fill: 'var(--studio-trace-edge)', 'data-snap-halo': 'dot' }),
+    createSvgElement(documentReference, 'circle', { ...centre, r: String(SNAP_MARKER_RING_RADIUS), fill: 'none', stroke: 'var(--studio-trace)', 'stroke-width': String(SNAP_MARKER_RING_WIDTH), 'data-snap-marker': 'vertex' }),
+    createSvgElement(documentReference, 'circle', { ...centre, r: String(SNAP_MARKER_DOT_RADIUS), fill: 'var(--studio-trace)', 'data-snap-marker': 'dot' }),
+  );
 }
 
 // What a drag has changed so far: a dashed outline where the object was and, for a move, a dashed line from there to
@@ -725,7 +736,7 @@ function appendGizmoHitAreas(documentReference, gizmoSvg, handles, tool, clearRa
   }
   const origin = handles.origin;
   const cleared = clearRadius !== null;
-  const centreAxis = tool === 'scale' ? 'uniform' : tool === 'snap' ? 'surface' : 'screen';
+  const centreAxis = tool === 'scale' ? 'uniform' : 'screen';
   if (cleared) {
     // Only the ring answers for the centre, so a click inside it still picks the element under it.
     gizmoSvg.append(createSvgElement(documentReference, 'circle', {
@@ -1030,7 +1041,7 @@ function renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask,
     }
   }
 
-  const centreAxis = tool === 'scale' ? 'uniform' : tool === 'snap' ? 'surface' : 'screen';
+  const centreAxis = tool === 'scale' ? 'uniform' : 'screen';
   if (cleared) {
     appendFreeMoveRing(documentReference, gizmoSvg, origin, clearedRingRadius(clearRadius), centreAxis);
     return;
@@ -1039,7 +1050,7 @@ function renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask,
     cx: origin.x.toFixed(1),
     cy: origin.y.toFixed(1),
     r: '6.5',
-    fill: tool === 'snap' ? '#5fc48a' : 'var(--studio-text)',
+    fill: 'var(--studio-text)',
     stroke: 'var(--studio-bg)',
     'stroke-width': '2',
     'data-gizmo-axis': centreAxis,
@@ -1182,7 +1193,7 @@ const MODAL_AXIS_ACROSS_PLANE = Object.freeze({ yz: 'x', xz: 'y', xy: 'z' });
 const MODAL_TYPED_UNITS = Object.freeze({ translate: ' m', rotate: '°', scale: '×' });
 const MODAL_TYPED_PATTERN = /^-?\d*\.?\d*$/;
 const MODAL_TOOL_BY_ACTION = Object.freeze({ 'modal.translate': 'translate', 'modal.rotate': 'rotate', 'modal.scale': 'scale' });
-const TOOL_ACTION_BY_TOOL = Object.freeze({ select: 'tool.select', translate: 'tool.translate', rotate: 'tool.rotate', scale: 'tool.scale', snap: 'tool.snap' });
+const TOOL_ACTION_BY_TOOL = Object.freeze({ select: 'tool.select', translate: 'tool.translate', rotate: 'tool.rotate', scale: 'tool.scale' });
 const PICK_UP_TOOL_BY_ACTION = Object.freeze({ 'tool.translate': 'translate', 'tool.rotate': 'rotate', 'tool.scale': 'scale' });
 const MODAL_FREE_AXIS = Object.freeze({ translate: 'screen', scale: 'uniform' });
 const MODAL_TOOL_WORDS = Object.freeze({ translate: 'Move', rotate: 'Rotate', scale: 'Scale' });
@@ -1190,22 +1201,6 @@ const TRANSFORM_PART_BY_ACTION = Object.freeze({ 'edit.resetPosition': 'translat
 const TRANSFORM_AT_REST = Object.freeze({ translation: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] });
 const TRANSFORM_PART_WORDS = Object.freeze({ translation: 'Position', rotation: 'Rotation', scale: 'Scale' });
 const VIEW_PRESET_BY_ACTION = Object.freeze({ 'view.front': 'front', 'view.right': 'right', 'view.top': 'top' });
-
-// One row of the Settings dialog each: the preference, what the row is called and, for a choice, how a value reads.
-const STUDIO_SETTING_ROWS = Object.freeze([
-  ['moveSnapStep', 'Move snap step', value => `${value} m`],
-  ['rotateSnapDegrees', 'Rotate snap angle', value => `${value}°`],
-  ['gizmoSize', 'Handle size', value => value[0].toUpperCase() + value.slice(1)],
-  ['startWorkspace', 'Open in', value => value[0].toUpperCase() + value.slice(1)],
-  ['theme', 'Theme', value => value[0].toUpperCase() + value.slice(1)],
-  ['performance', 'Performance', value => value[0].toUpperCase() + value.slice(1)],
-  ['keymap', 'Keys', value => KEYMAP_PRESETS[value].label],
-  ['gridVisible', 'Grid'],
-  ['readoutVisible', 'Camera and size readout'],
-  ['viewWidgetVisible', 'Axis widget'],
-  ['agentCursorVisible', 'Agent cursor'],
-  ['panelsFloating', 'Floating panels'],
-]);
 
 function browserPreferenceStorage() {
   try {
@@ -1245,6 +1240,8 @@ export function createStudio(container, {
   onDirtyChange,
   onThemeChange,
   onDiagnostic,
+  // Opens an address outside Studio. A host page supplies it; without one the guide opens in a new tab.
+  openExternal,
   diagnostics: diagnosticsOptions = {},
 } = {}) {
   const catalog = createStudioCatalog(catalogHooks);
@@ -1366,8 +1363,10 @@ export function createStudio(container, {
     attributes: { role: 'img', 'aria-label': 'Reloads when the agent edits this file' },
   });
   // The keymap in force. Choosing another preset swaps it and every place that shows a key is drawn again.
-  let keymap = resolveKeymapPreset(preferences.keymap);
-  let appliedKeymap = preferences.keymap;
+  const keymapOf = () => resolveKeymapPreset(preferences.keymap, preferences.keyOverrides[preferences.keymap], { numberPad: preferences.numberPad });
+  const keymapSignature = () => JSON.stringify([preferences.keymap, preferences.numberPad, preferences.keyOverrides[preferences.keymap] ?? {}]);
+  let keymap = keymapOf();
+  let appliedKeymap = '';
   const menuKeyViews = [];
   const keyTooltipViews = [];
   const setShortcutLabel = (element, label) => {
@@ -1410,10 +1409,25 @@ export function createStudio(container, {
     item.prepend(createIcon(documentReference, iconName));
     return item;
   };
+  // Export is a place to look at the shot and save it: nothing in the scene changes there and the view does not move. Undo and redo,
+  // the file commands and the settings stay. This one guard serves the keys, the menu rows and the viewport.
+  const SHOT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'view.properties']);
+  const viewingShot = () => root.dataset.workspace === 'export';
+  const shotLocksAction = actionId => viewingShot() && !SHOT_PASS_THROUGH.has(actionId);
+  // The rows and rail buttons that do nothing in Export look disabled there, the way undo does with nothing to undo.
+  const shotLockedControls = [];
+  const lockInShot = control => {
+    shotLockedControls.push(control);
+    return control;
+  };
   // One row of a menu: its icon, what it does, and its key on the right.
   const createMenuItem = (label, actionId, onChoose, iconName) => {
     const item = showActionKey(createElement(documentReference, 'button', { type: 'button', textContent: label }), actionId);
-    item.addEventListener('click', onChoose);
+    if (actionId && !SHOT_PASS_THROUGH.has(actionId)) lockInShot(item);
+    item.addEventListener('click', event => {
+      if (actionId && shotLocksAction(actionId)) return;
+      onChoose(event);
+    });
     return giveMenuIcon(item, iconName);
   };
   // Whether the History panel is shown, and the edits it last drew, so a notification that changed no edit draws nothing.
@@ -1435,6 +1449,40 @@ export function createStudio(container, {
     className: 'crucible-studio-popover',
     attributes: { popover: 'auto' },
   }, ...items);
+  // Snapping is a state, not a tool: the magnet turns it on or off, the button under it names what it snaps to.
+  const snapTargetOf = id => SNAP_TARGETS.find(target => target.id === id) ?? SNAP_TARGETS[0];
+  const snapToggleButton = createKeyedIconButton('snap', () => `Snapping ${preferences.snapEnabled ? 'on' : 'off'} (${keyLabel(keymap, 'snap.toggle')})`, {
+    dataset: { snapToggle: 'true' },
+    attributes: { 'aria-pressed': preferences.snapEnabled ? 'true' : 'false' },
+  });
+  const snapTargetButton = createIconButton(documentReference, snapTargetOf(preferences.snapTarget).icon, `Snap to ${snapTargetOf(preferences.snapTarget).label}`, {
+    dataset: { snapTargetButton: 'true' },
+    attributes: { popovertarget: 'crucible-studio-pop-snap', 'aria-haspopup': 'menu' },
+  });
+  const snapTargetItems = SNAP_TARGETS.map(target => {
+    const item = createMenuItem(target.label, '', () => {
+      setPreferences({ snapTarget: target.id, snapEnabled: true });
+      announce(`Snapping to ${target.label}`);
+    }, target.icon);
+    item.dataset.snapTarget = target.id;
+    item.setAttribute('role', 'menuitemcheckbox');
+    return item;
+  });
+  const snapPopover = createMenuPopover('crucible-studio-pop-snap', ...snapTargetItems);
+  function syncSnapUi() {
+    const target = snapTargetOf(preferences.snapTarget);
+    snapToggleButton.setAttribute('aria-pressed', preferences.snapEnabled ? 'true' : 'false');
+    setButtonIcon(snapToggleButton, 'snap', `Snapping ${preferences.snapEnabled ? 'on' : 'off'} (${keyLabel(keymap, 'snap.toggle')})`);
+    setButtonIcon(snapTargetButton, target.icon, `Snap to ${target.label}`);
+    for (const item of snapTargetItems) {
+      item.setAttribute('aria-checked', item.dataset.snapTarget === target.id ? 'true' : 'false');
+    }
+  }
+  snapToggleButton.addEventListener('click', () => toggleSnapping());
+  function toggleSnapping() {
+    setPreference('snapEnabled', !preferences.snapEnabled);
+    announce(preferences.snapEnabled ? `Snapping on, to ${snapTargetOf(preferences.snapTarget).label}` : 'Snapping off');
+  }
   const fileMenuButton = createMenuButton('File', 'crucible-studio-pop-new');
   const editMenuButton = createMenuButton('Edit', 'crucible-studio-pop-edit');
   const viewMenuButton = createMenuButton('View', 'crucible-studio-pop-view');
@@ -1457,6 +1505,8 @@ export function createStudio(container, {
     createMenuItem('Paste', 'edit.paste', () => pasteCopy(), 'clipboard'),
     createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicateObject'),
     createMenuItem('Join', 'edit.join', () => joinSelection(), 'duplicate'),
+    createMenuItem('Parent', 'edit.parent', () => parentSelection(), 'node'),
+    createMenuItem('Clear parent', 'edit.clearParent', () => clearParentSelection(), 'deselect'),
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
     createMenuItem('Rename', 'edit.rename', () => renameActiveObjectFromMenu(), 'text'),
     createMenuItem('Deselect', 'edit.deselect', () => controller.selectNode(null), 'deselect'),
@@ -1465,7 +1515,7 @@ export function createStudio(container, {
     createMenuItem('Reset position', 'edit.resetPosition', () => resetSelectionTransform('translation'), 'translate'),
     createMenuItem('Reset rotation', 'edit.resetRotation', () => resetSelectionTransform('rotation'), 'rotate'),
     createMenuItem('Reset scale', 'edit.resetScale', () => resetSelectionTransform('scale'), 'scale'),
-    createMenuItem('Settings…', 'settings.open', () => settingsDialog.showModal(), 'settings'),
+    createMenuItem('Settings…', 'settings.open', () => settings.open(), 'settings'),
   );
   // A right click on an object, in the viewport or in the Scene list, opens the actions on that object where the
   // pointer is. The rows are the Edit menu's own, so a key learned in one place works in the other.
@@ -1491,35 +1541,7 @@ export function createStudio(container, {
     applyMenus.originRow,
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
   );
-  // P in edit mode: what to separate. Selection is the picked faces.
-  const separatePopover = createMenuPopover(
-    'crucible-studio-pop-separate',
-    createMenuItem('Selection', 'mesh.separate', () => separateMeshSelection(), 'duplicate'),
-  );
   let lastObjectMenuPoint = null;
-  // Edit mode's Delete and Merge menus (X and M). Dissolve acts on the selection of any mode; the merges need picked
-  // vertices, and At First and At Last follow the order of the picks, which only vertex mode keeps.
-  const dissolveSelection = kind => {
-    meshEditor.dissolve(kind);
-    syncUi();
-    requestFrame();
-  };
-  const mergeSelection = target => {
-    meshEditor.merge(target);
-    syncUi();
-    requestFrame();
-  };
-  const meshDeletePopover = createMenuPopover(
-    'crucible-studio-pop-mesh-delete',
-    createMenuItem('Dissolve Vertices', '', () => dissolveSelection('vertices'), 'meshVertex'),
-    createMenuItem('Dissolve Edges', '', () => dissolveSelection('edges'), 'meshEdge'),
-    createMenuItem('Dissolve Faces', '', () => dissolveSelection('faces'), 'meshFace'),
-  );
-  const meshMergeCenterItem = createMenuItem('At Center', '', () => mergeSelection('center'), 'meshVertex');
-  const meshMergeFirstItem = createMenuItem('At First', '', () => mergeSelection('first'), 'meshVertex');
-  const meshMergeLastItem = createMenuItem('At Last', '', () => mergeSelection('last'), 'meshVertex');
-  const meshMergeCollapseItem = createMenuItem('Collapse', '', () => mergeSelection('collapse'), 'meshVertex');
-  const meshMergePopover = createMenuPopover('crucible-studio-pop-mesh-merge', meshMergeCenterItem, meshMergeFirstItem, meshMergeLastItem, meshMergeCollapseItem);
   function openPopoverAt(popover, clientX, clientY) {
     const windowWidth = documentReference.defaultView?.innerWidth ?? 1280;
     const windowHeight = documentReference.defaultView?.innerHeight ?? 800;
@@ -1535,26 +1557,25 @@ export function createStudio(container, {
     popover.style.setProperty('--studio-popover-shift', opening.shift);
     popover.showPopover?.();
   }
+  const meshMenus = createMeshMenus({
+    createMenuPopover,
+    createMenuItem,
+    controller,
+    getCanvas: () => canvas,
+    openPopoverAt,
+    getMeshEditor: () => meshEditor,
+    separateMeshSelection: () => separateMeshSelection(),
+    onTopologyApplied: () => {
+      syncUi();
+      requestFrame();
+    },
+  });
+  // No menu while an object is in hand: a Ctrl press on a Mac is a right click, and it would open this over the move.
   function openObjectMenu(clientX, clientY) {
+    if (controller.dragging || modalTransform) return;
     lastObjectMenuPoint = [clientX, clientY];
     openPopoverAt(objectPopover, clientX, clientY);
   }
-  // The keys open these menus at the middle of the selection, as the pointer is not tracked between clicks.
-  function openMeshMenu(popover) {
-    const bounds = canvas.getBoundingClientRect();
-    const centre = meshEditor.selectionCentre;
-    const pixel = centre ? controller.projectWorldPoint(centre) : null;
-    const isAtFirstOrLastAvailable = meshEditor.mode === 'vertex';
-    for (const item of [meshMergeFirstItem, meshMergeLastItem]) item.setAttribute('aria-disabled', isAtFirstOrLastAvailable ? 'false' : 'true');
-    openPopoverAt(popover, bounds.left + (pixel?.x ?? bounds.width / 2), bounds.top + (pixel?.y ?? bounds.height / 2));
-  }
-  const meshMenuIsOpen = () => [meshDeletePopover, meshMergePopover].some(popover => {
-    try {
-      return popover.matches(':popover-open');
-    } catch {
-      return false;
-    }
-  });
   function hideSelection() {
     if (!controller.selectedNodeId) return;
     controller.updateNodeTransform(controller.selectedNodeId, { visible: false });
@@ -1579,14 +1600,15 @@ export function createStudio(container, {
     announce(`${TRANSFORM_PART_WORDS[part]} reset`);
   }
   // Shown only while a motion track drives the camera: off means the viewport looks around on its own.
-  const sceneCameraToggle = createMenuToggle('Animated camera', '', () => {
+  const sceneCameraToggle = lockInShot(createMenuToggle('Animated camera', '', () => {
+    if (viewingShot()) return;
     if (controller.freeView) {
       controller.lookThroughSceneCamera();
       return;
     }
     const camera = controller.viewCamera;
     controller.moveViewportCamera({ eye: [...camera.eye], target: [...camera.target] });
-  }, () => !controller.freeView, 'camera');
+  }, () => !controller.freeView, 'camera'));
   const viewPopover = createMenuPopover(
     'crucible-studio-pop-view',
     createMenuItem('Front view', 'view.front', () => showView('front')),
@@ -1594,7 +1616,7 @@ export function createStudio(container, {
     createMenuItem('Top view', 'view.top', () => showView('top')),
     createMenuItem('Perspective / Orthographic', 'view.projection', () => controller.toggleCameraProjection(), 'camera'),
     createMenuItem('Frame the selection', 'view.frame', () => flyToSelection(), 'frame'),
-    createMenuToggle('Grid', '', () => gridButton.click(), () => gridVisible, 'grid'),
+    lockInShot(createMenuToggle('Grid', '', () => gridButton.click(), () => gridVisible, 'grid')),
     sceneCameraToggle,
     createMenuToggle('Scene and Properties', '', () => toggleDocksButton.click(), () => root.dataset.outlinerCollapsed !== 'true' || root.dataset.inspectorCollapsed !== 'true', 'panels'),
     createMenuToggle('History', '', () => setHistoryShown(!historyShown), () => historyShown, 'history'),
@@ -1608,16 +1630,10 @@ export function createStudio(container, {
   syncMenuToggles();
   const helpPopover = createMenuPopover(
     'crucible-studio-pop-help',
-    createMenuItem('Keyboard shortcuts', 'help.shortcuts', () => shortcutsDialog.showModal(), 'keyboard'),
+    createMenuItem('Keyboard shortcuts', 'help.shortcuts', () => showShortcutsSheet(helpMenuButton), 'keyboard'),
+    createMenuItem('Documentation', '', () => openStudioGuide({ openExternal, windowReference: documentReference.defaultView }), 'book'),
     createMenuItem('Set up Studio…', '', () => openSetup(), 'settings'),
     createMenuItem('Save diagnostics report', '', () => saveDiagnosticsReport(), 'saveAs'),
-  );
-  const exportMenuButton = createElement(
-    documentReference,
-    'button',
-    { type: 'button', className: 'crucible-studio-primary-btn', attributes: { popovertarget: 'crucible-studio-pop-export' } },
-    createIcon(documentReference, 'export'),
-    createElement(documentReference, 'span', { textContent: 'Export' }),
   );
 
   const newPopover = createElement(documentReference, 'div', {
@@ -1735,23 +1751,12 @@ export function createStudio(container, {
     attributes: { popover: 'auto' },
   }, syncStatusNote, autoReloadButton, copyPromptButton);
 
-  const exportPngButton = createElement(documentReference, 'button', { type: 'button', textContent: 'PNG image' });
-  const exportGlbButton = createElement(documentReference, 'button', { type: 'button', textContent: 'GLB model' });
-  const exportPackButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Web pack' });
   const editJsonButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Recipe JSON' });
-  const exportPopover = createElement(documentReference, 'div', {
-    id: 'crucible-studio-pop-export',
-    className: 'crucible-studio-popover',
-    attributes: { popover: 'auto' },
-  }, exportPngButton, exportGlbButton, exportPackButton);
   giveMenuIcon(openButton, 'open');
   if (importButton) giveMenuIcon(importButton, 'add');
   giveMenuIcon(saveButton, 'save');
   giveMenuIcon(saveAsButton, 'saveAs');
   giveMenuIcon(editJsonButton, 'code');
-  giveMenuIcon(exportPngButton, 'image');
-  giveMenuIcon(exportGlbButton, 'node');
-  giveMenuIcon(exportPackButton, 'globe');
   // The rows come in three groups, set apart by space: starting and opening, saving, then importing and exporting.
   const startMenuGroup = item => {
     item.dataset.groupStart = 'true';
@@ -1767,11 +1772,7 @@ export function createStudio(container, {
     recentChevron,
   ), 'recent');
   const recentList = createElement(documentReference, 'div', { id: 'crucible-studio-recent-list', className: 'crucible-studio-recent-list', hidden: true, attributes: { role: 'group', 'aria-label': 'Recent scenes' } });
-  const exportRows = [
-    createMenuItem('Export PNG image', '', () => exportPngButton.click(), 'image'),
-    createMenuItem('Export GLB model', '', () => exportGlbButton.click(), 'node'),
-    createMenuItem('Export web pack', '', () => exportPackButton.click(), 'globe'),
-  ];
+  const exportRows = [createMenuItem('Export…', '', () => selectWorkspace('export'), 'export')];
   const importAndExportRows = [...(importButton ? [importButton] : []), ...exportRows, editJsonButton];
   newPopover.prepend(
     createMenuItem('New scene…', '', () => openNewScene(), 'newScene'),
@@ -1783,7 +1784,7 @@ export function createStudio(container, {
     startMenuGroup(importAndExportRows[0]),
     ...importAndExportRows.slice(1),
   );
-  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, separatePopover, meshDeletePopover, meshMergePopover, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover]) {
+  for (const popoverElement of [newPopover, addPopover, editPopover, objectPopover, ...meshMenus.popovers, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover, snapPopover]) {
     popoverElement.addEventListener('click', event => {
       const clickedButton = event.target.closest?.('button');
       if (clickedButton && !clickedButton.dataset.keepsMenu) popoverElement.hidePopover?.();
@@ -1840,20 +1841,18 @@ export function createStudio(container, {
     ),
     workspaceList,
     createElement(documentReference, 'span', { className: 'crucible-studio-spacer' }),
-    createElement(documentReference, 'div', { className: 'crucible-studio-island' }, filePill, watchPill, exportMenuButton),
+    createElement(documentReference, 'div', { className: 'crucible-studio-island' }, filePill, watchPill),
     newPopover,
     addPopover,
     aiSyncPopover,
-    exportPopover,
     editPopover,
     objectPopover,
-    separatePopover,
+    ...meshMenus.popovers,
     applyMenus.applyPopover,
     applyMenus.originPopover,
-    meshDeletePopover,
-    meshMergePopover,
     viewPopover,
     helpPopover,
+    snapPopover,
   );
 
   // A hover switch is instant: the bar says so while one menu hides and the next shows, a style read makes the browser
@@ -1876,15 +1875,19 @@ export function createStudio(container, {
       }
     });
   }
+  // A menu button stays marked while its menu is open, as it is under the pointer.
+  for (const [menuButton, menuPopover] of menuPairs) {
+    menuPopover.addEventListener('toggle', event => menuButton.setAttribute('aria-expanded', event.newState === 'open' ? 'true' : 'false'));
+  }
 
-  function bindPopoverAnchor(triggerButton, popoverElement, { beside = false } = {}) {
+  function bindPopoverAnchor(triggerButton, popoverElement, { beside = false, topOffset = 8 } = {}) {
     popoverElement.addEventListener('beforetoggle', event => {
       if (event.newState !== 'open') return;
       const rectangle = (typeof triggerButton === 'function' ? triggerButton() : triggerButton).getBoundingClientRect();
       const viewportWidth = documentReference.defaultView?.innerWidth ?? 1280;
       const viewportHeight = documentReference.defaultView?.innerHeight ?? 800;
       const wantedLeft = beside ? rectangle.right + 16 : rectangle.left - 5;
-      const wantedTop = beside ? rectangle.top - 8 : rectangle.bottom + 14;
+      const wantedTop = beside ? rectangle.top - topOffset : rectangle.bottom + 14;
       const clampedLeft = Math.max(8, Math.min(wantedLeft, Math.max(8, viewportWidth - 256)));
       const clampedTop = Math.max(8, Math.min(wantedTop, Math.max(8, viewportHeight - 300)));
       // A trigger in the right half opens towards the left, so the menu never leaves the window.
@@ -1909,7 +1912,8 @@ export function createStudio(container, {
   addMenuButton.addEventListener('click', () => { addMenuAnchor = addMenuButton; });
   bindPopoverAnchor(() => addMenuAnchor, addPopover, { beside: true });
   bindPopoverAnchor(aiSyncMenuButton, aiSyncPopover);
-  bindPopoverAnchor(exportMenuButton, exportPopover);
+  // The menu's top edge is the top edge of the button that opens it.
+  bindPopoverAnchor(snapTargetButton, snapPopover, { beside: true, topOffset: 0 });
 
   // Left Outliner + Material Palette Dock
   const outlinerSearch = createElement(documentReference, 'input', { type: 'search', placeholder: 'Find an object', attributes: { 'aria-label': 'Filter the scene list' } });
@@ -1918,6 +1922,13 @@ export function createStudio(container, {
   const sceneAddButton = createIconButton(documentReference, 'add', 'Add to the scene', { attributes: { popovertarget: 'crucible-studio-pop-add' } });
   sceneAddButton.addEventListener('click', () => { addMenuAnchor = sceneAddButton; });
   const outlinerTree = createElement(documentReference, 'div', { className: 'crucible-studio-tree crucible-studio-scroll', attributes: { role: 'tree', 'aria-label': 'Scene hierarchy' } });
+  const outlinerDrag = createOutlinerParentDrag({
+    outlinerTree,
+    controller,
+    announce: message => announceSuccess(message),
+    announceError: message => announceError(message),
+    isEditingName: () => Boolean(activeNameEditor),
+  });
   watchScrollFade(outlinerTree);
   const swatchContainer = createElement(documentReference, 'div', { className: 'crucible-studio-swatches crucible-studio-scroll' });
   const newMaterialQuickButton = createIconButton(documentReference, 'add', 'New material', { className: 'crucible-studio-swatch-add' });
@@ -2033,8 +2044,9 @@ export function createStudio(container, {
   });
 
   // The outcome picks the mark the notice leads with: success, warning, error or the plain info. An error may be passed whole;
-  // its text is marked selectable so a person can copy it.
-  function announce(message, durationMilliseconds = STATUS_DEFAULT_MILLISECONDS, outcome = 'info') {
+  // its text is marked selectable so a person can copy it. A quiet message is still announced to a screen reader but draws no
+  // box: Export reports each save on its own result line.
+  function announce(message, durationMilliseconds = STATUS_DEFAULT_MILLISECONDS, outcome = 'info', { quiet = false } = {}) {
     clearTimeout(statusTimer);
     clearTimeout(statusExitTimer);
     const isError = message instanceof Error;
@@ -2049,6 +2061,8 @@ export function createStudio(container, {
     if (shownOutcome === 'error') noticeText.className = 'crucible-studio-selectable';
     statusRegion.replaceChildren(noticeIcon, noticeText);
     statusRegion.setAttribute('data-outcome', shownOutcome);
+    if (quiet) statusRegion.setAttribute('data-quiet', 'true');
+    else statusRegion.removeAttribute('data-quiet');
     statusRegion.dataset.state = 'in';
     statusTimer = setTimeout(hideStatus, durationMilliseconds);
   }
@@ -2058,7 +2072,7 @@ export function createStudio(container, {
   const announceWarning = message => announce(message, STATUS_DEFAULT_MILLISECONDS, 'warning');
 
   // Viewport Top-Left Toolbar (Modern Web Guidance: toolbar pattern)
-  const toolLabels = { select: 'Select', translate: 'Move', rotate: 'Rotate', scale: 'Scale', snap: 'Snap' };
+  const toolLabels = { select: 'Select', translate: 'Move', rotate: 'Rotate', scale: 'Scale' };
   const toolButtons = STUDIO_TOOLS.map(tool => createKeyedIconButton(tool, () => `${toolLabels[tool]} (${keyLabel(keymap, TOOL_ACTION_BY_TOOL[tool])})`, {
     dataset: { tool },
     attributes: { 'aria-pressed': tool === controller.tool ? 'true' : 'false' },
@@ -2099,7 +2113,9 @@ export function createStudio(container, {
   const proportionalButton = createKeyedIconButton('proportional', () => `Proportional editing (${keyLabel(keymap, 'mesh.proportional')})`, { dataset: { proportional: 'toggle' }, attributes: { 'aria-pressed': 'false' } });
   const proportionalMenuButton = createIconButton(documentReference, 'chevron', 'Falloff and size of proportional editing', { dataset: { proportional: 'menu' }, attributes: { popovertarget: PROPORTIONAL_POPOVER_ID } });
   proportionalButton.addEventListener('click', () => toggleProportional());
-  meshModeGroup.append(proportionalButton, proportionalMenuButton);
+  const meshToolsButton = createIconButton(documentReference, 'more', 'Mesh tools', { dataset: { meshTools: 'true' }, attributes: { popovertarget: 'crucible-studio-pop-mesh-tools', 'aria-haspopup': 'menu' } });
+  bindPopoverAnchor(meshToolsButton, meshMenus.meshToolsPopover, { beside: true });
+  meshModeGroup.append(proportionalButton, proportionalMenuButton, meshToolsButton);
 
   const undoButton = createKeyedIconButton('undo', () => `Undo (${keyLabel(keymap, 'edit.undo')})`, { attributes: { 'aria-disabled': 'true' } });
   const redoButton = createKeyedIconButton('redo', () => `Redo (${keyLabel(keymap, 'edit.redo')})`, { attributes: { 'aria-disabled': 'true' } });
@@ -2122,6 +2138,7 @@ export function createStudio(container, {
     announce(seeThrough ? 'See-through on' : 'See-through off');
   });
   gridButton.addEventListener('click', () => {
+    if (viewingShot()) return;
     setPreference('gridVisible', !gridVisible);
     announce(gridVisible ? 'Grid shown' : 'Grid hidden');
   });
@@ -2138,7 +2155,7 @@ export function createStudio(container, {
     if (duplicateButton.getAttribute('aria-disabled') === 'true') return;
     try {
       const cloned = controller.duplicateSelected();
-      announce(`Duplicated to ${cloned.label}`);
+      announceDuplicated(cloned);
     } catch (error) {
       announceError(error.message);
     }
@@ -2169,13 +2186,14 @@ export function createStudio(container, {
       attributes: { role: 'toolbar', focusgroup: 'toolbar wrap', 'aria-orientation': 'vertical', 'aria-label': 'Tools', 'aria-controls': canvas.id },
     },
     createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Transform tool' } }, ...toolButtons),
+    createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Snapping' } }, snapToggleButton, snapTargetButton),
     meshModeGroup,
     createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Edit the scene' } }, addMenuButton, undoButton, redoButton),
     // Above the line: what changes the scene. Below it: what only shows or hides parts of Studio.
     createElement(documentReference, 'div', { className: 'crucible-studio-toolbar-rule', attributes: { role: 'separator', 'aria-orientation': 'horizontal' } }),
     createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Show or hide' } }, gridButton, seeThroughButton, toggleDocksButton),
   );
-  wireRovingFocusFallback(toolbarElement, [...toolButtons, addMenuButton, undoButton, redoButton, gridButton, seeThroughButton, toggleDocksButton], { vertical: true });
+  wireRovingFocusFallback(toolbarElement, [...toolButtons, snapToggleButton, snapTargetButton, addMenuButton, undoButton, redoButton, gridButton, seeThroughButton, toggleDocksButton], { vertical: true });
 
   // Viewport Top-Right 3D View Widget
   const viewPresetButtons = ['front', 'right', 'top', 'isometric'].map(preset => {
@@ -2209,7 +2227,7 @@ export function createStudio(container, {
   const readoutCamera = createElement(documentReference, 'span');
   const readoutSelection = createElement(documentReference, 'span', { className: 'crucible-studio-readout-selection' });
   const readout = createElement(documentReference, 'div', { className: 'crucible-studio-readout', attributes: { 'aria-hidden': 'true' } }, readoutCamera, readoutSelection);
-  const agentPresence = createAgentPresence(documentReference, { controller, requestDraw: () => requestFrame() });
+  const agentPresence = createAgentPresence(documentReference, { controller, requestDraw: () => requestFrame(), isReducedMotion: () => motionIsReduced() });
   const pausedNotice = createPausedPictureNotice({
     documentReference,
     createIcon: iconName => createIcon(documentReference, iconName),
@@ -2230,12 +2248,25 @@ export function createStudio(container, {
     onRestore: () => restoreDraft(),
     onDiscard: () => discardDraft(),
   });
+  const numpadNotice = createNumberPadNotice({
+    documentReference,
+    createIcon: iconName => createIcon(documentReference, iconName),
+    onSwitch: () => {
+      numpadNotice.hide();
+      setPreferences({ numberPad: true, numberPadNoticeShown: true });
+      announce('View keys moved to the number pad');
+    },
+    onKeep: () => {
+      numpadNotice.hide();
+    },
+  });
   const stopWatchingDiagnostics = watchStudioDiagnostics(studioDiagnostics, { windowReference: documentReference.defaultView, canvas });
   const stopWatchingContextLoss = watchContextLoss(canvas, { onLost: pauseForContextLoss, onRestored: recoverFromContextLoss });
-  viewportElement.append(canvas, maskFilterSvg, gizmoSvg, agentPresence.element, viewWidget.element, readout, hintBar, statusRegion, bakeMark.element, dropOverlay, pausedNotice.element, postPassNotice.element, draftNotice.element);
+  const exportFrameGuide = createElement(documentReference, 'div', { className: 'crucible-studio-export-guide', attributes: { 'aria-hidden': 'true' } });
+  viewportElement.append(canvas, exportFrameGuide, maskFilterSvg, gizmoSvg, agentPresence.element, viewWidget.element, readout, hintBar, statusRegion, bakeMark.element, dropOverlay, pausedNotice.element, postPassNotice.element, draftNotice.element, numpadNotice.element);
 
   // Right 4-Tab Inspector Dock (Modern Web Guidance: tabs pattern)
-  const tabLabels = { node: 'Object', material: 'Material', look: 'Look', camera: 'Camera' };
+  const tabLabels = { node: 'Object', modifiers: 'Modifiers', material: 'Material', look: 'Look', camera: 'Camera', export: 'Export' };
   const tabButtons = STUDIO_TABS.map(tab => createIconButton(documentReference, tab, tabLabels[tab], {
     id: `crucible-studio-tab-${tab}`,
     dataset: { tab },
@@ -2299,7 +2330,7 @@ export function createStudio(container, {
 
   const positionRow = createVectorRow(documentReference, 'Position', values => {
     if (controller.selectedNodeId) controller.updateNodeTransform(controller.selectedNodeId, { translation: values });
-  }, { sensitivity: 0.015 });
+  }, { sensitivity: 0.015, getLengthUnit: () => preferences.lengthUnit });
   const rotationRow = createVectorRow(documentReference, 'Rotation °', values => {
     if (controller.selectedNodeId) controller.updateNodeTransform(controller.selectedNodeId, { rotationDegrees: values });
   }, { sensitivity: 0.5 });
@@ -2447,7 +2478,7 @@ export function createStudio(container, {
     isOpen: (groupId, openByDefault) => preferences.propertyGroupsOpen[groupId] ?? openByDefault,
     setOpen: (groupId, open) => setPreference('propertyGroupsOpen', { ...preferences.propertyGroupsOpen, [groupId]: open }),
   };
-  const createLookPanel = (resolveKey, panelOptions = {}) => createPropertyPanel({ documentReference, controller, announce, builders: propertyBuilders, resolveKey, groups: propertyGroups, prepareRecipe, catalogNames: catalog.names, ...panelOptions });
+  const createLookPanel = (resolveKey, panelOptions = {}) => createPropertyPanel({ documentReference, controller, announce, builders: propertyBuilders, resolveKey, groups: propertyGroups, prepareRecipe, catalogNames: catalog.names, getLengthUnit: () => preferences.lengthUnit, ...panelOptions });
   const selectedLightKey = () => (/^(point|spot|area):/u.test(controller.selectedObjectKey ?? '') ? controller.selectedObjectKey : null);
   // Only the first group of a tab starts open, so the tab opens on one screen of rows.
   const lightPanel = createLookPanel(() => selectedLightKey() ?? 'sun', { opensFirstGroup: true });
@@ -2519,8 +2550,15 @@ export function createStudio(container, {
     ),
   );
 
+  const exportPanel = createExportPanel({ documentReference, createElement, createIcon: iconName => createIcon(documentReference, iconName) });
+  // The scene a set of facts and a result line were made from: a change to the scene makes both stale.
+  let exportFactsSceneKey = null;
+  let exportResultSceneKey = null;
+  const modifierPanel = createModifierPanel({ documentReference, controller, announce, builders: { createElement, createIcon, createIconButton, createVectorRow } });
   const panelsByTab = {
+    export: createElement(documentReference, 'div', { id: 'crucible-studio-panel-export', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-export', hidden: 'until-found' } }, exportPanel.element),
     node: createElement(documentReference, 'div', { id: 'crucible-studio-panel-node', tabIndex: 0, attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-node' } }, nodePanelBody),
+    modifiers: createElement(documentReference, 'div', { id: 'crucible-studio-panel-modifiers', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-modifiers', hidden: 'until-found' } }, createElement(documentReference, 'div', { className: 'crucible-studio-panel-body crucible-studio-modifier-body' }, modifierPanel.element)),
     material: createElement(documentReference, 'div', { id: 'crucible-studio-panel-material', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-material', hidden: 'until-found' } }, materialPanelBody),
     look: createElement(documentReference, 'div', { id: 'crucible-studio-panel-look', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-look', hidden: 'until-found' } }, lookPanelBody),
     camera: createElement(documentReference, 'div', { id: 'crucible-studio-panel-camera', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-camera', hidden: 'until-found' } }, cameraPanelBody),
@@ -2541,7 +2579,16 @@ export function createStudio(container, {
       throw new RangeError(`Unknown Studio workspace "${String(nextWorkspace)}". Use one of ${STUDIO_WORKSPACES.map(candidate => candidate.id).join(', ')}.`);
     }
     const workspaceWasOpen = root.dataset.workspace === workspace.id;
+    const firstWorkspace = root.dataset.workspace === undefined;
     root.dataset.workspace = workspace.id;
+    const inExport = workspace.id === 'export';
+    if (!inExport) exportPanel.clearResults();
+    outlinerDock.inert = inExport;
+    for (const button of [...toolButtons, addMenuButton]) button.toggleAttribute('hidden', inExport);
+    for (const control of [...shotLockedControls, gridButton]) control.setAttribute('aria-disabled', inExport ? 'true' : 'false');
+    showInspectorTitle(inExport);
+    // A change of tab asks for no frame of its own, and the viewport draws the shot differently in Export.
+    if (!workspaceWasOpen && !firstWorkspace) requestFrame();
     for (const button of workspaceButtons) {
       button.setAttribute('aria-selected', button.dataset.workspace === workspace.id ? 'true' : 'false');
     }
@@ -2583,7 +2630,12 @@ export function createStudio(container, {
     onSelect: button => selectInspectorTab(button.dataset.tab),
   });
 
-  const panelsElement = createElement(documentReference, 'div', { className: 'crucible-studio-panels crucible-studio-scroll' }, panelsByTab.node, panelsByTab.material, panelsByTab.look, panelsByTab.camera);
+  const inspectorTitle = createElement(documentReference, 'span', { className: 'crucible-studio-dock-title' });
+  function showInspectorTitle(exporting) {
+    inspectorTitle.replaceChildren(createIcon(documentReference, exporting ? 'export' : 'settings'), createElement(documentReference, 'span', { textContent: exporting ? 'Export' : 'Properties' }));
+  }
+  showInspectorTitle(false);
+  const panelsElement = createElement(documentReference, 'div', { className: 'crucible-studio-panels crucible-studio-scroll' }, panelsByTab.node, panelsByTab.modifiers, panelsByTab.material, panelsByTab.look, panelsByTab.camera, panelsByTab.export);
   watchScrollFade(panelsElement);
   const inspectorElement = createElement(
     documentReference,
@@ -2593,7 +2645,7 @@ export function createStudio(container, {
       documentReference,
       'div',
       { className: 'crucible-studio-dock-head' },
-      createElement(documentReference, 'span', { className: 'crucible-studio-dock-title' }, createIcon(documentReference, 'settings'), createElement(documentReference, 'span', { textContent: 'Properties' })),
+      inspectorTitle,
       selectionCountElement,
       createElement(documentReference, 'span', { className: 'crucible-studio-spacer' }),
       propertiesMinimizeButton,
@@ -2866,70 +2918,90 @@ export function createStudio(container, {
 
   const shortcutsHeading = createElement(documentReference, 'h2', { id: 'crucible-studio-shortcuts-title', textContent: 'Studio keyboard shortcuts' });
   shortcutsHeading.prepend(createIcon(documentReference, 'keyboard'));
-  const shortcutsGrid = createElement(documentReference, 'div', { className: 'crucible-studio-shortcuts' });
-  function fillShortcutsGrid() {
-    shortcutsGrid.replaceChildren(...shortcutRowsFor(keymap).map(({ keys, label }) => createElement(
+  const shortcutsCloseButton = createIconButton(documentReference, 'close', 'Close the shortcuts');
+  const shortcutsGrid = createElement(documentReference, 'div', { className: 'crucible-studio-shortcuts crucible-studio-fade-scroll' });
+  // One block per area, each with its icon and a row for every key of the active keymap, in two columns of about equal height.
+  const createShortcutGroup = group => createElement(
+    documentReference,
+    'section',
+    { className: 'crucible-studio-shortcut-group', dataset: { group: group.title } },
+    createElement(documentReference, 'h3', {}, createIcon(documentReference, group.icon), createElement(documentReference, 'span', { textContent: group.title })),
+    ...group.rows.map(({ keys, label }) => createElement(
       documentReference,
       'div',
       { className: 'crucible-studio-shortcut-item' },
       createElement(documentReference, 'span', { textContent: label }),
-      createElement(documentReference, 'kbd', { textContent: formatShortcutKeys(keymap, keys) }),
+      createElement(documentReference, 'span', { className: 'crucible-studio-shortcut-keys', textContent: keys }),
+    )),
+  );
+  function fillShortcutsGrid() {
+    const columnCount = sheetColumnCount(documentReference.defaultView?.innerWidth ?? 1280);
+    shortcutsDialog.dataset.columns = String(columnCount);
+    const columns = balanceSheetColumns(shortcutSheetGroups(keymap), columnCount);
+    shortcutsGrid.replaceChildren(...columns.map(columnGroups => createElement(
+      documentReference,
+      'div',
+      { className: 'crucible-studio-shortcut-column' },
+      ...columnGroups.map(createShortcutGroup),
     )));
   }
-  fillShortcutsGrid();
-  const shortcutsCloseButton = createElement(documentReference, 'button', { type: 'submit', value: 'close', autofocus: true, textContent: 'Done' });
   const shortcutsDialog = createElement(
     documentReference,
     'dialog',
     { className: 'crucible-studio-shortcuts-dialog', attributes: { 'aria-labelledby': 'crucible-studio-shortcuts-title', closedby: 'any' } },
-    shortcutsHeading,
+    createElement(documentReference, 'div', { className: 'crucible-studio-shortcuts-head' }, shortcutsHeading, shortcutsCloseButton),
     shortcutsGrid,
-    createElement(documentReference, 'form', { method: 'dialog', className: 'crucible-studio-dialog-actions' }, shortcutsCloseButton),
   );
+  fillShortcutsGrid();
+  const syncShortcutsFade = watchScrollFades(shortcutsGrid);
+  shortcutsCloseButton.addEventListener('click', () => shortcutsDialog.close());
+  // The sheet opened from the Help menu gives the focus back to that button when it closes.
+  let shortcutsFocusTarget = null;
+  function showShortcutsSheet(returnFocusTo = null) {
+    shortcutsFocusTarget = returnFocusTo;
+    fillShortcutsGrid();
+    shortcutsDialog.showModal();
+    syncShortcutsFade();
+  }
   shortcutsDialog.addEventListener('close', () => {
     shortcutsDialog.returnValue = '';
+    shortcutsFocusTarget?.focus?.();
+    shortcutsFocusTarget = null;
   });
 
-  const settingControls = new Map();
-  const settingRows = STUDIO_SETTING_ROWS.map(([name, label, describeChoice]) => {
-    const choices = STUDIO_PREFERENCE_CHOICES[name];
-    const control = choices
-      ? createElement(documentReference, 'select', {}, ...choices.map(choice => createElement(documentReference, 'option', { value: String(choice), textContent: describeChoice(choice) })))
-      : createElement(documentReference, 'input', { type: 'checkbox' });
-    control.dataset.setting = name;
-    control.addEventListener('change', () => {
-      setPreference(name, choices ? choices.find(choice => String(choice) === control.value) : control.checked);
-    });
-    settingControls.set(name, control);
-    return createElement(documentReference, 'label', { className: 'crucible-studio-setting' }, createElement(documentReference, 'span', { textContent: label }), control);
-  });
-  const settingsResetButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Reset' });
-  leadWithActionIcon(settingsResetButton, createIcon(documentReference, STUDIO_ACTION_ICONS.resetSettings), STUDIO_ACTION_ICONS.resetSettings);
-  settingsResetButton.addEventListener('click', () => {
-    preferences = normalizeStudioPreferences({ setupDone: preferences.setupDone });
-    storePreferences();
-    applyPreferences();
-    announce('Settings reset');
-  });
-  const settingsHeading = createElement(documentReference, 'h2', { id: 'crucible-studio-settings-title', textContent: 'Settings' });
-  settingsHeading.prepend(createIcon(documentReference, 'settings'));
-  const settingsDialog = createElement(
+  const settings = createStudioSettings({
     documentReference,
-    'dialog',
-    { className: 'crucible-studio-settings-dialog', attributes: { 'aria-labelledby': 'crucible-studio-settings-title', closedby: 'any' } },
-    settingsHeading,
-    createElement(documentReference, 'div', { className: 'crucible-studio-settings' }, ...settingRows),
-    createElement(
-      documentReference,
-      'form',
-      { method: 'dialog', className: 'crucible-studio-dialog-actions' },
-      settingsResetButton,
-      createElement(documentReference, 'button', { type: 'submit', value: 'close', autofocus: true, textContent: 'Done' }),
-    ),
-  );
-  settingsDialog.addEventListener('close', () => {
-    settingsDialog.returnValue = '';
+    createElement,
+    createIcon,
+    shell: globalThis.crucibleShell,
+    onChange: (name, value) => setPreference(name, value),
+    onReset: () => {
+      const previousLengthUnit = preferences.lengthUnit;
+      preferences = normalizeStudioPreferences({ setupDone: preferences.setupDone });
+      storePreferences();
+      applyPreferences();
+      if (preferences.lengthUnit !== previousLengthUnit) {
+        refreshLengthUnits();
+      }
+      announce('Settings reset');
+    },
+    onRunSetup: () => {
+      settings.dialog.close();
+      openSetup();
+    },
+    onOpenShortcuts: () => {
+      settings.dialog.close();
+      shortcutsDialog.showModal();
+    },
+    keyboard: {
+      getKeymap: () => keymap,
+      getPresetId: () => preferences.keymap,
+      getNumberPad: () => preferences.numberPad,
+      getOverrides: () => preferences.keyOverrides[preferences.keymap] ?? {},
+      onOverridesChange: presetOverrides => setPreference('keyOverrides', withPresetOverrides(preferences.keyOverrides, preferences.keymap, presetOverrides)),
+    },
   });
+  const settingsDialog = settings.dialog;
 
   const setup = createStudioSetup({
     documentReference,
@@ -2960,19 +3032,26 @@ export function createStudio(container, {
 
   // Puts the preferences into effect and shows them in the Settings dialog.
   function applyPreferences() {
-    if (preferences.keymap !== appliedKeymap) {
-      appliedKeymap = preferences.keymap;
-      keymap = resolveKeymapPreset(appliedKeymap);
+    if (keymapSignature() !== appliedKeymap) {
+      appliedKeymap = keymapSignature();
+      keymap = keymapOf();
       refreshKeyLabels();
     }
+    settings.refreshKeyboard();
     controller.setInteractionSettings({
       moveSnapStep: preferences.moveSnapStep,
       rotateSnapDegrees: preferences.rotateSnapDegrees,
       gizmoPixels: STUDIO_GIZMO_PIXELS[preferences.gizmoSize],
+      snapEnabled: preferences.snapEnabled,
+      snapTarget: preferences.snapTarget,
+      lengthUnit: preferences.lengthUnit,
     });
+    syncSnapUi();
     applyTheme();
     applyPerformance();
+    if (preferences.numberPad) numpadNotice.hide();
     if (setup.dialog.open) setup.refresh();
+    root.dataset.motion = preferences.motion;
     root.dataset.readout = preferences.readoutVisible ? 'on' : 'off';
     root.dataset.viewWidget = preferences.viewWidgetVisible ? 'on' : 'off';
     // Floating panels lie over a scene that fills the window. Docked ones take the window's edges and the viewport
@@ -2987,7 +3066,7 @@ export function createStudio(container, {
     showPanelMinimized(propertiesMinimizeButton, 'inspectorMinimized', 'Properties', preferences.propertiesMinimized);
     showPanelMinimized(historyMinimizeButton, 'historyMinimized', 'History', preferences.historyMinimized);
     refitHistoryList();
-    for (const [name, control] of settingControls) {
+    for (const [name, control] of settings.controls) {
       if (STUDIO_PREFERENCE_CHOICES[name]) control.value = String(preferences[name]);
       else control.checked = preferences[name];
     }
@@ -2997,6 +3076,14 @@ export function createStudio(container, {
   function refreshKeyLabels() {
     for (const { element, actionId } of menuKeyViews) setShortcutLabel(element, keyLabel(keymap, actionId));
     for (const { button, iconName, describe } of keyTooltipViews) setButtonIcon(button, iconName, describe());
+    const viewTitles = { front: ['Front view', 'view.front'], right: ['Right view', 'view.right'], top: ['Top view', 'view.top'], isometric: ['Isometric view', null] };
+    for (const button of viewPresetButtons) {
+      const [labelText, actionId] = viewTitles[button.dataset.view];
+      const shortcut = actionId ? keyLabel(keymap, actionId) : '';
+      button.title = shortcut ? `${labelText} (${shortcut})` : labelText;
+    }
+    const projectionShortcut = keyLabel(keymap, 'view.projection');
+    projectionPillButton.title = projectionShortcut ? `Perspective / Orthographic (${projectionShortcut})` : 'Perspective / Orthographic';
     setButtonIcon(playButton, playing ? 'pause' : 'play', playTooltip(playing));
     fillShortcutsGrid();
     syncHintBar();
@@ -3077,6 +3164,15 @@ export function createStudio(container, {
     }
   }
 
+  function refreshLengthUnits() {
+    selectionReadoutStale = true;
+    syncUi();
+    cameraPanel.sync();
+    syncLookPanels();
+    syncViewportAids();
+    syncHintBar();
+  }
+
   // Saves several preferences as one change, so a drag that resizes two cards is one write.
   function setPreferences(changes) {
     for (const name of Object.keys(changes)) {
@@ -3084,9 +3180,13 @@ export function createStudio(container, {
         throw new RangeError(`Unknown Studio preference "${String(name)}". Use one of ${Object.keys(STUDIO_PREFERENCE_DEFAULTS).join(', ')}.`);
       }
     }
+    const previousLengthUnit = preferences.lengthUnit;
     preferences = normalizeStudioPreferences({ ...preferences, ...changes });
     storePreferences();
     applyPreferences();
+    if (preferences.lengthUnit !== previousLengthUnit) {
+      refreshLengthUnits();
+    }
   }
 
   function setPreference(name, value) {
@@ -3162,6 +3262,11 @@ export function createStudio(container, {
     announceSuccess('Saved the diagnostics report');
   }
 
+  // The still is the scene's own shot without the editor's aids. The Export workspace draws the viewport the same way, so what it shows is what gets saved.
+  function drawingTheShot() {
+    return capturingStill || viewingShot();
+  }
+
   function capturePngDataUrl() {
     // Nothing draws while the context is gone, so a still taken then would be a blank picture.
     if (contextLost) {
@@ -3202,7 +3307,7 @@ export function createStudio(container, {
       return '';
     }
     const selectedNode = controller.exportRecipe().nodes.find(node => node.id === selectedId);
-    return `${selectedNode?.label ?? selectedId} · ${describeBounds(bounds)}`;
+    return `${selectedNode?.label ?? selectedId} · ${describeBounds(bounds, preferences.lengthUnit)}`;
   }
 
   function syncViewportAids() {
@@ -3210,6 +3315,7 @@ export function createStudio(container, {
     viewWidget.update(camera);
     const gridStep = gridLayout({ visibleHeight: cameraVisibleHeight(camera), viewportHeight: controller.viewportHeight, target: camera.target, eye: camera.projection === 'orthographic' ? undefined : camera.eye }).step;
     readoutCamera.textContent = gridVisible ? `${describeCamera(camera)} · Grid ${describeGridStep(gridStep)}` : describeCamera(camera);
+    if (controller.activeTab === 'export') syncExportFacts();
     if (selectionReadoutStale) {
       selectionReadoutStale = false;
       readoutSelection.textContent = describeSelection();
@@ -3616,58 +3722,85 @@ export function createStudio(container, {
     if (file) await importFileIntoScene(file);
   });
 
-  exportPngButton.addEventListener('click', async () => {
-    exportPopover.hidePopover?.();
-    const dataUrl = capturePngDataUrl();
-    const baseName = activeFileName.replace(/\.(scene\.)?json$/i, '') || 'crucible-render';
-    if (desktop?.savePng) {
-      const response = await desktop.savePng({ dataUrl, suggestedName: `${baseName}.png` });
-      if (!response?.canceled) announceSuccess(`Saved ${response.fileName}`);
-      return;
+  // Each action says what it wrote under its button: the file, and its size. A refused or failed export says why instead. A line
+  // is true of the scene it was written from, and a new run of the same action clears it first.
+  function reportExport(kindId, { fileName, detail }) {
+    exportResultSceneKey = currentSceneKey();
+    exportPanel.showResult(kindId, { ok: true, text: [fileName, ...detail].join(', ') });
+  }
+
+  function reportExportFailure(kindId, error) {
+    announce(error.message, undefined, 'error', { quiet: true });
+    exportResultSceneKey = currentSceneKey();
+    exportPanel.showResult(kindId, { ok: false, text: error.message });
+  }
+
+  exportPanel.onAction('image', async () => {
+    try {
+      const dataUrl = capturePngDataUrl();
+      const baseName = activeFileName.replace(/\.(scene\.)?json$/i, '') || 'crucible-render';
+      const detail = [`${canvas.width} × ${canvas.height}`, formatFileSize(dataUrlByteLength(dataUrl))];
+      if (desktop?.savePng) {
+        const response = await desktop.savePng({ dataUrl, suggestedName: `${baseName}.png` });
+        if (!response?.canceled) {
+          announce(`Saved ${response.fileName}`, undefined, 'success', { quiet: true });
+          reportExport('image', { fileName: response.fileName, detail });
+        }
+        return;
+      }
+      const bytes = Uint8Array.from(atob(dataUrl.split(',')[1]), character => character.charCodeAt(0));
+      triggerBlobDownload(bytes, `${baseName}.png`, 'image/png');
+      announce('Saved PNG still', undefined, 'success', { quiet: true });
+      reportExport('image', { fileName: `${baseName}.png`, detail });
+    } catch (error) {
+      reportExportFailure('image', error);
     }
-    const bytes = Uint8Array.from(atob(dataUrl.split(',')[1]), character => character.charCodeAt(0));
-    triggerBlobDownload(bytes, `${baseName}.png`, 'image/png');
-    announceSuccess('Saved PNG still');
   });
 
-  exportGlbButton.addEventListener('click', async () => {
-    exportPopover.hidePopover?.();
+  exportPanel.onAction('model', async () => {
     try {
       const glbBytes = exportGlbBytes();
       const baseName = activeFileName.replace(/\.(scene\.)?json$/i, '') || 'crucible-scene';
+      const detail = [formatFileSize(glbBytes.byteLength)];
       if (desktop?.saveGlb) {
         const response = await desktop.saveGlb({ bytes: glbBytes, suggestedName: `${baseName}.glb` });
-        if (!response?.canceled) announceSuccess(`Exported ${response.fileName}`);
+        if (!response?.canceled) {
+          announce(`Exported ${response.fileName}`, undefined, 'success', { quiet: true });
+          reportExport('model', { fileName: response.fileName, detail });
+        }
         return;
       }
       triggerBlobDownload(glbBytes, `${baseName}.glb`, 'model/gltf-binary');
-      announceSuccess('Exported GLB mesh');
+      announce('Exported GLB mesh', undefined, 'success', { quiet: true });
+      reportExport('model', { fileName: `${baseName}.glb`, detail });
     } catch (error) {
-      announceError(error.message);
+      reportExportFailure('model', error);
     }
   });
 
-  exportPackButton.addEventListener('click', async () => {
-    exportPopover.hidePopover?.();
+  exportPanel.onAction('pack', async () => {
     try {
       const payload = await buildWebPackPayload();
+      const detail = [formatFileSize(payload.packBytes.byteLength)];
       if (desktop?.packWebBundle) {
         const response = await desktop.packWebBundle(payload);
         if (!response?.canceled) {
           const note = payload.stripped.length ? ` (static snapshot, omitted ${payload.stripped[0]})` : '';
-          announce(`Packed web bundle to ${response.outDir}${note}`);
+          announce(`Packed web bundle to ${response.outDir}${note}`, undefined, 'success', { quiet: true });
+          // The host writes a folder or a file of its own choosing: show the name it returns, not the one a browser download would carry.
+          reportExport('pack', { fileName: lastPathName(response.fileName ?? response.outDir), detail });
         }
         return;
       }
       triggerBlobDownload(payload.packBytes, `${payload.title}.pack`, 'application/octet-stream');
-      announceSuccess('Downloaded scene.pack');
+      announce('Downloaded scene.pack', undefined, 'success', { quiet: true });
+      reportExport('pack', { fileName: `${payload.title}.pack`, detail });
     } catch (error) {
-      announceError(error.message);
+      reportExportFailure('pack', error);
     }
   });
 
   editJsonButton.addEventListener('click', () => {
-    exportPopover.hidePopover?.();
     openImportDialog();
   });
 
@@ -3747,7 +3880,7 @@ export function createStudio(container, {
   // The grid is drawn with the scene so objects hide it, but it is never part of the scene: not picked, saved or exported.
   function partsToDraw() {
     const sceneParts = meshEditor?.active ? meshEditor.partsToDraw(controller.scene.parts) : controller.scene.parts;
-    if (!gridVisible || capturingStill) {
+    if (!gridVisible || drawingTheShot()) {
       return sceneParts;
     }
     gridParts ??= buildGridParts();
@@ -3760,6 +3893,11 @@ export function createStudio(container, {
   // F flies the camera to the framed object instead of jumping there, so the eye can follow where the view went. The
   // flight ends the moment anything else moves the camera (an orbit, a view key, undo, a new file). With reduced motion
   // the view jumps.
+  // The one switch for Studio's own motion: the Motion preference, or the system's reduced-motion setting while it follows the system.
+  function motionIsReduced() {
+    return preferences.motion === 'reduced' || (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
   function stopFlight() {
     if (flightHandle) {
       cancelAnimationFrame(flightHandle);
@@ -3769,8 +3907,7 @@ export function createStudio(container, {
 
   function flyToSelection() {
     stopFlight();
-    const reducedMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reducedMotion || typeof requestAnimationFrame !== 'function') {
+    if (motionIsReduced() || typeof requestAnimationFrame !== 'function') {
       controller.frameSelection();
       return;
     }
@@ -3802,7 +3939,7 @@ export function createStudio(container, {
   }
 
   function syncRendererParts(activeRenderer) {
-    const topology = `${controller.scene.topologyRevision}|${gridVisible && !capturingStill}|${Boolean(meshEditor?.active && meshEditor.seeThrough)}`;
+    const topology = `${controller.scene.topologyRevision}|${gridVisible && !drawingTheShot()}|${Boolean(meshEditor?.active && meshEditor.seeThrough)}`;
     if (renderedScene !== controller.scene || renderedTopology !== topology) {
       activeRenderer.replaceParts(partsToDraw());
       renderedScene = controller.scene;
@@ -3879,10 +4016,10 @@ export function createStudio(container, {
     const frameEnvironment = { ...environment, map: agentEnvironmentMap(environment) };
     activeRenderer.environment = frameEnvironment;
     // A still is the scene's own shot, so it keeps the animated camera even while the viewport looks around freely.
-    const frameCamera = capturingStill ? controller.scene.camera : controller.viewCamera;
+    const frameCamera = drawingTheShot() ? controller.scene.camera : controller.viewCamera;
     renderWithPostPasses(activeRenderer, {
       ...frameCamera,
-      ...(capturingStill ? {} : viewportClipPlanes(frameCamera)),
+      ...(drawingTheShot() ? {} : viewportClipPlanes(frameCamera)),
       environment: frameEnvironment,
       effects,
       exposure: effects.exposure,
@@ -3937,6 +4074,13 @@ export function createStudio(container, {
     announce(describeAgentEdit(label, { nodeIds, removedNodeIds, otherChange }));
   }
 
+  // The saved shot has no handles, outlines, marks or agent pointer, so none of them is built while Export is open.
+  function clearEditorOverlays() {
+    gizmoSvg.replaceChildren();
+    outlineMask.draw(null, controller.viewportWidth, controller.viewportHeight);
+    activeOutlineMask.draw(null, controller.viewportWidth, controller.viewportHeight);
+  }
+
   function renderPass() {
     if (contextLost) {
       return;
@@ -3945,12 +4089,17 @@ export function createStudio(container, {
     try {
       syncViewportDimensions();
       drawSceneFrame();
-      renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask, activeOutlineMask, { hideSelectionOutline: Boolean(meshEditor?.active), clearRadius: meshEditor?.active ? meshEditor.selectionScreenRadius() : null });
-      if (!capturingStill) {
-        renderSceneObjectMarks(documentReference, gizmoSvg, controller);
+      if (viewingShot()) {
+        clearEditorOverlays();
+      } else {
+        renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask, activeOutlineMask, { hideSelectionOutline: Boolean(meshEditor?.active), clearRadius: meshEditor?.active ? meshEditor.selectionScreenRadius() : null });
+        if (!drawingTheShot()) {
+          renderSceneObjectMarks(documentReference, gizmoSvg, controller);
+        }
+        appendSnapMarker(documentReference, gizmoSvg, controller.snapMarker());
+        drawAgentOutline();
+        if (meshEditor?.active && !drawingTheShot()) meshEditor.draw(documentReference, gizmoSvg);
       }
-      drawAgentOutline();
-      if (meshEditor?.active && !capturingStill) meshEditor.draw(documentReference, gizmoSvg);
       syncViewportAids();
     } finally {
       insideDraw = false;
@@ -4223,6 +4372,7 @@ export function createStudio(container, {
       selectButton,
       eyeButton,
     );
+    outlinerDrag.bindRow(element, node.id);
     return { element, badge, appliedFill: '' };
   }
 
@@ -4716,6 +4866,47 @@ export function createStudio(container, {
   function syncPropertyPanels() {
     if (controller.activeTab === 'look') syncLookPanels();
     if (controller.activeTab === 'camera') cameraPanel.sync();
+    if (controller.activeTab === 'modifiers') modifierPanel.sync();
+    if (controller.activeTab === 'export') syncExportFacts();
+  }
+
+  // What each export will hold. The picture's size follows the window, so it is read each frame; the model and the pack follow the
+  // scene and are worked out once for each revision of it, and only while Export is open. A kind that cannot be saved says why.
+  // A scene always has a camera (the controller refuses one without), so only the parts can be missing.
+  function currentSceneKey() {
+    const scene = controller.scene;
+    return `${scene.topologyRevision}|${scene.revision}`;
+  }
+
+  function syncExportFacts() {
+    const scene = controller.scene;
+    exportPanel.showFacts('image', [{ frame: [canvas.width, canvas.height] }, { text: `${canvas.width} × ${canvas.height}` }]);
+    const sceneKey = currentSceneKey();
+    if (exportFactsSceneKey === sceneKey) return;
+    exportFactsSceneKey = sceneKey;
+    if (exportResultSceneKey !== null && exportResultSceneKey !== sceneKey) {
+      exportPanel.clearResults();
+      exportResultSceneKey = null;
+    }
+    const partCount = scene.parts.length;
+    const noParts = partCount === 0;
+    exportPanel.setBlocked('model', noParts);
+    exportPanel.setBlocked('pack', noParts);
+    if (noParts) {
+      const reason = [{ icon: 'warning', text: 'No parts to save' }];
+      exportPanel.showFacts('model', reason);
+      exportPanel.showFacts('pack', reason);
+      return;
+    }
+    const partsFact = { text: `${partCount} ${partCount === 1 ? 'part' : 'parts'}` };
+    const triangleCount = Math.round(scene.parts.reduce((count, part) => count + (part.geometry?.indices?.length ?? 0) / 3, 0));
+    exportPanel.showFacts('model', [partsFact, { text: `${triangleCount.toLocaleString('en-US')} triangles` }]);
+    try {
+      const { stripped } = buildPackReadyRecipe(controller.exportRecipe());
+      exportPanel.showFacts('pack', [partsFact, ...stripped.map(name => ({ icon: 'warning', text: `${name} left out` }))]);
+    } catch (error) {
+      exportPanel.showFacts('pack', [{ icon: 'warning', text: error.message }]);
+    }
   }
 
   function syncLookPanels() {
@@ -4747,9 +4938,10 @@ export function createStudio(container, {
       key.setAttribute('aria-pressed', lockedAxes.includes(axis) ? 'true' : 'false');
       return key;
     });
+    const typedUnit = modalTransform.tool === 'translate' ? ` ${preferences.lengthUnit}` : MODAL_TYPED_UNITS[modalTransform.tool];
     const typedReadout = modalTransform.typed === ''
       ? []
-      : [createElement(documentReference, 'span', { className: 'crucible-studio-hint-typed', textContent: `= ${modalTransform.typed}${MODAL_TYPED_UNITS[modalTransform.tool]}` })];
+      : [createElement(documentReference, 'span', { className: 'crucible-studio-hint-typed', textContent: `= ${modalTransform.typed}${typedUnit}` })];
     hintBar.replaceChildren(
       createElement(documentReference, 'span', { className: 'crucible-studio-hint-delta', textContent: (liveDeltaLabel || MODAL_TOOL_WORDS[modalTransform.tool]).replace(/^SCREEN/, MODAL_TOOL_WORDS.translate) }),
       ...typedReadout,
@@ -4773,7 +4965,7 @@ export function createStudio(container, {
     if (typedAmount !== null) {
       controller.setGizmoTypedAmount(typedAmount);
     } else if (modalTransform.lastX !== modalTransform.startX || modalTransform.lastY !== modalTransform.startY) {
-      controller.updateGizmoDrag(modalTransform.lastX, modalTransform.lastY, { shiftKey: modalTransform.shiftKey });
+      controller.updateGizmoDrag(modalTransform.lastX, modalTransform.lastY, { ctrlKey: modalTransform.ctrlKey });
     }
   }
 
@@ -4781,8 +4973,20 @@ export function createStudio(container, {
     const coordinates = localCoordinates(event);
     modalTransform.lastX = coordinates.x;
     modalTransform.lastY = coordinates.y;
-    modalTransform.shiftKey = event.shiftKey;
-    controller.updateGizmoDrag(coordinates.x, coordinates.y, { shiftKey: event.shiftKey });
+    modalTransform.ctrlKey = event.ctrlKey;
+    controller.updateGizmoDrag(coordinates.x, coordinates.y, { ctrlKey: event.ctrlKey });
+  }
+
+  // Ctrl held or let go flips snapping for the move in hand at once, without waiting for the pointer to move.
+  function replayDragWithCtrl(ctrlKey) {
+    if (!controller.dragging) return;
+    if (modalTransform) {
+      modalTransform.ctrlKey = ctrlKey;
+      controller.updateGizmoDrag(modalTransform.lastX, modalTransform.lastY, { ctrlKey });
+    } else if (pointerState?.mode === 'gizmo') {
+      pointerState.ctrlKey = ctrlKey;
+      controller.updateGizmoDrag(pointerState.lastX, pointerState.lastY, { ctrlKey });
+    }
   }
 
   // The press that places or cancels belongs to the move: it must not also orbit, select or press a button under it.
@@ -4824,6 +5028,11 @@ export function createStudio(container, {
     finishModalTransform(false);
   }
 
+  // The window losing focus during a handle drag: the key-up of Ctrl will never arrive, so the drag goes on as if it were up.
+  function onWindowBlur() {
+    if (pointerState?.mode === 'gizmo') replayDragWithCtrl(false);
+  }
+
   function startModalTransform(tool) {
     if (modalTransform || pointerState || !viewportPointer || !controller.selectedNodeId) {
       return false;
@@ -4838,10 +5047,18 @@ export function createStudio(container, {
       startY: viewportPointer.y,
       lastX: viewportPointer.x,
       lastY: viewportPointer.y,
-      shiftKey: false,
+      ctrlKey: false,
     };
     root.dataset.modal = tool;
-    beginModalDrag(modalFreeAxis(tool), false);
+    try {
+      beginModalDrag(modalFreeAxis(tool), false);
+    } catch (error) {
+      modalTransform = null;
+      delete root.dataset.modal;
+      if (!meshEditor?.active) throw error;
+      announceError(error.message);
+      return false;
+    }
     documentReference.addEventListener('pointermove', onModalPointerMove);
     documentReference.addEventListener('pointerdown', onModalPointerDown, true);
     documentReference.defaultView?.addEventListener?.('blur', onModalBlur);
@@ -4883,7 +5100,10 @@ export function createStudio(container, {
   // The number typed so far, or null while it is not one yet (nothing, "-" or "."): the pointer then sets the amount.
   function typedModalAmount() {
     const amount = Number(modalTransform.typed);
-    return modalTransform.typed === '' || !Number.isFinite(amount) ? null : amount;
+    if (modalTransform.typed === '' || !Number.isFinite(amount)) {
+      return null;
+    }
+    return modalTransform.tool === 'translate' ? lengthFromUnit(amount, preferences.lengthUnit) : amount;
   }
 
   // Numeric input: digits, a point and a minus sign build the amount, Backspace takes the last one back.
@@ -4909,7 +5129,7 @@ export function createStudio(container, {
   }
 
   function handleModalKey(event) {
-    if (event.key === 'Shift') {
+    if (event.key === 'Shift' || event.key === 'Control') {
       return;
     }
     event.preventDefault();
@@ -4962,6 +5182,8 @@ export function createStudio(container, {
   gizmoSvg.addEventListener('pointerout', clearHoveredHandle);
   gizmoSvg.addEventListener('pointerleave', clearHoveredHandle);
 
+  let suppressGizmoContextMenu = false;
+
   // First among the handle listeners: in Maya and Cinema 4D Alt and a button navigate even over a handle.
   gizmoSvg.addEventListener('pointerdown', event => {
     const mode = findMouseNavigation(keymap, event);
@@ -4973,7 +5195,7 @@ export function createStudio(container, {
 
   gizmoSvg.addEventListener('pointerdown', event => {
     const axis = event.target?.getAttribute?.('data-gizmo-axis');
-    if (!axis || (event.button ?? 0) !== 0) return;
+    if (!axis || (event.button ?? 0) !== 0 || event.shiftKey || event.altKey) return;
     event.preventDefault();
     event.stopPropagation();
     const coordinates = localCoordinates(event);
@@ -4986,13 +5208,17 @@ export function createStudio(container, {
       announceError(error.message);
       return;
     }
-    pointerState = { mode: 'gizmo', pointerId: event.pointerId };
+    pointerState = { mode: 'gizmo', pointerId: event.pointerId, lastX: coordinates.x, lastY: coordinates.y, ctrlKey: event.ctrlKey };
     viewportElement.setPointerCapture?.(event.pointerId);
   });
 
-  // The handles lie over the selected object, so a right click on one is a right click on that object.
+  // The handles lie over the selected object, so a right click on one opens that object's menu unless a right-drag pan just ran.
   gizmoSvg.addEventListener('contextmenu', event => {
     event.preventDefault();
+    if (suppressGizmoContextMenu) {
+      suppressGizmoContextMenu = false;
+      return;
+    }
     if (findMouseNavigation(keymap, { button: 2, altKey: event.altKey }) !== null) return;
     if (controller.selectedNodeId) {
       openObjectMenu(event.clientX, event.clientY);
@@ -5002,7 +5228,7 @@ export function createStudio(container, {
   // A press on a light or the sun selects it; with the move tool a light then follows the pointer in the plane through it that faces the view.
   gizmoSvg.addEventListener('pointerdown', event => {
     const key = event.target?.getAttribute?.('data-scene-object');
-    if (!key || (event.button ?? 0) !== 0) return;
+    if (!key || (event.button ?? 0) !== 0 || event.shiftKey || event.altKey) return;
     event.preventDefault();
     event.stopPropagation();
     selectSceneObjectAndShowItsPanel(key);
@@ -5043,18 +5269,41 @@ export function createStudio(container, {
     captureElement.setPointerCapture?.(event.pointerId);
   }
 
-  canvas.addEventListener('pointerdown', event => {
+  function targetPassesThroughViewport(target, { checkScroll = false } = {}) {
+    for (let node = target; node && node !== viewportElement && node.tagName; node = node.parentNode) {
+      const tag = node.tagName.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || tag === 'a' || tag === 'dialog') return false;
+      if (node.getAttribute?.('popover') !== null || node.getAttribute?.('data-view') !== null) return false;
+      const classes = String(node.className ?? '').split(/\s+/);
+      if (classes.some(name => name === 'crucible-studio-dock' || name === 'crucible-studio-popover' || name === 'crucible-studio-view-widget' || name === 'crucible-studio-paused' || name === 'crucible-studio-draft' || name === 'crucible-studio-pass-notice')) {
+        return false;
+      }
+      if (checkScroll) {
+        const style = documentReference.defaultView?.getComputedStyle?.(node);
+        const overflow = `${style?.overflowX ?? ''}${style?.overflowY ?? ''}`;
+        if (/auto|scroll/.test(overflow) && (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth)) return false;
+      }
+    }
+    return true;
+  }
+
+  viewportElement.addEventListener('pointerdown', event => {
+    if (viewingShot()) return;
     if (event.button !== 0 && event.button !== 1 && event.button !== 2) return;
+    if (!targetPassesThroughViewport(event.target)) return;
     const keymapMode = findMouseNavigation(keymap, event);
     const defaultMode = event.shiftKey || event.button === 2 || event.button === 1 ? 'pan' : 'orbit';
-    beginCameraDrag(event, keymapMode ?? defaultMode, keymapMode !== null, canvas);
+    beginCameraDrag(event, keymapMode ?? defaultMode, keymapMode !== null, event.target === canvas ? canvas : viewportElement);
   });
 
   viewportElement.addEventListener('pointermove', event => {
     if (!pointerState) return;
     const coordinates = localCoordinates(event);
     if (pointerState.mode === 'gizmo') {
-      controller.updateGizmoDrag(coordinates.x, coordinates.y, { shiftKey: event.shiftKey });
+      pointerState.lastX = coordinates.x;
+      pointerState.lastY = coordinates.y;
+      pointerState.ctrlKey = event.ctrlKey;
+      controller.updateGizmoDrag(coordinates.x, coordinates.y, { ctrlKey: event.ctrlKey });
       return;
     }
     if (pointerState.mode === 'light') {
@@ -5096,6 +5345,9 @@ export function createStudio(container, {
     if (!pointerState) return;
     const finished = pointerState;
     pointerState = null;
+    if (finished.moved && event.button === 2) {
+      suppressGizmoContextMenu = true;
+    }
     if (finished.mode === 'light') {
       controller.endUndoGroup();
       return;
@@ -5116,9 +5368,10 @@ export function createStudio(container, {
           }
           syncUi();
           requestFrame();
+        } else if (event.button === 2 && !meshEditor.circleSelecting && !meshEditor.boxSelecting) {
+          const { clientX, clientY } = event;
+          setTimeout(() => meshMenus.openToolsAt(clientX, clientY), 0);
         }
-      } else if (controller.tool === 'snap' && controller.selectedNodeId && event.altKey) {
-        controller.snapSelectedToAt(coordinates.x, coordinates.y);
       } else {
         // Shift or Ctrl (Command) with a left click adds the object under the pointer to the selection, or takes it out.
         const mode = (event.button ?? 0) === 0 && (event.shiftKey || event.ctrlKey || event.metaKey) ? 'toggle' : 'replace';
@@ -5143,25 +5396,22 @@ export function createStudio(container, {
   documentReference.addEventListener('pointerdown', onAnyPointerDown, true);
   viewportElement.addEventListener('pointerup', finishPointer);
   viewportElement.addEventListener('pointercancel', finishPointer);
-  canvas.addEventListener('contextmenu', event => event.preventDefault());
-  canvas.addEventListener('wheel', event => {
+  viewportElement.addEventListener('contextmenu', event => event.preventDefault());
+  viewportElement.addEventListener('wheel', event => {
+    if (!targetPassesThroughViewport(event.target, { checkScroll: true })) return;
     event.preventDefault();
+    if (viewingShot()) return;
     if (meshEditor?.circleSelecting) {
       meshEditor.wheelCircleBrush(event.deltaY, event.deltaMode);
       requestFrame();
       return;
     }
-    if (proportionalHoldsWheel()) return;
+    if (proportionalHoldsWheel()) {
+      meshEditor.proportional.resize(event.deltaY < 0 ? 1 : -1);
+      return;
+    }
     stopFlight();
-    controller.orbitCamera({ zoomScale: 1 + Math.max(-0.35, Math.min(0.35, event.deltaY * 0.0012)) });
-  }, { passive: false });
-
-  // While a move is held with proportional editing on, the wheel sets how far it reaches instead of zooming. It listens on the
-  // viewport, not the canvas, because the pointer of a held move often sits on a move handle drawn over the canvas.
-  viewportElement.addEventListener('wheel', event => {
-    if (!proportionalHoldsWheel()) return;
-    event.preventDefault();
-    meshEditor.proportional.resize(event.deltaY < 0 ? 1 : -1);
+    controller.orbitCamera({ zoomScale: 1 + Math.max(-0.35, Math.min(0.35, event.deltaY * 0.0012 * (preferences.zoomDirection === 'inverted' ? -1 : 1))) });
   }, { passive: false });
 
   viewportElement.addEventListener('dragover', event => {
@@ -5210,14 +5460,20 @@ export function createStudio(container, {
       announce(`Deleted ${label}`);
       return;
     }
+    const deletedCount = controller.selectionRoots().length;
     controller.deleteSelected();
-    announce('Deleted node');
+    announce(deletedCount > 1 ? `Deleted ${deletedCount} objects` : 'Deleted node');
+  }
+
+  function announceDuplicated(activeCopy) {
+    const copyCount = controller.selectedNodeIds.length;
+    announce(copyCount > 1 ? `Duplicated ${copyCount} objects` : `Duplicated to ${activeCopy.label}`);
   }
 
   function duplicateSelection() {
     if (controller.selectedNodeId) {
       const cloned = controller.duplicateSelected();
-      announce(`Duplicated to ${cloned.label}`);
+      announceDuplicated(cloned);
     }
   }
 
@@ -5311,15 +5567,44 @@ export function createStudio(container, {
     }
   }
 
+  function parentSelection() {
+    const activeId = controller.selectedNodeId;
+    const childIds = controller.selectedNodeIds.filter(nodeId => nodeId !== activeId);
+    if (!activeId || childIds.length === 0) {
+      announce('Select two or more objects to parent. The one picked last becomes the parent.');
+      return;
+    }
+    try {
+      const result = controller.reparentNodes(childIds, activeId);
+      if (result.changed > 0) announceSuccess(`Parented ${result.changed} ${result.changed === 1 ? 'object' : 'objects'} to ${activeId}`);
+    } catch (error) {
+      announceError(error.message);
+    }
+  }
+
+  function clearParentSelection() {
+    const recipe = controller.exportRecipe();
+    const byId = new Map(recipe.nodes.map(node => [node.id, node]));
+    const parentedIds = controller.selectedNodeIds.filter(nodeId => byId.get(nodeId)?.parent);
+    if (parentedIds.length === 0) {
+      announce('Select an object with a parent to clear first.');
+      return;
+    }
+    try {
+      const result = controller.reparentNodes(parentedIds, null);
+      if (result.changed > 0) announceSuccess(`Cleared parent for ${result.changed} ${result.changed === 1 ? 'object' : 'objects'}`);
+    } catch (error) {
+      announceError(error.message);
+    }
+  }
+
   function separateMeshSelection() {
     meshEditor?.separateSelection();
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   function openSeparateMenu() {
-    const bounds = canvas.getBoundingClientRect();
-    openPopoverAt(separatePopover, bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+    meshMenus.openMeshMenu(meshMenus.separatePopover);
   }
 
   async function enterMeshEdit() {
@@ -5337,8 +5622,7 @@ export function createStudio(container, {
     // The generator code that was loaded belongs to the object Tab was pressed on: another selection by now gets nothing.
     if (editor.active || controller.selectedNodeId !== pressedOnNodeId) return;
     editor.enter();
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   function leaveMeshEdit() {
@@ -5346,8 +5630,7 @@ export function createStudio(container, {
     if (controller.dragging) pointerState = null;
     stopWatchingCircleFocus();
     meshEditor?.leave();
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   // Esc puts a drag back, else ends circle select, else clears the selection, else leaves edit mode.
@@ -5363,8 +5646,7 @@ export function createStudio(container, {
       stopWatchingCircleFocus();
       meshEditor.leave();
     }
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   // Circle select (C): left drag paints the selection, middle drag or Shift paints the deselection, the wheel
@@ -5405,8 +5687,7 @@ export function createStudio(container, {
     stopWatchingCircleFocus();
     circlePaint = null;
     meshEditor.endCircleSelect();
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   function circleSelectOwnsPointer(event) {
@@ -5417,8 +5698,7 @@ export function createStudio(container, {
   function paintCircleAt(event, deselect) {
     const coordinates = localCoordinates(event);
     meshEditor.paintCircle(coordinates.x, coordinates.y, { deselect });
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   viewportElement.addEventListener('pointerdown', event => {
@@ -5488,8 +5768,7 @@ export function createStudio(container, {
     viewportElement.releasePointerCapture?.(event.pointerId);
     meshEditor.selectInRectangle(left, top, right, bottom, { additive: event.shiftKey });
     meshEditor.endBoxSelect();
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   });
 
   // Right click leaves circle select instead of opening a menu.
@@ -5513,8 +5792,7 @@ export function createStudio(container, {
 
   function chooseMeshMode(mode) {
     meshEditor.setMode(mode);
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   // Tab is also how the keyboard moves between controls, so it enters edit mode only from the page or the canvas.
@@ -5523,7 +5801,7 @@ export function createStudio(container, {
   }
 
   // In edit mode these keys of the normal context still work; every other one would act on the whole object.
-  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'view.frame', 'view.top', 'view.projection', 'view.properties', 'view.seeThrough']);
+  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'snap.toggle', 'view.frame', 'view.front', 'view.right', 'view.top', 'view.projection', 'view.properties', 'view.seeThrough']);
   const meshKeyHandlers = {
     'mesh.leave': event => {
       event.preventDefault();
@@ -5538,24 +5816,26 @@ export function createStudio(container, {
     'mesh.faceMode': () => chooseMeshMode('face'),
     'mesh.deleteMenu': event => {
       event.preventDefault();
-      openMeshMenu(meshDeletePopover);
+      meshMenus.openMeshMenu(meshMenus.meshDeletePopover);
     },
     'mesh.mergeMenu': event => {
       event.preventDefault();
-      openMeshMenu(meshMergePopover);
+      meshMenus.openMeshMenu(meshMenus.meshMergePopover);
+    },
+    'mesh.makeFace': () => {
+      meshEditor.makeFace();
+      updateMeshSelectionView();
     },
     // Alt+A and Ctrl+I have browser actions of their own (the menu bar, page info).
     'mesh.selectNone': event => {
       event.preventDefault();
       meshEditor.selectNone();
-      syncUi();
-      requestFrame();
+      updateMeshSelectionView();
     },
     'mesh.invertSelection': event => {
       event.preventDefault();
       meshEditor.invertSelection();
-      syncUi();
-      requestFrame();
+      updateMeshSelectionView();
     },
     'mesh.circleSelect': () => {
       if (meshEditor.circleSelecting) {
@@ -5563,8 +5843,7 @@ export function createStudio(container, {
         return;
       }
       if (meshEditor.beginCircleSelect()) startWatchingCircleFocus();
-      syncUi();
-      requestFrame();
+      updateMeshSelectionView();
     },
     // L under the pointer; Ctrl+L and Ctrl+Plus or Minus have browser actions of their own (the address bar, the zoom).
     'mesh.selectLinked': () => {
@@ -5594,28 +5873,33 @@ export function createStudio(container, {
         meshEditor.beginBoxSelect();
         announce('Drag a rectangle over what to select. Shift adds to the selection.');
       }
-      syncUi();
-      requestFrame();
+      updateMeshSelectionView();
     },
     'mesh.separate': event => {
       event.preventDefault();
       openSeparateMenu();
     },
-    'mesh.extrude': event => {
-      event.preventDefault();
-      startFaceTool('extrude');
-    },
-    'mesh.inset': event => {
-      event.preventDefault();
-      startFaceTool('inset');
-    },
   };
+  for (const kind of ['extrude', 'inset']) {
+    meshKeyHandlers[`mesh.${kind}`] = event => {
+      event.preventDefault();
+      startFaceTool(kind);
+    };
+  }
 
   // Handlers of the normal context by action id. A handler calls preventDefault for the keys the browser would
   // otherwise use itself (save, open, copy, undo and so on).
   const keyHandlers = {
     'tool.select': () => controller.setTool('select'),
-    'tool.snap': () => controller.setTool('snap'),
+    // Tab is also how the keyboard moves between controls, so Shift+Tab snaps only from the page or the canvas.
+    // With the canvas focused, the keys go to the area under the pointer: Shift+Tab with the pointer elsewhere
+    // is the browser's way back out of the canvas.
+    'snap.toggle': event => {
+      const canvasHasFocus = event.target === canvas;
+      if (event.key === 'Tab' && (canvasHasFocus ? viewportPointer === null : !tabBelongsToViewport(event.target))) return;
+      event.preventDefault();
+      toggleSnapping();
+    },
     'add.open': () => addMenuButton.click(),
     'edit.copy': event => {
       if (pageTextIsSelected()) return;
@@ -5634,6 +5918,14 @@ export function createStudio(container, {
     'edit.join': event => {
       event.preventDefault();
       joinSelection();
+    },
+    'edit.parent': event => {
+      event.preventDefault();
+      parentSelection();
+    },
+    'edit.clearParent': event => {
+      event.preventDefault();
+      clearParentSelection();
     },
     'edit.delete': event => {
       if (!controller.selectedNodeId && !selectedObjectIsDeletable()) return;
@@ -5711,9 +6003,9 @@ export function createStudio(container, {
     },
     'settings.open': event => {
       event.preventDefault();
-      settingsDialog.showModal();
+      settings.open();
     },
-    'help.shortcuts': () => shortcutsDialog.showModal(),
+    'help.shortcuts': () => showShortcutsSheet(),
     'mesh.enter': event => {
       if (!controller.selectedNodeId || !tabBelongsToViewport(event.target)) return;
       event.preventDefault();
@@ -5738,35 +6030,28 @@ export function createStudio(container, {
   }
 
   const onWindowKeyDown = async event => {
-    if (!root.isConnected) {
-      return;
-    }
-    if (faceToolInput?.handleKey(event)) {
-      return;
-    }
+    if (!root.isConnected) return;
+    if (faceToolInput?.handleKey(event)) return;
     if (modalTransform) {
       handleModalKey(event);
       return;
     }
-    if (isEditableTarget(event.target, event.key)) {
-      return;
-    }
-    // Esc or a key pressed over an open Delete or Merge menu belongs to the menu, not to edit mode.
-    if (meshMenuIsOpen()) {
-      return;
-    }
+    if (isEditableTarget(event.target, event.key)) return;
+    // Esc or a key pressed over an open mesh menu belongs to the menu, not to edit mode.
+    if (meshMenus.isOpen()) return;
     const editingMesh = Boolean(meshEditor?.active);
-    const meshMatch = editingMesh ? findKeymapAction(keymap, event, 'mesh') : null;
-    const match = meshMatch ?? findKeymapAction(keymap, event, 'normal');
-    if (!match) {
+    const { match, fromMeshContext } = resolveStudioKeyAction(keymap, event, editingMesh, findKeymapAction, MESH_EDIT_PASS_THROUGH);
+    const dialogIsOpen = recipeDialog.open || shortcutsDialog.open || settingsDialog.open || setup.dialog.open || Boolean(newSceneDialogs?.dialogs.some(dialog => dialog.open));
+    if (!event.repeat && !dialogIsOpen && isNumpadKeyEvent(event) && !preferences.numberPad && !preferences.numberPadNoticeShown) {
+      setPreferences({ numberPadNoticeShown: true });
+      numpadNotice.show();
+    }
+    if (!match || (dialogIsOpen && !match.binding.ctrl)) return;
+    if (shotLocksAction(match.actionId)) {
+      if (match.binding.ctrl) event.preventDefault();
       return;
     }
-    // A Ctrl key works over an open dialog; a plain key does not.
-    const dialogIsOpen = recipeDialog.open || shortcutsDialog.open || settingsDialog.open || Boolean(newSceneDialogs?.dialogs.some(dialog => dialog.open));
-    if (dialogIsOpen && !match.binding.ctrl) {
-      return;
-    }
-    if (meshMatch) {
+    if (fromMeshContext) {
       meshKeyHandlers[match.actionId](event, match.binding);
       return;
     }
@@ -5781,7 +6066,11 @@ export function createStudio(container, {
   const onKeyDown = event => {
     blockPageSelectAll(event);
     if (!isModifierKey(event.key)) root.dataset.input = 'keyboard';
+    if (event.key === 'Control' && !event.repeat) replayDragWithCtrl(true);
     onWindowKeyDown(event);
+  };
+  const onKeyUp = event => {
+    if (event.key === 'Control') replayDragWithCtrl(false);
   };
   const onPointerInput = event => {
     root.dataset.input = 'pointer';
@@ -5806,6 +6095,8 @@ export function createStudio(container, {
     return !path.some(node => isEditableTarget(node, 'a') || node?.closest?.('.crucible-studio-selectable'));
   }
   documentReference.addEventListener('keydown', onKeyDown);
+  documentReference.addEventListener('keyup', onKeyUp);
+  documentReference.defaultView?.addEventListener?.('blur', onWindowBlur);
   documentReference.addEventListener('pointerdown', onPointerInput, true);
 
   const onVisibilityChange = () => {
@@ -6039,6 +6330,7 @@ export function createStudio(container, {
       clearTimeout(statusExitTimer);
       clearTimeout(awaitedProgramTimer);
       agentPresence.dispose();
+      settings.dispose();
       systemSchemeQuery?.removeEventListener?.('change', onSystemSchemeChange);
       if (frameHandle) cancelAnimationFrame(frameHandle);
       stopFlight();
@@ -6049,6 +6341,8 @@ export function createStudio(container, {
       documentReference.removeEventListener('click', onModalClick, true);
       documentReference.removeEventListener('pointerdown', onAnyPointerDown, true);
       documentReference.removeEventListener('keydown', onKeyDown);
+      documentReference.removeEventListener('keyup', onKeyUp);
+      documentReference.defaultView?.removeEventListener?.('blur', onWindowBlur);
       documentReference.removeEventListener('pointerdown', onPointerInput, true);
       documentReference.removeEventListener('visibilitychange', onVisibilityChange);
       documentReference.removeEventListener('visibilitychange', flushDraftWhenHidden);

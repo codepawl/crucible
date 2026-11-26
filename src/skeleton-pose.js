@@ -822,6 +822,7 @@ const GLTF_STEP_INTERPOLATION = 2300;
 const GLTF_LINEAR_INTERPOLATION = 2301;
 const GLTF_CUBIC_INTERPOLATION = 2302;
 const RESAMPLE_RATE = 30;
+const MAX_RESAMPLED_KEYFRAMES = 300_000;
 
 function trackKeyframes(track, size) {
   const interpolation = track.getInterpolation?.();
@@ -832,7 +833,13 @@ function trackKeyframes(track, size) {
   const interpolant = track.createInterpolant(new Float64Array(size));
   const start = track.times[0];
   const end = track.times[track.times.length - 1];
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+    throw new RangeError('Animation track keyframe times must be finite and ordered.');
+  }
   const steps = Math.max(1, Math.ceil((end - start) * RESAMPLE_RATE));
+  if (steps > MAX_RESAMPLED_KEYFRAMES) {
+    throw new RangeError(`Resampled animation track exceeds ${MAX_RESAMPLED_KEYFRAMES} keyframes.`);
+  }
   return Array.from({ length: steps + 1 }, (_, step) => {
     const time = start + (end - start) * step / steps;
     return { time, value: Array.from(interpolant.evaluate(time)) };

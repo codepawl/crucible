@@ -2,6 +2,7 @@
 // meet at a corner leave a channel along it. The channel is real geometry, so the sun, the sky and the room's own bake all shine
 // through it and a closed room glows at its corners and along its edges, with or without lamps.
 import { diagnostic } from './agent-diagnostics.js';
+import { roomJoinedBoxNodeIds } from './room-box-joins.js';
 
 const DEFAULT_BOX_BEVEL = 0.08;
 const TOUCH_TOLERANCE = 1e-3;
@@ -42,7 +43,7 @@ function boxesTouch(first, second) {
   return true;
 }
 
-/** The IDs of beveled box nodes that touch another beveled box, or an empty list when fewer than four pairs touch. */
+/** The IDs of beveled box nodes that touch another beveled box and are still drawn rounded (a room's joined boxes are drawn sharp, #2298 and #3433), or an empty list when fewer than four pairs touch. */
 export function beveledJoinNodes(recipe) {
   const ids = beveledBoxIds(recipe);
   const boxes = (recipe.nodes ?? [])
@@ -59,7 +60,9 @@ export function beveledJoinNodes(recipe) {
       joined.add(boxes[second].id);
     }
   }
-  return pairs >= MINIMUM_TOUCHING_PAIRS ? [...joined] : [];
+  if (pairs < MINIMUM_TOUCHING_PAIRS) return [];
+  const drawnSharp = roomJoinedBoxNodeIds(recipe);
+  return [...joined].filter(id => !drawnSharp.has(id));
 }
 
 /** A diagnostic for a closed room whose walls are beveled boxes that meet, or null. The caller has already found the scene to be a closed room. */

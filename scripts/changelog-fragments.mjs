@@ -104,7 +104,7 @@ export function parseEntries(markdown, fallbackName) {
 export function parseChangelogSections(changelogText) {
   const sections = [];
   const text = changelogText.replace(/\r\n/g, '\n');
-  const headings = [...text.matchAll(/^## (\S+)[ \t]*$/gm)];
+  const headings = [...text.matchAll(/^## (\S+)(?:[ \t].*)?$/gm)];
   headings.forEach((heading, index) => {
     const end = index + 1 < headings.length ? headings[index + 1].index : text.length;
     const body = text.slice(heading.index + heading[0].length, end);

@@ -1194,7 +1194,7 @@ export function describeIgnoredFeatures(parts, environment, backend = 'cpu', { k
     if (material.tag === 'water' && backend === 'gpu') notes.add('The depth tint under a thin water sheet is not drawn: the CPU, WebGPU and native cycles tracers add an absorbing medium under it, the WebGL tracer draws the water clear.');
     if (partUsesVertexAlpha(part)) notes.add(vertexAlphaNote(backend, kernelMaterials, material.alphaMode));
     for (const field of IGNORED_MAP_FIELDS) if (material[field]) notes.add(`${field} is ignored.`);
-    if (material.occlusionMap && (kernelMaterials || backend !== 'cpu')) notes.add(kernelMaterials ? 'occlusionMap is ignored by the native cycles kernel: its material record has no occlusion slot (codepawl/cook#71). Use backend "cpu" to trace it.' : `occlusionMap is ignored by the ${backend} tracer: only the CPU tracer reads it. Use backend "cpu" to trace it.`);
+    if (material.occlusionMap && (kernelMaterials || (backend !== 'cpu' && backend !== 'webgpu'))) notes.add(kernelMaterials ? 'occlusionMap is ignored by the native cycles kernel: its material record has no occlusion slot (codepawl/cook#71). Use backend "cpu" or "webgpu" to trace it.' : `occlusionMap is ignored by the ${backend} tracer: only the CPU and WebGPU tracers read it. Use backend "cpu" or "webgpu" to trace it.`);
     if (material.tag && material.tag !== 'surface' && material.tag !== 'water') notes.add(`${material.tag} materials are traced as plain surfaces.`);
     if (material.alphaMode === 'blend' && hasGraphOpacity(material)) notes.add('A graph opacity output is traced as a cutout at 0.5.');
     else if (material.alphaMode === 'blend' && !kernelMaterials) notes.add('Blended transparency is traced as opaque.');

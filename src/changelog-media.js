@@ -2,10 +2,10 @@
 const videoPattern = /\.(?:mp4|webm)$/i;
 
 export function isVideoUrl(url) {
-  return videoPattern.test(url.split(/[?#]/)[0]);
+  return typeof url === 'string' && videoPattern.test(url.split(/[?#]/)[0]);
 }
 
 // Only https URLs and site-relative paths ("/media/x.png") are allowed, so a note cannot pull in a script or a tracker over http.
 export function isAllowedMediaUrl(url) {
-  return /^https:\/\/\S+$/.test(url) || /^\/(?!\/)\S*$/.test(url);
+  return typeof url === 'string' && (/^https:\/\/\S+$/.test(url) || /^\/(?!\/)\S*$/.test(url));
 }

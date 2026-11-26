@@ -3,6 +3,7 @@
 // here is saved anywhere new.
 import { STUDIO_ACTION_ICONS } from './studio-icons.js';
 import { KEYMAP_PRESET_IDS, KEYMAP_PRESETS, keyLabel, resolveKeymapPreset } from './studio-keymap.js';
+import { createKeyboardDrawing } from './studio-numpad.js';
 import { STUDIO_PREFERENCE_CHOICES } from './studio-preferences.js';
 import { STUDIO_TOOLS } from './studio-templates.js';
 
@@ -33,6 +34,16 @@ const KEYMAP_SAMPLE_KEYS = Object.freeze([
   { icon: 'rotate', actionId: 'tool.rotate' },
   { icon: 'scale', actionId: 'tool.scale' },
   { icon: 'frame', actionId: 'view.frame' },
+]);
+const NUMPAD_CHOICES = Object.freeze([
+  { value: true, label: 'With number pad' },
+  { value: false, label: 'Without number pad' },
+]);
+const NUMPAD_VIEW_SAMPLE_KEYS = Object.freeze([
+  { label: 'Front view', actionId: 'view.front' },
+  { label: 'Right view', actionId: 'view.right' },
+  { label: 'Top view', actionId: 'view.top' },
+  { label: 'Proj. mode', actionId: 'view.projection' },
 ]);
 
 // The icons Studio's own workspace tabs use, so a chip shows the workspace it opens.
@@ -214,7 +225,9 @@ export function createStudioSetup({
     radio.dataset.setup = preferenceName;
     radio.addEventListener('change', () => {
       if (radio.checked) {
-        changePreferences({ [preferenceName]: STUDIO_PREFERENCE_CHOICES[preferenceName].find(choice => String(choice) === radio.value) });
+        const choices = STUDIO_PREFERENCE_CHOICES[preferenceName];
+        const nextValue = choices ? choices.find(choice => String(choice) === radio.value) : radio.value === 'true';
+        changePreferences({ [preferenceName]: nextValue });
       }
     });
     radios.push(radio);
@@ -324,6 +337,42 @@ export function createStudioSetup({
     details: [createKeycaps(presetId)],
   }));
 
+  const numberPadKeycaps = [];
+  function createNumberPadPreview(withNumberPad) {
+    const preview = createElement(documentReference, 'span', {
+      className: 'crucible-studio-setup-preview crucible-studio-setup-keyboard-preview',
+      attributes: { 'aria-hidden': 'true' },
+    });
+    preview.inert = true;
+    preview.append(createKeyboardDrawing(documentReference, withNumberPad));
+    return preview;
+  }
+  function createNumberPadKeycaps(withNumberPad) {
+    const keycaps = NUMPAD_VIEW_SAMPLE_KEYS.map(({ label, actionId }) => {
+      const cap = createElement(documentReference, 'kbd');
+      return {
+        actionId,
+        cap,
+        element: createElement(
+          documentReference,
+          'span',
+          { className: 'crucible-studio-setup-keycap' },
+          createElement(documentReference, 'span', { className: 'crucible-studio-setup-keycap-name', textContent: label }),
+          cap,
+        ),
+      };
+    });
+    numberPadKeycaps.push({ withNumberPad, keycaps });
+    return createElement(documentReference, 'span', { className: 'crucible-studio-setup-keycaps' }, ...keycaps.map(item => item.element));
+  }
+  const numberPadCards = NUMPAD_CHOICES.map(({ value, label }) => createChoiceCard({
+    groupName: 'numberPad',
+    preferenceName: 'numberPad',
+    value,
+    label,
+    details: [createNumberPadPreview(value), createNumberPadKeycaps(value)],
+  }));
+
   // The agent step shows the prompt itself, and the copy button sits on the same box.
   const promptBlock = createElement(documentReference, 'textarea', {
     className: 'crucible-studio-setup-prompt',
@@ -363,6 +412,7 @@ export function createStudioSetup({
     { title: 'Performance', stepName: 'Performance', icon: 'speed', content: [createCardGroup('Performance', performanceCards, 'crucible-studio-setup-cards-wide')] },
     { title: 'Modelling', stepName: 'Modelling', icon: 'node', content: modellingRows },
     { title: 'Keys', stepName: 'Keys', icon: 'keyboard', content: [createCardGroup('Keys', keymapCards, 'crucible-studio-setup-cards-keys')] },
+    { title: 'Number pad', stepName: 'Number pad', icon: 'keyboard', content: [createCardGroup('Number pad', numberPadCards, 'crucible-studio-setup-cards-numpad')] },
     { title: 'Work with an AI agent', stepName: 'AI agent', icon: 'agent', content: [createElement(
       documentReference,
       'div',
@@ -460,6 +510,10 @@ export function createStudioSetup({
       const chosen = String(preferences[radio.dataset.setup]) === radio.value;
       radio.checked = chosen;
       radio.parentNode.dataset.selected = String(chosen);
+    }
+    for (const { withNumberPad, keycaps } of numberPadKeycaps) {
+      const previewKeymap = resolveKeymapPreset(preferences.keymap, {}, { numberPad: withNumberPad });
+      for (const { actionId, cap } of keycaps) cap.textContent = keyLabel(previewKeymap, actionId);
     }
     const { tier: detectedTier, summary } = describeHardware();
     for (const { tier, ratio, antiAliasing } of performanceFacts) {

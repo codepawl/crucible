@@ -1,5 +1,5 @@
 import { createEnvironmentMap } from './environment.js';
-import { LIGHTING_SETUP_NAMES } from './agent-scene-capabilities.js';
+import { LIGHTING_SETUP_NAMES } from './lighting-setup-names.js';
 import { catalogEnvironmentSource, environmentRegistrationCount } from './look-catalog.js';
 
 const MAP_WIDTH = 128;

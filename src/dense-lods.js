@@ -116,6 +116,8 @@ async function withFileSceneSunLight(parts, environment, floorSkyOptions) {
   if (!environmentHasSun(environment)) return { parts, environment, skyReport: null };
   const { skyOcclusion, ...traceOptions } = floorSkyOptions;
   const traced = applyDefaultFloorSky(parts, environment, traceOptions);
+  if (traced.report?.branch) console.info(`Sky trace: ${traced.report.branch}.`);
+  for (const warning of traced.report?.warnings ?? []) console.warn(warning);
   // A scene past the trace's limits keeps the light it had; say so instead of dropping the reason (#2771).
   if (traced.report?.fallbackReason && traced.report.method !== 'proxy') console.warn(`Sky trace left out (${traced.report.reason}): ${traced.report.fallbackReason}`);
   return { parts: traced.parts, environment: withSunBounce(traced.parts, environment), skyReport: traced.report };
@@ -189,7 +191,11 @@ export function planLodsForRendererOptions(parts, canvas, rendererOptions = {}) 
 }
 
 /** The canvas pixels the renderer options imply, or null when `denseLods` is false. */
-function denseLodPixels(label, canvas, { denseLods = true, pixelRatio = 1.5 }) {
+function denseLodPixels(label, canvas, rendererOptions = {}) {
+  if (!rendererOptions || typeof rendererOptions !== 'object' || Array.isArray(rendererOptions)) {
+    throw new TypeError(`${label} rendererOptions must be an object.`);
+  }
+  const { denseLods = true, pixelRatio = 1.5 } = rendererOptions;
   if (typeof denseLods !== 'boolean') throw new TypeError('renderer.denseLods must be true or false.');
   if (!denseLods) return null;
   requireFiniteInRange(label, 'pixelRatio', pixelRatio, 0.1, 16);

@@ -32,7 +32,8 @@ export { TREE_PARAMETERS, treeGrowthCapabilities } from './vegetation-presets.js
 
 const BARK_TILE_SIZE = 0.6;
 const SCANNED_BARK_TILE_SIZE = 0.8;
-const LEAF_MODES = ['cards', 'mesh'];
+const TREE_OPTION_KEYS = ['species', 'preset', 'tree', 'height', 'leaves', 'barkTextures', 'barkTileSize', 'leafTextures'];
+const LEAF_TEXTURE_CHANNELS = ['color', 'normal', 'crown'];
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const GRASS_LEVEL_DISTANCES = [24];
 const LEAF_COLOR_BASE = [0.85, 0.95, 0.8];
@@ -534,7 +535,14 @@ export function resolveBarkTextures(barkTextures, species) {
  */
 export function resolveLeafTextures(leafTextures, species) {
   if (!leafTextures) return null;
-  const set = isTextureDescriptor(leafTextures.color) ? leafTextures : leafTextures[species];
+  if (typeof leafTextures !== 'object' || Array.isArray(leafTextures)) throw new TypeError('leafTextures must be an object.');
+  const isSingle = isTextureDescriptor(leafTextures.color) || LEAF_TEXTURE_CHANNELS.some(channel => channel in leafTextures);
+  if (!isSingle) {
+    for (const key of Object.keys(leafTextures)) {
+      if (!Object.hasOwn(SPECIES, key)) throw new TypeError(`Unknown leafTextures species: ${key}.`);
+    }
+  }
+  const set = isSingle ? leafTextures : leafTextures[species];
   if (!set) return null;
   if (!isTextureDescriptor(set.color)) throw new TypeError(`Leaf textures for ${species} need a color texture descriptor.`);
   for (const channel of ['normal', 'crown']) {
@@ -996,10 +1004,21 @@ export function resolveTreePreset({ species, preset, tree } = {}) {
  * has `bareParts(levelIndex)`, the parts to draw at that level once it has shed its leaves: the bark with fine twigs.
  */
 export function createTree(speciesOrOptions = 'broadleaf', seed = 1) {
-  const options = typeof speciesOrOptions === 'string' ? { species: speciesOrOptions } : { ...speciesOrOptions };
+  let options;
+  if (typeof speciesOrOptions === 'string') {
+    options = { species: speciesOrOptions };
+  } else {
+    if (!speciesOrOptions || typeof speciesOrOptions !== 'object' || Array.isArray(speciesOrOptions)) {
+      throw new TypeError('createTree needs a species name or options object.');
+    }
+    for (const key of Object.keys(speciesOrOptions)) {
+      if (!TREE_OPTION_KEYS.includes(key)) throw new TypeError(`Unknown createTree option: ${key}.`);
+    }
+    options = { ...speciesOrOptions };
+  }
   const { species, preset } = resolveTreePreset(options);
   const leaves = options.leaves ?? 'cards';
-  if (!LEAF_MODES.includes(leaves)) throw new RangeError(`Leaves must be one of ${LEAF_MODES.join(', ')}.`);
+  if (!['cards', 'mesh'].includes(leaves)) throw new RangeError('Leaves must be cards, mesh.');
   if (!Number.isFinite(seed)) throw new TypeError('Tree seed must be a finite number.');
   const random = createRandom(seed * 7919 + 17);
   const height = options.height ?? randomInRange(random, preset.height);
@@ -1252,6 +1271,8 @@ export function scatterVegetation({
   if (!area || ![area.minX, area.maxX, area.minZ, area.maxZ].every(Number.isFinite) || area.maxX <= area.minX || area.maxZ <= area.minZ) {
     throw new TypeError('Scatter area needs finite minX < maxX and minZ < maxZ.');
   }
+  if (typeof terrainHeight !== 'function') throw new TypeError('scatterVegetation terrainHeight must be a function.');
+  if (typeof exclusion !== 'function') throw new TypeError('scatterVegetation exclusion must be a function.');
   checkScatterOptions({ area, density, spacing, variants, scale, mix });
   checkSeed('scatterVegetation', seed);
   const random = createRandom(seed);
@@ -1298,6 +1319,18 @@ function nextLevel(currentLevel, distance, thresholds, hysteresis, cullDistance)
  * Returns `{ parts, changed, levelCounts, culled, triangles }` (`culled` counts instances past `cullDistance`); rebuild or update the renderer when `changed` is true.
  */
 export function selectLevels(instances, eye, { distanceScale = 1, hysteresis = 0.12, cullDistance = Infinity, fade = 0, impostors = false, pixelError = null } = {}) {
+  if (!eye || eye.length < 3 || !Number.isFinite(eye[0]) || !Number.isFinite(eye[1]) || !Number.isFinite(eye[2])) {
+    throw new TypeError('selectLevels eye must be [x, y, z].');
+  }
+  if (typeof distanceScale !== 'number' || !Number.isFinite(distanceScale) || distanceScale <= 0) {
+    throw new RangeError('selectLevels distanceScale must be > 0.');
+  }
+  if (typeof cullDistance !== 'number' || Number.isNaN(cullDistance) || cullDistance <= 0) {
+    throw new RangeError('selectLevels cullDistance must be > 0.');
+  }
+  if (typeof hysteresis !== 'number' || !Number.isFinite(hysteresis) || hysteresis < 0 || hysteresis >= 1) {
+    throw new RangeError('selectLevels hysteresis must be in [0, 1).');
+  }
   if (fade > 0 || impostors) return selectBlendedLevels(instances, eye, { distanceScale, fade: fade || DEFAULT_FADE_BAND, cullDistance, impostors, pixelError });
   const parts = [];
   const levelCounts = [];

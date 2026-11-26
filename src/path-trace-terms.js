@@ -31,7 +31,7 @@ function mapScaledByAmbient(map, ambientIntensity) {
  * (`cameraIntensity`, read by the native kernel) so that turning the ambient light down does not blacken the view.
  */
 export function pathTraceEnvironment(environment) {
-  const map = agentEnvironmentMap(environment);
+  const map = agentEnvironmentMap(environment, { withReflection: false });
   const ambientIntensity = environment.ambientIntensity ?? 1;
   if (ambientIntensity === 1) return { ...environment, map };
   return {

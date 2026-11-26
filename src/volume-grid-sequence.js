@@ -15,8 +15,14 @@ export function volumeGridBytes(grid) {
  * reads frame 0. It depends on nothing but its arguments, so a render at a given time always draws the same frame.
  */
 export function volumeGridFrameIndex(frameCount, fps, time, loop = true) {
+  if (!Number.isInteger(frameCount) || frameCount < 1) throw new RangeError('frameCount must be a positive integer.');
+  if (typeof fps !== 'number' || !Number.isFinite(fps) || fps <= 0) throw new RangeError('fps must be a positive finite number.');
   const seconds = Number.isFinite(time) ? Math.max(time, 0) : 0;
-  const step = Math.floor(seconds * fps + 1e-9);
+  const product = seconds * fps;
+  if (!Number.isFinite(product)) {
+    return loop ? Math.floor((seconds % (frameCount / fps)) * fps + 1e-9) % frameCount : frameCount - 1;
+  }
+  const step = Math.floor(product + 1e-9);
   return loop ? step % frameCount : Math.min(step, frameCount - 1);
 }
 
