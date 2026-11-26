@@ -31,8 +31,32 @@ function serveLocalFolders() {
   };
 }
 
+function docLearnIndex() {
+  const virtualId = 'virtual:doc-learn-index';
+  const resolvedId = `\0${virtualId}`;
+  return {
+    name: 'doc-learn-index',
+    resolveId(id) {
+      if (id === virtualId) return resolvedId;
+    },
+    load(id) {
+      if (id !== resolvedId) return;
+      const folder = path.resolve('docs/learn');
+      const entries = fs.readdirSync(folder)
+        .filter(name => name.endsWith('.md'))
+        .map(name => {
+          const text = fs.readFileSync(path.join(folder, name), 'utf8').replace(/\r\n/g, '\n');
+          const slug = name.slice(0, -3);
+          const title = text.match(/^# (.+)$/m)?.[1].trim() ?? slug;
+          return { id: slug, title };
+        });
+      return `export default ${JSON.stringify(entries)};`;
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [serveLocalFolders(), sitePages(), generatedFiles()],
+  plugins: [serveLocalFolders(), docLearnIndex(), sitePages(), generatedFiles()],
   server: { headers, watch: { ignored: ['**/.claude/**'] } },
   // Scan only the project's own pages. Agent worktrees under .claude hold hundreds of copies of them and made the first page load take 13 s.
   // The browser denoiser page imports `denoiser`, which is installed by hand (bench/reference/denoise-browser.mjs). Scanning it
