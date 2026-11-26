@@ -109,7 +109,7 @@ In a recipe, the same ground is the `terrain` geometry: see [Recipe terrain](#re
 - The bed is level across its width at the height the ground has under the nearest point of the centre line, minus `depth`, so a road across a slope is cut into the hillside. Paths apply in order after the noise. The same seed and points give the same heights.
 - The carve changes the height grid, so the mesh, `heightAt`, `normalAt` and vegetation all see the road.
 - `terrain.pathMasks` is `null` without paths. Otherwise `names` lists the masks, `at(name, x, z)` gives 0 to 1 (1 across the width, fading to 0 over half the falloff; no name gives the strongest of all paths), and `image(name, resolution = 256)` gives `{ width, height, data, bounds }` RGBA pixels with the mask in red. Use it as a splat `maskMap` with `maskBounds: [-size / 2, -size / 2, size / 2, size / 2]` and the rule `{ mask: 'r', invertMask: true }` on grass and `{ mask: 'r' }` on dirt.
-- A recipe does not draw splat materials yet, so the mask feeds the splat rules of an addon scene. Clutter or vegetation `exclude` can read `pathMasks.at(name, x, z)` the same way; the recipe `exclude` field takes only circles and nodes today.
+- Recipe terrain `material` reads those path names directly in its rules (`{ "layer": "dirt", "mask": "road" }`); see [Recipe terrain materials](#recipe-terrain-materials). Clutter or vegetation `exclude` can read `pathMasks.at(name, x, z)` the same way; the recipe `exclude` field takes only circles and nodes today.
 - Cost: segments sit in a grid, so a sample reads only those near it. A smoothed path of 256 points is at most 8192 segments in all.
 - Looks: a cut bench reads best with `depth` 0.7 to 1, `falloff` 1 to 1.5 (a steep bank; a wide falloff gives a soft slope), `shoulder` 0.3 and a road layer with `triplanar: true` and `splat.triplanarStart` near 12 so banks do not stretch the texture. A rut is as wide as about a quarter of the half-width, so give the ground cells of 0.1 m or less (a 40 m ground at resolution 400) to see two clear grooves; at 0.5 m cells they blur.
 
@@ -188,6 +188,62 @@ The `terrain` geometry of a recipe calls `createTerrain` with these fields. A fi
 - A record with `chunks` or `levels` above 1 is built at its finest level, and the scene swaps in the level each chunk needs for the camera at every pose: each frame of a render job and each time of a camera track. The mesh is the same object while no chunk changes level. `heightAt`, vegetation and navigation read the finest grid, so heights do not depend on `chunks` or `levels`. A moved or scaled ground sees the camera in its own space.
 - `holes` cut cells of the whole ground (`chunks * resolution` across).
 - `paths` carve roads: see [Paths](#paths).
+- `material` paints the ground with up to four scanned texture layers and slope, height and mask rules: see [Recipe terrain materials](#recipe-terrain-materials). Without `material`, terrain uses the node's own material as before.
+
+### Recipe terrain materials
+
+Add `material` to a recipe `terrain` geometry to shade outdoor ground with up to four scanned texture sets (`colorMap`, `normalMap`, `roughnessMap`, `heightMap`, or catalog `textureSet` in MCP recipes) mapped onto the splat ground shader. Recipe terrain uses this path (`terrain.material`); other meshes use the general material layer stack (`material.layers`) and anti-tiling controls.
+
+```json
+{
+  "id": "hillside",
+  "type": "terrain",
+  "size": 120,
+  "resolution": 224,
+  "amplitude": 12,
+  "ridged": true,
+  "mountainAmplitude": 28,
+  "paths": [{ "name": "road", "points": [[-48, 26], [2, 2], [46, -26]], "width": 4.2, "depth": 0.65 }],
+  "material": {
+    "layers": [
+      { "name": "grass", "textureSet": "leafy_grass", "tiling": 3.2, "tint": [0.5, 0.8, 0.36] },
+      { "name": "dirt", "textureSet": "brown_mud_leaves_01", "tiling": 2.6 },
+      { "name": "gravel", "textureSet": "forest_ground_04", "tiling": 3.2 },
+      { "name": "rock", "textureSet": "aerial_rocks_02", "tiling": 5.0, "triplanar": true }
+    ],
+    "rules": [
+      { "layer": "dirt", "mask": "road" },
+      { "layer": "gravel", "slope": [12, 26], "slopeSoftness": 4 },
+      { "layer": "rock", "slope": [24, 90], "slopeSoftness": 5 }
+    ],
+    "heightBlend": 0.22,
+    "antiTiling": 1,
+    "variation": 1,
+    "edgeNoise": 1,
+    "parallax": 0.03
+  }
+}
+```
+
+| Field | Meaning | Default |
+| --- | --- | --- |
+| `layers` | 1 to 4 layers with `colorMap`, `normalMap`, `roughnessMap`, `heightMap` (or `textureSet` in MCP), plus optional `name`, `tiling` (or `scale`, metres per tile), `tint`, `normalStrength`, `normalConvention`, `triplanar` | required (`tiling` 4, `normalStrength` 1) |
+| `rules` | Rules targeting a layer index (`0` to `layers.length - 1`) or `name`: `slope` (`[min, max]` deg, `slopeSoftness`), `height` (`[min, max]` m, `heightSoftness`), `mask` (terrain path mask name, packed into RGBA `maskMap`), `invertMask` | `[]` (layers without rules take uncovered ground) |
+| `heightBlend`, `heightInfluence` | Transition sharpness and height dominance where layers meet | `0.22`, `1` |
+| `antiTiling`, `variation`, `edgeNoise` | Rotated second tap mixing (`true`/`false` or `0` to `1`), macro brightness/dryness variation (`0` to `2`), slope/height rule jitter (`0` to `2`) | `1`, `1`, `1` |
+| `parallax` | Near-field height offset limiting relief (`true`/`false` or `0` to `0.15` m) | `0.03` |
+| `triplanar`, `triplanarStart`, `triplanarEnd` | Default side projection for layers and slope blend degrees (`0` to `90`) | `false`, `38`, `52` |
+| `cavity`, `textureSize`, `maskResolution`, `color` | Crevice darkening (`0` to `1`), shared layer array cap (`4` to `4096`), packed path mask size (`2` to `2048`), RGB tint | `0.55`, largest source, `256`, `[1, 1, 1]` |
+
+Measured on the 120 m 4-layer Poly Haven hillside (224 x 224 cells, 1280 x 720, 4x MSAA, HDR, physical sky, ANGLE D3D11 RTX 3060, median of 60 synced frames, `splatBytes` 64.3 MiB):
+
+| Configuration | Frame time (ms) |
+| --- | --- |
+| All on (`parallax: 0.03`, `triplanar: true`, `antiTiling: 1`) | 2.63 |
+| `parallax: 0` (off) | 2.65 |
+| `triplanar: false` (off) | 3.01 |
+| `antiTiling: 0` (off) | 2.73 |
+| All off (`parallax: 0`, `triplanar: false`, `antiTiling: 0`) | 2.27 |
 
 ## Voxel terrain
 

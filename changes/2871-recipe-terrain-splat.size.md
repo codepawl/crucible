@@ -1,0 +1,1 @@
+- scene:agent-scene+lazy: recipe terrain loads the on-demand splat shader and recipe terrain splat material mapper when terrain is used (#2871)

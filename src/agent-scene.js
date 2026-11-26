@@ -44,7 +44,6 @@ function poseEditNodeIds(operations) {
 }
 export { normalizeAgentLook, resolveAgentShadow } from './agent-look.js';
 import { OWN_SECTIONS as NULLABLE_SECTION_OPERATIONS } from './agent-apply-report.js';
-import { markLiveGeometry } from './live-geometry.js';
 export { describeApplication } from './agent-apply-report.js';
 export {
   needsMeshBooleans, loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader,
@@ -721,7 +720,7 @@ const GEOMETRY_FIELDS = {
   curve: ['points', 'shape', 'splines', 'closed', 'kind', 'weights', 'order', 'knots', 'knotMode', 'trim', 'grow', 'radius', 'taper', 'profile', 'resolution', 'radialSegments'],
   text: ['text', 'size', 'depth', 'font', 'align', 'curveSegments'],
   mesh: ['base', 'edits', 'stack', 'smoothAngle', 'shapeKeys', 'slots'],
-  terrain: ['size', 'resolution', 'seed', 'amplitude', 'holes', 'featureSize', 'octaves', 'warp', 'ridged', 'mountainAmplitude', 'mountainMask', 'chunks', 'levels', 'paths'],
+  terrain: ['size', 'resolution', 'seed', 'amplitude', 'holes', 'featureSize', 'octaves', 'warp', 'ridged', 'mountainAmplitude', 'mountainMask', 'chunks', 'levels', 'paths', 'material'],
   cloud: ['seed', 'puffs', 'width', 'height', 'flatBase', 'resolution', 'levels', 'upBias', 'unionSoftness'],
   fragment: ['source', 'seed', 'cells', 'index', 'impact', 'impactRadius'],
   dented: ['source', 'impacts', 'stiffness', 'maxDepth', 'radius'],
@@ -762,7 +761,7 @@ function geometryEstimate(value, scope = PENDING_CUTTER_SCOPE) {
   }
   for (const field of GEOMETRY_FIELDS[value.type]) {
     // Terrain checks its own numbers (a whole resolution from 2 to 499), so its message names the real range; null is not absent there, so it still fails below.
-    if (value.type === 'terrain' && ['size', 'resolution', 'amplitude', 'featureSize', 'octaves', 'warp', 'ridged', 'mountainAmplitude', 'mountainMask', 'chunks', 'levels'].includes(field) && value[field] !== null) continue;
+    if (value.type === 'terrain' && field !== 'seed' && (value[field] !== null || field === 'material')) continue;
     if (value.type === 'cloud' && value[field] !== null) continue;
     if (value[field] !== undefined && !['profile', 'contour', 'holes', 'path', 'closed', 'base', 'edits', 'stack', 'shapeKeys', 'slots', 'points', 'taper', 'text', 'font', 'align', 'from', 'to', 'shape', 'splines', 'kind', 'weights', 'order', 'knots', 'knotMode', 'trim', 'grow', 'root', 'source', 'impact', 'impacts', 'walls', 'openings', 'part', 'paths'].includes(field)) {
       finite(value[field], field);
@@ -1657,99 +1656,18 @@ function stagePose(stagedState, time) {
   return { graph, materialUpdates, camera, time, clothGeometries, assetClips, hiddenNodes, opacities, movedLook, morphs: sampled?.morphs ?? null };
 }
 
-/** A mesh stack built with every ocean node's `time` set to `oceanTime`: the sea the renderer draws at that moment of an oceanTime track. */
-function oceanTimeGeometry(recipe, maxGeometryVertices, geometryId, oceanTime, wakeField) {
-  const definition = recipe.geometries.find(candidate => candidate.id === geometryId);
-  const stack = definition.stack.map(node => (node.op === 'ocean' ? { ...node, ...wakeField, time: oceanTime } : node));
-  return Object.freeze(generateGeometry({ ...definition, stack }, maxGeometryVertices, cutterScopeOf(recipe.geometries, heightSourcesOf(recipe))));
-}
-
-/**
- * Geometries of mesh stacks whose ocean time a geometry track drives, keyed by node ID. Each one is built from the cached edits with
- * every ocean node's `time` set to the sampled value, so it equals the still of a recipe that writes that time into the node. The last
- * result of each geometry is kept, so a repeated time reuses the geometry and the renderer sees no change.
- */
-function oceanTimeGeometries(stagedState, sampled, time) {
-  const patches = sampled?.geometries;
-  if (!patches?.size) {
-    return new Map();
-  }
-  const frames = stagedState.oceanFrames ??= new Map();
-  const geometries = new Map();
-  for (const [geometryId, patch] of patches) {
-    let frame = frames.get(geometryId);
-    const wakeField = stagedState.physicsSampler?.wakeField?.(geometryId, time);
-    // The frames outlive an edit (#2730), so the key names the stack they were built from as well as the time.
-    const source = `${stagedState.geometryRecords.get(geometryId)?.signature}|${stagedState.maxGeometryVertices}|${patch.oceanTime}`;
-    const key = wakeField ? `${source}|${time}` : source;
-    if (frame?.key !== key) {
-      frame = { key, wake: Boolean(wakeField), geometry: oceanTimeGeometry(stagedState.recipe, stagedState.maxGeometryVertices, geometryId, patch.oceanTime, wakeField) };
-      frames.set(geometryId, frame);
-    }
-    for (const node of stagedState.recipe.nodes) {
-      if (node.geometry !== geometryId) continue;
-      // A water part draws the ocean's foam group as foam, as the first build of the part does.
-      const material = stagedState.recipe.materials?.find(candidate => candidate.id === node.material);
-      const drawn = material && frame.geometry.vertexGroups?.foam ? agentSceneModule('mesh').waterFoamGeometry(frame.geometry, material) : frame.geometry;
-      geometries.set(node.id, keepSeaInPlace(stagedState, node.id, drawn));
-    }
-  }
-  return geometries;
-}
-
-/** IDs of the nodes drawing a mesh whose ocean time a geometry track drives. */
-function oceanTrackNodeIds(recipe) {
-  const oceanGeometries = new Set((recipe.motion?.tracks ?? []).filter(track => track.kind === 'geometry' && track.property === 'oceanTime').map(track => track.id));
-  return new Set(recipe.nodes.filter(node => oceanGeometries.has(node.geometry)).map(node => node.id));
-}
-
-// What an ocean time moves in a sea geometry. The triangle indices move too: the diagonal of each quad follows the waves.
-const SEA_MOVING_FIELDS = ['positions', 'normals', 'skyVisibility', 'indices'];
-const SEA_MOVING_MAPS = ['vertexGroups', 'vertexVectors'];
-
-const sameTypedArray = (liveArray, nextArray) => liveArray?.length === nextArray.length && liveArray.constructor === nextArray.constructor;
-
-// True when the two seas differ only in what an ocean time moves, so the arrays of one can be overwritten with the other.
-function seaOnlyMoved(live, next) {
-  const fields = Object.keys(next);
-  if (fields.length !== Object.keys(live).length || !fields.every(field => field in live && (SEA_MOVING_FIELDS.includes(field) || field === 'uvs' || SEA_MOVING_MAPS.includes(field)))) return false;
-  if (next.uvs && (live.uvs.length !== next.uvs.length || next.uvs.some((value, index) => value !== live.uvs[index]))) return false;
-  if (!SEA_MOVING_FIELDS.every(field => !next[field] || sameTypedArray(live[field], next[field]))) return false;
-  return SEA_MOVING_MAPS.every((map) => {
-    const names = Object.keys(next[map] ?? {});
-    return names.length === Object.keys(live[map] ?? {}).length && names.every(name => sameTypedArray(live[map][name], next[map][name]));
-  });
-}
-
-// A copy of a sea with its own moving arrays, which later times overwrite. The geometry a frame cache holds stays untouched.
-function liveSea(sea) {
-  const copy = { ...sea };
-  for (const field of SEA_MOVING_FIELDS) if (sea[field]) copy[field] = sea[field].slice();
-  for (const map of SEA_MOVING_MAPS) if (sea[map]) copy[map] = Object.fromEntries(Object.entries(sea[map]).map(([name, values]) => [name, values.slice()]));
-  return markLiveGeometry(Object.freeze(copy), { reindexed: true });
-}
-
-// Each sea an ocean time track drives keeps one geometry per node, so a renderer keeps its part and uploads new positions,
-// normals, foam and triangle indices (updatePartVertices) instead of building a batch for every time.
-function keepSeaInPlace(stagedState, nodeId, next) {
-  const kept = stagedState.liveSeas ??= new Map();
-  const live = kept.get(nodeId);
-  if (live && seaOnlyMoved(live, next)) {
-    for (const field of SEA_MOVING_FIELDS) if (next[field]) live[field].set(next[field]);
-    for (const map of SEA_MOVING_MAPS) for (const [name, values] of Object.entries(next[map] ?? {})) live[map][name].set(values);
-  } else {
-    kept.set(nodeId, liveSea(next));
-  }
-  return kept.get(nodeId);
-}
-
 // Cloth and particles replace the geometry of their own nodes at a sampled time; no node belongs to both.
 function sampledGeometries(stagedState, time, sampled, camera) {
   // A billboard faces the camera even in a scene with no clock, so it samples at 0 there.
   if (time === null && !stagedState.billboardSampler) {
     return null;
   }
-  const geometries = time === null ? new Map() : oceanTimeGeometries(stagedState, sampled, time);
+  const geometries = time !== null && sampled?.geometries?.size
+    ? agentSceneModule('motion').oceanTimeGeometries(stagedState, sampled, time, {
+        generateOceanGeometry: (definition, stack) => Object.freeze(generateGeometry({ ...definition, stack }, stagedState.maxGeometryVertices, cutterScopeOf(stagedState.recipe.geometries, heightSourcesOf(stagedState.recipe)))),
+        waterFoamGeometry: (geometry, material) => agentSceneModule('mesh').waterFoamGeometry(geometry, material),
+      })
+    : new Map();
   for (const sampler of time === null ? [stagedState.billboardSampler] : [stagedState.clothSampler, stagedState.particleSampler, stagedState.billboardSampler]) {
     sampler?.sample(time ?? 0, camera)?.forEach((geometry, nodeId) => geometries.set(nodeId, geometry));
   }
@@ -1833,7 +1751,7 @@ function publishPose(stagedState, pose) {
   stagedState.movedLook = pose.movedLook;
   stagedState.motionTime = pose.time;
   const previousParts = stagedState.parts;
-  const sampledParts = partsWithCloth(stagedState.restParts, pose.clothGeometries, previousParts);
+  const sampledParts = partsWithCloth(stagedState.restParts, pose.clothGeometries && (stagedState.recipe.motion ? agentSceneModule('motion').seasKeptInPlace(stagedState, pose.clothGeometries) : pose.clothGeometries), previousParts);
   // Ranked also when the parts did not change: staging an edit ranks the rest parts, so the drawn parts get their ranks back.
   stagedState.parts = stagedState.rankFlushParts ? stagedState.rankFlushParts(sampledParts) : sampledParts;
   return stagedState.parts !== previousParts;
@@ -2161,14 +2079,16 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const roomJoinedNodeIds = roomJoinedBoxNodeIds(recipe);
     const buildPart = (node, materialId, slotGroup) => {
       const binding = skinBindings.get(node.id);
+      const geometryDefinition = definitionsById.get(node.geometry);
+      const terrainSplat = geometryDefinition?.type === 'terrain' && geometryDefinition.material;
       const recipeMaterial = materialHandles.get(materialId);
       const sourceGeometry = binding?.geometry ?? (roomJoinedNodeIds.has(node.id) ? sharpJoinBoxGeometry() : geometries.get(node.geometry));
       const foamGeometry = sourceGeometry.vertexGroups?.foam ? agentSceneModule('mesh').waterFoamGeometry(sourceGeometry, recipeMaterial.output) : sourceGeometry;
-      const maskedGeometry = recipeMaterial.output.wear ? geometryWithSurfaceMasks(foamGeometry, recipeMaterial.output.wear, node.id) : foamGeometry;
-      const wholeGeometry = geometryWithMaterialUvs(maskedGeometry, recipe, materialId, graph, node.id);
+      const maskedGeometry = !terrainSplat && recipeMaterial.output.wear ? geometryWithSurfaceMasks(foamGeometry, recipeMaterial.output.wear, node.id) : foamGeometry;
+      const wholeGeometry = terrainSplat ? maskedGeometry : geometryWithMaterialUvs(maskedGeometry, recipe, materialId, graph, node.id);
       const geometry = slotGroup ? agentSceneModule('mesh').geometryOfSlot(wholeGeometry, slotGroup) : wholeGeometry;
       // A graph with a vertexGroup node bakes with this mesh's weights, so its textures belong to the mesh.
-      const drawnMaterial = recipeMaterial.output.assetGraph ? agentSceneModule('assetGraph').assetGraphView(recipeMaterial.output, geometry, node.id, graph.getNode(node.id).worldMatrix) : recipeMaterial.output.pattern ? agentSceneModule('patterns').materialViewForGeometry(recipeMaterial.output, geometry, node.id, recipeMaterial.holder.images, graph.getNode(node.id).worldMatrix) : recipeMaterial.output;
+      const drawnMaterial = terrainSplat ? agentSceneModule('terrain').terrainSplatMaterial(geometryDefinition, options.sequenceFrames) : recipeMaterial.output.assetGraph ? agentSceneModule('assetGraph').assetGraphView(recipeMaterial.output, geometry, node.id, graph.getNode(node.id).worldMatrix) : recipeMaterial.output.pattern ? agentSceneModule('patterns').materialViewForGeometry(recipeMaterial.output, geometry, node.id, recipeMaterial.holder.images, graph.getNode(node.id).worldMatrix) : recipeMaterial.output;
       const fades = fadedNodeIds.has(node.id);
       const material = fades ? fadeMaterial(drawnMaterial, node.id) : drawnMaterial;
       const assetExtras = assetRuntime.partExtras.get(node.id);
@@ -2382,7 +2302,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   // still scene again, seconds per frame, so playback could not run.
   let flushCache = null;
   function partsToRank(recipe, parts) {
-    const movingNodes = new Set([...(recipe.particles?.systems.map(system => system.node) ?? []), ...oceanTrackNodeIds(recipe)]);
+    const movingNodes = new Set([...(recipe.particles?.systems.map(system => system.node) ?? []), ...(recipe.motion ? agentSceneModule('motion').oceanTrackNodeIds(recipe) : [])]);
     // Scattered clutter and blade grass are left out as well: thousands of irregular stones and blades have no flush faces, and ranking them took seconds per edit.
     const clutterPrefixes = recipe.nodes.filter(node => node.clutter || node.grass).map(node => `${node.id}/`);
     if (movingNodes.size === 0 && clutterPrefixes.length === 0) {
@@ -2584,7 +2504,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       // An emitter on a sea with an oceanTime track samples the sea at the ocean time of each particle's birth (#2152).
       const sea = {
         oceanTimeAt: (geometryId, time) => stagedState.motionSampler?.sample(time)?.geometries?.get(geometryId)?.oceanTime ?? null,
-        geometryAt: (geometryId, oceanTime) => oceanTimeGeometry(recipe, stagedState.maxGeometryVertices, geometryId, oceanTime),
+        geometryAt: (geometryId, oceanTime) => agentSceneModule('motion').oceanTimeGeometry(recipe, geometryId, oceanTime, undefined, (definition, stack) => Object.freeze(generateGeometry({ ...definition, stack }, stagedState.maxGeometryVertices, cutterScopeOf(recipe.geometries, heightSourcesOf(recipe))))),
       };
       particleBake = { key, sampler: agentSceneModule('particles').bakeAgentParticles(recipe.particles, recipe, geometryMap(geometryRecords), sea, { matrixAt: (nodeId, time) => worldMatrixAt(stagedState, nodeId, time) }) };
     }

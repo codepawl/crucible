@@ -12,6 +12,7 @@ import { normalizeKeyframeEasing } from './easing.js';
 import { normalizeFootLock } from './foot-lock.js';
 import { bounded, denseArray, finite, keyframeTime, knownKeys, valueFrom, MAX_KEYS_PER_TRACK } from './motion-validation.js';
 import { agentSceneModule } from './agent-scene-modules.js';
+import { markLiveGeometry } from './live-geometry.js';
 
 const PHYSICAL_SKY_TRACK_PROPERTIES = new Set(['sunElevation', 'sunRotation', 'turbidity', 'groundAlbedo', 'aerialPerspective', 'ozone']);
 
@@ -1214,4 +1215,98 @@ export function compileAgentMotion(input, recipe, { normalized = false } = {}) {
       return output;
     },
   });
+}
+
+// What an ocean time moves in a sea geometry. The triangle indices move too: the diagonal of each quad follows the waves.
+const SEA_MOVING_FIELDS = ['positions', 'normals', 'skyVisibility', 'indices'];
+const SEA_MOVING_MAPS = ['vertexGroups', 'vertexVectors'];
+
+const sameTypedArray = (liveArray, nextArray) => liveArray?.length === nextArray.length && liveArray.constructor === nextArray.constructor;
+
+export function oceanTimeGeometry(recipe, geometryId, oceanTime, wakeField, generateOceanGeometry) {
+  const definition = recipe.geometries.find(candidate => candidate.id === geometryId);
+  const stack = definition.stack.map(node => (node.op === 'ocean' ? { ...node, ...wakeField, time: oceanTime } : node));
+  return generateOceanGeometry(definition, stack);
+}
+
+/**
+ * Geometries of mesh stacks whose ocean time a geometry track drives, keyed by node ID. Each one is built from the cached edits with
+ * every ocean node's `time` set to the sampled value, so it equals the still of a recipe that writes that time into the node. The last
+ * result of each geometry is kept, so a repeated time reuses the geometry and the renderer sees no change.
+ */
+export function oceanTimeGeometries(stagedState, sampled, time, { generateOceanGeometry, waterFoamGeometry }) {
+  const patches = sampled?.geometries;
+  if (!patches?.size) {
+    return new Map();
+  }
+  const frames = stagedState.oceanFrames ??= new Map();
+  const geometries = new Map();
+  for (const [geometryId, patch] of patches) {
+    let frame = frames.get(geometryId);
+    const wakeField = stagedState.physicsSampler?.wakeField?.(geometryId, time);
+    // The frames outlive an edit (#2730), so the key names the stack they were built from as well as the time.
+    const source = `${stagedState.geometryRecords.get(geometryId)?.signature}|${stagedState.maxGeometryVertices}|${patch.oceanTime}`;
+    const key = wakeField ? `${source}|${time}` : source;
+    if (frame?.key !== key) {
+      frame = { key, wake: Boolean(wakeField), geometry: oceanTimeGeometry(stagedState.recipe, geometryId, patch.oceanTime, wakeField, generateOceanGeometry) };
+      frames.set(geometryId, frame);
+    }
+    for (const node of stagedState.recipe.nodes) {
+      if (node.geometry !== geometryId) continue;
+      // A water part draws the ocean's foam group as foam, as the first build of the part does.
+      const material = stagedState.recipe.materials?.find(candidate => candidate.id === node.material);
+      const drawn = material && frame.geometry.vertexGroups?.foam ? waterFoamGeometry(frame.geometry, material) : frame.geometry;
+      geometries.set(node.id, drawn);
+    }
+  }
+  return geometries;
+}
+
+/** IDs of the nodes drawing a mesh whose ocean time a geometry track drives. */
+export function oceanTrackNodeIds(recipe) {
+  const oceanGeometries = new Set((recipe.motion?.tracks ?? []).filter(track => track.kind === 'geometry' && track.property === 'oceanTime').map(track => track.id));
+  return new Set(recipe.nodes.filter(node => oceanGeometries.has(node.geometry)).map(node => node.id));
+}
+
+function seaOnlyMoved(live, next) {
+  const fields = Object.keys(next);
+  if (fields.length !== Object.keys(live).length || !fields.every(field => field in live && (SEA_MOVING_FIELDS.includes(field) || field === 'uvs' || SEA_MOVING_MAPS.includes(field)))) return false;
+  if (next.uvs && (live.uvs.length !== next.uvs.length || next.uvs.some((value, index) => value !== live.uvs[index]))) return false;
+  if (!SEA_MOVING_FIELDS.every(field => !next[field] || sameTypedArray(live[field], next[field]))) return false;
+  return SEA_MOVING_MAPS.every((map) => {
+    const names = Object.keys(next[map] ?? {});
+    return names.length === Object.keys(live[map] ?? {}).length && names.every(name => sameTypedArray(live[map][name], next[map][name]));
+  });
+}
+
+function liveSea(sea) {
+  const copy = { ...sea };
+  for (const field of SEA_MOVING_FIELDS) if (sea[field]) copy[field] = sea[field].slice();
+  for (const map of SEA_MOVING_MAPS) if (sea[map]) copy[map] = Object.fromEntries(Object.entries(sea[map]).map(([name, values]) => [name, values.slice()]));
+  return markLiveGeometry(Object.freeze(copy), { reindexed: true });
+}
+
+/**
+ * Each sea an ocean time track drives keeps one geometry per node, so a renderer keeps its part and uploads new positions,
+ * normals, foam and triangle indices (updatePartVertices) instead of building a batch for every time. A sea that changed in any
+ * other way, such as its vertex or triangle count, replaces the kept one and the renderer swaps its parts as before.
+ */
+export function seasKeptInPlace(stagedState, geometries) {
+  const seaNodeIds = oceanTrackNodeIds(stagedState.recipe);
+  const kept = stagedState.liveSeas ??= new Map();
+  let result = geometries;
+  for (const nodeId of seaNodeIds) {
+    const next = geometries.get(nodeId);
+    if (!next) continue;
+    const live = kept.get(nodeId);
+    if (live && seaOnlyMoved(live, next)) {
+      for (const field of SEA_MOVING_FIELDS) if (next[field]) live[field].set(next[field]);
+      for (const map of SEA_MOVING_MAPS) for (const [name, values] of Object.entries(next[map] ?? {})) live[map][name].set(values);
+    } else {
+      kept.set(nodeId, liveSea(next));
+    }
+    if (result === geometries) result = new Map(geometries);
+    result.set(nodeId, kept.get(nodeId));
+  }
+  return result;
 }
