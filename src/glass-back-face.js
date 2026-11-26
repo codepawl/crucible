@@ -191,3 +191,75 @@ bool glassBackFaceRay(vec3 position, vec3 normal, vec3 viewDirection, float inde
   return true;
 }
 `;
+
+/** Overlapping non-nested closed glass draws in at most this many screen-resolved depth layers. */
+export const MAX_GLASS_REFRACTION_LAYERS = 8;
+
+/** Screen-space NDC rectangle `[left, right] x [bottom, top]` of a world-space shell AABB, or `{ visible: false }` if off-screen. */
+export function projectedShellBounds(shell, viewProjection) {
+  let left = Infinity;
+  let right = -Infinity;
+  let bottom = Infinity;
+  let top = -Infinity;
+  for (let corner = 0; corner < 8; corner++) {
+    const x = corner & 1 ? shell.maximum[0] : shell.minimum[0];
+    const y = corner & 2 ? shell.maximum[1] : shell.minimum[1];
+    const z = corner & 4 ? shell.maximum[2] : shell.minimum[2];
+    const clipW = viewProjection[3] * x + viewProjection[7] * y + viewProjection[11] * z + viewProjection[15];
+    // A corner at or behind the near plane makes perspective division invalid, so treat the shell as covering the view.
+    if (clipW <= 1e-4) return { left: -1, right: 1, bottom: -1, top: 1, visible: true };
+    const ndcX = (viewProjection[0] * x + viewProjection[4] * y + viewProjection[8] * z + viewProjection[12]) / clipW;
+    const ndcY = (viewProjection[1] * x + viewProjection[5] * y + viewProjection[9] * z + viewProjection[13]) / clipW;
+    if (ndcX < left) left = ndcX;
+    if (ndcX > right) right = ndcX;
+    if (ndcY < bottom) bottom = ndcY;
+    if (ndcY > top) top = ndcY;
+  }
+  return { left, right, bottom, top, visible: right > -1 && left < 1 && top > -1 && bottom < 1 };
+}
+
+/** True when two visible projected shell boxes overlap on screen. */
+export function screenRectsOverlap(first, second) {
+  return first.visible && second.visible && first.left < second.right && second.left < first.right && first.bottom < second.top && second.bottom < first.top;
+}
+
+/**
+ * Splits overlapping, non-nested closed glass shells into back-to-front layers so each front shell can refract the resolved color
+ * and depth of shells behind it. Returns null when the fast single-pass path already handles the frame (0/1 shells, no screen
+ * overlap, nested shells handled by glassShellsNested, or more than SHELL_PAIR_LIMIT shells).
+ */
+export function planGlassRefractionLayers(shells, viewProjection, eye) {
+  if (!Array.isArray(shells) || shells.length < 2 || shells.length > SHELL_PAIR_LIMIT || !viewProjection || !eye) return null;
+  if (glassShellsNested(shells)) return null;
+  const bounds = shells.map(shell => projectedShellBounds(shell, viewProjection));
+  let anyOverlap = false;
+  for (let first = 0; first < bounds.length && !anyOverlap; first++) {
+    for (let second = first + 1; second < bounds.length; second++) {
+      if (screenRectsOverlap(bounds[first], bounds[second])) {
+        anyOverlap = true;
+        break;
+      }
+    }
+  }
+  if (!anyOverlap) return null;
+  const ordered = shells.map((shell, index) => {
+    const centerX = (shell.minimum[0] + shell.maximum[0]) * 0.5 - eye[0];
+    const centerY = (shell.minimum[1] + shell.maximum[1]) * 0.5 - eye[1];
+    const centerZ = (shell.minimum[2] + shell.maximum[2]) * 0.5 - eye[2];
+    return { shell, bound: bounds[index], index, distanceSquared: centerX * centerX + centerY * centerY + centerZ * centerZ };
+  }).sort((first, second) => second.distanceSquared - first.distanceSquared || first.index - second.index);
+  const layers = [];
+  for (const entry of ordered) {
+    let lastBlocking = -1;
+    for (let layerIndex = 0; layerIndex < layers.length; layerIndex++) {
+      if (layers[layerIndex].some(placed => screenRectsOverlap(entry.bound, placed.bound))) {
+        lastBlocking = layerIndex;
+      }
+    }
+    const targetLayer = Math.min(lastBlocking + 1, MAX_GLASS_REFRACTION_LAYERS - 1);
+    if (!layers[targetLayer]) layers[targetLayer] = [];
+    layers[targetLayer].push(entry);
+  }
+  if (layers.length < 2) return null;
+  return layers.map(layer => layer.map(entry => entry.shell));
+}
