@@ -1,7 +1,8 @@
 import { bloomPyramidSupport } from './shader-registry.js';
 
 export const MAX_BLOOM_LEVELS = 6;
-export const BLOOM_SCATTER = 0.62;
+export const BLOOM_SCATTER = 0.9;
+const BLOOM_SCATTER_CURVE = 0.03;
 const BLOOM_UNIFORM_NAMES = ['sourceTexture', 'texelSize', 'threshold', 'passMode', 'mixWeight'];
 
 export const bloomPyramidFragment = `#version 300 es
@@ -24,7 +25,8 @@ vec3 sampleTap(vec2 offset) {
 }
 
 float karisWeight(vec3 color) {
-  return 1.0 / (1.0 + max(color.r, max(color.g, color.b)));
+  float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+  return 1.0 / (1.0 + max(luma - 2.0, 0.0) * 0.25);
 }
 
 void main() {
@@ -94,7 +96,8 @@ export function bloomPyramidPlan(levelCount, radius) {
   const upsampleWeights = [];
   for (let level = activeLevels - 2; level >= 0; level--) {
     const span = Math.min(1, Math.max(0, depth - level));
-    upsampleWeights.push({ level, mixWeight: BLOOM_SCATTER * span });
+    const scatter = Math.max(0.2, BLOOM_SCATTER - BLOOM_SCATTER_CURVE * level * level);
+    upsampleWeights.push({ level, mixWeight: scatter * span });
   }
   return { activeLevels, upsampleWeights };
 }
