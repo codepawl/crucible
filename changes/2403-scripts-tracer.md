@@ -1,0 +1,1 @@
+- `createRealtimeTracer` and `createProgressiveTracer` now apply `update({ environment })` when `parts` is omitted (#2403)

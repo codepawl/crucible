@@ -104,3 +104,29 @@ test('the gate command refuses a partial shard set before merging and says to re
     rmSync(folder, { recursive: true, force: true });
   }
 });
+
+test('the gate command reports missing coverage and baseline paths cleanly without a raw stack', () => {
+  const folder = mkdtempSync(join(tmpdir(), 'crucible-cov-missing-'));
+  try {
+    const lcovPath = join(folder, 'unit.info');
+    writeFileSync(lcovPath, shardText);
+    const gate = join(import.meta.dirname, '..', 'scripts', 'coverage-gate.mjs');
+
+    const missingCoverage = spawnSync(process.execPath, [gate, join(folder, 'missing.info')], { encoding: 'utf8' });
+    assert.equal(missingCoverage.status, 1);
+    assert.match(missingCoverage.stderr, /Coverage file or folder not found/);
+    assert.doesNotMatch(missingCoverage.stderr, /\bat\s+/);
+
+    const missingBaseline = spawnSync(process.execPath, [gate, lcovPath, '--baseline', join(folder, 'missing-baseline.json')], { encoding: 'utf8' });
+    assert.equal(missingBaseline.status, 1);
+    assert.match(missingBaseline.stderr, /Coverage baseline file not found/);
+    assert.doesNotMatch(missingBaseline.stderr, /\bat\s+/);
+
+    const missingBaselineFlag = spawnSync(process.execPath, [gate, lcovPath, '--baseline'], { encoding: 'utf8' });
+    assert.equal(missingBaselineFlag.status, 1);
+    assert.match(missingBaselineFlag.stderr, /Pass a baseline file path after --baseline/);
+    assert.doesNotMatch(missingBaselineFlag.stderr, /\bat\s+/);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+});

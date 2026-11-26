@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
 import { findAbbreviatedNames, findAbbreviatedPythonNames, isScannedPath } from '../scripts/check-names.mjs';
 
 // Built from parts so this file itself holds no short declarations for the name check to flag.
@@ -56,6 +58,7 @@ test('function, arrow, method and catch parameters are flagged', () => {
   assert.deepEqual(namesIn('const place = function (p) {};'), ['p']);
   assert.deepEqual(namesIn('function f([first, c], { size: s } = {}, ...rest) {}'), ['f', 'c', 's']);
   assert.deepEqual(namesIn('class Box {\n  static build(c) {}\n  async load(d, count) {}\n  get size() {}\n}'), ['c', 'd']);
+  assert.deepEqual(namesIn('class Box {\n  [sym](d, e) {}\n  static async *[Symbol.iterator](m) {}\n}\nconst lookup = { [key](s) {} };'), ['d', 'e', 'm', 's']);
   assert.deepEqual(namesIn('try {} catch (e) {}'), ['e']);
   assert.deepEqual(namesIn('const lookup = { find(c) { return c; } };'), ['c']);
 });
@@ -106,4 +109,12 @@ test('python files under src, scripts, bench and tests are scanned', () => {
   assert.equal(isScannedPath('bench/reference/score.py'), true);
   assert.equal(isScannedPath('docs/example.py'), false);
   assert.equal(isScannedPath('src/vendor/lib.py'), false);
+});
+
+test('check-names CLI reports a missing file cleanly without a raw stack', () => {
+  const script = join(import.meta.dirname, '..', 'scripts', 'check-names.mjs');
+  const result = spawnSync(process.execPath, [script, 'missing-file-for-check-names.js'], { encoding: 'utf8' });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Source file not found: missing-file-for-check-names\.js/);
+  assert.doesNotMatch(result.stderr, /\bat\s+/);
 });

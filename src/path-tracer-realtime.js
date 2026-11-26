@@ -47,7 +47,8 @@ export async function createRealtimeTracer(scene, rawOptions = {}) {
   gl.canvas.width = outputWidth;
   gl.canvas.height = outputHeight;
 
-  const firstTraceScene = prepareTraceScene(scene.parts, scene.environment ?? {});
+  const initialEnvironment = scene.environment ?? {};
+  const firstTraceScene = prepareTraceScene(scene.parts, initialEnvironment);
   const radianceTextures = [createFloatTexture(gl, traceWidth, traceHeight), createFloatTexture(gl, traceWidth, traceHeight)];
   const normalTextures = [createFloatTexture(gl, traceWidth, traceHeight), createFloatTexture(gl, traceWidth, traceHeight)];
   const albedoTexture = createFloatTexture(gl, traceWidth, traceHeight);
@@ -59,6 +60,8 @@ export async function createRealtimeTracer(scene, rawOptions = {}) {
   const denoiser = createTemporalDenoiser(gl, { traceWidth, traceHeight, outputWidth, outputHeight, historyLimit, filterIterations });
   const synchronizationPixel = new Uint8Array(4);
 
+  let currentParts = scene.parts;
+  let currentEnvironment = initialEnvironment;
   let traceScene = null;
   let program = null;
   let lightCount = 0;
@@ -133,8 +136,13 @@ export async function createRealtimeTracer(scene, rawOptions = {}) {
     get frameCount() { return frameIndex; },
 
     /** A new scene: the radiance cache and the denoiser's history start over. */
-    update({ parts, environment }) {
-      if (parts) loadScene(prepareTraceScene(parts, environment ?? {}));
+    update({ parts, environment } = {}) {
+      if (parts === undefined && environment === undefined) return;
+      const nextParts = parts !== undefined ? parts : currentParts;
+      const nextEnvironment = environment !== undefined ? (environment ?? {}) : currentEnvironment;
+      loadScene(prepareTraceScene(nextParts, nextEnvironment));
+      currentParts = nextParts;
+      currentEnvironment = nextEnvironment;
     },
 
     /** Forgets the denoiser's history (the cache stays: it only depends on the scene). */
