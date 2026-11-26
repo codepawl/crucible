@@ -1,0 +1,1 @@
+- scene:agent-scene+lazy: `make_face` recipe operation and boundary-loop face builder in the lazy `mesh-recipe` chunk (+1832 bytes gzip; `scene:agent-scene` shrank by 19 bytes gzip).
