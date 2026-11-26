@@ -49,3 +49,10 @@ test('the budget is about two seconds of baking', () => {
   assert.equal(MATERIAL_GRAPH_LIMITS.maxWork, 60_000_000);
   assert.ok(MATERIAL_GRAPH_LIMITS.maxWork * WORK_UNIT_NANOSECONDS / 1e9 < 2.5);
 });
+
+test('layer cost matches its smoothstep and mix equivalent (#3147)', () => {
+  const mixCost = compileMaterialGraph({ roughness: { mix: [0.1, 0.9, noise(6, 2)] } }).cost;
+  const smoothMixCost = compileMaterialGraph({ roughness: { mix: [0.1, 0.9, { smoothstep: [0.4, 0.6, noise(6, 2)] }] } }).cost;
+  const layerCost = compileMaterialGraph({ roughness: { layer: { base: 0.1, top: 0.9, mask: noise(6, 2), edge: 0.5, softness: 0.1 } } }).cost;
+  assert.equal(Math.round((layerCost - mixCost) * 100), Math.round((smoothMixCost - mixCost) * 100));
+});
