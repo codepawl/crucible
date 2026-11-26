@@ -1,0 +1,1 @@
+- Add per-layer PBR material stacks (`layers` and `pattern: { type: "layers" }`) with `heightBlend` transition sharpening.

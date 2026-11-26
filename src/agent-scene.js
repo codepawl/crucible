@@ -102,6 +102,7 @@ const NODE_FIELDS = [
 ];
 // Optional/newer material fields join this sorted list (one per line) so parallel pull requests never collide while core packed key order stays identical.
 const EXTRA_MATERIAL_FIELDS = [
+  'layers',
   'waterGlint',
 ];
 const MATERIAL_FIELDS = [
@@ -415,28 +416,22 @@ function applyAlphaCutoff(value, result) {
 function materialFrom(recipeValue) {
   const value = recipeValue.preset === undefined ? recipeValue : agentSceneModule('materialPresets').applyMaterialPreset(recipeValue, (given, expected) => invalidField('preset', given, expected));
   knownKeys(recipeValue, ['id', 'tag', ...MATERIAL_FIELDS, ...TEXTURE_SET_RECIPE_FIELDS], 'material');
+  const hasPattern = value.pattern !== undefined || value.layers !== undefined;
   // A pattern or a catalog colour map brings its own colours, so the color field tints it and leaves it unchanged by default.
-  const defaultColor = value.pattern === undefined && value.colorMap === undefined && value.text === undefined ? [0.5, 0.5, 0.5] : [1, 1, 1];
-  const graph = value.pattern?.type === 'graph' ? value.pattern.graph : {};
-  // A graph that makes roughness, metallic or emission passes it through as written, so the factors default to 1.
-  const graphFactor = (output, fallback) => (Object.hasOwn(graph ?? {}, output) ? 1 : fallback);
+  const defaultColor = !hasPattern && value.colorMap === undefined && value.text === undefined ? [0.5, 0.5, 0.5] : [1, 1, 1];
   const result = { id: value.id, tag: defaultValue(value.tag, 'surface'), color: vector(defaultValue(value.color, defaultColor), 3, 'color'),
-    ...(graphFactor('clearcoat', 0) && { clearcoat: 1 }), ...(graphFactor('transmission', 0) && { transmission: 1 }),
-    metallic: defaultValue(value.metallic, graphFactor('metallic', value.metallicMap === undefined ? 0 : 1)), roughness: defaultValue(value.roughness, graphFactor('roughness', value.roughnessMap === undefined ? 0.5 : 1)), emission: defaultValue(value.emission, graphFactor('emission', 0)) };
+    metallic: defaultValue(value.metallic, value.metallicMap === undefined ? 0 : 1), roughness: defaultValue(value.roughness, value.roughnessMap === undefined ? 0.5 : 1), emission: defaultValue(value.emission, 0) };
   if (!AGENT_SCENE_CAPABILITIES.materialTags.includes(result.tag)) {
     throw invalidField('tag', result.tag, `one of ${AGENT_SCENE_CAPABILITIES.materialTags.join(', ')}`);
   }
   if (value.map !== undefined) agentSceneModule('assets').applyMapSequence(value, result);
   if (value.text !== undefined) {
     if (result.tag !== 'surface' && result.tag !== 'unlit') throw invalidField('text', value.text?.content, 'a material with the surface or unlit tag; remove text or set tag to unlit for a sign that glows');
-    if (value.pattern !== undefined || value.map !== undefined || value.colorMap !== undefined) throw invalidField('text', value.text?.content, 'nothing besides it: a material draws a text panel, a pattern, a map sequence or a catalog colour map, not two of them', TypeError);
+    if (hasPattern || value.map !== undefined || value.colorMap !== undefined) throw invalidField('text', value.text?.content, 'nothing besides it: a material draws a text panel, a pattern, a map sequence or a catalog colour map, not two of them', TypeError);
     result.text = agentSceneModule('textPanel').normalizeTextPanel(value.text);
   }
   if (TEXTURE_SET_RECIPE_FIELDS.some(field => value[field] !== undefined)) agentSceneModule('assets').applyTextureMaps(value, result);
-  if (value.pattern !== undefined) {
-    if (result.tag !== 'surface') throw invalidField('pattern', value.pattern?.type, 'a material with the surface tag; remove pattern or set tag to surface');
-    result.pattern = agentSceneModule('patterns').normalizeMaterialPattern(value.pattern);
-  }
+  const graphHasOpacity = hasPattern && agentSceneModule('patterns').applyRecipePattern(value, result, invalidField);
   result.opacity = defaultValue(value.opacity, 1);
   finite(result.opacity, 'opacity');
   if (result.opacity < 0 || result.opacity > 1) {
@@ -448,7 +443,6 @@ function materialFrom(recipeValue) {
     throw invalidField('alphaMode', requestedAlphaMode, `one of ${RECIPE_ALPHA_MODES.join(', ')}`);
   }
   // The renderer ignores opacity on opaque surfaces, so any opacity below one means blending (additive stays additive).
-  const graphHasOpacity = graphFactor('opacity', 0);
   result.alphaMode = (result.opacity < 1 || graphHasOpacity) && requestedAlphaMode === 'opaque' ? 'blend' : requestedAlphaMode;
   applyAlphaCutoff(value, result);
   result.doubleSided = optionalBoolean(value.doubleSided, 'doubleSided', false);
@@ -2174,7 +2168,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       const wholeGeometry = geometryWithMaterialUvs(maskedGeometry, recipe, materialId, graph, node.id);
       const geometry = slotGroup ? agentSceneModule('mesh').geometryOfSlot(wholeGeometry, slotGroup) : wholeGeometry;
       // A graph with a vertexGroup node bakes with this mesh's weights, so its textures belong to the mesh.
-      const drawnMaterial = recipeMaterial.output.assetGraph ? agentSceneModule('assetGraph').assetGraphView(recipeMaterial.output, geometry, node.id, graph.getNode(node.id).worldMatrix) : recipeMaterial.output.pattern?.graph ? agentSceneModule('patterns').materialViewForGeometry(recipeMaterial.output, geometry, node.id, recipeMaterial.holder.images, graph.getNode(node.id).worldMatrix) : recipeMaterial.output;
+      const drawnMaterial = recipeMaterial.output.assetGraph ? agentSceneModule('assetGraph').assetGraphView(recipeMaterial.output, geometry, node.id, graph.getNode(node.id).worldMatrix) : recipeMaterial.output.pattern ? agentSceneModule('patterns').materialViewForGeometry(recipeMaterial.output, geometry, node.id, recipeMaterial.holder.images, graph.getNode(node.id).worldMatrix) : recipeMaterial.output;
       const fades = fadedNodeIds.has(node.id);
       const material = fades ? fadeMaterial(drawnMaterial, node.id) : drawnMaterial;
       const assetExtras = assetRuntime.partExtras.get(node.id);
