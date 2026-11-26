@@ -100,11 +100,11 @@ async function prepareDemoGlb(sourceName, cacheFolder) {
   return sourceFolder;
 }
 
-function demoSceneDescription(preview) {
+export function demoSceneDescription(preview) {
   return {
     id: preview.source, glb: 'scene.glb', hdri: 'sky.hdr',
     hdriOptions: { intensity: 1, showBackground: true, backgroundBlur: 0 },
-    gltfOptions: { maxTexturePixels: 33554432 },
+    gltfOptions: { maxTexturePixels: 134217728 },
     exposure: 1, eye: preview.eye, target: preview.target,
     renderer: { ground: false, world: false, hdr: true, samples: 8, pixelRatio: 1, memoryBudgetMiB: 3072 },
     frame: { fov: preview.fov, near: 0.05, far: 2000, exposure: 1, effects: { saturation: 1.05, contrast: 1.05, vignette: 0.15 } },

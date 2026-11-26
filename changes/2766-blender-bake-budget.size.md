@@ -1,0 +1,1 @@
+- scene:gltf-box+lazy: Lazy-loaded texture-budget warning formatter naming total pixels vs maxTexturePixels and every scaled material/map slot so scenes never lose texture detail silently; scene:gltf-box shrank by 30 bytes gzip.

@@ -1,0 +1,1 @@
+- `loadGltf` and `parseGltf` warn with total texture pixels vs `maxTexturePixels` and every affected material/map slot when textures are scaled, demo preview scenes raise their texture pixel budget, and `.blend` demo export bakes non-plain-UV procedural/mapped channels onto clean UVs (#2766)
