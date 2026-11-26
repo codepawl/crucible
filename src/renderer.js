@@ -1,12 +1,12 @@
 import { LIGHT_DATA_BLOCK, uniformBlockOf, disposeUniformBlocks } from './light-uniform-block.js';
 import { resolveBackground, clearColourFor } from './clear-colour.js';
-import { materialTags, registeredFeatureCode } from './shader-registry.js';
+import { materialTags, MAX_MORPH_TARGETS, registeredFeatureCode, requireFeatureCode, requireHeightParallaxSupport, deformationSupport, requireDeformationSupport, texturedReplaceSupport, textureUpdateSupport } from './shader-registry.js';
 import { mat4, mat3 } from 'gl-matrix';
 import { BLEND_FACTORS } from './blend-output.js';
 import { packNormalsWithTangents, validateGeometryTangents } from './tangent-encoding.js';
 import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, WETNESS_FEATURE, HEIGHT_MAP_FEATURE, FRAGMENT_SHADOW_POSITION_FEATURE, FADING_SHADOWS_FEATURE, VERTEX_OPACITY_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, TANGENT_FEATURE, vertexShader, liquidFragmentSource, createFragmentShader, liquidPassDrawer, createDepthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
 import { createGlazeBackend } from './glaze-backend.js';
-import { postFragment, createPostFragment, KEEP_HUE_STEP, GRID_MOTION_STEP, GRID_DETAIL_STEP, NOISE_OCTAVES_STEP, localVolumeKindSteps, POST_STEPS, POST_STEPS_WITH_OPTIONAL_CODE, skyFragment, bloomFragment } from './post.js';
+import { postFragment, createPostFragment, GRID_MOTION_STEP, GRID_DETAIL_STEP, NOISE_OCTAVES_STEP, localVolumeKindSteps, POST_STEPS, POST_STEPS_WITH_OPTIONAL_CODE, skyFragment, bloomFragment } from './post.js';
 import { fullscreenVertex, compileProgram, ProgramNotReady, isLinkComplete, setPreparing, releaseStartedPrograms } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
 import { planRenderSize, estimateTextureBytes, estimateFrameBytes, memoryBudgetError, automaticBudgetCeilingMiB } from './budget.js';
@@ -34,7 +34,6 @@ import { glassFaceTransmittance } from './glass-shadow.js';
 import { fitStudioShadowView } from './studio-shadow-fit.js';
 import { fitWorldShadowView, resolveShadowLight, shadowBiasPerSlope, sunShadowMapSize, writeShadowLightMatrix } from './shadow-light.js';
 import { CLIP_PLANES_FEATURE, MAX_CLIP_PLANES, packClipPlanes, clipPlaneLocations, bindClipPlanes, clipPlanesChanged } from './clip-planes.js';
-import { MAX_MORPH_TARGETS, requireFeatureCode, requireHeightParallaxSupport, deformationSupport, requireDeformationSupport, texturedReplaceSupport, textureUpdateSupport } from './shader-registry.js';
 import { bakeNormalMapVariance } from './normal-map-variance.js';
 
 // Liquid and foam see the resolved opaque scene, so they draw in their own pass after it.
@@ -238,7 +237,60 @@ const DEFORMING_TAGS = new Set(['foliage', 'grass', 'water', 'fire', 'smoke']);
 // strength, so they can be culled and given levels like rigid parts.
 const SWAY_REACH_PER_STRENGTH = 0.56;
 
-const POST_UNIFORMS = ['transparent', 'frameTexture', 'bloomTexture', 'bloomStrength', 'bloomKeepHue', 'hdrEnabled', 'grade', 'vignette', 'grainAmount', 'resolution', 'monochrome', 'fade', 'cinematic', 'time', 'volumeExplosion', 'explosionProgress', 'inverseViewProjection', 'eye', 'sceneDepth', 'volumeShadowMap', 'volumeLightProjection', 'volumeLightDirection', 'volumeLightColor', 'volumeDensity', 'volumeMinimum', 'volumeMaximum', 'volumeColor', 'volumeAmbient', 'volumeDrift', 'volumeSteps', 'volumeAnisotropy', 'volumeShadowAmbient', 'volumeGridFog', 'volumeNoiseAmount', 'volumeNoiseScale', 'volumeHeightFalloff', 'volumeMaxDistance', 'volumeField', 'volumeProfile', 'volumeFlowStrength', 'volumeFlowPeriod', 'volumeLightCount', 'volumeLightPositions[0]', 'volumeLightColors[0]', 'volumeLightDirections[0]', 'volumeLightCones[0]', 'fogSkyVisibility', 'orthographic', 'occlusionTexture', 'occlusionStrength', 'occlusionTexel', 'autoExposureScale'];
+const POST_UNIFORMS = [
+  'transparent',
+  'frameTexture',
+  'bloomTexture',
+  'bloomStrength',
+  'bloomKeepHue',
+  'hdrEnabled',
+  'grade',
+  'vignette',
+  'grainAmount',
+  'resolution',
+  'monochrome',
+  'fade',
+  'cinematic',
+  'time',
+  'volumeExplosion',
+  'explosionProgress',
+  'inverseViewProjection',
+  'eye',
+  'sceneDepth',
+  'volumeShadowMap',
+  'volumeLightProjection',
+  'volumeLightDirection',
+  'volumeLightColor',
+  'volumeDensity',
+  'volumeMinimum',
+  'volumeMaximum',
+  'volumeColor',
+  'volumeAmbient',
+  'volumeDrift',
+  'volumeSteps',
+  'volumeAnisotropy',
+  'volumeShadowAmbient',
+  'volumeGridFog',
+  'volumeNoiseAmount',
+  'volumeNoiseScale',
+  'volumeHeightFalloff',
+  'volumeMaxDistance',
+  'volumeField',
+  'volumeProfile',
+  'volumeFlowStrength',
+  'volumeFlowPeriod',
+  'volumeLightCount',
+  'volumeLightPositions[0]',
+  'volumeLightColors[0]',
+  'volumeLightDirections[0]',
+  'volumeLightCones[0]',
+  'fogSkyVisibility',
+  'orthographic',
+  'occlusionTexture',
+  'occlusionStrength',
+  'occlusionTexel',
+  'autoExposureScale',
+];
 
 function postUniformLocations(context, program) {
   return Object.fromEntries(POST_UNIFORMS.map(name => [name, context.getUniformLocation(program, name)]));
@@ -246,11 +298,40 @@ function postUniformLocations(context, program) {
 
 const MAP_SHADER_FEATURES = ['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap'];
 // Part or material fields that name their shader feature and switch it on when set.
-const PRESENT_SHADER_FEATURES = ['skin', 'crowd', 'morph', 'lightMap', 'waterReflection', 'retro', 'waterGlint', CLIP_PLANES_FEATURE];
+const PRESENT_SHADER_FEATURES = [
+  CLIP_PLANES_FEATURE,
+  'crowd',
+  'emissionMask',
+  'irradianceGrid',
+  'lightMap',
+  'morph',
+  'retro',
+  'skin',
+  'surfaceCover',
+  'waterGlint',
+  'waterReflection',
+];
 // Material fields that name their shader feature and switch it on above zero.
-const POSITIVE_SHADER_FEATURES = ['moss', 'anisotropy', 'iridescence', 'toon', 'boxMapScale', 'emissionFresnel', 'softEdge'];
+const POSITIVE_SHADER_FEATURES = [
+  'anisotropy',
+  'boxMapScale',
+  'emissionFresnel',
+  'iridescence',
+  'moss',
+  'softEdge',
+  'toon',
+];
 // Tags whose look the main fragment shader draws with code that other tags never reach.
-const TAG_SHADER_FEATURES = new Set(['floor', 'water', 'foliage', 'terrain', 'grass', 'fire', 'smoke', 'unlit']);
+const TAG_SHADER_FEATURES = new Set([
+  'fire',
+  'floor',
+  'foliage',
+  'grass',
+  'smoke',
+  'terrain',
+  'unlit',
+  'water',
+]);
 
 function shaderFeaturesOfLighting(lighting) {
   const features = [];
@@ -298,7 +379,6 @@ export function shaderFeaturesOfParts(parts) {
     if (castsTintedShadow(part)) features.add('tintedShadows');
     if (part.opacityScale && castsTintedShadow(part)) features.add(FADING_SHADOWS_FEATURE);
     if (material.environmentProbe) features.add('probe');
-    if (material.irradianceGrid) features.add('irradianceGrid');
     if (material.normalMap?.uvTransform) features.add('normalMapTransform');
     if (usesHeightParallax(material)) features.add(HEIGHT_MAP_FEATURE);
     Object.keys(material.layerMaps ?? {}).forEach(name => features.add(name));
@@ -306,12 +386,10 @@ export function shaderFeaturesOfParts(parts) {
     for (const name of POSITIVE_SHADER_FEATURES) {
       if (material[name] > 0) features.add(name);
     }
-    if (material.emissionMask) features.add('emissionMask');
     if (material.lightMask !== undefined) features.add('lightLinking');
     if ((material.alphaMode ?? 'opaque') !== 'opaque') features.add('alphaMode');
     if (material.subsurface?.weight > 0) features.add('subsurface');
     if (material.wear) features.add('surfaceWear');
-    if (material.surfaceCover) features.add('surfaceCover');
     if (material.snippet) {
       features.add(material.snippet.feature);
       // A water hook reads the water values the world material code declares, so that code is compiled in.
@@ -2821,7 +2899,6 @@ export class CrucibleRenderer {
     if (this.transparent) steps.push('transparent');
     if (occluded) steps.push('occlusion');
     if (isBloomActive(effects)) steps.push('bloom');
-    if (isBloomActive(effects) && effects.bloom.keepHue) steps.push(KEEP_HUE_STEP);
     if (volume.density > 0) steps.push('volume');
     if (volume.density > 0 && volume.field) steps.push('field');
     if (volume.density > 0 && requireFeatureCode('volumeFog').support.usesDetail(volume)) steps.push('detail');
@@ -2833,12 +2910,17 @@ export class CrucibleRenderer {
     if (localVolumes && this.localVolumeBuffers.gridDetail) steps.push(GRID_DETAIL_STEP);
     if (fogSky) steps.push('sky');
     if (frame.volumeExplosion) steps.push('explosion');
-    if (frame.linearOutput) steps.push(requireFeatureCode('linearOutput').step(this, frame));
     if (this.autoExposureScale != null) steps.push('autoExposure');
     const gradesColor = effects.saturation !== 1 || effects.contrast !== 1 || effects.temperature !== 0;
     const finishes = gradesColor || (frame.monochrome ?? 0) !== 0 || Boolean(frame.cinematic) || effects.vignette !== 0 || effects.grain !== 0;
     if (finishes) steps.push('finish');
     if (isDitherActive(effects)) steps.push('dither');
+    if (frame.linearOutput) requireFeatureCode('linearOutput');
+    if (isBloomActive(effects) && effects.bloom.keepHue) requireFeatureCode('keepHue');
+    for (const feature of registeredFeatureCode.values()) {
+      const step = feature.postStep?.(this, frame, effects);
+      if (step) steps.push(step);
+    }
     return steps;
   }
 

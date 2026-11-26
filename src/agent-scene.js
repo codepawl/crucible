@@ -6,7 +6,7 @@ import { invalidField, withFieldPrefix } from './field-error.js';
 import { createRepeatTracker, partFingerprint, unchangedFindingsLine } from './diagnostic-repeats.js';
 import { applyProjection, validateCameraShift, CAMERA_LENS_FIELDS } from './camera.js';
 import { checkLocalVolumePartNames } from './local-volume-resolve.js';
-import { normalizeAgentLook, environmentPatchWithSetup, environmentLinksLights, agentEnvironmentMap, agentEnvironmentKey, SKY_OVERRIDABLE_FIELDS, VOLUME_FOG_FIELDS, EFFECT_GROUP_FIELDS } from './agent-look.js';
+import { normalizeAgentLook, environmentPatchWithSetup, environmentLinksLights, agentEnvironmentMap, agentEnvironmentKey, ENVIRONMENT_FIELDS, SKY_OVERRIDABLE_FIELDS, VOLUME_FOG_FIELDS, EFFECT_GROUP_FIELDS } from './agent-look.js';
 import { cameraFieldsToClear, splitClearedLookFields, mergeGroupPatch } from './agent-clear-fields.js';
 import { postStepSupport } from './shader-registry.js';
 import { agentSceneModule, agentSceneModuleActive, agentSceneModuleLoaded, defaultStageModulesNamed } from './agent-scene-modules.js';
@@ -62,16 +62,96 @@ const PENDING_CUTTER_SCOPE = Object.freeze({ definitions: null, chain: Object.fr
 const TERRAIN_SKY_VISIBILITY_BYTES = 4;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
 // Per-node render flags: `visible` hides a node and its children; the rest become renderer part flags of a mesh node.
-const RENDER_FLAG_FIELDS = ['visible', 'castShadow', 'receiveShadow', 'holdout', 'shadowCatcher', 'shadowOnly'];
+const RENDER_FLAG_FIELDS = [
+  'visible',
+  'castShadow',
+  'receiveShadow',
+  'holdout',
+  'shadowCatcher',
+  'shadowOnly',
+];
 const PART_FLAG_FIELDS = RENDER_FLAG_FIELDS.slice(1);
 // On an asset placement these two flags reach each part it expands to.
-const ASSET_PLACEMENT_FLAG_FIELDS = ['castShadow', 'receiveShadow'];
-const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'vegetation', 'clutter', 'grass', 'decal', 'faceImages', 'depthLayer', 'billboard', 'blend', 'rayVisibility', ...RENDER_FLAG_FIELDS];
-const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'alphaCutoff', 'doubleSided', 'depthTest', 'pattern', 'map', 'text', 'subsurface', 'snippet', 'preset', 'waterPreset', 'absorption', 'turbidity', 'foamEdge', 'foamWidth', 'foamColor', 'foamVeins', 'contactFoam', 'caustics', 'ripples', 'waterRamp', 'aov', 'wear', 'surfaceCover', 'retro', 'emissionMask', 'toonColors', ...MATERIAL_LAYER_FIELDS];
-const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'layerMaps', 'transmissionMap', 'aovMap', 'emissionFresnel', 'boxMapScale', 'boxMapAxis'];
+const ASSET_PLACEMENT_FLAG_FIELDS = [
+  'castShadow',
+  'receiveShadow',
+];
+const NODE_FIELDS = [
+  'translation',
+  'rotation',
+  'scale',
+  'parent',
+  'label',
+  'geometry',
+  'material',
+  'skin',
+  'relations',
+  'asset',
+  'vegetation',
+  'clutter',
+  'grass',
+  'decal',
+  'faceImages',
+  'depthLayer',
+  'billboard',
+  'blend',
+  'rayVisibility',
+  ...RENDER_FLAG_FIELDS,
+];
+// Optional/newer material fields join this sorted list (one per line) so parallel pull requests never collide while core packed key order stays identical.
+const EXTRA_MATERIAL_FIELDS = [
+  'waterGlint',
+];
+const MATERIAL_FIELDS = [
+  'color',
+  'metallic',
+  'roughness',
+  'emission',
+  'emissiveColor',
+  'opacity',
+  'alphaMode',
+  'alphaCutoff',
+  'doubleSided',
+  'depthTest',
+  'pattern',
+  'map',
+  'text',
+  'subsurface',
+  'snippet',
+  'preset',
+  'waterPreset',
+  'absorption',
+  'turbidity',
+  'foamEdge',
+  'foamWidth',
+  'foamColor',
+  'foamVeins',
+  'contactFoam',
+  'caustics',
+  'ripples',
+  'waterRamp',
+  'aov',
+  'wear',
+  'surfaceCover',
+  'retro',
+  'emissionMask',
+  'toonColors',
+  ...MATERIAL_LAYER_FIELDS,
+  ...EXTRA_MATERIAL_FIELDS,
+];
+const PATTERN_TEXTURE_FIELDS = [
+  'map',
+  'normalMap',
+  'metallicRoughnessMap',
+  'emissiveMap',
+  'layerMaps',
+  'transmissionMap',
+  'aovMap',
+  'emissionFresnel',
+  'boxMapScale',
+  'boxMapAxis',
+];
 const CAMERA_FIELDS = [...Object.keys(CAMERA_DEFAULTS), ...CAMERA_LENS_FIELDS];
-// Fields of an optional shader module join the list here, so the long list above stays a line each material feature does not rewrite.
-MATERIAL_FIELDS.push('waterGlint');
 const LOOK_OPERATION_FIELDS = Object.freeze({
   'set-environment': 'environment',
   'set-effects': 'effects',
@@ -249,6 +329,13 @@ function integer(value, minimum, maximum, label) {
   return value;
 }
 
+function optionalBoolean(value, label, fallback) {
+  if (value !== undefined && typeof value !== 'boolean') {
+    throw invalidField(label, value, 'true or false', TypeError);
+  }
+  return value === undefined ? fallback : value;
+}
+
 function identifier(value, label = 'id') {
   if (typeof value !== 'string' || !value.trim() || value.length > 128) {
     throw invalidField(label,value, 'a string of 1 to 128 characters, such as "wall-left"', TypeError);
@@ -362,16 +449,8 @@ function materialFrom(recipeValue) {
   const graphHasOpacity = graphFactor('opacity', 0);
   result.alphaMode = (result.opacity < 1 || graphHasOpacity) && requestedAlphaMode === 'opaque' ? 'blend' : requestedAlphaMode;
   applyAlphaCutoff(value, result);
-  result.doubleSided = defaultValue(value.doubleSided, false);
-  if (typeof result.doubleSided !== 'boolean') {
-    throw invalidField('doubleSided', result.doubleSided, 'true or false', TypeError);
-  }
-  if (value.depthTest !== undefined) {
-    if (typeof value.depthTest !== 'boolean') {
-      throw invalidField('depthTest', value.depthTest, 'true or false', TypeError);
-    }
-    result.depthTest = value.depthTest;
-  }
+  result.doubleSided = optionalBoolean(value.doubleSided, 'doubleSided', false);
+  if (value.depthTest !== undefined) result.depthTest = optionalBoolean(value.depthTest, 'depthTest');
   for (const field of ['metallic', 'roughness']) {
     finite(result[field], field);
     if (result[field] < 0 || result[field] > 1) {
@@ -462,9 +541,7 @@ function nodeFrom(value) {
   if (value.vegetation !== undefined) result.vegetation = agentSceneModule('vegetation').normalizeVegetation(value.vegetation, value);
   if (value.clutter !== undefined) result.clutter = agentSceneModule('clutter').normalizeClutter(value.clutter, value);
   if (value.grass !== undefined) result.grass = agentSceneModule('grass').normalizeGrass(value.grass, value);
-  if (value.decal !== undefined && typeof value.decal !== 'boolean') {
-    throw invalidField('decal', value.decal, 'true or false', TypeError);
-  }
+  optionalBoolean(value.decal, 'decal');
   if (value.billboard !== undefined) {
     if (value.geometry === undefined) throw invalidField('billboard', value.billboard, 'a field on a mesh node whose geometry is a plane; remove it from group nodes', TypeError);
     result.billboard = agentSceneModule('textBillboard').normalizeBillboard(value.billboard);
@@ -475,7 +552,7 @@ function nodeFrom(value) {
     integer(value.depthLayer, 0, MAXIMUM_DEPTH_LAYER, 'depthLayer');
   }
   for (const flag of RENDER_FLAG_FIELDS) {
-    if (value[flag] !== undefined && typeof value[flag] !== 'boolean') throw invalidField(flag, value[flag], 'true or false', TypeError);
+    optionalBoolean(value[flag], flag);
     const placesAsset = value.asset !== undefined && ASSET_PLACEMENT_FLAG_FIELDS.includes(flag);
     if (flag !== 'visible' && value[flag] !== undefined && value.geometry === undefined && !placesAsset) throw invalidField(flag, value[flag], 'a flag on a mesh node with geometry and material; remove it from group nodes', TypeError);
   }
@@ -631,10 +708,16 @@ function cameraFrom(value = {}) {
 }
 
 const GEOMETRY_FIELDS = {
-  box: ['bevel', 'subdivisions'], cylinder: ['segments', 'bevel', 'bevelSegments'],
-  sphere: ['segments', 'rings'], grid: ['segments'], plane: ['segments'],
-  cone: ['radiusTop', 'radiusBottom', 'segments'], icoSphere: ['subdivisions'], circle: ['segments', 'innerRadius'],
-  line: ['from', 'to', 'radius', 'radialSegments'], torus: ['tubeRadius', 'segments', 'sides', 'arc', 'start'],
+  box: ['bevel', 'subdivisions'],
+  cylinder: ['segments', 'bevel', 'bevelSegments'],
+  sphere: ['segments', 'rings'],
+  grid: ['segments'],
+  plane: ['segments'],
+  cone: ['radiusTop', 'radiusBottom', 'segments'],
+  icoSphere: ['subdivisions'],
+  circle: ['segments', 'innerRadius'],
+  line: ['from', 'to', 'radius', 'radialSegments'],
+  torus: ['tubeRadius', 'segments', 'sides', 'arc', 'start'],
   lathe: ['profile', 'segments', 'startAngle', 'sweep'],
   extrude: ['contour', 'holes', 'depth', 'steps', 'bevel', 'bevelThickness', 'bevelSegments'],
   tube: ['path', 'radius', 'segments', 'radialSegments', 'closed'],
@@ -720,9 +803,7 @@ function geometryEstimate(value, scope = PENDING_CUTTER_SCOPE) {
     }
     case 'tube':
       points(value.path, 3, value.closed ? 3 : 2, 'path');
-      if (value.closed !== undefined && typeof value.closed !== 'boolean') {
-        throw invalidField('closed', value.closed, 'true or false', TypeError);
-      }
+      optionalBoolean(value.closed, 'closed');
       agentSceneModule('modeling').checkTubeInputs(value.path, value.radius ?? 0.1, value.closed ?? false);
       return (detail('segments', 64, 3, 2048) + 1) * (detail('radialSegments', 12, 3, 128) + 1);
     case 'curve': {
@@ -1263,11 +1344,14 @@ function normalizeRecipe(input, limits, { alreadyCopied = false } = {}) {
   if (Object.hasOwn(recipe, 'motion')) {
     recipe.motion = recipe.motion === null || recipe.motion === undefined ? null : agentSceneModule('motion').normalizeAgentMotion(recipe.motion, recipe);
   }
-  if (Object.hasOwn(recipe, 'physics')) {
-    recipe.physics = agentSceneModule('physics').normalizeAgentPhysics(recipe.physics, recipe);
-  }
-  if (Object.hasOwn(recipe, 'cloth')) {
-    recipe.cloth = agentSceneModule('cloth').normalizeAgentCloth(recipe.cloth, recipe);
+  for (const [section, moduleName, normalizer] of [
+    ['physics', 'physics', 'normalizeAgentPhysics'],
+    ['cloth', 'cloth', 'normalizeAgentCloth'],
+    ['particles', 'particles', 'normalizeAgentParticles'],
+  ]) {
+    if (Object.hasOwn(recipe, section)) {
+      recipe[section] = agentSceneModule(moduleName)[normalizer](recipe[section], recipe);
+    }
   }
   if (Object.hasOwn(recipe, 'timeline')) {
     if (recipe.timeline === null) {
@@ -1276,23 +1360,20 @@ function normalizeRecipe(input, limits, { alreadyCopied = false } = {}) {
       recipe.timeline = agentSceneModule('timeline').normalizeFilmTimeline(recipe.timeline, recipe, { checkCamera: shotCameraOverrides => cameraOverridesFrom(recipe.camera, shotCameraOverrides) });
     }
   }
-  if (Object.hasOwn(recipe, 'particles')) {
-    recipe.particles = agentSceneModule('particles').normalizeAgentParticles(recipe.particles, recipe);
-  }
   if (Object.hasOwn(recipe, 'bake')) {
     recipe.bake = recipe.bake === null ? null : agentSceneModule('bake').normalizeAgentBake(recipe.bake);
   }
   if (Object.hasOwn(recipe, 'postPasses')) recipe.postPasses = agentSceneModule('userPass').normalizeUserPasses(recipe.postPasses ?? []);
   if (Object.hasOwn(recipe, 'postPassesAntialias')) recipe.postPassesAntialias = agentSceneModule('userPass').normalizePostPassesAntialias(recipe.postPassesAntialias);
-  if (Object.hasOwn(recipe, 'pixelGrid')) {
-    // Cleared with null, the recipe reads as if it never had a grid, and the on-demand grid module is not needed.
-    if (recipe.pixelGrid === null) delete recipe.pixelGrid;
-    else recipe.pixelGrid = agentSceneModule('pixelGrid').normalizePixelGrid(recipe.pixelGrid);
-  }
   if (recipe.nodes.some(node => node.billboard)) agentSceneModule('textBillboard').checkBillboardMaterials(recipe);
-  if (Object.hasOwn(recipe, 'game')) {
-    if (recipe.game === null) delete recipe.game;
-    else recipe.game = agentSceneModule('game').normalizeGameSetup(recipe.game, recipe.nodes);
+  // Cleared with null, pixelGrid and game read as if unset, and the on-demand module is not needed.
+  for (const [section, moduleName, normalizer, extra] of [
+    ['pixelGrid', 'pixelGrid', 'normalizePixelGrid'],
+    ['game', 'game', 'normalizeGameSetup', recipe.nodes],
+  ]) {
+    if (!Object.hasOwn(recipe, section)) continue;
+    if (recipe[section] === null) delete recipe[section];
+    else recipe[section] = agentSceneModule(moduleName)[normalizer](recipe[section], extra);
   }
   if (alreadyCopied) {
     // The input was checked JSON and each step above returns checked JSON, so only the size can have grown.
@@ -1811,10 +1892,7 @@ function meshGeometryTarget(candidate, operation, remedy) {
 function removeNode(candidate, operation) {
   knownKeys(operation, ['type', 'id', 'recursive'], 'operation');
   identifier(operation.id);
-  const recursive = operation.recursive === undefined ? false : operation.recursive;
-  if (typeof recursive !== 'boolean') {
-    throw invalidField('recursive', recursive, 'true or false', TypeError);
-  }
+  const recursive = optionalBoolean(operation.recursive, 'recursive', false);
   if (!candidate.nodes.some(node => node.id === operation.id)) {
     throw invalidField('id', operation.id, 'the ID of a node in nodes; scene_inspect lists them');
   }
@@ -1846,6 +1924,7 @@ function removeNode(candidate, operation) {
 /** A bounded CPU authoring session. Render adapters must treat geometry as immutable. */
 export function createAgentScene(input, inputLimits = {}, options = {}) {
   const limits = resolveLimits(inputLimits);
+  const deferInitialFlush = optionalBoolean(options.deferInitialFlush, 'deferInitialFlush', false);
   const assetOutputCache = new Map();
   // The on-demand modules this scene's recipe and edits named. Default stages (flush ranking, floor sky) run only for these.
   const requestedModules = new Set(defaultStageModulesNamed(input));
@@ -2247,7 +2326,8 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   // Wet ground with puddles mirrors the scene in them: the water mirror module flags the flat ground parts, and the host attaches the mirror.
   function stageWetMirror(recipe, parts) {
     const environment = recipe.environment;
-    return environment.wetness > 0 && environment.puddles && agentSceneModuleActive('waterReflection', requestedModules) ? agentSceneModule('waterReflection').flagWetMirrorParts(parts) : parts;
+    const hasWetSurface = environment.wetness > 0 || (environment.rain?.wetness > 0 && (environment.rain.intensity > 0 || environment.rain.intensityCurve));
+    return hasWetSurface && environment.puddles && agentSceneModuleLoaded('waterReflection') ? agentSceneModule('waterReflection').flagWetMirrorParts(parts) : parts;
   }
 
   // A closed room a sun lights gets the sky each floor texel sees; the lazy module decides, keeps its result and honours environment.floorSkyTrace.
@@ -2301,10 +2381,8 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     return first.length === second.length && first.every((part, index) => part === second[index]);
   }
 
-  // An edit of a scene that holds this many triangles to rank does not wait for the search (#2905): it returns with the parts
-  // unranked and the search runs right after, on the next turn of the event loop. A new scene is still ranked inside the call,
-  // so a render job built from a recipe never misses an offset. A scene whose parts move (#2787) searches its still parts the
-  // same way; the rest parts and the posed parts of that edit share the one search (see joinPendingFlush).
+  // Heavy scenes (>= DEFERRED_FLUSH_TRIANGLES) defer flush on edits (#2905) and initial build if `options.deferInitialFlush` (#2842).
+  // Moving scenes (#2787) share one search across rest and posed parts (see joinPendingFlush).
   const DEFERRED_FLUSH_TRIANGLES = 100_000;
   let pendingFlush = null;
 
@@ -2313,14 +2391,14 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   }
 
   function cancelPendingFlush() {
-    if (pendingFlush) {
-      pendingFlush.runner.cancel();
-      pendingFlush = null;
-    }
+    if (!pendingFlush) return;
+    pendingFlush.runner.cancel();
+    pendingFlush = null;
   }
 
   function shouldDeferFlush(rankedParts) {
-    return state !== null && triangleCountOf(rankedParts) >= (options.deferFlushTriangles ?? DEFERRED_FLUSH_TRIANGLES)
+    return (state !== null || deferInitialFlush)
+      && triangleCountOf(rankedParts) >= (options.deferFlushTriangles ?? DEFERRED_FLUSH_TRIANGLES)
       && !rankedLists().some(candidate => sameParts(candidate.rankedParts, rankedParts));
   }
 
@@ -2347,12 +2425,9 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     return staged;
   }
 
-  // Finishes the deferred search now, whether the slices ran out or a caller needs the ranks first. It is the same search a cold
-  // edit runs, so the result is byte for byte the same.
+  // Finishes the deferred search now; it is the same search a cold build runs, so the result is byte for byte the same.
   function settleFlush() {
-    if (!pendingFlush) {
-      return false;
-    }
+    if (!pendingFlush) return false;
     pendingFlush.runner.drain();
     return true;
   }
@@ -2360,6 +2435,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   // The drawn parts are swapped for the ranked list as a topology change.
   function finishFlush(pending, searched) {
     pendingFlush = null;
+    if (!state) return;
     let regrouped = false;
     for (const { parts, rest } of pending.targets) {
       const staged = rankAndStage(agentSceneModule('coplanar'), pending.recipe, parts, rest, searched);
@@ -2370,15 +2446,11 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         regrouped = true;
       }
     }
-    if (regrouped) {
-      topologyRevision++;
-    }
+    if (regrouped) topologyRevision++;
   }
 
   function stageCoplanarOffsets(recipe, parts, { rest = false } = {}) {
-    if (options.recipeOnly || !agentSceneModuleActive('coplanar', requestedModules)) {
-      return parts;
-    }
+    if (options.recipeOnly || !agentSceneModuleActive('coplanar', requestedModules)) return parts;
     const coplanar = agentSceneModule('coplanar');
     if (recipe.environment.resolveCoplanar === false) {
       cancelPendingFlush();
@@ -2393,9 +2465,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     }
     const rankedParts = partsToRank(recipe, parts);
     if (pendingFlush && sameParts(pendingFlush.rankedParts, rankedParts)) {
-      if (!pendingFlush.targets.some(target => target.parts === parts)) {
-        joinPendingFlush(parts, rest);
-      }
+      if (!pendingFlush.targets.some(target => target.parts === parts)) joinPendingFlush(parts, rest);
       return parts;
     }
     if (flushCache?.parts !== parts && flushCache?.staged !== parts) {
@@ -2455,6 +2525,8 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     return coplanarReportCache.problems;
   }
 
+  const geometryMap = geometryRecords => new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
+
   // A bake costs a solver run, so an unchanged section on unchanged geometry reuses the last one.
   function stagePhysics(recipe, geometryRecords) {
     if (!recipe.physics) {
@@ -2462,8 +2534,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     }
     const key = agentSceneModule('physics').physicsBakeKey(recipe, geometryRecords);
     if (physicsBake?.key !== key) {
-      const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
-      physicsBake = { key, sampler: agentSceneModule('physics').bakeAgentPhysics(recipe.physics, recipe, geometries) };
+      physicsBake = { key, sampler: agentSceneModule('physics').bakeAgentPhysics(recipe.physics, recipe, geometryMap(geometryRecords)) };
     }
     return physicsBake.sampler;
   }
@@ -2478,8 +2549,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const followsMotion = recipe.cloth.sheets.some(sheet => sheet.pinTo) || (recipe.cloth.colliders ?? []).some(collider => collider.node === undefined);
     const key = JSON.stringify([recipe.cloth, involvedNodes, involvedNodes.map(node => geometryRecords.get(node.geometry)?.signature), followsMotion ? [recipe.motion, recipe.nodes, recipe.armatures] : null]);
     if (clothBake?.key !== key) {
-      const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
-      clothBake = { key, sampler: agentSceneModule('cloth').bakeAgentCloth(recipe.cloth, recipe, geometries, motionSampler) };
+      clothBake = { key, sampler: agentSceneModule('cloth').bakeAgentCloth(recipe.cloth, recipe, geometryMap(geometryRecords), motionSampler) };
     }
     return clothBake.sampler;
   }
@@ -2497,13 +2567,12 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     const followedPose = followsNode ? [recipe.motion, recipe.physics, recipe.armatures, recipe.nodes.map(node => [node.id, node.parent, node.translation, node.rotation, node.scale])] : null;
     const key = JSON.stringify([recipe.particles, involvedNodes, involvedNodes.map(node => geometryRecords.get(node.geometry).signature), oceanTracks, followedPose]);
     if (particleBake?.key !== key) {
-      const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
       // An emitter on a sea with an oceanTime track samples the sea at the ocean time of each particle's birth (#2152).
       const sea = {
         oceanTimeAt: (geometryId, time) => stagedState.motionSampler?.sample(time)?.geometries?.get(geometryId)?.oceanTime ?? null,
         geometryAt: (geometryId, oceanTime) => agentSceneModule('motion').oceanTimeGeometry(recipe, geometryId, oceanTime, undefined, (definition, stack) => Object.freeze(generateGeometry({ ...definition, stack }, stagedState.maxGeometryVertices, cutterScopeOf(recipe.geometries, heightSourcesOf(recipe))))),
       };
-      particleBake = { key, sampler: agentSceneModule('particles').bakeAgentParticles(recipe.particles, recipe, geometries, sea, { matrixAt: (nodeId, time) => worldMatrixAt(stagedState, nodeId, time) }) };
+      particleBake = { key, sampler: agentSceneModule('particles').bakeAgentParticles(recipe.particles, recipe, geometryMap(geometryRecords), sea, { matrixAt: (nodeId, time) => worldMatrixAt(stagedState, nodeId, time) }) };
     }
     return particleBake.sampler;
   }
@@ -2511,8 +2580,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   // A billboard node turns to the camera at each sampled time, so its sheet is rebuilt per pose (#3237).
   function stageBillboards(recipe, geometryRecords, stagedState) {
     if (!recipe.nodes.some(node => node.billboard)) return null;
-    const geometries = new Map([...geometryRecords].map(([id, record]) => [id, record.geometry]));
-    return agentSceneModule('textBillboard').bakeTextBillboards(recipe, geometries, { matrixAt: (nodeId, time) => worldMatrixAt(stagedState, nodeId, time) });
+    return agentSceneModule('textBillboard').bakeTextBillboards(recipe, geometryMap(geometryRecords), { matrixAt: (nodeId, time) => worldMatrixAt(stagedState, nodeId, time) });
   }
 
   // An edit keeps the time the scene was sampled at (#2730): posing it at 0 again rebuilt and ranked every animated part,
@@ -2584,7 +2652,12 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     }
   }
 
-  commit(stage(input), false);
+  try {
+    commit(stage(input), false);
+  } catch (error) {
+    cancelPendingFlush();
+    throw error;
+  }
   return Object.freeze({
     capabilities: AGENT_SCENE_CAPABILITIES,
     limits,
@@ -2765,9 +2838,10 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           knownKeys(operation, ['type', lookField], 'operation');
           const patch = operation[lookField];
           // Spot and area lights, cascades and sun links are absent from a recipe until it sets them.
-          const optionalFields = lookField === 'environment' ? ['ground', 'spotLights', 'areaLights', 'shadowCascades', 'localVolumes', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce', 'specularAntiAliasing', 'sunAngularRadius', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'hdri', 'reflectionHdri', 'keyFromHdri', 'sky', 'wetness', 'puddles', 'ambientColor', 'ambientMix', 'fillColor', 'environmentDiffuseScale', 'skybox'] : lookField === 'effects' ? postStepSupport.fields : lookField === 'shadow' ? ['hard'] : [];
-          knownKeys(patch, [...Object.keys(candidate[lookField]), ...optionalFields], lookField);
-          requireChange(Object.keys(patch).length > 0, operation, [...Object.keys(candidate[lookField]), ...optionalFields]);
+          const optionalFields = lookField === 'environment' ? ENVIRONMENT_FIELDS : lookField === 'effects' ? postStepSupport.fields : lookField === 'shadow' ? ['hard'] : [];
+          const allowedLookFields = [...Object.keys(candidate[lookField]), ...optionalFields];
+          knownKeys(patch, allowedLookFields, lookField);
+          requireChange(Object.keys(patch).length > 0, operation, allowedLookFields);
           const { kept: keptPatch, cleared: clearedFields } = splitClearedLookPatch(lookField, patch);
           const merged = { ...candidate[lookField], ...(lookField === 'environment' ? environmentPatchWithSetup(keptPatch) : keptPatch) };
           for (const field of clearedFields) delete merged[field];
@@ -2843,9 +2917,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         if (operation.type === 'edit-mesh') {
           knownKeys(operation, ['type', 'geometry', 'edits', 'replace'], 'operation');
           const target = meshGeometryTarget(candidate, operation, type => `Add a mesh geometry with base: { type: '${type}', ... } to edit it.`);
-          if (operation.replace !== undefined && typeof operation.replace !== 'boolean') {
-            throw invalidField('replace', operation.replace, 'true or false', TypeError);
-          }
+          optionalBoolean(operation.replace, 'replace');
           if (!Array.isArray(operation.edits)) {
             throw invalidField('edits', operation.edits, 'an array of mesh edits, such as [{ "op": "extrude" }]', TypeError);
           }
@@ -2936,9 +3008,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     inspect(options = {}) {
       knownKeys(options, ['ids', 'limit', 'includeBounds', 'path'], 'inspection');
       const maximum = integer(options.limit ?? Math.min(64, limits.maxNodes), 1, limits.maxNodes, 'inspection limit');
-      if (options.includeBounds !== undefined && typeof options.includeBounds !== 'boolean') {
-        throw invalidField('includeBounds', options.includeBounds, 'true or false', TypeError);
-      }
+      optionalBoolean(options.includeBounds, 'includeBounds');
       if (options.ids !== undefined && (!Array.isArray(options.ids) || options.ids.length > limits.maxNodes)) {
         throw invalidField('ids', Array.isArray(options.ids) ? `${options.ids.length} IDs` : options.ids, `a list of at most ${limits.maxNodes} node IDs, such as ["body"]`);
       }

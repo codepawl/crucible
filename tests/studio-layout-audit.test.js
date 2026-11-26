@@ -16,7 +16,7 @@ async function auditSetup(context, extraCss, only = 'setup', viewport) {
 test('the setup dialog passes the layout audit in both themes and its allowlist stays short (#3288)', { timeout: 240000 }, async context => {
   const screens = await auditSetup(context);
   if (!screens) return;
-  assert.equal(screens.length, 10, 'five steps in two themes');
+  assert.equal(screens.length, 12, 'six steps in two themes');
   const { findings } = summarize(screens);
   assert.deepEqual(findings.map(finding => finding.message), []);
   assert.ok(ALLOWLIST.length <= 5, 'a real finding is fixed in the CSS, not listed');

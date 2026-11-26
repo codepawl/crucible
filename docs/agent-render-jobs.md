@@ -125,6 +125,19 @@ Motion blur comes from the scene file's `frame`, the same fields as the recipe l
 `shutter` (0 to 0.5 seconds) smears camera motion from the `--camera` track, sampled at `time - shutter`. `objects` (0 to 1) also smears each moving part of the GLB's first animation clip, posed at `time - shutter` and at `time`; parts move rigidly, so a skinned part blurs only by its node transform. Frame 0 has nothing before it and is sharp. A scene file without `motionBlur` loads none of this. Two runs of the same range on the same machine give identical PNG hashes (`tests/render-media-frame-range-chrome.test.js`).
 ffmpeg only receives the resolved path with `-protocol_whitelist file`; no URL, argument or output path comes from the agent.
 
+### Batch rendering with `--batch` (#3520)
+
+```sh
+npm run render -- --batch shots.json --backend gpu
+```
+
+`--batch <manifest.json>` renders 1 to 500 shots sequentially inside one Vite server and one Chromium browser, opening and closing a fresh page per shot so WebGL contexts and routes never leak while avoiding per-shot startup overhead.
+
+- **Manifest shape:** either an array of shot objects (`[ { ... }, ... ]`) or `{ "defaults": { ... }, "shots": [ { ... }, ... ] }`. Both kebab-case (`jpeg-quality`) and camelCase (`jpegQuality`) keys are accepted.
+- **Defaults precedence:** shared CLI flags (`--backend`, `--preset`, `--width`, `--height`, `--fps`, `--aspect`, `--memory`, `--encoder`, `--capture`, `--jpeg-quality`, `--root`, `--kind`, `--scene`, `--assembly`) are overridden by `manifest.defaults`, which are overridden by each shot. All shots in a batch must share one `--backend` (`gpu` or `cpu`).
+- **Per-shot flags:** `--batch` refuses single-shot target flags (`--output`, `--config`, `--camera`, `--asset`, `--time`, `--frames`, `--start`, `--duration`, `--audio`) on the command line. Every shot must specify a distinct `output` path.
+- **Output:** each shot writes its media files and `<output>.json` report just like single-shot mode, and the command prints and returns `{ batch: true, totalShots, startupSeconds, elapsedSeconds, shots }`.
+
 **Joining parts.** A film longer than one job (60 s, 900 frames) is rendered as several video jobs. Do not join AAC parts: each carries encoder priming and padding, which leaves a dropout of about 5 ms at every join (issue #389).
 Give every part `audio: { file, offset, track: 'pcm' }` (`offset` = the part's start in the sound), which writes lossless audio with no priming. Then copy the video of the parts and lay the sound once:
 

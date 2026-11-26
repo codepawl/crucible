@@ -8,35 +8,32 @@ import { VIEW_TRANSFORM_NAMES } from './view-transform-names.js';
 import { CrucibleRenderer, studioFloorHeight } from './renderer.js';
 import { ProgramNotReady, isLinkComplete, setPreparing } from './gl-program.js';
 import { exportGlb } from './export.js';
-import { createExportPanel, dataUrlByteLength, formatFileSize, lastPathName } from './studio-export.js';
+import { dataUrlByteLength, formatFileSize, lastPathName } from './studio-export.js';
 import { encodePack } from './scene-pack-format.js';
 import { checkImageBudget } from './scene-pack-limits.js';
 import { packedSkyOf } from './scene-pack-sky.js';
 import { encodePackOrRefuse } from './studio-pack-refusal.js';
 import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shaders.js';
 import { STUDIO_CSS } from './studio-styles.js';
+import { AGENT_CHAT_CSS, createAgentPanel } from './studio-agent-chat.js';
 import { createApplyMenus } from './studio-apply-menu.js';
+import { createMeshMenus } from './studio-mesh-menus.js';
 import { findKeymapAction, findMouseNavigation, formatShortcutKeys, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
 import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
 import { createStudioSettings } from './studio-settings.js';
+import { createNumberPadNotice, isNumpadKeyEvent, resolveStudioKeyAction } from './studio-numpad.js';
 import { withPresetOverrides } from './studio-key-overrides.js';
 import { detectStudioHardware, gatherStudioHardwareInputs, rendererChangeFor, resolveStudioPerformanceTier, studioViewportSettingsFor } from './studio-hardware.js';
 import { createStudioDiagnostics, describeStudioEnvironment, watchStudioDiagnostics } from './studio-diagnostics.js';
-import {
-  STUDIO_GIZMO_PIXELS,
-  STUDIO_PREFERENCE_CHOICES,
-  STUDIO_PREFERENCE_DEFAULTS,
-  loadStudioPreferences,
-  normalizeStudioPreferences,
-  saveStudioPreferences,
-} from './studio-preferences.js';
+import { STUDIO_GIZMO_PIXELS, STUDIO_PREFERENCE_CHOICES, STUDIO_PREFERENCE_DEFAULTS, loadStudioPreferences, normalizeStudioPreferences, saveStudioPreferences } from './studio-preferences.js';
 import { createOutlineMask } from './studio-outline-mask.js';
 import { createPanelGrips } from './studio-panel-grips.js';
 import { leadWithActionIcon, STUDIO_ACTION_ICONS, STUDIO_BRAND_ICON_NAMES, STUDIO_FILLED_ICON_NAMES, STUDIO_ICON_ACCENTS, STUDIO_LIGHT_ICONS, STUDIO_NOTICE_ICONS, STUDIO_PRIMITIVE_ICONS, studioIconPath } from './studio-icons.js';
 import { createPropertyLine, createPropertyPanel } from './studio-property-panel.js';
-import { createModifierPanel } from './studio-modifier-panel.js';
+import './studio-features.js';
+import { hasStudioTab, registeredStudioMenuEntries, registeredStudioStyles, registeredStudioTabIds, registeredStudioTabs, registeredStudioWorkspaces, registerStudioTab } from './studio-registry.js';
 import { createShapeSettings } from './studio-shape-settings.js';
 import { createKeyMarkers } from './studio-timeline-keys.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
@@ -55,38 +52,22 @@ import { editIconName } from './studio-edit-names.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, frameFailureReason, watchContextLoss } from './studio-context-loss.js';
 import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgentEdit, diffRecipeNodes } from './studio-agent-presence.js';
-import {
-  STUDIO_LENS_PRESETS,
-  STUDIO_MATERIAL_PRESETS,
-  STUDIO_PRIMITIVE_GROUPS,
-  STUDIO_PRIMITIVES,
-  primitiveGeometrySpec,
-  STUDIO_TABS,
-  STUDIO_TEMPLATES,
-  STUDIO_TOOLS,
-  STUDIO_VIEW_PRESETS,
-  buildTemplateRecipe,
-} from './studio-templates.js';
-import {
-  createStudioController,
-  hasAnimatedData,
-  linearRgbToHex,
-  quaternionToEulerDegrees,
-  roundValue,
-} from './studio-controller.js';
+import { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, primitiveGeometrySpec, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, buildTemplateRecipe } from './studio-templates.js';
+import { createStudioController, hasAnimatedData, linearRgbToHex, quaternionToEulerDegrees, roundValue } from './studio-controller.js';
+import { createPartSyncTracker } from './studio-live-parts.js';
 
-export {
-  STUDIO_LENS_PRESETS,
-  STUDIO_MATERIAL_PRESETS,
-  STUDIO_PRIMITIVE_GROUPS,
-  STUDIO_PRIMITIVES,
-  STUDIO_TABS,
-  STUDIO_TEMPLATES,
-  STUDIO_TOOLS,
-  STUDIO_VIEW_PRESETS,
-  buildTemplateRecipe,
-  createStudioController,
-};
+const CORE_STUDIO_TABS = [
+  { id: 'node', label: 'Object', order: 10, workspaces: [{ id: 'build', order: 10 }, { id: 'animate', order: 20 }], createPanel: ({ inlinePanels }) => ({ element: inlinePanels.node }) },
+  { id: 'material', label: 'Material', order: 30, workspaces: ['look'], createPanel: ({ inlinePanels }) => ({ element: inlinePanels.material }) },
+  { id: 'look', label: 'Look', order: 40, workspaces: ['look'], createPanel: ({ inlinePanels, syncLookPanels }) => ({ element: inlinePanels.look, sync: syncLookPanels }) },
+  { id: 'camera', label: 'Camera', order: 50, workspaces: [{ id: 'animate', order: 10 }], createPanel: ({ inlinePanels, syncCameraPanel }) => ({ element: inlinePanels.camera, sync: syncCameraPanel }) },
+];
+for (const coreTab of CORE_STUDIO_TABS) {
+  if (!hasStudioTab(coreTab.id)) registerStudioTab(coreTab);
+}
+const STUDIO_TABS = registeredStudioTabIds();
+
+export { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, STUDIO_TABS, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, buildTemplateRecipe, createStudioController };
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
 const STATUS_DEFAULT_MILLISECONDS = 3400;
@@ -122,12 +103,13 @@ const COMPACT_WIDTH = 820;
 const TIGHT_WIDTH = 920;
 // The work runs left to right: build the scene, give it its look, set it in motion, then write it out. Each workspace shows
 // only the panels its step needs.
-const STUDIO_WORKSPACES = Object.freeze([
-  Object.freeze({ id: 'build', label: 'Build', icon: 'node', tabs: Object.freeze(['node', 'modifiers']) }),
-  Object.freeze({ id: 'look', label: 'Look', icon: 'material', tabs: Object.freeze(['material', 'look']) }),
-  Object.freeze({ id: 'animate', label: 'Animate', icon: 'play', tabs: Object.freeze(['camera', 'node']) }),
-  Object.freeze({ id: 'export', label: 'Export', icon: 'export', tabs: Object.freeze(['export']) }),
+const BASE_STUDIO_WORKSPACES = Object.freeze([
+  Object.freeze({ id: 'build', label: 'Build', icon: 'node' }),
+  Object.freeze({ id: 'look', label: 'Look', icon: 'material' }),
+  Object.freeze({ id: 'animate', label: 'Animate', icon: 'play' }),
+  Object.freeze({ id: 'export', label: 'Export', icon: 'export' }),
 ]);
+const STUDIO_WORKSPACES = registeredStudioWorkspaces(BASE_STUDIO_WORKSPACES);
 const DEFAULT_CLEARCOAT_ROUGHNESS = 0.08;
 const PRIMITIVE_LABELS = Object.freeze({ icoSphere: 'Icosphere', disc: 'Circle' });
 const primitiveLabel = primitiveType => PRIMITIVE_LABELS[primitiveType] ?? primitiveType[0].toUpperCase() + primitiveType.slice(1);
@@ -160,7 +142,8 @@ function injectStudioStyles(documentReference) {
     style.id = STUDIO_STYLE_ID;
     documentReference.head.append(style);
   }
-  style.textContent = STUDIO_CSS;
+  const extraStyles = registeredStudioStyles();
+  style.textContent = STUDIO_CSS + AGENT_CHAT_CSS + (extraStyles ? `\n${extraStyles}` : '');
 }
 
 function createElement(documentReference, tagName, properties = {}, ...children) {
@@ -1292,7 +1275,7 @@ export function createStudio(container, {
   const pendingRecipe = suppliedRecipe && !suppliedScene && recipeNeedsFetching(suppliedRecipe) ? suppliedRecipe : null;
   const initialRecipe = pendingRecipe ? buildTemplateRecipe(template) : suppliedRecipe ?? (suppliedScene ? null : buildTemplateRecipe(template));
   // The scene reads catalog assets and images from the pool, so an import into the first scene can place them.
-  const initialScene = suppliedScene ?? createAgentScene(initialRecipe, {}, { assets: catalog.pool, sequenceFrames: catalog.pool });
+  const initialScene = suppliedScene ?? createAgentScene(initialRecipe, {}, { assets: catalog.pool, sequenceFrames: catalog.pool, deferInitialFlush: true });
   let handleChange = () => {};
   const studioDiagnostics = createStudioDiagnostics({
     limit: diagnosticsOptions.limit,
@@ -1334,8 +1317,7 @@ export function createStudio(container, {
   let rendererFloorHeight = null;
   let sceneLoadedSinceFloorFit = false;
   let floorDecision = { scene: null, revision: -1, drawsFloor: true };
-  let renderedScene = initialScene;
-  let renderedTopology = initialScene.topologyRevision;
+  const partSync = createPartSyncTracker(initialScene);
   let gridVisible = preferences.gridVisible;
   let gridParts = null;
   let gridPartsByName = null;
@@ -1361,6 +1343,8 @@ export function createStudio(container, {
   // Edit mode (src/studio-mesh-edit.js) is loaded on the first Tab, so the core entry carries none of it.
   let meshEditor = null;
   let meshEditorLoad = null;
+  // The held E and I of edit mode (src/studio-mesh-tool.js); set when the editor loads.
+  let faceToolInput = null;
   let modalTransform = null;
   let swallowContextMenu = false;
   let swallowClick = false;
@@ -1394,10 +1378,10 @@ export function createStudio(container, {
     attributes: { role: 'img', 'aria-label': 'Reloads when the agent edits this file' },
   });
   // The keymap in force. Choosing another preset swaps it and every place that shows a key is drawn again.
-  const keymapOf = () => resolveKeymapPreset(preferences.keymap, preferences.keyOverrides[preferences.keymap]);
-  const keymapSignature = () => JSON.stringify([preferences.keymap, preferences.keyOverrides[preferences.keymap] ?? {}]);
+  const keymapOf = () => resolveKeymapPreset(preferences.keymap, preferences.keyOverrides[preferences.keymap], { numberPad: preferences.numberPad });
+  const keymapSignature = () => JSON.stringify([preferences.keymap, preferences.numberPad, preferences.keyOverrides[preferences.keymap] ?? {}]);
   let keymap = keymapOf();
-  let appliedKeymap = keymapSignature();
+  let appliedKeymap = '';
   const menuKeyViews = [];
   const keyTooltipViews = [];
   const setShortcutLabel = (element, label) => {
@@ -1461,6 +1445,24 @@ export function createStudio(container, {
     });
     return giveMenuIcon(item, iconName);
   };
+  // The Agent card: a host that offers a chat fills it (studio-agent-chat.js). Without one there is no card, no menu row and no data attribute.
+  const agentPanel = createAgentPanel({
+    documentReference,
+    createElement,
+    createIcon,
+    createIconButton,
+    watchScrollFade,
+    host: globalThis.crucibleShell?.agentChat,
+    root,
+    readPreferences: () => preferences,
+    setPreference: (name, value) => setPreference(name, value),
+    applyPreferences: () => applyPreferences(),
+    showPanelMinimized: (...argumentsList) => showPanelMinimized(...argumentsList),
+    syncMenuToggles: () => syncMenuToggles(),
+    onStep: nodeId => showAgentEdit({ nodeIds: [nodeId] }),
+    setInspectorCollapsed: collapsed => setInspectorCollapsed(collapsed),
+    hideHistory: () => setHistoryShown(false, { remember: false }),
+  });
   // Whether the History panel is shown, and the edits it last drew, so a notification that changed no edit draws nothing.
   let historyShown = false;
   let renderedHistoryKey = '';
@@ -1523,31 +1525,51 @@ export function createStudio(container, {
     controller.setCameraViewPreset(presetName);
     announce(`${presetName[0].toUpperCase()}${presetName.slice(1)} view`);
   };
+  const menuContext = {
+    controller,
+    announce: (message, target, kind, options) => announce(message, target, kind, options),
+    announceError: message => announceError(message),
+    root,
+    agentPanel,
+    selectInspectorTab: tab => selectInspectorTab(tab),
+  };
+  function buildRegisteredMenuPopover(popoverId, menuName, coreEntries) {
+    const entries = [...coreEntries, ...registeredStudioMenuEntries(menuName)]
+      .filter(entry => entry.isVisible?.(menuContext) !== false)
+      .sort((first, second) => first.order - second.order);
+    const items = entries.map(entry => {
+      if (entry.element) return entry.element;
+      const item = entry.kind === 'toggle'
+        ? createMenuToggle(entry.label, entry.actionId ?? '', () => entry.onChoose(menuContext), () => entry.isOn(menuContext), entry.icon)
+        : createMenuItem(entry.label, entry.actionId ?? '', () => entry.onChoose(menuContext), entry.icon);
+      return entry.lockInShot ? lockInShot(item) : item;
+    });
+    return createMenuPopover(popoverId, ...items);
+  }
   const editUndoItem = createMenuItem('Undo', 'edit.undo', () => undoButton.click(), 'undo');
   const editRedoItem = createMenuItem('Redo', 'edit.redo', () => redoButton.click(), 'redo');
   // History is a panel in the right column; this row shows it and moves focus to the edit the scene shows.
   const historyItem = createMenuItem('History', '', () => showHistoryPanel(), 'history');
-  const editPopover = createMenuPopover(
-    'crucible-studio-pop-edit',
-    editUndoItem,
-    editRedoItem,
-    historyItem,
-    createMenuItem('Copy', 'edit.copy', () => copySelection(), 'duplicate'),
-    createMenuItem('Paste', 'edit.paste', () => pasteCopy(), 'clipboard'),
-    createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicateObject'),
-    createMenuItem('Join', 'edit.join', () => joinSelection(), 'duplicate'),
-    createMenuItem('Parent', 'edit.parent', () => parentSelection(), 'node'),
-    createMenuItem('Clear parent', 'edit.clearParent', () => clearParentSelection(), 'deselect'),
-    createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
-    createMenuItem('Rename', 'edit.rename', () => renameActiveObjectFromMenu(), 'text'),
-    createMenuItem('Deselect', 'edit.deselect', () => controller.selectNode(null), 'deselect'),
-    createMenuItem('Hide', 'edit.hide', () => hideSelection(), 'eyeOff'),
-    createMenuItem('Show all', 'edit.showAll', () => showAllHidden(), 'eye'),
-    createMenuItem('Reset position', 'edit.resetPosition', () => resetSelectionTransform('translation'), 'translate'),
-    createMenuItem('Reset rotation', 'edit.resetRotation', () => resetSelectionTransform('rotation'), 'rotate'),
-    createMenuItem('Reset scale', 'edit.resetScale', () => resetSelectionTransform('scale'), 'scale'),
-    createMenuItem('Settings…', 'settings.open', () => settings.open(), 'settings'),
-  );
+  const editPopover = buildRegisteredMenuPopover('crucible-studio-pop-edit', 'edit', [
+    { order: 10, element: editUndoItem },
+    { order: 20, element: editRedoItem },
+    { order: 30, element: historyItem },
+    { order: 40, label: 'Copy', actionId: 'edit.copy', icon: 'duplicate', onChoose: () => copySelection() },
+    { order: 50, label: 'Paste', actionId: 'edit.paste', icon: 'clipboard', onChoose: () => pasteCopy() },
+    { order: 60, label: 'Duplicate', actionId: 'edit.duplicate', icon: 'duplicateObject', onChoose: () => duplicateSelection() },
+    { order: 70, label: 'Join', actionId: 'edit.join', icon: 'duplicate', onChoose: () => joinSelection() },
+    { order: 80, label: 'Parent', actionId: 'edit.parent', icon: 'node', onChoose: () => parentSelection() },
+    { order: 90, label: 'Clear parent', actionId: 'edit.clearParent', icon: 'deselect', onChoose: () => clearParentSelection() },
+    { order: 100, label: 'Delete', actionId: 'edit.delete', icon: 'remove', onChoose: () => deleteButton.click() },
+    { order: 110, label: 'Rename', actionId: 'edit.rename', icon: 'text', onChoose: () => renameActiveObjectFromMenu() },
+    { order: 120, label: 'Deselect', actionId: 'edit.deselect', icon: 'deselect', onChoose: () => controller.selectNode(null) },
+    { order: 130, label: 'Hide', actionId: 'edit.hide', icon: 'eyeOff', onChoose: () => hideSelection() },
+    { order: 140, label: 'Show all', actionId: 'edit.showAll', icon: 'eye', onChoose: () => showAllHidden() },
+    { order: 150, label: 'Reset position', actionId: 'edit.resetPosition', icon: 'translate', onChoose: () => resetSelectionTransform('translation') },
+    { order: 160, label: 'Reset rotation', actionId: 'edit.resetRotation', icon: 'rotate', onChoose: () => resetSelectionTransform('rotation') },
+    { order: 170, label: 'Reset scale', actionId: 'edit.resetScale', icon: 'scale', onChoose: () => resetSelectionTransform('scale') },
+    { order: 180, label: 'Settings…', actionId: 'settings.open', icon: 'settings', onChoose: () => settings.open() },
+  ]);
   // A right click on an object, in the viewport or in the Scene list, opens the actions on that object where the
   // pointer is. The rows are the Edit menu's own, so a key learned in one place works in the other.
   const applyMenus = createApplyMenus({
@@ -1559,48 +1581,19 @@ export function createStudio(container, {
     getMeshEditor: () => meshEditor,
     openPopoverAtMenuPoint: popover => openPopoverAt(popover, ...(lastObjectMenuPoint ?? [0, 0])),
   });
-  const objectPopover = createMenuPopover(
-    'crucible-studio-pop-object',
-    createMenuItem('Frame', 'view.frame', () => flyToSelection(), 'frame'),
-    createMenuItem('Rename', 'edit.rename', () => renameActiveObjectFromMenu(), 'text'),
-    createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicateObject'),
-    createMenuItem('Hide', 'edit.hide', () => hideSelection(), 'eyeOff'),
-    createMenuItem('Reset position', 'edit.resetPosition', () => resetSelectionTransform('translation'), 'translate'),
-    createMenuItem('Reset rotation', 'edit.resetRotation', () => resetSelectionTransform('rotation'), 'rotate'),
-    createMenuItem('Reset scale', 'edit.resetScale', () => resetSelectionTransform('scale'), 'scale'),
-    applyMenus.applyRow,
-    applyMenus.originRow,
-    createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
-  );
-  // P in edit mode: what to separate. Selection is the picked faces.
-  const separatePopover = createMenuPopover(
-    'crucible-studio-pop-separate',
-    createMenuItem('Selection', 'mesh.separate', () => separateMeshSelection(), 'duplicate'),
-  );
+  const objectPopover = buildRegisteredMenuPopover('crucible-studio-pop-object', 'object', [
+    { order: 10, label: 'Frame', actionId: 'view.frame', icon: 'frame', onChoose: () => flyToSelection() },
+    { order: 20, label: 'Rename', actionId: 'edit.rename', icon: 'text', onChoose: () => renameActiveObjectFromMenu() },
+    { order: 30, label: 'Duplicate', actionId: 'edit.duplicate', icon: 'duplicateObject', onChoose: () => duplicateSelection() },
+    { order: 40, label: 'Hide', actionId: 'edit.hide', icon: 'eyeOff', onChoose: () => hideSelection() },
+    { order: 50, label: 'Reset position', actionId: 'edit.resetPosition', icon: 'translate', onChoose: () => resetSelectionTransform('translation') },
+    { order: 60, label: 'Reset rotation', actionId: 'edit.resetRotation', icon: 'rotate', onChoose: () => resetSelectionTransform('rotation') },
+    { order: 70, label: 'Reset scale', actionId: 'edit.resetScale', icon: 'scale', onChoose: () => resetSelectionTransform('scale') },
+    { order: 80, element: applyMenus.applyRow },
+    { order: 90, element: applyMenus.originRow },
+    { order: 100, label: 'Delete', actionId: 'edit.delete', icon: 'remove', onChoose: () => deleteButton.click() },
+  ]);
   let lastObjectMenuPoint = null;
-  // Edit mode's Delete and Merge menus (X and M). Dissolve acts on the selection of any mode; the merges need picked
-  // vertices, and At First and At Last follow the order of the picks, which only vertex mode keeps.
-  const dissolveSelection = kind => {
-    meshEditor.dissolve(kind);
-    syncUi();
-    requestFrame();
-  };
-  const mergeSelection = target => {
-    meshEditor.merge(target);
-    syncUi();
-    requestFrame();
-  };
-  const meshDeletePopover = createMenuPopover(
-    'crucible-studio-pop-mesh-delete',
-    createMenuItem('Dissolve Vertices', '', () => dissolveSelection('vertices'), 'meshVertex'),
-    createMenuItem('Dissolve Edges', '', () => dissolveSelection('edges'), 'meshEdge'),
-    createMenuItem('Dissolve Faces', '', () => dissolveSelection('faces'), 'meshFace'),
-  );
-  const meshMergeCenterItem = createMenuItem('At Center', '', () => mergeSelection('center'), 'meshVertex');
-  const meshMergeFirstItem = createMenuItem('At First', '', () => mergeSelection('first'), 'meshVertex');
-  const meshMergeLastItem = createMenuItem('At Last', '', () => mergeSelection('last'), 'meshVertex');
-  const meshMergeCollapseItem = createMenuItem('Collapse', '', () => mergeSelection('collapse'), 'meshVertex');
-  const meshMergePopover = createMenuPopover('crucible-studio-pop-mesh-merge', meshMergeCenterItem, meshMergeFirstItem, meshMergeLastItem, meshMergeCollapseItem);
   function openPopoverAt(popover, clientX, clientY) {
     const windowWidth = documentReference.defaultView?.innerWidth ?? 1280;
     const windowHeight = documentReference.defaultView?.innerHeight ?? 800;
@@ -1616,28 +1609,25 @@ export function createStudio(container, {
     popover.style.setProperty('--studio-popover-shift', opening.shift);
     popover.showPopover?.();
   }
+  const meshMenus = createMeshMenus({
+    createMenuPopover,
+    createMenuItem,
+    controller,
+    getCanvas: () => canvas,
+    openPopoverAt,
+    getMeshEditor: () => meshEditor,
+    separateMeshSelection: () => separateMeshSelection(),
+    onTopologyApplied: () => {
+      syncUi();
+      requestFrame();
+    },
+  });
   // No menu while an object is in hand: a Ctrl press on a Mac is a right click, and it would open this over the move.
   function openObjectMenu(clientX, clientY) {
     if (controller.dragging || modalTransform) return;
     lastObjectMenuPoint = [clientX, clientY];
     openPopoverAt(objectPopover, clientX, clientY);
   }
-  // The keys open these menus at the middle of the selection, as the pointer is not tracked between clicks.
-  function openMeshMenu(popover) {
-    const bounds = canvas.getBoundingClientRect();
-    const centre = meshEditor.selectionCentre;
-    const pixel = centre ? controller.projectWorldPoint(centre) : null;
-    const isAtFirstOrLastAvailable = meshEditor.mode === 'vertex';
-    for (const item of [meshMergeFirstItem, meshMergeLastItem]) item.setAttribute('aria-disabled', isAtFirstOrLastAvailable ? 'false' : 'true');
-    openPopoverAt(popover, bounds.left + (pixel?.x ?? bounds.width / 2), bounds.top + (pixel?.y ?? bounds.height / 2));
-  }
-  const meshMenuIsOpen = () => [meshDeletePopover, meshMergePopover].some(popover => {
-    try {
-      return popover.matches(':popover-open');
-    } catch {
-      return false;
-    }
-  });
   function hideSelection() {
     if (!controller.selectedNodeId) return;
     controller.updateNodeTransform(controller.selectedNodeId, { visible: false });
@@ -1671,32 +1661,31 @@ export function createStudio(container, {
     const camera = controller.viewCamera;
     controller.moveViewportCamera({ eye: [...camera.eye], target: [...camera.target] });
   }, () => !controller.freeView, 'camera'));
-  const viewPopover = createMenuPopover(
-    'crucible-studio-pop-view',
-    createMenuItem('Front view', 'view.front', () => showView('front')),
-    createMenuItem('Right view', 'view.right', () => showView('right')),
-    createMenuItem('Top view', 'view.top', () => showView('top')),
-    createMenuItem('Perspective / Orthographic', 'view.projection', () => controller.toggleCameraProjection(), 'camera'),
-    createMenuItem('Frame the selection', 'view.frame', () => flyToSelection(), 'frame'),
-    lockInShot(createMenuToggle('Grid', '', () => gridButton.click(), () => gridVisible, 'grid')),
-    sceneCameraToggle,
-    createMenuToggle('Scene and Properties', '', () => toggleDocksButton.click(), () => root.dataset.outlinerCollapsed !== 'true' || root.dataset.inspectorCollapsed !== 'true', 'panels'),
-    createMenuToggle('History', '', () => setHistoryShown(!historyShown), () => historyShown, 'history'),
-    createMenuToggle('Properties', 'view.properties', () => setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true'), () => root.dataset.inspectorCollapsed !== 'true', 'settings'),
-  );
+  const viewPopover = buildRegisteredMenuPopover('crucible-studio-pop-view', 'view', [
+    { order: 10, label: 'Front view', actionId: 'view.front', onChoose: () => showView('front') },
+    { order: 20, label: 'Right view', actionId: 'view.right', onChoose: () => showView('right') },
+    { order: 30, label: 'Top view', actionId: 'view.top', onChoose: () => showView('top') },
+    { order: 40, label: 'Perspective / Orthographic', actionId: 'view.projection', icon: 'camera', onChoose: () => controller.toggleCameraProjection() },
+    { order: 50, label: 'Frame the selection', actionId: 'view.frame', icon: 'frame', onChoose: () => flyToSelection() },
+    { order: 60, kind: 'toggle', label: 'Grid', icon: 'grid', lockInShot: true, onChoose: () => gridButton.click(), isOn: () => gridVisible },
+    { order: 70, element: sceneCameraToggle },
+    { order: 80, kind: 'toggle', label: 'Scene and Properties', icon: 'panels', onChoose: () => toggleDocksButton.click(), isOn: () => root.dataset.outlinerCollapsed !== 'true' || root.dataset.inspectorCollapsed !== 'true' },
+    { order: 90, kind: 'toggle', label: 'History', icon: 'history', onChoose: () => setHistoryShown(!historyShown), isOn: () => historyShown },
+    ...(agentPanel ? [{ order: 100, kind: 'toggle', label: 'Agent', actionId: 'view.agent', icon: 'chat', onChoose: () => agentPanel.toggle(), isOn: () => agentPanel.shown }] : []),
+    { order: 110, kind: 'toggle', label: 'Properties', actionId: 'view.properties', icon: 'settings', onChoose: () => setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true'), isOn: () => root.dataset.inspectorCollapsed !== 'true' },
+  ]);
   // A row that switches something shows whether it is on each time its menu opens.
   viewPopover.addEventListener('toggle', () => {
     sceneCameraToggle.hidden = !controller.cameraDriven;
     syncMenuToggles();
   });
   syncMenuToggles();
-  const helpPopover = createMenuPopover(
-    'crucible-studio-pop-help',
-    createMenuItem('Keyboard shortcuts', 'help.shortcuts', () => showShortcutsSheet(helpMenuButton), 'keyboard'),
-    createMenuItem('Documentation', '', () => openStudioGuide({ openExternal, windowReference: documentReference.defaultView }), 'book'),
-    createMenuItem('Set up Studio…', '', () => openSetup(), 'settings'),
-    createMenuItem('Save diagnostics report', '', () => saveDiagnosticsReport(), 'saveAs'),
-  );
+  const helpPopover = buildRegisteredMenuPopover('crucible-studio-pop-help', 'help', [
+    { order: 10, label: 'Keyboard shortcuts', actionId: 'help.shortcuts', icon: 'keyboard', onChoose: () => showShortcutsSheet(helpMenuButton) },
+    { order: 20, label: 'Documentation', icon: 'book', onChoose: () => openStudioGuide({ openExternal, windowReference: documentReference.defaultView }) },
+    { order: 30, label: 'Set up Studio…', icon: 'settings', onChoose: () => openSetup() },
+    { order: 40, label: 'Save diagnostics report', icon: 'saveAs', onChoose: () => saveDiagnosticsReport() },
+  ]);
 
   const newPopover = createElement(documentReference, 'div', {
     id: 'crucible-studio-pop-new',
@@ -1846,7 +1835,7 @@ export function createStudio(container, {
     startMenuGroup(importAndExportRows[0]),
     ...importAndExportRows.slice(1),
   );
-  for (const popoverElement of [newPopover, addPopover, editPopover, objectPopover, separatePopover, meshDeletePopover, meshMergePopover, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover, snapPopover]) {
+  for (const popoverElement of [newPopover, addPopover, editPopover, objectPopover, ...meshMenus.popovers, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover, snapPopover]) {
     popoverElement.addEventListener('click', event => {
       const clickedButton = event.target.closest?.('button');
       if (clickedButton && !clickedButton.dataset.keepsMenu) popoverElement.hidePopover?.();
@@ -1909,11 +1898,9 @@ export function createStudio(container, {
     aiSyncPopover,
     editPopover,
     objectPopover,
-    separatePopover,
+    ...meshMenus.popovers,
     applyMenus.applyPopover,
     applyMenus.originPopover,
-    meshDeletePopover,
-    meshMergePopover,
     viewPopover,
     helpPopover,
     snapPopover,
@@ -2008,7 +1995,7 @@ export function createStudio(container, {
   // With several objects selected the panels follow the active one; the head says how many there are.
   const selectionCountLabel = createElement(documentReference, 'span');
   const selectionCountElement = createElement(documentReference, 'span', { className: 'crucible-studio-selection-count', attributes: { hidden: '' } }, createIcon(documentReference, 'select'), selectionCountLabel);
-  propertiesMinimizeButton.addEventListener('click', () => setPreference('propertiesMinimized', !preferences.propertiesMinimized));
+  propertiesMinimizeButton.addEventListener('click', () => (agentPanel?.holdsRoom ? agentPanel.setOpenInShortWindow(false) : setPreference('propertiesMinimized', !preferences.propertiesMinimized)));
 
   const outlinerDock = createElement(
     documentReference,
@@ -2177,7 +2164,9 @@ export function createStudio(container, {
   const proportionalButton = createKeyedIconButton('proportional', () => `Proportional editing (${keyLabel(keymap, 'mesh.proportional')})`, { dataset: { proportional: 'toggle' }, attributes: { 'aria-pressed': 'false' } });
   const proportionalMenuButton = createIconButton(documentReference, 'chevron', 'Falloff and size of proportional editing', { dataset: { proportional: 'menu' }, attributes: { popovertarget: PROPORTIONAL_POPOVER_ID } });
   proportionalButton.addEventListener('click', () => toggleProportional());
-  meshModeGroup.append(proportionalButton, proportionalMenuButton);
+  const meshToolsButton = createIconButton(documentReference, 'more', 'Mesh tools', { dataset: { meshTools: 'true' }, attributes: { popovertarget: 'crucible-studio-pop-mesh-tools', 'aria-haspopup': 'menu' } });
+  bindPopoverAnchor(meshToolsButton, meshMenus.meshToolsPopover, { beside: true });
+  meshModeGroup.append(proportionalButton, proportionalMenuButton, meshToolsButton);
 
   const undoButton = createKeyedIconButton('undo', () => `Undo (${keyLabel(keymap, 'edit.undo')})`, { attributes: { 'aria-disabled': 'true' } });
   const redoButton = createKeyedIconButton('redo', () => `Redo (${keyLabel(keymap, 'edit.redo')})`, { attributes: { 'aria-disabled': 'true' } });
@@ -2310,19 +2299,32 @@ export function createStudio(container, {
     onRestore: () => restoreDraft(),
     onDiscard: () => discardDraft(),
   });
+  const numpadNotice = createNumberPadNotice({
+    documentReference,
+    createIcon: iconName => createIcon(documentReference, iconName),
+    onSwitch: () => {
+      numpadNotice.hide();
+      setPreferences({ numberPad: true, numberPadNoticeShown: true });
+      announce('View keys moved to the number pad');
+    },
+    onKeep: () => {
+      numpadNotice.hide();
+    },
+  });
   const stopWatchingDiagnostics = watchStudioDiagnostics(studioDiagnostics, { windowReference: documentReference.defaultView, canvas });
   const stopWatchingContextLoss = watchContextLoss(canvas, { onLost: pauseForContextLoss, onRestored: recoverFromContextLoss });
   const exportFrameGuide = createElement(documentReference, 'div', { className: 'crucible-studio-export-guide', attributes: { 'aria-hidden': 'true' } });
-  viewportElement.append(canvas, exportFrameGuide, maskFilterSvg, gizmoSvg, agentPresence.element, viewWidget.element, readout, hintBar, statusRegion, bakeMark.element, dropOverlay, pausedNotice.element, postPassNotice.element, draftNotice.element);
+  viewportElement.append(canvas, exportFrameGuide, maskFilterSvg, gizmoSvg, agentPresence.element, viewWidget.element, readout, hintBar, statusRegion, bakeMark.element, dropOverlay, pausedNotice.element, postPassNotice.element, draftNotice.element, numpadNotice.element);
 
-  // Right 4-Tab Inspector Dock (Modern Web Guidance: tabs pattern)
-  const tabLabels = { node: 'Object', modifiers: 'Modifiers', material: 'Material', look: 'Look', camera: 'Camera', export: 'Export' };
-  const tabButtons = STUDIO_TABS.map(tab => createIconButton(documentReference, tab, tabLabels[tab], {
-    id: `crucible-studio-tab-${tab}`,
-    dataset: { tab },
+  // Right Inspector Dock (Modern Web Guidance: tabs pattern)
+  const inspectorTabs = registeredStudioTabs();
+  const workspaces = registeredStudioWorkspaces(BASE_STUDIO_WORKSPACES);
+  const tabButtons = inspectorTabs.map(tab => createIconButton(documentReference, tab.icon, tab.label, {
+    id: `crucible-studio-tab-${tab.id}`,
+    dataset: { tab: tab.id },
     attributes: {
-      'aria-selected': tab === controller.activeTab ? 'true' : 'false',
-      ...(tab === controller.activeTab ? { focusgroupstart: '' } : {}),
+      'aria-selected': tab.id === controller.activeTab ? 'true' : 'false',
+      ...(tab.id === controller.activeTab ? { focusgroupstart: '' } : {}),
     },
   }));
   const tabListElement = createElement(
@@ -2600,39 +2602,63 @@ export function createStudio(container, {
     ),
   );
 
-  const exportPanel = createExportPanel({ documentReference, createElement, createIcon: iconName => createIcon(documentReference, iconName) });
   // The scene a set of facts and a result line were made from: a change to the scene makes both stale.
   let exportFactsSceneKey = null;
   let exportResultSceneKey = null;
-  const modifierPanel = createModifierPanel({ documentReference, controller, announce, builders: { createElement, createIcon, createIconButton, createVectorRow } });
-  const panelsByTab = {
-    export: createElement(documentReference, 'div', { id: 'crucible-studio-panel-export', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-export', hidden: 'until-found' } }, exportPanel.element),
-    node: createElement(documentReference, 'div', { id: 'crucible-studio-panel-node', tabIndex: 0, attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-node' } }, nodePanelBody),
-    modifiers: createElement(documentReference, 'div', { id: 'crucible-studio-panel-modifiers', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-modifiers', hidden: 'until-found' } }, createElement(documentReference, 'div', { className: 'crucible-studio-panel-body crucible-studio-modifier-body' }, modifierPanel.element)),
-    material: createElement(documentReference, 'div', { id: 'crucible-studio-panel-material', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-material', hidden: 'until-found' } }, materialPanelBody),
-    look: createElement(documentReference, 'div', { id: 'crucible-studio-panel-look', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-look', hidden: 'until-found' } }, lookPanelBody),
-    camera: createElement(documentReference, 'div', { id: 'crucible-studio-panel-camera', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-camera', hidden: 'until-found' } }, cameraPanelBody),
+  const panelContext = {
+    documentReference,
+    controller,
+    announce,
+    announceError,
+    builders: { createElement, createIcon, createIconButton, createVectorRow },
+    inlinePanels: { node: nodePanelBody, material: materialPanelBody, look: lookPanelBody, camera: cameraPanelBody },
+    syncLookPanels: () => syncLookPanels(),
+    syncCameraPanel: () => cameraPanel.sync(),
   };
+  const panelInstances = {};
+  const panelsByTab = {};
+  for (const tab of inspectorTabs) {
+    const created = tab.createPanel(panelContext);
+    const instance = created && typeof created === 'object' && 'element' in created ? created : { element: created };
+    panelInstances[tab.id] = instance;
+    const body = tab.bodyClassName
+      ? createElement(documentReference, 'div', { className: tab.bodyClassName }, instance.element)
+      : instance.element;
+    const isInitial = tab.id === controller.activeTab;
+    panelsByTab[tab.id] = createElement(documentReference, 'div', {
+      id: `crucible-studio-panel-${tab.id}`,
+      ...(isInitial ? { tabIndex: 0 } : {}),
+      attributes: {
+        role: 'tabpanel',
+        'aria-labelledby': `crucible-studio-tab-${tab.id}`,
+        ...(isInitial ? {} : { hidden: 'until-found' }),
+      },
+    }, body);
+  }
+  const exportPanel = panelInstances.export;
+  if (exportPanel) {
+    exportPanel.sync = () => syncExportFacts();
+  }
 
   // Opening a panel brings its workspace forward, so nothing changes off screen. The open workspace keeps the panel when it holds it.
   function selectInspectorTab(nextTab) {
     const holdsTab = workspace => workspace.tabs.includes(nextTab);
-    const openWorkspace = STUDIO_WORKSPACES.find(workspace => workspace.id === root.dataset.workspace);
-    const owner = openWorkspace && holdsTab(openWorkspace) ? openWorkspace : STUDIO_WORKSPACES.find(holdsTab) ?? STUDIO_WORKSPACES[0];
+    const openWorkspace = workspaces.find(workspace => workspace.id === root.dataset.workspace);
+    const owner = openWorkspace && holdsTab(openWorkspace) ? openWorkspace : workspaces.find(holdsTab) ?? workspaces[0];
     selectWorkspace(owner.id, nextTab);
   }
 
   // The workspace is a way of looking at the scene, not part of it: it stays out of the recipe and out of undo.
   function selectWorkspace(nextWorkspace, preferredTab) {
-    const workspace = STUDIO_WORKSPACES.find(candidate => candidate.id === nextWorkspace);
+    const workspace = workspaces.find(candidate => candidate.id === nextWorkspace);
     if (!workspace) {
-      throw new RangeError(`Unknown Studio workspace "${String(nextWorkspace)}". Use one of ${STUDIO_WORKSPACES.map(candidate => candidate.id).join(', ')}.`);
+      throw new RangeError(`Unknown Studio workspace "${String(nextWorkspace)}". Use one of ${workspaces.map(candidate => candidate.id).join(', ')}.`);
     }
     const workspaceWasOpen = root.dataset.workspace === workspace.id;
     const firstWorkspace = root.dataset.workspace === undefined;
     root.dataset.workspace = workspace.id;
     const inExport = workspace.id === 'export';
-    if (!inExport) exportPanel.clearResults();
+    if (!inExport) exportPanel?.clearResults();
     outlinerDock.inert = inExport;
     for (const button of [...toolButtons, addMenuButton]) button.toggleAttribute('hidden', inExport);
     for (const control of [...shotLockedControls, gridButton]) control.setAttribute('aria-disabled', inExport ? 'true' : 'false');
@@ -2685,7 +2711,7 @@ export function createStudio(container, {
     inspectorTitle.replaceChildren(createIcon(documentReference, exporting ? 'export' : 'settings'), createElement(documentReference, 'span', { textContent: exporting ? 'Export' : 'Properties' }));
   }
   showInspectorTitle(false);
-  const panelsElement = createElement(documentReference, 'div', { className: 'crucible-studio-panels crucible-studio-scroll' }, panelsByTab.node, panelsByTab.modifiers, panelsByTab.material, panelsByTab.look, panelsByTab.camera, panelsByTab.export);
+  const panelsElement = createElement(documentReference, 'div', { className: 'crucible-studio-panels crucible-studio-scroll' }, ...inspectorTabs.map(tab => panelsByTab[tab.id]));
   watchScrollFade(panelsElement);
   const inspectorElement = createElement(
     documentReference,
@@ -2851,6 +2877,7 @@ export function createStudio(container, {
     // In a compact window the two cards would cover each other, so showing one puts the other away; the panels button or
     // View > Properties brings Properties back and puts History away.
     if (shown && root.dataset.compact === 'true') setInspectorCollapsed(true);
+    if (shown && agentPanel?.takesTurns) agentPanel.setShown(false, { remember: false });
     if (remember) setPreference('historyVisible', shown);
     syncHistoryPanel();
     syncMenuToggles();
@@ -2987,7 +3014,7 @@ export function createStudio(container, {
   function fillShortcutsGrid() {
     const columnCount = sheetColumnCount(documentReference.defaultView?.innerWidth ?? 1280);
     shortcutsDialog.dataset.columns = String(columnCount);
-    const columns = balanceSheetColumns(shortcutSheetGroups(keymap), columnCount);
+    const columns = balanceSheetColumns(shortcutSheetGroups(keymap, { omittedActionIds: agentPanel ? [] : ['view.agent'] }), columnCount);
     shortcutsGrid.replaceChildren(...columns.map(columnGroups => createElement(
       documentReference,
       'div',
@@ -3046,6 +3073,7 @@ export function createStudio(container, {
     keyboard: {
       getKeymap: () => keymap,
       getPresetId: () => preferences.keymap,
+      getNumberPad: () => preferences.numberPad,
       getOverrides: () => preferences.keyOverrides[preferences.keymap] ?? {},
       onOverridesChange: presetOverrides => setPreference('keyOverrides', withPresetOverrides(preferences.keyOverrides, preferences.keymap, presetOverrides)),
     },
@@ -3098,6 +3126,7 @@ export function createStudio(container, {
     syncSnapUi();
     applyTheme();
     applyPerformance();
+    if (preferences.numberPad) numpadNotice.hide();
     if (setup.dialog.open) setup.refresh();
     root.dataset.motion = preferences.motion;
     root.dataset.readout = preferences.readoutVisible ? 'on' : 'off';
@@ -3111,9 +3140,10 @@ export function createStudio(container, {
     setGridVisible(preferences.gridVisible);
     showPanelSizes(preferences);
     showPanelMinimized(sceneMinimizeButton, 'outlinerMinimized', 'Scene', preferences.sceneMinimized);
-    showPanelMinimized(propertiesMinimizeButton, 'inspectorMinimized', 'Properties', preferences.propertiesMinimized);
+    showPanelMinimized(propertiesMinimizeButton, 'inspectorMinimized', 'Properties', preferences.propertiesMinimized || Boolean(agentPanel?.holdsRoom));
     showPanelMinimized(historyMinimizeButton, 'historyMinimized', 'History', preferences.historyMinimized);
     refitHistoryList();
+    agentPanel?.syncCard();
     for (const [name, control] of settings.controls) {
       if (STUDIO_PREFERENCE_CHOICES[name]) control.value = String(preferences[name]);
       else control.checked = preferences[name];
@@ -3124,6 +3154,14 @@ export function createStudio(container, {
   function refreshKeyLabels() {
     for (const { element, actionId } of menuKeyViews) setShortcutLabel(element, keyLabel(keymap, actionId));
     for (const { button, iconName, describe } of keyTooltipViews) setButtonIcon(button, iconName, describe());
+    const viewTitles = { front: ['Front view', 'view.front'], right: ['Right view', 'view.right'], top: ['Top view', 'view.top'], isometric: ['Isometric view', null] };
+    for (const button of viewPresetButtons) {
+      const [labelText, actionId] = viewTitles[button.dataset.view];
+      const shortcut = actionId ? keyLabel(keymap, actionId) : '';
+      button.title = shortcut ? `${labelText} (${shortcut})` : labelText;
+    }
+    const projectionShortcut = keyLabel(keymap, 'view.projection');
+    projectionPillButton.title = projectionShortcut ? `Perspective / Orthographic (${projectionShortcut})` : 'Perspective / Orthographic';
     setButtonIcon(playButton, playing ? 'pause' : 'play', playTooltip(playing));
     fillShortcutsGrid();
     syncHintBar();
@@ -3245,6 +3283,7 @@ export function createStudio(container, {
     root,
     outlinerDock,
     inspectorElement,
+    agentDock: agentPanel?.dock,
     readPreferences: () => preferences,
     changePreferences: setPreferences,
   });
@@ -3257,6 +3296,7 @@ export function createStudio(container, {
 
   sideColumn.append(historyDock);
   setHistoryShown(preferences.historyVisible, { remember: false });
+  agentPanel?.mount(sideColumn);
   applyPreferences();
   root.append(viewportElement, menubarElement, toolbarElement, sideColumn, bottomElement, fileInput, importInput, recipeDialog, shortcutsDialog, settingsDialog, setup.dialog);
   container.append(root);
@@ -3309,11 +3349,10 @@ export function createStudio(container, {
 
   function capturePngDataUrl() {
     // Nothing draws while the context is gone, so a still taken then would be a blank picture.
-    if (contextLost) {
-      throw new Error(CONTEXT_LOST_MESSAGE);
-    }
-    // A still has the light a fresh build has, so a bake that is still running finishes first.
+    if (contextLost) throw new Error(CONTEXT_LOST_MESSAGE);
+    // A still has the light and flush ranks a fresh build has, so any pending bake or flush finishes first.
     controller.settleBake();
+    controller.scene.settleFlush?.();
     bakeMark.show(controller.bakePending);
     capturingStill = true;
     try {
@@ -3900,8 +3939,7 @@ export function createStudio(container, {
       ground: rendererHasFloor && viewportFloorPart(rendererFloorHeight),
       ...rendererOptions,
     });
-    renderedScene = controller.scene;
-    renderedTopology = controller.scene.topologyRevision;
+    partSync.reset(controller.scene, controller.scene.topologyRevision);
     return installPostPasses(renderer);
   }
 
@@ -3980,14 +4018,14 @@ export function createStudio(container, {
 
   function syncRendererParts(activeRenderer) {
     const topology = `${controller.scene.topologyRevision}|${gridVisible && !drawingTheShot()}|${Boolean(meshEditor?.active && meshEditor.seeThrough)}`;
-    if (renderedScene !== controller.scene || renderedTopology !== topology) {
-      activeRenderer.replaceParts(partsToDraw());
-      renderedScene = controller.scene;
-      renderedTopology = topology;
+    const revisionKey = `${controller.motionTime}|${controller.scene.motionTime}`;
+    const parts = partsToDraw();
+    if (partSync.needsReplace(controller.scene, topology)) {
+      partSync.replace(activeRenderer, controller.scene, topology, revisionKey, parts);
       return activeRenderer;
     }
     try {
-      activeRenderer.updateParts(partsToDraw());
+      partSync.update(activeRenderer, revisionKey, parts);
       return activeRenderer;
     } catch (error) {
       if (error instanceof ProgramNotReady) {
@@ -4174,8 +4212,7 @@ export function createStudio(container, {
   // The scene, selection and camera stay in the controller. Only what the renderer holds is rebuilt, from the current scene.
   function recoverFromContextLoss() {
     contextLost = false;
-    renderedScene = null;
-    renderedTopology = null;
+    partSync.reset();
     renderedShadowKey = null;
     pausedNotice.hide();
     requestFrame();
@@ -4904,10 +4941,7 @@ export function createStudio(container, {
 
   // Only the panel in view is redrawn: orbiting the viewport notifies a change many times a second.
   function syncPropertyPanels() {
-    if (controller.activeTab === 'look') syncLookPanels();
-    if (controller.activeTab === 'camera') cameraPanel.sync();
-    if (controller.activeTab === 'modifiers') modifierPanel.sync();
-    if (controller.activeTab === 'export') syncExportFacts();
+    panelInstances[controller.activeTab]?.sync?.();
   }
 
   // What each export will hold. The picture's size follows the window, so it is read each frame; the model and the pack follow the
@@ -5408,6 +5442,9 @@ export function createStudio(container, {
           }
           syncUi();
           requestFrame();
+        } else if (event.button === 2 && !meshEditor.circleSelecting && !meshEditor.boxSelecting) {
+          const { clientX, clientY } = event;
+          setTimeout(() => meshMenus.openToolsAt(clientX, clientY), 0);
         }
       } else {
         // Shift or Ctrl (Command) with a left click adds the object under the pointer to the selection, or takes it out.
@@ -5548,7 +5585,7 @@ export function createStudio(container, {
   }
 
   function loadMeshEditor() {
-    meshEditorLoad ??= Promise.all([import('./studio-mesh-edit.js'), import('./studio-proportional.js')]).then(([{ createMeshEditor }, { createProportionalSettings, createProportionalPopover }]) => {
+    meshEditorLoad ??= Promise.all([import('./studio-mesh-edit.js'), import('./studio-proportional.js'), import('./studio-mesh-tool.js')]).then(([{ createMeshEditor }, { createProportionalSettings, createProportionalPopover }, { createFaceToolInput }]) => {
       let proportionalPopover = null;
       const proportional = createProportionalSettings({
         onChange: () => {
@@ -5564,6 +5601,7 @@ export function createStudio(container, {
       bindPopoverAnchor(proportionalMenuButton, proportionalPopover.popover, { beside: true });
       meshEditor = createMeshEditor({ controller, announce, getRenderer: () => renderer, proportional });
       meshEditor.setSeeThrough(seeThrough);
+      faceToolInput = createFaceToolInput({ documentReference, editor: meshEditor, localCoordinates, onChange: updateMeshSelectionView });
       return meshEditor;
     });
     return meshEditorLoad;
@@ -5636,13 +5674,11 @@ export function createStudio(container, {
 
   function separateMeshSelection() {
     meshEditor?.separateSelection();
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   function openSeparateMenu() {
-    const bounds = canvas.getBoundingClientRect();
-    openPopoverAt(separatePopover, bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+    meshMenus.openMeshMenu(meshMenus.separatePopover);
   }
 
   async function enterMeshEdit() {
@@ -5660,16 +5696,15 @@ export function createStudio(container, {
     // The generator code that was loaded belongs to the object Tab was pressed on: another selection by now gets nothing.
     if (editor.active || controller.selectedNodeId !== pressedOnNodeId) return;
     editor.enter();
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   function leaveMeshEdit() {
+    faceToolInput?.cancel();
     if (controller.dragging) pointerState = null;
     stopWatchingCircleFocus();
     meshEditor?.leave();
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   // Esc puts a drag back, else ends circle select, else clears the selection, else leaves edit mode.
@@ -5685,8 +5720,7 @@ export function createStudio(container, {
       stopWatchingCircleFocus();
       meshEditor.leave();
     }
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   // Circle select (C): left drag paints the selection, middle drag or Shift paints the deselection, the wheel
@@ -5727,8 +5761,7 @@ export function createStudio(container, {
     stopWatchingCircleFocus();
     circlePaint = null;
     meshEditor.endCircleSelect();
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   function circleSelectOwnsPointer(event) {
@@ -5739,8 +5772,7 @@ export function createStudio(container, {
   function paintCircleAt(event, deselect) {
     const coordinates = localCoordinates(event);
     meshEditor.paintCircle(coordinates.x, coordinates.y, { deselect });
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   viewportElement.addEventListener('pointerdown', event => {
@@ -5810,8 +5842,7 @@ export function createStudio(container, {
     viewportElement.releasePointerCapture?.(event.pointerId);
     meshEditor.selectInRectangle(left, top, right, bottom, { additive: event.shiftKey });
     meshEditor.endBoxSelect();
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   });
 
   // Right click leaves circle select instead of opening a menu.
@@ -5822,6 +5853,12 @@ export function createStudio(container, {
     endCircleSelect();
   }, true);
 
+  // E and I hold the picked faces at the pointer; with the pointer outside the viewport the middle of it stands in.
+  function startFaceTool(kind) {
+    const bounds = viewportElement.getBoundingClientRect();
+    faceToolInput.start(kind, viewportPointer ?? { x: bounds.width / 2, y: bounds.height / 2 });
+  }
+
   function updateMeshSelectionView() {
     syncUi();
     requestFrame();
@@ -5829,8 +5866,7 @@ export function createStudio(container, {
 
   function chooseMeshMode(mode) {
     meshEditor.setMode(mode);
-    syncUi();
-    requestFrame();
+    updateMeshSelectionView();
   }
 
   // Tab is also how the keyboard moves between controls, so it enters edit mode only from the page or the canvas.
@@ -5839,69 +5875,57 @@ export function createStudio(container, {
   }
 
   // In edit mode these keys of the normal context still work; every other one would act on the whole object.
-  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'snap.toggle', 'view.frame', 'view.top', 'view.projection', 'view.properties', 'view.seeThrough']);
+  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'snap.toggle', 'view.frame', 'view.front', 'view.right', 'view.top', 'view.projection', 'view.properties', 'view.agent', 'view.seeThrough']);
+  const preventDefaultThen = action => event => {
+    event.preventDefault();
+    action(event);
+  };
   const meshKeyHandlers = {
-    'mesh.leave': event => {
-      event.preventDefault();
-      leaveMeshEdit();
-    },
-    'mesh.escape': event => {
-      event.preventDefault();
-      escapeMeshEdit();
-    },
+    'mesh.leave': preventDefaultThen(leaveMeshEdit),
+    'mesh.escape': preventDefaultThen(escapeMeshEdit),
     'mesh.vertexMode': () => chooseMeshMode('vertex'),
     'mesh.edgeMode': () => chooseMeshMode('edge'),
     'mesh.faceMode': () => chooseMeshMode('face'),
-    'mesh.deleteMenu': event => {
-      event.preventDefault();
-      openMeshMenu(meshDeletePopover);
-    },
-    'mesh.mergeMenu': event => {
-      event.preventDefault();
-      openMeshMenu(meshMergePopover);
+    'mesh.deleteMenu': preventDefaultThen(() => meshMenus.openMeshMenu(meshMenus.meshDeletePopover)),
+    'mesh.mergeMenu': preventDefaultThen(() => meshMenus.openMeshMenu(meshMenus.meshMergePopover)),
+    'mesh.makeFace': () => {
+      meshEditor.makeFace();
+      updateMeshSelectionView();
     },
     // Alt+A and Ctrl+I have browser actions of their own (the menu bar, page info).
-    'mesh.selectNone': event => {
-      event.preventDefault();
+    'mesh.selectNone': preventDefaultThen(() => {
       meshEditor.selectNone();
-      syncUi();
-      requestFrame();
-    },
-    'mesh.invertSelection': event => {
-      event.preventDefault();
+      updateMeshSelectionView();
+    }),
+    'mesh.invertSelection': preventDefaultThen(() => {
       meshEditor.invertSelection();
-      syncUi();
-      requestFrame();
-    },
+      updateMeshSelectionView();
+    }),
     'mesh.circleSelect': () => {
       if (meshEditor.circleSelecting) {
         endCircleSelect();
         return;
       }
       if (meshEditor.beginCircleSelect()) startWatchingCircleFocus();
-      syncUi();
-      requestFrame();
+      updateMeshSelectionView();
     },
     // L under the pointer; Ctrl+L and Ctrl+Plus or Minus have browser actions of their own (the address bar, the zoom).
     'mesh.selectLinked': () => {
       if (viewportPointer) meshEditor.selectLinkedAt(viewportPointer.x, viewportPointer.y);
       updateMeshSelectionView();
     },
-    'mesh.selectLinkedSelection': event => {
-      event.preventDefault();
+    'mesh.selectLinkedSelection': preventDefaultThen(() => {
       meshEditor.selectLinkedFromSelection();
       updateMeshSelectionView();
-    },
-    'mesh.growSelection': event => {
-      event.preventDefault();
+    }),
+    'mesh.growSelection': preventDefaultThen(() => {
       meshEditor.growSelection();
       updateMeshSelectionView();
-    },
-    'mesh.shrinkSelection': event => {
-      event.preventDefault();
+    }),
+    'mesh.shrinkSelection': preventDefaultThen(() => {
       meshEditor.shrinkSelection();
       updateMeshSelectionView();
-    },
+    }),
     'mesh.proportional': () => toggleProportional(),
     'mesh.boxSelect': () => {
       if (meshEditor.boxSelecting) {
@@ -5910,14 +5934,16 @@ export function createStudio(container, {
         meshEditor.beginBoxSelect();
         announce('Drag a rectangle over what to select. Shift adds to the selection.');
       }
-      syncUi();
-      requestFrame();
+      updateMeshSelectionView();
     },
-    'mesh.separate': event => {
-      event.preventDefault();
-      openSeparateMenu();
-    },
+    'mesh.separate': preventDefaultThen(openSeparateMenu),
   };
+  for (const kind of ['extrude', 'inset']) {
+    meshKeyHandlers[`mesh.${kind}`] = event => {
+      event.preventDefault();
+      startFaceTool(kind);
+    };
+  }
 
   // Handlers of the normal context by action id. A handler calls preventDefault for the keys the browser would
   // otherwise use itself (save, open, copy, undo and so on).
@@ -5947,40 +5973,22 @@ export function createStudio(container, {
       if (binding.ctrl) event.preventDefault();
       duplicateSelection();
     },
-    'edit.join': event => {
-      event.preventDefault();
-      joinSelection();
-    },
-    'edit.parent': event => {
-      event.preventDefault();
-      parentSelection();
-    },
-    'edit.clearParent': event => {
-      event.preventDefault();
-      clearParentSelection();
-    },
+    'edit.join': preventDefaultThen(joinSelection),
+    'edit.parent': preventDefaultThen(parentSelection),
+    'edit.clearParent': preventDefaultThen(clearParentSelection),
     'edit.delete': event => {
       if (!controller.selectedNodeId && !selectedObjectIsDeletable()) return;
       event.preventDefault();
       deleteSelection();
     },
-    'edit.rename': event => {
-      event.preventDefault();
-      renameActiveObject({ byKeyboard: true });
-    },
+    'edit.rename': preventDefaultThen(() => renameActiveObject({ byKeyboard: true })),
     'edit.deselect': () => {
       if (controller.selectedNodeId || controller.selectedObjectKey) controller.selectNode(null);
     },
     // A plain letter has no browser action to stop; Ctrl+I and Alt+A do (page info, the menu bar).
     'select.all': () => selectAllNodes(),
-    'select.none': event => {
-      event.preventDefault();
-      controller.selectNode(null);
-    },
-    'select.invert': event => {
-      event.preventDefault();
-      invertNodeSelection();
-    },
+    'select.none': preventDefaultThen(() => controller.selectNode(null)),
+    'select.invert': preventDefaultThen(invertNodeSelection),
     'edit.apply': event => {
       // Ctrl+A is also the page's select all: outside Studio, and in its text fields, the page keeps it.
       if (!selectAllEventBelongsToStudio(event)) return;
@@ -5994,49 +6002,24 @@ export function createStudio(container, {
       if (binding.ctrl) event.preventDefault();
       hideSelection();
     },
-    'edit.showAll': event => {
-      event.preventDefault();
-      showAllHidden();
-    },
-    'edit.undo': event => {
-      event.preventDefault();
-      controller.undo();
-    },
-    'edit.redo': event => {
-      event.preventDefault();
-      controller.redo();
-    },
+    'edit.showAll': preventDefaultThen(showAllHidden),
+    'edit.undo': preventDefaultThen(() => controller.undo()),
+    'edit.redo': preventDefaultThen(() => controller.redo()),
     'view.frame': () => flyToSelection(),
     'view.projection': () => controller.toggleCameraProjection(),
-    'view.seeThrough': event => {
+    'view.seeThrough': preventDefaultThen(() => seeThroughButton.click()),
+    'view.properties': preventDefaultThen(() => setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true')),
+    'view.agent': event => {
+      if (!agentPanel) return;
       event.preventDefault();
-      seeThroughButton.click();
-    },
-    'view.properties': event => {
-      event.preventDefault();
-      setInspectorCollapsed(root.dataset.inspectorCollapsed !== 'true');
+      agentPanel.toggle();
     },
     'animate.keyframe': () => keyframeButton.click(),
-    'animate.play': event => {
-      event.preventDefault();
-      playButton.click();
-    },
-    'file.open': event => {
-      event.preventDefault();
-      performOpenFile();
-    },
-    'file.save': event => {
-      event.preventDefault();
-      performSaveFile({ forceAs: false });
-    },
-    'file.saveAs': event => {
-      event.preventDefault();
-      performSaveFile({ forceAs: true });
-    },
-    'settings.open': event => {
-      event.preventDefault();
-      settings.open();
-    },
+    'animate.play': preventDefaultThen(() => playButton.click()),
+    'file.open': preventDefaultThen(performOpenFile),
+    'file.save': preventDefaultThen(() => performSaveFile({ forceAs: false })),
+    'file.saveAs': preventDefaultThen(() => performSaveFile({ forceAs: true })),
+    'settings.open': preventDefaultThen(() => settings.open()),
     'help.shortcuts': () => showShortcutsSheet(),
     'mesh.enter': event => {
       if (!controller.selectedNodeId || !tabBelongsToViewport(event.target)) return;
@@ -6062,36 +6045,28 @@ export function createStudio(container, {
   }
 
   const onWindowKeyDown = async event => {
-    if (!root.isConnected) {
-      return;
-    }
+    if (!root.isConnected) return;
+    if (faceToolInput?.handleKey(event)) return;
     if (modalTransform) {
       handleModalKey(event);
       return;
     }
-    if (isEditableTarget(event.target, event.key)) {
-      return;
-    }
-    // Esc or a key pressed over an open Delete or Merge menu belongs to the menu, not to edit mode.
-    if (meshMenuIsOpen()) {
-      return;
-    }
+    if (isEditableTarget(event.target, event.key)) return;
+    // Esc or a key pressed over an open mesh menu belongs to the menu, not to edit mode.
+    if (meshMenus.isOpen()) return;
     const editingMesh = Boolean(meshEditor?.active);
-    const meshMatch = editingMesh ? findKeymapAction(keymap, event, 'mesh') : null;
-    const match = meshMatch ?? findKeymapAction(keymap, event, 'normal');
-    if (!match) {
-      return;
+    const { match, fromMeshContext } = resolveStudioKeyAction(keymap, event, editingMesh, findKeymapAction, MESH_EDIT_PASS_THROUGH);
+    const dialogIsOpen = recipeDialog.open || shortcutsDialog.open || settingsDialog.open || setup.dialog.open || Boolean(newSceneDialogs?.dialogs.some(dialog => dialog.open));
+    if (!event.repeat && !dialogIsOpen && isNumpadKeyEvent(event) && !preferences.numberPad && !preferences.numberPadNoticeShown) {
+      setPreferences({ numberPadNoticeShown: true });
+      numpadNotice.show();
     }
-    // A Ctrl key works over an open dialog; a plain key does not.
-    const dialogIsOpen = recipeDialog.open || shortcutsDialog.open || settingsDialog.open || Boolean(newSceneDialogs?.dialogs.some(dialog => dialog.open));
-    if (dialogIsOpen && !match.binding.ctrl) {
-      return;
-    }
+    if (!match || (dialogIsOpen && !match.binding.ctrl)) return;
     if (shotLocksAction(match.actionId)) {
       if (match.binding.ctrl) event.preventDefault();
       return;
     }
-    if (meshMatch) {
+    if (fromMeshContext) {
       meshKeyHandlers[match.actionId](event, match.binding);
       return;
     }
@@ -6153,6 +6128,7 @@ export function createStudio(container, {
   function setInspectorCollapsed(collapsed) {
     root.dataset.inspectorCollapsed = collapsed ? 'true' : 'false';
     if (!collapsed && root.dataset.compact === 'true' && historyShown) setHistoryShown(false, { remember: false });
+    if (!collapsed && agentPanel?.takesTurns && agentPanel.shown) agentPanel.setShown(false, { remember: false });
     toggleDocksButton.setAttribute('aria-pressed', root.dataset.outlinerCollapsed === 'false' || root.dataset.inspectorCollapsed === 'false' ? 'true' : 'false');
     requestFrame();
   }
@@ -6261,10 +6237,12 @@ export function createStudio(container, {
     setHistoryShown(compact ? false : preferences.historyVisible, { remember: false });
   }
   syncCompactLayout();
+  agentPanel?.syncRoom();
 
   if (typeof ResizeObserver === 'function') {
     resizeObserver = new ResizeObserver(() => {
       syncCompactLayout();
+      agentPanel?.syncRoom();
       refitHistoryList();
       refitTreeToWholeRows();
       requestFrame();
@@ -6370,12 +6348,14 @@ export function createStudio(container, {
       clearTimeout(statusExitTimer);
       clearTimeout(awaitedProgramTimer);
       agentPresence.dispose();
+      agentPanel?.dispose();
       settings.dispose();
       systemSchemeQuery?.removeEventListener?.('change', onSystemSchemeChange);
       if (frameHandle) cancelAnimationFrame(frameHandle);
       stopFlight();
       finishModalTransform(false);
       stopWatchingCircleFocus();
+      faceToolInput?.dispose();
       documentReference.removeEventListener('contextmenu', onModalContextMenu, true);
       documentReference.removeEventListener('click', onModalClick, true);
       documentReference.removeEventListener('pointerdown', onAnyPointerDown, true);

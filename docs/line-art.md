@@ -86,7 +86,7 @@ Dashes and dots advance continuously around polyline corners in screen pixels.
 ## Limits
 
 - Outlines and polylines draw only for a frame that carries `lines`. They read the opaque and cutout geometry only (like render passes), so blended and translucent parts get no outline.
-- An outline costs two extra draws of the opaque geometry (the object ID and normal passes) plus one full-screen pass. Frames without lines cost nothing.
+- An outline costs up to two extra draws of the opaque geometry (normal and object ID passes, with `objectId` drawn last so `passSupport.texture` stays valid for user passes) plus one full-screen pass. Setting `creaseAngle: 0` with `silhouetteSide: 'both'` skips the normal pass. Frames without lines cost nothing.
 - Outlines need `depth: true` on the renderer and `installRenderPasses` first. A render job writes the pass files without lines.
 - Creases are found from the picture, not from the mesh: a bevel wider than a few pixels turns its normal slowly and draws no line. Lower `creaseAngle` or use a sharper edge.
 - Through the MCP server, `scene_create` and `set-environment` take `environment.lines`, and a material takes `toon`. `scene_capabilities` reports both.

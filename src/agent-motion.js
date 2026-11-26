@@ -1195,6 +1195,9 @@ export function compileAgentMotion(input, recipe, { normalized = false } = {}) {
 
 // What an ocean time moves in a sea geometry. The triangle indices move too: the diagonal of each quad follows the waves.
 const SEA_MOVING_FIELDS = ['positions', 'normals', 'skyVisibility', 'indices'];
+const SEA_MOVING_MAPS = ['vertexGroups', 'vertexVectors'];
+
+const sameTypedArray = (liveArray, nextArray) => liveArray?.length === nextArray.length && liveArray.constructor === nextArray.constructor;
 
 export function oceanTimeGeometry(recipe, geometryId, oceanTime, wakeField, generateOceanGeometry) {
   const definition = recipe.geometries.find(candidate => candidate.id === geometryId);
@@ -1243,19 +1246,19 @@ export function oceanTrackNodeIds(recipe) {
 
 function seaOnlyMoved(live, next) {
   const fields = Object.keys(next);
-  if (fields.length !== Object.keys(live).length || !fields.every(field => field in live && (SEA_MOVING_FIELDS.includes(field) || field === 'uvs' || field === 'vertexGroups'))) return false;
+  if (fields.length !== Object.keys(live).length || !fields.every(field => field in live && (SEA_MOVING_FIELDS.includes(field) || field === 'uvs' || SEA_MOVING_MAPS.includes(field)))) return false;
   if (next.uvs && (live.uvs.length !== next.uvs.length || next.uvs.some((value, index) => value !== live.uvs[index]))) return false;
-  if (!SEA_MOVING_FIELDS.every(field => !next[field] || (live[field].length === next[field].length && live[field].constructor === next[field].constructor))) return false;
-  const groups = Object.keys(next.vertexGroups ?? {});
-  return groups.length === Object.keys(live.vertexGroups ?? {}).length && groups.every(name => live.vertexGroups[name]?.length === next.vertexGroups[name].length);
+  if (!SEA_MOVING_FIELDS.every(field => !next[field] || sameTypedArray(live[field], next[field]))) return false;
+  return SEA_MOVING_MAPS.every((map) => {
+    const names = Object.keys(next[map] ?? {});
+    return names.length === Object.keys(live[map] ?? {}).length && names.every(name => sameTypedArray(live[map][name], next[map][name]));
+  });
 }
 
 function liveSea(sea) {
-  const vertexGroups = sea.vertexGroups && Object.fromEntries(Object.entries(sea.vertexGroups).map(([name, weights]) => [name, weights.slice()]));
-  const copy = { ...sea, ...(vertexGroups && { vertexGroups }) };
-  for (const field of SEA_MOVING_FIELDS) {
-    if (sea[field]) copy[field] = sea[field].slice();
-  }
+  const copy = { ...sea };
+  for (const field of SEA_MOVING_FIELDS) if (sea[field]) copy[field] = sea[field].slice();
+  for (const map of SEA_MOVING_MAPS) if (sea[map]) copy[map] = Object.fromEntries(Object.entries(sea[map]).map(([name, values]) => [name, values.slice()]));
   return markLiveGeometry(Object.freeze(copy), { reindexed: true });
 }
 
@@ -1273,10 +1276,8 @@ export function seasKeptInPlace(stagedState, geometries) {
     if (!next) continue;
     const live = kept.get(nodeId);
     if (live && seaOnlyMoved(live, next)) {
-      for (const field of SEA_MOVING_FIELDS) {
-        if (next[field]) live[field].set(next[field]);
-      }
-      for (const [name, weights] of Object.entries(next.vertexGroups ?? {})) live.vertexGroups[name].set(weights);
+      for (const field of SEA_MOVING_FIELDS) if (next[field]) live[field].set(next[field]);
+      for (const map of SEA_MOVING_MAPS) for (const [name, values] of Object.entries(next[map] ?? {})) live[map][name].set(values);
     } else {
       kept.set(nodeId, liveSea(next));
     }

@@ -1,0 +1,1 @@
+- Studio defers the initial coplanar flush search on heavy scenes (`deferInitialFlush: true`) so opening a large scan stays responsive while ranking finishes in slices (#2842)

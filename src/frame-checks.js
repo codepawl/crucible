@@ -373,6 +373,58 @@ export function pathTracerReflectionHdriWarning(environment) {
   };
 }
 
+const LOW_SUN_ELEVATION_DEGREES = 15;
+const WIDE_SHADOW_EXTENT_METERS = 40;
+const DEFAULT_SHADOW_CASCADES = 3;
+const FULL_SHADOW_CASCADES = 4;
+const ELEVATION_EPSILON_DEGREES = 1e-9;
+
+function sunElevationDegrees(direction) {
+  if (!Array.isArray(direction) || direction.length !== 3) return null;
+  const length = Math.hypot(direction[0], direction[1], direction[2]);
+  if (!(length > 0)) return null;
+  const sine = Math.max(-1, Math.min(1, direction[1] / length));
+  return Math.asin(sine) * 180 / Math.PI;
+}
+
+function shadowExtentMeters(boxes, shadow) {
+  const configuredExtent = Number.isFinite(shadow?.extent) ? shadow.extent : 0;
+  if (Array.isArray(boxes)) {
+    if (boxes.length === 0) return 0;
+    return Math.max(longestSide(unionOf(boxes)), configuredExtent);
+  }
+  return configuredExtent;
+}
+
+/**
+ * Warning when a low grazing sun (`0 < elevation <= 15` degrees) lights a wide scene (`extent > 40` m) with an active
+ * key light and fewer than 4 shadow cascades (`shadowCascades !== 0 && (shadowCascades ?? 3) < 4`), where far grazing
+ * slopes stripe with shadow-map aliasing. Returns undefined when safe or disabled.
+ */
+export function lowSunShadowCascadeWarning({ environment, boxes, shadow } = {}) {
+  if (!environment || typeof environment !== 'object') return undefined;
+  const keyIntensity = environment.keyIntensity ?? 1;
+  if (!(keyIntensity > 0)) return undefined;
+  if (environment.shadowCascades === 0) return undefined;
+  if (shadow?.hard && !(environment.sunAngularRadius > 0)) return undefined;
+  const cascadeCount = environment.shadowCascades ?? DEFAULT_SHADOW_CASCADES;
+  if (!(cascadeCount < FULL_SHADOW_CASCADES)) return undefined;
+  const elevationDegrees = sunElevationDegrees(environment.lightDirection);
+  if (elevationDegrees === null) return undefined;
+  if (!(elevationDegrees > 0 && elevationDegrees <= LOW_SUN_ELEVATION_DEGREES + ELEVATION_EPSILON_DEGREES)) return undefined;
+  const extent = shadowExtentMeters(boxes, shadow);
+  if (!(extent > WIDE_SHADOW_EXTENT_METERS)) return undefined;
+  const measuredElevation = round(elevationDegrees);
+  const measuredExtent = round(extent);
+  return warning(
+    'low-sun-shadow-cascades',
+    'environment.shadowCascades',
+    `A low sun at ${measuredElevation} degrees lights a ${measuredExtent} m scene with ${cascadeCount} shadow ${cascadeCount === 1 ? 'cascade' : 'cascades'}, so far grazing slopes can stripe with shadow-map aliasing.`,
+    'Set environment.shadowCascades to 4, or set castShadow: false on distant scenery.',
+    { sunElevationDegrees: measuredElevation, extentMeters: measuredExtent, shadowCascades: cascadeCount },
+  );
+}
+
 /** Adds a frame's diagnostics to `metrics.diagnostics`, keeping one entry per kind, target and message across a job's frames, up to 16 entries. */
 export function mergeFrameDiagnostics(metrics, frameDiagnostics) {
   if (!frameDiagnostics?.length) return;
