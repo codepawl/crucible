@@ -413,17 +413,17 @@ async function displayBytes({ traced, linear, width, height, nativePost, postTra
   report.display = { path: 'javascript', reason };
   const displayed = clampNegativeColor(linear);
   const scaled = look.exposure === 1 ? displayed : displayed.map(value => value * look.exposure);
-  return toneMapToRgba8(scaled, width, height, { viewTransform: look.viewTransform, look: look.look });
+  return toneMapToRgba8(scaled, width, height, { viewTransform: look.viewTransform, look: look.look, localToneMapping: look.localToneMapping ?? null });
 }
 
 async function traceOneFrameNative({ tracer, exported, width, height, samples, bounces, seed, denoise, denoiser, maxSeconds, noiseThreshold = 0, kernel = chooseNativeKernel(), sequence, temporal,
-  nativePost = true, viewTransform = 'aces', look = null, exposure = 1 }) {
+  nativePost = true, viewTransform = 'aces', look = null, exposure = 1, localToneMapping = null }) {
   const started = performance.now();
   const filtersInTrace = denoise === 'atrous' && kernel === 'cycles';
   const tables = decodeTables(exported);
   // The GPU post stage reads the film the session resolved, so it fits only when no JavaScript step edits the film afterwards.
   const jsEditsFilm = !(denoise === 'none' || filtersInTrace) || Boolean(temporal);
-  const postRequest = nativePost === false ? {} : jsEditsFilm ? { reason: 'a JavaScript denoiser or temporal blend edits the film after the trace' } : mapLookToCookPost({ viewTransform, look, exposure });
+  const postRequest = nativePost === false ? {} : jsEditsFilm ? { reason: 'a JavaScript denoiser or temporal blend edits the film after the trace' } : mapLookToCookPost({ viewTransform, look, exposure, localToneMapping });
   const traceOptions = { width, height, samples, maxSeconds, kernel, noiseThreshold, ...(filtersInTrace ? { denoise: 'atrous' } : {}),
     ...(sequence && kernel === 'cycles' && postRequest.post ? { post: postRequest.post } : {}) };
   const { traced, route, kernelParams } = sequence && kernel === 'cycles'
@@ -479,7 +479,7 @@ async function traceOneFrameNative({ tracer, exported, width, height, samples, b
     linear = blendOverTime({ temporal, color: linear, features, kernelParams, route, report });
   }
   const encodeStarted = performance.now();
-  const rgba8 = await displayBytes({ traced, linear, width, height, nativePost, postTrace: postRequest, report, look: { viewTransform, look, exposure } });
+  const rgba8 = await displayBytes({ traced, linear, width, height, nativePost, postTrace: postRequest, report, look: { viewTransform, look, exposure, localToneMapping } });
   const png = encodeOpaquePng(rgba8, width, height);
   report.encodeSeconds = (performance.now() - encodeStarted) / 1000;
   report.seconds = (performance.now() - started) / 1000;

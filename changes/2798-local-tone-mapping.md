@@ -1,0 +1,1 @@
+- Apply `effects.localToneMapping` to path tracer output (`renderPathTracedImage`, `toneMapToRgba8`, and CPU/GPU/WebGPU/native render jobs) before the view transform (#2798)

@@ -6,6 +6,7 @@ import { profileGain } from './light-profile.js';
 import { buildTraceScene, buildTraceSceneForDevice, partUsesVertexAlpha, refuseLocalVolumes, SUN_ANGULAR_RADIUS, uniqueTriangleCount, validateTraceEnvironment } from './path-tracer-scene.js';
 import { denoiseRadiance, estimateRelativeNoise } from './path-tracer-denoise.js';
 import { acesChannel, displayColor } from './view-transform.js';
+import { applyLocalToneMapping, isLocalToneMappingActive, resolveLocalToneMapping } from './local-tone-mapping.js';
 import { VIEW_TRANSFORM_NAMES } from './view-transform-names.js';
 import {
   buildFrame, createSurface, dielectricFresnel, environmentPdf, environmentRadiance, evaluateSurface, luminance, mirrorWeight, prepareSurface,
@@ -133,6 +134,7 @@ export function normalizePathTracerOptions(options = {}) {
     viewTransform: options.viewTransform ?? 'aces',
     look: options.look ?? null,
     exposure: options.exposure ?? 1,
+    localToneMapping: options.localToneMapping == null ? null : resolveLocalToneMapping(options.localToneMapping),
     backend: options.backend ?? 'cpu',
     samplingPattern: options.samplingPattern ?? 'random',
     lightSelection: options.lightSelection ?? 'auto',
@@ -1146,14 +1148,19 @@ function absorbOverDistance(material, distance, throughput) {
 
 // ---- Image ----
 
-/** The display transform of the rasterizer's post pass (exposure, view transform, gamma 2.2, optional look) applied to linear pixels. */
-export function toneMapToRgba8(linear, width, height, { viewTransform = 'aces', look = null, exposure = 1 } = {}) {
+/** The display transform of the rasterizer's post pass (exposure, optional local tone mapping, view transform, gamma 2.2, optional look) applied to linear pixels. */
+export function toneMapToRgba8(linear, width, height, { viewTransform = 'aces', look = null, exposure = 1, localToneMapping = null } = {}) {
+  const resolvedLocalToneMapping = localToneMapping == null ? null : resolveLocalToneMapping(localToneMapping);
+  const source = isLocalToneMappingActive(resolvedLocalToneMapping)
+    ? applyLocalToneMapping(linear, width, height, resolvedLocalToneMapping, exposure)
+    : linear;
+  const pixelExposure = source === linear ? exposure : 1;
   const rgba = new Uint8ClampedArray(width * height * 4);
   const plainCurve = viewTransform === 'aces' && !look;
   for (let pixel = 0; pixel < width * height; pixel++) {
     const color = plainCurve
-      ? [0, 1, 2].map(channel => acesChannel(linear[pixel * 3 + channel] * exposure) ** (1 / 2.2))
-      : displayColor([linear[pixel * 3] * exposure, linear[pixel * 3 + 1] * exposure, linear[pixel * 3 + 2] * exposure], { viewTransform, look });
+      ? [0, 1, 2].map(channel => acesChannel(source[pixel * 3 + channel] * pixelExposure) ** (1 / 2.2))
+      : displayColor([source[pixel * 3] * pixelExposure, source[pixel * 3 + 1] * pixelExposure, source[pixel * 3 + 2] * pixelExposure], { viewTransform, look });
     for (let channel = 0; channel < 3; channel++) rgba[pixel * 4 + channel] = Math.round(color[channel] * 255);
     rgba[pixel * 4 + 3] = 255;
   }

@@ -6,8 +6,12 @@ import { compileProgram, fullscreenVertex } from './gl-program.js';
 import { numberInRange, groupOf, onlyKeys, triple } from './post-fields.js';
 import { resolveDistortion, resolveFlash, createDistortionStage, createFlashStage } from './post-air.js';
 import { resolveMask, usesObjectMask, maskShader, bindMask, unbindMask, MASK_UNIFORM_NAMES } from './post-mask.js';
+import {
+  LOCAL_TONE_KNEE_SOFTNESS, LOCAL_TONE_MAXIMUM_LIFT, LOCAL_TONE_PIVOT, LOCAL_TONE_TAPS,
+  isLocalToneMappingActive, localToneMappedLog, resolveLocalToneMapping,
+} from './local-tone-mapping.js';
 
-export { usesObjectMask };
+export { usesObjectMask, localToneMappedLog };
 export { placeAirSteps, checkAirStepNodes } from './post-air.js';
 
 // Named post steps for a graded film: color balance (lift, gamma, gain), glare (streaks and fog glow), lens distortion with
@@ -24,14 +28,6 @@ const FOG_SAMPLES = 32;
 const MAXIMUM_KUWAHARA_RADIUS = 8;
 // Longest lateral color offset at the image corner at full dispersion, as a fraction of the distance from the center.
 const MAXIMUM_DISPERSION = 0.03;
-
-// Local tone mapping works on the blur of the frame at a radius that is a fraction of its height; the taps read a mip level, so the cost does not grow with the radius.
-const LOCAL_TONE_TAPS = 24;
-const LOCAL_TONE_PIVOT = 0.18;
-// The most the base of a shadow is lifted, in natural-log units (2 stops), so deep blacks stay black.
-const LOCAL_TONE_MAXIMUM_LIFT = 1.386;
-// How round the knee between the untouched midtones and the compressed tail is, in squared natural-log units; the shader and localToneMappedLog read the same number.
-const LOCAL_TONE_KNEE_SOFTNESS = 0.04;
 
 const NEUTRAL = Object.freeze({ lift: [0, 0, 0], gamma: [1, 1, 1], gain: [1, 1, 1] });
 
@@ -210,19 +206,6 @@ function resolveLensDistortion(input) {
   return {
     distortion: numberInRange(group.distortion, 0, -1, 1, 'lensDistortion.distortion'),
     dispersion: numberInRange(group.dispersion, 0, 0, 1, 'lensDistortion.dispersion'),
-  };
-}
-
-function resolveLocalToneMapping(input) {
-  const group = groupOf(input, 'localToneMapping');
-  onlyKeys(group, ['strength', 'highlightContrast', 'shadowContrast', 'detail', 'blurRadius', 'midtoneRange'], 'localToneMapping');
-  return {
-    strength: numberInRange(group.strength, 0.4, 0, 1, 'localToneMapping.strength'),
-    highlightContrast: numberInRange(group.highlightContrast, 0.6, 0, 1, 'localToneMapping.highlightContrast'),
-    shadowContrast: numberInRange(group.shadowContrast, 0.6, 0, 1, 'localToneMapping.shadowContrast'),
-    detail: numberInRange(group.detail, 1, 0, 2, 'localToneMapping.detail'),
-    blurRadius: numberInRange(group.blurRadius, 0.08, 0.01, 0.25, 'localToneMapping.blurRadius'),
-    midtoneRange: numberInRange(group.midtoneRange, 1.5, 0, 4, 'localToneMapping.midtoneRange'),
   };
 }
 
@@ -593,24 +576,6 @@ void main() {
   outputColor = vec4(source.rgb * exp(mappedLog - centerLog), source.a);
 }`;
 
-function kneeTail(distancePastKnee) {
-  return 0.5 * (distancePastKnee + Math.sqrt(distancePastKnee * distancePastKnee + LOCAL_TONE_KNEE_SOFTNESS));
-}
-
-/**
- * The curve of the local tone mapping shader on one pixel, for tests and tools: natural-log luminances in, the mapped natural-log luminance out. `settings` is a resolved localToneMapping group.
- * Only the base past the knee (`midtoneRange` stops either side of middle grey) is compressed, a shadow's lift is capped, and the detail is added back.
- */
-export function localToneMappedLog(baseLog, detailLog, settings) {
-  const pivot = Math.log(LOCAL_TONE_PIVOT);
-  const offset = baseLog - pivot;
-  const kneeLog = settings.midtoneRange * Math.LN2;
-  const highDrop = kneeTail(offset - kneeLog) * (1 - (1 + (settings.highlightContrast - 1) * settings.strength));
-  const lowWanted = kneeTail(-offset - kneeLog) * (1 - (1 + (settings.shadowContrast - 1) * settings.strength));
-  const lowLift = LOCAL_TONE_MAXIMUM_LIFT * Math.tanh(lowWanted / LOCAL_TONE_MAXIMUM_LIFT);
-  return pivot + offset - highDrop + lowLift + detailLog * settings.detail;
-}
-
 // The renderer resolves only the core effects, so a stage reads its group from the frame's own effects.
 function stepsOf(frame) {
   return resolvePostSteps(frame.effects ?? {});
@@ -873,12 +838,6 @@ function createLensDistortionStage() {
       context.uniform1f(uniforms.dispersion, lensDistortion.dispersion);
     },
   });
-}
-
-// Strength 0, or contrasts and detail all at 1 (which leave the frame as it is), draws nothing.
-function isLocalToneMappingActive(localToneMapping) {
-  if (!localToneMapping || localToneMapping.strength === 0) return false;
-  return localToneMapping.highlightContrast !== 1 || localToneMapping.shadowContrast !== 1 || localToneMapping.detail !== 1;
 }
 
 function createLocalToneMappingStage() {
