@@ -2,6 +2,7 @@ import './site-tokens.css';
 import './brand-fonts.css';
 import './site-chrome.css';
 import './landing.css';
+import { highlightElement } from './code-highlight.js';
 import { beatIndexAt, prefersStillStory } from './landing-story.js';
 
 const PACKAGE_COMMANDS = { npm: 'npm install', pnpm: 'pnpm add', yarn: 'yarn add', bun: 'bun add' };
@@ -38,7 +39,10 @@ function showRelease() {
     element.textContent = ready ? `v${release.data.version}` : release.status === 'error' ? 'Release unavailable' : 'Loading release';
   }
   const installCommand = document.getElementById('package-command');
-  if (ready) installCommand.textContent = installCommandText();
+  if (ready) {
+    installCommand.textContent = installCommandText();
+    highlightElement(installCommand, 'shell');
+  }
   for (const button of document.querySelectorAll('[data-package-manager]')) {
     button.setAttribute('aria-pressed', String(button.dataset.packageManager === release.packageManager));
   }
@@ -93,6 +97,8 @@ async function copyText(button) {
   setTimeout(() => button.classList.remove('copied'), 1400);
 }
 for (const button of document.querySelectorAll('.copy')) button.addEventListener('click', () => copyText(button));
+document.querySelectorAll('.command code').forEach((element) => highlightElement(element, 'shell'));
+document.querySelectorAll('#code .code-block').forEach((element) => highlightElement(element, 'javascript'));
 
 // ---- Photos: each starts as a 1-bit ordered dither of its own pixels and develops into the full render when it scrolls in ----
 

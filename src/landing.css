@@ -20,9 +20,6 @@
 .landing .beat h2 { font: var(--heading-weight) clamp(44px, 6.4vw, 92px)/0.95 var(--display); letter-spacing: var(--display-tracking); }
 .landing .beat p { font-size: clamp(15px, 1.25vw, 18px); max-width: 40ch; color: var(--fg); }
 .landing .beat p.explain { font-size: 14px; max-width: 44ch; color: var(--soft); }
-.landing .beat p.rename-note { font-size: 13px; max-width: none; color: var(--soft); }
-.landing .rename-note a { text-underline-offset: 4px; }
-.landing .rename-note code { font: 500 12px/1 var(--mono); }
 .landing .calls { display: flex; flex-wrap: wrap; gap: 8px; font: 500 13px/1 var(--mono); }
 .landing .calls li { padding: 8px 10px; border: var(--edge-width) solid var(--edge); border-radius: var(--chip-round); background: var(--card); }
 .landing .calls li::before { content: '> '; color: var(--accent); }
@@ -30,6 +27,29 @@
 .landing .command { display: flex; align-items: stretch; width: 100%; max-width: 470px; border: 1px solid var(--code-border); border-radius: var(--card-round); background: var(--code-bg); color: var(--code-fg); overflow: hidden; }
 .landing .command code { flex: 1; min-width: 0; padding: 11px 12px; font: 500 13px/1.45 var(--mono); overflow-wrap: anywhere; user-select: all; }
 .landing .command code::before { content: '$ '; color: var(--accent); user-select: none; }
+.landing .command code,
+.landing .code-block {
+  --syntax-keyword: #ffb25e;
+  --syntax-string: #5fc48a;
+  --syntax-number: #ffb25e;
+  --syntax-flag: color-mix(in srgb, var(--code-fg) 68%, var(--code-bg));
+  --syntax-name: var(--code-fg);
+  --syntax-comment: color-mix(in srgb, var(--code-fg) 54%, var(--code-bg));
+}
+.landing .hljs-keyword,
+.landing .hljs-selector-tag,
+.landing .hljs-literal { color: var(--syntax-keyword); font-weight: 600; }
+.landing .hljs-string,
+.landing .hljs-template-tag,
+.landing .hljs-regexp { color: var(--syntax-string); }
+.landing .hljs-number,
+.landing .hljs-symbol { color: var(--syntax-number); }
+.landing .hljs-attr { color: var(--syntax-flag); }
+.landing .hljs-title,
+.landing .hljs-built_in,
+.landing .hljs-tag,
+.landing .hljs-name { color: var(--syntax-name); font-weight: 600; }
+.landing .hljs-comment { color: var(--syntax-comment); font-style: italic; }
 .landing .copy { flex: none; width: 44px; display: grid; place-items: center; border: 0; background: transparent; color: var(--code-fg); cursor: pointer; }
 .landing .copy .icon { grid-area: 1 / 1; transition: opacity 160ms ease, transform 200ms var(--ease-out); }
 .landing .copy .done-mark { opacity: 0; transform: scale(0.6); }
