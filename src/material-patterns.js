@@ -420,4 +420,15 @@ function sameFrames(rememberedImages, images) {
 }
 
 export { PATTERN_DEFAULTS };
-const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'layerMaps', 'transmissionMap', 'aovMap', 'emissionFresnel', 'boxMapScale', 'boxMapAxis'];
+const PATTERN_TEXTURE_FIELDS = [
+  'aovMap',
+  'boxMapAxis',
+  'boxMapScale',
+  'emissionFresnel',
+  'emissiveMap',
+  'layerMaps',
+  'map',
+  'metallicRoughnessMap',
+  'normalMap',
+  'transmissionMap',
+];

@@ -63,16 +63,92 @@ const PENDING_CUTTER_SCOPE = Object.freeze({ definitions: null, chain: Object.fr
 const TERRAIN_SKY_VISIBILITY_BYTES = 4;
 const CAMERA_DEFAULTS = Object.freeze({ eye: [4, 3, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45, near: 0.1, far: 1000 });
 // Per-node render flags: `visible` hides a node and its children; the rest become renderer part flags of a mesh node.
-const RENDER_FLAG_FIELDS = ['visible', 'castShadow', 'receiveShadow', 'holdout', 'shadowCatcher', 'shadowOnly'];
+const RENDER_FLAG_FIELDS = [
+  'visible',
+  'castShadow',
+  'holdout',
+  'receiveShadow',
+  'shadowCatcher',
+  'shadowOnly',
+];
 const PART_FLAG_FIELDS = RENDER_FLAG_FIELDS.slice(1);
 // On an asset placement these two flags reach each part it expands to.
-const ASSET_PLACEMENT_FLAG_FIELDS = ['castShadow', 'receiveShadow'];
-const NODE_FIELDS = ['translation', 'rotation', 'scale', 'parent', 'label', 'geometry', 'material', 'skin', 'relations', 'asset', 'vegetation', 'clutter', 'grass', 'decal', 'faceImages', 'depthLayer', 'billboard', 'blend', 'rayVisibility', ...RENDER_FLAG_FIELDS];
-const MATERIAL_FIELDS = ['color', 'metallic', 'roughness', 'emission', 'emissiveColor', 'opacity', 'alphaMode', 'alphaCutoff', 'doubleSided', 'depthTest', 'pattern', 'map', 'text', 'subsurface', 'snippet', 'preset', 'waterPreset', 'absorption', 'turbidity', 'foamEdge', 'foamWidth', 'foamColor', 'foamVeins', 'contactFoam', 'caustics', 'ripples', 'waterRamp', 'aov', 'wear', 'surfaceCover', 'retro', 'emissionMask', 'toonColors', ...MATERIAL_LAYER_FIELDS];
-const PATTERN_TEXTURE_FIELDS = ['map', 'normalMap', 'metallicRoughnessMap', 'emissiveMap', 'layerMaps', 'transmissionMap', 'aovMap', 'emissionFresnel', 'boxMapScale', 'boxMapAxis'];
+const ASSET_PLACEMENT_FLAG_FIELDS = [
+  'castShadow',
+  'receiveShadow',
+];
+const NODE_FIELDS = [
+  'asset',
+  'billboard',
+  'blend',
+  'clutter',
+  'decal',
+  'depthLayer',
+  'faceImages',
+  'geometry',
+  'grass',
+  'label',
+  'material',
+  'parent',
+  'rayVisibility',
+  'relations',
+  'rotation',
+  'scale',
+  'skin',
+  'translation',
+  'vegetation',
+  ...RENDER_FLAG_FIELDS,
+];
+const MATERIAL_FIELDS = [
+  'absorption',
+  'alphaCutoff',
+  'alphaMode',
+  'aov',
+  'caustics',
+  'color',
+  'contactFoam',
+  'depthTest',
+  'doubleSided',
+  'emission',
+  'emissionMask',
+  'emissiveColor',
+  'foamColor',
+  'foamEdge',
+  'foamVeins',
+  'foamWidth',
+  'map',
+  'metallic',
+  'opacity',
+  'pattern',
+  'preset',
+  'retro',
+  'ripples',
+  'roughness',
+  'snippet',
+  'subsurface',
+  'surfaceCover',
+  'text',
+  'toonColors',
+  'turbidity',
+  'waterGlint',
+  'waterPreset',
+  'waterRamp',
+  'wear',
+  ...MATERIAL_LAYER_FIELDS,
+];
+const PATTERN_TEXTURE_FIELDS = [
+  'aovMap',
+  'boxMapAxis',
+  'boxMapScale',
+  'emissionFresnel',
+  'emissiveMap',
+  'layerMaps',
+  'map',
+  'metallicRoughnessMap',
+  'normalMap',
+  'transmissionMap',
+];
 const CAMERA_FIELDS = [...Object.keys(CAMERA_DEFAULTS), ...CAMERA_LENS_FIELDS];
-// Fields of an optional shader module join the list here, so the long list above stays a line each material feature does not rewrite.
-MATERIAL_FIELDS.push('waterGlint');
 const LOOK_OPERATION_FIELDS = Object.freeze({
   'set-environment': 'environment',
   'set-effects': 'effects',
@@ -632,22 +708,28 @@ function cameraFrom(value = {}) {
 }
 
 const GEOMETRY_FIELDS = {
-  box: ['bevel', 'subdivisions'], cylinder: ['segments', 'bevel', 'bevelSegments'],
-  sphere: ['segments', 'rings'], grid: ['segments'], plane: ['segments'],
-  cone: ['radiusTop', 'radiusBottom', 'segments'], icoSphere: ['subdivisions'], circle: ['segments', 'innerRadius'],
-  line: ['from', 'to', 'radius', 'radialSegments'], torus: ['tubeRadius', 'segments', 'sides', 'arc', 'start'],
-  lathe: ['profile', 'segments', 'startAngle', 'sweep'],
-  extrude: ['contour', 'holes', 'depth', 'steps', 'bevel', 'bevelThickness', 'bevelSegments'],
-  tube: ['path', 'radius', 'segments', 'radialSegments', 'closed'],
-  sdf: ['root', 'resolution'],
-  curve: ['points', 'shape', 'splines', 'closed', 'kind', 'weights', 'order', 'knots', 'knotMode', 'trim', 'grow', 'radius', 'taper', 'profile', 'resolution', 'radialSegments'],
-  text: ['text', 'size', 'depth', 'font', 'align', 'curveSegments'],
-  mesh: ['base', 'edits', 'stack', 'smoothAngle', 'shapeKeys'],
-  terrain: ['size', 'resolution', 'seed', 'amplitude', 'holes', 'featureSize', 'octaves', 'warp', 'ridged', 'mountainAmplitude', 'mountainMask', 'chunks', 'levels', 'paths'],
+  box: ['bevel', 'subdivisions'],
+  circle: ['segments', 'innerRadius'],
   cloud: ['seed', 'puffs', 'width', 'height', 'flatBase', 'resolution', 'levels', 'upBias', 'unionSoftness'],
-  fragment: ['source', 'seed', 'cells', 'index', 'impact', 'impactRadius'],
+  cone: ['radiusTop', 'radiusBottom', 'segments'],
+  curve: ['points', 'shape', 'splines', 'closed', 'kind', 'weights', 'order', 'knots', 'knotMode', 'trim', 'grow', 'radius', 'taper', 'profile', 'resolution', 'radialSegments'],
+  cylinder: ['segments', 'bevel', 'bevelSegments'],
   dented: ['source', 'impacts', 'stiffness', 'maxDepth', 'radius'],
+  extrude: ['contour', 'holes', 'depth', 'steps', 'bevel', 'bevelThickness', 'bevelSegments'],
   floorPlan: ['walls', 'openings', 'height', 'thickness', 'part'],
+  fragment: ['source', 'seed', 'cells', 'index', 'impact', 'impactRadius'],
+  grid: ['segments'],
+  icoSphere: ['subdivisions'],
+  lathe: ['profile', 'segments', 'startAngle', 'sweep'],
+  line: ['from', 'to', 'radius', 'radialSegments'],
+  mesh: ['base', 'edits', 'stack', 'smoothAngle', 'shapeKeys'],
+  plane: ['segments'],
+  sdf: ['root', 'resolution'],
+  sphere: ['segments', 'rings'],
+  terrain: ['size', 'resolution', 'seed', 'amplitude', 'holes', 'featureSize', 'octaves', 'warp', 'ridged', 'mountainAmplitude', 'mountainMask', 'chunks', 'levels', 'paths'],
+  text: ['text', 'size', 'depth', 'font', 'align', 'curveSegments'],
+  torus: ['tubeRadius', 'segments', 'sides', 'arc', 'start'],
+  tube: ['path', 'radius', 'segments', 'radialSegments', 'closed'],
 };
 
 // A line is a two-point curve; both ends must be finite and apart.
