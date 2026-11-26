@@ -4176,9 +4176,9 @@ export function createStudio(container, {
         if (!drawingTheShot()) {
           renderSceneObjectMarks(documentReference, gizmoSvg, controller);
         }
-        appendSnapMarker(documentReference, gizmoSvg, controller.snapMarker());
         drawAgentOutline();
         if (meshEditor?.active && !drawingTheShot()) meshEditor.draw(documentReference, gizmoSvg);
+        appendSnapMarker(documentReference, gizmoSvg, controller.snapMarker());
       }
       syncViewportAids();
     } finally {

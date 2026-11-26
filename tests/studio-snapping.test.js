@@ -9,6 +9,7 @@ import {
   SNAP_TARGET_IDS,
   VERTEX_SNAP_MAX_RANKED_PARTS,
   VERTEX_SNAP_MAX_VERTICES,
+  buildEditSnapSources,
   findVertexUnderPointer,
   moveToLandVertex,
   sampleVertices,
@@ -354,4 +355,29 @@ test('under auto-key the other selected objects move from the pose they show at 
   const heroShift = partX('hero') - heroBefore;
   assert.ok(Math.abs(heroShift) > 0.5, `the active object moved: ${heroShift}`);
   assert.ok(Math.abs((partX('orb') - orbBefore) - heroShift) < 1e-6, `the other object moved by the same amount from what it shows: ${partX('orb')}`);
+});
+
+test('buildEditSnapSources separates moved vertices from unmoved vertices and unmoved faces', () => {
+  const mesh = {
+    vertexCount: 4,
+    faceCount: 2,
+    faceOffsets: Int32Array.from([0, 3, 6]),
+    cornerVertices: Int32Array.from([0, 1, 2, 1, 2, 3]),
+  };
+  const positions = Float32Array.from([9, 9, 9, 1, 0, 0, 0, 1, 0, 1, 1, 0]);
+  const basePositions = Float32Array.from([0, 0, 0]);
+  const matrix = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2, 0, 0, 1];
+  const sources = buildEditSnapSources({
+    mesh,
+    positions,
+    basePositions,
+    movedVertices: [0],
+    seedVertices: [0],
+    matrix,
+  });
+  assert.deepEqual(sources.ownPoints, [[2, 0, 0]], 'moved vertex uses start-of-drag basePositions in world space');
+  assert.equal(sources.unmovedVertexPart.geometry.positions.length, 9, 'only the 3 unmoved vertices are targets');
+  assert.deepEqual(Array.from(sources.unmovedVertexPart.geometry.positions), [1, 0, 0, 0, 1, 0, 1, 1, 0]);
+  assert.equal(sources.unmovedFacePart.geometry.indices.length, 3, 'the face touching vertex 0 is excluded; the other face stays');
+  assert.deepEqual(Array.from(sources.unmovedFacePart.geometry.indices), [1, 2, 3]);
 });
