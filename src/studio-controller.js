@@ -693,9 +693,7 @@ export function createStudioController({
   let flushTimer = null;
 
   function watchPendingFlush() {
-    if (flushTimer !== null || !isSettling()) {
-      return;
-    }
+    if (flushTimer !== null || !isSettling()) return;
     flushTimer = setTimeout(() => {
       flushTimer = null;
       if (isSettling()) {
@@ -715,6 +713,7 @@ export function createStudioController({
   function isSettling() {
     return currentScene.flushPending || Boolean(currentScene.bakePending);
   }
+  watchPendingFlush();
 
   function stopWatchingFlush() {
     clearTimeout(flushTimer);
@@ -911,7 +910,7 @@ export function createStudioController({
 
   // The pool holds decoded scans under "<id>:<copy>" and decoded catalog images under their plain id, so one Map serves both options.
   function scenePoolOptions() {
-    return assets ? { assets, sequenceFrames: assets } : {};
+    return { ...(assets ? { assets, sequenceFrames: assets } : {}), deferInitialFlush: true };
   }
 
   function swapRecipe(recipeInput) {
@@ -930,6 +929,7 @@ export function createStudioController({
     currentScene = scene;
     showEditsBeforeTheirBake(scene);
     settleSelectionAndMotion();
+    watchPendingFlush();
   }
 
   // A recipe from a file or an agent leaves out the fields the scene fills in, so it is built once on the side to learn the

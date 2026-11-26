@@ -331,6 +331,13 @@ function integer(value, minimum, maximum, label) {
   return value;
 }
 
+function optionalBoolean(value, label, fallback) {
+  if (value !== undefined && typeof value !== 'boolean') {
+    throw invalidField(label, value, 'true or false', TypeError);
+  }
+  return value === undefined ? fallback : value;
+}
+
 function identifier(value, label = 'id') {
   if (typeof value !== 'string' || !value.trim() || value.length > 128) {
     throw invalidField(label,value, 'a string of 1 to 128 characters, such as "wall-left"', TypeError);
@@ -444,14 +451,9 @@ function materialFrom(recipeValue) {
   const graphHasOpacity = graphFactor('opacity', 0);
   result.alphaMode = (result.opacity < 1 || graphHasOpacity) && requestedAlphaMode === 'opaque' ? 'blend' : requestedAlphaMode;
   applyAlphaCutoff(value, result);
-  result.doubleSided = defaultValue(value.doubleSided, false);
-  for (const flag of ['doubleSided', 'depthTest', 'throughGlass']) {
-    const candidate = flag === 'doubleSided' ? result.doubleSided : value[flag];
-    if (candidate !== undefined) {
-      if (typeof candidate !== 'boolean') throw invalidField(flag, candidate, 'true or false', TypeError);
-      result[flag] = candidate;
-    }
-  }
+  result.doubleSided = optionalBoolean(value.doubleSided, 'doubleSided', false);
+  if (value.depthTest !== undefined) result.depthTest = optionalBoolean(value.depthTest, 'depthTest');
+  if (value.throughGlass !== undefined) result.throughGlass = optionalBoolean(value.throughGlass, 'throughGlass');
   for (const field of ['metallic', 'roughness']) {
     finite(result[field], field);
     if (result[field] < 0 || result[field] > 1) throw invalidField(field, result[field], 'a number from 0 to 1, such as 0.5');
@@ -540,9 +542,7 @@ function nodeFrom(value) {
   if (value.vegetation !== undefined) result.vegetation = agentSceneModule('vegetation').normalizeVegetation(value.vegetation, value);
   if (value.clutter !== undefined) result.clutter = agentSceneModule('clutter').normalizeClutter(value.clutter, value);
   if (value.grass !== undefined) result.grass = agentSceneModule('grass').normalizeGrass(value.grass, value);
-  if (value.decal !== undefined && typeof value.decal !== 'boolean') {
-    throw invalidField('decal', value.decal, 'true or false', TypeError);
-  }
+  optionalBoolean(value.decal, 'decal');
   if (value.billboard !== undefined) {
     if (value.geometry === undefined) throw invalidField('billboard', value.billboard, 'a field on a mesh node whose geometry is a plane; remove it from group nodes', TypeError);
     result.billboard = agentSceneModule('textBillboard').normalizeBillboard(value.billboard);
@@ -553,7 +553,7 @@ function nodeFrom(value) {
     integer(value.depthLayer, 0, MAXIMUM_DEPTH_LAYER, 'depthLayer');
   }
   for (const flag of RENDER_FLAG_FIELDS) {
-    if (value[flag] !== undefined && typeof value[flag] !== 'boolean') throw invalidField(flag, value[flag], 'true or false', TypeError);
+    optionalBoolean(value[flag], flag);
     const placesAsset = value.asset !== undefined && ASSET_PLACEMENT_FLAG_FIELDS.includes(flag);
     if (flag !== 'visible' && value[flag] !== undefined && value.geometry === undefined && !placesAsset) throw invalidField(flag, value[flag], 'a flag on a mesh node with geometry and material; remove it from group nodes', TypeError);
   }
@@ -804,9 +804,7 @@ function geometryEstimate(value, scope = PENDING_CUTTER_SCOPE) {
     }
     case 'tube':
       points(value.path, 3, value.closed ? 3 : 2, 'path');
-      if (value.closed !== undefined && typeof value.closed !== 'boolean') {
-        throw invalidField('closed', value.closed, 'true or false', TypeError);
-      }
+      optionalBoolean(value.closed, 'closed');
       agentSceneModule('modeling').checkTubeInputs(value.path, value.radius ?? 0.1, value.closed ?? false);
       return (detail('segments', 64, 3, 2048) + 1) * (detail('radialSegments', 12, 3, 128) + 1);
     case 'curve': {
@@ -1988,10 +1986,7 @@ function meshGeometryTarget(candidate, operation, remedy) {
 function removeNode(candidate, operation) {
   knownKeys(operation, ['type', 'id', 'recursive'], 'operation');
   identifier(operation.id);
-  const recursive = operation.recursive === undefined ? false : operation.recursive;
-  if (typeof recursive !== 'boolean') {
-    throw invalidField('recursive', recursive, 'true or false', TypeError);
-  }
+  const recursive = optionalBoolean(operation.recursive, 'recursive', false);
   if (!candidate.nodes.some(node => node.id === operation.id)) {
     throw invalidField('id', operation.id, 'the ID of a node in nodes; scene_inspect lists them');
   }
@@ -2023,6 +2018,7 @@ function removeNode(candidate, operation) {
 /** A bounded CPU authoring session. Render adapters must treat geometry as immutable. */
 export function createAgentScene(input, inputLimits = {}, options = {}) {
   const limits = resolveLimits(inputLimits);
+  const deferInitialFlush = optionalBoolean(options.deferInitialFlush, 'deferInitialFlush', false);
   const assetOutputCache = new Map();
   // The on-demand modules this scene's recipe and edits named. Default stages (flush ranking, floor sky) run only for these.
   const requestedModules = new Set(defaultStageModulesNamed(input));
@@ -2477,10 +2473,8 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     return first.length === second.length && first.every((part, index) => part === second[index]);
   }
 
-  // An edit of a scene that holds this many triangles to rank does not wait for the search (#2905): it returns with the parts
-  // unranked and the search runs right after, on the next turn of the event loop. A new scene is still ranked inside the call,
-  // so a render job built from a recipe never misses an offset. A scene whose parts move (#2787) searches its still parts the
-  // same way; the rest parts and the posed parts of that edit share the one search (see joinPendingFlush).
+  // Heavy scenes (>= DEFERRED_FLUSH_TRIANGLES) defer flush on edits (#2905) and initial build if `options.deferInitialFlush` (#2842).
+  // Moving scenes (#2787) share one search across rest and posed parts (see joinPendingFlush).
   const DEFERRED_FLUSH_TRIANGLES = 100_000;
   let pendingFlush = null;
 
@@ -2489,14 +2483,14 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   }
 
   function cancelPendingFlush() {
-    if (pendingFlush) {
-      pendingFlush.runner.cancel();
-      pendingFlush = null;
-    }
+    if (!pendingFlush) return;
+    pendingFlush.runner.cancel();
+    pendingFlush = null;
   }
 
   function shouldDeferFlush(rankedParts) {
-    return state !== null && triangleCountOf(rankedParts) >= (options.deferFlushTriangles ?? DEFERRED_FLUSH_TRIANGLES)
+    return (state !== null || deferInitialFlush)
+      && triangleCountOf(rankedParts) >= (options.deferFlushTriangles ?? DEFERRED_FLUSH_TRIANGLES)
       && !rankedLists().some(candidate => sameParts(candidate.rankedParts, rankedParts));
   }
 
@@ -2523,12 +2517,9 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     return staged;
   }
 
-  // Finishes the deferred search now, whether the slices ran out or a caller needs the ranks first. It is the same search a cold
-  // edit runs, so the result is byte for byte the same.
+  // Finishes the deferred search now; it is the same search a cold build runs, so the result is byte for byte the same.
   function settleFlush() {
-    if (!pendingFlush) {
-      return false;
-    }
+    if (!pendingFlush) return false;
     pendingFlush.runner.drain();
     return true;
   }
@@ -2536,6 +2527,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
   // The drawn parts are swapped for the ranked list as a topology change.
   function finishFlush(pending, searched) {
     pendingFlush = null;
+    if (!state) return;
     let regrouped = false;
     for (const { parts, rest } of pending.targets) {
       const staged = rankAndStage(agentSceneModule('coplanar'), pending.recipe, parts, rest, searched);
@@ -2546,15 +2538,11 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         regrouped = true;
       }
     }
-    if (regrouped) {
-      topologyRevision++;
-    }
+    if (regrouped) topologyRevision++;
   }
 
   function stageCoplanarOffsets(recipe, parts, { rest = false } = {}) {
-    if (options.recipeOnly || !agentSceneModuleActive('coplanar', requestedModules)) {
-      return parts;
-    }
+    if (options.recipeOnly || !agentSceneModuleActive('coplanar', requestedModules)) return parts;
     const coplanar = agentSceneModule('coplanar');
     if (recipe.environment.resolveCoplanar === false) {
       cancelPendingFlush();
@@ -2569,9 +2557,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     }
     const rankedParts = partsToRank(recipe, parts);
     if (pendingFlush && sameParts(pendingFlush.rankedParts, rankedParts)) {
-      if (!pendingFlush.targets.some(target => target.parts === parts)) {
-        joinPendingFlush(parts, rest);
-      }
+      if (!pendingFlush.targets.some(target => target.parts === parts)) joinPendingFlush(parts, rest);
       return parts;
     }
     if (flushCache?.parts !== parts && flushCache?.staged !== parts) {
@@ -2758,7 +2744,12 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     }
   }
 
-  commit(stage(input), false);
+  try {
+    commit(stage(input), false);
+  } catch (error) {
+    cancelPendingFlush();
+    throw error;
+  }
   return Object.freeze({
     capabilities: AGENT_SCENE_CAPABILITIES,
     limits,
@@ -3018,9 +3009,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
         if (operation.type === 'edit-mesh') {
           knownKeys(operation, ['type', 'geometry', 'edits', 'replace'], 'operation');
           const target = meshGeometryTarget(candidate, operation, type => `Add a mesh geometry with base: { type: '${type}', ... } to edit it.`);
-          if (operation.replace !== undefined && typeof operation.replace !== 'boolean') {
-            throw invalidField('replace', operation.replace, 'true or false', TypeError);
-          }
+          optionalBoolean(operation.replace, 'replace');
           if (!Array.isArray(operation.edits)) {
             throw invalidField('edits', operation.edits, 'an array of mesh edits, such as [{ "op": "extrude" }]', TypeError);
           }
@@ -3111,9 +3100,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
     inspect(options = {}) {
       knownKeys(options, ['ids', 'limit', 'includeBounds', 'path'], 'inspection');
       const maximum = integer(options.limit ?? Math.min(64, limits.maxNodes), 1, limits.maxNodes, 'inspection limit');
-      if (options.includeBounds !== undefined && typeof options.includeBounds !== 'boolean') {
-        throw invalidField('includeBounds', options.includeBounds, 'true or false', TypeError);
-      }
+      optionalBoolean(options.includeBounds, 'includeBounds');
       if (options.ids !== undefined && (!Array.isArray(options.ids) || options.ids.length > limits.maxNodes)) {
         throw invalidField('ids', Array.isArray(options.ids) ? `${options.ids.length} IDs` : options.ids, `a list of at most ${limits.maxNodes} node IDs, such as ["body"]`);
       }

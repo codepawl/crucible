@@ -1274,7 +1274,7 @@ export function createStudio(container, {
   const pendingRecipe = suppliedRecipe && !suppliedScene && recipeNeedsFetching(suppliedRecipe) ? suppliedRecipe : null;
   const initialRecipe = pendingRecipe ? buildTemplateRecipe(template) : suppliedRecipe ?? (suppliedScene ? null : buildTemplateRecipe(template));
   // The scene reads catalog assets and images from the pool, so an import into the first scene can place them.
-  const initialScene = suppliedScene ?? createAgentScene(initialRecipe, {}, { assets: catalog.pool, sequenceFrames: catalog.pool });
+  const initialScene = suppliedScene ?? createAgentScene(initialRecipe, {}, { assets: catalog.pool, sequenceFrames: catalog.pool, deferInitialFlush: true });
   let handleChange = () => {};
   const studioDiagnostics = createStudioDiagnostics({
     limit: diagnosticsOptions.limit,
@@ -3349,11 +3349,10 @@ export function createStudio(container, {
 
   function capturePngDataUrl() {
     // Nothing draws while the context is gone, so a still taken then would be a blank picture.
-    if (contextLost) {
-      throw new Error(CONTEXT_LOST_MESSAGE);
-    }
-    // A still has the light a fresh build has, so a bake that is still running finishes first.
+    if (contextLost) throw new Error(CONTEXT_LOST_MESSAGE);
+    // A still has the light and flush ranks a fresh build has, so any pending bake or flush finishes first.
     controller.settleBake();
+    controller.scene.settleFlush?.();
     bakeMark.show(controller.bakePending);
     capturingStill = true;
     try {
