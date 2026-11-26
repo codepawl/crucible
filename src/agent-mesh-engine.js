@@ -8,4 +8,4 @@ export { expandInstancedNodes } from './mesh-instances.js';
 export { loadMeshBooleans, meshBooleansLoaded, setManifoldModuleLoader } from './mesh-boolean.js';
 export { editImportedGeometry } from './mesh-import.js';
 export { meshReport as importedMeshReport, registerEditedMesh } from './agent-mesh.js';
-export { normalizeMaterialSlots, checkMaterialSlots, geometryOfSlot } from './mesh-material-slots.js';
+export { normalizeMaterialSlots, checkMaterialSlots, checkRecipeMaterialSlots, geometryOfSlot } from './mesh-material-slots.js';

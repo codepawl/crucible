@@ -19,6 +19,7 @@ import { closedRoomShare, CLOSED_ROOM_SHARE } from './closed-room.js';
 import { roomEdgeLeakDiagnostic } from './room-edge-leak.js';
 import { depthLayerOf, flushOrderOf, MAXIMUM_DEPTH_LAYER, setFlushOrder } from './depth-layer.js';
 import { normalizeRayVisibility } from './ray-visibility.js';
+import { fadeMaterial, hiddenNodeIds, opacityNodeIds, recipeUsesVisibility, sampledOpacities } from './agent-node-visibility.js';
 import { armatureNodes, bakeRigExport, bindSkins, createSkinStages, normalizeArmatures, publishSkinPoses, restWorldMatrix, rigReport, stageSkinPoses, transformedBounds, withoutArmatureNodes } from './rig.js';
 export { AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS };
 
@@ -1308,15 +1309,12 @@ function normalizeRecipe(input, limits, { alreadyCopied = false } = {}) {
     if (definition.type === 'mesh') withFieldPrefix(`geometries[${index}]`, () => checkedCutterDependencies(definition, definitionsById));
   });
   recipe.materials = resources(withDefaultMaterial(recipe), limits.maxMaterials, 'materials', materialFrom);
-  const slottedGeometries = new Set(recipe.geometries.filter(definition => definition.slots !== undefined).map(definition => definition.id));
-  const skinnedSlotted = (recipe.nodes ?? []).find(node => node.skin !== undefined && slottedGeometries.has(node.geometry));
-  if (skinnedSlotted) {
-    throw invalidField(`nodes.${skinnedSlotted.id}.skin`, skinnedSlotted.skin, `a node whose geometry has no material slots: geometry ${skinnedSlotted.geometry} has slots, and a skin rebuilds the mesh the slots were measured on; remove skin, or remove slots from ${skinnedSlotted.geometry}`);
+  if (recipe.geometries.some(definition => definition.type === 'mesh')) {
+    agentSceneModule('mesh').checkRecipeMaterialSlots(recipe);
+    recipe.geometries.forEach((definition, index) => {
+      if (definition.type === 'mesh') withFieldPrefix(`geometries[${index}]`, () => agentSceneModule('mesh').checkDisplaceMaterials(definition, heightSourcesOf(recipe).materials));
+    });
   }
-  recipe.geometries.forEach((definition, index) => {
-    if (definition.type === 'mesh') withFieldPrefix(`geometries[${index}]`, () => agentSceneModule('mesh').checkDisplaceMaterials(definition, heightSourcesOf(recipe).materials));
-    if (definition.type === 'mesh') withFieldPrefix(`geometries[${index}]`, () => agentSceneModule('mesh').checkMaterialSlots(definition, new Set(recipe.materials.map(material => material.id))));
-  });
   const distinctPatterns = new Set(recipe.materials.filter(material => material.pattern).map(material => JSON.stringify(material.pattern)));
   if (distinctPatterns.size > MAX_MATERIAL_PATTERNS) {
     throw invalidField('materials', `${distinctPatterns.size} different patterns`, `at most ${MAX_MATERIAL_PATTERNS} different material patterns; reuse one and tint it with color`);
@@ -1788,81 +1786,6 @@ function sameRayVisibility(first, second) {
 
 function sameRenderFlags(part, node, usesVisibility, assetExtras, fades = false) {
   return PART_FLAG_FIELDS.every(flag => part[flag] === (node[flag] ?? assetExtras?.[flag])) && sameRayVisibility(part.rayVisibility, node.rayVisibility) && Boolean(part.visibility) === usesVisibility && Boolean(part.opacityScale) === fades;
-}
-
-function recipeUsesVisibility(recipe) {
-  return recipe.nodes.some(node => node.visible !== undefined) || Boolean(recipe.motion?.tracks?.some(track => track.kind === 'node' && track.property === 'visible'));
-}
-
-/** Node IDs a node opacity track fades: each tracked node and everything under it. Empty when no track animates opacity. */
-function opacityNodeIds(recipe) {
-  const tracked = new Set((recipe.motion?.tracks ?? []).filter(track => track.kind === 'node' && track.property === 'opacity').map(track => track.id));
-  if (tracked.size === 0) return tracked;
-  const byId = new Map(recipe.nodes.map(node => [node.id, node]));
-  const faded = new Set();
-  for (const node of recipe.nodes) {
-    for (let cursor = node, depth = 0; cursor && depth < 256; cursor = byId.get(cursor.parent), depth++) {
-      if (tracked.has(cursor.id)) {
-        faded.add(node.id);
-        break;
-      }
-    }
-  }
-  return faded;
-}
-
-/** What each faded node draws at a pose, as a multiple of its material opacity: its own sampled opacity times its parents'. */
-function sampledOpacities(recipe, fadedIds, sampled) {
-  const opacities = new Map();
-  if (fadedIds.size === 0) return opacities;
-  const byId = new Map(recipe.nodes.map(node => [node.id, node]));
-  for (const id of fadedIds) {
-    let opacity = 1;
-    for (let cursor = byId.get(id), depth = 0; cursor && depth < 256; cursor = byId.get(cursor.parent), depth++) {
-      opacity *= sampled?.nodes.get(cursor.id)?.opacity ?? 1;
-    }
-    opacities.set(id, opacity);
-  }
-  return opacities;
-}
-
-const blendedViews = new WeakMap();
-
-// Own live getters, not a prototype link, so a copy of the view (the renderer's spread, a structured clone) keeps every field.
-function blendedView(material) {
-  const view = {};
-  for (const field of Object.keys(material)) Object.defineProperty(view, field, { enumerable: true, configurable: true, get: () => material[field] });
-  Object.defineProperty(view, 'alphaMode', { enumerable: true, value: 'blend' });
-  return Object.freeze(view);
-}
-
-/** The material a faded part draws with: blend and add materials as they are, an opaque one as a blended view. Shared materials stay untouched. */
-function fadeMaterial(material, nodeId) {
-  const alphaMode = material.alphaMode ?? 'opaque';
-  if (alphaMode === 'blend' || alphaMode === 'add') return material;
-  if (alphaMode === 'mask') throw invalidField(`materials.${material.id}.alphaMode`, alphaMode, `opaque or blend, because node "${nodeId}" has an opacity track and a mask cutout is fixed per batch (or animate scale or visible instead)`);
-  if (!blendedViews.has(material)) blendedViews.set(material, blendedView(material));
-  return blendedViews.get(material);
-}
-
-/** Node IDs hidden at a pose: a node set invisible by its field or a sampled track, and everything under it. */
-function hiddenNodeIds(recipe, sampled) {
-  const hidden = new Set();
-  if (!recipeUsesVisibility(recipe)) return hidden;
-  const byId = new Map(recipe.nodes.map(node => [node.id, node]));
-  const hiddenOwn = node => {
-    const keyed = sampled?.nodes.get(node.id)?.visible;
-    return keyed === undefined ? node.visible === false : keyed < 0.5;
-  };
-  for (const node of recipe.nodes) {
-    for (let cursor = node, depth = 0; cursor && depth < 256; cursor = byId.get(cursor.parent), depth++) {
-      if (hiddenOwn(cursor)) {
-        hidden.add(node.id);
-        break;
-      }
-    }
-  }
-  return hidden;
 }
 
 // Cloth keeps one geometry per sheet that every sample rewrites, so the parts of a later seek are the previous ones and the

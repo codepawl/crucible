@@ -1,4 +1,4 @@
-import { invalidField } from './field-error.js';
+import { invalidField, withFieldPrefix } from './field-error.js';
 import { MAX_MATERIAL_SLOTS, MATERIAL_SLOT_ATTRIBUTE } from './mesh-operations.js';
 
 // Material slots of a recipe mesh. The geometry names the slots (`slots`, a list of material IDs); each face points at one by
@@ -35,6 +35,19 @@ export function checkMaterialSlots(meshDefinition, materialIds) {
   }
   normalizeMaterialSlots(meshDefinition.slots).forEach((id, index) => {
     if (!materialIds.has(id)) throw invalidField(`slots[${index}]`, id, `the ID of a material in materials, one of ${[...materialIds].slice(0, 8).join(', ') || 'none yet; add the material first'}`);
+  });
+}
+
+/** Rejects skinned nodes on slotted geometries and checks each mesh's slot IDs against the recipe's materials. */
+export function checkRecipeMaterialSlots(recipe) {
+  const slottedGeometries = new Set(recipe.geometries.filter(definition => definition.slots !== undefined).map(definition => definition.id));
+  const skinnedSlotted = (recipe.nodes ?? []).find(node => node.skin !== undefined && slottedGeometries.has(node.geometry));
+  if (skinnedSlotted) {
+    throw invalidField(`nodes.${skinnedSlotted.id}.skin`, skinnedSlotted.skin, `a node whose geometry has no material slots: geometry ${skinnedSlotted.geometry} has slots, and a skin rebuilds the mesh the slots were measured on; remove skin, or remove slots from ${skinnedSlotted.geometry}`);
+  }
+  const materialIds = new Set(recipe.materials.map(material => material.id));
+  recipe.geometries.forEach((definition, index) => {
+    if (definition.type === 'mesh') withFieldPrefix(`geometries[${index}]`, () => checkMaterialSlots(definition, materialIds));
   });
 }
 
