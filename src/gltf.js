@@ -787,6 +787,7 @@ function colorImageIndices(document) {
 function planTextureScaling(imageDefinitions, imageSizes, maxTexturePixels, colorImages = new Set()) {
   const targets = imageSizes.map(({ width, height }) => ({ width, height }));
   const totalPixels = () => targets.reduce((sum, { width, height }, index) => sum + width * height * imageSizes[index].weight, 0);
+  const totalPixelsBefore = totalPixels();
   while (totalPixels() > maxTexturePixels) {
     const rank = index => targets[index].width * targets[index].height * (colorImages.has(index) ? 0.25 : 1);
     const scalable = targets.map((target, index) => index).filter(index => imageSizes[index].scalable && targets[index].width * targets[index].height > 1);
@@ -807,7 +808,7 @@ function planTextureScaling(imageDefinitions, imageSizes, maxTexturePixels, colo
     targetByImageIndex.set(index, target);
     scaledTextures.push({ name: imageDefinitions[index].name ?? `image ${index}`, from: [source.width, source.height], to: [target.width, target.height] });
   });
-  return { targetByImageIndex, scaledTextures };
+  return { targetByImageIndex, scaledTextures, totalPixelsBefore, totalPixelsAfter: totalPixels() };
 }
 
 async function copyAttribute(attribute, size, checkpoint) {
@@ -1402,11 +1403,8 @@ export async function parseGltf(data, options = {}) {
   const dataBytes = typeof data === 'string' ? new TextEncoder().encode(data).byteLength : data.byteLength;
   const { resourceBytes, textureScaling } = await prepareResources(document, data, dataBytes, options, limits, overruns);
   if (decodeTextures && textureScaling.scaledTextures.length) {
-    // A large scene can scale hundreds of images; the warning names a few and asset.scaledTextures lists them all.
-    const names = textureScaling.scaledTextures.slice(0, 3).map(({ name, from, to }) => `${name} ${from.join('x')} to ${to.join('x')}`);
-    const more = textureScaling.scaledTextures.length - names.length;
-    const rest = more ? ` and ${more} more (see asset.scaledTextures)` : '';
-    warnings.push(`Scaled ${textureScaling.scaledTextures.length} texture image(s) to fit maxTexturePixels: ${names.join(', ')}${rest}.`);
+    const { textureBudgetWarnings } = await import('./gltf-texture-budget.js');
+    warnings.push(...textureBudgetWarnings(document, textureScaling, limits.maxTexturePixels, { materialTextureReferences, textureSourceIndex }));
   }
   let gltf;
   try {
