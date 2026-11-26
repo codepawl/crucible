@@ -213,14 +213,15 @@ export function readTarget(gl, index, width, height) {
 
 export function averageBuffers(gl, width, height, samples) {
   const pixelCount = width * height;
-  const radiance = readTarget(gl, 0, width, height);
-  const albedo = readTarget(gl, 1, width, height);
-  const normal = readTarget(gl, 2, width, height);
-  const statistics = readTarget(gl, 3, width, height);
   const buffers = {
     color: new Float32Array(pixelCount * 3), albedo: new Float32Array(pixelCount * 3), normal: new Float32Array(pixelCount * 3),
     depth: new Float32Array(pixelCount), variance: new Float32Array(pixelCount), samplesTaken: new Uint16Array(pixelCount).fill(samples),
   };
+  if (!(samples > 0)) return buffers;
+  const radiance = readTarget(gl, 0, width, height);
+  const albedo = readTarget(gl, 1, width, height);
+  const normal = readTarget(gl, 2, width, height);
+  const statistics = readTarget(gl, 3, width, height);
   for (let pixel = 0; pixel < pixelCount; pixel++) {
     for (let channel = 0; channel < 3; channel++) {
       buffers.color[pixel * 3 + channel] = radiance[pixel * 4 + channel] / samples;

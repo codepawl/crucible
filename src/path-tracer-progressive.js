@@ -144,6 +144,7 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
      * `denoise` is off), tone mapped bytes and the samples each pixel holds. It reads the targets back, so it is not free.
      */
     snapshot() {
+      if (disposed) throw new Error('This progressive tracer was disposed.');
       const { levelWidth, levelHeight } = levelSize();
       const buffers = averageBuffers(gl, levelWidth, levelHeight, samples);
       for (let pixel = 0; pixel < levelWidth * levelHeight; pixel++) {
@@ -151,7 +152,7 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
         for (let channel = 0; channel < 3; channel++) buffers.normal[pixel * 3 + channel] /= length;
       }
       const { samplesTaken, ...features } = buffers;
-      const linear = options.denoiser === 'wavelet' ? denoiseRadiance({ width: levelWidth, height: levelHeight, ...features }) : buffers.color;
+      const linear = samples > 0 && options.denoiser === 'wavelet' ? denoiseRadiance({ width: levelWidth, height: levelHeight, ...features }) : buffers.color;
       return { width: levelWidth, height: levelHeight, linear, rgba: toneMapToRgba8(linear, levelWidth, levelHeight, options), samples, features };
     },
 

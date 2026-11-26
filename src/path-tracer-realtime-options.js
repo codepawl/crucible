@@ -9,6 +9,8 @@ const CACHE_CELLS_ACROSS_SCENE = 200;
 const CACHE_LEVEL_CELLS = 64;
 const SCENE_EXTENT_SCALE = 1e4;
 const MAX_FILTER_ITERATIONS = 16;
+// Sub-micron cells underflow float32 GPU uniforms and overflow 32-bit integer spatial hash coordinates.
+const MINIMUM_CACHE_CELL_SIZE = 1e-6;
 
 // The history blend is 1 over the history length, capped by historyLimit: below 1 the new sample would weigh more than 1.
 function requirePositiveNumber(value, name, minimum = 0) {
@@ -44,7 +46,7 @@ function requireTraceSizeInRange(traceSize, outputSize, name) {
 export function resolveRealtimeOptions(rawOptions) {
   requirePositiveNumber(rawOptions.resolutionDivisor, 'resolutionDivisor');
   requirePositiveNumber(rawOptions.historyLimit, 'historyLimit', 1);
-  requirePositiveNumber(rawOptions.cacheCellSize, 'cacheCellSize');
+  requirePositiveNumber(rawOptions.cacheCellSize, 'cacheCellSize', MINIMUM_CACHE_CELL_SIZE);
   requireFilterIterations(rawOptions.filterIterations);
   requireOutputSize(rawOptions.width, 'width');
   requireOutputSize(rawOptions.height, 'height');
@@ -72,7 +74,7 @@ export function resolveRealtimeOptions(rawOptions) {
 /** The cache cell size and the distance at which cells start to grow, for a scene of `farDistance`. */
 export function cacheCellSizes(traceScene, cacheCellSize) {
   const extent = traceScene.farDistance / SCENE_EXTENT_SCALE;
-  const cellSize = cacheCellSize ?? extent / CACHE_CELLS_ACROSS_SCENE;
+  const cellSize = Math.max(MINIMUM_CACHE_CELL_SIZE, cacheCellSize ?? extent / CACHE_CELLS_ACROSS_SCENE);
   return { cellSize, levelDistance: cellSize * CACHE_LEVEL_CELLS };
 }
 

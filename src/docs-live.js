@@ -120,17 +120,22 @@ async function loadNamespace(sourceFile) {
 // One re-export module per specifier. Blob URLs are same-origin, so they pass the site's cross-origin isolation headers.
 async function importMapFor(source) {
   const imports = {};
-  for (const specifier of importSpecifiers(source)) {
-    const sourceFile = sourceFileFor(specifier);
-    if (!sourceFile) continue;
-    const namespace = await loadNamespace(sourceFile);
-    liveModules[sourceFile] = namespace;
-    const names = Object.keys(namespace).filter(name => name !== 'default' && /^[A-Za-z_$][\w$]*$/.test(name));
-    const lines = names.map(name => `export const ${name} = modules[${JSON.stringify(sourceFile)}].${name};`);
-    const text = `const modules = window.parent.__docsLiveModules;\n${lines.join('\n')}\n`;
-    imports[specifier] = URL.createObjectURL(new Blob([text], { type: 'text/javascript' }));
+  try {
+    for (const specifier of importSpecifiers(source)) {
+      const sourceFile = sourceFileFor(specifier);
+      if (!sourceFile) continue;
+      const namespace = await loadNamespace(sourceFile);
+      liveModules[sourceFile] = namespace;
+      const names = Object.keys(namespace).filter(name => name !== 'default' && /^[A-Za-z_$][\w$]*$/.test(name));
+      const lines = names.map(name => `export const ${name} = modules[${JSON.stringify(sourceFile)}].${name};`);
+      const text = `const modules = window.parent.__docsLiveModules;\n${lines.join('\n')}\n`;
+      imports[specifier] = URL.createObjectURL(new Blob([text], { type: 'text/javascript' }));
+    }
+    return imports;
+  } catch (error) {
+    revokeImportUrls(imports);
+    throw error;
   }
-  return imports;
 }
 
 // The engine runs in the page and checks `instanceof Float32Array` and friends, which fails for arrays made in the iframe's
@@ -309,7 +314,7 @@ export function createLiveExample({ source, title, poster, file = 'main.js', asp
     try {
       imports = await importMapFor(editor.value);
     } catch (error) {
-      if (!disposed) setStatus('error', error.message);
+      if (!disposed && thisRun === runNumber) setStatus('error', error.message);
       return;
     }
     if (disposed || thisRun !== runNumber) {
@@ -330,6 +335,7 @@ export function createLiveExample({ source, title, poster, file = 'main.js', asp
     runNumber++;
     releaseFrame(frame);
     frame = null;
+    clearStoredImports();
     running = false;
     root.classList.remove('is-running');
     delete root.dataset.ready;
