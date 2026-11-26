@@ -5,7 +5,7 @@ body.tiers-page > main { gap: 28px; width: var(--page); margin-inline: auto; pad
 .tiers-conditions { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
 
 .tiers-switch { display: flex; flex-wrap: wrap; gap: 8px; }
-.tiers-tab { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 16px; border: var(--edge-width) solid var(--edge); border-radius: 0; background: var(--bg); color: var(--text); font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; transition: background-color var(--site-motion-quick) var(--site-ease-out), color var(--site-motion-quick) var(--site-ease-out); }
+.tiers-tab { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 16px; border: var(--edge-width) solid var(--edge); border-radius: var(--round); background: var(--bg); color: var(--text); font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; transition: background-color var(--site-motion-quick) var(--site-ease-out), color var(--site-motion-quick) var(--site-ease-out); }
 .tiers-tab:hover { background: var(--tint-strong); }
 .tiers-tab[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--primary-text); }
 .tiers-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -19,8 +19,8 @@ body.tiers-page > main { gap: 28px; width: var(--page); margin-inline: auto; pad
 .tiers-bar { display: grid; gap: 6px; }
 .tiers-bar-label { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 14px; color: var(--muted); }
 .tiers-bar-label strong { color: var(--text); font-family: var(--mono); font-size: 26px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.tiers-track { display: block; height: 10px; border-radius: 0; background: var(--tint-strong); overflow: hidden; }
-.tiers-fill { display: block; width: var(--share); height: 100%; border-radius: 0; background: var(--muted); transform-origin: left; animation: tiers-grow 420ms var(--site-ease-out); }
+.tiers-track { display: block; height: 10px; border-radius: var(--chip-round); background: var(--tint-strong); overflow: hidden; }
+.tiers-fill { display: block; width: var(--share); height: 100%; border-radius: var(--chip-round); background: var(--muted); transform-origin: left; animation: tiers-grow 420ms var(--site-ease-out); }
 .tiers-bar.is-crucible .tiers-fill { background: var(--accent); }
 .tiers-bar-note { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 @keyframes tiers-grow { from { transform: scaleX(0); } }
