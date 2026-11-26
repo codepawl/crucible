@@ -65,6 +65,7 @@ export default defineConfig({
         retarget: 'src/retarget.js',
         'crowd-skinning': 'src/crowd-skinning.js',
         'skeleton-pose': 'src/skeleton-pose.js',
+        'prop-grip': 'src/prop-grip.js',
         vehicle: 'src/vehicle.js',
         vegetation: 'src/vegetation.js',
         terrain: 'src/terrain.js',

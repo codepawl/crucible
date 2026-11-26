@@ -6,6 +6,7 @@ export const publishedDocuments = [
   'export-glb.md', 'sculpt.md', 'surface.md', 'mesh-query.md', 'mesh.md','primitives.md', 'shrinkwrap.md', 'spume.md',
   'retarget.md',
   'skeleton-pose.md',
+  'prop-grip.md',
   'vehicle.md',
   'vegetation.md', 'terrain.md', 'floor-plan.md', 'grass.md', 'clutter.md', 'light-bake.md', 'path-tracer.md', 'gaussian-splats.md',
   'camera-path.md', 'lighting.md', 'volumetric.md', 'film-physics.md',
