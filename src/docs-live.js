@@ -229,7 +229,7 @@ export function createLiveExample({ source, title, poster, file = 'main.js', asp
   const safeAspect = escapeHtml(aspect);
   root.innerHTML = `
     <div class="live-stage" style="aspect-ratio:${safeAspect}">
-      ${poster ? `<img class="live-poster" src="/docs-media/${safePoster}.webp" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}
+      ${poster ? `<img class="live-poster" src="/docs-media/${safePoster}.webp" alt="" width="960" height="540" loading="lazy" decoding="async" onerror="this.remove()">` : ''}
       <button class="live-start" type="button">${icon('run')}Run example</button>
     </div>
     <pre class="live-console" aria-label="Console output" hidden></pre>

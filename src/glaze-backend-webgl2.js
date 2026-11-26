@@ -33,6 +33,15 @@ export class WebGL2GlazeBackend {
     this.context.deleteBuffer(buffer);
   }
 
+  /** True when the WebGL2 context runs on a known CPU software rasterizer (WARP / Basic Render Driver, SwiftShader, llvmpipe). */
+  isSoftwareRenderer() {
+    if (this.softwareRenderer === undefined) {
+      const debugInfo = this.context.getExtension?.('WEBGL_debug_renderer_info');
+      this.softwareRenderer = Boolean(debugInfo && /basic render driver|swiftshader|llvmpipe/i.test(this.context.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)));
+    }
+    return this.softwareRenderer;
+  }
+
   /** The largest MSAA sample count at most `requested` that the driver offers for both `colorFormat` and a 24-bit depth store (0 when none). */
   supportedSampleCount(colorFormat, requested) {
     const context = this.context;

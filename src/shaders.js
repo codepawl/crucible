@@ -551,8 +551,8 @@ uniform float occlusionStrength;
 in vec3 boxPosition, boxNormal;
 uniform float boxMapScale;
 uniform int boxMapAxis;
-// Dielectric reflectance at normal incidence, clear coat (strength, roughness) and sheen (colour, roughness)
-uniform vec3 materialDielectric;
+// Dielectric reflectance at normal incidence (rgb) and grazing F90 (w), clear coat (strength, roughness) and sheen (colour, roughness)
+uniform vec4 materialDielectric;
 uniform vec2 materialCoat;
 uniform vec4 materialSheen;
 uniform vec4 materialMoss;
@@ -568,10 +568,10 @@ out vec4 outputColor;
 const float PI = 3.14159265359;
 
 ${featureCode("worldFunctions")}
-vec3 fresnel(float cosine, vec3 reflectance) {
+vec3 fresnel(float cosine, vec3 reflectance, float grazing) {
   // The light shading preset uses the spherical Gaussian fit of Schlick's power, which needs no logarithm.
   float weight = LIGHT_SHADING ? exp2((-5.55473 * cosine - 6.98316) * cosine) : pow(1.0 - cosine, 5.0);
-  return reflectance + (1.0 - reflectance) * weight;
+  return reflectance + (vec3(grazing) - reflectance) * weight;
 }
 
 float shadowVisibility(vec3 normal) {
@@ -682,8 +682,9 @@ ${featureCode("declarations")}vec3 illuminate(vec3 normal, vec3 viewDirection, v
     geometry *= normalLight / (normalLight * (1.0 - masking) + masking);
     visibilityDenominator = max(4.0 * normalView * normalLight, 0.001);
   }
-  vec3 baseReflectance = mix(materialDielectric, color, metallic);
-${featureCode("illuminateReflectance")}  vec3 reflectance = fresnel(max(dot(halfway, viewDirection), 0.0), baseReflectance);
+  vec3 baseReflectance = mix(materialDielectric.rgb, color, metallic);
+  float grazingReflectance = mix(materialDielectric.w, 1.0, metallic);
+${featureCode("illuminateReflectance")}  vec3 reflectance = fresnel(max(dot(halfway, viewDirection), 0.0), baseReflectance, grazingReflectance);
   vec3 specular = distribution * geometry * reflectance / visibilityDenominator;
   specular *= directSpecularGain;
 ${featureCode("illuminateSpecular")}  if (USES_ALPHA_MODE) blendSpecular += specular * radiance * normalLight;
@@ -841,7 +842,7 @@ vec3 surroundingsColor(vec3 direction, float roughness) {
 // Passing 0.04 as the colour of a fully metallic surface gives the lobe's own reflectance and no diffuse part.
 vec3 clearCoatLayer(vec3 baseRadiance, vec3 normal, vec3 viewDirection, float visibility, float coatStrength) {
   float roughness = clamp(materialCoat.y, 0.075, 1.0);
-${featureCode("coatReset")}  float coatFresnel = fresnel(max(dot(normal, viewDirection), 0.001), vec3(0.04)).x * coatStrength;
+${featureCode("coatReset")}  float coatFresnel = fresnel(max(dot(normal, viewDirection), 0.001), vec3(0.04), 1.0).x * coatStrength;
   vec3 mirror = surroundingsColor(reflect(-viewDirection, normal), roughness) * coatFresnel * ambientIntensity;
   vec3 highlight = illuminate(normal, viewDirection, normalize(lightDirection), keyColor * visibility, vec3(0.04), 1.0, roughness);
   return baseRadiance * (1.0 - coatFresnel) + mirror + highlight * coatStrength;
@@ -963,10 +964,11 @@ ${featureCode("emissionHook")}  if (USES_RENDER_PASS) {
   float mossCover = 0.0;
   vec3 mossTone = vec3(0.0);
 ${featureCode("worldSurface")}  vec3 specularNormal = normal;
-  vec3 baseReflectance = mix(materialDielectric, color, metallic);
+  vec3 baseReflectance = mix(materialDielectric.rgb, color, metallic);
+  float grazingReflectance = mix(materialDielectric.w, 1.0, metallic);
 ${featureCode("mainSetup")}  if (ENVIRONMENT_ENABLED && !LIGHT_SHADING) {
     vec2 brdfLookup = environmentBrdfLookup(clamp(dot(normal, viewDirection), 0.001, 1.0), roughness);
-    directSpecularGain = multipleScatterGain(brdfLookup, baseReflectance);
+    directSpecularGain = multipleScatterGain(brdfLookup, baseReflectance, grazingReflectance);
   }
   float visibility = shadowBlind > 0.5 ? 1.0 : shadowVisibility(normal);
   vec3 shadowTint = (USES_TINTED_SHADOWS && shadowBlind < 0.5 && tintBlind < 0.5) ? tintedShadowTransmittance(normal) : vec3(1.0);
@@ -1031,7 +1033,7 @@ ${featureCode("linkArea")}      vec3 lightNormal = areaLightNormals[index].xyz;
 ${featureCode("areaRadiance")}      radiance += illuminate(normal, viewDirection, toLight, lightRadiance, color, metallic, roughness);
     }
   }
-  vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), baseReflectance);
+  vec3 reflectance = fresnel(max(dot(normal, viewDirection), 0.0), baseReflectance, grazingReflectance);
   float occlusion = 1.0;
   if (USES_OCCLUSION_MAP) occlusion = mix(1.0, texture(occlusionMap, mapUV(hasOcclusionMap)).r, occlusionStrength);
   // Trees and terrain bake how much sky each vertex sees; everything else carries 1.
@@ -1165,7 +1167,7 @@ uniform float environmentLevelMax;
 vec3 environmentRadiance(vec3 direction, float level) { return vec3(0.0); }
 vec3 environmentDiffuse(vec3 normal) { return vec3(0.0); }
 vec2 environmentBrdfLookup(float normalView, float roughness) { return vec2(0.0); }
-vec3 multipleScatterGain(vec2 lookup, vec3 baseReflectance) { return vec3(1.0); }
+vec3 multipleScatterGain(vec2 lookup, vec3 baseReflectance, float grazingReflectance) { return vec3(1.0); }
 vec3 environmentLighting(vec3 normal, vec3 specularNormal, vec3 baseReflectance, vec3 viewDirection, vec3 reflected, vec3 color, float metallic, float roughness, float occlusion, float ambient, float specularWeight) { return vec3(0.0); }
 `,
 };

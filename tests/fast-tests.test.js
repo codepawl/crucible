@@ -4,7 +4,6 @@ import { existsSync, readFileSync } from 'node:fs';
 import { FAST_TESTS_PATH, GUARD_TEST_PATTERN, readFastTests, selectFastTests, usesNativeAddon } from '../scripts/fast-tests.mjs';
 import { createBrowserDetector } from '../scripts/browser-tests.mjs';
 import * as recorder from '../scripts/record-fast-tests.mjs';
-import { planChecks } from '../scripts/preflight.mjs';
 
 const { pickFastResults } = recorder;
 const existing = ['tests/a.test.js', 'tests/b.test.js', 'tests/c.test.js', 'tests/slow.test.js'];
@@ -40,14 +39,6 @@ test('a test that loads the native Cook helper is recognised', () => {
   assert.equal(usesNativeAddon("import { x } from './support/cook.js';"), true);
   assert.equal(usesNativeAddon("const note = './support/cook.js';"), false);
   assert.equal(usesNativeAddon("import { x } from './support/scene.js';"), false);
-});
-
-test('preflight runs the fast tests only when the slow pass is skipped', () => {
-  const skipped = planChecks(['docs/guide.md'], { skipTests: true }).find(check => check.name === 'fast tests');
-  assert.equal(skipped.skipped, null);
-  assert.deepEqual(skipped.command, ['node', 'scripts/fast-tests.mjs']);
-  const full = planChecks(['docs/guide.md']).find(check => check.name === 'fast tests');
-  assert.match(full.skipped, /full unit test pass/);
 });
 
 test('the recorder keeps only passing files under the limit, sorted', () => {

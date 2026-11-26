@@ -1,0 +1,2 @@
+- entry:line-art: Fixes inverted perspective depthAt with harmonic-mean grazing depth comparison and adds chamfer bevel strip collapsing in the outline fragment shader to eliminate twin parallel lines and shimmer.
+- scene:agent-scene+lazy: Loads the updated lazy line-art addon only for recipes that enable `environment.lines`.

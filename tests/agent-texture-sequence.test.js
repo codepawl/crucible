@@ -240,3 +240,30 @@ test('a looped streamed sequence wraps back to frame 0, which is decoded again o
   scene.sampleMotion(70 / 10);
   assert.deepEqual(missingStreamedFrames(sequences, 7), [ids[0]]);
 });
+
+test('map.sequence works on unlit materials and drives emissiveMap when emission is positive (#3434)', () => {
+  const unlitRecipe = {
+    format: 'crucible.scene', schemaVersion: 1,
+    geometries: [{ id: 'quad', type: 'grid', segments: 1 }],
+    materials: [{ id: 'screen', tag: 'unlit', map: { sequence: { frames: FRAME_IDS, fps: 10 } } }],
+    nodes: [{ id: 'screen', geometry: 'quad', material: 'screen' }],
+    camera: { eye: [0, 3, 3], target: [0, 0, 0], fov: 45 },
+  };
+  const unlitScene = createAgentScene(unlitRecipe, {}, { sequenceFrames: framePool() });
+  const unlitMaterial = unlitScene.parts[0].material;
+  assert.equal(unlitMaterial.tag, 'unlit');
+  assert.equal(unlitMaterial.map, unlitScene.sequenceTextures()[0].descriptor);
+  assert.equal(unlitMaterial.emissiveMap, undefined);
+
+  const emissiveRecipe = {
+    ...unlitRecipe,
+    materials: [{ id: 'screen', tag: 'surface', color: [0, 0, 0], emissiveColor: [1, 1, 1], emission: 2, map: { sequence: { frames: FRAME_IDS, fps: 10 } } }],
+  };
+  const emissiveScene = createAgentScene(emissiveRecipe, {}, { sequenceFrames: framePool() });
+  const emissiveMaterial = emissiveScene.parts[0].material;
+  const descriptor = emissiveScene.sequenceTextures()[0].descriptor;
+  assert.equal(emissiveMaterial.map, descriptor);
+  assert.equal(emissiveMaterial.emissiveMap, descriptor);
+  emissiveScene.apply([{ type: 'set-material', id: 'screen', emission: 0 }], { expectedRevision: emissiveScene.revision });
+  assert.equal(emissiveScene.parts[0].material.emissiveMap, undefined);
+});

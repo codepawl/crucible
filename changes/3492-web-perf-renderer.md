@@ -1,0 +1,1 @@
+- Cap default MSAA on software WebGL renderers, bypass the offscreen FBO and post pass when unused, and eliminate per-frame allocations in `CrucibleRenderer.renderFrame` (#3492).

@@ -1,5 +1,6 @@
 import './support/load-agent-scene-modules.mjs';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { createStudio, STUDIO_PRIMITIVES } from '../src/studio.js';
 import { STUDIO_CSS } from '../src/studio-styles.js';
@@ -164,4 +165,17 @@ test('every dialog title icon has one size and one stroke weight', () => {
   const ruleStart = STUDIO_CSS.indexOf('.crucible-studio dialog h2 .crucible-studio-icon {');
   const rule = STUDIO_CSS.slice(ruleStart, STUDIO_CSS.indexOf('}', ruleStart));
   assert.ok(rule.includes('inline-size: 18px;') && rule.includes('block-size: 18px;') && rule.includes('stroke-width: 1.9;'));
+});
+
+test('the credit token file and the icon set draw the same path, in currentColor, with no colour or script', () => {
+  const file = readFileSync(new URL('../src/credit-token.svg', import.meta.url), 'utf8');
+  const paths = [...file.matchAll(/<path d="([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(paths, [STUDIO_ICON_PATHS.creditToken]);
+  assert.match(file, /<title>Credits<\/title>/);
+  assert.match(file, /viewBox="0 0 24 24"/);
+  assert.match(file, /stroke="currentColor"/);
+  assert.doesNotMatch(file, /#[0-9a-f]{3,8}\b|rgb\(|<script|\bid=|<defs|Gradient|filter/i);
+  for (const [x, y] of pathPoints(STUDIO_ICON_PATHS.creditToken)) {
+    assert.ok(x >= 0 && x <= 24 && y >= 0 && y <= 24);
+  }
 });

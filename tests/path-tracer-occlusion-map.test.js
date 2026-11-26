@@ -77,3 +77,27 @@ test('only the CPU and WebGPU tracers drop occlusionMap from their ignored list'
   assert.equal(native.length, 1);
   assert.match(native[0], /codepawl\/cook#71/);
 });
+
+test('a floor occlusion map does not darken sky light scattered in volumeFog', async () => {
+  const skyWidth = 8;
+  const skyHeight = 4;
+  const skyData = new Float32Array(skyWidth * skyHeight * 3);
+  for (let row = 0; row < skyHeight; row++) {
+    for (let column = 0; column < skyWidth; column++) {
+      const index = (row * skyWidth + column) * 3;
+      const bright = row === 0 && column === 2 ? 20 : 0.4;
+      skyData[index] = bright;
+      skyData[index + 1] = bright;
+      skyData[index + 2] = bright;
+    }
+  }
+  const foggedSky = {
+    map: createEnvironmentMap({ width: skyWidth, height: skyHeight, data: skyData, intensity: 1 }),
+    volumeFog: { minimum: [-30, 1, -30], maximum: [30, 2, 30], density: 0.5, color: [1, 1, 1], anisotropy: 0, noiseAmount: 0 },
+  };
+  const blackFloor = extra => [floor(floorMaterial({ metallic: 1, color: [0, 0, 0], ...extra }))];
+  const withoutMap = await centreBrightness(blackFloor({}), foggedSky);
+  const withBlackMap = await centreBrightness(blackFloor({ occlusionMap: occlusionImage(0), occlusionStrength: 1 }), foggedSky);
+  assert.ok(withoutMap > 0.2, `fog scatters sky light above the floor: ${withoutMap}`);
+  assert.ok(Math.abs(withBlackMap - withoutMap) < withoutMap * 1e-3, `fog scatter ignores the floor occlusion map: ${withBlackMap} against ${withoutMap}`);
+});

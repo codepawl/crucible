@@ -9,7 +9,7 @@
 // face. Single shells and shells that merely overlap keep the nearest back face, as before (#3340).
 // The GLSL below follows the JavaScript reference line by line, so a test of the reference covers the shader.
 import { marchSceneDepth } from './glass-depth-march.js';
-import { refractDirection } from './glass-ball-lens.js';
+import { BODY_REACH_PER_THICKNESS, refractDirection } from './glass-ball-lens.js';
 
 /** The inside ray is followed this many thicknesses of the glass body: a chord of a convex body never exceeds its widest extent. */
 export const BACK_REACH_PER_THICKNESS = 1.5;
@@ -121,6 +121,21 @@ export function backFaceExit({ shapeIdentifier, nearest, farthest, position, nor
   return { exitPosition, direction };
 }
 
+/**
+ * How deep the closed body behind a glass fragment is: the distance from the fragment to the nearest back face along the inward normal (the
+ * axis the ball lens model puts the sphere centre on), found by marching that ray against the back-face depth. The view ray would end on the
+ * side wall for a fragment on the bevel next to it and read a shallow body there. Returns NaN where no back face is drawn at the fragment's pixel (an
+ * open cap or a pane, so the body is unknown) and `thickness * BODY_REACH_PER_THICKNESS` where the march does not reach one (a body at
+ * least that deep). `project` is as in marchSceneDepth; `nearest` is as in backFaceExit.
+ */
+export function glassBodyDepth({ position, normal, thickness, nearest, project, reversed }) {
+  const screen = project(position);
+  if (!screen || !nearest.backIdentifierAt(screen.x, screen.y)) return Number.NaN;
+  const reach = thickness * BODY_REACH_PER_THICKNESS;
+  const hit = marchSceneDepth({ origin: position, direction: scale(normal, -1), maximumDistance: reach, project, sceneDepth: nearest.backDepth, reversed });
+  return hit?.hit ? hit.distance : reach;
+}
+
 export const glassBackFaceGlsl = `
 // Depth and outward normal of the back faces of the closed glass parts (glass-back-face.js); glassBackEnabled is 0 when the frame has none.
 uniform highp sampler2D glassBackDepth;
@@ -138,6 +153,15 @@ float glassBackIdentifier() {
   return mod(glassBackFirst + instanceEmission.w, ${BACK_IDENTIFIER_COUNT}.0) + 1.0;
 }
 const float BACK_REACH_PER_THICKNESS = ${BACK_REACH_PER_THICKNESS.toFixed(1)};
+
+// How deep the closed body behind this fragment is along the inward normal (glassBodyDepth above); 0 where no back face is drawn at this pixel.
+float glassBodyDepth(vec3 position, vec3 normal, float thickness) {
+  vec4 encoded = texelFetch(glassBackNormal, ivec2(gl_FragCoord.xy), 0);
+  if (encoded.a < 0.5 / 255.0) return 0.0;
+  float reach = thickness * BODY_REACH_PER_THICKNESS;
+  vec4 hit = marchDepthTexture(glassBackDepth, position, -normal, reach);
+  return hit.z > 0.75 ? hit.w : reach;
+}
 
 // False when the inside ray finds no back face or is totally reflected at the exit; the caller then keeps the thickness heuristic.
 bool glassBackFaceRay(vec3 position, vec3 normal, vec3 viewDirection, float indexOfRefraction, float thickness, out vec3 exitPosition, out vec3 direction) {

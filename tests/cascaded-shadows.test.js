@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mat4, vec3 } from 'gl-matrix';
+import { readFileSync } from 'node:fs';
 import { createFragmentShader } from '../src/shaders.js';
-import { CascadedShadows, cascadeSplitDistances, createCascadedShadows, planCascadeSplits, writeCascadeMatrix } from '../src/cascaded-shadows.js';
+import { CascadedShadows, cascadeSplitDistances, createCascadedShadows, planCascadeSplits, resolveSceneFileCascades, writeCascadeMatrix } from '../src/cascaded-shadows.js';
 
 const TOWARD_LIGHT = vec3.normalize(vec3.create(), [-0.7, 0.8, 0.35]);
 const RESOLUTION = 2048;
@@ -206,4 +207,26 @@ test('a world scene that writes no bounds keeps its world view instead of stretc
   cascades.fitToCamera(interiorRenderer({ world: true, sceneBounds: { minimum: [-3000, -1, -3000], maximum: [3000, 50, 3000] } }));
   assert.equal(cascades.layerCount, 1, 'terrain bounds add no far layer');
   assert.ok(cascades.splits[0] < 100, `the slice still ends inside the world view (${cascades.splits[0].toFixed(1)} m)`);
+});
+
+test('soft sun cascades bias uphill taps against the receiver plane, keep the centre blocker check and allow 48-texel penumbras', () => {
+  const shader = createFragmentShader(['cascadedShadows']);
+  assert.match(shader, /slopePerTexel/, 'soft cascades adjust uphill taps along the receiver slope');
+  assert.match(shader, /centerStored/, 'the centre texel is included so thin casters are not skipped');
+  assert.match(shader, /clamp\([^;]+,\s*1\.0,\s*48\.0\)/, 'close slices can widen penumbras past 24 texels');
+  assert.match(shader, /clamp\(normalCosine,\s*0\.25,\s*1\.0\)/, 'grazing normal offsets are clamped so wall shadows stay put');
+});
+
+test('scene files enable soft sun cascades automatically unless shadowCascades is set to 0', () => {
+  assert.equal(resolveSceneFileCascades({}, {}, { extent: 10 }), undefined, 'plain scenes keep the single map');
+  assert.equal(resolveSceneFileCascades({ shadowCascades: 0 }, { sunAngularRadius: 0.015 }, { extent: 10 }), undefined, 'explicit 0 keeps the single hard map');
+  assert.equal(resolveSceneFileCascades({ shadowCascades: 2 }, {}, {}).count, 2, 'numeric shadowCascades honours its slice count');
+  assert.equal(resolveSceneFileCascades({ shadowCascades: { count: 4 } }, {}, {}).count, 4);
+  const interior = resolveSceneFileCascades({}, { sunAngularRadius: 0.015 }, { extent: 10 });
+  assert.equal(interior.count, 1, 'an interior with a soft sun gets one cascade slice');
+  const outdoor = resolveSceneFileCascades({}, { sunAngularRadius: 0.015 }, { extent: 80 });
+  assert.equal(outdoor.count, 3, 'a wide scene with a soft sun gets three cascade slices');
+  for (const file of ['src/file-scene.js', 'src/showcase.js']) {
+    assert.match(readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), /resolveSceneFileCascades/);
+  }
 });

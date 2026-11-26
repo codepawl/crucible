@@ -1,8 +1,10 @@
 /*
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
+  X-Frame-Options: SAMEORIGIN
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
 
 /release.json
   Cache-Control: no-cache
@@ -22,3 +24,9 @@
   Cache-Control: public, max-age=86400
   Access-Control-Allow-Origin: *
   Cross-Origin-Resource-Policy: cross-origin
+
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

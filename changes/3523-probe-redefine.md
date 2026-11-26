@@ -1,0 +1,1 @@
+- Skip `environmentProbe` when copying live material fields in `placeProbes`, preventing a `TypeError` when wrapping a material that already carries an own `environmentProbe` property (#3523).

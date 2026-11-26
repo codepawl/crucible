@@ -2,7 +2,7 @@ import './support/load-agent-scene-modules.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createAgentScene } from '../src/agent-scene.js';
-import { exposureProblems, framingProblems, lumaShares, mergeFrameDiagnostics, pathTracerFindingsLimit, pathTracerReflectionHdriWarning, pathTracerSkippedPassesWarning, placementProblems, textureProblems } from '../src/frame-checks.js';
+import { exposureProblems, framingProblems, lowSunShadowCascadeWarning, lumaShares, mergeFrameDiagnostics, pathTracerFindingsLimit, pathTracerReflectionHdriWarning, pathTracerSkippedPassesWarning, placementProblems, textureProblems } from '../src/frame-checks.js';
 import { closedRoom, closedRoomWithoutBake, freezeBakeClockForFile } from './support/agent-bake-rooms.mjs';
 
 freezeBakeClockForFile();
@@ -335,4 +335,47 @@ test('the findings-unavailable note survives 20 part findings when it is merged 
   const droppedWhenLast = {};
   mergeFrameDiagnostics(droppedWhenLast, [...partFindings, pathTracerFindingsLimit()]);
   assert.equal(droppedWhenLast.diagnostics.some(entry => entry.kind === 'findings-unavailable'), false);
+});
+
+function sunDirectionAt(degrees) {
+  const radians = degrees * Math.PI / 180;
+  return [-Math.cos(radians), Math.sin(radians), 0];
+}
+
+test('low-sun warning fires on a grazing sun over a wide scene with default or <4 cascades and keyIntensity > 0', () => {
+  const wideBoxes = [{ name: 'terrain', min: [-60, -1, -60], max: [60, 4, 60] }];
+  const defaultCascades = lowSunShadowCascadeWarning({
+    environment: { lightDirection: sunDirectionAt(8), keyIntensity: 1 },
+    boxes: wideBoxes,
+  });
+  assert.equal(defaultCascades?.kind, 'low-sun-shadow-cascades');
+  assert.equal(defaultCascades.severity, 'warning');
+  assert.equal(defaultCascades.target, 'environment.shadowCascades');
+  assert.equal(defaultCascades.sunElevationDegrees, 8);
+  assert.equal(defaultCascades.extentMeters, 120);
+  assert.equal(defaultCascades.shadowCascades, 3);
+  assert.match(defaultCascades.message, /8 degrees/);
+  assert.match(defaultCascades.message, /120 m/);
+  assert.match(defaultCascades.fix, /environment\.shadowCascades to 4/);
+  assert.match(defaultCascades.fix, /castShadow: false on distant scenery/);
+
+  const boundaryFifteen = lowSunShadowCascadeWarning({
+    environment: { lightDirection: sunDirectionAt(15), keyIntensity: 0.5, shadowCascades: 2 },
+    boxes: wideBoxes,
+  });
+  assert.equal(boundaryFifteen?.kind, 'low-sun-shadow-cascades');
+  assert.equal(boundaryFifteen.shadowCascades, 2);
+});
+
+test('low-sun warning stays silent for 4 or 0 cascades, high or below-horizon sun, small scene, or zero keyIntensity', () => {
+  const wideBoxes = [{ name: 'terrain', min: [-60, 0, -60], max: [60, 2, 60] }];
+  const smallBoxes = [{ name: 'patch', min: [-20, 0, -20], max: [20, 2, 20] }];
+  assert.equal(lowSunShadowCascadeWarning({ environment: { lightDirection: sunDirectionAt(8), keyIntensity: 1, shadowCascades: 4 }, boxes: wideBoxes }), undefined);
+  assert.equal(lowSunShadowCascadeWarning({ environment: { lightDirection: sunDirectionAt(8), keyIntensity: 1, shadowCascades: 0 }, boxes: wideBoxes }), undefined);
+  assert.equal(lowSunShadowCascadeWarning({ environment: { lightDirection: sunDirectionAt(16), keyIntensity: 1 }, boxes: wideBoxes }), undefined);
+  assert.equal(lowSunShadowCascadeWarning({ environment: { lightDirection: sunDirectionAt(0), keyIntensity: 1 }, boxes: wideBoxes }), undefined);
+  assert.equal(lowSunShadowCascadeWarning({ environment: { lightDirection: sunDirectionAt(-5), keyIntensity: 1 }, boxes: wideBoxes }), undefined);
+  assert.equal(lowSunShadowCascadeWarning({ environment: { lightDirection: sunDirectionAt(8), keyIntensity: 1 }, boxes: smallBoxes }), undefined);
+  assert.equal(lowSunShadowCascadeWarning({ environment: { lightDirection: sunDirectionAt(8), keyIntensity: 0 }, boxes: wideBoxes }), undefined);
+  assert.equal(lowSunShadowCascadeWarning({ environment: { lightDirection: sunDirectionAt(8), keyIntensity: 1 }, boxes: [] }), undefined);
 });

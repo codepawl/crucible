@@ -6,7 +6,8 @@ import { DEFAULT_TEST_CONCURRENCY, testConcurrency, testConcurrencyArguments } f
 // The dev PC has 28 threads, where node --test would start 27 test processes at once (#3257).
 const devMachine = { environment: {}, parallelism: 28 };
 
-test('a local run is capped at the default instead of one process per thread', () => {
+test('a local run is capped at the default of 3 instead of one process per thread', () => {
+  assert.equal(DEFAULT_TEST_CONCURRENCY, 3);
   assert.equal(testConcurrency(devMachine), DEFAULT_TEST_CONCURRENCY);
   assert.deepEqual(testConcurrencyArguments([], devMachine), [`--test-concurrency=${DEFAULT_TEST_CONCURRENCY}`]);
 });

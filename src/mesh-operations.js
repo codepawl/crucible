@@ -3,6 +3,11 @@
 
 export const MAX_MESH_EDITS = 64;
 
+// A mesh geometry can name material slots, and every face points at one by index (the face attribute below). The count is
+// bounded so the slot index fits one byte and a mesh stays a handful of draw calls.
+export const MAX_MATERIAL_SLOTS = 16;
+export const MATERIAL_SLOT_ATTRIBUTE = 'material_slot';
+
 // Most vertex indices or edge pairs one selection lists, for the vertex rule { "vertices": [...] } on a move and the edge rule
 // { "edges": [[a, b], ...] } on every edge-taking edit. A larger selection uses a rule such as inside, angle or a tag.
 export const MAX_SELECTED_ELEMENTS = 4096;
@@ -56,6 +61,7 @@ export const MESH_EDIT_OPERATIONS = /* @__PURE__ */ Object.freeze({
   merge_by_distance: operation(['distance']),
   merge_verts: operation(['vertices', 'at']),
   tag: operation(['select', 'name']),
+  material_slot: operation(['select', 'slot']),
   boolean: operation(['name', 'operation', 'cutter', 'translation', 'rotation', 'scale'], ['cut']),
   mirror: operation(['name', 'axis', 'merge'], ['mirrored']),
   array: operation(['name', 'count', 'offset', 'relativeOffset', 'merge'], ['last']),
