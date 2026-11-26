@@ -39,4 +39,5 @@ registerShaderFeatureCode('keepHue', {
     const swapped = mainBody.replace(BLOOM_LINE, bloomLines(mainBody.includes('uniform float autoExposureScale;'))).replace(TONE_LINES, TONE_KEEPING_LINES);
     return DECLARATIONS + swapped;
   },
+  postStep: (renderer, frame, effects) => (effects?.bloom?.strength > 0 && effects.bloom.keepHue ? 'keepHue' : null),
 });

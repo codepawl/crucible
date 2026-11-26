@@ -3,6 +3,7 @@
 //
 // A binding is `{ key | code, ctrl?, shift?, alt? }`. `ctrl` means Ctrl or Command. A modifier left out must be up,
 // except `shift`: left out it is not looked at, because plain keys such as H or ? also work with Shift held.
+import { NUMPAD_FRAME_BINDINGS, NUMPAD_VIEW_BINDINGS } from './studio-numpad.js';
 
 // `mesh` is edit mode: it is looked up before `normal`, which then only answers the keys studio.js lets through.
 export const KEYMAP_CONTEXTS = Object.freeze(['normal', 'modal', 'mesh']);
@@ -51,6 +52,8 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('view.top', 'Top view', 'View', 'normal', binding('7')),
   action('view.projection', 'Perspective or orthographic', 'View', 'normal', binding('5')),
   action('view.properties', 'Show or hide Properties', 'View', 'normal', binding('n')),
+  // By code, because Option+M types a letter of its own on a Mac. Only a host that offers an agent chat gives it an effect.
+  action('view.agent', 'Show or hide Agent', 'View', 'normal', { code: 'KeyM', alt: true }),
   action('view.seeThrough', 'See through the surface', 'View', 'normal', { code: 'KeyZ', alt: true }),
   action('animate.keyframe', 'Insert a keyframe', 'Animate', 'normal', binding('i'), binding('k')),
   action('animate.play', 'Play', 'Animate', 'normal', binding(' ')),
@@ -67,6 +70,7 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('mesh.edgeMode', 'Select edges', 'Edit mode', 'mesh', binding('2')),
   action('mesh.faceMode', 'Select faces', 'Edit mode', 'mesh', binding('3')),
   action('mesh.separate', 'Separate the selection', 'Edit mode', 'mesh', binding('p')),
+  action('mesh.makeFace', 'Make face or edge', 'Edit mode', 'mesh', binding('f')),
   action('mesh.deleteMenu', 'Open the delete menu', 'Edit mode', 'mesh', binding('x'), binding('Delete'), binding('Backspace')),
   action('mesh.mergeMenu', 'Open the merge menu', 'Edit mode', 'mesh', binding('m')),
   action('mesh.selectNone', 'Select none', 'Edit mode', 'mesh', { code: 'KeyA', alt: true }),
@@ -79,6 +83,8 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('mesh.shrinkSelection', 'Shrink the selection', 'Edit mode', 'mesh', binding('['), { code: 'NumpadSubtract', ctrl: true }),
   action('mesh.proportional', 'Proportional editing', 'Edit mode', 'mesh', binding('o')),
   action('mesh.boxSelect', 'Box select', 'Edit mode', 'mesh', binding('b')),
+  action('mesh.extrude', 'Extrude the picked faces', 'Edit mode', 'mesh', binding('e')),
+  action('mesh.inset', 'Inset the picked faces', 'Edit mode', 'mesh', binding('i')),
   action('modal.place', 'Place', 'Holding an object', 'modal', binding('Enter'), binding(' ')),
   action('modal.cancel', 'Put back', 'Holding an object', 'modal', binding('Escape')),
   action('modal.axisX', 'Keep to the X axis', 'Holding an object', 'modal', binding('x', { shift: false })),
@@ -120,6 +126,7 @@ export const SHORTCUT_ROWS = Object.freeze([
   Object.freeze({ keys: '{view.front} / {view.right} / {view.top}', label: 'Front / Right / Top view' }),
   Object.freeze({ keys: '{view.projection}', label: 'Perspective or orthographic' }),
   Object.freeze({ keys: '{view.properties}', label: 'Show or hide Properties' }),
+  Object.freeze({ keys: '{view.agent}', label: 'Show or hide Agent' }),
   Object.freeze({ keys: '{animate.keyframe} / {animate.keyframe#1}', label: 'Insert a keyframe' }),
   Object.freeze({ keys: '{animate.play}', label: 'Play' }),
   Object.freeze({ keys: '{edit.undo} / {edit.redo}', label: 'Undo / Redo' }),
@@ -129,11 +136,13 @@ export const SHORTCUT_ROWS = Object.freeze([
   Object.freeze({ keys: '{mesh.enter}', label: 'Edit the mesh / leave edit mode' }),
   Object.freeze({ keys: '{mesh.vertexMode} / {mesh.edgeMode} / {mesh.faceMode}', label: 'In edit mode: select vertices / edges / faces' }),
   Object.freeze({ keys: '{mesh.separate}', label: 'In edit mode: separate the picked faces into their own object' }),
+  Object.freeze({ keys: '{mesh.makeFace}', label: 'In edit mode: make a face or edge from the selection' }),
   Object.freeze({ keys: '{mesh.deleteMenu} / {mesh.mergeMenu}', label: 'In edit mode: dissolve menu / merge menu' }),
   Object.freeze({ keys: '{mesh.selectNone} / {mesh.invertSelection} / {mesh.circleSelect} / {mesh.boxSelect}', label: 'In edit mode: select none / invert / circle select / box select' }),
   Object.freeze({ keys: '{mesh.growSelection} / {mesh.shrinkSelection}', label: 'In edit mode: grow / shrink the selection' }),
   Object.freeze({ keys: '{mesh.selectLinked} / {mesh.selectLinkedSelection}', label: 'In edit mode: select linked under the pointer / from the selection' }),
   Object.freeze({ keys: 'Alt + click / Ctrl + Alt + click', label: 'In edit mode: select a loop / a ring' }),
+  Object.freeze({ keys: '{mesh.extrude} / {mesh.inset}', label: 'In edit mode: extrude / inset the picked faces; the pointer sets the amount, click or Enter confirms, Esc cancels' }),
   Object.freeze({ keys: '{mesh.proportional}', label: 'In edit mode: proportional editing on or off; the wheel sets its size while a move is held' }),
   Object.freeze({ keys: '{view.seeThrough}', label: 'See through the surface' }),
   Object.freeze({ keys: '{help.shortcuts}', label: 'This list' }),
@@ -249,10 +258,22 @@ export function findKeymapAction(keymap, event, context = 'normal') {
   return null;
 }
 
+const NUMPAD_SYMBOL_LABELS = Object.freeze({
+  NumpadAdd: 'Numpad +',
+  NumpadSubtract: 'Numpad -',
+  NumpadDecimal: 'Numpad .',
+  NumpadMultiply: 'Numpad *',
+  NumpadDivide: 'Numpad /',
+  NumpadEnter: 'Numpad Enter',
+});
+
 function formatKeyName(value) {
-  if (value.code === 'NumpadAdd') return 'Numpad +';
-  if (value.code === 'NumpadSubtract') return 'Numpad -';
-  if (value.code !== undefined) return value.code.replace(/^(Key|Digit)/, '');
+  if (value.code !== undefined) {
+    if (NUMPAD_SYMBOL_LABELS[value.code]) return NUMPAD_SYMBOL_LABELS[value.code];
+    const numpadDigit = /^Numpad(\d)$/.exec(value.code);
+    if (numpadDigit) return `Numpad ${numpadDigit[1]}`;
+    return value.code.replace(/^(Key|Digit)/, '');
+  }
   if (value.key === ' ') return 'Space';
   if (value.key === 'Escape') return 'Esc';
   return value.key.length === 1 ? value.key.toUpperCase() : value.key;
@@ -367,12 +388,18 @@ export const KEYMAP_PRESET_IDS = Object.freeze(Object.keys(KEYMAP_PRESETS));
  * The keymap of a preset, resolved over the defaults. `overrides` is what a person changed in that preset:
  * `{ actionId: binding | [bindings] | null }`, where null leaves the action without a key.
  */
-export function resolveKeymapPreset(presetId, overrides = {}) {
+export function resolveKeymapPreset(presetId, overrides = {}, { numberPad = false } = {}) {
   const preset = KEYMAP_PRESETS[presetId];
   if (!preset) {
     throw new RangeError(`Unknown keymap preset "${presetId}": pass one of ${KEYMAP_PRESET_IDS.join(', ')}.`);
   }
   const bindings = { ...preset.bindings };
+  if (numberPad) {
+    for (const [actionId, numpadBinding] of Object.entries(NUMPAD_VIEW_BINDINGS)) {
+      if (!(actionId in bindings)) bindings[actionId] = numpadBinding;
+    }
+    if (!('view.frame' in bindings)) bindings['view.frame'] = NUMPAD_FRAME_BINDINGS;
+  }
   const unbound = new Set(preset.unbound ?? []);
   for (const [actionId, replacement] of Object.entries(overrides)) {
     if (replacement === null) {

@@ -1023,7 +1023,7 @@ const VALID_TRACE_ENVIRONMENT_FIELDS = new Set([
   'fillIntensity', 'ambientIntensity', 'daylight', 'skyTop', 'skyBottom', 'liquid',
   'shadowCascades', 'keyAffects', 'objectReflections', 'floorSkyTrace', 'sunBounce',
   'specularAntiAliasing', 'lines', 'resolveCoplanar', 'viewTransform', 'look', 'wind',
-  'sky', 'wetness', 'puddles', 'groundBounce', 'outdoorFill', 'roomBounce', 'explosionCenter',
+  'sky', 'wetness', 'puddles', 'rain', 'groundBounce', 'outdoorFill', 'roomBounce', 'explosionCenter',
 ]);
 
 const ENVIRONMENT_FIELD_SUGGESTIONS = {

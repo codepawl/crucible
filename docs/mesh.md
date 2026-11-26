@@ -453,6 +453,7 @@ boundary edges whose midpoint is in a box, which picks one hole among several.
 | Edit | Fields | Tags | What it does |
 | --- | --- | --- | --- |
 | `fill_holes` | `sides` | `fill` | Caps each closed boundary loop with one polygon; `sides` skips loops with more edges. |
+| `make_face` | `vertices` (2 to 4096 distinct indices) | `fill` | Makes one polygon face from 3 or more picked vertices (closing a boundary loop, chain or planar cycle with consistent winding), or splits a shared face with an edge between 2 non-adjacent vertices. |
 | `dissolve_faces` | `select` | `merged` | Merges connected selected faces into one polygon each. |
 | `dissolve_edges` | `edges`, `removeStraight` (default false) | `merged` | Merges the two faces beside each selected edge. Boundary edges are ignored. With `removeStraight` a vertex the dissolve leaves with two edges goes too, so a dissolved loop leaves clean polygons; the result lists `removedStraight`. |
 | `dissolve_verts` | `verts` | `merged` | Removes vertices: a vertex with two edges just leaves its faces, one with more merges the faces around it. |
