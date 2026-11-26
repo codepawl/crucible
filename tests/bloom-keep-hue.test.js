@@ -74,16 +74,17 @@ async function call(client, name, argumentsValue) {
   return result.structuredContent;
 }
 
+const emissiveMaterials = () => [[1, 0, 0], [0, 0, 1], [1, 1, 1]].map((emissiveColor, index) => ({ id: NAMES[index], color: [0.6, 0.6, 0.6], metallic: 0, roughness: 0.5, emission: 8, emissiveColor }));
+
 // The #3326 scene: a red, a blue and a white emissive cube on a mid-grey wall at exposure 1. The base is a lit grey, which is the light on a neon face besides the glow that turned it pastel.
-async function renderCubes(bloom) {
+async function renderCubes(bloom, materials = emissiveMaterials()) {
   const { client } = await server();
-  const emissiveColors = [[1, 0, 0], [0, 0, 1], [1, 1, 1]];
   const recipe = {
     format: 'crucible.scene', schemaVersion: 1,
     geometries: [{ id: 'box', type: 'box', bevel: 0 }],
     materials: [
       { id: 'wall', color: [0.2, 0.2, 0.2], metallic: 0, roughness: 0.9 },
-      ...emissiveColors.map((emissiveColor, index) => ({ id: NAMES[index], color: [0.6, 0.6, 0.6], metallic: 0, roughness: 0.5, emission: 8, emissiveColor })),
+      ...materials,
     ],
     nodes: [
       { id: 'wall', geometry: 'box', material: 'wall', translation: [0, 0, -0.6], scale: [12, 14, 0.1] },
@@ -212,4 +213,28 @@ test('keepHue false draws the same pixels as no keepHue, and keepHue with bloom 
   const offPlain = await renderCubes({ strength: 0 });
   const offKeeping = await renderCubes({ strength: 0, keepHue: true });
   assert.deepEqual(offKeeping.data, offPlain.data);
+});
+
+test('neon preset with keepHue meets the #3326 targets at exposure 1 without scene-wide exposure changes', { timeout: 900000 }, async () => {
+  const neonColors = [[0.9, 0.15, 0.1], [0.1, 0.35, 1], [1, 1, 1]];
+  const expectedHues = [hueOf(neonColors[0]), hueOf(neonColors[1]), null];
+  const neonMaterials = neonColors.map((color, index) => ({ id: NAMES[index], preset: 'neon', color }));
+  const bloom = { strength: 1, threshold: 1, radius: 16 };
+  const off = await renderCubes(null, neonMaterials);
+  const boxes = cubeBoxes(off);
+  const plain = await renderCubes(bloom, neonMaterials);
+  const keeping = await renderCubes({ ...bloom, keepHue: true }, neonMaterials);
+  NAMES.forEach((name, index) => {
+    const before = measureCube(off, plain, boxes[index]);
+    const after = measureCube(off, keeping, boxes[index]);
+    assert.ok(after.ringRise >= 30, `${name} neon ring rises at least 30 levels, got ${after.ringRise}`);
+    assert.ok(after.wallRise <= 10, `${name} neon wall 200 px away rises at most 10, got ${after.wallRise}`);
+    if (expectedHues[index] === null) {
+      assert.ok(after.faceSaturation < 0.1, `the white neon face stays white, got ${after.faceSaturation}`);
+      return;
+    }
+    assert.ok(before.faceSaturation < 0.2, `${name} plain bloom washes neon face pastel, saturation ${before.faceSaturation}`);
+    assert.ok(after.faceSaturation >= 0.5, `${name} keepHue keeps neon face saturated, got ${after.faceSaturation}`);
+    assert.ok(hueDistance(after.addedHue, expectedHues[index]) <= 15, `${name} neon halo hue ${after.addedHue} is within 15 degrees of ${expectedHues[index]}`);
+  });
 });
