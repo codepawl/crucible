@@ -162,7 +162,7 @@ test('every site page carries canonical, Open Graph and Twitter metadata and avo
 
 test('public/robots.txt and public/sitemap.xml exist and list every site page', () => {
   const robots = readFileSync(new URL('../public/robots.txt', import.meta.url), 'utf8');
-  assert.match(robots, /Sitemap:\s*https:\/\/crucible\.codepawl\.com\/sitemap\.xml/);
+  assert.ok(robots.split(/\r?\n/).includes('Sitemap: https://crucible.codepawl.com/sitemap.xml'));
   const sitemap = readFileSync(new URL('../public/sitemap.xml', import.meta.url), 'utf8');
   for (const pageName of CHROME_PAGES) {
     const expectedUrl = pageName === 'index' ? 'https://crucible.codepawl.com/' : `https://crucible.codepawl.com/${pageName}.html`;
