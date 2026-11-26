@@ -8,6 +8,12 @@ import { agentSceneModulesNeeded, loadAgentSceneModules } from '../src/agent-sce
 import { createPostFragment, postFragment } from '../src/post.js';
 import { installCameraEffects } from '../src/camera-effects.js';
 import { installPostSteps, resolvePostSteps, localToneMappingFragment, localToneMappedLog } from '../src/post-steps.js';
+import { box } from '../src/geometry.js';
+import { createEnvironmentMap } from '../src/environment.js';
+import { normalizePathTracerOptions, renderPathTracedImage, toneMapToRgba8 } from '../src/path-tracer.js';
+import { applyLocalToneMapping } from '../src/local-tone-mapping.js';
+import { mapLookToCookPost } from '../scripts/native-post-look.mjs';
+import { traceFrameNative } from '../scripts/agent-native-trace.mjs';
 
 function recordingContext(calls) {
   return new Proxy({}, {
@@ -161,4 +167,121 @@ test('the shader scales all three channels by one gain, so hue and saturation su
   assert.ok(Math.abs(mapped[0] / mapped[1] - color[0] / color[1]) < 1e-9);
   assert.ok(Math.abs(mapped[1] / mapped[2] - color[1] / color[2]) < 1e-9);
   assert.match(localToneMappingFragment, /tanh\(lowWanted/, 'the shader caps the lift the same way the reference does');
+});
+
+function splitHdrFrame(width, height, skyRgb, groundRgb) {
+  const linear = new Float32Array(width * height * 3);
+  const splitRow = Math.floor(height / 2);
+  for (let row = 0; row < height; row++) {
+    const color = row < splitRow ? skyRgb : groundRgb;
+    for (let column = 0; column < width; column++) {
+      const offset = (row * width + column) * 3;
+      linear[offset] = color[0];
+      linear[offset + 1] = color[1];
+      linear[offset + 2] = color[2];
+    }
+  }
+  return linear;
+}
+
+test('path tracer options validate localToneMapping and inactive settings leave pixels unchanged', () => {
+  assert.equal(normalizePathTracerOptions().localToneMapping, null);
+  assert.deepEqual(normalizePathTracerOptions({ localToneMapping: {} }).localToneMapping, defaultRecipe);
+  assert.throws(() => normalizePathTracerOptions({ localToneMapping: { strength: 2 } }), /localToneMapping\.strength/);
+  assert.throws(() => normalizePathTracerOptions({ localToneMapping: { radius: 0.1 } }), /Unknown localToneMapping field/);
+  assert.throws(() => normalizePathTracerOptions({ localToneMapping: [] }), /localToneMapping must be an object/);
+
+  const linear = splitHdrFrame(8, 8, [6, 5, 4], [0.02, 0.03, 0.015]);
+  const plain = toneMapToRgba8(linear, 8, 8, { viewTransform: 'agx', exposure: 1.5 });
+  for (const inactive of [null, { strength: 0 }, { highlightContrast: 1, shadowContrast: 1, detail: 1 }]) {
+    assert.deepEqual(toneMapToRgba8(linear, 8, 8, { viewTransform: 'agx', exposure: 1.5, localToneMapping: inactive }), plain);
+  }
+});
+
+test('path tracer output lifts shaded ground, compresses bright sky, keeps edges sharp, and scales with exposure', () => {
+  const width = 32;
+  const height = 32;
+  const linear = splitHdrFrame(width, height, [8, 6.4, 4.8], [0.015, 0.025, 0.01]);
+  const snapshot = Float32Array.from(linear);
+  const settings = { strength: 1, highlightContrast: 0.35, shadowContrast: 0.35, detail: 1, blurRadius: 0.1, midtoneRange: 1.5 };
+  const mappedLinear = applyLocalToneMapping(linear, width, height, settings, 1);
+  assert.deepEqual(linear, snapshot, 'applyLocalToneMapping does not mutate the caller buffer');
+
+  const skyPixel = 2 * width + 16;
+  const groundPixel = 28 * width + 16;
+  const offRgba = toneMapToRgba8(linear, width, height, { viewTransform: 'agx' });
+  const onRgba = toneMapToRgba8(linear, width, height, { viewTransform: 'agx', localToneMapping: settings });
+  assert.ok(onRgba[skyPixel * 4] < offRgba[skyPixel * 4], 'bright sky above midtoneRange compresses down');
+  assert.ok(onRgba[groundPixel * 4 + 1] > offRgba[groundPixel * 4 + 1], 'shaded ground below midtoneRange lifts up');
+  assert.ok(Math.abs(mappedLinear[skyPixel * 3] / mappedLinear[skyPixel * 3 + 2] - 8 / 4.8) < 1e-4, 'hue ratio survives');
+
+  const doubled = toneMapToRgba8(linear.map(value => value * 2), width, height, { viewTransform: 'agx', localToneMapping: settings });
+  const withExposure = toneMapToRgba8(linear, width, height, { viewTransform: 'agx', exposure: 2, localToneMapping: settings });
+  assert.deepEqual(withExposure, doubled);
+});
+
+test('renderPathTracedImage applies localToneMapping to rgba while leaving traced linear untouched', async () => {
+  const scene = {
+    parts: [{
+      name: 'floor',
+      geometry: box(0, 1),
+      matrix: new Float32Array([20, 0, 0, 0, 0, 0.1, 0, 0, 0, 0, 20, 0, 0, -0.05, 0, 1]),
+      material: { tag: 'surface', metallic: 0, roughness: 1, emission: 0, color: [0.08, 0.2, 0.05] },
+    }],
+    environment: {
+      keyColor: [1, 0.85, 0.6],
+      keyIntensity: 0.3,
+      lightDirection: [0, 0.12, -1],
+      map: createEnvironmentMap({ width: 8, height: 4, data: new Float32Array(8 * 4 * 3).fill(0.05), intensity: 1 }),
+    },
+    camera: { eye: [0, 1.5, 4], target: [0, 0.5, -5], up: [0, 1, 0], fov: 45 },
+  };
+  const traceOptions = { width: 32, height: 24, samples: 4, bounces: 2, denoise: false, threads: 1 };
+  const withoutLocal = await renderPathTracedImage(scene, traceOptions);
+  const withLocal = await renderPathTracedImage(scene, { ...traceOptions, localToneMapping: { strength: 1, highlightContrast: 0.35, shadowContrast: 0.35 } });
+  assert.deepEqual(withLocal.linear, withoutLocal.linear, 'traced linear radiance stays unchanged');
+  const groundOffset = (20 * 32 + 16) * 4;
+  assert.ok(withLocal.rgba[groundOffset + 1] > withoutLocal.rgba[groundOffset + 1], 'shaded ground in traced rgba lifts with localToneMapping');
+});
+
+test('native frames fall back to JavaScript display encoding when localToneMapping is active', async () => {
+  assert.equal(mapLookToCookPost({ localToneMapping: { strength: 0 } }).post.viewTransform, 'aces');
+  const skipped = mapLookToCookPost({ localToneMapping: { strength: 1 } });
+  assert.equal(skipped.post, undefined);
+  assert.match(skipped.reason, /localToneMapping/);
+
+  const calls = [];
+  const pixels = 8 * 8;
+  const sequence = {
+    trace(input, traceOptions) {
+      calls.push(traceOptions);
+      const rgba = new Float32Array(pixels * 4);
+      for (let pixel = 0; pixel < pixels; pixel++) {
+        rgba[pixel * 4] = 0.02;
+        rgba[pixel * 4 + 1] = 0.03;
+        rgba[pixel * 4 + 2] = 0.01;
+        rgba[pixel * 4 + 3] = 1;
+      }
+      return {
+        traced: {
+          rgba, albedo: new Float32Array(pixels * 3), normal: new Float32Array(pixels * 3),
+          depth: new Float32Array(pixels), variance: new Float32Array(pixels),
+          display: new Uint8Array(pixels * 4).fill(255), postSeconds: 0.01,
+          adapter: 'test adapter', backend: 'test',
+        },
+        route: { path: 'new-session' },
+      };
+    },
+  };
+  const emptyExport = {
+    triangleCount: 0, triangles: 0, ignored: [],
+    tables: Object.fromEntries(['triangles', 'materials', 'lights', 'atlas', 'environmentColors', 'environmentTables', 'parameters'].map(name => [name, ''])),
+  };
+  const result = await traceFrameNative({
+    tracer: {}, exported: emptyExport, width: 8, height: 8, samples: 4, denoise: 'none', kernel: 'cycles',
+    sequence, localToneMapping: { strength: 1, shadowContrast: 0.35 },
+  });
+  assert.equal(calls[0].post, undefined);
+  assert.equal(result.report.display.path, 'javascript');
+  assert.match(result.report.display.reason, /localToneMapping/);
 });

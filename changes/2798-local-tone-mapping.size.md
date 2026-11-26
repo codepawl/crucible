@@ -1,0 +1,2 @@
+- entry:path-tracer: adds the bilateral log-luminance mip pyramid local tone mapping filter (`applyLocalToneMapping` and option validation) to path tracer output (#2798)
+- entry:path-tracer-progressive: inherits `toneMapToRgba8` local tone mapping support from `path-tracer.js` (#2798)
