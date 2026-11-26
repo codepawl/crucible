@@ -6,6 +6,8 @@ import { CrucibleRenderer, groupParts } from '../src/renderer.js';
 import { WebGL2GlazeBackend } from '../src/glaze-backend-webgl2.js';
 import { createMorphPose, validateMorphGeometry } from '../src/morph.js';
 import { materialLayerState } from '../src/material-layers.js';
+import { vertexShader } from '../src/shaders.js';
+import { drawLiquidPass } from '../src/liquid-renderer.js';
 
 function makePart(name, geometry, morph) {
   return { name, geometry, morph, matrix: mat4.create(), material: { color: [0.4, 0.5, 0.6], metallic: 0, roughness: 0.7, emission: 0 } };
@@ -158,4 +160,86 @@ test('morph world bounds use the same Float32 coefficients as instance upload', 
   item.matrix[0] = maximum / delta;
   assert.equal(Math.fround(Math.fround(item.matrix[0]) * delta), Infinity);
   assert.throws(() => groupParts([item]), /Morph world position/);
+});
+
+test('morphed liquid parts pass validation, retain updates, bind morph uniforms in liquid passes, and keep procedural rejections (#3409)', () => {
+  const geometry = makeGeometry(0.4);
+  const pose = createMorphPose(1);
+  const liquid = { name: 'blob', geometry, morph: pose, matrix: mat4.create(), material: { tag: 'liquid', color: [0.3, 0.6, 1], metallic: 0, roughness: 0.05, emission: 0 } };
+  assert.equal(groupParts([liquid]).length, 1);
+
+  for (const tag of ['water', 'foliage', 'grass', 'terrain', 'floor', 'fire', 'smoke', 'foam']) {
+    const blocked = { name: tag, geometry, morph: pose, matrix: mat4.create(), material: { tag, color: [1, 1, 1], metallic: 0, roughness: 0.5, emission: 0 } };
+    assert.throws(() => groupParts([blocked]), /Morphed parts require a standard material tag\./);
+  }
+
+  const renderer = Object.create(CrucibleRenderer.prototype);
+  renderer.hasMorphs = true;
+  renderer.canvas = { width: 64, height: 64 };
+  renderer.viewProjection = mat4.create();
+  renderer.lightProjection = mat4.create();
+  renderer.lighting = { keyColor: [1, 1, 1], ambientIntensity: 0.2 };
+  renderer.context = { TEXTURE0: 33984, ARRAY_BUFFER: 34962, bindBuffer() {}, bufferSubData() {} };
+  renderer.updateSkins = new Set();
+  renderer.updateBatches = new Set();
+  renderer.partLocations = new Map();
+  const liquidBatch = {
+    morph: pose,
+    morphTexture: { info: validateMorphGeometry(geometry, pose), texture: { id: 'morph-tex' } },
+    morphWeights: new Float32Array(pose.weights),
+    layerState: materialLayerState(liquid.material),
+    mapState: [],
+    textures: [],
+    instanceBuffer: {},
+    instanceData: new Float32Array(42),
+    parts: [liquid],
+    castShadow: true, receivesShadow: true, compositeMode: 0,
+    alphaMode: 'opaque', alphaCutoff: 0, opacity: 1, doubleSided: false,
+    indexCount: 36, instanceCount: 1, vertexArray: {}, pass: 'liquid',
+  };
+  renderer.batches = [liquidBatch];
+  renderer.partLocations.set(liquid, {
+    batch: liquidBatch, index: 0, geometry, morph: pose,
+    morphWeights: pose.weights, morphTargets: geometry.morphTargets,
+    skin: null, map: null, layerState: liquidBatch.layerState,
+    mapState: [null, null, null, null, null, 1, 1, 1, 0, 0.05, 0.085, 0.02],
+    normalMatrix: mat3.create(),
+  });
+  pose.weights[0] = 0.75;
+  assert.equal(renderer.updateParts([liquid]), 1);
+  assert.equal(liquidBatch.morphWeights[0], 0.75);
+
+  const bound = [];
+  let compiledVertex = '';
+  const shaderStub = {};
+  renderer.withViewTransform = source => source;
+  renderer.applyEnvironmentUniforms = () => {};
+  renderer.liquidProgram = null;
+  renderer.context = new Proxy({
+    shaderSource(_, source) { if (source.includes('#define USES_MORPH')) compiledVertex = source; },
+    createShader: () => shaderStub,
+    getExtension: () => null,
+    getShaderParameter: () => true,
+    createProgram: () => ({}),
+    getProgramParameter: () => true,
+    getUniformLocation: (_, name) => name,
+    uniform1f(name, value) { bound.push([name, value]); },
+    uniform1fv(name, value) { bound.push([name, [...value]]); },
+  }, { get: (target, prop) => (prop in target ? target[prop] : typeof prop === 'string' && /^[A-Z_0-9]+$/.test(prop) ? 1 : () => {}) });
+  drawLiquidPass(renderer, {
+    frame: { eye: [0, 0, 3], time: 0 },
+    environment: { daylight: 1, lightDirection: [0, 1, 0], fogColor: [0, 0, 0], fogDensity: 0, explosionCenter: [0, 0, 0], liquid: {} },
+    assemblyAmount: 1,
+    environmentMap: null,
+    liquids: [liquidBatch],
+    foams: [{ vertexArray: {}, indexCount: 6, instanceCount: 1, clipPlanes: null }],
+    environmentSpecularUnit: 1,
+    maximumDistance: 100,
+    vertexSource: vertexShader,
+    fragmentSource: '#version 300 es\nprecision highp float;\nout vec4 o;\nvoid main(){o=vec4(1);}',
+  });
+  assert.match(compiledVertex, /#define USES_MORPH \(morphEnabled > 0\.5\)/);
+  assert.ok(bound.some(([name, value]) => name === 'morphEnabled' && value === 1));
+  assert.ok(bound.some(([name, value]) => name === 'morphWeights[0]' && value[0] === 0.75));
+  assert.deepEqual(bound.filter(([name]) => name === 'morphEnabled').at(-1), ['morphEnabled', 0]);
 });

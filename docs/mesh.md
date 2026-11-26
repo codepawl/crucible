@@ -88,7 +88,7 @@ rebuilding the topology.
 
 ## Lint
 
-`lintMesh(mesh, { geometry = false })` returns `{ ok, counts, parts, valence, quadQuality, topologyScore, tags, bounds, problems }`:
+`lintMesh(mesh, { geometry = false, topology = true })` returns `{ ok, counts, parts, valence, quadQuality, topologyScore, tags, bounds, problems }`. `topology: false` leaves out `valence`, `quadQuality` and `topologyScore` for callers that read only the problems:
 
 - `valence` counts interior vertices by edge degree: `{ regular, poles3, poles5, poles6Plus }` (boundary vertices on open rims are left out).
 - `quadQuality` summarizes quad faces: `{ meanAngleError, maxAngleError, maxAspect, maxWarp }` (angles in degrees from $90^\circ$ and across the quad diagonal).

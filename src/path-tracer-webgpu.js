@@ -1,6 +1,7 @@
 import { buildMegakernelSource, PATH_STATE_VECTORS, WAVEFRONT_SOURCE, WAVEFRONT_WORKGROUP_SIZE, WORKGROUP_SIZE } from './path-tracer-webgpu-kernel.js';
 import { resolveLightSelection } from './path-tracer-light-tree.js';
-import { gpuTriangleCapacity, packAtlas, packEnvironment, packLightTree, packLights, packMaterials, packNodes, packSubsurface, packTriangles, sceneUsesSubsurface } from './path-tracer-gpu-pack.js';
+import { gpuTriangleCapacity, OCCLUSION_TEXELS, packAtlas, packEnvironment, packLightTree, packLights, packMaterials, packNodes, packOcclusion, packSubsurface, packTriangles, sceneUsesOcclusionMap, sceneUsesSubsurface } from './path-tracer-gpu-pack.js';
+import { MATERIAL_TEXELS } from './path-tracer-gpu-shader.js';
 import { WEBGPU_INSTANCE_VECTORS } from './path-tracer-webgpu-instancing.js';
 import { packInstancedScene } from './path-tracer-gpu-instance-pack.js';
 import { cameraBackgroundWords, isInstancedScene, MAX_GPU_TRACE_TRIANGLES, MAX_TRACE_TRIANGLES, uniqueTriangleCount } from './path-tracer-scene.js';
@@ -85,10 +86,10 @@ async function getSession() {
 }
 
 /** The WGSL and entry points of a kernel variant; a variant is one of the two kernels, with the optional parts a scene needs. */
-function describeVariant({ kernel, hasVolume, hasLocalVolumes, hasGridVolume, hasNoiseOctaves, hasEmissionRamp, hasMeshVolume, hasSubsurface, texelBake, realtime, instanced = false }) {
+function describeVariant({ kernel, hasVolume, hasLocalVolumes, hasGridVolume, hasNoiseOctaves, hasEmissionRamp, hasMeshVolume, hasSubsurface, hasOcclusionMap, texelBake, realtime, instanced = false }) {
   if (kernel === 'wavefront') return { code: WAVEFRONT_SOURCE, entryPoints: WAVEFRONT_ENTRY_POINTS };
   if (realtime) return { code: buildMegakernelSource({ hasVolume, hasLocalVolumes, hasGridVolume, hasNoiseOctaves, hasEmissionRamp, hasMeshVolume, hasSubsurface, realtime, instanced }), entryPoints: ['traceRealtime'] };
-  return { code: buildMegakernelSource({ hasVolume, hasLocalVolumes, hasGridVolume, hasNoiseOctaves, hasEmissionRamp, hasMeshVolume, hasSubsurface, texelBake, instanced }), entryPoints: [texelBake ? 'bakeTexels' : 'main'] };
+  return { code: buildMegakernelSource({ hasVolume, hasLocalVolumes, hasGridVolume, hasNoiseOctaves, hasEmissionRamp, hasMeshVolume, hasSubsurface, hasOcclusionMap, texelBake, instanced }), entryPoints: [texelBake ? 'bakeTexels' : 'main'] };
 }
 
 async function compileKernel(current, variant) {
@@ -105,7 +106,7 @@ async function compileKernel(current, variant) {
 }
 
 async function getKernel(current, variant) {
-  const key = [variant.kernel, variant.hasVolume, variant.hasLocalVolumes, variant.hasGridVolume, variant.hasNoiseOctaves, variant.hasEmissionRamp, variant.hasMeshVolume, variant.hasSubsurface, variant.texelBake, Boolean(variant.realtime), Boolean(variant.instanced)].join(':');
+  const key = [variant.kernel, variant.hasVolume, variant.hasLocalVolumes, variant.hasGridVolume, variant.hasNoiseOctaves, variant.hasEmissionRamp, variant.hasMeshVolume, variant.hasSubsurface, Boolean(variant.hasOcclusionMap), variant.texelBake, Boolean(variant.realtime), Boolean(variant.instanced)].join(':');
   if (!current.kernels.has(key)) current.kernels.set(key, compileKernel(current, variant));
   return current.kernels.get(key);
 }
@@ -147,8 +148,19 @@ function packGeometryTables(device, scene) {
   return { nodeTable: { data }, triangleData: packed.triangles.data, instanceHeader: nodeFloats / 4 };
 }
 
+/** The material records cut to their exact count (the packed table is padded to whole rows), then the occlusion table, so the kernel finds it at materialCount * MATERIAL_TEXELS. */
+function appendOcclusionTable(packedMaterials, materials, atlas) {
+  const recordFloats = materials.length * MATERIAL_TEXELS * 4;
+  const occlusionData = packOcclusion(materials, atlas).data.subarray(0, materials.length * OCCLUSION_TEXELS * 4);
+  const combined = new Float32Array(recordFloats + occlusionData.length);
+  combined.set(packedMaterials.subarray(0, recordFloats));
+  combined.set(occlusionData, recordFloats);
+  return combined;
+}
+
 export function uploadScene(device, scene, requestedLightSelection = 'uniform') {
-  const atlas = packAtlas(scene.materials);
+  const usesOcclusionMap = sceneUsesOcclusionMap(scene.materials);
+  const atlas = packAtlas(scene.materials, { withOcclusion: usesOcclusionMap });
   const lights = packLights(scene.lights);
   // With the light tree the node table follows the light table in the same buffer; treeBase is the vector index of its first node.
   const useLightTree = resolveLightSelection(requestedLightSelection, scene.lights) === 'tree' && lights.count > 1;
@@ -169,8 +181,10 @@ export function uploadScene(device, scene, requestedLightSelection = 'uniform') 
     portals.forEach((portal, index) => environmentTables.set(packPortal(portal), mapTableLength + index * PORTAL_FLOATS));
     environmentTables[environmentTables.length - 1] = portals.length;
   }
-  // The subsurface table (two vectors per material) follows the material table in the same buffer.
-  const materialData = packMaterials(scene.materials, atlas, scene.shadowOnlyParts, scene.lampLightMasks).data;
+  // The occlusion table (two vectors per material, only for a scene with an occlusion map) follows the material table, where the kernel
+  // finds it from the material count; the subsurface table follows it in the same buffer.
+  const packedMaterials = packMaterials(scene.materials, atlas, scene.shadowOnlyParts, scene.lampLightMasks).data;
+  const materialData = usesOcclusionMap ? appendOcclusionTable(packedMaterials, scene.materials, atlas) : packedMaterials;
   const subsurfaceOffset = materialData.length / 4;
   const subsurfaceData = sceneUsesSubsurface(scene.materials) ? packSubsurface(scene.materials).data : new Float32Array(0);
   const materialsWithSubsurface = new Float32Array(materialData.length + subsurfaceData.length);
@@ -322,7 +336,10 @@ function encodeWavefrontSample(pass, pipelines, bindGroup, tiles, depthCount, ma
 export async function traceOnWebGpu(scene, camera, options, shouldStop) {
   const kernel = options.kernel ?? DEFAULT_WEBGPU_KERNEL;
   if (!WEBGPU_KERNELS.includes(kernel)) throw new RangeError(`The WebGPU path tracer kernel must be one of ${WEBGPU_KERNELS.join(', ')}.`);
-  const features = sceneFeatures(scene);
+  const features = { ...sceneFeatures(scene), hasOcclusionMap: sceneUsesOcclusionMap(scene.materials) };
+  if (kernel === 'wavefront' && features.hasOcclusionMap) {
+    throw new RangeError('The WebGPU wavefront kernel does not trace occlusion maps. Use the megakernel, the default.');
+  }
   if (kernel === 'wavefront' && (features.hasVolume || features.hasLocalVolumes || features.hasSubsurface)) {
     throw new RangeError('The WebGPU wavefront kernel does not trace volume fog, local volumes or subsurface scattering. Use the megakernel, the default.');
   }

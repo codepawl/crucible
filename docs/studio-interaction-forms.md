@@ -63,6 +63,7 @@ Pick the form by how a person reaches the feature:
 | Grid | toggle | `toggle:grid`, `src/studio.js:1976`, `src/studio.js:1505` | A state every tool obeys. The rail button, the View menu item and a Settings row show the same state. |
 | Statistics readout | setting | `src/studio.js:1189`, `src/studio.js:2064` | The camera and size readout is a stored choice in Settings. |
 | Show or hide the panels | toggle | `toggle:toggleDocks`, `src/studio.js:1975`, `src/studio-keymap.js:48` | A state of the layout. The rail button and the N key flip the same state. |
+| Export workspace | mode | the Export tab, `src/studio.js`, `src/studio-export.js` | One action per export. The scene is read-only and navigation is off there, because the viewport shows exactly the saved shot. |
 
 ## Object mode operators
 
@@ -101,4 +102,6 @@ Pick the form by how a person reaches the feature:
 | Motion | setting | `src/studio-preferences.js`, `src/studio-settings.js` | A stored choice made once: follow the system or reduce Studio's own motion. |
 | Zoom direction | setting | `src/studio-preferences.js`, `src/studio-settings.js` | A stored choice made once for which way the wheel and a pinch zoom. |
 | Account | panel | Settings > Account, `src/studio-account.js` | Shows who is signed in and the host's sign-in and sign-out actions in one section; Studio holds no token. |
+| Keyboard settings | panel | Settings > Keyboard, `src/studio-keyboard-settings.js` | Every shortcut of the preset by area, a filter above, a warning on a clash and Reset shortcuts with a confirm that defaults to Keep; nothing leaves the panel until a key is chosen. |
+| Each key binding | setting | Settings > Keyboard, `src/studio-key-overrides.js` | A stored choice per preset and action: click the key, press the new combination; Esc cancels, Backspace clears, Swap or Cancel settles a clash, the row's reset returns the preset key. |
 | History | panel | `src/studio.js` (the History card in the right column), View > History, Edit > History | A log of the edits that stays on screen beside Properties: a viewer of a recording follows it downward, and the person editing steps back or forward from it. A tab of Properties would be swapped out when the selection changes tabs, so it is its own card, shown and hidden by a toggle. |

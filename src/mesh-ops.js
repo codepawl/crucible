@@ -568,12 +568,16 @@ function nearestSeedDistances(position, candidates, seedList, radius) {
   return distances;
 }
 
+export const DEFAULT_MAX_FALLOFF_VISITS = 50_000_000;
+
+function budgetError() {
+  return new RangeError('Proportional falloff exceeds its distance budget. Use connected: true, a smaller radius, or a smaller selection.');
+}
+
 function spatialDistances(edit, seeds, radius, maxVisits) {
   const seedList = [...seeds];
   const liveCount = edit.vertexCount;
-  if (seedList.length * liveCount > maxVisits) {
-    throw new RangeError('Proportional falloff exceeds its distance budget. Use connected: true or a smaller selection.');
-  }
+  if (seedList.length * liveCount > maxVisits) throw budgetError();
   return nearestSeedDistances(edit.vertices.arrays.position, edit.liveIndices('point'), seedList, radius);
 }
 
@@ -581,9 +585,11 @@ function spatialDistances(edit, seeds, radius, maxVisits) {
  * The weight of every vertex a straight-line falloff moves: 1 on the seeds, then `curve` of distance over `radius` out to
  * the radius. Studio previews a held move with this, and `translate` applies the same numbers when the log replays.
  */
-export function spatialFalloffWeights(positions, vertexCount, seeds, { radius, curve = 'smooth' }) {
+export function spatialFalloffWeights(positions, vertexCount, seeds, { radius, curve = 'smooth' }, { maxFalloffVisits = DEFAULT_MAX_FALLOFF_VISITS } = {}) {
+  const seedList = [...seeds];
+  if (seedList.length * vertexCount > maxFalloffVisits) throw budgetError();
   const candidates = Array.from({ length: vertexCount }, (_, vertex) => vertex);
-  const distances = nearestSeedDistances(positions, candidates, [...seeds], radius);
+  const distances = nearestSeedDistances(positions, candidates, seedList, radius);
   return weightsFromDistances(distances, seeds, radius, curve);
 }
 

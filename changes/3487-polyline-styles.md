@@ -1,0 +1,1 @@
+- Add `dashed`, `dotted` and `double` polyline styles with `dashLength`, `gapLength` and `dashOffset` in `environment.lines.polylines`.

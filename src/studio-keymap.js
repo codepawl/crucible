@@ -28,6 +28,8 @@ export const DEFAULT_KEYMAP_ACTIONS = Object.freeze([
   action('edit.paste', 'Paste', 'Edit', 'normal', binding('v', { ctrl: true, shift: false })),
   action('edit.duplicate', 'Duplicate', 'Edit', 'normal', binding('d', { shift: true }), binding('d', { ctrl: true })),
   action('edit.join', 'Join the selected objects', 'Edit', 'normal', binding('j', { ctrl: true })),
+  action('edit.parent', 'Parent to active object', 'Edit', 'normal', binding('p', { ctrl: true, shift: false })),
+  action('edit.clearParent', 'Clear parent', 'Edit', 'normal', binding('p', { alt: true, shift: false })),
   action('edit.delete', 'Delete', 'Edit', 'normal', binding('x'), binding('Delete'), binding('Backspace')),
   action('edit.rename', 'Rename', 'Edit', 'normal', binding('F2')),
   action('edit.deselect', 'Deselect', 'Edit', 'normal', binding('Escape')),
@@ -105,6 +107,7 @@ export const SHORTCUT_ROWS = Object.freeze([
   Object.freeze({ keys: '{edit.copy} / {edit.paste}', label: 'Copy / Paste' }),
   Object.freeze({ keys: '{edit.duplicate} / {edit.duplicate#1}', label: 'Duplicate' }),
   Object.freeze({ keys: '{edit.join}', label: 'Join the selected objects into the last one picked' }),
+  Object.freeze({ keys: '{edit.parent} / {edit.clearParent}', label: 'Parent to active object / clear parent' }),
   Object.freeze({ keys: '{edit.delete} / {edit.delete#1}', label: 'Delete' }),
   Object.freeze({ keys: '{edit.deselect}', label: 'Deselect' }),
   Object.freeze({ keys: '{select.all} / {select.none} / {select.invert}', label: 'Select all / none / invert' }),
@@ -140,7 +143,7 @@ function describeBinding(value) {
   return JSON.stringify(value);
 }
 
-function validateBinding(actionId, value) {
+export function validateBinding(actionId, value) {
   const expected = 'pass { key: "g" } or { code: "KeyG" } with optional boolean ctrl, shift and alt';
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new TypeError(`Keymap binding for "${actionId}" is ${describeBinding(value)}: ${expected}.`);
@@ -167,7 +170,7 @@ function shiftsOverlap(first, second) {
   return first === undefined || second === undefined || first === second;
 }
 
-function bindingsOverlap(first, second) {
+export function bindingsOverlap(first, second) {
   return (first.key?.toLowerCase() ?? null) === (second.key?.toLowerCase() ?? null)
     && (first.code ?? null) === (second.code ?? null)
     && Boolean(first.ctrl) === Boolean(second.ctrl)
@@ -360,13 +363,27 @@ export const KEYMAP_PRESETS = Object.freeze({
 
 export const KEYMAP_PRESET_IDS = Object.freeze(Object.keys(KEYMAP_PRESETS));
 
-/** The keymap of a preset, resolved over the defaults. */
-export function resolveKeymapPreset(presetId) {
+/**
+ * The keymap of a preset, resolved over the defaults. `overrides` is what a person changed in that preset:
+ * `{ actionId: binding | [bindings] | null }`, where null leaves the action without a key.
+ */
+export function resolveKeymapPreset(presetId, overrides = {}) {
   const preset = KEYMAP_PRESETS[presetId];
   if (!preset) {
     throw new RangeError(`Unknown keymap preset "${presetId}": pass one of ${KEYMAP_PRESET_IDS.join(', ')}.`);
   }
-  return resolveKeymap(preset.bindings, { unbound: preset.unbound, toolKeysGrab: preset.toolKeysGrab, mouse: preset.mouse });
+  const bindings = { ...preset.bindings };
+  const unbound = new Set(preset.unbound ?? []);
+  for (const [actionId, replacement] of Object.entries(overrides)) {
+    if (replacement === null) {
+      delete bindings[actionId];
+      unbound.add(actionId);
+    } else {
+      bindings[actionId] = replacement;
+      unbound.delete(actionId);
+    }
+  }
+  return resolveKeymap(bindings, { unbound: [...unbound], toolKeysGrab: preset.toolKeysGrab, mouse: preset.mouse });
 }
 
 /** The camera move a mouse press starts under this keymap ('orbit', 'pan' or 'zoom'), or null for the default drag. */

@@ -1030,7 +1030,7 @@ const renderSettings = z.strictObject({
   fps: z.number().int().min(1).max(MAXIMUM_JOB_FPS).optional(),
   duration: z.number().min(0.1).max(60).optional(),
   animation: z.strictObject({ clip: z.number().int().min(0), start: z.number().min(0).max(3600).optional() }).optional(),
-  motion: z.strictObject({ start: z.number().min(0).max(3600).optional() }).optional(),
+  motion: z.looseObject({ start: z.number().min(0).max(3600).optional() }).pipe(z.strictObject({ start: z.number().min(0).max(3600).optional(), timeWarp: z.array(z.strictObject({ time: z.number().min(0).max(3600), value: z.number().min(-3600).max(3600) })).min(2).max(64).optional() })).optional(),
   rendererTime: z.strictObject({ start: z.number().min(0).max(3600).optional(), rate: z.number().min(-16).max(16).optional() }).optional(),
   renderer: z.looseObject({ type: z.literal('pathTracer'), backend: z.enum(['cpu', 'gpu', 'native']).optional() }).meta({ description: 'Path tracer. Also samples, bounces, denoise, seed, maxSeconds, noiseThreshold: scene_capabilities topic jobs, key pathTracer.' }).pipe(z.strictObject({ type: z.literal('pathTracer'), backend: z.enum(['cpu', 'gpu', 'native']).optional(), samples: z.number().optional(), bounces: z.number().optional(), denoise: z.union([z.boolean(), z.enum(['wavelet', 'oidn', 'none'])]).optional(), seed: z.number().optional(), maxSeconds: z.number().optional(), noiseThreshold: z.number().optional() })).optional(),
   quality: z.enum(['draft', 'realtime', 'realtime-high', 'final']).optional().describe('What the render is for; picks the renderer. Not with renderer or budget. scene_capabilities jobs.'),

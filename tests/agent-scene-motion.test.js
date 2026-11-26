@@ -164,3 +164,22 @@ test('motion loop is optional boolean and never accepts null as a hidden default
   input.motion.loop = null;
   assert.throws(() => createAgentScene(input), /motion\.loop: got .*; expected true or false/);
 });
+
+test('plain set-motion and removeTracks batches with set-node keep prior revisions intact', () => {
+  const scene = createAgentScene(recipe());
+  const original = structuredClone(scene.exportRecipe());
+  const nextMotion = structuredClone(original.motion);
+  nextMotion.tracks[0].keyframes[1].value = [0, 0, 0, 1];
+  scene.apply([
+    { type: 'set-node', id: 'arm', translation: [2, 2, 0] },
+    { type: 'set-motion', motion: nextMotion },
+  ], { expectedRevision: 0 });
+  assert.equal(scene.exportRecipe().motion.tracks.length, 3);
+  scene.apply([
+    { type: 'set-node', id: 'arm', translation: [3, 2, 0] },
+    { type: 'set-motion', removeTracks: [{ kind: 'camera' }] },
+  ], { expectedRevision: 1 });
+  assert.equal(scene.exportRecipe().motion.tracks.some(track => track.kind === 'camera'), false);
+  scene.restoreRevision(0, { expectedRevision: 2 });
+  assert.deepEqual(scene.exportRecipe(), original);
+});

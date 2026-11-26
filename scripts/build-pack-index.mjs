@@ -160,7 +160,7 @@ export async function buildPackIndex({ packsDirectory = join(repositoryRoot, 'pa
   }
   const folders = [];
   for (const entry of await readdir(source, { withFileTypes: true })) {
-    if (entry.isDirectory() || entry.isSymbolicLink()) folders.push(entry.name);
+    if ((entry.isDirectory() || entry.isSymbolicLink()) && !entry.name.startsWith('.')) folders.push(entry.name);
   }
   folders.sort();
   const staging = `${output}.building-${process.pid}`;

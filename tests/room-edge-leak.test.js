@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAgentScene } from '../src/agent-scene.js';
 import { loadAgentSceneModules } from '../src/agent-scene-modules.js';
+import { MAXIMUM_JOINED_BOX_NODES } from '../src/room-box-joins.js';
 import { beveledJoinNodes, roomEdgeLeakDiagnostic } from '../src/room-edge-leak.js';
 
 const WALL = 0.2;
@@ -32,12 +33,24 @@ async function inspectedKinds(recipe) {
   return (createAgentScene(recipe).inspect().diagnostics ?? []).map(entry => entry.kind);
 }
 
-test('a closed room of default-bevel boxes gets a room-edge-leak diagnostic that names the fix', async () => {
+// A room whose boxes stay rounded: with more rounded boxes than the join test compares (src/room-box-joins.js), none of them is drawn sharp.
+function roomOfRoundedBoxes() {
   const recipe = roomRecipe({ id: 'box', type: 'box' });
-  assert.ok((await inspectedKinds(recipe)).includes('room-edge-leak'));
-  const found = roomEdgeLeakDiagnostic(recipe);
+  const crowd = Array.from({ length: MAXIMUM_JOINED_BOX_NODES }, (_, index) => slab(`filler-${index}`, [100 + index * 3, 0, 0], [1, 1, 1]));
+  return { ...recipe, nodes: [...recipe.nodes, ...crowd] };
+}
+
+test('a room of default-bevel boxes that stay rounded gets a room-edge-leak diagnostic that names the fix', () => {
+  const found = roomEdgeLeakDiagnostic(roomOfRoundedBoxes());
   assert.equal(found.severity, 'warning');
   assert.match(found.fix, /"bevel": 0/);
+});
+
+test('the default six-slab room is drawn sharp at its joins, so it gets no room-edge-leak diagnostic', async () => {
+  const recipe = roomRecipe({ id: 'box', type: 'box' });
+  assert.deepEqual(beveledJoinNodes(recipe), []);
+  assert.equal(roomEdgeLeakDiagnostic(recipe), null);
+  assert.ok(!(await inspectedKinds(recipe)).includes('room-edge-leak'));
 });
 
 test('a closed room of bevel 0 boxes has no room-edge-leak diagnostic', async () => {

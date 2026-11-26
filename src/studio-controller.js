@@ -29,6 +29,12 @@ import {
   snapScaleFactor,
   snapToStep,
 } from './studio-snapping.js';
+import {
+  buildNodeWorldMatrices,
+  collectDescendantIds as descendantIdsOfMany,
+  reparentOperationsFor,
+} from './studio-parenting.js';
+import { formatLength, STUDIO_LENGTH_UNITS } from './studio-units.js';
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
 // The furthest a typed move may go in metres: the coordinate limit the recipe keeps for positions.
@@ -263,37 +269,6 @@ function projectPointWithMatrix(viewProjection, point, width, height) {
   };
 }
 
-function buildNodeWorldMatrices(nodes) {
-  const byId = new Map(nodes.map(node => [node.id, node]));
-  const worldMatrices = new Map();
-  function resolveWorldMatrix(nodeId, stack) {
-    if (worldMatrices.has(nodeId)) {
-      return worldMatrices.get(nodeId);
-    }
-    const node = byId.get(nodeId);
-    if (!node || stack.has(nodeId)) {
-      return mat4.create();
-    }
-    stack.add(nodeId);
-    const localMatrix = mat4.fromRotationTranslationScale(
-      mat4.create(),
-      node.rotation ?? [0, 0, 0, 1],
-      node.translation ?? [0, 0, 0],
-      node.scale ?? [1, 1, 1],
-    );
-    const worldMatrix = node.parent
-      ? mat4.multiply(mat4.create(), resolveWorldMatrix(node.parent, stack), localMatrix)
-      : localMatrix;
-    stack.delete(nodeId);
-    worldMatrices.set(nodeId, worldMatrix);
-    return worldMatrix;
-  }
-  for (const node of nodes) {
-    resolveWorldMatrix(node.id, new Set());
-  }
-  return worldMatrices;
-}
-
 // Andrew's monotone chain over [x, y] points, returned counter-clockwise without the repeated first point.
 function convexHull(points) {
   const sorted = [...points].sort((first, second) => first[0] - second[0] || first[1] - second[1]);
@@ -317,22 +292,6 @@ function convexHull(points) {
 
 function descendantIdsOf(nodes, rootId) {
   return descendantIdsOfMany(nodes, [rootId]);
-}
-
-// Every id in `rootIds` with all the nodes below them, from one walk of the node list however many roots there are.
-function descendantIdsOfMany(nodes, rootIds) {
-  const descendants = new Set(rootIds);
-  let added = true;
-  while (added) {
-    added = false;
-    for (const node of nodes) {
-      if (node.parent && descendants.has(node.parent) && !descendants.has(node.id)) {
-        descendants.add(node.id);
-        added = true;
-      }
-    }
-  }
-  return descendants;
 }
 
 // A placed catalog scan draws as parts named `<node id>/<index>`, one per mesh of the file; they belong to that node.
@@ -501,26 +460,29 @@ function planeNormalForAxis(axis, camera, basis = WORLD_BASIS) {
 }
 
 function upsertNodeKeyframeTrack(tracks, nodeId, property, time, value) {
-  const nextTracks = tracks.map(track => structuredClone(track));
-  const existing = nextTracks.find(track => track.kind === 'node' && track.id === nodeId && track.property === property);
-  if (!existing) {
+  const nextTracks = tracks.slice();
+  const existingIndex = nextTracks.findIndex(track => track.kind === 'node' && track.id === nodeId && track.property === property);
+  const roundedTime = roundValue(time, 1000);
+  const entry = { time: roundedTime, value: roundVector(value) };
+  if (existingIndex < 0) {
     nextTracks.push({
       kind: 'node',
       id: nodeId,
       property,
-      keyframes: [{ time: roundValue(time, 1000), value: roundVector(value) }],
+      keyframes: [entry],
     });
     return nextTracks;
   }
-  const roundedTime = roundValue(time, 1000);
-  const matchIndex = keyframeIndexAt(existing.keyframes, roundedTime);
-  const entry = { time: roundedTime, value: roundVector(value) };
+  const existing = nextTracks[existingIndex];
+  const nextKeyframes = existing.keyframes.slice();
+  const matchIndex = keyframeIndexAt(nextKeyframes, roundedTime);
   if (matchIndex >= 0) {
-    existing.keyframes[matchIndex] = entry;
+    nextKeyframes[matchIndex] = entry;
   } else {
-    existing.keyframes.push(entry);
-    existing.keyframes.sort((first, second) => first.time - second.time);
+    nextKeyframes.push(entry);
+    nextKeyframes.sort((first, second) => first.time - second.time);
   }
+  nextTracks[existingIndex] = { ...existing, keyframes: nextKeyframes };
   return nextTracks;
 }
 
@@ -669,6 +631,7 @@ export function createStudioController({
   showEditsBeforeTheirBake(currentScene);
   let moveSnapStep = TRANSLATION_SNAP_STEP;
   let rotateSnapDegrees = ROTATION_SNAP_DEGREES;
+  let lengthUnit = 'm';
   let snapEnabled = false;
   let snapTarget = SNAP_TARGET_IDS[0];
   let gizmoPixels = GIZMO_SCREEN_PIXELS;
@@ -1203,6 +1166,7 @@ export function createStudioController({
       gizmoPixels: settings.gizmoPixels ?? gizmoPixels,
       snapEnabled: settings.snapEnabled ?? snapEnabled,
       snapTarget: settings.snapTarget ?? snapTarget,
+      lengthUnit: settings.lengthUnit ?? lengthUnit,
     };
     if (typeof next.snapEnabled !== 'boolean') {
       throw new TypeError(`snapEnabled must be true or false, got ${JSON.stringify(next.snapEnabled)}.`);
@@ -1210,18 +1174,22 @@ export function createStudioController({
     if (!SNAP_TARGET_IDS.includes(next.snapTarget)) {
       throw new RangeError(`snapTarget must be one of ${SNAP_TARGET_IDS.join(', ')}, got ${JSON.stringify(next.snapTarget)}.`);
     }
+    if (!STUDIO_LENGTH_UNITS.includes(next.lengthUnit)) {
+      throw new RangeError(`lengthUnit must be one of ${STUDIO_LENGTH_UNITS.join(', ')}, got ${JSON.stringify(next.lengthUnit)}.`);
+    }
     for (const [name, value] of Object.entries({ moveSnapStep: next.moveSnapStep, rotateSnapDegrees: next.rotateSnapDegrees, gizmoPixels: next.gizmoPixels })) {
       if (!Number.isFinite(value) || value <= 0) {
         throw new RangeError(`${name} must be a positive number, got ${JSON.stringify(value)}.`);
       }
     }
     const changed = next.moveSnapStep !== moveSnapStep || next.rotateSnapDegrees !== rotateSnapDegrees || next.gizmoPixels !== gizmoPixels
-      || next.snapEnabled !== snapEnabled || next.snapTarget !== snapTarget;
+      || next.snapEnabled !== snapEnabled || next.snapTarget !== snapTarget || next.lengthUnit !== lengthUnit;
     moveSnapStep = next.moveSnapStep;
     rotateSnapDegrees = next.rotateSnapDegrees;
     gizmoPixels = next.gizmoPixels;
     snapEnabled = next.snapEnabled;
     snapTarget = next.snapTarget;
+    lengthUnit = next.lengthUnit;
     if (changed) {
       notify({ kind: 'tool' });
     }
@@ -1698,6 +1666,7 @@ export function createStudioController({
       parentInverse: parentWorld ? mat4.invert(mat4.create(), parentWorld) : null,
       parentWorld: parentWorld ?? null,
       companions: elementSession ? [] : moveCompanionsOf(recipe, node.id, worldMatrices),
+      activeCarried: !elementSession && !selectionRootsIn(recipe.nodes).includes(node.id),
       selectionIds,
       ownPoints: sampledOwnPoints,
       snapMarker: null,
@@ -1781,11 +1750,11 @@ export function createStudioController({
   // A keyed node shows its sampled pose, so with auto-key on the dragged pose is also keyed at the playhead as the pointer
   // moves; built from the motion the drag began with, so each move replaces the last and cancel can put the motion back.
   function writeDraggedPose(pose) {
-    const operations = [{ type: 'set-node', id: dragState.nodeId, ...pose }];
+    const operations = dragState.activeCarried ? [] : [{ type: 'set-node', id: dragState.nodeId, ...pose }];
     if (pose.translation) {
       operations.push(...companionMoveOperations(pose.translation));
     }
-    if (autoKey) {
+    if (autoKey && !dragState.activeCarried) {
       const motion = motionWithPoseKeys(dragState.baseMotion, dragState.nodeId, pose, motionTime);
       if (motion) {
         operations.push({ type: 'set-motion', motion });
@@ -1807,13 +1776,14 @@ export function createStudioController({
   }
 
   // The other selected objects that move with the dragged one: the selection's roots, minus what already moves with it
-  // (its own children) and what carries it (its selected ancestors).
+  // (its own children). A selected ancestor of the dragged object is one of them and carries it along, so the dragged
+  // object is then not written itself (`activeCarried`).
   // They start from the pose the dragged node starts from: the sampled pose under auto-key, the authored one otherwise.
   function moveCompanionsOf(recipe, activeId, worldMatrices) {
     const recipeNodes = recipe.nodes;
     const carriedByActive = descendantIdsOf(recipeNodes, activeId);
     return selectionRootsIn(recipeNodes)
-      .filter(nodeId => !carriedByActive.has(nodeId) && !descendantIdsOf(recipeNodes, nodeId).has(activeId))
+      .filter(nodeId => !carriedByActive.has(nodeId))
       .map(nodeId => {
         const node = recipeNodes.find(candidate => candidate.id === nodeId);
         const parentWorld = node.parent ? worldMatrices.get(node.parent) : null;
@@ -1924,10 +1894,6 @@ export function createStudioController({
     return [right[0] * amount, right[1] * amount, right[2] * amount];
   }
 
-  function signedAmountLabel(prefix, amount, unit) {
-    return `${prefix} ${amount >= 0 ? '+' : ''}${amount.toFixed(2)}${unit}`;
-  }
-
   /**
    * Sets the exact amount of the drag in progress, as when numbers are typed while G, R or S holds an object: metres to
    * move, degrees to turn, a factor to scale. Null hands the amount back to the pointer. The drag is still one undo step.
@@ -1973,8 +1939,8 @@ export function createStudioController({
         return null;
       }
       const planeDeltaLabel = () => (isTyped
-        ? signedAmountLabel(dragState.axis.toUpperCase(), clampTypedTravel(typedAmount), ' m')
-        : `${dragState.axis.toUpperCase()} ${Math.hypot(...rawWorldDelta).toFixed(2)} m`);
+        ? `${dragState.axis.toUpperCase()} ${formatLength(clampTypedTravel(typedAmount), lengthUnit, { signed: true, fixedDecimals: 2 })}`
+        : `${dragState.axis.toUpperCase()} ${formatLength(Math.hypot(...rawWorldDelta), lengthUnit, { fixedDecimals: 2 })}`);
       const rawWorldDelta = isTyped
         ? typedPlaneDelta(dragState.axis, typedAmount)
         : [
@@ -2018,7 +1984,7 @@ export function createStudioController({
       const travel = isTyped ? clampTypedTravel(typedAmount) : Math.max(-maxTravel, Math.min(maxTravel, steppedTravel));
       const worldDelta = [dragState.axisWorld[0] * travel, dragState.axisWorld[1] * travel, dragState.axisWorld[2] * travel];
       if (dragState.elementDrag) {
-        return moveElementSelection(worldDelta, false, `${dragState.axis.toUpperCase()} ${travel >= 0 ? '+' : ''}${travel.toFixed(2)} m`);
+        return moveElementSelection(worldDelta, false, `${dragState.axis.toUpperCase()} ${formatLength(travel, lengthUnit, { signed: true, fixedDecimals: 2 })}`);
       }
       const localDelta = toNodeLocalDelta(worldDelta, dragState.parentInverse);
       const rawTranslation = [
@@ -2029,7 +1995,7 @@ export function createStudioController({
       const translation = roundVector(rawTranslation);
       writeDraggedPose({ translation });
       dragState.changed = true;
-      dragState.deltaLabel = `${dragState.axis.toUpperCase()} ${travel >= 0 ? '+' : ''}${travel.toFixed(2)} m`;
+      dragState.deltaLabel = `${dragState.axis.toUpperCase()} ${formatLength(travel, lengthUnit, { signed: true, fixedDecimals: 2 })}`;
       notify({ kind: 'transform', nodeId: dragState.nodeId, live: true, deltaLabel: dragState.deltaLabel });
       return { translation };
     }
@@ -2200,16 +2166,18 @@ export function createStudioController({
       operation.label = patch.label.trim() || nodeId;
     }
     if (patch.parent !== undefined) {
-      if (patch.parent !== null) {
-        const recipe = currentScene.exportRecipe();
-        if (!recipe.nodes.some(node => node.id === patch.parent)) {
-          throw new RangeError(`Unknown parent node "${String(patch.parent)}".`);
-        }
-        if (descendantIdsOf(recipe.nodes, nodeId).has(patch.parent)) {
-          throw new RangeError('Cannot parent a node under itself or its descendant.');
-        }
+      const hasExplicitTransform = patch.translation !== undefined || patch.rotationDegrees !== undefined || patch.rotation !== undefined || patch.scale !== undefined;
+      const keepWorld = patch.keepWorld !== false && !hasExplicitTransform;
+      const [reparented] = reparentOperationsFor(currentScene.exportRecipe(), [nodeId], patch.parent, {
+        keepWorld,
+        roundVector,
+        normalizeQuaternion,
+      });
+      if (reparented) {
+        Object.assign(operation, reparented);
+      } else {
+        operation.parent = patch.parent;
       }
-      operation.parent = patch.parent;
     }
     if (patch.translation !== undefined) {
       operation.translation = roundVector(assertFiniteVector(patch.translation, 3, 'translation'));
@@ -2245,6 +2213,25 @@ export function createStudioController({
     const changesTopology = patch.parent !== undefined || patch.vegetation !== undefined;
     notify({ kind: changesTopology ? 'topology' : 'transform', nodeId, keyed });
     return operation;
+  }
+
+  /** Reparents `nodeIds` to `parentId` (or `null` for root) as one undo step, keeping each node's world transform. */
+  function reparentNodes(nodeIds, parentId, { keepWorld = true } = {}) {
+    if (!Array.isArray(nodeIds)) {
+      throw new TypeError('reparentNodes expects an array of node ids.');
+    }
+    const recipe = currentScene.exportRecipe();
+    const operations = reparentOperationsFor(recipe, nodeIds, parentId, {
+      keepWorld,
+      roundVector,
+      normalizeQuaternion,
+    });
+    if (operations.length === 0) {
+      return { changed: 0 };
+    }
+    applySceneOperations(operations);
+    notify({ kind: 'topology', nodeId: operations[0].id });
+    return { changed: operations.length };
   }
 
   function addPrimitive(primitiveType, options = {}) {
@@ -2564,11 +2551,10 @@ export function createStudioController({
     return source;
   }
 
-  // One undo step that adds a copy of `source`, shifted aside by `offsetSteps` offsets, and selects it.
-  function addNodeCopy(source, offsetSteps) {
-    const recipe = currentScene.exportRecipe();
-    const existingIds = new Set(recipe.nodes.map(node => node.id));
+  // A copy of `source` shifted aside by `offsetSteps` offsets, with an id and label of its own. `existingIds` gains the new id.
+  function buildNodeCopy(source, offsetSteps, existingIds) {
     const copyId = uniqueIdentifier(existingIds, `${source.id}-copy`);
+    existingIds.add(copyId);
     const cloned = structuredClone(source);
     cloned.id = copyId;
     cloned.label = `${source.label ?? source.id} copy`;
@@ -2577,19 +2563,57 @@ export function createStudioController({
       source.translation?.[1] ?? 0,
       (source.translation?.[2] ?? 0) + COPY_OFFSET[2] * offsetSteps,
     ]);
-    // The parent may be gone by the time a copy is pasted.
-    if (cloned.parent !== undefined && !existingIds.has(cloned.parent)) {
-      delete cloned.parent;
-    }
-    applySceneOperations([{ type: 'add-node', node: cloned }]);
-    commitNodeSelection([copyId], copyId);
-    selectedObjectKey = null;
-    notify({ kind: 'topology', nodeId: copyId });
     return cloned;
   }
 
+  // The nodes ordered so that each one comes after the parent it names, when that parent is in the list too.
+  function parentsFirst(nodes) {
+    const ordered = [];
+    const placed = new Set();
+    const waiting = [...nodes];
+    while (waiting.length > 0) {
+      const waitingIds = new Set(waiting.map(node => node.id));
+      const ready = waiting.filter(node => !waitingIds.has(node.parent) || node.parent === node.id);
+      for (const node of ready.length > 0 ? ready : waiting) {
+        ordered.push(node);
+        placed.add(node.id);
+      }
+      waiting.splice(0, waiting.length, ...waiting.filter(node => !placed.has(node.id)));
+    }
+    return ordered;
+  }
+
+  // One undo step that adds a copy of each source and selects the copies; the copy of `activeSourceId` is the active one.
+  function addNodeCopies(sources, offsetSteps, activeSourceId) {
+    const recipe = currentScene.exportRecipe();
+    const existingIds = new Set(recipe.nodes.map(node => node.id));
+    const copies = sources.map(source => buildNodeCopy(source, offsetSteps, existingIds));
+    const copyIdBySourceId = new Map(sources.map((source, index) => [source.id, copies[index].id]));
+    copies.forEach((cloned, index) => {
+      const source = sources[index];
+      if (copyIdBySourceId.has(source.parent)) {
+        // Under the copy of its parent it keeps its place relative to it: the parent's shift already carries it.
+        cloned.parent = copyIdBySourceId.get(source.parent);
+        cloned.translation = structuredClone(source.translation ?? [0, 0, 0]);
+      } else if (cloned.parent !== undefined && !recipe.nodes.some(node => node.id === cloned.parent)) {
+        // The parent may be gone by the time a copy is pasted.
+        delete cloned.parent;
+      }
+    });
+    applySceneOperations(parentsFirst(copies).map(node => ({ type: 'add-node', node })));
+    const activeIndex = Math.max(0, sources.findIndex(source => source.id === activeSourceId));
+    commitNodeSelection(copies.map(node => node.id), copies[activeIndex].id);
+    selectedObjectKey = null;
+    notify({ kind: 'topology', nodeId: copies[activeIndex].id });
+    return copies[activeIndex];
+  }
+
+  /** Adds a copy of every selected object as one undo step and selects the copies; returns the copy of the active one. */
   function duplicateSelected() {
-    return addNodeCopy(selectedSourceNode('duplicating'), 1);
+    const activeSource = selectedSourceNode('duplicating');
+    const nodesById = new Map(currentScene.exportRecipe().nodes.map(node => [node.id, node]));
+    const sources = selectedNodeIds.map(nodeId => nodesById.get(nodeId)).filter(Boolean);
+    return addNodeCopies(sources.length > 0 ? sources : [activeSource], 1, activeSource.id);
   }
 
   /** Remembers the selected node, as it is now, for pasteCopy. The scene is not touched. */
@@ -2605,9 +2629,10 @@ export function createStudioController({
       throw new RangeError('Copy a node before pasting: select one and use copySelected().');
     }
     pasteCount += 1;
-    return addNodeCopy(copiedNode, pasteCount);
+    return addNodeCopies([copiedNode], pasteCount, copiedNode.id);
   }
 
+  /** Removes every selected object (and what hangs below it) as one undo step. */
   function deleteSelected() {
     if (!selectedNodeId) {
       throw new RangeError('Select a node before deleting it.');
@@ -2616,7 +2641,9 @@ export function createStudioController({
     if (!recipe.nodes.some(node => node.id === selectedNodeId)) {
       throw new RangeError(`Unknown node "${selectedNodeId}".`);
     }
-    const removed = descendantIdsOf(recipe.nodes, selectedNodeId);
+    const knownIds = new Set(recipe.nodes.map(node => node.id));
+    const roots = selectionRootsIn(recipe.nodes).filter(nodeId => knownIds.has(nodeId));
+    const removed = descendantIdsOfMany(recipe.nodes, roots);
     const operations = [];
     if (recipe.motion?.tracks?.some(track => track.kind === 'node' && removed.has(track.id))) {
       const remainingTracks = recipe.motion.tracks.filter(track => !(track.kind === 'node' && removed.has(track.id)));
@@ -2627,7 +2654,9 @@ export function createStudioController({
       const nextLineNodes = Object.fromEntries(Object.entries(recipe.environment.lines.nodes).filter(([id]) => !removed.has(id)));
       operations.push({ type: 'set-environment', environment: { lines: { ...recipe.environment.lines, nodes: nextLineNodes } } });
     }
-    operations.push({ type: 'remove-node', id: selectedNodeId, recursive: true });
+    for (const rootId of roots) {
+      operations.push({ type: 'remove-node', id: rootId, recursive: true });
+    }
     applySceneOperations(operations);
     // Nothing is selected afterwards, so a second Delete cannot remove an object nobody picked.
     commitNodeSelection([], null);
@@ -3209,7 +3238,7 @@ export function createStudioController({
     rotationSweep,
     dragTrace,
     setInteractionSettings,
-    get interactionSettings() { return { moveSnapStep, rotateSnapDegrees, gizmoPixels, snapEnabled, snapTarget }; },
+    get interactionSettings() { return { moveSnapStep, rotateSnapDegrees, gizmoPixels, snapEnabled, snapTarget, lengthUnit }; },
     selectionOutline,
     selectionOutlineLayers,
     selectionSilhouette,
@@ -3228,6 +3257,7 @@ export function createStudioController({
     snapSelectedToAt,
     snapMarker,
     updateNodeTransform,
+    reparentNodes,
     addPrimitive: timed('add', addPrimitive),
     applyImportOperations: timed('add', applyImportOperations),
     addSceneLight: timed('add', addSceneLight),

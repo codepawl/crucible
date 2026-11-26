@@ -241,7 +241,7 @@ function settingsFrom(input, clips = [], recipe) {
   const impliedMotion = input.motion === undefined && playsSimulationFromStart(input, recipe, timelineStart);
   if (input.motion !== undefined || impliedMotion) {
     const motionInput = input.motion ?? { start: 0 };
-    objectKeys(motionInput, ['start'], 'motion');
+    objectKeys(motionInput, ['start', 'timeWarp'], 'motion');
     // Clips of placed assets play on scene time, so a scene that places one needs no authored motion.
     const placesClips = recipe?.format === 'crucible.scene' && recipeAssetNeeds(recipe).some(need => need.copies > 1);
     // A map sequence and a grid volume sequence read the same clock.
@@ -250,20 +250,31 @@ function settingsFrom(input, clips = [], recipe) {
     if (!['crucible.scene', 'crucible.asset'].includes(recipe?.format) || (!recipe.motion && !placesClips && !sequenced && !(recipe.format === 'crucible.scene' && playsPhysics(recipe)))) {
       throw new RangeError('Motion settings require a recipe with authored motion, physics (or cloth, particles), a placed clip, a map sequence or a grid volume sequence.');
     }
+    if (motionInput.timeWarp !== undefined && input.kind === 'image') {
+      throw new TypeError('motion.timeWarp needs kind stills or video; an image renders one frame at motion.start.');
+    }
     const motionDuration = recipe.motion ? boundedNumber(recipe.motion.duration, 0.1, 30, 'motion duration') : undefined;
     if (recipe.motion?.loop !== undefined && typeof recipe.motion.loop !== 'boolean') {
       throw new TypeError('Motion loop must be boolean.');
     }
     const start = boundedNumber(motionInput.start === undefined ? 0 : motionInput.start, 0, 3600, 'motion start');
-    motionEndWithinClock(start, lastSampleTime);
-    const exceedsAuthoredMotion = recipe.motion && !recipe.motion.loop && start + lastSampleTime > motionDuration;
-    const exceedsBake = !recipe.motion && bakeSeconds && start + lastSampleTime > bakeSeconds;
+    const timeWarp = motionInput.timeWarp === undefined ? undefined : normalizeTimeWarp(motionInput.timeWarp, lastSampleTime);
+    const minimumWarp = timeWarp ? Math.min(...timeWarp.map(key => key.value)) : 0;
+    const maximumWarp = timeWarp ? Math.max(...timeWarp.map(key => key.value)) : lastSampleTime;
+    if (start + minimumWarp < 0) {
+      throw new RangeError(`motion.start ${start} plus minimum timeWarp ${minimumWarp} is ${start + minimumWarp} s; scene time cannot go below 0.`);
+    }
+    motionEndWithinClock(start, maximumWarp);
+    const exceedsAuthoredMotion = recipe.motion && !recipe.motion.loop && start + maximumWarp > motionDuration;
+    const exceedsBake = !recipe.motion && bakeSeconds && start + maximumWarp > bakeSeconds;
     if (exceedsAuthoredMotion && !impliedMotion) throw new RangeError('Motion range exceeds the authored duration.');
     if (exceedsBake && !impliedMotion) {
       throw new RangeError(`Motion range exceeds the physics bake duration of ${bakeSeconds} s; shorten the job or lengthen physics.duration.`);
     }
     // An implied start of 0 is only kept while the job fits the motion; a longer job keeps the old held pose rather than failing.
-    if (!(impliedMotion && (exceedsAuthoredMotion || exceedsBake))) result.motion = { start };
+    if (!(impliedMotion && (exceedsAuthoredMotion || exceedsBake))) {
+      result.motion = timeWarp ? { start, timeWarp } : { start };
+    }
   }
   if (input.animation !== undefined) {
     objectKeys(input.animation, ['clip', 'start'], 'animation');
@@ -287,6 +298,49 @@ function settingsFrom(input, clips = [], recipe) {
   }
   rendererTimeEndWithinClock(result.rendererTime, lastSampleTime);
   return result;
+}
+
+/** Validates 2 to 64 `{ time, value }` keyframes mapping output seconds to scene seconds. */
+function normalizeTimeWarp(input, lastSampleTime) {
+  if (!Array.isArray(input) || input.length < 2 || input.length > 64) {
+    throw new TypeError('motion.timeWarp must be an array of 2 to 64 { time, value } keyframes.');
+  }
+  let previousTime = -Infinity;
+  const keyframes = input.map((entry, index) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new TypeError(`motion.timeWarp[${index}] must be { time, value }.`);
+    }
+    objectKeys(entry, ['time', 'value'], `motion.timeWarp[${index}]`);
+    const time = boundedNumber(entry.time, 0, 3600, `motion.timeWarp[${index}].time`);
+    if (time < previousTime) {
+      throw new RangeError(`motion.timeWarp[${index}].time (${time}) must not be earlier than the previous keyframe (${previousTime}).`);
+    }
+    previousTime = time;
+    const value = boundedNumber(entry.value, -3600, 3600, `motion.timeWarp[${index}].value`);
+    return { time, value };
+  });
+  if (lastSampleTime > 0 && keyframes[0].time > 0) {
+    throw new RangeError(`motion.timeWarp[0].time must start at 0 (got ${keyframes[0].time}).`);
+  }
+  return keyframes;
+}
+
+/** Evaluates `motion.start` plus piecewise-linear `motion.timeWarp(elapsed)`, or linear `motion.start + elapsed`. */
+export function sampleMotionTimeWarp(motion, elapsed) {
+  if (!motion) return undefined;
+  const keyframes = motion.timeWarp;
+  if (!keyframes?.length) return motion.start + elapsed;
+  if (elapsed <= keyframes[0].time) return motion.start + keyframes[0].value;
+  for (let index = 1; index < keyframes.length; index++) {
+    const previous = keyframes[index - 1];
+    const current = keyframes[index];
+    if (elapsed <= current.time) {
+      const span = current.time - previous.time;
+      const weight = span > 0 ? (elapsed - previous.time) / span : 1;
+      return motion.start + previous.value + (current.value - previous.value) * weight;
+    }
+  }
+  return motion.start + keyframes.at(-1).value;
 }
 
 /** The motion clock stops at 3600 s; name the fields the caller sent and the end they produce. */

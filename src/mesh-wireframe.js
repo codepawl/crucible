@@ -77,5 +77,5 @@ export function meshWireframe(mesh, { maximumSegments = MAXIMUM_WIREFRAME_SEGMEN
       cursor++;
     }
   }
-  return { segments, count: cursor, counts, truncated: cursor < mesh.edgeCount, droppedFaults: Math.max(0, faultCount - cursor) };
+  return { segments, count: cursor, counts, truncated: counts.regular > 0 && cursor < mesh.edgeCount, droppedFaults: Math.max(0, faultCount - cursor) };
 }

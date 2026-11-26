@@ -149,11 +149,11 @@ test('a node that is deleted, by delete or by undo, leaves the set', () => {
   controller.redo();
   assert.deepEqual(controller.selectedNodeIds, [], 'redo takes the node out again and restores the set it was undone with');
   const added = controller.addPrimitive('box');
-  controller.selectNodes([added.id, 'hero']);
+  controller.selectNodes([added.id, 'ground']);
   controller.undo();
   assert.ok(!controller.selectedNodeIds.includes(added.id), 'a node an undo removes is never selected');
-  controller.selectNodes(['ground', 'hat']);
-  controller.loadRecipe({ ...makeRecipe(), nodes: makeRecipe().nodes.filter(node => node.id !== 'hat') });
+  controller.selectNodes(['ground', 'ghost']);
+  controller.loadRecipe({ ...makeRecipe(), nodes: makeRecipe().nodes.filter(node => node.id !== 'ghost') });
   assert.deepEqual(controller.selectedNodeIds, ['ground'], 'a node a new recipe lacks falls out of the set');
   assert.equal(controller.selectedNodeId, 'ground');
 });

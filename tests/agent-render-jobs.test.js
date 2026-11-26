@@ -5,7 +5,7 @@ import { watch, writeFileSync } from 'node:fs';
 import { tmpdir, constants, setPriority } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
-import { createAgentRenderJobs, jobDeadlineMs, frameByteLimitFor, oversizeFrameBudgetError } from '../scripts/agent-render-jobs.mjs';
+import { createAgentRenderJobs, jobDeadlineMs, frameByteLimitFor, oversizeFrameBudgetError, sampleMotionTimeWarp } from '../scripts/agent-render-jobs.mjs';
 import { planRenderSize } from '../src/budget.js';
 
 setPriority(0, constants.priority.PRIORITY_BELOW_NORMAL);
@@ -1124,5 +1124,59 @@ test('a job whose callback throws something without message text still says why 
     assert.match(failed.reason, /^Render job failed: .+scene_render_submit/s, `thrown value ${attempt}`);
     await controller.release(jobId);
   }
+  await controller.close();
+});
+
+test('motion.timeWarp validates slow-motion keyframes against scene bounds and samples linearly per frame (#3428)', async context => {
+  const root = await temporary(context);
+  const controller = await createAgentRenderJobs({
+    root,
+    limits,
+    async run({ directory, settings, progress }) {
+      const artifacts = [];
+      for (let index = 0; index < settings.frameCount; index++) {
+        const filename = `frame-${index}.png`;
+        await writeFile(join(directory, `${filename}.partial`), Buffer.from('frame'));
+        artifacts.push({ temporary: `${filename}.partial`, filename, mimeType: 'image/png' });
+      }
+      await progress({ frames: settings.frameCount, maximumPendingFrames: 1 });
+      return { artifacts, metrics: { maximumPendingFrames: 1 } };
+    },
+  });
+  const curve = [{ time: 0, value: 0 }, { time: 2, value: 0.4 }, { time: 4, value: 2 }];
+  const valid = request();
+  valid.snapshot.recipe = { format: 'crucible.scene', motion: { duration: 2, loop: false } };
+  // Output spans 4 s over a 2 s motion: accepted because maximum warped scene time is 2 s.
+  valid.settings = { kind: 'stills', width: 64, height: 64, duration: 4, motion: { start: 0, timeWarp: curve } };
+  const submitted = await controller.submit(valid);
+  const finished = await terminal(controller, submitted.jobId);
+  assert.equal(finished.state, 'completed');
+  assert.deepEqual(finished.settings.motion.timeWarp, curve);
+  assert.equal(sampleMotionTimeWarp(finished.settings.motion, 0), 0);
+  assert.equal(sampleMotionTimeWarp(finished.settings.motion, 1), 0.2);
+  assert.ok(Math.abs(sampleMotionTimeWarp(finished.settings.motion, 3) - 1.2) < 1e-12);
+  assert.equal(sampleMotionTimeWarp(finished.settings.motion, 4), 2);
+  assert.ok(Math.abs(sampleMotionTimeWarp({ start: 1, timeWarp: curve }, 1) - 1.2) < 1e-12);
+
+  // Exceeding authored duration via timeWarp fails cleanly.
+  valid.settings.motion = { start: 0.5, timeWarp: curve };
+  await assert.rejects(controller.submit(valid), /Motion range exceeds the authored duration/);
+
+  // Image jobs reject timeWarp; bad keyframe count/order/negative start fail cleanly.
+  const imageInput = request();
+  imageInput.snapshot.recipe = valid.snapshot.recipe;
+  imageInput.settings.motion = { start: 0, timeWarp: curve };
+  await assert.rejects(controller.submit(imageInput), /needs kind stills or video/);
+
+  valid.settings.motion = { start: 0, timeWarp: [{ time: 0, value: 0 }] };
+  await assert.rejects(controller.submit(valid), /2 to 64/);
+
+  valid.settings.motion = { start: 0, timeWarp: [{ time: 2, value: 0 }, { time: 1, value: 1 }] };
+  await assert.rejects(controller.submit(valid), /must not be earlier/);
+
+  valid.settings.motion = { start: 0, timeWarp: [{ time: 0, value: -0.5 }, { time: 4, value: 1 }] };
+  await assert.rejects(controller.submit(valid), /cannot go below 0/);
+
+  await controller.release(submitted.jobId);
   await controller.close();
 });

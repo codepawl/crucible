@@ -1,0 +1,190 @@
+<!doctype html>
+<html>
+<head>
+<style>
+html, body { margin: 0; height: 100%; background: #000; }
+canvas { width: 1080px; height: 1920px; display: block; }
+</style>
+</head>
+<body>
+<canvas width="1080" height="1920"></canvas>
+<script type="module">
+import { mat4 } from 'gl-matrix';
+import { CrucibleRenderer } from '/src/renderer.js';
+import { box } from '/src/geometry.js';
+import { createGpuTimer } from '/src/adaptive-quality.js';
+import { installRain, resolveRain } from '/src/rain.js';
+
+function transformMatrix(translation, scale = [1, 1, 1]) {
+  const matrix = mat4.create();
+  mat4.translate(matrix, matrix, translation);
+  mat4.scale(matrix, matrix, scale);
+  return new Float32Array(matrix);
+}
+
+function buildStreetParts() {
+  const cube = box(0.02, 1);
+  const asphalt = { tag: 'surface', color: [0.16, 0.17, 0.19], metallic: 0, roughness: 0.78 };
+  const sidewalk = { tag: 'surface', color: [0.34, 0.34, 0.35], metallic: 0, roughness: 0.85 };
+  const buildingA = { tag: 'surface', color: [0.24, 0.25, 0.29], metallic: 0, roughness: 0.75 };
+  const buildingB = { tag: 'surface', color: [0.29, 0.23, 0.21], metallic: 0, roughness: 0.72 };
+  const lampPost = { tag: 'surface', color: [0.12, 0.13, 0.14], metallic: 0.85, roughness: 0.35 };
+  const lampGlow = { tag: 'surface', color: [1.0, 0.82, 0.56], emissiveColor: [1.0, 0.78, 0.45], emissiveIntensity: 3.5, metallic: 0, roughness: 0.4 };
+
+  const parts = [
+    { name: 'road', geometry: cube, matrix: transformMatrix([0, -0.05, 0], [10, 0.1, 80]), material: asphalt },
+    { name: 'sidewalk-left', geometry: cube, matrix: transformMatrix([-7.5, 0.06, 0], [5, 0.22, 80]), material: sidewalk },
+    { name: 'sidewalk-right', geometry: cube, matrix: transformMatrix([7.5, 0.06, 0], [5, 0.22, 80]), material: sidewalk },
+  ];
+
+  for (let blockIndex = 0; blockIndex < 6; blockIndex++) {
+    const posZ = 18 - blockIndex * 11;
+    parts.push(
+      { name: `left-building-${blockIndex}`, geometry: cube, matrix: transformMatrix([-11.5, 5.5 + (blockIndex % 2) * 1.8, posZ], [6.5, 11 + (blockIndex % 2) * 3.6, 8.8]), material: blockIndex % 2 === 0 ? buildingA : buildingB },
+      { name: `right-building-${blockIndex}`, geometry: cube, matrix: transformMatrix([11.5, 6.2 + ((blockIndex + 1) % 2) * 1.4, posZ], [6.5, 12.4 + ((blockIndex + 1) % 2) * 2.8, 8.8]), material: blockIndex % 2 === 0 ? buildingB : buildingA },
+    );
+  }
+
+  for (let lampIndex = 0; lampIndex < 4; lampIndex++) {
+    const posZ = 10 - lampIndex * 14;
+    const posX = lampIndex % 2 === 0 ? -5.3 : 5.3;
+    parts.push(
+      { name: `pole-${lampIndex}`, geometry: cube, matrix: transformMatrix([posX, 2.8, posZ], [0.18, 5.6, 0.18]), material: lampPost },
+      { name: `arm-${lampIndex}`, geometry: cube, matrix: transformMatrix([posX * 0.86, 5.4, posZ], [1.6, 0.12, 0.16]), material: lampPost },
+      { name: `bulb-${lampIndex}`, geometry: cube, matrix: transformMatrix([posX * 0.72, 5.26, posZ], [0.42, 0.14, 0.26]), material: lampGlow },
+    );
+  }
+  return parts;
+}
+
+function pngDataUrlFromPixels(pixels, width, height) {
+  const outputCanvas = document.createElement('canvas');
+  outputCanvas.width = width;
+  outputCanvas.height = height;
+  const outputContext = outputCanvas.getContext('2d');
+  const imageData = outputContext.createImageData(width, height);
+  const rowBytes = width * 4;
+  for (let y = 0; y < height; y++) {
+    const sourceStart = (height - 1 - y) * rowBytes;
+    imageData.data.set(pixels.subarray(sourceStart, sourceStart + rowBytes), y * rowBytes);
+  }
+  outputContext.putImageData(imageData, 0, 0);
+  return outputCanvas.toDataURL('image/png');
+}
+
+function median(values) {
+  const sorted = [...values].sort((first, second) => first - second);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+function computeRmse(firstPixels, secondPixels) {
+  let sumSquared = 0;
+  for (let i = 0; i < firstPixels.length; i++) {
+    const delta = firstPixels[i] - secondPixels[i];
+    sumSquared += delta * delta;
+  }
+  return Math.sqrt(sumSquared / firstPixels.length);
+}
+
+async function timeFrames(renderer, frameBuilder, frames) {
+  const context = renderer.context;
+  const pixelOne = new Uint8Array(4);
+  for (let i = 0; i < 6; i++) {
+    renderer.render(frameBuilder(1.2 + i / 30));
+  }
+  context.readPixels(0, 0, 1, 1, context.RGBA, context.UNSIGNED_BYTE, pixelOne);
+
+  const wallTimes = [];
+  const gpuTimes = [];
+  for (let i = 0; i < frames; i++) {
+    const start = performance.now();
+    renderer.render(frameBuilder(1.2 + i / 30));
+    context.readPixels(0, 0, 1, 1, context.RGBA, context.UNSIGNED_BYTE, pixelOne);
+    wallTimes.push(performance.now() - start);
+    if (renderer.stats.gpuTimeMs != null) gpuTimes.push(renderer.stats.gpuTimeMs);
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  }
+  return {
+    medianWallMs: median(wallTimes),
+    medianGpuMs: gpuTimes.length > 0 ? median(gpuTimes) : null,
+  };
+}
+
+window.runRainBench = async function runRainBench(frames = 24) {
+  const canvas = document.querySelector('canvas');
+  const parts = buildStreetParts();
+  const baseEnvironment = {
+    lightDirection: [-3, 7, 4],
+    ambientIntensity: 0.25,
+    fillIntensity: 0.3,
+    keyIntensity: 1.5,
+    fogColor: [0.16, 0.20, 0.27],
+    fogDensity: 0.015,
+    pointLights: [
+      { position: [-3.8, 5.1, 10], color: [1.0, 0.78, 0.45], intensity: 22, distance: 18 },
+      { position: [3.8, 5.1, -4], color: [1.0, 0.78, 0.45], intensity: 22, distance: 18 },
+      { position: [-3.8, 5.1, -18], color: [1.0, 0.78, 0.45], intensity: 22, distance: 18 },
+    ],
+  };
+
+  const renderer = installRain(new CrucibleRenderer(canvas, parts, {
+    depth: true,
+    hdr: true,
+    exactFrames: true,
+    pixelRatio: 1,
+    createGpuTimer,
+    background: [0.09, 0.12, 0.17],
+    environment: baseEnvironment,
+  }));
+
+  const camera = { eye: [0.3, 2.2, 16], target: [0, 2.4, -12], up: [0, 1, 0], fov: 50, near: 0.1, far: 140 };
+  const rainConfig = resolveRain({
+    intensity: 0.85,
+    density: 2800,
+    splashes: true,
+    splashCount: 500,
+    wetness: 0.75,
+    groundHeight: 0,
+    opacity: 0.52,
+    streakWidth: 0.018,
+  });
+
+  const dryTiming = await timeFrames(renderer, time => ({ ...camera, time }), frames);
+  const rainTiming = await timeFrames(renderer, time => ({ ...camera, time, rain: rainConfig }), frames);
+
+  const width = canvas.width;
+  const height = canvas.height;
+  const captureAt = (frame) => {
+    const buffer = new Uint8Array(width * height * 4);
+    renderer.render(frame);
+    renderer.context.readPixels(0, 0, width, height, renderer.context.RGBA, renderer.context.UNSIGNED_BYTE, buffer);
+    return { buffer, error: renderer.context.getError() };
+  };
+
+  const dryCapture = captureAt({ ...camera, time: 1.2 });
+  const rainFirst = captureAt({ ...camera, time: 1.2, rain: rainConfig });
+  captureAt({ ...camera, time: 4.7, rain: rainConfig });
+  const rainRepeat = captureAt({ ...camera, time: 1.2, rain: rainConfig });
+
+  const seekRmse = computeRmse(rainFirst.buffer, rainRepeat.buffer);
+  const dryVsRainRmse = computeRmse(dryCapture.buffer, rainFirst.buffer);
+
+  const dryUrl = pngDataUrlFromPixels(dryCapture.buffer, width, height);
+  const rainUrl = pngDataUrlFromPixels(rainFirst.buffer, width, height);
+  renderer.dispose();
+
+  return {
+    width,
+    height,
+    dryTiming,
+    rainTiming,
+    seekRmse,
+    dryVsRainRmse,
+    glErrors: [dryCapture.error, rainFirst.error, rainRepeat.error],
+    dryUrl,
+    rainUrl,
+  };
+};
+</script>
+</body>
+</html>

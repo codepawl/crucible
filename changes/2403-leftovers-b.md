@@ -1,0 +1,1 @@
+- Harden input validation and edge-case guards across physics, vegetation, glTF, mesh, splat, particle, WebGL, and CLI tooling modules (Part of #2403)

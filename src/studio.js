@@ -8,6 +8,7 @@ import { VIEW_TRANSFORM_NAMES } from './view-transform-names.js';
 import { CrucibleRenderer, studioFloorHeight } from './renderer.js';
 import { ProgramNotReady, isLinkComplete, setPreparing } from './gl-program.js';
 import { exportGlb } from './export.js';
+import { createExportPanel, dataUrlByteLength, formatFileSize, lastPathName } from './studio-export.js';
 import { encodePack } from './scene-pack-format.js';
 import { checkImageBudget } from './scene-pack-limits.js';
 import { packedSkyOf } from './scene-pack-sky.js';
@@ -15,11 +16,12 @@ import { encodePackOrRefuse } from './studio-pack-refusal.js';
 import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shaders.js';
 import { STUDIO_CSS } from './studio-styles.js';
 import { createApplyMenus } from './studio-apply-menu.js';
-import { findKeymapAction, findMouseNavigation, keyLabel, lastKeyLabel, resolveKeymapPreset } from './studio-keymap.js';
+import { findKeymapAction, findMouseNavigation, formatShortcutKeys, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
 import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
 import { createStudioSettings } from './studio-settings.js';
+import { withPresetOverrides } from './studio-key-overrides.js';
 import { detectStudioHardware, gatherStudioHardwareInputs, rendererChangeFor, resolveStudioPerformanceTier, studioViewportSettingsFor } from './studio-hardware.js';
 import { createStudioDiagnostics, describeStudioEnvironment, watchStudioDiagnostics } from './studio-diagnostics.js';
 import {
@@ -39,6 +41,7 @@ import { createShapeSettings } from './studio-shape-settings.js';
 import { createKeyMarkers } from './studio-timeline-keys.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
 import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, describeBounds, describeCamera, describeGridStep, gridLayout, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart } from './studio-viewport-aids.js';
+import { formatLengthInputValue, lengthFromUnit, parseLengthInput } from './studio-units.js';
 // The grid is textured, and replaceParts takes a textured part only with this module loaded.
 import './replace-textured-parts.js';
 import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
@@ -47,6 +50,7 @@ import { watchScrollFade } from './studio-scroll-cue.js';
 import { extensionOf, openNameEditor, splitFileName, validateFileStem, validateNodeLabel, validateShotName } from './studio-name-editor.js';
 import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
 import { SNAP_TARGETS } from './studio-snapping.js';
+import { createOutlinerParentDrag } from './studio-parenting.js';
 import { editIconName } from './studio-edit-names.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, frameFailureReason, watchContextLoss } from './studio-context-loss.js';
@@ -115,12 +119,14 @@ function matchingViewChip(camera) {
 }
 const STUDIO_STYLE_ID = 'crucible-studio-styles';
 const COMPACT_WIDTH = 820;
-// The work runs left to right: build the scene, give it its look, then set it in motion. Each workspace shows only the
-// panels its step needs.
+const TIGHT_WIDTH = 920;
+// The work runs left to right: build the scene, give it its look, set it in motion, then write it out. Each workspace shows
+// only the panels its step needs.
 const STUDIO_WORKSPACES = Object.freeze([
   Object.freeze({ id: 'build', label: 'Build', icon: 'node', tabs: Object.freeze(['node', 'modifiers']) }),
   Object.freeze({ id: 'look', label: 'Look', icon: 'material', tabs: Object.freeze(['material', 'look']) }),
   Object.freeze({ id: 'animate', label: 'Animate', icon: 'play', tabs: Object.freeze(['camera', 'node']) }),
+  Object.freeze({ id: 'export', label: 'Export', icon: 'export', tabs: Object.freeze(['export']) }),
 ]);
 const DEFAULT_CLEARCOAT_ROUGHNESS = 0.08;
 const PRIMITIVE_LABELS = Object.freeze({ icoSphere: 'Icosphere', disc: 'Circle' });
@@ -255,15 +261,25 @@ function wireRovingFocusFallback(container, items, { vertical = false, followFoc
   });
 }
 
-function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02, minimumComponent = -Infinity, lockToggle = null, axisNames = AXIS_NAMES, accessibleTitle = title, onGestureStart, onGestureEnd } = {}) {
+function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02, minimumComponent = -Infinity, lockToggle = null, axisNames = AXIS_NAMES, accessibleTitle = title, getLengthUnit = null, onGestureStart, onGestureEnd } = {}) {
   let latestValues = axisNames.map(() => 0);
   let locked = false;
   let disabled = false;
   const inputs = axisNames.map(axis => createElement(documentReference, 'input', {
-    type: 'number',
-    step: '0.05',
-    attributes: { 'aria-label': `${accessibleTitle} ${axis.toUpperCase()}` },
+    type: getLengthUnit ? 'text' : 'number',
+    ...(getLengthUnit ? { dataset: { length: 'true' } } : { step: '0.05' }),
+    attributes: getLengthUnit
+      ? { 'aria-label': `${accessibleTitle} ${axis.toUpperCase()}`, inputmode: 'decimal' }
+      : { 'aria-label': `${accessibleTitle} ${axis.toUpperCase()}` },
   }));
+
+  function readAxisInput(field) {
+    if (getLengthUnit) {
+      return parseLengthInput(field.value, getLengthUnit());
+    }
+    const numeric = Number(field.value);
+    return Number.isFinite(numeric) ? numeric : null;
+  }
 
   function emitEditedAxis(axisIndex, rawNumeric) {
     const clamped = Math.max(minimumComponent, rawNumeric);
@@ -273,16 +289,16 @@ function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02
       onInput(scaled, axisIndex);
       return;
     }
-    const parsed = inputs.map((field, index) => (index === axisIndex ? clamped : Number(field.value)));
-    if (parsed.every(Number.isFinite)) {
+    const parsed = inputs.map((field, index) => (index === axisIndex ? clamped : readAxisInput(field)));
+    if (parsed.every(component => component !== null && Number.isFinite(component))) {
       onInput(parsed, axisIndex);
     }
   }
 
   inputs.forEach((input, axisIndex) => {
     input.addEventListener('change', () => {
-      const numeric = Number(input.value);
-      if (Number.isFinite(numeric)) {
+      const numeric = readAxisInput(input);
+      if (numeric !== null && Number.isFinite(numeric)) {
         emitEditedAxis(axisIndex, numeric);
       }
     });
@@ -300,7 +316,7 @@ function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02
       event.preventDefault();
       if (disabled) return;
       onGestureStart?.();
-      scrubState = { startX: event.clientX, startValue: Number(inputs[axisIndex].value) || 0 };
+      scrubState = { startX: event.clientX, startValue: getLengthUnit ? (latestValues[axisIndex] ?? 0) : (Number(inputs[axisIndex].value) || 0) };
       badge.setPointerCapture?.(event.pointerId);
     });
     badge.addEventListener('pointermove', event => {
@@ -366,7 +382,9 @@ function createVectorRow(documentReference, title, onInput, { sensitivity = 0.02
     setValues(values, precision = ROUND_PRECISION) {
       latestValues = Array.from(values, component => Number(component) || 0);
       inputs.forEach((input, index) => {
-        input.value = String(roundValue(values[index] ?? 0, precision));
+        input.value = getLengthUnit
+          ? formatLengthInputValue(values[index] ?? 0, getLengthUnit())
+          : String(roundValue(values[index] ?? 0, precision));
       });
     },
   };
@@ -1376,8 +1394,10 @@ export function createStudio(container, {
     attributes: { role: 'img', 'aria-label': 'Reloads when the agent edits this file' },
   });
   // The keymap in force. Choosing another preset swaps it and every place that shows a key is drawn again.
-  let keymap = resolveKeymapPreset(preferences.keymap);
-  let appliedKeymap = preferences.keymap;
+  const keymapOf = () => resolveKeymapPreset(preferences.keymap, preferences.keyOverrides[preferences.keymap]);
+  const keymapSignature = () => JSON.stringify([preferences.keymap, preferences.keyOverrides[preferences.keymap] ?? {}]);
+  let keymap = keymapOf();
+  let appliedKeymap = keymapSignature();
   const menuKeyViews = [];
   const keyTooltipViews = [];
   const setShortcutLabel = (element, label) => {
@@ -1420,10 +1440,25 @@ export function createStudio(container, {
     item.prepend(createIcon(documentReference, iconName));
     return item;
   };
+  // Export is a place to look at the shot and save it: nothing in the scene changes there and the view does not move. Undo and redo,
+  // the file commands and the settings stay. This one guard serves the keys, the menu rows and the viewport.
+  const SHOT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'view.properties']);
+  const viewingShot = () => root.dataset.workspace === 'export';
+  const shotLocksAction = actionId => viewingShot() && !SHOT_PASS_THROUGH.has(actionId);
+  // The rows and rail buttons that do nothing in Export look disabled there, the way undo does with nothing to undo.
+  const shotLockedControls = [];
+  const lockInShot = control => {
+    shotLockedControls.push(control);
+    return control;
+  };
   // One row of a menu: its icon, what it does, and its key on the right.
   const createMenuItem = (label, actionId, onChoose, iconName) => {
     const item = showActionKey(createElement(documentReference, 'button', { type: 'button', textContent: label }), actionId);
-    item.addEventListener('click', onChoose);
+    if (actionId && !SHOT_PASS_THROUGH.has(actionId)) lockInShot(item);
+    item.addEventListener('click', event => {
+      if (actionId && shotLocksAction(actionId)) return;
+      onChoose(event);
+    });
     return giveMenuIcon(item, iconName);
   };
   // Whether the History panel is shown, and the edits it last drew, so a notification that changed no edit draws nothing.
@@ -1501,6 +1536,8 @@ export function createStudio(container, {
     createMenuItem('Paste', 'edit.paste', () => pasteCopy(), 'clipboard'),
     createMenuItem('Duplicate', 'edit.duplicate', () => duplicateSelection(), 'duplicateObject'),
     createMenuItem('Join', 'edit.join', () => joinSelection(), 'duplicate'),
+    createMenuItem('Parent', 'edit.parent', () => parentSelection(), 'node'),
+    createMenuItem('Clear parent', 'edit.clearParent', () => clearParentSelection(), 'deselect'),
     createMenuItem('Delete', 'edit.delete', () => deleteButton.click(), 'remove'),
     createMenuItem('Rename', 'edit.rename', () => renameActiveObjectFromMenu(), 'text'),
     createMenuItem('Deselect', 'edit.deselect', () => controller.selectNode(null), 'deselect'),
@@ -1625,14 +1662,15 @@ export function createStudio(container, {
     announce(`${TRANSFORM_PART_WORDS[part]} reset`);
   }
   // Shown only while a motion track drives the camera: off means the viewport looks around on its own.
-  const sceneCameraToggle = createMenuToggle('Animated camera', '', () => {
+  const sceneCameraToggle = lockInShot(createMenuToggle('Animated camera', '', () => {
+    if (viewingShot()) return;
     if (controller.freeView) {
       controller.lookThroughSceneCamera();
       return;
     }
     const camera = controller.viewCamera;
     controller.moveViewportCamera({ eye: [...camera.eye], target: [...camera.target] });
-  }, () => !controller.freeView, 'camera');
+  }, () => !controller.freeView, 'camera'));
   const viewPopover = createMenuPopover(
     'crucible-studio-pop-view',
     createMenuItem('Front view', 'view.front', () => showView('front')),
@@ -1640,7 +1678,7 @@ export function createStudio(container, {
     createMenuItem('Top view', 'view.top', () => showView('top')),
     createMenuItem('Perspective / Orthographic', 'view.projection', () => controller.toggleCameraProjection(), 'camera'),
     createMenuItem('Frame the selection', 'view.frame', () => flyToSelection(), 'frame'),
-    createMenuToggle('Grid', '', () => gridButton.click(), () => gridVisible, 'grid'),
+    lockInShot(createMenuToggle('Grid', '', () => gridButton.click(), () => gridVisible, 'grid')),
     sceneCameraToggle,
     createMenuToggle('Scene and Properties', '', () => toggleDocksButton.click(), () => root.dataset.outlinerCollapsed !== 'true' || root.dataset.inspectorCollapsed !== 'true', 'panels'),
     createMenuToggle('History', '', () => setHistoryShown(!historyShown), () => historyShown, 'history'),
@@ -1658,13 +1696,6 @@ export function createStudio(container, {
     createMenuItem('Documentation', '', () => openStudioGuide({ openExternal, windowReference: documentReference.defaultView }), 'book'),
     createMenuItem('Set up Studio…', '', () => openSetup(), 'settings'),
     createMenuItem('Save diagnostics report', '', () => saveDiagnosticsReport(), 'saveAs'),
-  );
-  const exportMenuButton = createElement(
-    documentReference,
-    'button',
-    { type: 'button', className: 'crucible-studio-primary-btn', attributes: { popovertarget: 'crucible-studio-pop-export' } },
-    createIcon(documentReference, 'export'),
-    createElement(documentReference, 'span', { textContent: 'Export' }),
   );
 
   const newPopover = createElement(documentReference, 'div', {
@@ -1782,23 +1813,12 @@ export function createStudio(container, {
     attributes: { popover: 'auto' },
   }, syncStatusNote, autoReloadButton, copyPromptButton);
 
-  const exportPngButton = createElement(documentReference, 'button', { type: 'button', textContent: 'PNG image' });
-  const exportGlbButton = createElement(documentReference, 'button', { type: 'button', textContent: 'GLB model' });
-  const exportPackButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Web pack' });
   const editJsonButton = createElement(documentReference, 'button', { type: 'button', textContent: 'Recipe JSON' });
-  const exportPopover = createElement(documentReference, 'div', {
-    id: 'crucible-studio-pop-export',
-    className: 'crucible-studio-popover',
-    attributes: { popover: 'auto' },
-  }, exportPngButton, exportGlbButton, exportPackButton);
   giveMenuIcon(openButton, 'open');
   if (importButton) giveMenuIcon(importButton, 'add');
   giveMenuIcon(saveButton, 'save');
   giveMenuIcon(saveAsButton, 'saveAs');
   giveMenuIcon(editJsonButton, 'code');
-  giveMenuIcon(exportPngButton, 'image');
-  giveMenuIcon(exportGlbButton, 'node');
-  giveMenuIcon(exportPackButton, 'globe');
   // The rows come in three groups, set apart by space: starting and opening, saving, then importing and exporting.
   const startMenuGroup = item => {
     item.dataset.groupStart = 'true';
@@ -1814,11 +1834,7 @@ export function createStudio(container, {
     recentChevron,
   ), 'recent');
   const recentList = createElement(documentReference, 'div', { id: 'crucible-studio-recent-list', className: 'crucible-studio-recent-list', hidden: true, attributes: { role: 'group', 'aria-label': 'Recent scenes' } });
-  const exportRows = [
-    createMenuItem('Export PNG image', '', () => exportPngButton.click(), 'image'),
-    createMenuItem('Export GLB model', '', () => exportGlbButton.click(), 'node'),
-    createMenuItem('Export web pack', '', () => exportPackButton.click(), 'globe'),
-  ];
+  const exportRows = [createMenuItem('Export…', '', () => selectWorkspace('export'), 'export')];
   const importAndExportRows = [...(importButton ? [importButton] : []), ...exportRows, editJsonButton];
   newPopover.prepend(
     createMenuItem('New scene…', '', () => openNewScene(), 'newScene'),
@@ -1830,7 +1846,7 @@ export function createStudio(container, {
     startMenuGroup(importAndExportRows[0]),
     ...importAndExportRows.slice(1),
   );
-  for (const popoverElement of [newPopover, addPopover, exportPopover, editPopover, objectPopover, separatePopover, meshDeletePopover, meshMergePopover, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover, snapPopover]) {
+  for (const popoverElement of [newPopover, addPopover, editPopover, objectPopover, separatePopover, meshDeletePopover, meshMergePopover, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover, snapPopover]) {
     popoverElement.addEventListener('click', event => {
       const clickedButton = event.target.closest?.('button');
       if (clickedButton && !clickedButton.dataset.keepsMenu) popoverElement.hidePopover?.();
@@ -1887,11 +1903,10 @@ export function createStudio(container, {
     ),
     workspaceList,
     createElement(documentReference, 'span', { className: 'crucible-studio-spacer' }),
-    createElement(documentReference, 'div', { className: 'crucible-studio-island' }, filePill, watchPill, exportMenuButton),
+    createElement(documentReference, 'div', { className: 'crucible-studio-island' }, filePill, watchPill),
     newPopover,
     addPopover,
     aiSyncPopover,
-    exportPopover,
     editPopover,
     objectPopover,
     separatePopover,
@@ -1963,7 +1978,6 @@ export function createStudio(container, {
   bindPopoverAnchor(aiSyncMenuButton, aiSyncPopover);
   // The menu's top edge is the top edge of the button that opens it.
   bindPopoverAnchor(snapTargetButton, snapPopover, { beside: true, topOffset: 0 });
-  bindPopoverAnchor(exportMenuButton, exportPopover);
 
   // Left Outliner + Material Palette Dock
   const outlinerSearch = createElement(documentReference, 'input', { type: 'search', placeholder: 'Find an object', attributes: { 'aria-label': 'Filter the scene list' } });
@@ -1972,6 +1986,13 @@ export function createStudio(container, {
   const sceneAddButton = createIconButton(documentReference, 'add', 'Add to the scene', { attributes: { popovertarget: 'crucible-studio-pop-add' } });
   sceneAddButton.addEventListener('click', () => { addMenuAnchor = sceneAddButton; });
   const outlinerTree = createElement(documentReference, 'div', { className: 'crucible-studio-tree crucible-studio-scroll', attributes: { role: 'tree', 'aria-label': 'Scene hierarchy' } });
+  const outlinerDrag = createOutlinerParentDrag({
+    outlinerTree,
+    controller,
+    announce: message => announceSuccess(message),
+    announceError: message => announceError(message),
+    isEditingName: () => Boolean(activeNameEditor),
+  });
   watchScrollFade(outlinerTree);
   const swatchContainer = createElement(documentReference, 'div', { className: 'crucible-studio-swatches crucible-studio-scroll' });
   const newMaterialQuickButton = createIconButton(documentReference, 'add', 'New material', { className: 'crucible-studio-swatch-add' });
@@ -2087,8 +2108,9 @@ export function createStudio(container, {
   });
 
   // The outcome picks the mark the notice leads with: success, warning, error or the plain info. An error may be passed whole;
-  // its text is marked selectable so a person can copy it.
-  function announce(message, durationMilliseconds = STATUS_DEFAULT_MILLISECONDS, outcome = 'info') {
+  // its text is marked selectable so a person can copy it. A quiet message is still announced to a screen reader but draws no
+  // box: Export reports each save on its own result line.
+  function announce(message, durationMilliseconds = STATUS_DEFAULT_MILLISECONDS, outcome = 'info', { quiet = false } = {}) {
     clearTimeout(statusTimer);
     clearTimeout(statusExitTimer);
     const isError = message instanceof Error;
@@ -2103,6 +2125,8 @@ export function createStudio(container, {
     if (shownOutcome === 'error') noticeText.className = 'crucible-studio-selectable';
     statusRegion.replaceChildren(noticeIcon, noticeText);
     statusRegion.setAttribute('data-outcome', shownOutcome);
+    if (quiet) statusRegion.setAttribute('data-quiet', 'true');
+    else statusRegion.removeAttribute('data-quiet');
     statusRegion.dataset.state = 'in';
     statusTimer = setTimeout(hideStatus, durationMilliseconds);
   }
@@ -2176,6 +2200,7 @@ export function createStudio(container, {
     announce(seeThrough ? 'See-through on' : 'See-through off');
   });
   gridButton.addEventListener('click', () => {
+    if (viewingShot()) return;
     setPreference('gridVisible', !gridVisible);
     announce(gridVisible ? 'Grid shown' : 'Grid hidden');
   });
@@ -2192,7 +2217,7 @@ export function createStudio(container, {
     if (duplicateButton.getAttribute('aria-disabled') === 'true') return;
     try {
       const cloned = controller.duplicateSelected();
-      announce(`Duplicated to ${cloned.label}`);
+      announceDuplicated(cloned);
     } catch (error) {
       announceError(error.message);
     }
@@ -2287,10 +2312,11 @@ export function createStudio(container, {
   });
   const stopWatchingDiagnostics = watchStudioDiagnostics(studioDiagnostics, { windowReference: documentReference.defaultView, canvas });
   const stopWatchingContextLoss = watchContextLoss(canvas, { onLost: pauseForContextLoss, onRestored: recoverFromContextLoss });
-  viewportElement.append(canvas, maskFilterSvg, gizmoSvg, agentPresence.element, viewWidget.element, readout, hintBar, statusRegion, bakeMark.element, dropOverlay, pausedNotice.element, postPassNotice.element, draftNotice.element);
+  const exportFrameGuide = createElement(documentReference, 'div', { className: 'crucible-studio-export-guide', attributes: { 'aria-hidden': 'true' } });
+  viewportElement.append(canvas, exportFrameGuide, maskFilterSvg, gizmoSvg, agentPresence.element, viewWidget.element, readout, hintBar, statusRegion, bakeMark.element, dropOverlay, pausedNotice.element, postPassNotice.element, draftNotice.element);
 
   // Right 4-Tab Inspector Dock (Modern Web Guidance: tabs pattern)
-  const tabLabels = { node: 'Object', modifiers: 'Modifiers', material: 'Material', look: 'Look', camera: 'Camera' };
+  const tabLabels = { node: 'Object', modifiers: 'Modifiers', material: 'Material', look: 'Look', camera: 'Camera', export: 'Export' };
   const tabButtons = STUDIO_TABS.map(tab => createIconButton(documentReference, tab, tabLabels[tab], {
     id: `crucible-studio-tab-${tab}`,
     dataset: { tab },
@@ -2354,7 +2380,7 @@ export function createStudio(container, {
 
   const positionRow = createVectorRow(documentReference, 'Position', values => {
     if (controller.selectedNodeId) controller.updateNodeTransform(controller.selectedNodeId, { translation: values });
-  }, { sensitivity: 0.015 });
+  }, { sensitivity: 0.015, getLengthUnit: () => preferences.lengthUnit });
   const rotationRow = createVectorRow(documentReference, 'Rotation °', values => {
     if (controller.selectedNodeId) controller.updateNodeTransform(controller.selectedNodeId, { rotationDegrees: values });
   }, { sensitivity: 0.5 });
@@ -2502,7 +2528,7 @@ export function createStudio(container, {
     isOpen: (groupId, openByDefault) => preferences.propertyGroupsOpen[groupId] ?? openByDefault,
     setOpen: (groupId, open) => setPreference('propertyGroupsOpen', { ...preferences.propertyGroupsOpen, [groupId]: open }),
   };
-  const createLookPanel = (resolveKey, panelOptions = {}) => createPropertyPanel({ documentReference, controller, announce, builders: propertyBuilders, resolveKey, groups: propertyGroups, prepareRecipe, catalogNames: catalog.names, ...panelOptions });
+  const createLookPanel = (resolveKey, panelOptions = {}) => createPropertyPanel({ documentReference, controller, announce, builders: propertyBuilders, resolveKey, groups: propertyGroups, prepareRecipe, catalogNames: catalog.names, getLengthUnit: () => preferences.lengthUnit, ...panelOptions });
   const selectedLightKey = () => (/^(point|spot|area):/u.test(controller.selectedObjectKey ?? '') ? controller.selectedObjectKey : null);
   // Only the first group of a tab starts open, so the tab opens on one screen of rows.
   const lightPanel = createLookPanel(() => selectedLightKey() ?? 'sun', { opensFirstGroup: true });
@@ -2574,8 +2600,13 @@ export function createStudio(container, {
     ),
   );
 
+  const exportPanel = createExportPanel({ documentReference, createElement, createIcon: iconName => createIcon(documentReference, iconName) });
+  // The scene a set of facts and a result line were made from: a change to the scene makes both stale.
+  let exportFactsSceneKey = null;
+  let exportResultSceneKey = null;
   const modifierPanel = createModifierPanel({ documentReference, controller, announce, builders: { createElement, createIcon, createIconButton, createVectorRow } });
   const panelsByTab = {
+    export: createElement(documentReference, 'div', { id: 'crucible-studio-panel-export', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-export', hidden: 'until-found' } }, exportPanel.element),
     node: createElement(documentReference, 'div', { id: 'crucible-studio-panel-node', tabIndex: 0, attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-node' } }, nodePanelBody),
     modifiers: createElement(documentReference, 'div', { id: 'crucible-studio-panel-modifiers', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-modifiers', hidden: 'until-found' } }, createElement(documentReference, 'div', { className: 'crucible-studio-panel-body crucible-studio-modifier-body' }, modifierPanel.element)),
     material: createElement(documentReference, 'div', { id: 'crucible-studio-panel-material', attributes: { role: 'tabpanel', 'aria-labelledby': 'crucible-studio-tab-material', hidden: 'until-found' } }, materialPanelBody),
@@ -2598,7 +2629,16 @@ export function createStudio(container, {
       throw new RangeError(`Unknown Studio workspace "${String(nextWorkspace)}". Use one of ${STUDIO_WORKSPACES.map(candidate => candidate.id).join(', ')}.`);
     }
     const workspaceWasOpen = root.dataset.workspace === workspace.id;
+    const firstWorkspace = root.dataset.workspace === undefined;
     root.dataset.workspace = workspace.id;
+    const inExport = workspace.id === 'export';
+    if (!inExport) exportPanel.clearResults();
+    outlinerDock.inert = inExport;
+    for (const button of [...toolButtons, addMenuButton]) button.toggleAttribute('hidden', inExport);
+    for (const control of [...shotLockedControls, gridButton]) control.setAttribute('aria-disabled', inExport ? 'true' : 'false');
+    showInspectorTitle(inExport);
+    // A change of tab asks for no frame of its own, and the viewport draws the shot differently in Export.
+    if (!workspaceWasOpen && !firstWorkspace) requestFrame();
     for (const button of workspaceButtons) {
       button.setAttribute('aria-selected', button.dataset.workspace === workspace.id ? 'true' : 'false');
     }
@@ -2640,7 +2680,12 @@ export function createStudio(container, {
     onSelect: button => selectInspectorTab(button.dataset.tab),
   });
 
-  const panelsElement = createElement(documentReference, 'div', { className: 'crucible-studio-panels crucible-studio-scroll' }, panelsByTab.node, panelsByTab.modifiers, panelsByTab.material, panelsByTab.look, panelsByTab.camera);
+  const inspectorTitle = createElement(documentReference, 'span', { className: 'crucible-studio-dock-title' });
+  function showInspectorTitle(exporting) {
+    inspectorTitle.replaceChildren(createIcon(documentReference, exporting ? 'export' : 'settings'), createElement(documentReference, 'span', { textContent: exporting ? 'Export' : 'Properties' }));
+  }
+  showInspectorTitle(false);
+  const panelsElement = createElement(documentReference, 'div', { className: 'crucible-studio-panels crucible-studio-scroll' }, panelsByTab.node, panelsByTab.modifiers, panelsByTab.material, panelsByTab.look, panelsByTab.camera, panelsByTab.export);
   watchScrollFade(panelsElement);
   const inspectorElement = createElement(
     documentReference,
@@ -2650,7 +2695,7 @@ export function createStudio(container, {
       documentReference,
       'div',
       { className: 'crucible-studio-dock-head' },
-      createElement(documentReference, 'span', { className: 'crucible-studio-dock-title' }, createIcon(documentReference, 'settings'), createElement(documentReference, 'span', { textContent: 'Properties' })),
+      inspectorTitle,
       selectionCountElement,
       createElement(documentReference, 'span', { className: 'crucible-studio-spacer' }),
       propertiesMinimizeButton,
@@ -2924,7 +2969,7 @@ export function createStudio(container, {
   const shortcutsHeading = createElement(documentReference, 'h2', { id: 'crucible-studio-shortcuts-title', textContent: 'Studio keyboard shortcuts' });
   shortcutsHeading.prepend(createIcon(documentReference, 'keyboard'));
   const shortcutsCloseButton = createIconButton(documentReference, 'close', 'Close the shortcuts');
-  const shortcutsGrid = createElement(documentReference, 'div', { className: 'crucible-studio-shortcuts' });
+  const shortcutsGrid = createElement(documentReference, 'div', { className: 'crucible-studio-shortcuts crucible-studio-fade-scroll' });
   // One block per area, each with its icon and a row for every key of the active keymap, in two columns of about equal height.
   const createShortcutGroup = group => createElement(
     documentReference,
@@ -2981,9 +3026,13 @@ export function createStudio(container, {
     shell: globalThis.crucibleShell,
     onChange: (name, value) => setPreference(name, value),
     onReset: () => {
+      const previousLengthUnit = preferences.lengthUnit;
       preferences = normalizeStudioPreferences({ setupDone: preferences.setupDone });
       storePreferences();
       applyPreferences();
+      if (preferences.lengthUnit !== previousLengthUnit) {
+        refreshLengthUnits();
+      }
       announce('Settings reset');
     },
     onRunSetup: () => {
@@ -2993,6 +3042,12 @@ export function createStudio(container, {
     onOpenShortcuts: () => {
       settings.dialog.close();
       shortcutsDialog.showModal();
+    },
+    keyboard: {
+      getKeymap: () => keymap,
+      getPresetId: () => preferences.keymap,
+      getOverrides: () => preferences.keyOverrides[preferences.keymap] ?? {},
+      onOverridesChange: presetOverrides => setPreference('keyOverrides', withPresetOverrides(preferences.keyOverrides, preferences.keymap, presetOverrides)),
     },
   });
   const settingsDialog = settings.dialog;
@@ -3026,17 +3081,19 @@ export function createStudio(container, {
 
   // Puts the preferences into effect and shows them in the Settings dialog.
   function applyPreferences() {
-    if (preferences.keymap !== appliedKeymap) {
-      appliedKeymap = preferences.keymap;
-      keymap = resolveKeymapPreset(appliedKeymap);
+    if (keymapSignature() !== appliedKeymap) {
+      appliedKeymap = keymapSignature();
+      keymap = keymapOf();
       refreshKeyLabels();
     }
+    settings.refreshKeyboard();
     controller.setInteractionSettings({
       moveSnapStep: preferences.moveSnapStep,
       rotateSnapDegrees: preferences.rotateSnapDegrees,
       gizmoPixels: STUDIO_GIZMO_PIXELS[preferences.gizmoSize],
       snapEnabled: preferences.snapEnabled,
       snapTarget: preferences.snapTarget,
+      lengthUnit: preferences.lengthUnit,
     });
     syncSnapUi();
     applyTheme();
@@ -3147,6 +3204,15 @@ export function createStudio(container, {
     }
   }
 
+  function refreshLengthUnits() {
+    selectionReadoutStale = true;
+    syncUi();
+    cameraPanel.sync();
+    syncLookPanels();
+    syncViewportAids();
+    syncHintBar();
+  }
+
   // Saves several preferences as one change, so a drag that resizes two cards is one write.
   function setPreferences(changes) {
     for (const name of Object.keys(changes)) {
@@ -3154,9 +3220,13 @@ export function createStudio(container, {
         throw new RangeError(`Unknown Studio preference "${String(name)}". Use one of ${Object.keys(STUDIO_PREFERENCE_DEFAULTS).join(', ')}.`);
       }
     }
+    const previousLengthUnit = preferences.lengthUnit;
     preferences = normalizeStudioPreferences({ ...preferences, ...changes });
     storePreferences();
     applyPreferences();
+    if (preferences.lengthUnit !== previousLengthUnit) {
+      refreshLengthUnits();
+    }
   }
 
   function setPreference(name, value) {
@@ -3232,6 +3302,11 @@ export function createStudio(container, {
     announceSuccess('Saved the diagnostics report');
   }
 
+  // The still is the scene's own shot without the editor's aids. The Export workspace draws the viewport the same way, so what it shows is what gets saved.
+  function drawingTheShot() {
+    return capturingStill || viewingShot();
+  }
+
   function capturePngDataUrl() {
     // Nothing draws while the context is gone, so a still taken then would be a blank picture.
     if (contextLost) {
@@ -3272,7 +3347,7 @@ export function createStudio(container, {
       return '';
     }
     const selectedNode = controller.exportRecipe().nodes.find(node => node.id === selectedId);
-    return `${selectedNode?.label ?? selectedId} · ${describeBounds(bounds)}`;
+    return `${selectedNode?.label ?? selectedId} · ${describeBounds(bounds, preferences.lengthUnit)}`;
   }
 
   function syncViewportAids() {
@@ -3280,6 +3355,7 @@ export function createStudio(container, {
     viewWidget.update(camera);
     const gridStep = gridLayout({ visibleHeight: cameraVisibleHeight(camera), viewportHeight: controller.viewportHeight, target: camera.target, eye: camera.projection === 'orthographic' ? undefined : camera.eye }).step;
     readoutCamera.textContent = gridVisible ? `${describeCamera(camera)} · Grid ${describeGridStep(gridStep)}` : describeCamera(camera);
+    if (controller.activeTab === 'export') syncExportFacts();
     if (selectionReadoutStale) {
       selectionReadoutStale = false;
       readoutSelection.textContent = describeSelection();
@@ -3686,58 +3762,85 @@ export function createStudio(container, {
     if (file) await importFileIntoScene(file);
   });
 
-  exportPngButton.addEventListener('click', async () => {
-    exportPopover.hidePopover?.();
-    const dataUrl = capturePngDataUrl();
-    const baseName = activeFileName.replace(/\.(scene\.)?json$/i, '') || 'crucible-render';
-    if (desktop?.savePng) {
-      const response = await desktop.savePng({ dataUrl, suggestedName: `${baseName}.png` });
-      if (!response?.canceled) announceSuccess(`Saved ${response.fileName}`);
-      return;
+  // Each action says what it wrote under its button: the file, and its size. A refused or failed export says why instead. A line
+  // is true of the scene it was written from, and a new run of the same action clears it first.
+  function reportExport(kindId, { fileName, detail }) {
+    exportResultSceneKey = currentSceneKey();
+    exportPanel.showResult(kindId, { ok: true, text: [fileName, ...detail].join(', ') });
+  }
+
+  function reportExportFailure(kindId, error) {
+    announce(error.message, undefined, 'error', { quiet: true });
+    exportResultSceneKey = currentSceneKey();
+    exportPanel.showResult(kindId, { ok: false, text: error.message });
+  }
+
+  exportPanel.onAction('image', async () => {
+    try {
+      const dataUrl = capturePngDataUrl();
+      const baseName = activeFileName.replace(/\.(scene\.)?json$/i, '') || 'crucible-render';
+      const detail = [`${canvas.width} × ${canvas.height}`, formatFileSize(dataUrlByteLength(dataUrl))];
+      if (desktop?.savePng) {
+        const response = await desktop.savePng({ dataUrl, suggestedName: `${baseName}.png` });
+        if (!response?.canceled) {
+          announce(`Saved ${response.fileName}`, undefined, 'success', { quiet: true });
+          reportExport('image', { fileName: response.fileName, detail });
+        }
+        return;
+      }
+      const bytes = Uint8Array.from(atob(dataUrl.split(',')[1]), character => character.charCodeAt(0));
+      triggerBlobDownload(bytes, `${baseName}.png`, 'image/png');
+      announce('Saved PNG still', undefined, 'success', { quiet: true });
+      reportExport('image', { fileName: `${baseName}.png`, detail });
+    } catch (error) {
+      reportExportFailure('image', error);
     }
-    const bytes = Uint8Array.from(atob(dataUrl.split(',')[1]), character => character.charCodeAt(0));
-    triggerBlobDownload(bytes, `${baseName}.png`, 'image/png');
-    announceSuccess('Saved PNG still');
   });
 
-  exportGlbButton.addEventListener('click', async () => {
-    exportPopover.hidePopover?.();
+  exportPanel.onAction('model', async () => {
     try {
       const glbBytes = exportGlbBytes();
       const baseName = activeFileName.replace(/\.(scene\.)?json$/i, '') || 'crucible-scene';
+      const detail = [formatFileSize(glbBytes.byteLength)];
       if (desktop?.saveGlb) {
         const response = await desktop.saveGlb({ bytes: glbBytes, suggestedName: `${baseName}.glb` });
-        if (!response?.canceled) announceSuccess(`Exported ${response.fileName}`);
+        if (!response?.canceled) {
+          announce(`Exported ${response.fileName}`, undefined, 'success', { quiet: true });
+          reportExport('model', { fileName: response.fileName, detail });
+        }
         return;
       }
       triggerBlobDownload(glbBytes, `${baseName}.glb`, 'model/gltf-binary');
-      announceSuccess('Exported GLB mesh');
+      announce('Exported GLB mesh', undefined, 'success', { quiet: true });
+      reportExport('model', { fileName: `${baseName}.glb`, detail });
     } catch (error) {
-      announceError(error.message);
+      reportExportFailure('model', error);
     }
   });
 
-  exportPackButton.addEventListener('click', async () => {
-    exportPopover.hidePopover?.();
+  exportPanel.onAction('pack', async () => {
     try {
       const payload = await buildWebPackPayload();
+      const detail = [formatFileSize(payload.packBytes.byteLength)];
       if (desktop?.packWebBundle) {
         const response = await desktop.packWebBundle(payload);
         if (!response?.canceled) {
           const note = payload.stripped.length ? ` (static snapshot, omitted ${payload.stripped[0]})` : '';
-          announce(`Packed web bundle to ${response.outDir}${note}`);
+          announce(`Packed web bundle to ${response.outDir}${note}`, undefined, 'success', { quiet: true });
+          // The host writes a folder or a file of its own choosing: show the name it returns, not the one a browser download would carry.
+          reportExport('pack', { fileName: lastPathName(response.fileName ?? response.outDir), detail });
         }
         return;
       }
       triggerBlobDownload(payload.packBytes, `${payload.title}.pack`, 'application/octet-stream');
-      announceSuccess('Downloaded scene.pack');
+      announce('Downloaded scene.pack', undefined, 'success', { quiet: true });
+      reportExport('pack', { fileName: `${payload.title}.pack`, detail });
     } catch (error) {
-      announceError(error.message);
+      reportExportFailure('pack', error);
     }
   });
 
   editJsonButton.addEventListener('click', () => {
-    exportPopover.hidePopover?.();
     openImportDialog();
   });
 
@@ -3817,7 +3920,7 @@ export function createStudio(container, {
   // The grid is drawn with the scene so objects hide it, but it is never part of the scene: not picked, saved or exported.
   function partsToDraw() {
     const sceneParts = meshEditor?.active ? meshEditor.partsToDraw(controller.scene.parts) : controller.scene.parts;
-    if (!gridVisible || capturingStill) {
+    if (!gridVisible || drawingTheShot()) {
       return sceneParts;
     }
     gridParts ??= buildGridParts();
@@ -3876,7 +3979,7 @@ export function createStudio(container, {
   }
 
   function syncRendererParts(activeRenderer) {
-    const topology = `${controller.scene.topologyRevision}|${gridVisible && !capturingStill}|${Boolean(meshEditor?.active && meshEditor.seeThrough)}`;
+    const topology = `${controller.scene.topologyRevision}|${gridVisible && !drawingTheShot()}|${Boolean(meshEditor?.active && meshEditor.seeThrough)}`;
     if (renderedScene !== controller.scene || renderedTopology !== topology) {
       activeRenderer.replaceParts(partsToDraw());
       renderedScene = controller.scene;
@@ -3953,10 +4056,10 @@ export function createStudio(container, {
     const frameEnvironment = { ...environment, map: agentEnvironmentMap(environment) };
     activeRenderer.environment = frameEnvironment;
     // A still is the scene's own shot, so it keeps the animated camera even while the viewport looks around freely.
-    const frameCamera = capturingStill ? controller.scene.camera : controller.viewCamera;
+    const frameCamera = drawingTheShot() ? controller.scene.camera : controller.viewCamera;
     renderWithPostPasses(activeRenderer, {
       ...frameCamera,
-      ...(capturingStill ? {} : viewportClipPlanes(frameCamera)),
+      ...(drawingTheShot() ? {} : viewportClipPlanes(frameCamera)),
       environment: frameEnvironment,
       effects,
       exposure: effects.exposure,
@@ -4011,6 +4114,13 @@ export function createStudio(container, {
     announce(describeAgentEdit(label, { nodeIds, removedNodeIds, otherChange }));
   }
 
+  // The saved shot has no handles, outlines, marks or agent pointer, so none of them is built while Export is open.
+  function clearEditorOverlays() {
+    gizmoSvg.replaceChildren();
+    outlineMask.draw(null, controller.viewportWidth, controller.viewportHeight);
+    activeOutlineMask.draw(null, controller.viewportWidth, controller.viewportHeight);
+  }
+
   function renderPass() {
     if (contextLost) {
       return;
@@ -4019,13 +4129,17 @@ export function createStudio(container, {
     try {
       syncViewportDimensions();
       drawSceneFrame();
-      renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask, activeOutlineMask, { hideSelectionOutline: Boolean(meshEditor?.active), clearRadius: meshEditor?.active ? meshEditor.selectionScreenRadius() : null });
-      appendSnapMarker(documentReference, gizmoSvg, controller.snapMarker());
-      if (!capturingStill) {
-        renderSceneObjectMarks(documentReference, gizmoSvg, controller);
+      if (viewingShot()) {
+        clearEditorOverlays();
+      } else {
+        renderGizmoMarkup(documentReference, gizmoSvg, controller, outlineMask, activeOutlineMask, { hideSelectionOutline: Boolean(meshEditor?.active), clearRadius: meshEditor?.active ? meshEditor.selectionScreenRadius() : null });
+        if (!drawingTheShot()) {
+          renderSceneObjectMarks(documentReference, gizmoSvg, controller);
+        }
+        appendSnapMarker(documentReference, gizmoSvg, controller.snapMarker());
+        drawAgentOutline();
+        if (meshEditor?.active && !drawingTheShot()) meshEditor.draw(documentReference, gizmoSvg);
       }
-      drawAgentOutline();
-      if (meshEditor?.active && !capturingStill) meshEditor.draw(documentReference, gizmoSvg);
       syncViewportAids();
     } finally {
       insideDraw = false;
@@ -4298,6 +4412,7 @@ export function createStudio(container, {
       selectButton,
       eyeButton,
     );
+    outlinerDrag.bindRow(element, node.id);
     return { element, badge, appliedFill: '' };
   }
 
@@ -4792,6 +4907,46 @@ export function createStudio(container, {
     if (controller.activeTab === 'look') syncLookPanels();
     if (controller.activeTab === 'camera') cameraPanel.sync();
     if (controller.activeTab === 'modifiers') modifierPanel.sync();
+    if (controller.activeTab === 'export') syncExportFacts();
+  }
+
+  // What each export will hold. The picture's size follows the window, so it is read each frame; the model and the pack follow the
+  // scene and are worked out once for each revision of it, and only while Export is open. A kind that cannot be saved says why.
+  // A scene always has a camera (the controller refuses one without), so only the parts can be missing.
+  function currentSceneKey() {
+    const scene = controller.scene;
+    return `${scene.topologyRevision}|${scene.revision}`;
+  }
+
+  function syncExportFacts() {
+    const scene = controller.scene;
+    exportPanel.showFacts('image', [{ frame: [canvas.width, canvas.height] }, { text: `${canvas.width} × ${canvas.height}` }]);
+    const sceneKey = currentSceneKey();
+    if (exportFactsSceneKey === sceneKey) return;
+    exportFactsSceneKey = sceneKey;
+    if (exportResultSceneKey !== null && exportResultSceneKey !== sceneKey) {
+      exportPanel.clearResults();
+      exportResultSceneKey = null;
+    }
+    const partCount = scene.parts.length;
+    const noParts = partCount === 0;
+    exportPanel.setBlocked('model', noParts);
+    exportPanel.setBlocked('pack', noParts);
+    if (noParts) {
+      const reason = [{ icon: 'warning', text: 'No parts to save' }];
+      exportPanel.showFacts('model', reason);
+      exportPanel.showFacts('pack', reason);
+      return;
+    }
+    const partsFact = { text: `${partCount} ${partCount === 1 ? 'part' : 'parts'}` };
+    const triangleCount = Math.round(scene.parts.reduce((count, part) => count + (part.geometry?.indices?.length ?? 0) / 3, 0));
+    exportPanel.showFacts('model', [partsFact, { text: `${triangleCount.toLocaleString('en-US')} triangles` }]);
+    try {
+      const { stripped } = buildPackReadyRecipe(controller.exportRecipe());
+      exportPanel.showFacts('pack', [partsFact, ...stripped.map(name => ({ icon: 'warning', text: `${name} left out` }))]);
+    } catch (error) {
+      exportPanel.showFacts('pack', [{ icon: 'warning', text: error.message }]);
+    }
   }
 
   function syncLookPanels() {
@@ -4823,9 +4978,10 @@ export function createStudio(container, {
       key.setAttribute('aria-pressed', lockedAxes.includes(axis) ? 'true' : 'false');
       return key;
     });
+    const typedUnit = modalTransform.tool === 'translate' ? ` ${preferences.lengthUnit}` : MODAL_TYPED_UNITS[modalTransform.tool];
     const typedReadout = modalTransform.typed === ''
       ? []
-      : [createElement(documentReference, 'span', { className: 'crucible-studio-hint-typed', textContent: `= ${modalTransform.typed}${MODAL_TYPED_UNITS[modalTransform.tool]}` })];
+      : [createElement(documentReference, 'span', { className: 'crucible-studio-hint-typed', textContent: `= ${modalTransform.typed}${typedUnit}` })];
     hintBar.replaceChildren(
       createElement(documentReference, 'span', { className: 'crucible-studio-hint-delta', textContent: (liveDeltaLabel || MODAL_TOOL_WORDS[modalTransform.tool]).replace(/^SCREEN/, MODAL_TOOL_WORDS.translate) }),
       ...typedReadout,
@@ -4934,7 +5090,15 @@ export function createStudio(container, {
       ctrlKey: false,
     };
     root.dataset.modal = tool;
-    beginModalDrag(modalFreeAxis(tool), false);
+    try {
+      beginModalDrag(modalFreeAxis(tool), false);
+    } catch (error) {
+      modalTransform = null;
+      delete root.dataset.modal;
+      if (!meshEditor?.active) throw error;
+      announceError(error.message);
+      return false;
+    }
     documentReference.addEventListener('pointermove', onModalPointerMove);
     documentReference.addEventListener('pointerdown', onModalPointerDown, true);
     documentReference.defaultView?.addEventListener?.('blur', onModalBlur);
@@ -4976,7 +5140,10 @@ export function createStudio(container, {
   // The number typed so far, or null while it is not one yet (nothing, "-" or "."): the pointer then sets the amount.
   function typedModalAmount() {
     const amount = Number(modalTransform.typed);
-    return modalTransform.typed === '' || !Number.isFinite(amount) ? null : amount;
+    if (modalTransform.typed === '' || !Number.isFinite(amount)) {
+      return null;
+    }
+    return modalTransform.tool === 'translate' ? lengthFromUnit(amount, preferences.lengthUnit) : amount;
   }
 
   // Numeric input: digits, a point and a minus sign build the amount, Backspace takes the last one back.
@@ -5055,6 +5222,8 @@ export function createStudio(container, {
   gizmoSvg.addEventListener('pointerout', clearHoveredHandle);
   gizmoSvg.addEventListener('pointerleave', clearHoveredHandle);
 
+  let suppressGizmoContextMenu = false;
+
   // First among the handle listeners: in Maya and Cinema 4D Alt and a button navigate even over a handle.
   gizmoSvg.addEventListener('pointerdown', event => {
     const mode = findMouseNavigation(keymap, event);
@@ -5066,7 +5235,7 @@ export function createStudio(container, {
 
   gizmoSvg.addEventListener('pointerdown', event => {
     const axis = event.target?.getAttribute?.('data-gizmo-axis');
-    if (!axis || (event.button ?? 0) !== 0) return;
+    if (!axis || (event.button ?? 0) !== 0 || event.shiftKey || event.altKey) return;
     event.preventDefault();
     event.stopPropagation();
     const coordinates = localCoordinates(event);
@@ -5083,9 +5252,13 @@ export function createStudio(container, {
     viewportElement.setPointerCapture?.(event.pointerId);
   });
 
-  // The handles lie over the selected object, so a right click on one is a right click on that object.
+  // The handles lie over the selected object, so a right click on one opens that object's menu unless a right-drag pan just ran.
   gizmoSvg.addEventListener('contextmenu', event => {
     event.preventDefault();
+    if (suppressGizmoContextMenu) {
+      suppressGizmoContextMenu = false;
+      return;
+    }
     if (findMouseNavigation(keymap, { button: 2, altKey: event.altKey }) !== null) return;
     if (controller.selectedNodeId) {
       openObjectMenu(event.clientX, event.clientY);
@@ -5095,7 +5268,7 @@ export function createStudio(container, {
   // A press on a light or the sun selects it; with the move tool a light then follows the pointer in the plane through it that faces the view.
   gizmoSvg.addEventListener('pointerdown', event => {
     const key = event.target?.getAttribute?.('data-scene-object');
-    if (!key || (event.button ?? 0) !== 0) return;
+    if (!key || (event.button ?? 0) !== 0 || event.shiftKey || event.altKey) return;
     event.preventDefault();
     event.stopPropagation();
     selectSceneObjectAndShowItsPanel(key);
@@ -5136,11 +5309,31 @@ export function createStudio(container, {
     captureElement.setPointerCapture?.(event.pointerId);
   }
 
-  canvas.addEventListener('pointerdown', event => {
+  function targetPassesThroughViewport(target, { checkScroll = false } = {}) {
+    for (let node = target; node && node !== viewportElement && node.tagName; node = node.parentNode) {
+      const tag = node.tagName.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || tag === 'a' || tag === 'dialog') return false;
+      if (node.getAttribute?.('popover') !== null || node.getAttribute?.('data-view') !== null) return false;
+      const classes = String(node.className ?? '').split(/\s+/);
+      if (classes.some(name => name === 'crucible-studio-dock' || name === 'crucible-studio-popover' || name === 'crucible-studio-view-widget' || name === 'crucible-studio-paused' || name === 'crucible-studio-draft' || name === 'crucible-studio-pass-notice')) {
+        return false;
+      }
+      if (checkScroll) {
+        const style = documentReference.defaultView?.getComputedStyle?.(node);
+        const overflow = `${style?.overflowX ?? ''}${style?.overflowY ?? ''}`;
+        if (/auto|scroll/.test(overflow) && (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth)) return false;
+      }
+    }
+    return true;
+  }
+
+  viewportElement.addEventListener('pointerdown', event => {
+    if (viewingShot()) return;
     if (event.button !== 0 && event.button !== 1 && event.button !== 2) return;
+    if (!targetPassesThroughViewport(event.target)) return;
     const keymapMode = findMouseNavigation(keymap, event);
     const defaultMode = event.shiftKey || event.button === 2 || event.button === 1 ? 'pan' : 'orbit';
-    beginCameraDrag(event, keymapMode ?? defaultMode, keymapMode !== null, canvas);
+    beginCameraDrag(event, keymapMode ?? defaultMode, keymapMode !== null, event.target === canvas ? canvas : viewportElement);
   });
 
   viewportElement.addEventListener('pointermove', event => {
@@ -5192,6 +5385,9 @@ export function createStudio(container, {
     if (!pointerState) return;
     const finished = pointerState;
     pointerState = null;
+    if (finished.moved && event.button === 2) {
+      suppressGizmoContextMenu = true;
+    }
     if (finished.mode === 'light') {
       controller.endUndoGroup();
       return;
@@ -5237,25 +5433,22 @@ export function createStudio(container, {
   documentReference.addEventListener('pointerdown', onAnyPointerDown, true);
   viewportElement.addEventListener('pointerup', finishPointer);
   viewportElement.addEventListener('pointercancel', finishPointer);
-  canvas.addEventListener('contextmenu', event => event.preventDefault());
-  canvas.addEventListener('wheel', event => {
+  viewportElement.addEventListener('contextmenu', event => event.preventDefault());
+  viewportElement.addEventListener('wheel', event => {
+    if (!targetPassesThroughViewport(event.target, { checkScroll: true })) return;
     event.preventDefault();
+    if (viewingShot()) return;
     if (meshEditor?.circleSelecting) {
       meshEditor.wheelCircleBrush(event.deltaY, event.deltaMode);
       requestFrame();
       return;
     }
-    if (proportionalHoldsWheel()) return;
+    if (proportionalHoldsWheel()) {
+      meshEditor.proportional.resize(event.deltaY < 0 ? 1 : -1);
+      return;
+    }
     stopFlight();
     controller.orbitCamera({ zoomScale: 1 + Math.max(-0.35, Math.min(0.35, event.deltaY * 0.0012 * (preferences.zoomDirection === 'inverted' ? -1 : 1))) });
-  }, { passive: false });
-
-  // While a move is held with proportional editing on, the wheel sets how far it reaches instead of zooming. It listens on the
-  // viewport, not the canvas, because the pointer of a held move often sits on a move handle drawn over the canvas.
-  viewportElement.addEventListener('wheel', event => {
-    if (!proportionalHoldsWheel()) return;
-    event.preventDefault();
-    meshEditor.proportional.resize(event.deltaY < 0 ? 1 : -1);
   }, { passive: false });
 
   viewportElement.addEventListener('dragover', event => {
@@ -5304,14 +5497,20 @@ export function createStudio(container, {
       announce(`Deleted ${label}`);
       return;
     }
+    const deletedCount = controller.selectionRoots().length;
     controller.deleteSelected();
-    announce('Deleted node');
+    announce(deletedCount > 1 ? `Deleted ${deletedCount} objects` : 'Deleted node');
+  }
+
+  function announceDuplicated(activeCopy) {
+    const copyCount = controller.selectedNodeIds.length;
+    announce(copyCount > 1 ? `Duplicated ${copyCount} objects` : `Duplicated to ${activeCopy.label}`);
   }
 
   function duplicateSelection() {
     if (controller.selectedNodeId) {
       const cloned = controller.duplicateSelected();
-      announce(`Duplicated to ${cloned.label}`);
+      announceDuplicated(cloned);
     }
   }
 
@@ -5401,6 +5600,37 @@ export function createStudio(container, {
       announce(`Joined ${otherIds.length + 1} objects into ${activeId}`);
     } catch (error) {
       announce(error.message);
+    }
+  }
+
+  function parentSelection() {
+    const activeId = controller.selectedNodeId;
+    const childIds = controller.selectedNodeIds.filter(nodeId => nodeId !== activeId);
+    if (!activeId || childIds.length === 0) {
+      announce('Select two or more objects to parent. The one picked last becomes the parent.');
+      return;
+    }
+    try {
+      const result = controller.reparentNodes(childIds, activeId);
+      if (result.changed > 0) announceSuccess(`Parented ${result.changed} ${result.changed === 1 ? 'object' : 'objects'} to ${activeId}`);
+    } catch (error) {
+      announceError(error.message);
+    }
+  }
+
+  function clearParentSelection() {
+    const recipe = controller.exportRecipe();
+    const byId = new Map(recipe.nodes.map(node => [node.id, node]));
+    const parentedIds = controller.selectedNodeIds.filter(nodeId => byId.get(nodeId)?.parent);
+    if (parentedIds.length === 0) {
+      announce('Select an object with a parent to clear first.');
+      return;
+    }
+    try {
+      const result = controller.reparentNodes(parentedIds, null);
+      if (result.changed > 0) announceSuccess(`Cleared parent for ${result.changed} ${result.changed === 1 ? 'object' : 'objects'}`);
+    } catch (error) {
+      announceError(error.message);
     }
   }
 
@@ -5721,6 +5951,14 @@ export function createStudio(container, {
       event.preventDefault();
       joinSelection();
     },
+    'edit.parent': event => {
+      event.preventDefault();
+      parentSelection();
+    },
+    'edit.clearParent': event => {
+      event.preventDefault();
+      clearParentSelection();
+    },
     'edit.delete': event => {
       if (!controller.selectedNodeId && !selectedObjectIsDeletable()) return;
       event.preventDefault();
@@ -5847,6 +6085,10 @@ export function createStudio(container, {
     // A Ctrl key works over an open dialog; a plain key does not.
     const dialogIsOpen = recipeDialog.open || shortcutsDialog.open || settingsDialog.open || Boolean(newSceneDialogs?.dialogs.some(dialog => dialog.open));
     if (dialogIsOpen && !match.binding.ctrl) {
+      return;
+    }
+    if (shotLocksAction(match.actionId)) {
+      if (match.binding.ctrl) event.preventDefault();
       return;
     }
     if (meshMatch) {
