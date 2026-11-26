@@ -1,0 +1,1 @@
+- Large GLB closed rooms get sky occlusion scaled with scene size (`proxyPairBudget`) and sun-bounce patches plus analytical multi-bounce room light from a triangle-budget-independent room shell (`findSunBounceLightsOnShell`, `largeScenes: 'proxy'`), and `findSunBounceLights` reports clear failure reasons instead of failing silently (#2771)
