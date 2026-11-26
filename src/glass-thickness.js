@@ -13,12 +13,14 @@ export const MAXIMUM_CLOSED_TEST_TRIANGLES = 200000;
 const WELD_PRECISION = 1e4;
 
 /** True when every edge of the triangle list is shared by exactly two triangles, after welding vertices that share a position. */
-export function isClosedSurface(positions, indices) {
+export function isClosedSurface(positions, indices, largestExtent = 1) {
   const triangleCount = indices.length / 3;
   if (triangleCount === 0 || triangleCount > MAXIMUM_CLOSED_TEST_TRIANGLES) return false;
+  // Scale the weld grid to the mesh size so small GLB assets (such as a 1 cm eye) do not collapse distinct vertices.
+  const weldPrecision = WELD_PRECISION / Math.max(largestExtent, 1e-4);
   const weldedIds = new Map();
   const weld = vertexIndex => {
-    const key = `${Math.round(positions[vertexIndex * 3] * WELD_PRECISION)},${Math.round(positions[vertexIndex * 3 + 1] * WELD_PRECISION)},${Math.round(positions[vertexIndex * 3 + 2] * WELD_PRECISION)}`;
+    const key = `${Math.round(positions[vertexIndex * 3] * weldPrecision)},${Math.round(positions[vertexIndex * 3 + 1] * weldPrecision)},${Math.round(positions[vertexIndex * 3 + 2] * weldPrecision)}`;
     if (!weldedIds.has(key)) weldedIds.set(key, weldedIds.size);
     return weldedIds.get(key);
   };
@@ -60,7 +62,7 @@ export function derivedGlassThickness(positions, indices) {
   const smallest = Math.min(...extents);
   const largest = Math.max(...extents);
   if (!(smallest > 0) || !Number.isFinite(largest)) return 0;
-  if (isClosedSurface(positions, indices)) return smallest;
+  if (isClosedSurface(positions, indices, largest)) return smallest;
   return smallest / largest >= MINIMUM_CAP_BULGE ? largest * OPEN_CAP_DEPTH_PER_EXTENT : 0;
 }
 
@@ -69,12 +71,16 @@ export function derivedGlassThickness(positions, indices) {
  * `cache` keeps one copy per material and thickness, so meshes of one size still batch together.
  */
 export function materialWithDerivedThickness(material, definition, geometry, cache) {
-  const hasVolume = definition?.extensions?.KHR_materials_volume !== undefined;
+  const hasVolume = definition?.extensions?.KHR_materials_volume?.thicknessFactor !== undefined;
   if (!(material.transmission > 0) || hasVolume || !geometry.indices) return material;
-  const thickness = derivedGlassThickness(geometry.positions, geometry.indices);
+  const extents = meshExtents(geometry.positions);
+  const smallest = Math.min(...extents);
+  const largest = Math.max(...extents);
+  if (!(smallest > 0) || !Number.isFinite(largest)) return material;
+  const closed = isClosedSurface(geometry.positions, geometry.indices, largest);
+  const thickness = closed ? smallest : (smallest / largest >= MINIMUM_CAP_BULGE ? largest * OPEN_CAP_DEPTH_PER_EXTENT : 0);
   if (thickness === 0) return material;
-  // An open cap has no back face: the glass continues behind it until the next surface, so the ray bends once and is not bent back out.
-  const mediumContinues = !isClosedSurface(geometry.positions, geometry.indices);
+  const mediumContinues = !closed;
   const key = `${Math.round(thickness * 1e6)}:${mediumContinues}`;
   if (!cache.has(material)) cache.set(material, new Map());
   const copies = cache.get(material);

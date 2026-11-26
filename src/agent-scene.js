@@ -115,6 +115,7 @@ const MATERIAL_FIELDS = [
   'alphaCutoff',
   'doubleSided',
   'depthTest',
+  'throughGlass',
   'pattern',
   'map',
   'text',
@@ -331,6 +332,12 @@ function integer(value, minimum, maximum, label) {
   return value;
 }
 
+function unitRange(value, label) {
+  finite(value, label);
+  if (value < 0 || value > 1) throw invalidField(label, value, 'a number from 0 to 1, such as 0.5');
+  return value;
+}
+
 function optionalBoolean(value, label, fallback) {
   if (value !== undefined && typeof value !== 'boolean') {
     throw invalidField(label, value, 'true or false', TypeError);
@@ -431,11 +438,7 @@ function materialFrom(recipeValue) {
   }
   if (TEXTURE_SET_RECIPE_FIELDS.some(field => value[field] !== undefined)) agentSceneModule('assets').applyTextureMaps(value, result);
   const graphHasOpacity = hasPattern && agentSceneModule('patterns').applyRecipePattern(value, result, invalidField);
-  result.opacity = defaultValue(value.opacity, 1);
-  finite(result.opacity, 'opacity');
-  if (result.opacity < 0 || result.opacity > 1) {
-    throw invalidField('opacity', result.opacity, 'a number from 0 to 1, such as 0.5');
-  }
+  result.opacity = unitRange(defaultValue(value.opacity, 1), 'opacity');
   // A panel without a background is transparent, so it blends unless the recipe says otherwise.
   const requestedAlphaMode = defaultValue(value.alphaMode, result.text && !result.text.background ? 'blend' : 'opaque');
   if (!RECIPE_ALPHA_MODES.includes(requestedAlphaMode)) {
@@ -445,13 +448,8 @@ function materialFrom(recipeValue) {
   result.alphaMode = (result.opacity < 1 || graphHasOpacity) && requestedAlphaMode === 'opaque' ? 'blend' : requestedAlphaMode;
   applyAlphaCutoff(value, result);
   result.doubleSided = optionalBoolean(value.doubleSided, 'doubleSided', false);
-  if (value.depthTest !== undefined) result.depthTest = optionalBoolean(value.depthTest, 'depthTest');
-  for (const field of ['metallic', 'roughness']) {
-    finite(result[field], field);
-    if (result[field] < 0 || result[field] > 1) {
-      throw invalidField(field, result[field], 'a number from 0 to 1, such as 0.5');
-    }
-  }
+  for (const flag of ['depthTest', 'throughGlass']) if (value[flag] !== undefined) result[flag] = optionalBoolean(value[flag], flag);
+  for (const field of ['metallic', 'roughness']) unitRange(result[field], field);
   finite(result.emission, 'emission');
   if (result.emission < 0) {
     throw invalidField('emission', result.emission, 'a number of 0 or more, such as 1');
@@ -1416,7 +1414,7 @@ function batchSignature(material) {
   // Textures are fixed per renderer, so a changed pattern rebuilds it like a changed tag does.
   // Transmission moves a material to the pass that sees the opaque scene, which is fixed per renderer.
   // Snippet uniform values bind per draw, so only changing the compiled feature or mask needs a new handle (#3163).
-  return `${material.tag}|${material.alphaMode}|${material.alphaCutoff}|${material.opacity}|${material.transmission > 0}|${material.doubleSided}|${material.depthTest !== false}|${Boolean(material.map && material.emission > 0)}|${JSON.stringify(material.pattern ?? material.map ?? material.text ?? null)}|${material.snippet?.feature}|${material.snippet?.mask}${textureMapSignature(material)}`;
+  return `${material.tag}|${material.alphaMode}|${material.alphaCutoff}|${material.opacity}|${material.transmission > 0}|${material.doubleSided}|${material.depthTest !== false}|${material.throughGlass === true}|${Boolean(material.map && material.emission > 0)}|${JSON.stringify(material.pattern ?? material.map ?? material.text ?? null)}|${material.snippet?.feature}|${material.snippet?.mask}${textureMapSignature(material)}`;
 }
 
 // A material's uvScale, uvOffset, uvRotation and worldScale are baked into the UVs of the geometry it draws, like glTF KHR_texture_transform.
