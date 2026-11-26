@@ -30,3 +30,16 @@ export const HEIGHT_PARALLAX_DEFAULTS = Object.freeze({ fade: 12, steps: 16 });
 
 /** Every material field of this feature: the six maps, the set that fills them, the normal convention, the parallax fields and the UV transform. */
 export const TEXTURE_SET_RECIPE_FIELDS = Object.freeze([...TEXTURE_MAP_FIELDS, 'textureSet', 'normalConvention', ...HEIGHT_PARALLAX_FIELDS, ...UV_TRANSFORM_FIELDS]);
+
+/** Secondary tiled detail normal and micro-roughness fields on standard PBR materials (#3566). Kept apart from TEXTURE_SET_RECIPE_FIELDS so MCP schemas stay unchanged. */
+export const DETAIL_NORMAL_FIELDS = Object.freeze(['detailNormalMap', 'detailNormalScale', 'detailUvScale', 'detailRoughnessStrength']);
+export const DETAIL_NORMAL_LIMITS = Object.freeze({ uvScale: [0, 1024], roughnessStrength: [0, 1] });
+
+/** Cache key suffix for catalog-backed texture maps and detail normal settings on a recipe material. */
+export function textureMapSignature(material) {
+  const maps = [...TEXTURE_MAP_FIELDS, 'detailNormalMap'].filter(field => material[field] !== undefined).map(field => `${field}:${material[field]}`);
+  const detail = [material.detailNormalScale, material.detailUvScale, material.detailRoughnessStrength].some(value => value !== undefined)
+    ? `|detail:${JSON.stringify([material.detailNormalScale ?? null, material.detailUvScale ?? null, material.detailRoughnessStrength ?? null])}`
+    : '';
+  return (maps.length ? `|${maps.join(',')}|${material.normalConvention ?? ''}` : '') + detail;
+}
