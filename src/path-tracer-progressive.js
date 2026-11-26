@@ -34,6 +34,9 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
   const options = await withBlueNoiseTile(normalizePathTracerOptions({ ...rawOptions, backend: 'gpu', samples: 1, maxSeconds: rawOptions.maxSeconds ?? 3600 }));
   const { gl, gpu } = getContext();
   const { width, height } = options;
+  let currentParts = scene.parts;
+  let currentEnvironment = scene.environment ?? {};
+  let currentCamera = scene.camera;
   let traceScene = null;
   let sceneOptions = options;
   let program = null;
@@ -52,9 +55,10 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
   };
 
   const loadScene = (parts, environment) => {
+    const nextTraceScene = buildTraceScene(parts, environment, { gpuTriangleLimit: gpuTriangleLimit() });
+    refuseLocalVolumes(nextTraceScene, 'the progressive path tracer');
     releaseResources(gl);
-    traceScene = buildTraceScene(parts, environment, { gpuTriangleLimit: gpuTriangleLimit() });
-    refuseLocalVolumes(traceScene, 'the progressive path tracer');
+    traceScene = nextTraceScene;
     sceneOptions = { ...options, lightSelection: resolveLightSelection(options.lightSelection, traceScene.lights) };
     const kernel = getKernel(sceneUsesSubsurface(traceScene.materials), false, { ...sceneOptions, vertexAlpha: Boolean(traceScene.vertexAlpha) });
     program = kernel.program;
@@ -87,8 +91,8 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
     clearTargets();
   };
 
-  loadScene(scene.parts, scene.environment ?? {});
-  loadCamera(scene.camera);
+  loadScene(currentParts, currentEnvironment);
+  loadCamera(currentCamera);
   startOver();
 
   return {
@@ -97,10 +101,22 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
     get samples() { return samples; },
     get level() { return { ...levelSize(), final: levelIndex === resolutionDivisors.length - 1 }; },
 
-    /** A new camera, and with `parts` a new scene: the image starts over at the reduced size. */
-    update({ camera, parts, environment }) {
-      if (parts) loadScene(parts, environment ?? {});
-      if (camera) loadCamera(camera);
+    /** A new camera, and with `parts` or `environment` a new scene: the image starts over at the reduced size. */
+    update({ camera, parts, environment } = {}) {
+      const hasParts = parts !== undefined;
+      const hasEnvironment = environment !== undefined;
+      if (hasParts || hasEnvironment) {
+        const nextParts = hasParts ? parts : currentParts;
+        const nextEnvironment = hasEnvironment ? (environment ?? {}) : currentEnvironment;
+        loadScene(nextParts, nextEnvironment);
+        currentParts = nextParts;
+        currentEnvironment = nextEnvironment;
+        loadCamera(camera ?? currentCamera);
+        if (camera) currentCamera = camera;
+      } else if (camera) {
+        loadCamera(camera);
+        currentCamera = camera;
+      }
       startOver();
     },
 

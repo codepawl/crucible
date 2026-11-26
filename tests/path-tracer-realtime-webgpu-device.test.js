@@ -171,5 +171,10 @@ test('the WebGPU real-time tracer refuses local volumes at creation and on updat
   );
   const tracer = await createWebGpuRealtimeTracer(scene, options, fakeCanvas);
   await assert.rejects(() => tracer.update({ parts: scene.parts, environment: { localVolumes: volumes } }), /environment\.localVolumes is traced by the CPU path tracer only/);
+  const clearsBefore = recorded.clears;
+  await tracer.update({ environment: { lightDirection: [0, 1, 0], keyIntensity: 2 } });
+  tracer.frame(camera);
+  assert.equal(recorded.clears, clearsBefore + 1, 'an environment-only update reloads the scene and clears the cache');
+  await assert.rejects(() => tracer.update({ environment: { localVolumes: volumes } }), /environment\.localVolumes is traced by the CPU path tracer only/);
   tracer.dispose();
 });

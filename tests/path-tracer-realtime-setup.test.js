@@ -8,7 +8,7 @@ import { resolveTraceSubsurface } from '../src/path-tracer-subsurface.js';
 function createFakeContext() {
   class FakeFramebuffer {}
   globalThis.WebGLFramebuffer = FakeFramebuffer;
-  const counts = { texture: 0, framebuffer: 0, program: 0, deleted: { texture: 0, framebuffer: 0, program: 0 } };
+  const counts = { texture: 0, framebuffer: 0, program: 0, deleted: { texture: 0, framebuffer: 0, program: 0 }, uniforms: new Map() };
   const constants = new Map();
   const handlers = {
     createTexture: () => { counts.texture++; return {}; },
@@ -20,7 +20,9 @@ function createFakeContext() {
     getParameter: () => 16384,
     getShaderParameter: () => true,
     getProgramParameter: program => program.index !== counts.failingProgram,
-    getUniformLocation: () => ({}),
+    getUniformLocation: (program, name) => ({ name }),
+    uniform1i: (location, value) => { if (location?.name) counts.uniforms.set(location.name, value); },
+    uniform3fv: (location, value) => { if (location?.name) counts.uniforms.set(location.name, Array.from(value)); },
     getExtension: () => ({}),
     getShaderInfoLog: () => '',
     getProgramInfoLog: () => '',
@@ -43,6 +45,7 @@ function createFakeContext() {
 
 const counts = createFakeContext();
 const { createRealtimeTracer } = await import('../src/path-tracer-realtime.js');
+const { createProgressiveTracer } = await import('../src/path-tracer-progressive.js');
 const WALL = { name: 'wall', geometry: box(), material: { color: [1, 1, 1], roughness: 1, metallic: 0 } };
 const CAMERA = { eye: [0, 0, 3], target: [0, 0, 0], up: [0, 1, 0], fov: 30 };
 
@@ -74,6 +77,27 @@ test('a refused scene update keeps the scene the tracer already has', async () =
   assert.equal(counts.deleted.texture, deletedBefore, 'the textures of the working scene were deleted');
   assert.doesNotThrow(() => tracer.frame(CAMERA));
   tracer.dispose();
+});
+
+test('realtime and progressive tracers apply update({ environment }) without parts', async () => {
+  const realtime = await createRealtimeTracer({ parts: [WALL] });
+  realtime.frame(CAMERA);
+  assert.equal(counts.uniforms.get('uHasSun'), 0);
+  realtime.update({ environment: { lightDirection: [0, 1, 0], keyIntensity: 3, keyColor: [1, 1, 1] } });
+  realtime.frame(CAMERA);
+  assert.equal(counts.uniforms.get('uHasSun'), 1);
+  assert.throws(
+    () => realtime.update({ environment: { localVolumes: [{ shape: 'sphere', center: [0, 1, 0], radius: 1 }] } }),
+    /environment\.localVolumes/,
+  );
+  assert.doesNotThrow(() => realtime.frame(CAMERA));
+  realtime.dispose();
+
+  const progressive = await createProgressiveTracer({ parts: [WALL], camera: CAMERA }, { width: 16, height: 16, maxSeconds: 60 });
+  assert.equal(counts.uniforms.get('uHasSun'), 0);
+  progressive.update({ environment: { lightDirection: [0, 1, 0], keyIntensity: 2, keyColor: [1, 1, 1] } });
+  assert.equal(counts.uniforms.get('uHasSun'), 1);
+  progressive.dispose();
 });
 
 test('a traced subsurface block that is not three radii in range is refused with the field name', () => {

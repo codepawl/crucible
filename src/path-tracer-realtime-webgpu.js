@@ -206,12 +206,16 @@ export async function createWebGpuRealtimeTracer(scene, resolved, suppliedCanvas
      * same and some part keeps its geometry: then a part that only moved (another matrix) is followed by the denoiser and a
      * part that changed in any other way loses its history, so a moving object does not leave a trail.
      */
-    async update({ parts, environment }) {
-      if (!parts) return;
-      const sameScene = currentParts?.length === parts.length && (environment === undefined || environment === currentEnvironment);
-      const motion = sameScene ? partMotionTable(currentParts, parts) : null;
-      const followsSomePart = motion !== null && parts.some((part, index) => motion[index * PART_MOTION_FLOATS + 12] !== PART_MOTION_CHANGED);
-      await loadScene(parts, environment ?? currentEnvironment ?? {}, followsSomePart ? (followPartMotion ? motion : partMotionTable(parts, parts)) : null);
+    async update({ parts, environment } = {}) {
+      const hasParts = parts !== undefined;
+      const hasEnvironment = environment !== undefined;
+      if (!hasParts && !hasEnvironment) return;
+      const nextParts = hasParts ? parts : currentParts;
+      const nextEnvironment = hasEnvironment ? (environment ?? {}) : (currentEnvironment ?? {});
+      const sameScene = hasParts && currentParts?.length === nextParts.length && (!hasEnvironment || environment === currentEnvironment);
+      const motion = sameScene ? partMotionTable(currentParts, nextParts) : null;
+      const followsSomePart = motion !== null && nextParts.some((part, index) => motion[index * PART_MOTION_FLOATS + 12] !== PART_MOTION_CHANGED);
+      await loadScene(nextParts, nextEnvironment, followsSomePart ? (followPartMotion ? motion : partMotionTable(nextParts, nextParts)) : null);
     },
 
     /** Forgets the denoiser's history (the cache stays: it only depends on the scene). */
