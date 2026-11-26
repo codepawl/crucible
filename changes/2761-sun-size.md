@@ -1,0 +1,1 @@
+- glTF directional lights carry `extras.sunAngularRadius` and exported `world.json` skies carry the sun half-angle into file scenes for soft cascade shadows (#2761)

@@ -8,7 +8,6 @@ import { readImageDimensions } from './image-header.js';
 import { materialWithDerivedThickness } from './glass-thickness.js';
 export { ktx2WorkerConfigFor } from './compressed-texture.js';
 import { decodeGltf, isLinePrimitive, overLimit, textureSourceIndex, throwOverruns, unusablePrimitives } from './gltf-decode.js';
-import { readPunctualLights } from './gltf-lights.js';
 import { validateDocumentReferences } from './gltf-references.js';
 import { Matrix4 } from './gltf-nodes.js';
 import { textureDescriptorInfo } from './renderer.js';
@@ -1551,7 +1550,7 @@ export async function parseGltf(data, options = {}) {
       const skipped = warnings.filter(warning => warning.startsWith('Skipped '));
       throw new Error(`glTF scene contains no supported triangle meshes and no skin or animation.${skipped.length ? ` ${skipped.join(' ')}` : ''}`);
     }
-    const { lights, warnings: lightWarnings } = readPunctualLights(document, lightNodes);
+    const { lights, warnings: lightWarnings } = lightNodes.length ? (await import('./gltf-lights.js')).readPunctualLights(document, lightNodes) : { lights: {}, warnings: [] };
     warnings.push(...lightWarnings);
     const sourceNodes = new Map();
     for (const node of nodes) {

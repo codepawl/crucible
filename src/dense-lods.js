@@ -62,6 +62,7 @@ export function mergePartLights(lightsPerPart) {
   const keyed = lightsPerPart.find(lights => lights.lightDirection);
   if (keyed) {
     Object.assign(merged, { keyColor: keyed.keyColor, lightDirection: keyed.lightDirection, keyIntensity: keyed.keyIntensity });
+    if (keyed.sunAngularRadius !== undefined) merged.sunAngularRadius = keyed.sunAngularRadius;
   } else if (pointLights.length || spotLights.length) {
     merged.keyIntensity = 0;
   }

@@ -1,0 +1,1 @@
+- scene:gltf-box+lazy: split gltf-lights into a lazy chunk so gltf-box shrinks by 785 B gzip, and read extras.sunAngularRadius on directional lights

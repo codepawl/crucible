@@ -19,11 +19,23 @@ export function exposureFromStops(viewTransform, exposureStops) {
   return 2 ** exposureStops;
 }
 
+const MIN_SUN_ANGULAR_RADIUS = 0.0005;
+const MAX_SUN_ANGULAR_RADIUS = 0.2;
+
 /** The parsed world.json of a scene folder, or null when the export found no analytic sky. */
 export function readBlenderWorld(folder) {
   const worldFile = join(folder, 'world.json');
   if (!existsSync(worldFile) || !existsSync(join(folder, 'sky.hdr'))) return null;
   return JSON.parse(readFileSync(worldFile, 'utf8'));
+}
+
+/** The half-angle of the sky's sun in radians (its size is a diameter), or undefined when the world has no usable sun disc size. */
+export function sunAngularRadiusFromWorld(world) {
+  if (!world || world.sky?.sunDisc === false) return undefined;
+  const diameter = world.sky?.sunSizeRadians;
+  if (typeof diameter !== 'number' || !Number.isFinite(diameter) || diameter <= 0) return undefined;
+  const radius = diameter / 2;
+  return radius >= MIN_SUN_ANGULAR_RADIUS && radius <= MAX_SUN_ANGULAR_RADIUS ? radius : undefined;
 }
 
 /**
@@ -33,8 +45,11 @@ export function readBlenderWorld(folder) {
 export function applyBlenderWorld(description, world) {
   if (!world) return description;
   const exposure = exposureFromStops(world.viewTransform, world.exposureStops);
+  const sunAngularRadius = sunAngularRadiusFromWorld(world);
+  const renderer = description.renderer ?? {};
   return {
     ...description,
+    ...(sunAngularRadius !== undefined ? { renderer: { ...renderer, environment: { sunAngularRadius, ...renderer.environment } } } : {}),
     hdri: 'sky.hdr',
     hdriOptions: { ...description.hdriOptions, intensity: 1 },
     exposure,

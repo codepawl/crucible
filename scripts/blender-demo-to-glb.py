@@ -424,6 +424,13 @@ if sun_strength is not None:
 
 
 
+# A glTF sun has no size, so each sun lamp's half-angle goes to its extras (export_extras below) and Crucible softens the sun's
+# shadow edge by it (#2761). The lamp angle is a diameter.
+for light in bpy.data.lights:
+    if light.type == "SUN" and light.angle > 0:
+        light["sunAngularRadius"] = light.angle / 2
+
+
 SKY_BAKE_WIDTH = 2048
 SKY_BAKE_HEIGHT = 1024
 
@@ -492,7 +499,7 @@ bake_world_sky(output_directory)
 join_realized_instances()
 bpy.ops.export_scene.gltf(
     filepath=output_directory + "/scene.glb", export_format="GLB", export_apply=True, export_gpu_instances=True,
-    export_image_format="JPEG", export_jpeg_quality=85, export_cameras=False, export_lights=True,
+    export_image_format="JPEG", export_jpeg_quality=85, export_cameras=False, export_lights=True, export_extras=True,
     export_import_convert_lighting_mode="COMPAT", export_vertex_color="MATERIAL",
     use_renderable=True, use_visible=True, export_yup=True, export_texcoords=True, export_normals=True,
 )
