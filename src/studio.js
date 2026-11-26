@@ -21,17 +21,11 @@ import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGr
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
 import { createStudioSettings } from './studio-settings.js';
+import { createNumberPadNotice, isNumpadKeyEvent, resolveStudioKeyAction } from './studio-numpad.js';
 import { withPresetOverrides } from './studio-key-overrides.js';
 import { detectStudioHardware, gatherStudioHardwareInputs, rendererChangeFor, resolveStudioPerformanceTier, studioViewportSettingsFor } from './studio-hardware.js';
 import { createStudioDiagnostics, describeStudioEnvironment, watchStudioDiagnostics } from './studio-diagnostics.js';
-import {
-  STUDIO_GIZMO_PIXELS,
-  STUDIO_PREFERENCE_CHOICES,
-  STUDIO_PREFERENCE_DEFAULTS,
-  loadStudioPreferences,
-  normalizeStudioPreferences,
-  saveStudioPreferences,
-} from './studio-preferences.js';
+import { STUDIO_GIZMO_PIXELS, STUDIO_PREFERENCE_CHOICES, STUDIO_PREFERENCE_DEFAULTS, loadStudioPreferences, normalizeStudioPreferences, saveStudioPreferences } from './studio-preferences.js';
 import { createOutlineMask } from './studio-outline-mask.js';
 import { createPanelGrips } from './studio-panel-grips.js';
 import { leadWithActionIcon, STUDIO_ACTION_ICONS, STUDIO_BRAND_ICON_NAMES, STUDIO_FILLED_ICON_NAMES, STUDIO_ICON_ACCENTS, STUDIO_LIGHT_ICONS, STUDIO_NOTICE_ICONS, STUDIO_PRIMITIVE_ICONS, studioIconPath } from './studio-icons.js';
@@ -55,38 +49,10 @@ import { editIconName } from './studio-edit-names.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, frameFailureReason, watchContextLoss } from './studio-context-loss.js';
 import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgentEdit, diffRecipeNodes } from './studio-agent-presence.js';
-import {
-  STUDIO_LENS_PRESETS,
-  STUDIO_MATERIAL_PRESETS,
-  STUDIO_PRIMITIVE_GROUPS,
-  STUDIO_PRIMITIVES,
-  primitiveGeometrySpec,
-  STUDIO_TABS,
-  STUDIO_TEMPLATES,
-  STUDIO_TOOLS,
-  STUDIO_VIEW_PRESETS,
-  buildTemplateRecipe,
-} from './studio-templates.js';
-import {
-  createStudioController,
-  hasAnimatedData,
-  linearRgbToHex,
-  quaternionToEulerDegrees,
-  roundValue,
-} from './studio-controller.js';
+import { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, primitiveGeometrySpec, STUDIO_TABS, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, buildTemplateRecipe } from './studio-templates.js';
+import { createStudioController, hasAnimatedData, linearRgbToHex, quaternionToEulerDegrees, roundValue } from './studio-controller.js';
 
-export {
-  STUDIO_LENS_PRESETS,
-  STUDIO_MATERIAL_PRESETS,
-  STUDIO_PRIMITIVE_GROUPS,
-  STUDIO_PRIMITIVES,
-  STUDIO_TABS,
-  STUDIO_TEMPLATES,
-  STUDIO_TOOLS,
-  STUDIO_VIEW_PRESETS,
-  buildTemplateRecipe,
-  createStudioController,
-};
+export { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, STUDIO_TABS, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, buildTemplateRecipe, createStudioController };
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
 const STATUS_DEFAULT_MILLISECONDS = 3400;
@@ -1394,10 +1360,10 @@ export function createStudio(container, {
     attributes: { role: 'img', 'aria-label': 'Reloads when the agent edits this file' },
   });
   // The keymap in force. Choosing another preset swaps it and every place that shows a key is drawn again.
-  const keymapOf = () => resolveKeymapPreset(preferences.keymap, preferences.keyOverrides[preferences.keymap]);
-  const keymapSignature = () => JSON.stringify([preferences.keymap, preferences.keyOverrides[preferences.keymap] ?? {}]);
+  const keymapOf = () => resolveKeymapPreset(preferences.keymap, preferences.keyOverrides[preferences.keymap], { numberPad: preferences.numberPad });
+  const keymapSignature = () => JSON.stringify([preferences.keymap, preferences.numberPad, preferences.keyOverrides[preferences.keymap] ?? {}]);
   let keymap = keymapOf();
-  let appliedKeymap = keymapSignature();
+  let appliedKeymap = '';
   const menuKeyViews = [];
   const keyTooltipViews = [];
   const setShortcutLabel = (element, label) => {
@@ -2310,10 +2276,22 @@ export function createStudio(container, {
     onRestore: () => restoreDraft(),
     onDiscard: () => discardDraft(),
   });
+  const numpadNotice = createNumberPadNotice({
+    documentReference,
+    createIcon: iconName => createIcon(documentReference, iconName),
+    onSwitch: () => {
+      numpadNotice.hide();
+      setPreferences({ numberPad: true, numberPadNoticeShown: true });
+      announce('View keys moved to the number pad');
+    },
+    onKeep: () => {
+      numpadNotice.hide();
+    },
+  });
   const stopWatchingDiagnostics = watchStudioDiagnostics(studioDiagnostics, { windowReference: documentReference.defaultView, canvas });
   const stopWatchingContextLoss = watchContextLoss(canvas, { onLost: pauseForContextLoss, onRestored: recoverFromContextLoss });
   const exportFrameGuide = createElement(documentReference, 'div', { className: 'crucible-studio-export-guide', attributes: { 'aria-hidden': 'true' } });
-  viewportElement.append(canvas, exportFrameGuide, maskFilterSvg, gizmoSvg, agentPresence.element, viewWidget.element, readout, hintBar, statusRegion, bakeMark.element, dropOverlay, pausedNotice.element, postPassNotice.element, draftNotice.element);
+  viewportElement.append(canvas, exportFrameGuide, maskFilterSvg, gizmoSvg, agentPresence.element, viewWidget.element, readout, hintBar, statusRegion, bakeMark.element, dropOverlay, pausedNotice.element, postPassNotice.element, draftNotice.element, numpadNotice.element);
 
   // Right 4-Tab Inspector Dock (Modern Web Guidance: tabs pattern)
   const tabLabels = { node: 'Object', modifiers: 'Modifiers', material: 'Material', look: 'Look', camera: 'Camera', export: 'Export' };
@@ -3046,6 +3024,7 @@ export function createStudio(container, {
     keyboard: {
       getKeymap: () => keymap,
       getPresetId: () => preferences.keymap,
+      getNumberPad: () => preferences.numberPad,
       getOverrides: () => preferences.keyOverrides[preferences.keymap] ?? {},
       onOverridesChange: presetOverrides => setPreference('keyOverrides', withPresetOverrides(preferences.keyOverrides, preferences.keymap, presetOverrides)),
     },
@@ -3098,6 +3077,7 @@ export function createStudio(container, {
     syncSnapUi();
     applyTheme();
     applyPerformance();
+    if (preferences.numberPad) numpadNotice.hide();
     if (setup.dialog.open) setup.refresh();
     root.dataset.motion = preferences.motion;
     root.dataset.readout = preferences.readoutVisible ? 'on' : 'off';
@@ -3124,6 +3104,14 @@ export function createStudio(container, {
   function refreshKeyLabels() {
     for (const { element, actionId } of menuKeyViews) setShortcutLabel(element, keyLabel(keymap, actionId));
     for (const { button, iconName, describe } of keyTooltipViews) setButtonIcon(button, iconName, describe());
+    const viewTitles = { front: ['Front view', 'view.front'], right: ['Right view', 'view.right'], top: ['Top view', 'view.top'], isometric: ['Isometric view', null] };
+    for (const button of viewPresetButtons) {
+      const [labelText, actionId] = viewTitles[button.dataset.view];
+      const shortcut = actionId ? keyLabel(keymap, actionId) : '';
+      button.title = shortcut ? `${labelText} (${shortcut})` : labelText;
+    }
+    const projectionShortcut = keyLabel(keymap, 'view.projection');
+    projectionPillButton.title = projectionShortcut ? `Perspective / Orthographic (${projectionShortcut})` : 'Perspective / Orthographic';
     setButtonIcon(playButton, playing ? 'pause' : 'play', playTooltip(playing));
     fillShortcutsGrid();
     syncHintBar();
@@ -5839,7 +5827,7 @@ export function createStudio(container, {
   }
 
   // In edit mode these keys of the normal context still work; every other one would act on the whole object.
-  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'snap.toggle', 'view.frame', 'view.top', 'view.projection', 'view.properties', 'view.seeThrough']);
+  const MESH_EDIT_PASS_THROUGH = new Set(['edit.undo', 'edit.redo', 'file.open', 'file.save', 'file.saveAs', 'settings.open', 'help.shortcuts', 'snap.toggle', 'view.frame', 'view.front', 'view.right', 'view.top', 'view.projection', 'view.properties', 'view.seeThrough']);
   const meshKeyHandlers = {
     'mesh.leave': event => {
       event.preventDefault();
@@ -6077,21 +6065,18 @@ export function createStudio(container, {
       return;
     }
     const editingMesh = Boolean(meshEditor?.active);
-    const meshMatch = editingMesh ? findKeymapAction(keymap, event, 'mesh') : null;
-    const match = meshMatch ?? findKeymapAction(keymap, event, 'normal');
-    if (!match) {
-      return;
+    const { match, fromMeshContext } = resolveStudioKeyAction(keymap, event, editingMesh, findKeymapAction, MESH_EDIT_PASS_THROUGH);
+    const dialogIsOpen = recipeDialog.open || shortcutsDialog.open || settingsDialog.open || setup.dialog.open || Boolean(newSceneDialogs?.dialogs.some(dialog => dialog.open));
+    if (!event.repeat && !dialogIsOpen && isNumpadKeyEvent(event) && !preferences.numberPad && !preferences.numberPadNoticeShown) {
+      setPreferences({ numberPadNoticeShown: true });
+      numpadNotice.show();
     }
-    // A Ctrl key works over an open dialog; a plain key does not.
-    const dialogIsOpen = recipeDialog.open || shortcutsDialog.open || settingsDialog.open || Boolean(newSceneDialogs?.dialogs.some(dialog => dialog.open));
-    if (dialogIsOpen && !match.binding.ctrl) {
-      return;
-    }
+    if (!match || (dialogIsOpen && !match.binding.ctrl)) return;
     if (shotLocksAction(match.actionId)) {
       if (match.binding.ctrl) event.preventDefault();
       return;
     }
-    if (meshMatch) {
+    if (fromMeshContext) {
       meshKeyHandlers[match.actionId](event, match.binding);
       return;
     }

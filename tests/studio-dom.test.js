@@ -3042,6 +3042,8 @@ test('Settings change the snap, the handles and what the viewport shows, and are
     theme: 'system',
     performance: 'automatic',
     keymap: 'crucible',
+    numberPad: false,
+    numberPadNoticeShown: false,
     keyOverrides: {},
     motion: 'system',
     zoomDirection: 'normal',
@@ -5090,6 +5092,8 @@ test('Studio does not open the setup on its own, and Skip and Done both mark it 
   setupButton(ui, 'Next').click();
   setupButton(ui, 'Next').click();
   setupButton(ui, 'Next').click();
+  setupButton(ui, 'Next').click();
+  setupButton(ui, 'Next').click();
   setupButton(ui, 'Done').click();
   assert.equal(ui.studio.setupDone, true);
 
@@ -5112,9 +5116,12 @@ test('the setup shows one group a page, with Back, Next and Done (#2847)', testC
   setupButton(ui, 'Next').click();
   setupButton(ui, 'Next').click();
   setupButton(ui, 'Next').click();
+  setupButton(ui, 'Next').click();
   assert.deepEqual(visibleTitles(), ['Work with an AI agent']);
   assert.equal(setupButton(ui, 'Next').hidden, true);
   assert.equal(setupButton(ui, 'Done').hidden, false);
+  setupButton(ui, 'Back').click();
+  assert.deepEqual(visibleTitles(), ['Number pad']);
   setupButton(ui, 'Back').click();
   assert.deepEqual(visibleTitles(), ['Keys']);
   setupButton(ui, 'Skip').click();
@@ -5282,7 +5289,7 @@ test('the AI agent step uses a different icon for each part: tab, both cards, si
   withHostAgent(testContext);
   const ui = mountStudio(testContext);
   ui.studio.openSetup();
-  const tabIcon = iconPathOf(ui.root.querySelectorAll('.crucible-studio-setup-step')[4]);
+  const tabIcon = iconPathOf(ui.root.querySelectorAll('.crucible-studio-setup-step')[5]);
   const cardIcons = agentCards(ui).map(card => iconPathOf(card.querySelector('.crucible-studio-setup-agent-head')));
   const signInIcon = iconPathOf(setupButton(ui, 'Sign in'));
   const copyIcon = iconPathOf(setupButton(ui, 'Copy prompt'));
@@ -5312,13 +5319,13 @@ test('the setup names its steps in a row, jumps between them and rests focus on 
   const ui = mountStudio(testContext);
   const stepNames = () => ui.root.querySelectorAll('.crucible-studio-setup-step').map(button => button.textContent);
   ui.studio.openSetup();
-  assert.deepEqual(stepNames(), ['Theme', 'Performance', 'Modelling', 'Keys', 'AI agent']);
+  assert.deepEqual(stepNames(), ['Theme', 'Performance', 'Modelling', 'Keys', 'Number pad', 'AI agent']);
   assert.equal(ui.dom.document.activeElement, ui.root.querySelector('.crucible-studio-setup-dialog'), 'the dialog holds the focus, so no control starts with a ring');
   const performanceStep = ui.root.querySelectorAll('.crucible-studio-setup-step')[1];
   performanceStep.click();
   assert.equal(performanceStep.getAttribute('aria-current'), 'step');
   assert.equal(ui.root.querySelectorAll('.crucible-studio-setup-group').filter(group => !group.inert).length, 1);
-  ui.root.querySelectorAll('.crucible-studio-setup-step')[4].click();
+  ui.root.querySelectorAll('.crucible-studio-setup-step')[5].click();
   assert.equal(setupButton(ui, 'Done').hidden, false);
 });
 
@@ -5543,7 +5550,7 @@ test('the setup has a Keys step after Modelling with a card per program, each wi
   const ui = mountStudio(testContext);
   ui.studio.openSetup();
   const names = ui.root.querySelectorAll('.crucible-studio-setup-step').map(button => button.textContent);
-  assert.deepEqual(names.slice(2, 5), ['Modelling', 'Keys', 'AI agent']);
+  assert.deepEqual(names.slice(2, 6), ['Modelling', 'Keys', 'Number pad', 'AI agent']);
   const expectedKeys = { crucible: ['G', 'R', 'S', 'F'], maya: ['W', 'E', 'R', 'F'], cinema4d: ['E', 'R', 'T', 'O'] };
   const expectedLabels = { crucible: 'Blender', maya: 'Maya', cinema4d: 'Cinema 4D' };
   for (const [preset, keys] of Object.entries(expectedKeys)) {

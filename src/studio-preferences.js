@@ -93,6 +93,8 @@ export const STUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   theme: 'system',
   performance: 'automatic',
   keymap: 'crucible',
+  numberPad: false,
+  numberPadNoticeShown: false,
   // What a person changed in each keymap preset, by preset: { crucible: { 'tool.select': { key: 'v' } } }.
   keyOverrides: Object.freeze({}),
   motion: 'system',
@@ -125,7 +127,7 @@ export function normalizeStudioPreferences(value) {
     if (name === 'propertyGroupsOpen') {
       preferences[name] = propertyGroupStatesOf(candidate);
     } else if (name === 'keyOverrides') {
-      preferences[name] = normalizeKeyOverrides(candidate);
+      // Normalized below once `numberPad` has been resolved.
     } else if (sizeInRange) {
       if (Number.isFinite(candidate)) {
         preferences[name] = sizeInRange(candidate);
@@ -138,6 +140,7 @@ export function normalizeStudioPreferences(value) {
       preferences[name] = candidate;
     }
   }
+  preferences.keyOverrides = normalizeKeyOverrides(value.keyOverrides, { numberPad: preferences.numberPad });
   return preferences;
 }
 

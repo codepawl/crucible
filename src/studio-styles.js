@@ -1,6 +1,6 @@
 import { SCRUB_THUMB_WIDTH } from './studio-timeline-keys.js';
 import { MODIFIER_CSS } from './studio-modifier-styles.js';
-
+import { STUDIO_NUMPAD_CSS } from './studio-numpad.js';
 // Studio is one full-bleed viewport with floating islands on top: the scene keeps the screen.
 export const STUDIO_CSS = `
 .crucible-studio {
@@ -3646,4 +3646,4 @@ export const STUDIO_CSS = `
     outline: 2px solid Highlight;
   }
 }
-${MODIFIER_CSS}`;
+${MODIFIER_CSS}${STUDIO_NUMPAD_CSS}`;

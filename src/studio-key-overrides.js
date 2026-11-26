@@ -44,7 +44,7 @@ export function bindingFromKeyEvent(event) {
   const modifiers = {};
   if (event.ctrlKey || event.metaKey) modifiers.ctrl = true;
   if (event.altKey) modifiers.alt = true;
-  const physicalKey = event.altKey && /^(Key|Digit)/.test(event.code ?? '');
+  const physicalKey = (event.altKey && /^(Key|Digit)/.test(event.code ?? '')) || /^Numpad/.test(event.code ?? '');
   if (physicalKey) return { code: event.code, shift: Boolean(event.shiftKey), ...modifiers };
   const isSymbol = event.key.length === 1 && event.key.toLowerCase() === event.key.toUpperCase() && !/\d/.test(event.key) && event.key !== ' ';
   const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
@@ -75,14 +75,14 @@ export function findBindingHolders(keymap, actionId, binding) {
   return keymap.actions.filter(item => item.id !== actionId && item.context === target.context && item.bindings.some(held => bindingsOverlap(held, binding)));
 }
 
-function presetBindingsOf(presetId, actionId) {
-  return resolveKeymapPreset(presetId).actions.find(item => item.id === actionId).bindings;
+function presetBindingsOf(presetId, actionId, options) {
+  return resolveKeymapPreset(presetId, {}, options).actions.find(item => item.id === actionId).bindings;
 }
 
 /** `overrides` with the action set to `bindings` (a list, or null for no key). A result equal to the preset's own keys removes the override. */
-export function withActionBindings(presetId, overrides, actionId, bindings) {
+export function withActionBindings(presetId, overrides, actionId, bindings, options) {
   const next = { ...overrides };
-  const presetBindings = presetBindingsOf(presetId, actionId);
+  const presetBindings = presetBindingsOf(presetId, actionId, options);
   const equalsPreset = bindings === null ? presetBindings.length === 0 : sameBindings(bindings, presetBindings);
   if (equalsPreset) delete next[actionId];
   else if (bindings === null) next[actionId] = null;
@@ -98,13 +98,13 @@ export function withoutActionOverride(overrides, actionId) {
 }
 
 /** The overrides of a swap: the action takes `binding`, and the first holder keeps its other keys and takes the action's old ones. */
-export function withSwappedBindings(presetId, overrides, keymap, actionId, binding, holders) {
+export function withSwappedBindings(presetId, overrides, keymap, actionId, binding, holders, options) {
   const previous = keymap.actions.find(item => item.id === actionId).bindings;
-  let next = withActionBindings(presetId, overrides, actionId, [binding]);
+  let next = withActionBindings(presetId, overrides, actionId, [binding], options);
   holders.forEach((holder, index) => {
     const kept = holder.bindings.filter(held => !bindingsOverlap(held, binding));
     const given = index === 0 ? [...kept, ...previous] : kept;
-    next = withActionBindings(presetId, next, holder.id, given.length > 0 ? given : null);
+    next = withActionBindings(presetId, next, holder.id, given.length > 0 ? given : null, options);
   });
   return next;
 }
@@ -121,7 +121,7 @@ function cleanReplacement(actionId, replacement) {
   return Array.isArray(replacement) ? validated : validated[0];
 }
 
-function cleanPresetOverrides(presetId, candidate) {
+function cleanPresetOverrides(presetId, candidate, options) {
   const clean = {};
   if (!isPlainObject(candidate)) return clean;
   for (const [actionId, replacement] of Object.entries(candidate)) {
@@ -133,7 +133,7 @@ function cleanPresetOverrides(presetId, candidate) {
     }
   }
   try {
-    resolveKeymapPreset(presetId, clean);
+    resolveKeymapPreset(presetId, clean, options);
   } catch {
     // Entries that share a key cannot all hold: the preset goes back to its own keys.
     return {};
@@ -142,11 +142,11 @@ function cleanPresetOverrides(presetId, candidate) {
 }
 
 /** The stored key changes that are sound, per preset. Unknown presets, unknown actions, malformed or refused bindings and clashes are dropped. */
-export function normalizeKeyOverrides(value) {
+export function normalizeKeyOverrides(value, options) {
   const result = {};
   if (!isPlainObject(value)) return result;
   for (const presetId of KEYMAP_PRESET_IDS) {
-    const clean = cleanPresetOverrides(presetId, value[presetId]);
+    const clean = cleanPresetOverrides(presetId, value[presetId], options);
     if (Object.keys(clean).length > 0) result[presetId] = clean;
   }
   return result;
