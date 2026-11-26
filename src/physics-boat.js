@@ -1,4 +1,4 @@
-import { boundedNumber, rejectUnknownKeys, rotateByQuaternion } from './physics-values.js';
+import { boundedInteger, boundedNumber, rejectUnknownKeys, rotateByQuaternion } from './physics-values.js';
 
 // A boat on the floating-body code: throttle pushes the stern along the hull and the rudder pushes it sideways, both as forces at
 // the stern point, so the hull still pitches and rolls on the waves. Both scale with how much of the hull is in the water, and a
@@ -6,10 +6,13 @@ import { boundedNumber, rejectUnknownKeys, rotateByQuaternion } from './physics-
 // functions, and the controls are either keyframes (a bake) or the last values a controller set (live).
 
 export const BOAT_LIMITS = Object.freeze({ maxControls: 256 });
+export const FORWARD_AXES = Object.freeze({ '+x': [1, 0, 0], '-x': [-1, 0, 0], '+z': [0, 0, 1], '-z': [0, 0, -1] });
 
 const BOAT_KEYS = ['thrust', 'rudder', 'keelDrag', 'stern', 'forward', 'controls', 'wake'];
-const WAKE_KEYS = ['width', 'strength', 'height', 'lifetime', 'slamSpeed', 'slamForward', 'slamDecay'];
-const FORWARD_AXES = Object.freeze({ '+x': [1, 0, 0], '-x': [-1, 0, 0], '+z': [0, 0, 1], '-z': [0, 0, -1] });
+const WAKE_KEYS = ['width', 'strength', 'height', 'lifetime', 'slamSpeed', 'slamForward', 'slamDecay', 'bowSpray'];
+const BOW_SPRAY_KEYS = ['seed', 'count', 'size', 'lifetime', 'speed', 'opacity', 'color'];
+const DEFAULT_BOW_SPRAY_COLOR = [0.92, 0.96, 1];
+const MAX_SPRAY_SEED = 0xffffffff;
 const DEFAULT_THRUST = 4;
 const DEFAULT_RUDDER = 1;
 const DEFAULT_KEEL_DRAG = 4;
@@ -38,18 +41,51 @@ function normalizeControls(controls, label) {
   });
 }
 
+function normalizeSprayColor(value, label) {
+  if (value === undefined) return [...DEFAULT_BOW_SPRAY_COLOR];
+  if (!Array.isArray(value) || value.length !== 3) {
+    throw new TypeError(`${label} must be [r, g, b] from 0 to 1, such as [0.92, 0.96, 1]`);
+  }
+  return Array.from(value, (channel, axis) => boundedNumber(channel, `${label}[${axis}]`, 0, 1, DEFAULT_BOW_SPRAY_COLOR[axis]));
+}
+
+function normalizeBowSpray(input, slamEnabled, label) {
+  if (input === undefined) {
+    return slamEnabled ? { seed: 1, count: 160, size: 0.24, lifetime: null, speed: 2.8, opacity: 0.72, color: [...DEFAULT_BOW_SPRAY_COLOR] } : null;
+  }
+  if (input === false || input === null) return null;
+  if (input !== true && (typeof input !== 'object' || Array.isArray(input))) {
+    throw new TypeError(`${label} must be true, false, or an object { seed, count, size, lifetime, speed, opacity, color }`);
+  }
+  const spec = input === true ? {} : input;
+  rejectUnknownKeys(spec, BOW_SPRAY_KEYS, label);
+  return {
+    seed: boundedInteger(spec.seed ?? 1, `${label}.seed`, 0, MAX_SPRAY_SEED, 1),
+    count: boundedInteger(spec.count ?? 160, `${label}.count`, 1, 512, 160),
+    size: boundedNumber(spec.size ?? 0.24, `${label}.size`, 0.02, 2, 0.24),
+    lifetime: spec.lifetime === undefined || spec.lifetime === null ? null : boundedNumber(spec.lifetime, `${label}.lifetime`, 0.05, 5, 0.7),
+    speed: boundedNumber(spec.speed ?? 2.8, `${label}.speed`, 0, 30, 2.8),
+    opacity: boundedNumber(spec.opacity ?? 0.72, `${label}.opacity`, 0.01, 1, 0.72),
+    color: normalizeSprayColor(spec.color, `${label}.color`),
+  };
+}
+
 function normalizeBoatWake(input, label) {
   const spec = input === true ? {} : input;
   rejectUnknownKeys(spec, WAKE_KEYS, label);
+  let slamSpeed = spec.slamSpeed === undefined || spec.slamSpeed === null ? null : boundedNumber(spec.slamSpeed, `${label}.slamSpeed`, 0.1, 20, 1.5);
+  const bowSpray = normalizeBowSpray(spec.bowSpray, slamSpeed !== null, `${label}.bowSpray`);
+  if (bowSpray !== null && slamSpeed === null) slamSpeed = 1.5;
   return {
     width: boundedNumber(spec.width ?? 1.2, `${label}.width`, 0.05, 100, 1.2),
     strength: boundedNumber(spec.strength ?? 1, `${label}.strength`, 0, 1, 1),
     height: boundedNumber(spec.height ?? 0.06, `${label}.height`, 0, 2, 0.06),
     lifetime: boundedNumber(spec.lifetime ?? 5, `${label}.lifetime`, 0.5, 60, 5),
     // Slam foam is opt-in so a recipe without slamSpeed keeps its look: null means no bursts.
-    slamSpeed: spec.slamSpeed === undefined || spec.slamSpeed === null ? null : boundedNumber(spec.slamSpeed, `${label}.slamSpeed`, 0.1, 20, 1.5),
+    slamSpeed,
     slamForward: boundedNumber(spec.slamForward ?? 3, `${label}.slamForward`, 0.1, 50, 3),
     slamDecay: boundedNumber(spec.slamDecay ?? 0.7, `${label}.slamDecay`, 0.05, 10, 0.7),
+    bowSpray,
   };
 }
 

@@ -99,6 +99,17 @@ const SLAM_CLOSING_DEAD_ZONE = 0.5;
 const SLAM_FORWARD_DEAD_ZONE = 0.3;
 
 /**
+ * Instantaneous slam factor (0 to 1) for a hull closing speed and forward speed in m/s.
+ * Below 0.5 m/s closing and 0.3 m/s forward count as ripple and drift, so a hull at rest or riding the swell makes 0.
+ */
+export function slamPulse({ closingSpeed, forwardSpeed, fullSpeed, fullForward }) {
+  const closing = Math.min(1, Math.max(0, closingSpeed - SLAM_CLOSING_DEAD_ZONE) / fullSpeed);
+  if (closing <= 0) return 0;
+  const forward = Math.min(1, Math.max(0, forwardSpeed - SLAM_FORWARD_DEAD_ZONE) / fullForward);
+  return closing * forward;
+}
+
+/**
  * Foam strength (0 to 1) left by hull slams at `time`. `closingSpeedAt(moment)` is how fast the hull closes on the water surface
  * under it, in m/s (0 when it is rising away). `forwardSpeedAt(moment)` is the hull's speed over the water. Closing speed above 0.5 m/s and forward speed above 0.3 m/s count (below that is ripple and drift); `fullSpeed` of closing at `fullForward` of forward speed makes full foam, each scaling it linearly, so a hull at rest makes none, and the foam fades by e every
  * `decay` seconds, so a bow that slams down bursts white and then calms, and a hull riding the swell makes none.
@@ -107,9 +118,8 @@ export function slamStrength({ closingSpeedAt, forwardSpeedAt, time, decay, full
   const earliest = Math.max(0, time - SLAM_MEMORY_LIFETIMES * decay);
   let strongest = 0;
   for (let moment = time; moment >= earliest; moment -= step) {
-    const closing = Math.min(1, Math.max(0, closingSpeedAt(moment) - SLAM_CLOSING_DEAD_ZONE) / fullSpeed);
-    const forward = closing > 0 ? Math.min(1, Math.max(0, forwardSpeedAt(moment) - SLAM_FORWARD_DEAD_ZONE) / fullForward) : 0;
-    const fresh = closing * forward * Math.exp(-(time - moment) / decay);
+    const pulse = slamPulse({ closingSpeed: closingSpeedAt(moment), forwardSpeed: forwardSpeedAt(moment), fullSpeed, fullForward });
+    const fresh = pulse * Math.exp(-(time - moment) / decay);
     strongest = Math.max(strongest, fresh);
   }
   return strongest < SLAM_FLOOR ? 0 : strongest;

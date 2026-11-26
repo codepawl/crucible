@@ -6,7 +6,9 @@ import { bakePhysicsScene, loadPhysicsEngine, physicsEngineLoaded, setPhysicsMod
 import { normalizeForceFields } from './force-fields.js';
 import { normalizeFloat, normalizeOcean, seaHeightAt } from './physics-buoyancy.js';
 import { rotateByQuaternion } from './physics-values.js';
+import { FORWARD_AXES } from './physics-boat.js';
 import { MAX_WAKE_POINTS, slamStrength, wakeTrail } from './ocean-wake.js';
+import { createBoatBowSpray } from './boat-bow-spray.js';
 import { AGENT_SCENE_CAPABILITIES, PHYSICS_BODY_SHAPES } from './agent-scene-capabilities.js';
 
 export { loadPhysicsEngine, physicsEngineLoaded, setPhysicsModuleLoader };
@@ -632,9 +634,12 @@ export function physicsBakeKey(recipe, geometryRecords) {
 function createBoatWake(physics, scene, oceanInput) {
   const body = physics.bodies.find(candidate => candidate.float?.boat?.wake);
   if (!body) return null;
-  const { width, strength, height, lifetime, slamSpeed, slamForward, slamDecay } = body.float.boat.wake;
+  const wake = body.float.boat.wake;
+  const { width, strength, height, lifetime, slamSpeed, slamForward, slamDecay } = wake;
   const sea = normalizeOcean(oceanInput);
   const stern = scene.sternOf(body.node);
+  const forwardAxis = FORWARD_AXES[body.float.boat.forward];
+  const rightAxis = [-forwardAxis[2], 0, forwardAxis[0]];
   const bodyOffset = scene.bodyIndex(body.node) * 7;
   const pose = new Float32Array(scene.bodyNames.length * 7);
   const sternAt = time => {
@@ -664,6 +669,16 @@ function createBoatWake(physics, scene, oceanInput) {
   };
   const closingSpeedAt = time => Math.max(0, (bowGapAt(Math.max(0, time - scene.timestep)) - bowGapAt(time)) / scene.timestep);
   const forwardSpeedAt = time => sample(time).speed;
+  const bowAt = time => {
+    const hullSpeed = forwardSpeedAt(time);
+    scene.sample(time, pose);
+    const rotation = { x: pose[bodyOffset + 3], y: pose[bodyOffset + 4], z: pose[bodyOffset + 5], w: pose[bodyOffset + 6] };
+    const rotated = rotateByQuaternion([-stern[0], -stern[1], -stern[2]], rotation);
+    const bow = [pose[bodyOffset] + rotated[0], pose[bodyOffset + 1] + rotated[1], pose[bodyOffset + 2] + rotated[2]];
+    const forward = rotateByQuaternion(forwardAxis, rotation);
+    const right = rotateByQuaternion(rightAxis, rotation);
+    return { bow, forward, right, seaLevel: sea.level + seaHeightAt(sea, bow[0], bow[2], time), hullSpeed };
+  };
   const slamAt = time => strength * slamStrength({ closingSpeedAt, forwardSpeedAt, time, decay: slamDecay, fullSpeed: slamSpeed, fullForward: slamForward, step: scene.timestep * 2 });
   // White water where the hull meets the sea: one point at the middle of the hull and one at the bow (the stern is the head of the trail).
   const hullCollar = (time, trailStrength) => {
@@ -682,13 +697,24 @@ function createBoatWake(physics, scene, oceanInput) {
       [bow[0], bow[1], Math.max(bow[2], slam), bow[3] * (1 + 3 * slam)],
     ];
   };
-  return (geometryId, time) => {
+  const wakeField = (geometryId, time) => {
     if (geometryId !== physics.ocean.geometry) return undefined;
     const at = Math.min(time, scene.duration);
     const trail = wakeTrail({ sample: sampleWithRunIn, time: at, lifetime, width, strength, count: MAX_WAKE_POINTS - 2 });
     const underway = trail.length > 0 ? trail[0][2] : 0;
     return { wake: { points: [...burstCollar(at, hullCollar(at, underway)), ...trail], height } };
   };
+  const bowSpray = createBoatBowSpray({
+    bodyNode: body.node,
+    duration: scene.duration,
+    halfBeam: Math.max(0.25, width * 0.35),
+    halfLength: Math.hypot(stern[0], stern[1], stern[2]),
+    bowAt,
+    closingSpeedAt,
+    forwardSpeedAt,
+    wake,
+  });
+  return { wakeField, bowSpray };
 }
 
 /**
@@ -709,10 +735,20 @@ export function bakeAgentPhysics(physics, recipe, geometries) {
     return { translation: pose.subarray(offset, offset + 3), rotation: pose.subarray(offset + 3, offset + 7) };
   };
   const seaWarning = physics.ocean ? seaLevelWarning(physics.ocean, drawnSeaLevel(physics.ocean, recipe, geometries)) : null;
+  const boatWake = createBoatWake(physics, scene, definition.ocean);
   let reportCache = null;
   return Object.freeze({
     duration: physics.duration,
-    wakeField: createBoatWake(physics, scene, definition.ocean),
+    wakeField: boatWake?.wakeField ?? null,
+    sprayPart: (time, camera) => boatWake?.bowSpray?.part(time, camera) ?? null,
+    withSprayPart(parts, time, camera, previousParts) {
+      const spray = boatWake?.bowSpray?.part(time, camera) ?? null;
+      if (!spray) return parts;
+      if (previousParts.length === parts.length + 1 && previousParts.at(-1) === spray && parts.every((part, index) => part === previousParts[index])) {
+        return previousParts;
+      }
+      return Object.freeze([...parts, spray]);
+    },
     sample(time) {
       scene.sample(time, pose);
       ragdoll?.writePatches(readBodyPose, ragdollTable);
