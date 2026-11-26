@@ -6,6 +6,9 @@ const MIN_SPOT_ANGLE = 0.01;
 const MAX_SPOT_ANGLE = Math.PI / 2 - 0.01;
 const DEFAULT_OUTER_CONE_ANGLE = Math.PI / 4;
 const MIN_LIGHT_RANGE = 0.001;
+// The sun's half-angle a directional light may carry in extras.sunAngularRadius (the range scene_set_sun accepts).
+const MIN_SUN_ANGULAR_RADIUS = 0.0005;
+const MAX_SUN_ANGULAR_RADIUS = 0.2;
 
 function lightLabel(definition, index) {
   return definition.name ? `"${definition.name}"` : `light ${index}`;
@@ -29,10 +32,22 @@ function spotCone(definition) {
   return { angle, penumbra: (outer - inner) / outer };
 }
 
+/** The sun's half-angle in radians that an exporter wrote to a directional light's extras, or undefined when it wrote none or a bad one. */
+function readSunAngularRadius(definition, label, warnings) {
+  const radius = definition.extras?.sunAngularRadius;
+  if (radius === undefined) return undefined;
+  if (typeof radius !== 'number' || !Number.isFinite(radius) || radius < MIN_SUN_ANGULAR_RADIUS || radius > MAX_SUN_ANGULAR_RADIUS) {
+    warnings.push(`Ignored the sun size of ${label}: extras.sunAngularRadius must be a half-angle in radians from ${MIN_SUN_ANGULAR_RADIUS} to ${MAX_SUN_ANGULAR_RADIUS}.`);
+    return undefined;
+  }
+  return radius;
+}
+
 /**
  * Maps KHR_lights_punctual onto the renderer's existing light options. Point lights and spot lights go to
  * pointLights and spotLights up to the renderer's limits. glTF intensity is candela for both, as in the renderer.
- * The renderer has one directional key light, so the first directional light sets keyColor and lightDirection.
+ * The renderer has one directional key light, so the first directional light sets keyColor and lightDirection, and
+ * sunAngularRadius when its extras carry one (the soft edge of the sun's shadow).
  * A file with lights also returns fillIntensity 0, and keyIntensity 0 when it has no directional light.
  * Every light that does not fit is skipped with a warning.
  * @param {object} document the glTF JSON
@@ -74,7 +89,8 @@ export function readPunctualLights(document, lightNodes) {
         continue;
       }
       const scaled = color.map(value => Math.min(value * intensity, MAX_KEY_COLOR));
-      key = { label, keyColor: scaled, lightDirection: towardLight, keyIntensity: 1 };
+      const sunAngularRadius = readSunAngularRadius(definition, label, warnings);
+      key = { label, keyColor: scaled, lightDirection: towardLight, keyIntensity: 1, sunAngularRadius };
       continue;
     }
     if (definition.type !== 'point' && definition.type !== 'spot') {
@@ -112,6 +128,7 @@ export function readPunctualLights(document, lightNodes) {
     lights.keyColor = key.keyColor;
     lights.lightDirection = key.lightDirection;
     lights.keyIntensity = key.keyIntensity;
+    if (key.sunAngularRadius !== undefined) lights.sunAngularRadius = key.sunAngularRadius;
   } else if (pointLights.length || spotLights.length) {
     lights.keyIntensity = 0;
   }

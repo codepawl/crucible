@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { applyBlenderWorld, exposureFromStops, readBlenderWorld } from '../scripts/blender-world-sky.mjs';
+import { applyBlenderWorld, exposureFromStops, readBlenderWorld, sunAngularRadiusFromWorld } from '../scripts/blender-world-sky.mjs';
 
 const MONK_WORLD = { viewTransform: 'Filmic', look: 'Medium Contrast', exposureStops: -2, gamma: 1, sky: { type: 'SINGLE_SCATTERING', sunDisc: true } };
 const AIRPORT_DESCRIPTION = {
@@ -49,4 +49,19 @@ test('readBlenderWorld needs both world.json and the baked sky.hdr', () => {
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
+});
+
+test('the sky sun size, a diameter, becomes the half-angle on the scene environment and keeps the renderer options', () => {
+  const oneDegree = Math.PI / 180;
+  const world = { ...MONK_WORLD, sky: { ...MONK_WORLD.sky, sunSizeRadians: oneDegree } };
+  const described = applyBlenderWorld({ ...AIRPORT_DESCRIPTION, renderer: { samples: 8, environment: { fillIntensity: 0 } } }, world);
+  assert.equal(described.renderer.environment.sunAngularRadius, oneDegree / 2);
+  assert.equal(described.renderer.environment.fillIntensity, 0);
+  assert.equal(described.renderer.samples, 8);
+  const overridden = applyBlenderWorld({ ...AIRPORT_DESCRIPTION, renderer: { environment: { sunAngularRadius: 0.03 } } }, world);
+  assert.equal(overridden.renderer.environment.sunAngularRadius, 0.03, 'an explicit scene sunAngularRadius wins over world.json');
+  assert.equal(sunAngularRadiusFromWorld(MONK_WORLD), undefined);
+  assert.equal(sunAngularRadiusFromWorld({ ...world, sky: { ...world.sky, sunDisc: false } }), undefined);
+  assert.equal(sunAngularRadiusFromWorld({ ...world, sky: { ...world.sky, sunSizeRadians: 0.5 } }), undefined);
+  assert.equal('renderer' in applyBlenderWorld(AIRPORT_DESCRIPTION, MONK_WORLD), false, 'a world with no sun size adds no renderer');
 });
