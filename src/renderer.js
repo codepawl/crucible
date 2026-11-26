@@ -1,19 +1,21 @@
 import { LIGHT_DATA_BLOCK, uniformBlockOf, disposeUniformBlocks } from './light-uniform-block.js';
 import { resolveBackground, clearColourFor } from './clear-colour.js';
-import { materialTags, MAX_MORPH_TARGETS, registeredFeatureCode, requireFeatureCode, requireHeightParallaxSupport, deformationSupport, requireDeformationSupport, texturedReplaceSupport, textureUpdateSupport } from './shader-registry.js';
+import { materialTags, MAX_MORPH_TARGETS, registeredFeatureCode, requireFeatureCode, requireHeightParallaxSupport, deformationSupport, requireDeformationSupport, texturedReplaceSupport, textureUpdateSupport, bloomPyramidSupport } from './shader-registry.js';
 import { mat4, mat3 } from 'gl-matrix';
 import { BLEND_FACTORS } from './blend-output.js';
 import { packNormalsWithTangents, validateGeometryTangents } from './tangent-encoding.js';
 import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, WETNESS_FEATURE, HEIGHT_MAP_FEATURE, FRAGMENT_SHADOW_POSITION_FEATURE, FADING_SHADOWS_FEATURE, VERTEX_OPACITY_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, TANGENT_FEATURE, vertexShader, liquidFragmentSource, createFragmentShader, liquidPassDrawer, createDepthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
 import { createGlazeBackend } from './glaze-backend.js';
-import { postFragment, createPostFragment, GRID_MOTION_STEP, GRID_DETAIL_STEP, NOISE_OCTAVES_STEP, localVolumeKindSteps, POST_STEPS, POST_STEPS_WITH_OPTIONAL_CODE, skyFragment, bloomFragment } from './post.js';
+import { postFragment, createPostFragment, GRID_MOTION_STEP, GRID_DETAIL_STEP, NOISE_OCTAVES_STEP, localVolumeKindSteps, POST_STEPS, POST_STEPS_WITH_OPTIONAL_CODE, skyFragment } from './post.js';
+let bloomPyramidPromise = null;
+const loadBloomPyramid = () => (bloomPyramidPromise ??= import('./bloom-pyramid.js'));
 import { fullscreenVertex, compileProgram, ProgramNotReady, isLinkComplete, setPreparing, releaseStartedPrograms } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
 import { planRenderSize, estimateTextureBytes, estimateFrameBytes, memoryBudgetError, automaticBudgetCeilingMiB } from './budget.js';
 import { applyProjection } from './camera.js';
 import { boundsGrownByParts, fittedNearPlane, sceneBoundsOfParts } from './near-plane-fit.js';
 import { installReversedDepth, prepareCameraRelativeProgram } from './reversed-depth.js';
-import { bloomBlurPlan, isBloomActive, isDitherActive, resolveEffects } from './effects.js';
+import { isBloomActive, isDitherActive, resolveEffects } from './effects.js';
 import { frameDiagnostics, everyCasterOutsideShadowView } from './frame-diagnostics.js';
 import { depthLayerOf, flushOrderOf, RANKS_PER_LAYER } from './depth-layer.js';
 import { createLightingState, updateLightingState } from './lighting.js';
@@ -1296,7 +1298,6 @@ export class CrucibleRenderer {
     if (!benchmark) {
       pending.post = this.backend.startProgram(fullscreenVertex, this.withViewTransform(postFragment, 'post'));
       pending.sky = this.backend.startProgram(fullscreenVertex, skyFragment);
-      pending.bloom = this.backend.startProgram(fullscreenVertex, bloomFragment);
       if (environment.map) this.startEnvironmentPrograms();
     }
     // The driver links the programs on its own threads while the textures and buffers upload; only then is the link result read.
@@ -1321,8 +1322,6 @@ export class CrucibleRenderer {
       this.skyProgram = this.backend.finishProgram(pending.sky);
       this.postUniforms = postUniformLocations(this.context, this.postProgram);
       this.postVariants = new Map();
-      this.bloomProgram = this.backend.finishProgram(pending.bloom);
-      this.bloomUniforms = uniformLocations(this.context, this.bloomProgram, ['sourceTexture', 'texelDirection', 'threshold', 'extract']);
       this.skyUniforms = uniformLocations(this.context, this.skyProgram, ['skyTop', 'skyBottom', 'sunDirection', 'inverseViewProjection', 'eye', 'time', 'daylight', 'hdrEnabled']);
     }
     this.partCount = parts.length;
@@ -1417,6 +1416,8 @@ export class CrucibleRenderer {
     // The bloom targets take the driver tens of milliseconds under load: a frame that blooms allocates them in a task of its own, not inside the draw.
     if (!this.benchmark && !this.bloomTargets.length && isBloomActive(resolveEffects(frame.effects))) {
       await new Promise(resolve => setTimeout(resolve, 0));
+      if (this.disposed) return false;
+      if (!bloomPyramidSupport.ensureTargets) await loadBloomPyramid();
       if (this.disposed) return false;
       this.ensureBloomTargets();
     }
@@ -2632,12 +2633,9 @@ export class CrucibleRenderer {
     for (const texture of [this.frameTexture, this.depthTexture]) if (texture) backend.deleteTexture(texture);
     this.refractionChain?.release();
     this.refractionDepth?.release();
-    for (const target of this.bloomTargets ?? []) {
-      context.deleteTexture(target.texture);
-      context.deleteFramebuffer(target.framebuffer);
-    }
+    bloomPyramidSupport.releaseTargets?.(this);
     this.bloomTargets = [];
-    this.renderTargets.release('multisampleColor', 'multisampleDepth', 'frameColor', 'sceneDepth', 'bloomA', 'bloomB');
+    this.renderTargets.release('multisampleColor', 'multisampleDepth', 'frameColor', 'sceneDepth');
     this.releaseOcclusionTarget();
     this.passSupport?.releaseTargets(context);
     for (const stage of this.postStages ?? []) stage.releaseTargets(context);
@@ -2924,7 +2922,7 @@ export class CrucibleRenderer {
     const gradesColor = effects.saturation !== 1 || effects.contrast !== 1 || effects.temperature !== 0;
     const finishes = gradesColor || (frame.monochrome ?? 0) !== 0 || Boolean(frame.cinematic) || effects.vignette !== 0 || effects.grain !== 0;
     if (finishes) steps.push('finish');
-    if (isDitherActive(effects)) steps.push('dither');
+    if (isDitherActive(effects) || (isBloomActive(effects) && effects.bloom.radius > 1.5)) steps.push('dither');
     if (frame.linearOutput) requireFeatureCode('linearOutput');
     if (isBloomActive(effects) && effects.bloom.keepHue) requireFeatureCode('keepHue');
     for (const feature of registeredFeatureCode.values()) {
@@ -2986,7 +2984,7 @@ export class CrucibleRenderer {
     // A glowing volume is drawn before bloom extraction so it blooms; the final pass then skips its local step.
     const compositedLocalVolumes = localVolumes && isBloomActive(effects) && this.localVolumeBuffers.emissive;
     if (compositedLocalVolumes) sourceTexture = requireFeatureCode('volumeFog').support.compositeLocalVolumes(this, frame, environment, sourceTexture);
-    if (isBloomActive(effects)) this.drawBloom(effects.bloom, sourceTexture);
+    const bloomActive = isBloomActive(effects) && this.drawBloom(effects.bloom, sourceTexture);
     const occluded = effects.ambientOcclusion > 0 && Boolean(this.depthTexture);
     if (occluded) this.drawAmbientOcclusion(frame, effects);
     this.meterAutoExposure(frame, sourceTexture);
@@ -3021,10 +3019,10 @@ export class CrucibleRenderer {
     fogSupport?.bindUniforms(this, post, volume, environment, frame);
     if (localVolumes && !compositedLocalVolumes) requireFeatureCode('volumeFog').support.bindLocalVolumes(this, post, frame, environment);
     context.activeTexture(context.TEXTURE2);
-    context.bindTexture(context.TEXTURE_2D, isBloomActive(effects) ? this.bloomTargets[1].texture : this.whiteTexture);
+    context.bindTexture(context.TEXTURE_2D, bloomActive && this.bloomTargets.length > 0 ? this.bloomTargets[0].texture : this.whiteTexture);
     context.uniform1i(post.uniforms.bloomTexture, 2);
-    context.uniform1f(post.uniforms.bloomStrength, isBloomActive(effects) ? effects.bloom.strength : 0);
-    context.uniform1f(post.uniforms.bloomKeepHue, isBloomActive(effects) && effects.bloom.keepHue ? 1 : 0);
+    context.uniform1f(post.uniforms.bloomStrength, bloomActive ? effects.bloom.strength : 0);
+    context.uniform1f(post.uniforms.bloomKeepHue, bloomActive && effects.bloom.keepHue ? 1 : 0);
     context.activeTexture(context.TEXTURE4);
     context.bindTexture(context.TEXTURE_2D, occluded ? this.occlusionTarget.texture : this.whiteTexture);
     context.uniform1i(post.uniforms.occlusionTexture, 4);
@@ -3060,47 +3058,13 @@ export class CrucibleRenderer {
 
   // Allocated on the first frame that asks for bloom, so scenes without it pay nothing.
   ensureBloomTargets() {
-    if (this.bloomTargets.length > 0) return;
-    const context = this.context;
-    for (let index = 0; index < 2; index++) {
-      const texture = context.createTexture();
-      const framebuffer = context.createFramebuffer();
-      this.bloomTargets.push({ texture, framebuffer });
-      context.bindTexture(context.TEXTURE_2D, texture);
-      context.texImage2D(context.TEXTURE_2D, 0, this.hdr ? context.RGBA16F : context.RGBA8, this.bloomWidth, this.bloomHeight, 0, context.RGBA, this.hdr ? context.HALF_FLOAT : context.UNSIGNED_BYTE, null);
-      this.backend?.setClampedFiltering(context.LINEAR);
-      context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-      context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
-      if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Bloom framebuffer allocation failed. Choose a lower quality preset.');
-    }
-    context.bindFramebuffer(context.FRAMEBUFFER, null);
-    this.renderTargets.record('bloomA', { width: this.bloomWidth, height: this.bloomHeight, format: this.hdr ? 'RGBA16F' : 'RGBA8' });
-    this.renderTargets.record('bloomB', { width: this.bloomWidth, height: this.bloomHeight, format: this.hdr ? 'RGBA16F' : 'RGBA8' });
+    bloomPyramidSupport.ensureTargets?.(this, compileProgram, fullscreenVertex);
   }
 
   drawBloom(bloom, sourceTexture = this.frameTexture) {
-    const context = this.context;
-    this.ensureBloomTargets();
-    context.disable(context.DEPTH_TEST);
-    context.disable(context.CULL_FACE);
-    context.bindVertexArray(null);
-    context.useProgram(this.bloomProgram);
-    context.viewport(0, 0, this.bloomWidth, this.bloomHeight);
-    context.uniform1i(this.bloomUniforms.sourceTexture, 0);
-    context.uniform1f(this.bloomUniforms.threshold, bloom.threshold);
-    // The first pair reads the frame and extracts the bright part; each later pair blurs the last result again. The glow always ends in target 1.
-    const { pairs, step } = bloomBlurPlan(bloom.radius);
-    for (let pair = 0; pair < pairs; pair++) {
-      for (let pass = 0; pass < 2; pass++) {
-        const first = pair === 0 && pass === 0;
-        context.bindFramebuffer(context.FRAMEBUFFER, this.bloomTargets[pass].framebuffer);
-        context.activeTexture(context.TEXTURE0);
-        context.bindTexture(context.TEXTURE_2D, first ? sourceTexture : this.bloomTargets[1 - pass].texture);
-        context.uniform1f(this.bloomUniforms.extract, first ? 1 : 0);
-        context.uniform2f(this.bloomUniforms.texelDirection, pass === 0 ? step / this.bloomWidth : 0, pass === 1 ? step / this.bloomHeight : 0);
-        context.drawArrays(context.TRIANGLES, 0, 3);
-      }
-    }
+    if (!bloomPyramidSupport.draw) { loadBloomPyramid(); return false; }
+    bloomPyramidSupport.draw(this, bloom, sourceTexture);
+    return true;
   }
 
   /** Culling, cutout and opacity state for one batch, in the color pass (textured) or the shadow depth pass. */

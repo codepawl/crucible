@@ -1,0 +1,1 @@
+- Smooth wide bloom halos across a progressive mip pyramid with automatic 1-LSB output dither above `bloom.radius` `1.5` (#3550)

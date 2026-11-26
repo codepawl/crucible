@@ -138,31 +138,6 @@ void main() {
   outputColor = vec4(hdrEnabled > 0.5 ? pow(max(color, vec3(0)), vec3(2.2)) : color, 1.0);
 }`;
 
-export const bloomFragment = `#version 300 es
-precision highp float;
-in vec2 textureCoordinate;
-uniform sampler2D sourceTexture;
-uniform vec2 texelDirection;
-uniform float threshold;
-uniform float extract;
-out vec4 outputColor;
-vec3 sampleBloom(vec2 coordinate) {
-  vec3 color = texture(sourceTexture, coordinate).rgb;
-  if (extract > 0.5) {
-    float peak = max(color.r, max(color.g, color.b));
-    color *= max(peak - threshold, 0.0) / max(peak, 0.00001);
-  }
-  return color;
-}
-void main() {
-  vec3 color = sampleBloom(textureCoordinate) * 0.227027;
-  color += sampleBloom(textureCoordinate + texelDirection * 1.384615) * 0.316216;
-  color += sampleBloom(textureCoordinate - texelDirection * 1.384615) * 0.316216;
-  color += sampleBloom(textureCoordinate + texelDirection * 3.230769) * 0.070270;
-  color += sampleBloom(textureCoordinate - texelDirection * 3.230769) * 0.070270;
-  outputColor = vec4(color, 1.0);
-}`;
-
 // Every optional step of the post pass, with the GLSL condition that turns it on. SwiftShader pays for a step that a
 // uniform switches off, so a frame that uses few steps draws with a program that has the others compiled out.
 const POST_STEP_CONDITIONS = {

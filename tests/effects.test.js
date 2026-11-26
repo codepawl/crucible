@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CrucibleRenderer } from '../src/renderer.js';
 import { BLOOM_RADIUS_MAX, BLOOM_STRENGTH_MAX, EFFECT_PRESETS, bloomBlurPlan, resolveEffects } from '../src/effects.js';
+import { MAX_BLOOM_LEVELS, bloomPyramidPlan, drawBloomPyramid, ensureBloomPyramidTargets } from '../src/bloom-pyramid.js';
+import { RenderTargetLedger } from '../src/render-target-ledger.js';
 
 test('object motion blur rejects a value outside 0 to 1 instead of ignoring it', () => {
   for (const objects of [-1, NaN, 'strong', 2]) {
@@ -53,27 +54,39 @@ test('a bloom radius the old cap allowed blurs in one pair at its own spacing, a
 
 function countBloomBlurDraws(radius) {
   const draws = [];
-  const target = name => ({ framebuffer: `${name}-framebuffer`, texture: `${name}-texture` });
-  const context = new Proxy({}, {
-    get: (_, property) => (property === 'drawArrays' ? () => draws.push(property) : () => {}),
+  let nextId = 1;
+  const context = new Proxy({
+    TEXTURE_2D: 0x0de1, RGBA: 0x1908, RGBA16F: 0x881a, RGBA8: 0x8058, HALF_FLOAT: 0x140b, UNSIGNED_BYTE: 0x1401,
+    LINEAR: 0x2601, FRAMEBUFFER: 0x8d40, COLOR_ATTACHMENT0: 0x8ce0, FRAMEBUFFER_COMPLETE: 0x8cd5,
+    createTexture: () => ({ id: nextId++ }),
+    createFramebuffer: () => ({ id: nextId++ }),
+    checkFramebufferStatus: () => 0x8cd5,
+  }, {
+    get: (target, property) => (property in target ? target[property] : property === 'drawArrays' ? () => draws.push(property) : () => {}),
   });
   const renderer = {
     context,
-    ensureBloomTargets() {},
-    bloomTargets: [target('a'), target('b')],
+    hdr: true,
+    canvas: { width: 1080, height: 1920 },
+    ensureBloomTargets() { ensureBloomPyramidTargets(this); },
+    bloomTargets: [],
     bloomProgram: {},
     bloomUniforms: {},
     bloomWidth: 540,
     bloomHeight: 960,
     frameTexture: 'frame',
+    renderTargets: new RenderTargetLedger(),
   };
-  CrucibleRenderer.prototype.drawBloom.call(renderer, { strength: 1, threshold: 1, radius }, 'frame');
+  drawBloomPyramid(renderer, { strength: 1, threshold: 1, radius }, 'frame');
   return draws.length;
 }
 
-test('the renderer draws one blur pair for a radius the old cap allowed and the repeated pairs for radius 16 (#3283)', () => {
-  assert.equal(countBloomBlurDraws(1), 2);
-  assert.equal(countBloomBlurDraws(4), 2);
-  assert.equal(countBloomBlurDraws(BLOOM_RADIUS_MAX), bloomBlurPlan(BLOOM_RADIUS_MAX).pairs * 2);
-  assert.ok(countBloomBlurDraws(BLOOM_RADIUS_MAX) > 2);
+test('the renderer draws the mip pyramid downsample and tent upsample passes across radius 1 to 16 (#3550)', () => {
+  const narrow = bloomPyramidPlan(MAX_BLOOM_LEVELS, 1);
+  const medium = bloomPyramidPlan(MAX_BLOOM_LEVELS, 4);
+  const widest = bloomPyramidPlan(MAX_BLOOM_LEVELS, BLOOM_RADIUS_MAX);
+  assert.equal(countBloomBlurDraws(1), narrow.activeLevels + narrow.upsampleWeights.length);
+  assert.equal(countBloomBlurDraws(4), medium.activeLevels + medium.upsampleWeights.length);
+  assert.equal(countBloomBlurDraws(BLOOM_RADIUS_MAX), widest.activeLevels + widest.upsampleWeights.length);
+  assert.ok(countBloomBlurDraws(BLOOM_RADIUS_MAX) > countBloomBlurDraws(1));
 });

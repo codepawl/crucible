@@ -1,0 +1,9 @@
+- entry:core+lazy: Loads the 6-level Karis downsample + 3x3 tent upsample `src/bloom-pyramid.js` chunk lazily on active bloom (+1943 B gzip; core `entry:core` shrinks -281 B).
+- entry:model+lazy: Pulls the shared lazy bloom pyramid chunk via `renderer.js` (+2229 B gzip; initial `entry:model` +1 B).
+- entry:gltf+lazy: Pulls the shared lazy bloom pyramid chunk via `renderer.js` (+2224 B gzip; initial `entry:gltf` +4 B).
+- entry:replace-textured-parts+lazy: Pulls the shared lazy bloom pyramid chunk via `renderer.js` (+2476 B gzip; initial `entry:replace-textured-parts` 0 B).
+- entry:texture-update+lazy: Pulls the shared lazy bloom pyramid chunk via `renderer.js` (+2473 B gzip; initial `entry:texture-update` 0 B).
+- entry:streaming+lazy: Pulls the shared lazy bloom pyramid chunk via `renderer.js` (+2228 B gzip; initial `entry:streaming` 0 B).
+- scene:lit-box+lazy: Loads the lazy bloom pyramid chunk when bloom is active (+1909 B gzip; core `scene:lit-box` shrinks -312 B).
+- scene:gltf-box+lazy: Loads the lazy bloom pyramid chunk when bloom is active (+1676 B gzip; core `scene:gltf-box` shrinks -540 B).
+- scene:agent-scene+lazy: Loads the lazy bloom pyramid chunk and `agent-scene-modules.js` prewarm marker (+1696 B gzip; core `scene:agent-scene` shrinks -521 B).

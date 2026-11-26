@@ -98,11 +98,13 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`${origin}/motion.html`);
   await page.waitForFunction(() => window.__scene?.renderer);
-  report.motion = await page.evaluate(() => {
+  report.motion = await page.evaluate(async () => {
     const scene = window.__scene;
     scene.pause();
     const renderer = scene.renderer;
     const context = renderer.context;
+    const sampled = window.__motion.scene.sample(6);
+    await renderer.prepareFrame({ ...sampled.camera, time: 6, effects: { bloom: { strength: 1, threshold: 0.5 } } });
     const counts = { buffer: 0, texture: 0, framebuffer: 0, renderbuffer: 0 };
     for (const [key, method] of Object.entries({ buffer: 'createBuffer', texture: 'createTexture', framebuffer: 'createFramebuffer', renderbuffer: 'createRenderbuffer' })) {
       const original = context[method].bind(context);
@@ -120,7 +122,6 @@ try {
     for (let index = 0; index < 80; index++) scene.renderAt(index * 0.1);
     scene.renderAt(6);
     const repeated = checksum();
-    const sampled = window.__motion.scene.sample(6);
     renderer.render({ ...sampled.camera, time: 6, effects: {} });
     const neutral = checksum();
     renderer.render({ ...sampled.camera, time: 6, effects: { bloom: { strength: 1, threshold: 0.5 } } });

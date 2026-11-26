@@ -49,6 +49,7 @@ async function rasterFrames(page, cases) {
     const { CrucibleRenderer } = await import('/src/renderer.js');
     const { createFloatOutput, readFloatPixels } = await import('/src/float-output.js');
     await import('/src/fog-shader.js');
+    await import('/src/bloom-pyramid.js');
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
