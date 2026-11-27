@@ -23,6 +23,10 @@ The scene fills the window and the controls float on top of it.
 | Bottom left | The camera (perspective and lens, or orthographic), the grid step, and the size of the selected object in metres. |
 | Top right, beside the right column | The view widget: the X, Y and Z axes as the camera sees them. Click an end to look from the right, left, top, front or back. |
 
+### Tooltips
+
+Hover an icon button, or focus it with the keyboard, to see what it is. On the left rail the tooltip opens to the right of the rail with the tool name, its key as key caps (from the keymap in force, so a changed shortcut shows at once) and one line on what it does. It waits 300 ms on the first hover, shows at once when you move to the next button or focus one with the keyboard, and hides on press, Escape, scroll and when the pointer leaves. Other icon buttons show their name, below the button. Under reduced motion it fades without moving. The button keeps its accessible name and points at the open tooltip with `aria-describedby`.
+
 ## Workspace tabs
 
 The four workspace tabs stay in this order in the top bar; below the compact width (820 px), the active tab keeps its icon and label while the other three show their icons so all four fit cleanly.

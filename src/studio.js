@@ -49,6 +49,7 @@ import './replace-textured-parts.js';
 import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft, watchBeforeUnload } from './studio-draft.js';
 import { createBakeMark } from './studio-bake-mark.js';
 import { watchScrollFade } from './studio-scroll-cue.js';
+import { createToolbarTooltip, writeViewChipTitles } from './studio-toolbar-tips.js';
 import { extensionOf, openNameEditor, splitFileName, validateFileStem, validateNodeLabel, validateShotName } from './studio-name-editor.js';
 import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
 import { SNAP_TARGETS } from './studio-snapping.js';
@@ -188,7 +189,6 @@ function setButtonIcon(button, iconName, label) {
     button.replaceChildren(createIcon(button.ownerDocument, iconName));
   }
   button.setAttribute('aria-label', label);
-  button.title = label;
 }
 
 function createIconButton(documentReference, iconName, label, properties = {}) {
@@ -2171,6 +2171,12 @@ export function createStudio(container, {
     createElement(documentReference, 'div', { className: 'crucible-studio-toolbar-rule', attributes: { role: 'separator', 'aria-orientation': 'horizontal' } }),
     createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Show or hide' } }, gridButton, seeThroughButton, toggleDocksButton),
   );
+  const tooltip = createToolbarTooltip({ root, documentReference }, { toolButtons, meshModeButtons, meshObjectButton, proportionalButton, proportionalMenuButton, meshToolsButton, snapToggleButton, snapTargetButton, addMenuButton, undoButton, redoButton, gridButton, seeThroughButton, toggleDocksButton, duplicateButton, deleteButton, frameButton }, {
+    keyOf: actionId => keyLabel(keymap, actionId),
+    lastKeyOf: actionId => lastKeyLabel(keymap, actionId),
+    toolActions: TOOL_ACTION_BY_TOOL, meshModes: MESH_MODES,
+    snapState: () => ({ enabled: preferences.snapEnabled, targetLabel: snapTargetOf(preferences.snapTarget).label }),
+  });
   wireRovingFocusFallback(toolbarElement, [...toolButtons, snapToggleButton, snapTargetButton, addMenuButton, undoButton, redoButton, gridButton, seeThroughButton, toggleDocksButton], { vertical: true });
 
   // Viewport Top-Right 3D View Widget
@@ -3077,14 +3083,7 @@ export function createStudio(container, {
   function refreshKeyLabels() {
     for (const { element, actionId } of menuKeyViews) setShortcutLabel(element, keyLabel(keymap, actionId));
     for (const { button, iconName, describe } of keyTooltipViews) setButtonIcon(button, iconName, describe());
-    const viewTitles = { front: ['Front view', 'view.front'], right: ['Right view', 'view.right'], top: ['Top view', 'view.top'], isometric: ['Isometric view', null] };
-    for (const button of viewPresetButtons) {
-      const [labelText, actionId] = viewTitles[button.dataset.view];
-      const shortcut = actionId ? keyLabel(keymap, actionId) : '';
-      button.title = shortcut ? `${labelText} (${shortcut})` : labelText;
-    }
-    const projectionShortcut = keyLabel(keymap, 'view.projection');
-    projectionPillButton.title = projectionShortcut ? `Perspective / Orthographic (${projectionShortcut})` : 'Perspective / Orthographic';
+    writeViewChipTitles(viewPresetButtons, projectionPillButton, actionId => keyLabel(keymap, actionId));
     setButtonIcon(playButton, playing ? 'pause' : 'play', playTooltip(playing));
     fillShortcutsGrid();
     syncHintBar();
@@ -6203,6 +6202,7 @@ export function createStudio(container, {
       clearTimeout(awaitedProgramTimer);
       agentPresence.dispose();
       agentPanel?.dispose();
+      tooltip.dispose();
       settings.dispose();
       systemSchemeQuery?.removeEventListener?.('change', onSystemSchemeChange);
       if (frameHandle) cancelAnimationFrame(frameHandle);
