@@ -84,6 +84,7 @@ Scenes are plain data with stable IDs, so an agent can edit by ID and check each
 - npm package: \`@codepawlhq/crucible\`. The MCP server is its \`crucible-mcp\` binary. Node.js 20.19 or newer and an installed Chrome are required.
 - Claude Code plugin, which adds the server and both skills: \`/plugin marketplace add codepawl/crucible\`, then \`/plugin install crucible@crucible\`.
 - Any other MCP client: \`npm install crucible@npm:@codepawlhq/crucible\`, then run Node on \`node_modules/crucible/bin/crucible-mcp.mjs --backend gpu --memory 192\` over stdio. Use the absolute path.
+- Built-in headless AI CLI: run \`npx crucible auth login\` (250 free credits, no card needed) and \`npx crucible agent "<prompt>"\`; [cli-agent.md](${page('cli-agent.md')}).
 - Setup, flags and client notes: [mcp.md](${page('mcp.md')}).
 - Skills in the package: \`skills/build-crucible-scene\` (build and light) and \`skills/render-crucible-media\` (stills and video).
 
