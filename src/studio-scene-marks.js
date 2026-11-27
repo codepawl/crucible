@@ -95,11 +95,13 @@ function appendEdgePointer(documentReference, gizmoSvg, object, placement, selec
     transform: `translate(${glyphOffset} ${glyphOffset}) scale(${glyphScale.toFixed(3)})`,
     ...pointerAttributes,
   });
-  const chevronTip = EDGE_POINTER_DISC_RADIUS + EDGE_POINTER_CHEVRON_REACH - 3;
+  const chevronTip = EDGE_POINTER_DISC_RADIUS + EDGE_POINTER_CHEVRON_REACH - 1;
   const chevron = createSvgElement(documentReference, 'path', {
-    d: `M ${chevronTip - 4} -4 L ${chevronTip} 0 L ${chevronTip - 4} 4`,
+    d: `M ${chevronTip - 5} -4.5 L ${chevronTip} 0 L ${chevronTip - 5} 4.5`,
     transform: `rotate(${placement.angle.toFixed(1)})`,
     class: 'crucible-studio-edge-pointer-chevron',
+    // The chevron sits over the dark viewport, not on the disc, so like the sun's ray it takes the trace colours in both themes.
+    style: `stroke: ${selected ? 'var(--studio-accent)' : 'var(--studio-trace)'}; stroke-width: 2.2; filter: drop-shadow(0 0 1px var(--studio-trace-edge)) drop-shadow(0 0 1.5px var(--studio-trace-edge))`,
     ...pointerAttributes,
   });
   const tooltip = createSvgElement(documentReference, 'title');
