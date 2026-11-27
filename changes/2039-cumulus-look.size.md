@@ -1,0 +1,3 @@
+- goal:lit-box: Tracks `toonRim` and `toonBase` as non-snapshotted reference fields in `MaterialSnapshot` (+22 B gzip).
+- goal:gltf-box: Tracks `toonRim` and `toonBase` as non-snapshotted reference fields in `MaterialSnapshot` (+20 B gzip).
+- goal:agent-scene: Tracks `toonRim` and `toonBase` as non-snapshotted reference fields in `MaterialSnapshot` (+22 B gzip).

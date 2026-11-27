@@ -52,7 +52,7 @@ const MATERIAL_LAYER_NOTES = Object.freeze({
   iridescenceIor: 'Film index of refraction.',
   iridescenceThickness: 'Film nanometres; colours cycle as it grows.',
   softEdge: 'Fades alpha toward the silhouette by the facing cosine to this power, so a translucent sphere reads as a soft round blob with no edge (dust, haze); 0 off. Pair with opacity and an unlit tag.',
-  toon: 'Light steps (toon); 0 off. Add toonColors, one linear [r,g,b] (0-4) per step from darkest to lightest and as many as toon, to give each step its own colour; the side facing away from the light shows ambient.',
+  toon: 'Light steps (toon); 0 off. Add toonColors (one [r,g,b] 0-4 per step, darkest first), toonRim {color,strength,power}, or toonBase {color,strength}.',
 });
 
 // Recipe physics body shapes, the one list the validator, the MCP schema and scene_capabilities share.

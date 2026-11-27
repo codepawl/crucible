@@ -152,12 +152,18 @@
       "id": "water",
       "tag": "water",
       "color": [
-        0.0033,
-        0.042,
-        0.069
+        0.001,
+        0.014,
+        0.032
       ],
       "metallic": 0,
-      "roughness": 0.14
+      "roughness": 0.18,
+      "absorption": [
+        0.7,
+        0.16,
+        0.04
+      ],
+      "turbidity": 0.04
     },
     {
       "id": "cumulus",
@@ -203,20 +209,20 @@
       ],
       "toonRim": {
         "color": [
-          1,
-          0.98,
-          0.94
+          1.58,
+          1.5,
+          1.36
         ],
-        "strength": 2.2,
-        "power": 4.5
+        "strength": 3.8,
+        "power": 3.6
       },
       "toonBase": {
         "color": [
-          0.58,
-          0.72,
-          0.88
+          0.82,
+          0.96,
+          1.12
         ],
-        "strength": 0.45
+        "strength": 0.82
       }
     }
   ],
@@ -260,30 +266,30 @@
   "camera": {
     "eye": [
       0,
-      14,
-      70
+      5,
+      72
     ],
     "target": [
       0,
-      38,
+      32,
       -40
     ],
     "fov": 50
   },
   "effects": {
-    "exposure": 0.9
+    "exposure": 0.85
   },
   "environment": {
     "sky": {
       "type": "physical",
-      "sunElevation": 28,
-      "sunRotation": 145,
+      "sunElevation": 19,
+      "sunRotation": 92,
       "turbidity": 2,
       "aerialPerspective": 0.3
     },
     "world": true,
     "ground": false,
     "ambientIntensity": 0.3,
-    "keyIntensity": 2.2
+    "keyIntensity": 2.3
   }
 }
