@@ -129,6 +129,7 @@ jobs:
             coverage/shard-${{ matrix.shard }}.info
             coverage/timings-${{ matrix.shard }}.json
           if-no-files-found: error
+          retention-days: 1
 
   # The light run: only the test files that mention a changed file (scripts/ci-plan.mjs), in one job. An empty list passes.
   unit-light:
@@ -169,6 +170,7 @@ jobs:
         with:
           name: lcov
           path: coverage/lcov.info
+          retention-days: 3
 
   package:
     if: ${{ !github.event.pull_request.draft }}

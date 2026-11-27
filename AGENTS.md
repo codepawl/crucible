@@ -89,3 +89,4 @@ ran and what you saw. If you cannot run one, say that instead.
 - One change per pull request, on a branch from `main`. Merge `main` into it only when `git merge-tree --write-tree origin/main HEAD` reports a conflict, or `main` changed a file your branch touches (commands in [CONTRIBUTING.md](CONTRIBUTING.md#checks)). `Test` also runs on every push to `main`.
 - Stop only processes you started, by their PID. Other jobs may share the machine.
 - Issues and pull requests are public. Keep local paths, tokens and personal data out of them.
+- Set explicit short `retention-days` (`1` for intra-run shard artifacts, `3` to `7` at most for logs and reports) on every `actions/upload-artifact` step in `.github/workflows/` so CI never keeps 90-day artifacts by default.

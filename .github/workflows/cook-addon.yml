@@ -177,3 +177,4 @@ jobs:
           name: addon-tests-tap
           path: addon-tests.tap
           if-no-files-found: ignore
+          retention-days: 3
