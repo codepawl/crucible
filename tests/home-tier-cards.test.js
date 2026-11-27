@@ -16,10 +16,10 @@ test('the tier cards of the home page are what the generator writes from the com
 
 test('the figures are the lowest and highest per-scene median over all six scenes', () => {
   const figures = buildHomeTierFigures(matrix);
-  assert.deepEqual(figures.draft.glazeMilliseconds, { low: 0.54, high: 1.04 });
-  assert.deepEqual(figures.realtime.blenderMilliseconds, { low: 288, high: 363 });
-  assert.deepEqual(figures.final.cookMilliseconds, { low: 1.73, high: 4.24 });
-  assert.deepEqual([figures.final.noise.low, figures.final.noise.high, figures.final.noise.reachedCount], [1.05, 4.02, 3]);
+  assert.deepEqual(figures.draft.glazeMilliseconds, { low: 0.56, high: 0.95 });
+  assert.deepEqual(figures.realtime.blenderMilliseconds, { low: 258, high: 315 });
+  assert.deepEqual(figures.final.cookMilliseconds, { low: 1.63, high: 3.96 });
+  assert.deepEqual([figures.final.noise.low, figures.final.noise.high, figures.final.noise.reachedCount], [1.06, 2.45, 3]);
 });
 
 test('a slower run in the matrix reaches the cards, and a contended run stays out', () => {
@@ -27,7 +27,7 @@ test('a slower run in the matrix reaches the cards, and a contended run stays ou
   const draftRuns = changed.cells.filter(cell => cell.engine === 'glaze-draft' && cell.scene === 'metal');
   draftRuns.forEach((cell, index) => { cell.metrics.primaryMilliseconds = [2, 3, 900][index]; });
   draftRuns[2].contended = true;
-  assert.match(renderTierCards(changed), /data-glaze-ms="0.54-2.50"/);
+  assert.match(renderTierCards(changed), /data-glaze-ms="0.56-2.50"/);
 });
 
 test('a figure past the bar axis stops the generator and names the constant to raise', () => {

@@ -45,8 +45,8 @@ test('the page rows come from the data: bars are shares of the larger figure and
   const time = draft.rows.find(row => row.id === 'time');
   assert.equal(time.blender.share, 1);
   assert.ok(time.crucible.share > 0 && time.crucible.share < 0.05);
-  assert.match(time.crucible.value, /^0\.68 ms$/);
-  assert.match(time.crucible.range, /^0\.66 to 0\.74$/);
+  assert.match(time.crucible.value, /^0\.95 ms$/);
+  assert.match(time.crucible.range, /^0\.65 to 1\.12$/);
   const final = describeTier(committed, 'final');
   const error = final.rows.find(row => row.id === 'flip');
   assert.equal(error.crucible.share, 1, 'Cook native has the larger error at equal samples and the page must show it');
@@ -58,22 +58,22 @@ test('the conditions line carries card, software, size and date', () => {
   const conditions = describeConditions(committed);
   assert.match(conditions.hardware, /RTX 3060/);
   assert.equal(conditions.size, '960 by 540');
-  assert.equal(conditions.date, '2026-11-11');
+  assert.equal(conditions.date, '2026-11-27');
   assert.match(conditions.software, /Blender 5\.3\.0, Node 24\.19\.0, win32/);
 });
 
 test('times keep about three significant figures', () => {
   const realtime = describeTier(committed, 'realtime').rows.find(row => row.id === 'time');
-  assert.equal(realtime.blender.value, '363 ms');
-  assert.equal(describeTier(committed, 'draft').rows.find(row => row.id === 'time').blender.value, '57.4 ms');
-  assert.equal(describeTier(committed, 'final').rows.find(row => row.id === 'time').crucible.value, '1.32 s');
+  assert.equal(realtime.blender.value, '315 ms');
+  assert.equal(describeTier(committed, 'draft').rows.find(row => row.id === 'time').blender.value, '55.2 ms');
+  assert.equal(describeTier(committed, 'final').rows.find(row => row.id === 'time').crucible.value, '1.19 s');
 });
 
 test('all six scenes and detailed tier breakdowns are exposed cleanly', () => {
   assert.deepEqual(committed.sceneOrder, matrix.scenes);
   assert.equal(Object.keys(committed.scenes).length, 6);
   const metalDraft = describeTierForScene(committed, 'draft', 'metal');
-  assert.equal(metalDraft.rows.find(row => row.id === 'time').crucible.value, '0.69 ms');
+  assert.equal(metalDraft.rows.find(row => row.id === 'time').crucible.value, '0.64 ms');
 
   const draftOverview = describeTierOverview(committed, 'draft', 'lit-interior');
   assert.equal(draftOverview.summaryStats.length, 3);
