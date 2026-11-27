@@ -19,7 +19,7 @@ export const LIGHT_REACH_CSS = `
   stroke-linejoin: round;
 }
 .crucible-studio-light-reach-dot { fill: var(--studio-accent); stroke: var(--studio-trace-edge); stroke-width: 1; }
-.crucible-studio-light-reach-line[data-role="ring"] { stroke-width: 2.2; }
+.crucible-studio-light-reach-line[data-role="sun"] { stroke-width: 2; }
 .crucible-studio-light-reach-line[data-role="soft"] { stroke-dasharray: 4 4; opacity: 0.75; }
 .crucible-studio-light-reach-line[data-role="source"] { stroke: var(--studio-trace); }
 .crucible-studio-light-reach-line[data-role="link"] { stroke: var(--studio-accent); stroke-width: 1.5; }

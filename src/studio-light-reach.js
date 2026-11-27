@@ -13,10 +13,12 @@ import { sceneSphereOf, sunMarkPosition } from './studio-sun-mark.js';
 export const UNLIMITED_RANGE_SCENE_RADIUS_FACTOR = 1.5;
 export const CIRCLE_SEGMENT_COUNT = 64;
 export const GROUND_FOOTPRINT_SAMPLE_COUNT = 180;
-export const SUN_PARALLEL_ARROW_COUNT = 8;
-const SUN_PARALLEL_ARROW_LENGTH_SHARE = 0.4;
-// The single arrow stops this share of the scene radius upstream of the scene centre, so it does not seem to aim at one object.
-const SUN_SINGLE_ARROW_STOP_SHARE = 0.3;
+// The sun's ring clears the objects by this share of the scene's horizontal radius.
+export const SUN_RING_CLEARANCE = 1.1;
+export const SUN_PARALLEL_ARROW_AZIMUTH_OFFSETS = Object.freeze([-35, 0, 35].map(degrees => (degrees * Math.PI) / 180));
+const SUN_PARALLEL_ARROW_LENGTH_SHARE = 0.5;
+// The single arrow covers this share of the way from the sun mark to the scene centre, so it stops well short of the objects.
+const SUN_SINGLE_ARROW_TRAVEL_SHARE = 0.55;
 const ARROW_HEAD_SHARE = 0.22;
 const AREA_NORMAL_ARROW_SHARE = 0.5;
 const SPOT_EDGE_LINE_COUNT = 4;
@@ -196,26 +198,31 @@ export function areaLightReach(light, eye = null) {
 
 /**
  * The sun's whole-scene ring and its two direction indicators; `direction` is the unit vector toward the sun.
- * The parallel arrows are equal and evenly spaced around the ring, each head on the ring line and its tail upstream along the light direction.
+ * The ring lies flat on the ground under the scene, so it reads the same from any view. The parallel arrows land with
+ * their heads on the ring at the sun's azimuth and either side of it, their tails up along the direction toward the sun.
  */
 export function sunReach(bounds, direction, eye = null) {
   const scene = sceneSphereOf(bounds);
-  const [firstAxis, secondAxis] = planeAxesOf(direction);
-  const arrowLength = scene.radius * SUN_PARALLEL_ARROW_LENGTH_SHARE;
-  const parallelArrows = [];
-  for (let arrow = 0; arrow < SUN_PARALLEL_ARROW_COUNT; arrow += 1) {
-    const turn = (arrow / SUN_PARALLEL_ARROW_COUNT) * Math.PI * 2;
-    const sideways = add(scale(firstAxis, Math.cos(turn)), scale(secondAxis, Math.sin(turn)));
-    const tip = add(scene.center, scale(sideways, scene.radius));
-    parallelArrows.push(arrowPolylines(pointAlong(tip, direction, arrowLength), tip, eye));
-  }
-  const singleArrowTip = pointAlong(scene.center, direction, scene.radius * SUN_SINGLE_ARROW_STOP_SHARE);
+  const groundY = bounds ? bounds.min[1] : GROUND_HEIGHT;
+  const ringRadius = bounds
+    ? (Math.hypot(bounds.max[0] - bounds.min[0], bounds.max[2] - bounds.min[2]) / 2) * SUN_RING_CLEARANCE
+    : scene.radius;
+  const ringCenter = [scene.center[0], groundY, scene.center[2]];
+  const sunAzimuth = Math.atan2(direction[2], direction[0]);
+  const arrowLength = ringRadius * SUN_PARALLEL_ARROW_LENGTH_SHARE;
+  const parallelArrows = SUN_PARALLEL_ARROW_AZIMUTH_OFFSETS.map(offset => {
+    const azimuth = sunAzimuth + offset;
+    const head = add(ringCenter, [Math.cos(azimuth) * ringRadius, 0, Math.sin(azimuth) * ringRadius]);
+    return arrowPolylines(pointAlong(head, direction, arrowLength), head, eye);
+  });
+  const mark = sunMarkPosition(bounds, direction);
+  const singleArrowTip = add(mark, scale(subtract(scene.center, mark), SUN_SINGLE_ARROW_TRAVEL_SHARE));
   return {
-    center: scene.center,
-    radius: scene.radius,
-    ring: circlePolyline(scene.center, firstAxis, secondAxis, scene.radius),
+    center: ringCenter,
+    radius: ringRadius,
+    ring: circlePolyline(ringCenter, [1, 0, 0], [0, 0, 1], ringRadius),
     parallelArrows,
-    singleArrow: arrowPolylines(sunMarkPosition(bounds, direction), singleArrowTip, eye),
+    singleArrow: arrowPolylines(mark, singleArrowTip, eye),
   };
 }
 

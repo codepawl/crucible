@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  SUN_RING_CLEARANCE,
   UNLIMITED_RANGE_SCENE_RADIUS_FACTOR,
   areaGroundFootprint,
   areaLightReach,
@@ -97,36 +98,30 @@ test('an area light that looks straight down still has a rectangle', () => {
   assert.ok(reach.corners.every(corner => Number.isFinite(corner[0]) && Math.abs(corner[1] - 3) < 1e-9));
 });
 
-test('the sun ring wraps the scene in the plane across the light', () => {
-  const bounds = { min: [-2, 0, -2], max: [2, 4, 2] };
-  const direction = [0, 1, 0];
+test('the sun ring lies flat on the ground and the parallel arrows land on its sun side', () => {
+  const bounds = { min: [-2, 0.5, -1], max: [2, 4, 1] };
+  const direction = [3 / Math.hypot(3, 4, 4), 4 / Math.hypot(3, 4, 4), 4 / Math.hypot(3, 4, 4)];
   const reach = sunReach(bounds, direction);
-  assertClose(reach.radius, Math.hypot(4, 4, 4) / 2, 'ring radius is the scene radius');
-  assert.ok(reach.ring.every(point => Math.abs(point[1] - 2) < 1e-9), 'the ring is perpendicular to the direction');
-  assertClose(radiusOfRim(reach.ring, reach.center), reach.radius, 'the ring is a circle');
-  assert.equal(reach.parallelArrows.length, 8);
-  const heads = reach.parallelArrows.map(arrow => arrow[0][1]);
-  const tails = reach.parallelArrows.map(arrow => arrow[0][0]);
-  const arrowLength = distance(tails[0], heads[0]);
-  heads.forEach((head, index) => {
-    assertClose(distance(head, reach.center), reach.radius, 'the head lies on the ring');
-    assertClose(distance(tails[index], head), arrowLength, 'equal length');
-    assertClose(tails[index][1] - head[1], arrowLength, 'the tail is upstream along the direction');
-    const next = heads[(index + 1) % heads.length];
-    assertClose(distance(head, next), 2 * reach.radius * Math.sin(Math.PI / 8), 'even spacing around the ring');
+  const expectedRadius = (Math.hypot(4, 2) / 2) * SUN_RING_CLEARANCE;
+  assertClose(reach.radius, expectedRadius, 'horizontal radius with clearance');
+  assert.ok(reach.ring.every(point => Math.abs(point[1] - 0.5) < 1e-9), 'the ring is horizontal at the lowest height');
+  assertClose(reach.center[0], 0, 'centred under the scene');
+  assertClose(radiusOfRim(reach.ring, reach.center), expectedRadius, 'the ring is a circle');
+  assert.equal(reach.parallelArrows.length, 3);
+  const sunAzimuth = Math.atan2(direction[2], direction[0]);
+  reach.parallelArrows.forEach((arrow, index) => {
+    const [tail, head] = arrow[0];
+    assertClose(distance(head, reach.center), expectedRadius, 'the head lies on the ring');
+    assertClose(head[1], 0.5, 'on the ground');
+    const azimuth = Math.atan2(head[2] - reach.center[2], head[0] - reach.center[0]);
+    assertClose(azimuth, sunAzimuth + [-35, 0, 35][index] * (Math.PI / 180), 'azimuth and 35 degrees either side');
+    assertClose(distance(tail, head), expectedRadius * 0.5, 'half the ring radius long');
+    tail.forEach((component, axis) => assertClose(component, head[axis] + direction[axis] * expectedRadius * 0.5, 'the tail is up toward the sun'));
   });
-  for (const arrow of reach.parallelArrows) {
-    const [shaftStart, shaftEnd] = arrow[0];
-    assert.ok(shaftEnd[1] < shaftStart[1], 'arrows travel away from the sun');
-    assert.ok(Math.abs(shaftEnd[0] - shaftStart[0]) < 1e-9);
-  }
   const [shaftStart, shaftEnd] = reach.singleArrow[0];
-  assert.ok(distance(shaftStart, reach.center) > reach.radius, 'the single arrow starts outside the ring');
-  assert.ok(distance(shaftEnd, reach.center) < reach.radius * 0.5, 'it stops a short way before the scene centre');
-  assert.ok(shaftEnd[1] > reach.center[1], 'and upstream of it');
+  const sceneCentre = [0, 2.25, 0];
+  assertClose(distance(shaftStart, shaftEnd), 0.55 * distance(shaftStart, sceneCentre), 'the single arrow covers 55 percent of the way');
   assert.equal(reach.singleArrow.length, 2, 'one shaft and one head');
-  const lengths = reach.parallelArrows.map(arrow => distance(arrow[0][0], arrow[0][1]));
-  assert.ok(lengths.every(length => Math.abs(length - lengths[0]) < 1e-9), 'the parallel arrows are equal');
 });
 
 test('the sun ring has the fallback size for an empty scene', () => {

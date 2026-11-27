@@ -64,7 +64,8 @@ export function renderSceneObjectMarks(documentReference, gizmoSvg, controller) 
       continue;
     }
     const selected = object.key === controller.selectedObjectKey;
-    if (object.kind === 'sun') {
+    // A selected sun shows its direction arrow, which the short stub would only repeat.
+    if (object.kind === 'sun' && !selected) {
       appendSunRay(documentReference, gizmoSvg, controller, object, projected, selected);
     }
     appendSceneObjectMark(documentReference, gizmoSvg, object, projected, selected);

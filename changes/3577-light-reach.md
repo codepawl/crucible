@@ -1,0 +1,1 @@
+- Studio shows how far and how wide the selected light shines (a wire, volume or footprint drawing chosen with `?lightReach=`), and a selected sun shows a ground ring with direction arrows (#3577)

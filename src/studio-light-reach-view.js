@@ -167,7 +167,7 @@ function drawSelectedLight(documentReference, layer, project, kind, light, conte
 function drawSun(documentReference, layer, project, sunObject, context) {
   const reach = sunReach(context.bounds, sunObject.direction, context.eye);
   const indicator = context.options.sunArrow === 'single' ? reach.singleArrow : reach.parallelArrows.flat();
-  appendLines(documentReference, layer, project, [{ role: 'ring', polylines: [reach.ring] }, { role: 'main', polylines: indicator }]);
+  appendLines(documentReference, layer, project, [{ role: 'sun', polylines: [reach.ring, ...indicator] }]);
 }
 
 /**
