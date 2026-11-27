@@ -17,6 +17,7 @@ import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shad
 import { STUDIO_CSS } from './studio-styles.js';
 import { AGENT_CHAT_CSS, createAgentPanel } from './studio-agent-chat.js';
 import { createApplyMenus } from './studio-apply-menu.js';
+import { createViewportContextMenus, createViewportMenuOpening, isContextMenuKey, openPopoverNearPointer, selectForContextMenu } from './studio-viewport-context-menu.js';
 import { createMeshMenus } from './studio-mesh-menus.js';
 import { resolveMouseMap } from './studio-mouse-map.js';
 import { createMouseInput, createViewportTargetFilter, isEditableTarget } from './studio-mouse-input.js';
@@ -1515,11 +1516,24 @@ export function createStudio(container, {
     getMeshEditor: () => meshEditor,
     openPopoverAtMenuPoint: popover => openPopoverAt(popover, ...(lastObjectMenuPoint ?? [0, 0])),
   });
+  const viewportMenus = createViewportContextMenus({
+    createMenuPopover,
+    createMenuItem,
+    controller,
+    announce: message => announce(message),
+    announceError: message => announceError(message),
+    openPopoverAtMenuPoint: popover => openPopoverAt(popover, ...(lastObjectMenuPoint ?? [0, 0])),
+    getAddPopover: () => addPopover,
+    onPaste: () => pasteCopy(),
+    onShowAll: () => showAllHidden(),
+  });
   const objectPopover = buildRegisteredMenuPopover('crucible-studio-pop-object', 'object', [
     { order: 10, label: 'Frame', actionId: 'view.frame', icon: 'frame', onChoose: () => flyToSelection() },
     { order: 20, label: 'Rename', actionId: 'edit.rename', icon: 'text', onChoose: () => renameActiveObjectFromMenu() },
     { order: 30, label: 'Duplicate', actionId: 'edit.duplicate', icon: 'duplicateObject', onChoose: () => duplicateSelection() },
+    { order: 35, element: viewportMenus.addModifierRow },
     { order: 40, label: 'Hide', actionId: 'edit.hide', icon: 'eyeOff', onChoose: () => hideSelection() },
+    { order: 45, label: 'Parent', actionId: 'edit.parent', icon: 'node', onChoose: () => parentSelection() },
     { order: 50, label: 'Reset position', actionId: 'edit.resetPosition', icon: 'translate', onChoose: () => resetSelectionTransform('translation') },
     { order: 60, label: 'Reset rotation', actionId: 'edit.resetRotation', icon: 'rotate', onChoose: () => resetSelectionTransform('rotation') },
     { order: 70, label: 'Reset scale', actionId: 'edit.resetScale', icon: 'scale', onChoose: () => resetSelectionTransform('scale') },
@@ -1527,22 +1541,9 @@ export function createStudio(container, {
     { order: 90, element: applyMenus.originRow },
     { order: 100, label: 'Delete', actionId: 'edit.delete', icon: 'remove', onChoose: () => deleteButton.click() },
   ]);
+  viewportMenus.watchObjectMenu(objectPopover);
   let lastObjectMenuPoint = null;
-  function openPopoverAt(popover, clientX, clientY) {
-    const windowWidth = documentReference.defaultView?.innerWidth ?? 1280;
-    const windowHeight = documentReference.defaultView?.innerHeight ?? 800;
-    popover.togglePopover?.(false);
-    popover.style.left = `${Math.round(Math.max(8, Math.min(clientX, windowWidth - 256)))}px`;
-    popover.style.right = 'auto';
-    // In the lower half the menu hangs from the pointer and grows upward, so it stays on screen at any height.
-    const opensUpward = clientY > windowHeight / 2;
-    popover.style.top = opensUpward ? 'auto' : `${Math.round(clientY)}px`;
-    popover.style.bottom = opensUpward ? `${Math.round(Math.max(8, windowHeight - clientY))}px` : 'auto';
-    const opening = popoverOpeningStyle({ opensUpward });
-    popover.style.setProperty('--studio-popover-origin', opening.origin);
-    popover.style.setProperty('--studio-popover-shift', opening.shift);
-    popover.showPopover?.();
-  }
+  const openPopoverAt = (popover, clientX, clientY) => openPopoverNearPointer(documentReference, popover, clientX, clientY);
   const meshMenus = createMeshMenus({
     createMenuPopover,
     createMenuItem,
@@ -1771,7 +1772,7 @@ export function createStudio(container, {
     startMenuGroup(importAndExportRows[0]),
     ...importAndExportRows.slice(1),
   );
-  for (const popoverElement of [newPopover, addPopover, editPopover, objectPopover, ...meshMenus.popovers, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover, snapPopover]) {
+  for (const popoverElement of [newPopover, addPopover, editPopover, objectPopover, ...viewportMenus.popovers, ...meshMenus.popovers, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover, snapPopover]) {
     popoverElement.addEventListener('click', event => {
       const clickedButton = event.target.closest?.('button');
       if (clickedButton && !clickedButton.dataset.keepsMenu) popoverElement.hidePopover?.();
@@ -1822,6 +1823,7 @@ export function createStudio(container, {
     aiSyncPopover,
     editPopover,
     objectPopover,
+    ...viewportMenus.popovers,
     ...meshMenus.popovers,
     applyMenus.applyPopover,
     applyMenus.originPopover,
@@ -5309,12 +5311,13 @@ export function createStudio(container, {
       } else {
         // Shift or Ctrl (Command) with a left click adds the object under the pointer to the selection, or takes it out.
         const mode = (event.button ?? 0) === 0 && (event.shiftKey || event.ctrlKey || event.metaKey) ? 'toggle' : 'replace';
-        selectNodeAndShowItsPanel(() => controller.pickAt(coordinates.x, coordinates.y, { mode }));
-        // A right press that did not drag picked what is under it: an object there gets its menu. It opens after
-        // this release has been handled, because the release itself closes any open menu.
-        if (event.button === 2 && controller.selectedNodeId) {
+        // A right press keeps an object that is already selected (and the rest of a selection) and picks one that is not.
+        selectNodeAndShowItsPanel(() => (event.button === 2 ? selectForContextMenu(controller, coordinates.x, coordinates.y) : controller.pickAt(coordinates.x, coordinates.y, { mode })));
+        // A right press that did not drag opens the menu of the object under it, or of the scene over empty space. It opens
+        // after this release has been handled, because the release itself closes any open menu.
+        if (event.button === 2) {
           const { clientX, clientY } = event;
-          setTimeout(() => openObjectMenu(clientX, clientY), 0);
+          setTimeout(() => viewportMenuOpening.openAt(clientX, clientY), 0);
         }
       }
     }
@@ -5324,6 +5327,14 @@ export function createStudio(container, {
   });
   viewportElement.addEventListener('pointerleave', () => {
     viewportPointer = null;
+  });
+  const viewportMenuOpening = createViewportMenuOpening({
+    controller, documentReference, viewportElement, canvas, openObjectMenu, selectInPanel: selectNodeAndShowItsPanel,
+    getViewportPointer: () => viewportPointer,
+    isHoldingObject: () => controller.dragging || Boolean(modalTransform),
+    isKeyboardBlocked: () => Boolean(meshEditor?.active) || anyDialogIsOpen() || viewingShot(),
+    openScenePopover: (clientX, clientY) => openPopoverAt(viewportMenus.scenePopover, clientX, clientY),
+    onOpen: point => { lastObjectMenuPoint = point; },
   });
   documentReference.addEventListener('contextmenu', onModalContextMenu, true);
   documentReference.addEventListener('click', onModalClick, true);
@@ -5890,6 +5901,10 @@ export function createStudio(container, {
       return;
     }
     if (isEditableTarget(event.target, event.key)) return;
+    if (isContextMenuKey(event) && viewportMenuOpening.openFromKeyboard()) {
+      event.preventDefault();
+      return;
+    }
     // Esc or a key pressed over an open mesh menu belongs to the menu, not to edit mode.
     if (meshMenus.isOpen()) return;
     const editingMesh = Boolean(meshEditor?.active);
