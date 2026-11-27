@@ -758,6 +758,18 @@ fn prepareSurface(normal: vec3<f32>, view: vec3<f32>) {
   surfaceCoatChance = select(0.0, coatChance / sum, sum > 0.0);
 }
 
+fn firstHitAlbedo(normal: vec3<f32>, view: vec3<f32>) -> vec3<f32> {
+  let viewCosine = max(dot(normal, view), 1e-4);
+  let ratio = (hitIor - 1.0) / (hitIor + 1.0);
+  let glassFresnel = schlick(ratio * ratio, viewCosine);
+  let glass = vec3<f32>(glassFresnel) + hitColor * (1.0 - glassFresnel);
+  var opaque = vec3<f32>(0.0);
+  if (hitTransmission < 1.0) {
+    opaque = surfaceDiffuse + surfaceSpecularWeight * schlickColor(surfaceSpecularNormal, surfaceViewCosine) + vec3<f32>(surfaceCoatWeight);
+  }
+  return clamp(opaque * (1.0 - hitTransmission) + glass * hitTransmission, vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
 fn microfacetTerm(alpha: f32, viewCosine: f32, lightCosine: f32, halfCosine: f32) -> f32 {
   return ggxDistribution(alpha, halfCosine) * smithMasking(alpha, viewCosine) * smithMasking(alpha, lightCosine) / (4.0 * viewCosine * lightCosine);
 }
@@ -1288,19 +1300,17 @@ fn tracePath(origin: vec3<f32>, startDirection: vec3<f32>, pixel: u32, sampleInd
       entering = dot(hitNormal, direction) < 0.0;
       normal = select(-hitNormal, hitNormal, entering);
       isGlass = hitTransmission > 0.0 && nextRandom() < hitTransmission;
+      needsLights = !isGlass;
+      if (needsLights || (!featuresRecorded && hitTransmission < 1.0)) { prepareSurface(normal, -direction); }
       ${realtime ? realtime.firstHit : ''}
       if (!featuresRecorded) {
-        featureAlbedo = select(hitColor, vec3<f32>(1.0), isGlass);
+        featureAlbedo = firstHitAlbedo(normal, -direction);
         featureNormal = normal;
         featureDepth = hitDistance;
         featuresRecorded = true;
       }
       addRadiance(depth, throughput * hitEmission);
-      needsLights = !isGlass;
-      if (needsLights) {
-        prepareSurface(normal, -direction);
-        ${hasSubsurface ? 'subsurfaceWeight = splitSubsurface();' : ''}
-      }
+      ${hasSubsurface ? 'if (needsLights) { subsurfaceWeight = splitSubsurface(); }' : ''}
     }
     if (needsLights) { addLights(depth, normal); }
     inMedium = false;
@@ -1586,8 +1596,9 @@ fn shadePaths(@builtin(global_invocation_id) id: vec3<u32>) {
   let entering = dot(hitNormal, direction) < 0.0;
   let normal = select(-hitNormal, hitNormal, entering);
   let isGlass = hitTransmission > 0.0 && nextRandom() < hitTransmission;
+  if (!isGlass || (depth == 0 && hitTransmission < 1.0)) { prepareSurface(normal, -direction); }
   if (depth == 0) {
-    storeVector(base + 4u, vec4<f32>(select(hitColor, vec3<f32>(1.0), isGlass), 0.0));
+    storeVector(base + 4u, vec4<f32>(firstHitAlbedo(normal, -direction), 0.0));
     storeVector(base + 5u, vec4<f32>(normal, hitDistance));
   }
   addRadiance(depth, throughput * hitEmission);
@@ -1599,7 +1610,6 @@ fn shadePaths(@builtin(global_invocation_id) id: vec3<u32>) {
       storeShadowRecord(path, slot);
     }
   } else {
-    prepareSurface(normal, -direction);
     let emitterCount = params.emittersFlagsSample.x;
     if (lightsFromEveryEmitter(depth, emitterCount)) {
       selectionProbability = 1.0;

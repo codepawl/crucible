@@ -54,9 +54,10 @@ function recordingDevice(maxStorageBufferBindingSize = 1 << 30) {
 // updated for the lamp-mesh shadow pass-through (#2353), for the flat camera background of world false (#2016) and for metals that do not transmit (#2827).
 // A scene without shared geometry compiles exactly this text. Change them only with an intended change of the flat kernel.
 // All three moved for the emission Fresnel line of fillHit (#3282) and the camera-visible analytic sun disc in addEscape (#2164); nothing else in the flat kernels changed.
-const FLAT_MEGAKERNEL_DIGEST = '22a2d64905daba60';
-const FLAT_TEXEL_KERNEL_DIGEST = 'c7234d5cce1cc8f1';
-const FLAT_WAVEFRONT_DIGEST = '0d456b8b4c43905b';
+// Moved again when the WebGPU megakernel and wavefront kernels adopted the shared first-hit albedo (#1941).
+const FLAT_MEGAKERNEL_DIGEST = '8e3706313c64216a';
+const FLAT_TEXEL_KERNEL_DIGEST = '797e44aa546e1db1';
+const FLAT_WAVEFRONT_DIGEST = '71e11b6f67a7482f';
 
 test('a scene without shared geometry compiles the WGSL origin/main compiled', () => {
   assert.equal(digestOf(buildMegakernelSource()).slice(0, 16), FLAT_MEGAKERNEL_DIGEST);
