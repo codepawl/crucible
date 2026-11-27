@@ -96,7 +96,7 @@
 .showcase-credits { color: var(--muted); font-size: 14px; }
 .showcase-credits summary { cursor: pointer; width: max-content; }
 .showcase-credits ul { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 4px; }
-.showcase-credits a { color: var(--text); text-decoration: underline; }
+body.site .showcase-credits a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 body.site.showcase > main { grid-template-columns: minmax(0, 1fr); }
 .showcase-cook { display: grid; gap: 20px; }
 .showcase-cook-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
@@ -105,18 +105,18 @@ body.site.showcase > main { grid-template-columns: minmax(0, 1fr); }
 .showcase-cook figcaption { display: grid; gap: 4px; color: var(--muted); font-size: 14px; }
 .showcase-cook figcaption strong { color: var(--text); font-weight: 600; }
 .showcase-cook figcaption small { font-size: 13px; }
-.showcase-cook figcaption a { color: var(--text); text-decoration: underline; }
+body.site .showcase-cook figcaption a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 /* Community: work other people made, picked from Show and tell (src/community-showcase.js). */
 .showcase-community { display: grid; gap: 20px; }
 .community-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
 .community-grid[hidden] { display: none; }
-.community-empty figure { opacity: .92; }
+.community-empty figure img { opacity: .92; }
 .community-grid figure { margin: 0; display: grid; gap: 12px; }
 .community-grid img { display: block; width: 100%; height: auto; border-radius: var(--panel-radius); background: var(--surface); }
 .community-grid figcaption { display: grid; gap: 4px; color: var(--muted); font-size: 14px; }
 .community-grid figcaption strong { color: var(--text); font-weight: 600; }
 .community-grid figcaption small { font-size: 13px; }
-.community-grid figcaption a { color: var(--text); text-decoration: underline; }
+body.site .community-grid figcaption a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .community-submit { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
 .site .community-submit-primary { display: inline-flex; align-items: center; gap: 8px; min-height: var(--control-height); padding: 8px 16px; border-radius: var(--radius); background: var(--primary); color: var(--primary-text); font-size: 15px; font-weight: 600; transition: opacity .12s; }
 .site .community-submit-primary:hover { opacity: .88; }
