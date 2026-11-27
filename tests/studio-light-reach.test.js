@@ -104,7 +104,17 @@ test('the sun ring wraps the scene in the plane across the light', () => {
   assertClose(reach.radius, Math.hypot(4, 4, 4) / 2, 'ring radius is the scene radius');
   assert.ok(reach.ring.every(point => Math.abs(point[1] - 2) < 1e-9), 'the ring is perpendicular to the direction');
   assertClose(radiusOfRim(reach.ring, reach.center), reach.radius, 'the ring is a circle');
-  assert.equal(reach.parallelArrows.length, 6);
+  assert.equal(reach.parallelArrows.length, 8);
+  const heads = reach.parallelArrows.map(arrow => arrow[0][1]);
+  const tails = reach.parallelArrows.map(arrow => arrow[0][0]);
+  const arrowLength = distance(tails[0], heads[0]);
+  heads.forEach((head, index) => {
+    assertClose(distance(head, reach.center), reach.radius, 'the head lies on the ring');
+    assertClose(distance(tails[index], head), arrowLength, 'equal length');
+    assertClose(tails[index][1] - head[1], arrowLength, 'the tail is upstream along the direction');
+    const next = heads[(index + 1) % heads.length];
+    assertClose(distance(head, next), 2 * reach.radius * Math.sin(Math.PI / 8), 'even spacing around the ring');
+  });
   for (const arrow of reach.parallelArrows) {
     const [shaftStart, shaftEnd] = arrow[0];
     assert.ok(shaftEnd[1] < shaftStart[1], 'arrows travel away from the sun');

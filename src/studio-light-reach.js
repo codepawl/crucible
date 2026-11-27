@@ -13,8 +13,7 @@ import { sceneSphereOf, sunMarkPosition } from './studio-sun-mark.js';
 export const UNLIMITED_RANGE_SCENE_RADIUS_FACTOR = 1.5;
 export const CIRCLE_SEGMENT_COUNT = 64;
 export const GROUND_FOOTPRINT_SAMPLE_COUNT = 180;
-export const SUN_PARALLEL_ARROW_COUNT = 6;
-const SUN_PARALLEL_ARROW_SPREAD = 0.8;
+export const SUN_PARALLEL_ARROW_COUNT = 8;
 const SUN_PARALLEL_ARROW_LENGTH_SHARE = 0.4;
 // The single arrow stops this share of the scene radius upstream of the scene centre, so it does not seem to aim at one object.
 const SUN_SINGLE_ARROW_STOP_SHARE = 0.3;
@@ -197,7 +196,7 @@ export function areaLightReach(light, eye = null) {
 
 /**
  * The sun's whole-scene ring and its two direction indicators; `direction` is the unit vector toward the sun.
- * The parallel arrows are equal and evenly spaced just inside the ring, on its upstream side, each ending at the ring's plane.
+ * The parallel arrows are equal and evenly spaced around the ring, each head on the ring line and its tail upstream along the light direction.
  */
 export function sunReach(bounds, direction, eye = null) {
   const scene = sceneSphereOf(bounds);
@@ -207,7 +206,7 @@ export function sunReach(bounds, direction, eye = null) {
   for (let arrow = 0; arrow < SUN_PARALLEL_ARROW_COUNT; arrow += 1) {
     const turn = (arrow / SUN_PARALLEL_ARROW_COUNT) * Math.PI * 2;
     const sideways = add(scale(firstAxis, Math.cos(turn)), scale(secondAxis, Math.sin(turn)));
-    const tip = add(scene.center, scale(sideways, scene.radius * SUN_PARALLEL_ARROW_SPREAD));
+    const tip = add(scene.center, scale(sideways, scene.radius));
     parallelArrows.push(arrowPolylines(pointAlong(tip, direction, arrowLength), tip, eye));
   }
   const singleArrowTip = pointAlong(scene.center, direction, scene.radius * SUN_SINGLE_ARROW_STOP_SHARE);
