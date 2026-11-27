@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
 import { createAgentScene, loadPhysicsEngine } from '../src/agent-scene.js';
 import { AGENT_SCENE_CAPABILITIES } from '../src/agent-scene-capabilities.js';
 import { createHash } from 'node:crypto';
-import { EXPLOSION_EMPTY_GRID, EXPLOSION_EMPTY_VELOCITY_GRID, explosionGridBytes, setExplosionBakeStore } from '../src/explosion-grids.js';
-import { decodeVolumeGrid, hasGridVelocity } from '../src/volume-grid.js';
+import { EXPLOSION_EMPTY_GRID, EXPLOSION_EMPTY_VELOCITY_GRID, EXPLOSION_GRID_BOX, EXPLOSION_GRID_DETAIL, EXPLOSION_GRID_FPS, EXPLOSION_GRID_FRAMES, EXPLOSION_GRID_RESOLUTION, explosionGridBytes, setExplosionBakeStore } from '../src/explosion-grids.js';
+import { bakeGasSim } from '../src/gas-sim.js';
+import { decodeVolumeGrid, floatToHalf, hasGridVelocity } from '../src/volume-grid.js';
 import { readVolumeGridFiles } from '../src/mcp-volume-grids.js';
 import { agentSceneModulesNeeded, needsPhysics } from '../src/agent-scene-modules.js';
 import { findCoplanarOverlaps } from '../src/coplanar-overlap.js';
@@ -348,4 +349,31 @@ test('the rubble and sparks keep their box pieces while the dust gets its own ge
   assert.equal(geometryOf('blast-rubble'), 'box');
   assert.equal(geometryOf('blast-sparks'), 'box');
   assert.equal(geometryOf('blast-dust'), 'sphere');
+});
+
+test('the baked blast grids apply non-zero detail upres to smoke density while keeping empty cells empty (#1735)', () => {
+  assert.ok(EXPLOSION_GRID_DETAIL > 0 && EXPLOSION_GRID_DETAIL <= 1);
+  const { frames } = applyBlast(blast({ seed: 1, motionBlur: false })).recipe.environment.localVolumes[0];
+  const detailed = decodeVolumeGrid(explosionGridBytes(frames[23]));
+  const plain = bakeGasSim({
+    resolution: EXPLOSION_GRID_RESOLUTION,
+    cellSize: EXPLOSION_GRID_BOX / EXPLOSION_GRID_RESOLUTION,
+    frames: 24,
+    fps: EXPLOSION_GRID_FPS,
+    seed: 1,
+    turbulence: 1,
+    vorticity: 40,
+    detail: 0,
+  }).frames[23];
+  const detailedDensity = detailed.channels.density;
+  let differed = 0;
+  let filledEmpty = 0;
+  for (let voxel = 0; voxel < plain.density.length; voxel++) {
+    const plainValue = plain.density[voxel];
+    const detailedValue = detailedDensity[voxel];
+    if (plainValue === 0 && detailedValue !== 0) filledEmpty++;
+    if (plainValue > 0.05 && Math.abs(detailedValue - floatToHalf(plainValue)) > 0) differed++;
+  }
+  assert.equal(filledEmpty, 0, 'detail upres never invents smoke in empty cells');
+  assert.ok(differed > 100, `detail upres modulates smoke cells (${differed} changed)`);
 });

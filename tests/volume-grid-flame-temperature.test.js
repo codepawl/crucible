@@ -6,6 +6,9 @@ import assert from 'node:assert/strict';
 import { bakedGridEmission, decodeVolumeGrid, encodeVolumeGrid, flameToTemperature, floatToHalf, gridTemperature, blackbodyRadiance } from '../src/volume-grid.js';
 import { resolveLocalVolumes } from '../src/local-volumes.js';
 import { cookGridVolume } from '../src/path-tracer-native-volumes.js';
+import '../src/fog-shader.js';
+import { requireFeatureCode } from '../src/shader-registry.js';
+import { createPostFragment } from '../src/post.js';
 
 const BLENDER_FIRE = { ignition: 1.5, maximum: 3 };
 
@@ -78,4 +81,38 @@ test('Cook gets the remapped flame as the temperature channel, and the plain cha
   const remapped = cookGridVolume({ ...volume, flameTemperature: BLENDER_FIRE }).channels.temperature;
   assert.deepEqual(Array.from(remapped), [2.25, 2.25, 0, 0].map(floatToHalf));
   assert.notDeepEqual(Array.from(remapped), Array.from(gridData.channels.temperature));
+});
+
+test('Glaze uploads remapped emission temperature in localGridTexture.a and evaluates blackbody after interpolation (#1735)', () => {
+  const { localGridTexture } = requireFeatureCode('volumeFog').support;
+  const uploads = [];
+  const renderer = {
+    context: {
+      TEXTURE_3D: 1, TEXTURE_MIN_FILTER: 2, TEXTURE_MAG_FILTER: 3, LINEAR: 4,
+      TEXTURE_WRAP_S: 5, TEXTURE_WRAP_T: 6, TEXTURE_WRAP_R: 7, CLAMP_TO_EDGE: 8,
+      UNPACK_ALIGNMENT: 9, RGBA: 10, HALF_FLOAT: 11, RGBA16F: 12,
+      createTexture: () => ({ id: uploads.length + 1 }),
+      deleteTexture() {},
+      bindTexture() {},
+      texParameteri() {},
+      pixelStorei() {},
+      texImage3D: (...args) => uploads.push(Uint16Array.from(args[9])),
+      texSubImage3D: (...args) => uploads.push(Uint16Array.from(args[10])),
+    },
+  };
+  const grid = fourVoxelGrid();
+  localGridTexture(renderer, grid);
+  localGridTexture(renderer, grid, BLENDER_FIRE);
+  const noFlame = decodeVolumeGrid(encodeVolumeGrid({ resolution: [2, 1, 1], channels: { density: Float32Array.of(1, 1), temperature: Float32Array.of(2, 2) } }));
+  localGridTexture(renderer, noFlame, BLENDER_FIRE);
+
+  const texelAlpha = (texels, x) => texels[((x + 1) + 6 * (1 + 3 * 1)) * 4 + 3];
+  assert.equal(texelAlpha(uploads[0], 0), floatToHalf(0.1), 'without flameTemperature, alpha holds the raw temperature channel');
+  assert.equal(texelAlpha(uploads[1], 0), floatToHalf(2.25), 'with flameTemperature, alpha holds the remapped flame temperature');
+  assert.equal(texelAlpha(uploads[1], 2), 0, 'cold flame cells write 0 to alpha');
+  assert.equal(uploads[2][((1) + 4 * (1 + 3 * 1)) * 4 + 3], 0, 'a grid without a flame channel writes 0 emission temperature under the remap');
+
+  const source = createPostFragment(['local']);
+  assert.match(source, /localGridTexel\(index,\s*position\)\.a\s*\*\s*localVolumeGrid\[index\]\.y/);
+  assert.match(source, /textureLod\(localGridBlackbodyTable/);
 });
