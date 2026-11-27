@@ -223,7 +223,7 @@ test('O, the wheel and the popover through the page', async testContext => {
   await untilEditing(root);
   assert.equal(group.hidden, false);
   assert.equal(toggle.getAttribute('aria-pressed'), 'false');
-  assert.match(toggle.title, /Proportional editing \(O\)/);
+  assert.match(toggle.getAttribute('aria-label'), /Proportional editing \(O\)/);
 
   press('o');
   assert.equal(toggle.getAttribute('aria-pressed'), 'true', 'O turns it on');
