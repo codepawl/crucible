@@ -1,5 +1,13 @@
 import { createSvgElement } from './studio-svg.js';
 import { studioIconPath } from './studio-icons.js';
+import {
+  EDGE_POINTER_CHEVRON_BASE_DISTANCE,
+  EDGE_POINTER_CHEVRON_HEIGHT,
+  EDGE_POINTER_CHEVRON_TIP_DISTANCE,
+  EDGE_POINTER_DISC_RADIUS,
+  EDGE_POINTER_STROKE_WIDTH,
+  EDGE_POINTER_UNDERSTROKE_EXTRA,
+  edgePointerPlacement, screenPointOfWorldPoint } from './studio-edge-pointer.js';
 import { markIsOnFarSide, sunAnglesUnderRay, sunMarkPosition, sunMarkSphereOf, sunRayEnd } from './studio-sun-mark.js';
 
 // The marks over the viewport for the lights and the sun, and the drags that move them.
@@ -66,7 +74,95 @@ function appendSunRay(documentReference, gizmoSvg, controller, object, projected
   }));
 }
 
-/** One mark per light and one for the sun; the scene camera is drawn only while the view looks away from it. */
+// The viewport's own overlays and the panels that float over it: a pointer on the edge keeps clear of them.
+const OVERLAY_SELECTORS = [
+  '.crucible-studio-view-widget',
+  '.crucible-studio-readout',
+  '.crucible-studio-hintbar',
+  '.crucible-studio-status',
+  '.crucible-studio-bake-mark',
+  '.crucible-studio-island',
+  '.crucible-studio-dock',
+];
+
+function overlayRectangles(gizmoSvg) {
+  const studioRoot = gizmoSvg.closest?.('.crucible-studio');
+  const origin = gizmoSvg.getBoundingClientRect?.();
+  if (!studioRoot || !origin) {
+    return [];
+  }
+  return OVERLAY_SELECTORS
+    .flatMap(selector => [...studioRoot.querySelectorAll(selector)])
+    .map(overlay => overlay.getBoundingClientRect?.())
+    .filter(rectangle => rectangle && rectangle.width > 0 && rectangle.height > 0)
+    .map(rectangle => ({
+      left: rectangle.left - origin.left,
+      top: rectangle.top - origin.top,
+      right: rectangle.right - origin.left,
+      bottom: rectangle.bottom - origin.top,
+    }));
+}
+
+// The mark's own disc and glyph a little smaller, with a chevron on the rim that points toward the mark. The disc, the
+// glyph and the chevron take the press; data-edge-pointer tells the press handler to select without dragging.
+function appendEdgePointer(documentReference, gizmoSvg, object, placement, selected) {
+  const pointer = createSvgElement(documentReference, 'g', {
+    class: 'crucible-studio-scene-mark crucible-studio-edge-pointer',
+    'data-selected': selected ? 'true' : 'false',
+    transform: `translate(${placement.x.toFixed(1)} ${placement.y.toFixed(1)})`,
+  });
+  const pointerAttributes = { 'data-scene-object': object.key, 'data-edge-pointer': 'true' };
+  const glyphScale = (0.75 * EDGE_POINTER_DISC_RADIUS) / SCENE_OBJECT_MARK_RADIUS;
+  const glyphOffset = (-12 * glyphScale).toFixed(2);
+  const disc = createSvgElement(documentReference, 'circle', { r: EDGE_POINTER_DISC_RADIUS, class: 'crucible-studio-scene-mark-disc', ...pointerAttributes, style: 'stroke: var(--studio-trace-edge); stroke-width: 1.5' });
+  const glyph = createSvgElement(documentReference, 'path', {
+    d: studioIconPath(SCENE_OBJECT_ICONS[object.kind]),
+    transform: `translate(${glyphOffset} ${glyphOffset}) scale(${glyphScale.toFixed(3)})`,
+    // The glyph is scaled down, so its stroke is set in its own units to land on the chevron's weight.
+    style: `stroke-width: ${(EDGE_POINTER_STROKE_WIDTH / glyphScale).toFixed(2)}`,
+    ...pointerAttributes,
+  });
+  const chevronPath = [
+    `M ${EDGE_POINTER_CHEVRON_BASE_DISTANCE} ${-EDGE_POINTER_CHEVRON_HEIGHT / 2}`,
+    `L ${EDGE_POINTER_CHEVRON_TIP_DISTANCE} 0`,
+    `L ${EDGE_POINTER_CHEVRON_BASE_DISTANCE} ${EDGE_POINTER_CHEVRON_HEIGHT / 2}`,
+  ].join(' ');
+  // The chevron sits over the scene, not on the disc: a dark under-stroke under a light one (accent when selected) reads on pale and dark surfaces.
+  const chevronAttributes = {
+    d: chevronPath,
+    transform: `rotate(${placement.angle.toFixed(1)})`,
+    'stroke-linejoin': 'round',
+    ...pointerAttributes,
+  };
+  const chevronUnderstroke = createSvgElement(documentReference, 'path', {
+    ...chevronAttributes,
+    class: 'crucible-studio-edge-pointer-chevron-understroke',
+    style: `stroke: var(--studio-trace-edge); stroke-width: ${EDGE_POINTER_STROKE_WIDTH + EDGE_POINTER_UNDERSTROKE_EXTRA}`,
+  });
+  const chevron = createSvgElement(documentReference, 'path', {
+    ...chevronAttributes,
+    class: 'crucible-studio-edge-pointer-chevron',
+    style: `stroke: ${selected ? 'var(--studio-accent)' : 'var(--studio-trace)'}; stroke-width: ${EDGE_POINTER_STROKE_WIDTH}`,
+  });
+  const tooltip = createSvgElement(documentReference, 'title');
+  tooltip.textContent = `${object.label} (out of view)`;
+  pointer.append(disc, glyph, chevronUnderstroke, chevron, tooltip);
+  gizmoSvg.append(pointer);
+}
+
+function appendEdgePointerWhenOutOfView(documentReference, gizmoSvg, controller, object, screenPoint, selected) {
+  const placement = edgePointerPlacement({
+    point: screenPoint,
+    width: controller.viewportWidth,
+    height: controller.viewportHeight,
+    obstacles: overlayRectangles(gizmoSvg),
+  });
+  if (placement) {
+    appendEdgePointer(documentReference, gizmoSvg, object, placement, selected);
+  }
+}
+
+/** One mark per light and one for the sun, with a pointer on the viewport's edge for a sun out of view; the scene camera is drawn only while the view looks away from it. */
 export function renderSceneObjectMarks(documentReference, gizmoSvg, controller) {
   const width = controller.viewportWidth;
   const height = controller.viewportHeight;
@@ -74,11 +170,14 @@ export function renderSceneObjectMarks(documentReference, gizmoSvg, controller) 
     if (object.kind === 'camera' && !controller.freeView) {
       continue;
     }
-    const projected = controller.projectWorldPoint(sceneObjectMarkPosition(object, controller));
+    const projected = screenPointOfWorldPoint(controller, sceneObjectMarkPosition(object, controller));
+    const selected = object.key === controller.selectedObjectKey;
     if (!projected.visible || projected.x < 0 || projected.x > width || projected.y < 0 || projected.y > height) {
+      if (object.kind === 'sun') {
+        appendEdgePointerWhenOutOfView(documentReference, gizmoSvg, controller, object, projected, selected);
+      }
       continue;
     }
-    const selected = object.key === controller.selectedObjectKey;
     if (object.kind === 'sun') {
       appendSunRay(documentReference, gizmoSvg, controller, object, projected, selected);
     }

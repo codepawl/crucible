@@ -5218,7 +5218,7 @@ export function createStudio(container, {
     event.stopPropagation();
     selectSceneObjectAndShowItsPanel(key);
     const object = controller.listSceneObjects().find(candidate => candidate.key === key);
-    if (controller.tool !== 'translate') return;
+    if (controller.tool !== 'translate' || event.target.hasAttribute('data-edge-pointer')) return;
     const dragState = beginSceneObjectDrag(controller, object, localCoordinates(event), event.pointerId, announceError);
     if (!dragState) return;
     pointerState = dragState;
