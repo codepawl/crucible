@@ -20,6 +20,7 @@ import { createApplyMenus } from './studio-apply-menu.js';
 import { createMeshMenus } from './studio-mesh-menus.js';
 import { findKeymapAction, findMouseNavigation, formatShortcutKeys, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
 import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
+import { markIsOnFarSide, sunAnglesUnderRay, sunMarkPosition, sunMarkSphereOf, sunRayEnd } from './studio-sun-mark.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
 import { createStudioSettings } from './studio-settings.js';
@@ -1096,9 +1097,6 @@ function appendFreeMoveRing(documentReference, gizmoSvg, origin, radius, axis) {
 }
 
 const SCENE_OBJECT_MARK_RADIUS = 13;
-// A sun has no place in the scene, so its mark floats in front of the view at a share of the way to what the view looks at.
-const SUN_MARK_DISTANCE_SHARE = 0.35;
-const SUN_MARK_RAY_SHARE = 0.12;
 
 /** Where a ray meets the plane through a point with a normal, or null when it runs parallel or the plane lies behind it. */
 function intersectPlane(ray, planePoint, planeNormal) {
@@ -1110,12 +1108,8 @@ function intersectPlane(ray, planePoint, planeNormal) {
   return distance > 0 ? ray.origin.map((component, axis) => component + ray.direction[axis] * distance) : null;
 }
 
-function sceneObjectMarkPosition(object, viewCamera) {
-  if (object.kind !== 'sun') {
-    return object.position;
-  }
-  const reach = Math.hypot(...viewCamera.eye.map((component, axis) => component - viewCamera.target[axis])) * SUN_MARK_DISTANCE_SHARE;
-  return viewCamera.target.map((component, axis) => component + object.direction[axis] * reach);
+function sceneObjectMarkPosition(object, controller) {
+  return object.kind === 'sun' ? sunMarkPosition(controller.sceneBounds(), object.direction) : object.position;
 }
 
 function appendSceneObjectMark(documentReference, gizmoSvg, object, projected, selected) {
@@ -1132,10 +1126,7 @@ function appendSceneObjectMark(documentReference, gizmoSvg, object, projected, s
 }
 
 function appendSunRay(documentReference, gizmoSvg, controller, object, projected, selected) {
-  const viewCamera = controller.viewCamera;
-  const reach = Math.hypot(...viewCamera.eye.map((component, axis) => component - viewCamera.target[axis])) * SUN_MARK_RAY_SHARE;
-  const origin = sceneObjectMarkPosition(object, viewCamera);
-  const end = controller.projectWorldPoint(origin.map((component, axis) => component - object.direction[axis] * reach));
+  const end = controller.projectWorldPoint(sunRayEnd(controller.sceneBounds(), object.direction));
   if (!end.visible) {
     return;
   }
@@ -1157,7 +1148,7 @@ function renderSceneObjectMarks(documentReference, gizmoSvg, controller) {
     if (object.kind === 'camera' && !controller.freeView) {
       continue;
     }
-    const projected = controller.projectWorldPoint(sceneObjectMarkPosition(object, controller.viewCamera));
+    const projected = controller.projectWorldPoint(sceneObjectMarkPosition(object, controller));
     if (!projected.visible || projected.x < 0 || projected.x > width || projected.y < 0 || projected.y > height) {
       continue;
     }
@@ -5290,8 +5281,13 @@ export function createStudio(container, {
     event.stopPropagation();
     selectSceneObjectAndShowItsPanel(key);
     const object = controller.listSceneObjects().find(candidate => candidate.key === key);
+    if (controller.tool !== 'translate') return;
+    if (key === 'sun') {
+      beginSunDrag(event, object);
+      return;
+    }
     const movable = object.position !== null && key !== 'camera';
-    if (!movable || controller.tool !== 'translate') return;
+    if (!movable) return;
     const coordinates = localCoordinates(event);
     const camera = controller.viewCamera;
     const normal = camera.target.map((component, axis) => component - camera.eye[axis]);
@@ -5309,6 +5305,19 @@ export function createStudio(container, {
     };
     viewportElement.setPointerCapture?.(event.pointerId);
   });
+
+  // The sun turns about the middle of the scene. The sphere it slides over and the half of it the mark sits on are fixed at the press, so the drag neither shifts under the pointer nor jumps to the other half.
+  function beginSunDrag(event, sunObject) {
+    if (controller.describeSceneObject('sun').drivenProperties.has('direction')) {
+      announceError('The sun direction is animated by a motion track or driver, so turning it would not show. Remove that motion or edit its keyframes.');
+      return;
+    }
+    const sunSphere = sunMarkSphereOf(controller.sceneBounds());
+    const markPoint = sunMarkPosition(controller.sceneBounds(), sunObject.direction);
+    const farSide = markIsOnFarSide(markPoint, sunSphere, controller.viewCamera.eye);
+    pointerState = { mode: 'light', key: 'sun', sunSphere, farSide, pointerId: event.pointerId };
+    viewportElement.setPointerCapture?.(event.pointerId);
+  }
 
   // A camera drag: orbit, pan or zoom. `keymapNavigation` marks one a keymap asked for (Alt and a button), which never also picks.
   function beginCameraDrag(event, mode, keymapNavigation, captureElement) {
@@ -5384,7 +5393,16 @@ export function createStudio(container, {
     }
   });
 
+  function dragSun(coordinates) {
+    controller.beginUndoGroup();
+    controller.setSunAngles(sunAnglesUnderRay(controller.screenRay(coordinates.x, coordinates.y), pointerState.sunSphere, { farSide: pointerState.farSide }));
+  }
+
   function dragLight(coordinates) {
+    if (pointerState.sunSphere) {
+      dragSun(coordinates);
+      return;
+    }
     const { key, planeNormal, planePoint, grabOffset } = pointerState;
     if (!planeNormal) return;
     const hit = intersectPlane(controller.screenRay(coordinates.x, coordinates.y), planePoint, planeNormal);

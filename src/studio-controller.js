@@ -2837,11 +2837,22 @@ export function createStudioController({
     return updateCamera({ projection: 'perspective', focalLength: roundValue(focalLength, DEGREE_PRECISION), sensorWidth: 36 });
   }
 
+  let sceneBoundsCache = { scene: null, revision: -1, bounds: null };
+
+  /** The box around every part of the scene whatever is selected, or null for an empty scene; it only changes with the scene's revision. */
+  function sceneBounds() {
+    if (sceneBoundsCache.scene !== currentScene || sceneBoundsCache.revision !== currentScene.revision) {
+      sceneBoundsCache = { scene: currentScene, revision: currentScene.revision, bounds: measureSceneBounds() };
+    }
+    return sceneBoundsCache.bounds;
+  }
+
   // The bounds of the selection, or of every object when nothing is selected.
   function framedBounds() {
-    if (selectedNodeId) {
-      return nodeBounds(selectedNodeId);
-    }
+    return selectedNodeId ? nodeBounds(selectedNodeId) : measureSceneBounds();
+  }
+
+  function measureSceneBounds() {
     const minimum = [Infinity, Infinity, Infinity];
     const maximum = [-Infinity, -Infinity, -Infinity];
     const point = vec3.create();
@@ -3165,6 +3176,7 @@ export function createStudioController({
     listSceneObjects,
     selectSceneObject,
     moveSceneObject,
+    sceneBounds,
     describeSceneObject,
     updateSceneLight,
     deleteSceneObject: timed('delete', deleteSceneObject),
