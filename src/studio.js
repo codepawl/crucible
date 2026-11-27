@@ -5086,8 +5086,9 @@ export function createStudio(container, {
     finishModalTransform(false);
   }
 
-  // The window losing focus during a handle drag: the key-up of Ctrl will never arrive, so the drag goes on as if it were up.
+  // The window losing focus: the key-up of Ctrl or Space will never arrive, so a handle drag goes on as if Ctrl were up and a held Space is let go.
   function onWindowBlur() {
+    spaceHold = null;
     if (pointerState?.mode === 'gizmo') replayDragWithCtrl(false);
   }
 
@@ -6089,10 +6090,6 @@ export function createStudio(container, {
     return false;
   }
 
-  function forgetSpaceHold() {
-    spaceHold = null;
-  }
-
   function releaseSpace(event) {
     if (!isSpaceEvent(event) || !spaceHold) return;
     const { pending, dragged } = spaceHold;
@@ -6185,7 +6182,6 @@ export function createStudio(container, {
   documentReference.addEventListener('keydown', onKeyDown);
   documentReference.addEventListener('keyup', onKeyUp);
   documentReference.defaultView?.addEventListener?.('blur', onWindowBlur);
-  documentReference.defaultView?.addEventListener?.('blur', forgetSpaceHold);
   documentReference.addEventListener('pointerdown', onPointerInput, true);
 
   const onVisibilityChange = () => {
@@ -6456,7 +6452,6 @@ export function createStudio(container, {
       documentReference.removeEventListener('keydown', onKeyDown);
       documentReference.removeEventListener('keyup', onKeyUp);
       documentReference.defaultView?.removeEventListener?.('blur', onWindowBlur);
-      documentReference.defaultView?.removeEventListener?.('blur', forgetSpaceHold);
       for (const eventName of SIDE_BUTTON_EVENTS) documentReference.removeEventListener(eventName, onSideButton, true);
       documentReference.removeEventListener('pointerdown', onPointerInput, true);
       documentReference.removeEventListener('visibilitychange', onVisibilityChange);
