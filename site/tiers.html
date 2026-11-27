@@ -35,10 +35,14 @@
 </header>
 <!-- /site-chrome:header -->
     <main id="content">
-      <h1>Render tiers</h1>
-      <p class="tiers-conditions" id="tiers-conditions"></p>
+      <div class="tiers-header">
+        <h1>Render tiers</h1>
+        <p class="tiers-lede">Measured render time, card memory, and visual error across six benchmark scenes on one hardware card.</p>
+        <p class="tiers-conditions" id="tiers-conditions"></p>
+      </div>
       <div class="tiers-switch" id="tiers-switch" role="group" aria-label="Render tier"></div>
-      <div class="tiers-panel" id="tiers-panel" aria-live="polite"></div>
+      <div class="tiers-panel" id="tiers-panel"></div>
+      <section class="tiers-method" id="tiers-method" aria-label="Benchmark methodology"></section>
     </main>
     <!-- site-chrome:footer -->
 <footer class="footer">
