@@ -235,7 +235,7 @@ export function createLiveExample({ source, title, poster, file = 'main.js', asp
   const safeAspect = escapeHtml(aspect);
   root.innerHTML = `
     <div class="live-stage" style="aspect-ratio:${safeAspect}">
-      ${poster ? `<img class="live-poster" src="/docs-media/${safePoster}.webp" alt="" width="960" height="540" loading="lazy" decoding="async" onerror="this.remove()">` : ''}
+      ${poster ? `<img class="live-poster" src="/docs-media/${safePoster}.webp" alt="" width="960" height="540" loading="lazy" decoding="async">` : ''}
       <button class="live-start" type="button">${icon('run')}Run example</button>
     </div>
     <pre class="live-console" aria-label="Console output" hidden></pre>
@@ -251,6 +251,7 @@ export function createLiveExample({ source, title, poster, file = 'main.js', asp
       <textarea spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Editable code for ${safeTitle}"></textarea>
     </div>`;
   const stage = root.querySelector('.live-stage');
+  root.querySelector('.live-poster')?.addEventListener('error', (event) => event.currentTarget.remove(), { once: true });
   const startButton = root.querySelector('.live-start');
   const status = root.querySelector('.live-status');
   const consoleOutput = root.querySelector('.live-console');
