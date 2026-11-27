@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildTierPageData, DEFAULT_RESULTS_PATH } from '../bench/tiers/make-tier-page-data.mjs';
-import { describeConditions, describeTier } from '../src/tiers-model.js';
+import { describeConditions, describeSceneBreakdown, describeTier, describeTierForScene, describeTierOverview } from '../src/tiers-model.js';
 
 const matrix = JSON.parse(readFileSync(DEFAULT_RESULTS_PATH, 'utf8'));
 const committed = JSON.parse(readFileSync(new URL('../bench/tiers/results/tier-page-lit-interior.json', import.meta.url), 'utf8'));
@@ -67,4 +67,25 @@ test('times keep about three significant figures', () => {
   assert.equal(realtime.blender.value, '363 ms');
   assert.equal(describeTier(committed, 'draft').rows.find(row => row.id === 'time').blender.value, '57.4 ms');
   assert.equal(describeTier(committed, 'final').rows.find(row => row.id === 'time').crucible.value, '1.32 s');
+});
+
+test('all six scenes and detailed tier breakdowns are exposed cleanly', () => {
+  assert.deepEqual(committed.sceneOrder, matrix.scenes);
+  assert.equal(Object.keys(committed.scenes).length, 6);
+  const metalDraft = describeTierForScene(committed, 'draft', 'metal');
+  assert.equal(metalDraft.rows.find(row => row.id === 'time').crucible.value, '0.69 ms');
+
+  const draftOverview = describeTierOverview(committed, 'draft', 'lit-interior');
+  assert.equal(draftOverview.summaryStats.length, 3);
+  assert.ok(draftOverview.details.some(item => item.label === 'Queued back to back'));
+  assert.ok(draftOverview.details.some(item => item.label === 'First frame cold start'));
+
+  const finalOverview = describeTierOverview(committed, 'final', 'lit-interior');
+  assert.ok(finalOverview.details.some(item => item.label === 'Per-sample render speed'));
+  assert.ok(finalOverview.details.some(item => item.label.includes('Cook WebGPU')));
+  assert.ok(finalOverview.details.some(item => item.label.includes('Time to Cycles 256-sample noise')));
+
+  const breakdown = describeSceneBreakdown(committed, 'final');
+  assert.equal(breakdown.length, 6);
+  assert.equal(breakdown.find(entry => entry.scene === 'outdoor-hdri').extra, 'Bias floor at 1,024 spp');
 });
