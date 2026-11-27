@@ -1,4 +1,5 @@
 import { mat4, quat, vec3 } from 'gl-matrix';
+import { createSceneBoundsCache, measureSceneBounds } from './studio-scene-bounds.js';
 import { applyProjection, cameraFieldOfView } from './camera.js';
 import { viewportClipPlanes } from './studio-viewport-aids.js';
 import { createAgentScene } from './agent-scene.js';
@@ -2837,37 +2838,16 @@ export function createStudioController({
     return updateCamera({ projection: 'perspective', focalLength: roundValue(focalLength, DEGREE_PRECISION), sensorWidth: 36 });
   }
 
-  let sceneBoundsCache = { scene: null, revision: -1, bounds: null };
+  const wholeSceneBounds = createSceneBoundsCache();
 
   /** The box around every part of the scene whatever is selected, or null for an empty scene; it only changes with the scene's revision. */
   function sceneBounds() {
-    if (sceneBoundsCache.scene !== currentScene || sceneBoundsCache.revision !== currentScene.revision) {
-      sceneBoundsCache = { scene: currentScene, revision: currentScene.revision, bounds: measureSceneBounds() };
-    }
-    return sceneBoundsCache.bounds;
+    return wholeSceneBounds.read(currentScene);
   }
 
   // The bounds of the selection, or of every object when nothing is selected.
   function framedBounds() {
-    return selectedNodeId ? nodeBounds(selectedNodeId) : measureSceneBounds();
-  }
-
-  function measureSceneBounds() {
-    const minimum = [Infinity, Infinity, Infinity];
-    const maximum = [-Infinity, -Infinity, -Infinity];
-    const point = vec3.create();
-    for (const part of currentScene.parts) {
-      const positions = part.matrix && part.geometry?.positions;
-      for (let offset = 0; positions && offset < positions.length; offset += 3) {
-        vec3.set(point, positions[offset], positions[offset + 1], positions[offset + 2]);
-        vec3.transformMat4(point, point, part.matrix);
-        for (let axis = 0; axis < 3; axis += 1) {
-          minimum[axis] = Math.min(minimum[axis], point[axis]);
-          maximum[axis] = Math.max(maximum[axis], point[axis]);
-        }
-      }
-    }
-    return minimum[0] === Infinity ? null : { min: minimum, max: maximum };
+    return selectedNodeId ? nodeBounds(selectedNodeId) : measureSceneBounds(currentScene);
   }
 
   /**
