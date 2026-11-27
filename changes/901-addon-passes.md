@@ -1,0 +1,1 @@
+- Mesh blend (`mesh-blend.js`), mesh volume pass (`mesh-volume-pass.js`), user post passes (`user-pass.js`, `user-pass-inputs.js`) and Gaussian splats (`gaussian-splats.js`) now route their WebGL2 calls through `GlazeBackend` while keeping raw-context fallback for standalone callers; rendered frames are unchanged (Part of #901).
