@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   clearStudioDraft,
+  decideBeforeUnload,
   draftDiffersFrom,
   loadStudioDraft,
   MAXIMUM_DRAFT_CHARACTERS,
@@ -56,4 +57,21 @@ test('a draft differs from the opened scene only when the recipes differ', () =>
   const draft = { fileName: '', recipe: smallRecipe };
   assert.equal(draftDiffersFrom(draft, { ...smallRecipe }), false);
   assert.equal(draftDiffersFrom(draft, { ...smallRecipe, nodes: [] }), true);
+});
+
+test('leaving the page writes the waiting draft and asks to stay only in a browser with unsaved changes', () => {
+  assert.deepEqual(
+    decideBeforeUnload({ isDirty: true, hasDesktopShell: false }),
+    { flushDraft: true, askToStay: true },
+  );
+  assert.deepEqual(
+    decideBeforeUnload({ isDirty: false, hasDesktopShell: false }),
+    { flushDraft: true, askToStay: false },
+    'a saved scene leaves without a prompt',
+  );
+  assert.deepEqual(
+    decideBeforeUnload({ isDirty: true, hasDesktopShell: true }),
+    { flushDraft: true, askToStay: false },
+    'a desktop host owns window close, so the unload is never cancelled',
+  );
 });

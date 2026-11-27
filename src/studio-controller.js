@@ -40,6 +40,8 @@ import {
   toNodeLocalDelta,
 } from './studio-multi-edit.js';
 import { formatLength, STUDIO_LENGTH_UNITS } from './studio-units.js';
+import { motionIsEmpty } from './studio-motion-content.js';
+import { createOrbitPivot } from './studio-orbit-pivot.js';
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
 // The furthest a typed move may go in metres: the coordinate limit the recipe keeps for positions.
@@ -99,19 +101,6 @@ export function roundVector(values, precision = ROUND_PRECISION) {
 }
 
 const SCENE_LIGHT_FIELDS = Object.freeze({ point: 'pointLights', spot: 'spotLights', area: 'areaLights' });
-
-/** True when a motion has no track and nothing else that animates, so it can be dropped from the recipe. */
-function motionIsEmpty(motion) {
-  return !(
-    motion.tracks?.length ||
-    motion.ik?.length ||
-    motion.layers?.length ||
-    motion.drivers?.length ||
-    motion.constraints?.length ||
-    motion.springs ||
-    motion.drive
-  );
-}
 
 function assertPositiveFinite(value, label) {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
@@ -1255,6 +1244,8 @@ export function createStudioController({
     notify({ kind: 'pick', hit: result });
     return result;
   }
+
+  const { surfacePointAt, setOrbitPivot } = createOrbitPivot({ ensureQuery, screenRay, viewCamera, moveViewportCamera });
 
   function gizmoHandles() {
     const pivot = selectedPivotWorld();
@@ -3167,6 +3158,8 @@ export function createStudioController({
     setElementSession,
     screenRay,
     pickAt,
+    surfacePointAt,
+    setOrbitPivot,
     gizmoHandles,
     rotationSweep,
     dragTrace,

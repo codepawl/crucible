@@ -18,6 +18,8 @@ import { STUDIO_CSS } from './studio-styles.js';
 import { AGENT_CHAT_CSS, createAgentPanel } from './studio-agent-chat.js';
 import { createApplyMenus } from './studio-apply-menu.js';
 import { createMeshMenus } from './studio-mesh-menus.js';
+import { resolveMouseMap } from './studio-mouse-map.js';
+import { createMouseInput, createViewportTargetFilter, isEditableTarget } from './studio-mouse-input.js';
 import { findKeymapAction, findMouseNavigation, formatShortcutKeys, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
 import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
 import { SCENE_OBJECT_ICONS, beginSceneObjectDrag, dragSceneObject, renderSceneObjectMarks } from './studio-scene-marks.js';
@@ -44,7 +46,7 @@ import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, des
 import { formatLengthInputValue, lengthFromUnit, parseLengthInput } from './studio-units.js';
 // The grid is textured, and replaceParts takes a textured part only with this module loaded.
 import './replace-textured-parts.js';
-import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
+import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft, watchBeforeUnload } from './studio-draft.js';
 import { createBakeMark } from './studio-bake-mark.js';
 import { watchScrollFade } from './studio-scroll-cue.js';
 import { extensionOf, openNameEditor, splitFileName, validateFileStem, validateNodeLabel, validateShotName } from './studio-name-editor.js';
@@ -1310,8 +1312,9 @@ export function createStudio(container, {
   });
   // The keymap in force. Choosing another preset swaps it and every place that shows a key is drawn again.
   const keymapOf = () => resolveKeymapPreset(preferences.keymap, preferences.keyOverrides[preferences.keymap], { numberPad: preferences.numberPad });
-  const keymapSignature = () => JSON.stringify([preferences.keymap, preferences.numberPad, preferences.keyOverrides[preferences.keymap] ?? {}]);
+  const keymapSignature = () => JSON.stringify([preferences.keymap, preferences.numberPad, preferences.keyOverrides[preferences.keymap] ?? {}, preferences.mouseOverrides]);
   let keymap = keymapOf();
+  let mouseMap = resolveMouseMap(preferences.mouseOverrides);
   let appliedKeymap = '';
   const menuKeyViews = [];
   const keyTooltipViews = [];
@@ -2930,7 +2933,7 @@ export function createStudio(container, {
   function fillShortcutsGrid() {
     const columnCount = sheetColumnCount(documentReference.defaultView?.innerWidth ?? 1280);
     shortcutsDialog.dataset.columns = String(columnCount);
-    const columns = balanceSheetColumns(shortcutSheetGroups(keymap, { omittedActionIds: agentPanel ? [] : ['view.agent'] }), columnCount);
+    const columns = balanceSheetColumns(shortcutSheetGroups(keymap, { omittedActionIds: agentPanel ? [] : ['view.agent'], mouseMap }), columnCount);
     shortcutsGrid.replaceChildren(...columns.map(columnGroups => createElement(
       documentReference,
       'div',
@@ -2992,6 +2995,9 @@ export function createStudio(container, {
       getNumberPad: () => preferences.numberPad,
       getOverrides: () => preferences.keyOverrides[preferences.keymap] ?? {},
       onOverridesChange: presetOverrides => setPreference('keyOverrides', withPresetOverrides(preferences.keyOverrides, preferences.keymap, presetOverrides)),
+      getMouseMap: () => mouseMap,
+      getMouseOverrides: () => preferences.mouseOverrides,
+      onMouseOverridesChange: overrides => setPreference('mouseOverrides', overrides),
     },
   });
   const settingsDialog = settings.dialog;
@@ -3028,6 +3034,7 @@ export function createStudio(container, {
     if (keymapSignature() !== appliedKeymap) {
       appliedKeymap = keymapSignature();
       keymap = keymapOf();
+      mouseMap = resolveMouseMap(preferences.mouseOverrides);
       refreshKeyLabels();
     }
     settings.refreshKeyboard();
@@ -5004,8 +5011,9 @@ export function createStudio(container, {
     finishModalTransform(false);
   }
 
-  // The window losing focus during a handle drag: the key-up of Ctrl will never arrive, so the drag goes on as if it were up.
+  // The window losing focus: the key-up of Ctrl or Space will never arrive, so a handle drag goes on as if Ctrl were up and a held Space is let go.
   function onWindowBlur() {
+    mouseInput.letGoOfSpace();
     if (pointerState?.mode === 'gizmo') replayDragWithCtrl(false);
   }
 
@@ -5166,7 +5174,7 @@ export function createStudio(container, {
     if (mode === null) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    beginCameraDrag(event, mode, true, viewportElement);
+    pointerState = mouseInput.startCameraDrag(event, mode, true, viewportElement);
   });
 
   gizmoSvg.addEventListener('pointerdown', event => {
@@ -5196,6 +5204,7 @@ export function createStudio(container, {
       return;
     }
     if (findMouseNavigation(keymap, { button: 2, altKey: event.altKey }) !== null) return;
+    if (mouseInput.claimsRightClick(event)) return;
     if (controller.selectedNodeId) {
       openObjectMenu(event.clientX, event.clientY);
     }
@@ -5216,47 +5225,14 @@ export function createStudio(container, {
     viewportElement.setPointerCapture?.(event.pointerId);
   });
 
-  // A camera drag: orbit, pan or zoom. `keymapNavigation` marks one a keymap asked for (Alt and a button), which never also picks.
-  function beginCameraDrag(event, mode, keymapNavigation, captureElement) {
-    const coordinates = localCoordinates(event);
-    pointerState = {
-      mode,
-      keymapNavigation,
-      startX: coordinates.x,
-      startY: coordinates.y,
-      lastX: coordinates.x,
-      lastY: coordinates.y,
-      moved: false,
-      pointerId: event.pointerId,
-    };
-    captureElement.setPointerCapture?.(event.pointerId);
-  }
-
-  function targetPassesThroughViewport(target, { checkScroll = false } = {}) {
-    for (let node = target; node && node !== viewportElement && node.tagName; node = node.parentNode) {
-      const tag = node.tagName.toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || tag === 'a' || tag === 'dialog') return false;
-      if (node.getAttribute?.('popover') !== null || node.getAttribute?.('data-view') !== null) return false;
-      const classes = String(node.className ?? '').split(/\s+/);
-      if (classes.some(name => name === 'crucible-studio-dock' || name === 'crucible-studio-popover' || name === 'crucible-studio-view-widget' || name === 'crucible-studio-paused' || name === 'crucible-studio-draft' || name === 'crucible-studio-pass-notice')) {
-        return false;
-      }
-      if (checkScroll) {
-        const style = documentReference.defaultView?.getComputedStyle?.(node);
-        const overflow = `${style?.overflowX ?? ''}${style?.overflowY ?? ''}`;
-        if (/auto|scroll/.test(overflow) && (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth)) return false;
-      }
-    }
-    return true;
-  }
+  const targetPassesThroughViewport = createViewportTargetFilter(viewportElement, documentReference);
 
   viewportElement.addEventListener('pointerdown', event => {
     if (viewingShot()) return;
     if (event.button !== 0 && event.button !== 1 && event.button !== 2) return;
     if (!targetPassesThroughViewport(event.target)) return;
     const keymapMode = findMouseNavigation(keymap, event);
-    const defaultMode = event.shiftKey || event.button === 2 || event.button === 1 ? 'pan' : 'orbit';
-    beginCameraDrag(event, keymapMode ?? defaultMode, keymapMode !== null, event.target === canvas ? canvas : viewportElement);
+    pointerState = mouseInput.startCameraDrag(event, keymapMode ?? mouseInput.cameraModeOf(event), keymapMode !== null, event.target === canvas ? canvas : viewportElement);
   });
 
   viewportElement.addEventListener('pointermove', event => {
@@ -5273,26 +5249,30 @@ export function createStudio(container, {
       dragLight(coordinates);
       return;
     }
-    const deltaX = coordinates.x - pointerState.lastX;
-    const deltaY = coordinates.y - pointerState.lastY;
-    if (Math.hypot(coordinates.x - pointerState.startX, coordinates.y - pointerState.startY) > 4) {
-      pointerState.moved = true;
-    }
-    pointerState.lastX = coordinates.x;
-    pointerState.lastY = coordinates.y;
-    if (!pointerState.moved) return;
-    if (pointerState.mode === 'pan') {
-      controller.orbitCamera({ panX: -deltaX * 0.002, panY: deltaY * 0.002 });
-    } else if (pointerState.mode === 'zoom') {
-      controller.orbitCamera({ zoomScale: Math.min(1.5, Math.max(0.5, 1 - (deltaX - deltaY) * 0.005)) });
-    } else {
-      controller.orbitCamera({ deltaAzimuth: -deltaX * 0.008, deltaElevation: deltaY * 0.008 });
-    }
+    mouseInput.dragCamera(pointerState, coordinates);
   });
 
   function dragLight(coordinates) {
     dragSceneObject(controller, pointerState, coordinates, announceError);
   }
+
+  const mouseInput = createMouseInput({
+    documentReference,
+    viewportElement,
+    controller,
+    getMouseMap: () => mouseMap,
+    isConnected: () => root.isConnected,
+    isInputBlocked: () => anyDialogIsOpen() || Boolean(modalTransform),
+    getViewportPointer: () => viewportPointer,
+    isPointerActive: () => Boolean(pointerState),
+    isBoundToSpace: event => resolveStudioKeyAction(keymap, event, Boolean(meshEditor?.active), findKeymapAction, MESH_EDIT_PASS_THROUGH).match,
+    replayKeyDown: event => onWindowKeyDown(event),
+    localCoordinates,
+    announce,
+    stopFlight,
+    undo: () => undoButton.click(),
+    redo: () => redoButton.click(),
+  });
 
   function finishPointer(event) {
     if (!pointerState) return;
@@ -5310,6 +5290,7 @@ export function createStudio(container, {
       controller.endGizmoDrag();
       return;
     }
+    if (!finished.moved && mouseInput.runClickAction(event)) return;
     if (!finished.moved && !finished.keymapNavigation) {
       const coordinates = localCoordinates(event);
       if (meshEditor?.active) {
@@ -5386,22 +5367,6 @@ export function createStudio(container, {
     }
     await openPickedFile({ text: await file.text(), fileName: file.name, filePath: file.path || null, verb: 'Loaded' });
   });
-
-  // A slider or a switch keeps the focus after a click, but nothing is typed into it, so only the keys it moves with stay its own.
-  const SLIDER_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
-  const SWITCH_KEYS = new Set([...SLIDER_KEYS, 'Enter', ' ']);
-  const SWITCH_INPUT_TYPES = new Set(['checkbox', 'radio', 'button', 'color']);
-
-  function isEditableTarget(target, key) {
-    const tag = target?.tagName?.toLowerCase?.();
-    if (tag === 'input' && target.type === 'range') {
-      return SLIDER_KEYS.has(key);
-    }
-    if (tag === 'input' && SWITCH_INPUT_TYPES.has(target.type)) {
-      return SWITCH_KEYS.has(key);
-    }
-    return tag === 'input' || tag === 'textarea' || tag === 'select' || Boolean(target?.isContentEditable);
-  }
 
   function selectedObjectIsDeletable() {
     return controller.selectedObjectKey !== null && controller.selectedObjectKey !== 'camera' && controller.selectedObjectKey !== 'sun';
@@ -5913,6 +5878,10 @@ export function createStudio(container, {
     };
   }
 
+  function anyDialogIsOpen() {
+    return recipeDialog.open || shortcutsDialog.open || settingsDialog.open || setup.dialog.open || Boolean(newSceneDialogs?.dialogs.some(dialog => dialog.open));
+  }
+
   const onWindowKeyDown = async event => {
     if (!root.isConnected) return;
     if (faceToolInput?.handleKey(event)) return;
@@ -5925,7 +5894,7 @@ export function createStudio(container, {
     if (meshMenus.isOpen()) return;
     const editingMesh = Boolean(meshEditor?.active);
     const { match, fromMeshContext } = resolveStudioKeyAction(keymap, event, editingMesh, findKeymapAction, MESH_EDIT_PASS_THROUGH);
-    const dialogIsOpen = recipeDialog.open || shortcutsDialog.open || settingsDialog.open || setup.dialog.open || Boolean(newSceneDialogs?.dialogs.some(dialog => dialog.open));
+    const dialogIsOpen = anyDialogIsOpen();
     if (!event.repeat && !dialogIsOpen && isNumpadKeyEvent(event) && !preferences.numberPad && !preferences.numberPadNoticeShown) {
       setPreferences({ numberPadNoticeShown: true });
       numpadNotice.show();
@@ -5951,11 +5920,14 @@ export function createStudio(container, {
     blockPageSelectAll(event);
     if (!isModifierKey(event.key)) root.dataset.input = 'keyboard';
     if (event.key === 'Control' && !event.repeat) replayDragWithCtrl(true);
+    if (mouseInput.holdSpaceForPan(event)) return;
     onWindowKeyDown(event);
   };
   const onKeyUp = event => {
     if (event.key === 'Control') replayDragWithCtrl(false);
+    mouseInput.releaseSpace(event);
   };
+
   const onPointerInput = event => {
     root.dataset.input = 'pointer';
     pointerStartedInStudio = (event.composedPath?.() ?? []).includes(root);
@@ -6034,6 +6006,9 @@ export function createStudio(container, {
   };
   documentReference.addEventListener('visibilitychange', flushDraftWhenHidden);
   documentReference.defaultView?.addEventListener?.('pagehide', flushDraftSave);
+
+  // The browser asks before it drops unsaved changes; a desktop host owns window close, so there the unload goes ahead.
+  const stopWatchingBeforeUnload = watchBeforeUnload(documentReference.defaultView, { readIsDirty: () => isDirty, readHasDesktopShell: () => Boolean(globalThis.crucibleShell), flushDraft: flushDraftSave });
 
   // Forgets the draft: the scene was saved, or the person chose another scene on purpose.
   function discardDraft() {
@@ -6241,10 +6216,12 @@ export function createStudio(container, {
       documentReference.removeEventListener('keydown', onKeyDown);
       documentReference.removeEventListener('keyup', onKeyUp);
       documentReference.defaultView?.removeEventListener?.('blur', onWindowBlur);
+      mouseInput.dispose();
       documentReference.removeEventListener('pointerdown', onPointerInput, true);
       documentReference.removeEventListener('visibilitychange', onVisibilityChange);
       documentReference.removeEventListener('visibilitychange', flushDraftWhenHidden);
       documentReference.defaultView?.removeEventListener?.('pagehide', flushDraftSave);
+      stopWatchingBeforeUnload();
       stopWatchingContextLoss();
       stopWatchingDiagnostics();
       pausedNotice.hide();

@@ -297,9 +297,28 @@ In Maya and Cinema 4D a tool key only selects the tool and its handles appear; i
 
 Maya and Cinema 4D also take **Alt** with a mouse button on the viewport: Alt and the left button orbit, Alt and the middle button pan, Alt and the right button zoom (drag right or up to come closer). It works over the objects and the handles, and it never selects or drags a handle. Plain left drag orbits, Shift, middle or right drag pan and the wheel keep working in every preset.
 
+### Mouse
+
+What a press does in the viewport; **Settings ▸ Keyboard** changes each of these presses. A press that moves more than 4 pixels is a drag; one that stays put is a click.
+
+| Press | What it does |
+| --- | --- |
+| Left drag | Orbit |
+| Shift + left drag | Pan |
+| Right drag | Pan |
+| Middle drag | Pan |
+| Space + left drag | Pan. A Space tap with no drag still does what Space is bound to (play, or place a held object), once the key comes up; holding the key until it repeats, or pressing it away from the viewport, acts at once. In a text field Space types a space |
+| Middle click | Set the orbit point: the view moves so the point under the pointer is what it orbits, and the angle and distance stay. It does not select. Over empty space it does nothing and says so. It works in edit mode too |
+| Alt + right click | The same as a middle click, and it does not open the object menu. In a keymap preset where Alt + right drag zooms, the drag still zooms and an unmoved press sets the orbit point |
+| Back button click | Undo, as the Undo button does. The browser does not go back while Studio is the page. A text field that has focus, an open dialog and a held object leave undo alone |
+| Forward button click | Redo, in the same way |
+| Wheel | Zoom (see **Zoom direction** in Settings) |
+
+Left click selects, Shift or Ctrl + click adds to or takes from the selection, and a right click without a drag opens the menu of the object under the pointer.
+
 ### Change a shortcut
 
-**Settings ▸ Keyboard** lists every shortcut of the chosen preset in the same groups as the Help sheet, one row per action with its key as a button. Click the key (or press Enter on it): the button reads **Press keys** with a dot, an **Esc** key cap with "cancels" sits beside it, and the next combination becomes the binding. A modifier alone waits for the key that goes with it. **Esc** cancels, and **Backspace** or **Delete** clears the binding, leaving the action without a key until you set one. An action with several keys (Delete has X, Delete and Backspace) takes the new key in place of all of them; reset it to get them back. The mouse rows are shown and cannot be changed yet.
+**Settings ▸ Keyboard** lists every shortcut of the chosen preset in the same groups as the Help sheet, one row per action with its key as a button. Click the key (or press Enter on it): the button reads **Press keys** with a dot, an **Esc** key cap with "cancels" sits beside it, and the next combination becomes the binding. A modifier alone waits for the key that goes with it. **Esc** cancels, and **Backspace** or **Delete** clears the binding, leaving the action without a key until you set one. An action with several keys (Delete has X, Delete and Backspace) takes the new key in place of all of them; reset it to get them back. The mouse rows sit beside them, under **Mouse view** and **Mouse buttons**: click the press, then press the mouse button you want, with Shift, Alt, Ctrl or Space held if you like. Its gesture (click or drag) stays; **Esc** cancels. A press another row uses asks first, with **Swap** and **Cancel**. A plain left click (it selects) and a plain right click (it opens the object menu) cannot be given to a click row, and the Back and Forward buttons only click. The reset beside a changed row and **Reset shortcuts** cover the mouse rows too, and the Help sheet and the viewport follow a change at once.
 
 - **A clash.** If another action of the same context already has the combination, the row shows a warning, "Used by <action>", with **Swap** and **Cancel**. Nothing is saved until you choose: Swap gives the other action the key this one had, and keeps the other keys that action had.
 - **Keys the browser keeps.** Combinations a page never receives (Ctrl+W, Ctrl+T, Ctrl+N, Ctrl+Tab, Ctrl+1 to 9, Ctrl+Shift+Q, F11, Alt+F4) are refused with a note on the row, and recording goes on so you can press another.
