@@ -42,7 +42,7 @@ import { createShapeSettings } from './studio-shape-settings.js';
 import { MIXED_PROPERTY_LABEL, MIXED_SELECT_VALUE, summarizeNodeSelection, syncObjectAndMaterialPanels } from './studio-multi-edit.js';
 import { createKeyMarkers } from './studio-timeline-keys.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
-import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, describeBounds, describeCamera, describeGridStep, gridLayout, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart } from './studio-viewport-aids.js';
+import { AXIS_COLORS, buildGridParts, createViewWidget, describeBounds, describeCamera, describeGridStep, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart, viewportGridLayout } from './studio-viewport-aids.js';
 import { formatLengthInputValue, lengthFromUnit, parseLengthInput } from './studio-units.js';
 // The grid is textured, and replaceParts takes a textured part only with this module loaded.
 import './replace-textured-parts.js';
@@ -3312,7 +3312,7 @@ export function createStudio(container, {
   function syncViewportAids() {
     const camera = controller.viewCamera;
     viewWidget.update(camera);
-    const gridStep = gridLayout({ visibleHeight: cameraVisibleHeight(camera), viewportHeight: controller.viewportHeight, target: camera.target, eye: camera.projection === 'orthographic' ? undefined : camera.eye }).step;
+    const gridStep = viewportGridLayout(camera, controller.viewportHeight, { sizeForEye: camera.projection !== 'orthographic' }).step;
     readoutCamera.textContent = gridVisible ? `${describeCamera(camera)} · Grid ${describeGridStep(gridStep)}` : describeCamera(camera);
     if (controller.activeTab === 'export') syncExportFacts();
     if (selectionReadoutStale) {
@@ -3891,7 +3891,7 @@ export function createStudio(container, {
     gridParts ??= buildGridParts();
     gridPartsByName ??= new Map(gridParts.map(part => [part.name, part]));
     const camera = controller.viewCamera;
-    placeGridParts(gridPartsByName, gridLayout({ visibleHeight: cameraVisibleHeight(camera), viewportHeight: controller.viewportHeight, target: camera.target, eye: camera.eye }));
+    placeGridParts(gridPartsByName, viewportGridLayout(camera, controller.viewportHeight));
     return [...sceneParts, ...gridParts];
   }
 
