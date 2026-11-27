@@ -16,6 +16,33 @@ function keyIndexAt(keyframes, time) {
   return keyframes.findIndex(keyframe => Math.abs(keyframe.time - time) < KEYFRAME_TIME_TOLERANCE);
 }
 
+function roundTo(value, precision) {
+  return Math.round(value * precision) / precision;
+}
+
+/** The tracks with a key of `value` at `time` on the node's property track (made when missing); a key already there is replaced. */
+export function upsertNodeKeyframeTrack(tracks, nodeId, property, time, value) {
+  const nextTracks = tracks.slice();
+  const existingIndex = nextTracks.findIndex(track => isNodePropertyTrack(track, nodeId, property));
+  const roundedTime = roundTo(time, 1000);
+  const entry = { time: roundedTime, value: Array.from(value, component => roundTo(component, 10000)) };
+  if (existingIndex < 0) {
+    nextTracks.push({ kind: 'node', id: nodeId, property, keyframes: [entry] });
+    return nextTracks;
+  }
+  const existing = nextTracks[existingIndex];
+  const nextKeyframes = existing.keyframes.slice();
+  const matchIndex = keyIndexAt(nextKeyframes, roundedTime);
+  if (matchIndex >= 0) {
+    nextKeyframes[matchIndex] = entry;
+  } else {
+    nextKeyframes.push(entry);
+    nextKeyframes.sort((first, second) => first.time - second.time);
+  }
+  nextTracks[existingIndex] = { ...existing, keyframes: nextKeyframes };
+  return nextTracks;
+}
+
 /** The property's track of a node, or undefined. */
 export function findPropertyTrack(tracks, nodeId, property) {
   return tracks.find(track => isNodePropertyTrack(track, nodeId, property));
@@ -110,4 +137,53 @@ export function removePropertyKey(tracks, nodeId, property, time) {
   const index = requireKey(track, nodeId, property, time);
   track.keyframes.splice(index, 1);
   return nextTracks.filter(candidate => candidate.keyframes.length > 0);
+}
+
+/**
+ * The controller's per-property key actions, built on its own helpers (`host`): `recipe()`, `requireNode(recipe, nodeId)`,
+ * `commitNodeTracks(recipe, tracks, duration, nodeId)` (one undo step), `validatedKeyTime(time, label)`, `motionTime()`,
+ * `nodePose(nodeId)` and `selectedNodeId()`.
+ */
+export function createPropertyKeyActions(host) {
+  const tracksOf = recipe => recipe.motion?.tracks ?? [];
+  return {
+    /** The node's animated properties with their keys ({ property, canEase, keys: [{ time, value, easing }] }), for the timeline rows. */
+    nodePropertyKeys(nodeId = host.selectedNodeId()) {
+      return propertyKeysOf(tracksOf(host.recipe()), nodeId);
+    },
+    /** Puts a key on one property at the playhead from the pose shown there, or removes it when one is already there. Returns true when a key was added. */
+    togglePropertyKeyframe(nodeId, property) {
+      const recipe = host.recipe();
+      host.requireNode(recipe, nodeId);
+      if (!POSE_PROPERTIES.includes(property)) {
+        throw new RangeError(`Property must be one of ${POSE_PROPERTIES.join(', ')}, got ${JSON.stringify(property)}.`);
+      }
+      const time = host.motionTime();
+      if (propertyKeyAt(tracksOf(recipe), nodeId, property, time)) {
+        host.commitNodeTracks(recipe, removePropertyKey(tracksOf(recipe), nodeId, property, time), recipe.motion.duration, nodeId);
+        return false;
+      }
+      const tracks = upsertNodeKeyframeTrack(tracksOf(recipe), nodeId, property, time, host.nodePose(nodeId)[property]);
+      host.commitNodeTracks({ ...recipe, motion: { loop: true, ...recipe.motion } }, tracks, Math.max(4, recipe.motion?.duration ?? 4, time), nodeId);
+      return true;
+    },
+    /** Changes the key of a property at `time` ({ time, value, easing }; a field left out stays) as one undo step. */
+    updatePropertyKeyframe(nodeId, property, time, patch) {
+      const recipe = host.recipe();
+      host.requireNode(recipe, nodeId);
+      const edit = { ...patch };
+      if (edit.time !== undefined) {
+        edit.time = host.validatedKeyTime(edit.time, 'patch.time');
+      }
+      const tracks = editPropertyKey(tracksOf(recipe), nodeId, property, host.validatedKeyTime(time, 'time'), edit);
+      return host.commitNodeTracks(recipe, tracks, Math.max(recipe.motion.duration ?? 0, edit.time ?? 0), nodeId);
+    },
+    /** Deletes the key of one property at `time` as one undo step; a track left empty is removed. */
+    deletePropertyKeyframe(nodeId, property, time) {
+      const recipe = host.recipe();
+      host.requireNode(recipe, nodeId);
+      const tracks = removePropertyKey(tracksOf(recipe), nodeId, property, host.validatedKeyTime(time, 'time'));
+      return host.commitNodeTracks(recipe, tracks, recipe.motion?.duration, nodeId);
+    },
+  };
 }

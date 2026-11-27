@@ -41,7 +41,7 @@ import {
 } from './studio-multi-edit.js';
 import { formatLength, STUDIO_LENGTH_UNITS } from './studio-units.js';
 import { motionIsEmpty } from './studio-motion-content.js';
-import { KEYFRAME_TIME_TOLERANCE, POSE_PROPERTIES, editPropertyKey, propertyKeyAt, propertyKeysOf, removePropertyKey } from './studio-property-keys.js';
+import { KEYFRAME_TIME_TOLERANCE, POSE_PROPERTIES, createPropertyKeyActions, upsertNodeKeyframeTrack } from './studio-property-keys.js';
 import { createOrbitPivot } from './studio-orbit-pivot.js';
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
@@ -452,33 +452,6 @@ function planeNormalForAxis(axis, camera, basis = WORLD_BASIS) {
   }
   vec3.normalize(look, look);
   return [look[0], look[1], look[2]];
-}
-
-function upsertNodeKeyframeTrack(tracks, nodeId, property, time, value) {
-  const nextTracks = tracks.slice();
-  const existingIndex = nextTracks.findIndex(track => track.kind === 'node' && track.id === nodeId && track.property === property);
-  const roundedTime = roundValue(time, 1000);
-  const entry = { time: roundedTime, value: roundVector(value) };
-  if (existingIndex < 0) {
-    nextTracks.push({
-      kind: 'node',
-      id: nodeId,
-      property,
-      keyframes: [entry],
-    });
-    return nextTracks;
-  }
-  const existing = nextTracks[existingIndex];
-  const nextKeyframes = existing.keyframes.slice();
-  const matchIndex = keyframeIndexAt(nextKeyframes, roundedTime);
-  if (matchIndex >= 0) {
-    nextKeyframes[matchIndex] = entry;
-  } else {
-    nextKeyframes.push(entry);
-    nextKeyframes.sort((first, second) => first.time - second.time);
-  }
-  nextTracks[existingIndex] = { ...existing, keyframes: nextKeyframes };
-  return nextTracks;
 }
 
 const MAX_MOTION_SECONDS = 3600;
@@ -3045,51 +3018,15 @@ export function createStudioController({
     return commitNodeTracks(recipe, moveNodeKeysInTracks(tracks, nodeId, sourceTime, targetTime), duration, nodeId);
   }
 
-  /** The node's animated properties with their keys ({ property, canEase, keys: [{ time, value, easing }] }), for the timeline rows. */
-  function nodePropertyKeys(nodeId = selectedNodeId) {
-    return propertyKeysOf(currentScene.exportRecipe().motion?.tracks ?? [], nodeId);
-  }
-
-  /** Puts a key on one property at the playhead from the pose shown there, or removes it when one is already there. Returns true when a key was added. */
-  function togglePropertyKeyframe(nodeId, property) {
-    const recipe = currentScene.exportRecipe();
-    requireNode(recipe, nodeId);
-    if (!POSE_PROPERTIES.includes(property)) {
-      throw new RangeError(`Property must be one of ${POSE_PROPERTIES.join(', ')}, got ${JSON.stringify(property)}.`);
-    }
-    const tracks = recipe.motion?.tracks ?? [];
-    if (propertyKeyAt(tracks, nodeId, property, motionTime)) {
-      commitNodeTracks(recipe, removePropertyKey(tracks, nodeId, property, motionTime), recipe.motion.duration, nodeId);
-      return false;
-    }
-    const nextTracks = upsertNodeKeyframeTrack(tracks, nodeId, property, motionTime, nodePose(nodeId)[property]);
-    const duration = Math.max(4, recipe.motion?.duration ?? 4, motionTime);
-    const nextMotion = { ...(recipe.motion ?? {}), duration, loop: recipe.motion?.loop ?? true, tracks: nextTracks };
-    applySceneOperations([{ type: 'set-motion', motion: nextMotion }]);
-    settleSelectionAndMotion();
-    notify({ kind: 'motion', nodeId });
-    return true;
-  }
-
-  /** Changes the key of a property at `time` ({ time, value, easing }; a field left out stays) as one undo step. */
-  function updatePropertyKeyframe(nodeId, property, time, patch) {
-    const recipe = currentScene.exportRecipe();
-    requireNode(recipe, nodeId);
-    const edit = { ...patch };
-    if (edit.time !== undefined) {
-      edit.time = validatedKeyTime(edit.time, 'patch.time');
-    }
-    const tracks = editPropertyKey(recipe.motion?.tracks ?? [], nodeId, property, validatedKeyTime(time, 'time'), edit);
-    return commitNodeTracks(recipe, tracks, Math.max(recipe.motion.duration ?? 0, edit.time ?? 0), nodeId);
-  }
-
-  /** Deletes the key of one property at `time` as one undo step; a track left empty is removed. */
-  function deletePropertyKeyframe(nodeId, property, time) {
-    const recipe = currentScene.exportRecipe();
-    requireNode(recipe, nodeId);
-    const tracks = removePropertyKey(recipe.motion?.tracks ?? [], nodeId, property, validatedKeyTime(time, 'time'));
-    return commitNodeTracks(recipe, tracks, recipe.motion?.duration, nodeId);
-  }
+  const propertyKeyActions = createPropertyKeyActions({
+    recipe: () => currentScene.exportRecipe(),
+    requireNode,
+    commitNodeTracks,
+    validatedKeyTime,
+    motionTime: () => motionTime,
+    nodePose,
+    selectedNodeId: () => selectedNodeId,
+  });
 
   /** Deletes every key of the node at `time` as one undo step; a track left empty is removed. */
   function deleteNodeKeyframe(nodeId, time) {
@@ -3267,10 +3204,7 @@ export function createStudioController({
     moveNodeKeyframe,
     deleteNodeKeyframe,
     nodeKeyframeTimes,
-    nodePropertyKeys,
-    togglePropertyKeyframe,
-    updatePropertyKeyframe,
-    deletePropertyKeyframe,
+    ...propertyKeyActions,
     animatedNodeProperties,
     nodePose,
     get autoKey() { return autoKey; },

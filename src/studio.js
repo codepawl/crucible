@@ -40,9 +40,7 @@ import './studio-features.js';
 import { hasStudioTab, registeredStudioMenuEntries, registeredStudioStyles, registeredStudioTabIds, registeredStudioTabs, registeredStudioWorkspaces, registerStudioTab } from './studio-registry.js';
 import { createShapeSettings } from './studio-shape-settings.js';
 import { MIXED_PROPERTY_LABEL, MIXED_SELECT_VALUE, summarizeNodeSelection, syncObjectAndMaterialPanels } from './studio-multi-edit.js';
-import { createKeyMarkers } from './studio-timeline-keys.js';
-import { createTimelineRows } from './studio-timeline-rows.js';
-import { createPropertyKeyButtons } from './studio-property-key-buttons.js';
+import { createTimelinePanel } from './studio-timeline-panel.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
 import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, describeBounds, describeCamera, describeGridStep, gridLayout, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart } from './studio-viewport-aids.js';
 import { formatLengthInputValue, lengthFromUnit, parseLengthInput } from './studio-units.js';
@@ -2851,37 +2849,20 @@ export function createStudio(container, {
       controller.setMotionTime(seconds);
     }
   });
-  const keyMarkers = createKeyMarkers({
-    documentReference,
-    controller,
-    keysElement,
-    trackElement,
-    announce,
+  const timelinePanel = createTimelinePanel({
+    documentReference, createElement, createIcon, controller, announce, keysElement, trackElement,
+    createIconButton: (iconName, label, properties) => createIconButton(documentReference, iconName, label, properties),
     isDeleteKey: event => findKeymapAction(keymap, event, 'normal')?.actionId === 'edit.delete',
     fallbackFocus: keyframeButton,
-  });
-  const timelineRows = createTimelineRows({
-    documentReference,
-    createElement,
-    createIcon,
-    createIconButton: (iconName, label, properties) => createIconButton(documentReference, iconName, label, properties),
-    controller,
-    announce,
-    isDeleteKey: event => findKeymapAction(keymap, event, 'normal')?.actionId === 'edit.delete',
-  });
-  const propertyKeyButtons = createPropertyKeyButtons({
-    controller,
-    rows: { translation: positionRow, rotation: rotationRow, scale: scaleRow },
-    createIconButton: (iconName, label, properties) => createIconButton(documentReference, iconName, label, properties),
-    announce,
+    propertyRows: { translation: positionRow, rotation: rotationRow, scale: scaleRow },
   });
 
   const bottomElement = createElement(
     documentReference,
     'footer',
     { className: 'crucible-studio-bottombar crucible-studio-island', attributes: { 'aria-label': 'Timeline' } },
-    timelineRows.rowsElement,
-    timelineRows.editorElement,
+    timelinePanel.rowsElement,
+    timelinePanel.editorElement,
     createElement(documentReference, 'div', { className: 'crucible-studio-scrub' }, playButton, keyframeButton, autoKeyButton, trackElement, timeOutput),
     quickBookmarksRow,
   );
@@ -4860,9 +4841,7 @@ export function createStudio(container, {
     setButtonIcon(playButton, playing ? 'pause' : 'play', playTooltip(playing));
     timeOutput.textContent = `${controller.motionTime.toFixed(1)} / ${duration.toFixed(1)} s`;
     autoKeyButton.setAttribute('aria-pressed', controller.autoKey ? 'true' : 'false');
-    keyMarkers.sync(Math.max(0.1, duration));
-    timelineRows.sync(Math.max(0.1, duration));
-    propertyKeyButtons.sync();
+    timelinePanel.sync(Math.max(0.1, duration));
     syncPropertyPanels();
     syncHintBar();
     syncFileBanner();

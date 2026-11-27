@@ -1,8 +1,9 @@
 // Styles of the Animate timeline's property rows and key editor (studio-timeline-rows.js) and of the key button on the
 // Object panel's rows (studio-property-key-buttons.js).
 import { SCRUB_THUMB_WIDTH } from './studio-timeline-keys.js';
+import { registerStudioStyle } from './studio-registry.js';
 
-export const STUDIO_TIMELINE_ROWS_CSS = `
+const STUDIO_TIMELINE_ROWS_CSS = `
 /* The rows sit above the scrub row, so the bar wraps: rows and editor take a full line, the scrub row and bookmarks share the last. */
 .crucible-studio-bottombar { flex-wrap: wrap; }
 .crucible-studio-keyrows,
@@ -101,3 +102,5 @@ export const STUDIO_TIMELINE_ROWS_CSS = `
 .crucible-studio-key-toggle[aria-pressed="true"] .crucible-studio-icon { fill: currentColor; }
 .crucible-studio-properties [data-driven="true"] button.crucible-studio-key-toggle { opacity: 1; }
 `;
+
+registerStudioStyle(STUDIO_TIMELINE_ROWS_CSS);

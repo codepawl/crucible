@@ -2,6 +2,7 @@
 // its keys as diamonds. A click selects a key, a drag along the row retimes it, and a small editor under the rows changes its
 // time, value and easing or deletes it. Every change is one controller call, so it is one undo step and lands in the recipe.
 import { EASING_NAMES } from './easing.js';
+import './studio-timeline-rows-styles.js';
 import { eulerDegreesToQuaternion, quaternionToEulerDegrees } from './studio-controller.js';
 import { KEY_NUDGE_STEP, KEY_TIME_STEP, keyMarkerOffset, keyTimeFromPointer, snapKeyTime } from './studio-timeline-keys.js';
 
