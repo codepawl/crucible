@@ -103,6 +103,7 @@ test('always-run infrastructure paths trigger run=true and empty changed lists f
     '.github/workflows/cook-addon.yml',
     '.github/actions/setup/action.yml',
     'bin/crucible-mcp.mjs',
+    'bin/crucible-oidn-fetch.mjs',
     'scripts/check-first-native-job.mjs',
     'scripts/addon-job-paths.mjs',
     'scripts/import-specifiers.mjs',

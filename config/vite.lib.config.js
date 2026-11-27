@@ -139,6 +139,8 @@ export default defineConfig({
         fracture: 'src/fracture.js',
         morph: 'src/morph.js',
         skinning: 'src/skinning.js',
+        'three-bridge': 'src/three-bridge.js',
+        'denoise-oidn': 'src/denoise-oidn.js',
         studio: 'src/studio.js',
         // Page of the MCP preview. It imports the engine chunks above instead of bundling its own copy.
         'mcp/preview': 'scripts/agent-preview-browser.js',

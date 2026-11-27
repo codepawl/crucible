@@ -102,12 +102,12 @@ test('the learn pages carry no release URL that the site stops serving', () => {
   assert.match(readText('docs/learn/install.md'), /releases\/<version>\/crucible\.module\.js/);
 });
 
-test('the docs say three-compat is not on npm, three-bridge installs from npm, and each package names its repository folder', () => {
+test('the docs say three-compat is not on npm, three-bridge is built into crucible, and each package names its repository folder', () => {
   const notes = [
     ['docs/learn/if-you-know-three-js.md', 'not on npm yet'],
     ['public/llms.txt', 'not on npm yet'],
-    ['docs/three-bridge.md', 'npm install @codepawlhq/crucible-three-bridge three'],
-    ['packages/three-bridge/README.md', 'npm install @codepawlhq/crucible-three-bridge three'],
+    ['docs/three-bridge.md', '@codepawlhq/crucible/addons/three-bridge'],
+    ['packages/three-bridge/README.md', '@codepawlhq/crucible/addons/three-bridge'],
     ['packages/three-compat/README.md', 'not on npm yet'],
   ];
   for (const [file, phrase] of notes) assert.ok(readText(file).includes(phrase), file);

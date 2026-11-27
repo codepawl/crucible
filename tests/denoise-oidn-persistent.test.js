@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { createOidnDenoiser, denoiseWithOidn, findOidnBinary, findOidnLibrary } from '../packages/denoise-oidn/index.mjs';
+import { createOidnDenoiser, denoiseWithOidn, findOidnBinary, findOidnLibrary } from '../src/denoise-oidn.js';
 import { denoiseFrameWithOidn } from '../scripts/agent-native-trace.mjs';
 import { cookInstalled, cookModule, cookTest } from './support/cook.js';
 
@@ -67,7 +67,7 @@ test('findOidnLibrary reads OIDN_LIBRARY_PATH and the release folder of the tool
 
 test('createOidnDenoiser says what to pass or install, and passes the options to the native object', () => {
   assert.throws(() => createOidnDenoiser({}), /createNative/);
-  assert.throws(() => createOidnDenoiser({ createNative: fakeNative([]), libraryPath: '' }), /npm run fetch/);
+  assert.throws(() => createOidnDenoiser({ createNative: fakeNative([]), libraryPath: '' }), /crucible-oidn-fetch/);
   assert.throws(() => createOidnDenoiser({ createNative: fakeNative([]), libraryPath: 'oidn.so', device: 'tpu' }), /device "tpu" is unknown/);
   const calls = [];
   const denoiser = createOidnDenoiser({ createNative: fakeNative(calls), libraryPath: 'oidn.so', device: 'cuda', quality: 'balanced', cleanAux: true, threads: 4 });

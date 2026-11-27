@@ -89,7 +89,14 @@ Without `memoryBudgetMiB` the renderer sizes its budget to the first scene, and 
 
 The [three.js bridge](https://github.com/codepawl/crucible/blob/main/docs/three-bridge.md) imports a three.js object tree as parts and exports parts back to three.js objects and GLB.
 
-Other people's addons follow the [addon contract](addons.md): a peer dependency on Crucible, the `crucible-addon` keyword and a `crucible` manifest.
+### Built-in addons
+
+Every built-in addon ships inside `@codepawlhq/crucible/addons/*` so you only pay the bundle cost of what you import.
+
+```addons
+```
+
+Other people's addons follow the [addon contract](addons.md) on the [Marketplace](https://crucible.codepawl.com/marketplace.html#community-addons): a peer dependency on Crucible, the `crucible-addon` keyword and a `crucible` manifest.
 
 Crucible targets WebGL2. Version `0.4.0` includes the APIs below. Check the installed package version and release metadata before using them.
 

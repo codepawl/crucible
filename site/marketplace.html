@@ -4,11 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="theme-color" content="#f8f7f1" media="(prefers-color-scheme: light)" /><meta name="theme-color" content="#17161a" media="(prefers-color-scheme: dark)" />
     <link rel="preload" href="/fonts/plus-jakarta-sans-latin-3.woff2" as="font" type="font/woff2" crossorigin /><link rel="preload" href="/fonts/inter-latin-6.woff2" as="font" type="font/woff2" crossorigin />
-    <meta name="description" content="Download data packs, companion npm packages, and browse built-in and community addons for Crucible." />
+    <meta name="description" content="Download data packs and browse community npm addons for Crucible." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Crucible" />
     <meta property="og:title" content="Marketplace - Crucible" />
-    <meta property="og:description" content="Download data packs, companion npm packages, and browse built-in and community addons for Crucible." />
+    <meta property="og:description" content="Download data packs and browse community npm addons for Crucible." />
     <meta property="og:url" content="https://crucible.codepawl.com/marketplace.html" />
     <meta property="og:image" content="https://crucible.codepawl.com/og.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -37,12 +37,10 @@
     <main id="content">
       <header class="market-hero">
         <h1>Marketplace</h1>
-        <p class="market-lede">Data packs, companion packages, and built-in addons for Crucible.</p>
+        <p class="market-lede">Downloadable data packs and community npm addons for Crucible. <a class="market-builtin-link" href="/docs.html#addons-and-limits">Browse <span id="count-builtin-link">93</span> built-in modules in Docs &rarr;</a></p>
         <nav class="market-jumps" aria-label="Marketplace sections">
           <a class="market-jump" href="#packs"><span>Packs</span><span class="market-jump-count" id="count-packs">0</span></a>
-          <a class="market-jump" href="#packages"><span>Packages</span><span class="market-jump-count" id="count-packages">0</span></a>
-          <a class="market-jump" href="#builtin"><span>Built-in addons</span><span class="market-jump-count" id="count-builtin">0</span></a>
-          <a class="market-jump" href="#community-addons"><span>Community npm</span><span class="market-jump-count" id="count-community">0</span></a>
+          <a class="market-jump" href="#community-addons"><span>Community addons</span><span class="market-jump-count" id="count-community">0</span></a>
         </nav>
       </header>
 
@@ -57,37 +55,18 @@
           <ol>
             <li>
               <p>Unzip it into its own folder inside your packs folder.</p>
-              <div class="command-row"><code>unzip example-starter-1.0.0.zip -d packs/example-starter</code><button type="button" data-copy="unzip example-starter-1.0.0.zip -d packs/example-starter"><svg class="market-copy-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+              <div class="command-row"><code>unzip example-starter-1.0.0.zip -d packs/example-starter</code><button type="button" data-copy="unzip example-starter-1.0.0.zip -d packs/example-starter">Copy</button></div>
             </li>
             <li>
               <p>Start the MCP server with that folder.</p>
-              <div class="command-row"><code>crucible-mcp --packs /absolute/path/to/packs</code><button type="button" data-copy="crucible-mcp --packs /absolute/path/to/packs"><svg class="market-copy-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+              <div class="command-row"><code>crucible-mcp --packs /absolute/path/to/packs</code><button type="button" data-copy="crucible-mcp --packs /absolute/path/to/packs">Copy</button></div>
             </li>
             <li>
               <p>Check a pack from a Crucible checkout.</p>
-              <div class="command-row"><code>npm run pack:check -- packs/example-starter</code><button type="button" data-copy="npm run pack:check -- packs/example-starter"><svg class="market-copy-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div>
+              <div class="command-row"><code>npm run pack:check -- packs/example-starter</code><button type="button" data-copy="npm run pack:check -- packs/example-starter">Copy</button></div>
             </li>
           </ol>
         </details>
-      </section>
-
-      <section id="packages" aria-labelledby="packages-title">
-        <div class="section-heading">
-          <h2 id="packages-title">Packages by CodePawl</h2>
-        </div>
-        <div id="package-list" class="market-grid" aria-live="polite"></div>
-      </section>
-
-      <section id="builtin" aria-labelledby="builtin-title">
-        <div class="section-heading">
-          <h2 id="builtin-title">Built into Crucible</h2>
-          <span id="builtin-count" class="market-count" aria-live="polite"></span>
-        </div>
-        <div class="market-toolbar">
-          <div id="builtin-areas" class="market-areas" role="group" aria-label="Filter addons by area"></div>
-          <input id="builtin-filter" class="market-filter" type="search" placeholder="Search addons" aria-label="Search built-in addons" autocomplete="off" />
-        </div>
-        <div id="builtin-list" class="builtin-list" aria-labelledby="builtin-title"></div>
       </section>
 
       <section id="community-addons" aria-labelledby="community-addons-title">

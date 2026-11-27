@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import test from 'node:test';
 
-import { decodePfm, denoiseWithOidn, encodePfm, findOidnBinary } from '../packages/denoise-oidn/index.mjs';
+import { decodePfm, denoiseWithOidn, encodePfm, findOidnBinary } from '../src/denoise-oidn.js';
 import { PATH_TRACER_CAPABILITIES, PATH_TRACER_DENOISERS as JOB_DENOISERS } from '../src/path-tracer-capabilities.js';
 import { normalizePathTracerOptions, PATH_TRACER_DENOISERS, renderPathTracedImage } from '../src/path-tracer.js';
 import { chooseDenoiser } from '../scripts/agent-path-trace-denoise.mjs';
@@ -45,10 +45,10 @@ test('a job that asks for oidn without the binary runs the wavelet filter and sa
   });
   const choice = await chooseDenoiser('oidn');
   assert.equal(choice.denoise, 'wavelet');
-  assert.match(choice.note, /oidn.*needs @codepawlhq\/crucible-denoise-oidn, and its binary.*npm install it.*fetch-oidn\.mjs.*wavelet filter ran instead/s);
+  assert.match(choice.note, /oidn.*needs the OIDN binary.*crucible-oidn-fetch.*wavelet filter ran instead/s);
   const defaultChoice = await chooseDenoiser(true);
   assert.equal(defaultChoice.denoise, 'wavelet');
-  assert.match(defaultChoice.note, /denoise true uses OIDN.*npm install it.*wavelet filter ran instead/s);
+  assert.match(defaultChoice.note, /denoise true uses OIDN.*crucible-oidn-fetch.*wavelet filter ran instead/s);
   await assert.rejects(denoiseWithOidn({ width: 1, height: 1, color: new Float32Array(3), albedo: new Float32Array(3), normal: new Float32Array(3) }), /not installed/);
 });
 
@@ -99,7 +99,7 @@ test('denoise true picks OIDN on every backend when it is installed and says whi
   }
   const withoutOnCpuOrGpu = await chooseDenoiser(true, { loadOidn: async () => null });
   assert.equal(withoutOnCpuOrGpu.denoise, 'wavelet');
-  assert.match(withoutOnCpuOrGpu.note, /denoise true uses OIDN, which needs .*npm install it.*wavelet filter ran instead/s);
+  assert.match(withoutOnCpuOrGpu.note, /denoise true uses OIDN, which needs the OIDN binary.*crucible-oidn-fetch.*wavelet filter ran instead/s);
   const withoutOnNative = await chooseDenoiser(true, { native: true, loadOidn: async () => null });
   assert.equal(withoutOnNative.denoise, 'atrous');
   assert.match(withoutOnNative.note, /GPU a-trous filter ran instead/);
@@ -139,11 +139,11 @@ test('a source checkout finds the fetched OIDN package without it being installe
   assert.equal(typeof choice.denoiser.denoiseWithOidn, 'function');
 });
 
-test('the job capability text says how to install the OIDN package from npm and what runs without it', () => {
+test('the job capability text says how to fetch the OIDN binary and what runs without it', () => {
   const { setting } = PATH_TRACER_CAPABILITIES;
-  assert.match(setting, /denoise true \(the default\) and "oidn" use OIDN when @codepawlhq\/crucible-denoise-oidn is installed \(npm install it/);
+  assert.match(setting, /denoise true \(the default\) and "oidn" use OIDN when its binary is installed/);
   assert.match(setting, /final quality tier/);
-  assert.match(setting, /fetch-oidn\.mjs/);
+  assert.match(setting, /crucible-oidn-fetch/);
   assert.match(setting, /wavelet filter.*denoiserNote/s);
 });
 
