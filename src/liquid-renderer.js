@@ -297,12 +297,12 @@ function drawBatchInstance(backend, batch, instanceIndex) {
   }
   const stride = batch.instanceData.length / batch.instanceCount;
   const start = instanceIndex * stride;
-  if (instanceIndex > 0) backend.updateBuffer(batch.instanceBuffer, batch.instanceData, start, stride);
+  if (instanceIndex > 0) backend.updateBuffer(batch.instanceBuffer, batch.instanceData.subarray(start, start + stride));
   else backend.bindArrayBuffer(batch.instanceBuffer);
   try {
     backend.drawIndexedInstanced(batch.indexCount, 1);
   } finally {
-    if (instanceIndex > 0) backend.updateBuffer(batch.instanceBuffer, batch.instanceData, 0, stride);
+    if (instanceIndex > 0) backend.updateBuffer(batch.instanceBuffer, batch.instanceData.subarray(0, stride));
     backend.bindArrayBuffer(null);
   }
 }

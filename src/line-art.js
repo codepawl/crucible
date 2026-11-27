@@ -718,34 +718,48 @@ function createLineArtStage(state, backend) {
   // The texture is bound on its own unit: binding first would replace the guide of whichever unit was active.
   function bindNodeTable(renderer, lines, unit) {
     const hasNodes = Boolean(lines.nodes) && Object.keys(lines.nodes).length > 0;
-    if (!nodeTexture) {
-      nodeTexture = backend.createDataTexture2D({
-        width: 1,
-        height: 1,
-        format: 'rgba32f',
-        linear: false,
-        clamp: false,
-        unit,
-        data: hasNodes ? null : new Float32Array(4),
-      });
-      nodeTextureIsEmpty = !hasNodes;
-      if (!hasNodes) return 0;
-    } else {
-      backend.bindTextureUnit(unit, nodeTexture);
-      if (!hasNodes) {
-        cachedNodeState = null;
+    if (!hasNodes) {
+      cachedNodeState = null;
+      if (!nodeTexture) {
+        nodeTexture = backend.createDataTexture2D({
+          width: 1,
+          height: 1,
+          format: 'rgba32f',
+          linear: false,
+          clamp: false,
+          unit,
+          data: new Float32Array(4),
+        });
+        nodeTextureIsEmpty = true;
+      } else {
+        backend.bindTextureUnit(unit, nodeTexture);
         if (!nodeTextureIsEmpty) {
           backend.uploadDataTexture2D(nodeTexture, { width: 1, height: 1, format: 'rgba32f', data: new Float32Array(4), reallocate: true, unit });
           nodeTextureIsEmpty = true;
         }
-        return 0;
       }
+      return 0;
     }
     const groups = Array.isArray(renderer.batches) ? null : renderer.passSupport.objectNodes();
     const key = JSON.stringify([lines.color, lines.nodes, groups ?? renderer.batches.length]);
-    if (cachedNodeState?.key === key && cachedNodeState.batches === renderer.batches) return cachedNodeState.count;
+    if (nodeTexture && cachedNodeState?.key === key && cachedNodeState.batches === renderer.batches) {
+      backend.bindTextureUnit(unit, nodeTexture);
+      return cachedNodeState.count;
+    }
     const table = lineNodeTable(lines, groups ?? renderer.passSupport.objectNodes());
-    backend.uploadDataTexture2D(nodeTexture, { width: table.width, height: table.height, format: 'rgba32f', data: table.data, reallocate: true, unit });
+    if (!nodeTexture) {
+      nodeTexture = backend.createDataTexture2D({
+        width: table.width,
+        height: table.height,
+        format: 'rgba32f',
+        linear: false,
+        clamp: false,
+        unit,
+        data: table.data,
+      });
+    } else {
+      backend.uploadDataTexture2D(nodeTexture, { width: table.width, height: table.height, format: 'rgba32f', data: table.data, reallocate: true, unit });
+    }
     nodeTextureIsEmpty = false;
     cachedNodeState = { key, batches: renderer.batches, count: table.count };
     return table.count;

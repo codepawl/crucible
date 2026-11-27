@@ -1159,6 +1159,12 @@ test('line-art.js routes guides, node table, outlines, polylines and cleanup thr
   });
   renderer.render({
     lines: resolveLineArt({
+      width: 2,
+      nodes: { hero: { lines: false } },
+    }),
+  });
+  renderer.render({
+    lines: resolveLineArt({
       boundaries: false,
       creaseAngle: 0,
       depthJump: 0,
