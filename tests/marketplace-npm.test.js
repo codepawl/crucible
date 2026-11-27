@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { addonPackages, firstPartyPackages, npmManifestPath } from '../src/marketplace-npm.js';
 
 test('a plain or scoped npm name becomes its registry manifest path', () => {
@@ -45,4 +46,12 @@ test('one malformed addon entry is skipped without hiding the rest of the list',
 
 test('a search result that is not a list gives no packages', () => {
   for (const value of [undefined, null, {}, 'x']) assert.deepEqual(firstPartyPackages(value), []);
+});
+
+test('public/_headers CSP connect-src allows registry.npmjs.org for live Marketplace package queries', () => {
+  const headers = readFileSync(new URL('../public/_headers', import.meta.url), 'utf8');
+  const csp = headers.match(/Content-Security-Policy:\s*(.+)/)?.[1] ?? '';
+  const connectSrc = csp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
+  const allowedSources = connectSrc.trim().split(/\s+/);
+  assert.ok(allowedSources.some(source => source === 'https://registry.npmjs.org'), 'connect-src must list https://registry.npmjs.org');
 });

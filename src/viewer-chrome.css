@@ -2,7 +2,7 @@
    buttons, selects and panels in the brand tokens, the display font for titles and one set of notices. A page's own stylesheet only places
    things. The 3D content is drawn by Crucible and is not styled here. Full-screen pages add .viewer-screen so the canvas fills the space
    below the top bar. */
-.viewer { --panel-gap: 16px; }
+.viewer { --panel-gap: 16px; --container: 100%; }
 .viewer-screen { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 .viewer-main { position: relative; flex: 1; min-height: 0; }
 

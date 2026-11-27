@@ -13,7 +13,11 @@ body.marketplace > main { gap: 40px; }
 .market-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; align-items: stretch; }
 .market-grid > .market-state,
 .pack-grid > .market-state { grid-column: 1 / -1; }
-.market-icon { flex: none; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.market-icon,
+.market-copy-icon { flex: none; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.market-copy-icon { width: 14px; height: 14px; }
+.market-check-icon { color: var(--ok); }
+.command-row .market-check-icon { color: #5fc48a; }
 
 .market-card { display: grid; gap: 16px; padding: 16px; border-radius: var(--panel-radius); background: var(--bg); min-width: 0; align-content: start; }
 .market-card h3 { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; font-size: 18px; overflow-wrap: anywhere; }
@@ -86,6 +90,7 @@ body.marketplace > main { gap: 40px; }
 
 .market-install { padding: 12px 16px; border-radius: var(--panel-radius); background: var(--bg); }
 .market-install summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text); }
+.market-install summary .market-icon { vertical-align: -3px; margin-inline-start: 4px; margin-inline-end: 8px; }
 .market-install ol { display: grid; gap: 14px; margin: 14px 0 0; padding: 0; list-style: none; counter-reset: step; }
 .market-install li { display: grid; gap: 8px; counter-increment: step; }
 .market-install li p { color: var(--muted); font-size: 14px; }

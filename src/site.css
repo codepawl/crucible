@@ -42,7 +42,7 @@ body.site {
   --panel-radius: var(--card-round);
   --plate-radius: var(--plate-round);
   --control-height: 36px;
-  --page: min(1180px, calc(100% - 32px));
+  --page: min(var(--container), calc(100% - var(--side-left) - var(--side-right)));
   --dither: none;
   --navigation-height: var(--nav-height);
   position: relative;
@@ -106,12 +106,12 @@ body.site .icon { width: 18px; height: 18px; margin: 0; flex: none; }
   --muted: color-mix(in srgb, var(--code-fg) 62%, var(--code-bg));
   --tint: color-mix(in srgb, var(--code-fg) 8%, transparent);
   --tint-strong: color-mix(in srgb, var(--code-fg) 16%, transparent);
-  --syntax-keyword: var(--code-fg);
-  --syntax-string: var(--accent);
-  --syntax-number: var(--code-fg);
-  --syntax-flag: var(--muted);
+  --syntax-keyword: #ffb25e;
+  --syntax-string: #5fc48a;
+  --syntax-number: #ffb25e;
+  --syntax-flag: color-mix(in srgb, var(--code-fg) 68%, var(--code-bg));
   --syntax-name: var(--code-fg);
-  --syntax-comment: var(--muted);
+  --syntax-comment: color-mix(in srgb, var(--code-fg) 54%, var(--code-bg));
   --edge: var(--code-border);
   background: var(--code-bg);
   color: var(--code-fg);
@@ -123,6 +123,8 @@ body.site > main > section { scroll-margin-top: calc(var(--nav-height) + 24px); 
 
 .site .command-row { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; border-radius: var(--panel-radius); }
 .site .command-row code { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-size: 13px; line-height: 1.6; }
+.site .command-row code::before { content: '$ '; color: var(--accent); user-select: none; }
+.site .command-row .hljs-built_in { font-weight: 600; }
 .site .command-row button { flex: none; }
 
 .site .package-logo { display: inline-block; flex: none; width: 18px; height: 18px; background: currentColor; mask: center / contain no-repeat; }
@@ -138,7 +140,7 @@ body.site > main > section { scroll-margin-top: calc(var(--nav-height) + 24px); 
 .site .section-heading-links { display: flex; flex-wrap: wrap; gap: 8px 20px; }
 
 /* Docs and changelog: the reading page keeps its own layout (documentation.css). */
-.documentation.site { --page: min(1320px, calc(100% - 40px)); }
+.documentation.site { --container: 1320px; --page: min(var(--container), calc(100% - var(--side-left) - var(--side-right))); }
 .documentation.site > main { width: var(--page); padding-top: 32px; }
 .site .table-scroll { overflow-x: auto; }
 .site table { width: 100%; border-collapse: collapse; }
