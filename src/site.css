@@ -42,7 +42,7 @@ body.site {
   --panel-radius: var(--card-round);
   --plate-radius: var(--plate-round);
   --control-height: 36px;
-  --page: min(1180px, calc(100% - 32px));
+  --page: min(var(--container), calc(100% - var(--side-left) - var(--side-right)));
   --dither: none;
   --navigation-height: var(--nav-height);
   position: relative;
@@ -138,7 +138,7 @@ body.site > main > section { scroll-margin-top: calc(var(--nav-height) + 24px); 
 .site .section-heading-links { display: flex; flex-wrap: wrap; gap: 8px 20px; }
 
 /* Docs and changelog: the reading page keeps its own layout (documentation.css). */
-.documentation.site { --page: min(1320px, calc(100% - 40px)); }
+.documentation.site { --container: 1320px; --page: min(var(--container), calc(100% - var(--side-left) - var(--side-right))); }
 .documentation.site > main { width: var(--page); padding-top: 32px; }
 .site .table-scroll { overflow-x: auto; }
 .site table { width: 100%; border-collapse: collapse; }

@@ -12,7 +12,7 @@
 .landing ul, .landing ol { list-style: none; }
 
 .landing .story { position: relative; height: 640vh; }
-.landing .pin { position: sticky; top: var(--nav-height); height: calc(100vh - var(--nav-height)); height: calc(100svh - var(--nav-height)); max-width: 1400px; margin: 0 auto; padding: 0 var(--side-right) 12px var(--side-left); display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr); gap: 28px; }
+.landing .pin { position: sticky; top: var(--nav-height); height: calc(100vh - var(--nav-height)); height: calc(100svh - var(--nav-height)); max-width: calc(var(--container) + var(--side-left) + var(--side-right)); margin: 0 auto; padding: 0 var(--side-right) 16px var(--side-left); display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr); gap: 28px; }
 .landing .words { display: grid; align-content: center; min-height: 0; }
 .landing .beat { grid-area: 1 / 1; display: grid; gap: 16px; align-content: center; justify-items: start; visibility: hidden; opacity: 0; transform: translateY(12px); }
 .landing .beat.on { visibility: visible; opacity: 1; transform: none; transition: opacity 260ms ease, transform 340ms var(--ease-out); }
@@ -78,12 +78,12 @@
 .landing .story.is-static .cue { display: none; }
 
 .landing .section { padding: clamp(56px, 8vw, 112px) var(--side-right) 0 var(--side-left); scroll-margin-top: var(--nav-height); }
-.landing .inner { max-width: 1180px; margin: 0 auto; display: grid; gap: 24px; }
+.landing .inner { max-width: var(--container); margin: 0 auto; display: grid; gap: 24px; }
 .landing .section h2 { font: var(--heading-weight) clamp(30px, 3.6vw, 48px)/1.05 var(--display); letter-spacing: var(--display-tracking); }
 .landing .section h3 { font: 600 20px/1.2 var(--display); letter-spacing: -0.015em; }
 .landing .heading-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap; }
 .landing .heading-row nav { display: flex; gap: 18px; font-size: 14px; text-underline-offset: 4px; }
-.landing .split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 40px; align-items: start; }
+.landing .split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 44px; align-items: start; }
 .landing .stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; justify-items: start; min-width: 0; }
 .landing .stack .command { max-width: none; }
 .landing .managers { display: flex; flex-wrap: wrap; gap: 6px 18px; }
