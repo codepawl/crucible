@@ -55,6 +55,7 @@ import { SNAP_TARGETS } from './studio-snapping.js';
 import { createOutlinerParentDrag } from './studio-parenting.js';
 import { editIconName } from './studio-edit-names.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
+import { chooseViewportLook } from './studio-workspace-viewport.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, frameFailureReason, watchContextLoss } from './studio-context-loss.js';
 import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgentEdit, diffRecipeNodes } from './studio-agent-presence.js';
 import { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, primitiveGeometrySpec, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, buildTemplateRecipe } from './studio-templates.js';
@@ -4006,8 +4007,14 @@ export function createStudio(container, {
 
   function drawSceneFrame() {
     const activeRenderer = syncPartsWithoutStall(ensureRenderer());
-    const environment = controller.scene.environment;
-    const effects = controller.scene.effects;
+    const { environment, effects, passScene, shadowsVisible } = chooseViewportLook({
+      workspaceId: root.dataset.workspace,
+      drawingTheShot: drawingTheShot(),
+      environment: controller.scene.environment,
+      effects: controller.scene.effects,
+      scene: controller.scene,
+    });
+    activeRenderer.shadowsHidden = !shadowsVisible;
     const shadow = fitAgentShadow(controller.scene.shadow, controller.scene.parts);
     const shadowKey = JSON.stringify([environment.lightDirection, shadow]);
     if (renderedShadowKey !== shadowKey) {
@@ -4022,7 +4029,7 @@ export function createStudio(container, {
     activeRenderer.environment = frameEnvironment;
     // A still is the scene's own shot, so it keeps the animated camera even while the viewport looks around freely.
     const frameCamera = drawingTheShot() ? controller.scene.camera : controller.viewCamera;
-    renderWithPostPasses(activeRenderer, {
+    renderWithPostPasses(activeRenderer, passScene, {
       ...frameCamera,
       ...(drawingTheShot() ? {} : viewportClipPlanes(frameCamera)),
       environment: frameEnvironment,
@@ -4034,9 +4041,9 @@ export function createStudio(container, {
   }
 
   // A pass that fails to compile is refused and the frame is drawn again without it, so one bad pass never pauses the picture.
-  function renderWithPostPasses(activeRenderer, frame) {
+  function renderWithPostPasses(activeRenderer, passScene, frame) {
     while (true) {
-      const plan = postPassPlanner.resolve(activeRenderer, controller.scene);
+      const plan = postPassPlanner.resolve(activeRenderer, passScene);
       let drawingObjectIds = false;
       try {
         if (plan.needsObjectIds) {

@@ -120,6 +120,9 @@ test('mounting Studio builds the three zones, the styles and the first frame', t
   assert.equal(ui.studio.renderer, ui.renderer);
   assert.equal(ui.studio.scene, ui.controller.scene);
   assert.ok(ui.renderer.calls.includes('render'));
+  assert.equal(ui.renderer.frames.at(-1).exposure, undefined, 'Build draws without the scene exposure');
+  ui.studio.setWorkspace('look');
+  ui.studio.renderNow();
   assert.equal(ui.renderer.frames.at(-1).exposure, ui.controller.scene.effects.exposure);
   assert.equal(ui.controller.viewportWidth, 800);
   assert.equal(ui.controller.viewportHeight, 600);
@@ -2219,6 +2222,8 @@ test('drawing pauses while the Studio is off screen or the tab is hidden, and re
 test('the viewport follows its element size, and the renderer is kept in step with the scene', testContext => {
   const ui = mountStudio(testContext);
   ui.viewport.box = { left: 0, top: 0, width: 640, height: 360, right: 640, bottom: 360 };
+  // The frame carries the scene's own effects only in the workspaces that draw its look; Build draws them off (#3594).
+  ui.studio.setWorkspace('look');
   ui.studio.renderNow();
   assert.equal(ui.controller.viewportWidth, 640);
   assert.equal(ui.controller.viewportHeight, 360);
