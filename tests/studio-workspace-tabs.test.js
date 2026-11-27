@@ -184,10 +184,11 @@ test('no tab ever opens onto an empty panel when nothing or a non-mesh/empty sce
   try {
     emptyStudio.setWorkspace('look', 'material');
     const matPanel = emptyContainer.firstElementChild.querySelector('#crucible-studio-panel-material');
-    const matPrompt = matPanel.querySelector('.crucible-studio-panel-empty');
+    const matEmptySlot = matPanel.querySelectorAll('.crucible-studio-empty-slot').find(slot => /No materials yet/.test(slot.textContent) && !slot.hidden);
+    assert.ok(matEmptySlot, 'the Material panel shows the "No materials yet" slot');
     const matControls = matPanel.querySelector('.crucible-studio-panel-controls');
-    assert.equal(matPrompt.hidden, false);
-    assert.match(matPrompt.textContent, /Add a material/);
+    assert.match(matEmptySlot.textContent, /No materials yet/);
+    assert.match(matEmptySlot.textContent, /New material/);
     assert.equal(matControls.hidden, true);
   } finally {
     emptyStudio.dispose();
