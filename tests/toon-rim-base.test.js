@@ -6,6 +6,11 @@ import { createAgentScene } from '../src/agent-scene.js';
 import { agentSceneModulesNeeded } from '../src/agent-scene-modules.js';
 import { createFragmentShader } from '../src/shaders.js';
 import { layerTextureSupport } from '../src/shader-registry.js';
+import { MaterialSnapshot } from '../src/material-snapshot.js';
+import { Client } from '@modelcontextprotocol/client';
+import { InMemoryTransport } from '@modelcontextprotocol/server';
+import { createAgentMcpServer } from '../scripts/mcp-server.mjs';
+import { AGENT_SCENE_CAPABILITIES } from '../src/agent-scene-capabilities.js';
 import {
   TOON_RIM_DEFAULTS,
   TOON_RIM_LIMITS,
@@ -187,4 +192,50 @@ test('cumulus-towers recipe enables toonRim and toonBase with positive sun-side 
   assert.ok(edgeBoost[0] > 0.2 && edgeBoost[1] > 0.2 && edgeBoost[2] > 0.2);
   const undersideBoost = evaluateToonBase(-1, baseNormalized);
   assert.ok(undersideBoost[2] > undersideBoost[0] && undersideBoost[2] > 0.1);
+});
+
+test('MaterialSnapshot skips snapshotting toonRim and toonBase, and MCP schemas accept and clear them', async () => {
+  assert.equal(MaterialSnapshot.of({ color: [1, 1, 1], toonRim: { strength: 1 } }), null);
+  assert.equal(MaterialSnapshot.of({ color: [1, 1, 1], toonBase: { strength: 0.5 } }), null);
+
+  const server = createAgentMcpServer({
+    async close() {},
+    async capabilities() { return { scene: AGENT_SCENE_CAPABILITIES, phase: 'idle' }; },
+    activeSessionId() { return '00000000-0000-4000-8000-000000000001'; },
+    async create({ recipe }) { return { sessionId: '00000000-0000-4000-8000-000000000001', materials: recipe.materials?.length ?? 0 }; },
+    async apply({ operations }) { return { ok: true, count: operations.length }; },
+  });
+  const client = new Client({ name: 'toon-rim-base-mcp-test', version: '1' });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    const created = await client.callTool({
+      name: 'scene_create',
+      arguments: {
+        recipe: {
+          format: 'crucible.scene',
+          schemaVersion: 1,
+          materials: [{ id: 'cloud', toon: 6, toonRim: { color: [1.5, 1.4, 1.3], strength: 3.5, power: 3.6 }, toonBase: { color: [0.8, 0.95, 1.1], strength: 0.8 } }],
+          nodes: [],
+        },
+      },
+    });
+    assert.equal(created.isError, undefined, JSON.stringify(created));
+
+    const updated = await client.callTool({
+      name: 'scene_apply',
+      arguments: { expectedRevision: 0, operations: [{ type: 'set-material', id: 'cloud', toonRim: { strength: 2 }, toonBase: null }] },
+    });
+    assert.equal(updated.isError, undefined, JSON.stringify(updated));
+
+    const rejected = await client.callTool({
+      name: 'scene_create',
+      arguments: { recipe: { format: 'crucible.scene', schemaVersion: 1, materials: [{ id: 'cloud', toon: 6, toonRim: { width: 1 } }], nodes: [] } },
+    });
+    assert.equal(rejected.isError, true);
+  } finally {
+    await client.close();
+    await server.close();
+  }
 });
