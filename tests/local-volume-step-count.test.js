@@ -57,11 +57,12 @@ const hashOf = text => createHash('sha256').update(text).digest('hex').slice(0, 
 
 // The fingerprints were retaken when each march step began to weight its glow by the exact step integral (#1894).
 // The motion-blur variant was retaken again when its shadow taps began to read the grid at their own shutter time (#1763).
-// All three were retaken when the surface shadow began to read the emission mask of the frame (#1360) and again when the bloom was kept out of the volume's blur and the surface shadow.
+// All three were retaken when the surface shadow began to read the emission mask of the frame (#1360), when the bloom was kept out of the volume's blur and the surface shadow,
+// and when grid blackbody emission switched to evaluate from the interpolated emission temperature via localGridBlackbodyTable (#1735).
 test('the shader text without octaves is the text from before #1855, and with octaves the march loop and the count follow the finest cell', () => {
-  assert.equal(hashOf(createLocalVolumeCompositeFragment(false, 'both', false)), 'd50d3069254584f1');
-  assert.equal(hashOf(createLocalVolumeCompositeFragment(true, 'both', false)), 'ac592992af72d5d2');
-  assert.equal(hashOf(createLocalVolumeCompositeFragment(false, 'shape', false)), '08dd8e8fe3cbb525');
+  assert.equal(hashOf(createLocalVolumeCompositeFragment(false, 'both', false)), 'f869af2d9e0b53ca');
+  assert.equal(hashOf(createLocalVolumeCompositeFragment(true, 'both', false)), '81e9d272b2ebf63f');
+  assert.equal(hashOf(createLocalVolumeCompositeFragment(false, 'shape', false)), '40de8fd73596c0a9');
   const withOctaves = createLocalVolumeCompositeFragment(false, 'both', true);
   assert.match(withOctaves, new RegExp(`min\\(${LOCAL_VOLUME_MAXIMUM_OCTAVE_STEPS}, int\\(ceil\\(length \\* localVolumeEmission\\[index\\]\\.w \\* exp2\\(float\\(octaves - 1\\)\\) \\* 2\\.0\\)\\)\\)`));
   assert.match(withOctaves, new RegExp(`step < ${LOCAL_VOLUME_MAXIMUM_OCTAVE_STEPS}; step\\+\\+`));
