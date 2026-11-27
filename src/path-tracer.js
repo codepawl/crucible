@@ -1213,7 +1213,7 @@ export function describeIgnoredFeatures(parts, environment, backend = 'cpu', { k
   for (const part of parts) {
     const material = part.material ?? {};
     for (const note of describeUntracedWater(part)) notes.add(note);
-    if (material.tag === 'water' && backend === 'gpu') notes.add('The depth tint under a thin water sheet is not drawn: the CPU, WebGPU and native cycles tracers add an absorbing medium under it, the WebGL tracer draws the water clear.');
+    if (material.tag === 'water' && backend === 'gpu') notes.add('The depth tint under a thin water sheet is not drawn: the CPU, WebGPU and native cycles tracers add an absorbing medium under it, the WebGL tracer draws thin water sheets clear.');
     if (partUsesVertexAlpha(part)) notes.add(vertexAlphaNote(backend, kernelMaterials, material.alphaMode));
     for (const field of IGNORED_MAP_FIELDS) if (material[field]) notes.add(`${field} is ignored.`);
     const heightNote = heightMapIgnoredNote(part);
