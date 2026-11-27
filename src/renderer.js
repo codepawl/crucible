@@ -1367,7 +1367,6 @@ export class CrucibleRenderer {
   allocateInitialTargets() {
     if (this.disposed) return;
     this.resize();
-    if (!this.benchmark && !this.multisampleFramebuffer) this.allocateFrameTargets(this.canvas.width, this.canvas.height);
   }
 
   /** Resolves once every program started by the constructor has linked, polling without blocking the main thread, then finishes construction. Needs deferProgramLink. After dispose() it resolves at once without finishing construction. */
@@ -2495,14 +2494,15 @@ export class CrucibleRenderer {
       this.multisampleSamples = this.chooseMultisampleSamples(this.densityParts);
       this.capabilities.samples = this.multisampleSamples;
     }
-    const plan = planRenderSize({ width: Math.max(1, this.canvas.clientWidth), height: Math.max(1, this.canvas.clientHeight), pixelRatio: this.pixelRatio, samples: this.samples, memoryBudgetMiB: this.memoryBudgetMiB, geometryBytes: this.geometryBytes, textureBytes: this.textureBytes, hdr: this.hdr, bloom: !this.benchmark, depth: this.depth, maximumSize: backend.maxRenderbufferAndTextureSize(), maximumMemoryBudgetMiB: this.maximumMemoryBudgetMiB });
-    const { width, height } = plan;
-    this.memoryPlan = plan;
-    const sizeChanged = this.canvas.width !== width || this.canvas.height !== height;
-    if (sizeChanged || this.multisampleSamples !== previousSamples) {
-      this.canvas.width = width;
-      this.canvas.height = height;
-      if (!this.benchmark) this.allocateFrameTargets(width, height);
+    this.memoryPlan = planRenderSize({ width: Math.max(1, this.canvas.clientWidth), height: Math.max(1, this.canvas.clientHeight), pixelRatio: this.pixelRatio, samples: this.samples, memoryBudgetMiB: this.memoryBudgetMiB, geometryBytes: this.geometryBytes, textureBytes: this.textureBytes, hdr: this.hdr, bloom: !this.benchmark, depth: this.depth, maximumSize: backend.maxRenderbufferAndTextureSize(), maximumMemoryBudgetMiB: this.maximumMemoryBudgetMiB });
+    const { width, height } = this.memoryPlan;
+    const targetsStale = this.allocatedTargetWidth !== width || this.allocatedTargetHeight !== height || this.multisampleSamples !== previousSamples;
+    if (this.canvas.width !== width) this.canvas.width = width;
+    if (this.canvas.height !== height) this.canvas.height = height;
+    if (!this.benchmark && targetsStale) {
+      this.allocateFrameTargets(width, height);
+      this.allocatedTargetWidth = width;
+      this.allocatedTargetHeight = height;
     }
     mat4.perspective(this.projection, this.world ? Math.PI / 4 : Math.PI / 5.5, width / height, 0.1, this.world ? 600 : 100);
   }
@@ -2533,30 +2533,29 @@ export class CrucibleRenderer {
   }
 
   releaseFrameTargets() {
-    const context = this.context;
-    const backend = this.backend;
     // The fog step may have left one of the textures deleted below on a mipmapped filter; binding it later is INVALID_OPERATION (1282, #2205).
     this.mipmappedTexture = null;
-    for (const framebuffer of [this.multisampleFramebuffer, this.resolveFramebuffer]) if (framebuffer) backend.deleteFramebuffer(framebuffer);
-    for (const renderbuffer of [this.multisampleColor, this.multisampleDepth]) if (renderbuffer) backend.deleteRenderbuffer(renderbuffer);
-    for (const texture of [this.frameTexture, this.depthTexture]) if (texture) backend.deleteTexture(texture);
+    for (const framebuffer of [this.multisampleFramebuffer, this.resolveFramebuffer]) if (framebuffer) this.backend.deleteFramebuffer(framebuffer);
+    for (const renderbuffer of [this.multisampleColor, this.multisampleDepth]) if (renderbuffer) this.backend.deleteRenderbuffer(renderbuffer);
+    for (const texture of [this.frameTexture, this.depthTexture]) if (texture) this.backend.deleteTexture(texture);
     this.refractionChain?.release();
     this.refractionDepth?.release();
     bloomPyramidSupport.releaseTargets?.(this);
     this.bloomTargets = [];
     this.renderTargets.release('multisampleColor', 'multisampleDepth', 'frameColor', 'sceneDepth');
     this.releaseOcclusionTarget();
-    this.passSupport?.releaseTargets(context);
-    for (const stage of this.postStages ?? []) stage.releaseTargets(context);
+    this.passSupport?.releaseTargets(this.context);
+    for (const stage of this.postStages ?? []) stage.releaseTargets(this.context);
     if (this.localVolumeComposite) requireFeatureCode('volumeFog').support.releaseLocalVolumeComposite(this, false);
     this.multisampleFramebuffer = this.resolveFramebuffer = this.multisampleColor = this.multisampleDepth = this.frameTexture = this.depthTexture = null;
+    this.allocatedTargetWidth = 0;
+    this.allocatedTargetHeight = 0;
   }
 
   releaseOcclusionTarget() {
     if (!this.occlusionTarget) return;
-    const backend = backendFor(this);
-    backend.deleteTexture(this.occlusionTarget.texture);
-    backend.deleteFramebuffer(this.occlusionTarget.framebuffer);
+    backendFor(this).deleteTexture(this.occlusionTarget.texture);
+    backendFor(this).deleteFramebuffer(this.occlusionTarget.framebuffer);
     this.renderTargets.release('ambientOcclusion');
     this.occlusionTarget = null;
   }
@@ -2612,21 +2611,22 @@ export class CrucibleRenderer {
   allocateFrameTargets(width, height) {
     this.releaseFrameTargets();
     // 24 bits at least (issue #751): 16 bits is one step per 1.5 cm at 10 m. Reversed depth respecifies this store as 32-bit float.
-    const depthFormat = 'DEPTH_COMPONENT24';
     const multisample = this.backend.createMultisampleTarget({ width, height, samples: this.multisampleSamples, hdr: this.hdr });
     this.multisampleFramebuffer = multisample.framebuffer;
     this.multisampleColor = multisample.colorBuffer;
     this.multisampleDepth = multisample.depthBuffer;
     this.renderTargets.record('multisampleColor', { width, height, format: this.hdr ? 'RGBA16F' : 'RGBA8', samples: this.multisampleSamples });
-    this.renderTargets.record('multisampleDepth', { width, height, format: depthFormat, samples: this.multisampleSamples });
+    this.renderTargets.record('multisampleDepth', { width, height, format: 'DEPTH_COMPONENT24', samples: this.multisampleSamples });
     this.renderTargets.record('frameColor', { width, height, format: this.hdr ? 'RGBA16F' : 'RGBA8' });
     const resolve = this.backend.createResolveTarget({ width, height, hdr: this.hdr, depth: this.depth });
     this.resolveFramebuffer = resolve.framebuffer;
     this.frameTexture = resolve.colorTexture;
     this.depthTexture = resolve.depthTexture;
-    if (this.depth) this.renderTargets.record('sceneDepth', { width, height, format: depthFormat });
+    if (this.depth) this.renderTargets.record('sceneDepth', { width, height, format: 'DEPTH_COMPONENT24' });
     this.bloomWidth = Math.max(1, Math.ceil(width / 2));
     this.bloomHeight = Math.max(1, Math.ceil(height / 2));
+    this.allocatedTargetWidth = width;
+    this.allocatedTargetHeight = height;
     this.backend.bindCanvasTarget();
     this.chooseColorFormat(width, height);
   }
