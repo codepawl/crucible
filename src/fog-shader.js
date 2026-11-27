@@ -7,7 +7,7 @@ import { LOCAL_VOLUME_RAMP_STOPS } from './local-volume-ramp.js';
 import { bindLocalVolumeParts } from './local-volume-parts.js';
 import { fireLightsOf } from './local-volume-fire-light.js';
 import { MAX_POINT_LIGHTS } from './light-limits.js';
-import { GRID_BORDER_VOXELS, GRID_MOTION_TIME_STEP, HALF_FLOAT_MAXIMUM, bakedGridEmission, floatToHalf, gridUnitVelocity } from './volume-grid.js';
+import { BLACKBODY_HUE_TABLE, BLACKBODY_RADIANCE_SCALE, BLACKBODY_TABLE_COUNT, BLACKBODY_TABLE_FIRST_KELVIN, BLACKBODY_TABLE_STEP_KELVIN, GRID_BORDER_VOXELS, GRID_MOTION_TIME_STEP, floatToHalf, gridTemperature, gridUnitVelocity } from './volume-grid.js';
 import { STEP_INTEGRAL_GLSL } from './volume-step-integral.js';
 import { drawMeshVolumes } from './mesh-volume-pass.js';
 import { FogFieldTexture, createFogLightBuffers, packFogLights, volumeShadowAmbient, DEFAULT_FLOW_STRENGTH, DEFAULT_FLOW_PERIOD, resolveFogDetail, fogUsesDetail } from './fog-field.js';
@@ -196,8 +196,8 @@ function bindLocalVolumes(renderer, post, frame, environment) {
   backend.uniform4fv(locate('localVolumeEmission[0]'), buffers.emission);
   backend.uniform4fv(locate('localVolumeSteps[0]'), buffers.steps);
   backend.uniform4fv(locate('localVolumeAxes[0]'), buffers.axes);
-  const gridTexture = localGridTexture(renderer, buffers.gridVolume?.gridData ?? null);
-  const gridEmission = localGridEmissionTexture(renderer, buffers.gridVolume);
+  const gridTexture = localGridTexture(renderer, buffers.gridVolume?.gridData ?? null, buffers.gridVolume?.flameTemperature ?? null);
+  const blackbodyTable = localGridBlackbodyTable(backend, renderer);
   const gridVelocity = buffers.gridShutter > 0 ? localGridVelocityTexture(renderer, buffers.gridVolume) : null;
   // The sampler always gets a texture of its own type, so the program is valid in a frame with no mesh volume.
   backend.bindTextureUnit(7, buffers.meshParts.length > 0 ? renderer.meshVolumePass.target.texture : renderer.whiteTexture);
@@ -207,8 +207,8 @@ function bindLocalVolumes(renderer, post, frame, environment) {
   backend.uniform4fv(locate('localVolumeRamp[0]'), buffers.rampColors);
   backend.bindTextureUnit(8, gridTexture, '3d');
   backend.uniform1i(locate('localGridTexture'), 8);
-  backend.bindTextureUnit(9, gridEmission, '3d');
-  backend.uniform1i(locate('localGridEmissionTexture'), 9);
+  backend.bindTextureUnit(9, blackbodyTable);
+  backend.uniform1i(locate('localGridBlackbodyTable'), 9);
   // The velocity texture and the shutter exist only in the 'gridMotion' program variant, so a frame with the shutter off binds nothing more than it did before (#1759).
   if (gridVelocity) {
     backend.uniform1f(locate('localGridShutter'), buffers.gridShutter);
@@ -255,28 +255,41 @@ function drawEmissionMask(renderer, frame) {
   return true;
 }
 
-// The two 3D textures of a grid volume, RGBA16F, linear and clamped, uploaded once per grid (and per temperature scale for the emission): `localGridTexture` holds
-// r density, g temperature, b flame (the density when the grid has no flame channel) and `localGridEmissionTexture` the blackbody radiance of each voxel's
-// temperature, baked on the CPU (bakedGridEmission) so the march reads it with one linear tap and the interpolation happens after the blackbody, as Cycles does
-// (#1752). Both carry GRID_BORDER_VOXELS empty voxels on every face. A frame with no grid volume gets 1 x 1 x 1 textures, so the samplers are always valid.
-function localGridTexture(renderer, grid) {
+// The 3D texture of a grid volume, RGBA16F, linear and clamped, uploaded once per grid (and flame remap): r density, g temperature, b flame
+// (the density when the grid has no flame channel) and a the emission temperature (remapped flame when `flameTemperature` is set, else temperature),
+// so the march interpolates temperature before evaluating blackbody radiance (#1735). Carries GRID_BORDER_VOXELS empty voxels on every face.
+function localGridTexture(renderer, grid, flameTemperature = null) {
   const { density, temperature, flame } = grid?.channels ?? {};
-  return uploadGridTexture(renderer, 'localGridTextureCache', grid, null, (texels, voxel, texel) => {
+  const remapped = grid && flameTemperature ? gridTemperature(grid, flameTemperature) : null;
+  const remapKey = flameTemperature ? `${flameTemperature.ignition}|${flameTemperature.maximum}` : null;
+  return uploadGridTexture(renderer, 'localGridTextureCache', grid, remapKey, (texels, voxel, texel) => {
     texels[texel] = density[voxel];
     texels[texel + 1] = temperature ? temperature[voxel] : 0;
     texels[texel + 2] = (flame ?? density)[voxel];
+    texels[texel + 3] = remapped ? floatToHalf(remapped[voxel]) : (!flameTemperature && temperature ? temperature[voxel] : 0);
   });
 }
 
-function localGridEmissionTexture(renderer, volume) {
-  const grid = volume?.gridData ?? null;
-  // A grid without a temperature channel bakes to zeros: its texture is the zero fill, with no pass over the voxels.
-  const baked = grid?.channels.temperature ? bakedGridEmission(grid, volume.temperatureScale, volume.flameTemperature) : null;
-  const cacheKey = `${volume?.temperatureScale ?? 0}|${volume?.flameTemperature?.ignition}|${volume?.flameTemperature?.maximum}`;
-  return uploadGridTexture(renderer, 'localGridEmissionCache', grid, cacheKey, baked && ((texels, voxel, texel) => {
-    texels[texel] = floatToHalf(Math.min(baked.red[voxel], HALF_FLOAT_MAXIMUM));
-    texels[texel + 1] = floatToHalf(Math.min(baked.green[voxel], HALF_FLOAT_MAXIMUM));
-    texels[texel + 2] = floatToHalf(Math.min(baked.blue[voxel], HALF_FLOAT_MAXIMUM));
+const BLACKBODY_TABLE_TEXELS = (() => {
+  const texels = new Uint16Array(BLACKBODY_TABLE_COUNT * 4);
+  for (let entry = 0; entry < BLACKBODY_TABLE_COUNT; entry++) {
+    for (let channel = 0; channel < 3; channel++) {
+      texels[entry * 4 + channel] = floatToHalf(BLACKBODY_HUE_TABLE[entry * 3 + channel]);
+    }
+    texels[entry * 4 + 3] = floatToHalf(1);
+  }
+  return texels;
+})();
+
+function localGridBlackbodyTable(backend, renderer) {
+  return (renderer.localGridBlackbodyTable ??= backend.createDataTexture2D({
+    width: BLACKBODY_TABLE_COUNT,
+    height: 1,
+    format: 'rgba16f',
+    linear: true,
+    clamp: true,
+    unit: 9,
+    data: BLACKBODY_TABLE_TEXELS,
   }));
 }
 
@@ -434,7 +447,7 @@ uniform vec4 localVolumeRamp[${MAX_LOCAL_VOLUMES * LOCAL_VOLUME_RAMP_STOPS}];
 uniform highp sampler3D localGridTexture;
 uniform highp sampler2D localEmissionMask;
 uniform float localEmissionMaskReady;
-uniform highp sampler3D localGridEmissionTexture;
+uniform highp sampler2D localGridBlackbodyTable;
 `;
 
 // The motion blur of a grid (#1759) compiles in only for a frame whose grid carries velocity and whose shutter is open (post step 'gridMotion'), so every other program
@@ -570,21 +583,25 @@ float localGridDetail(int index, vec3 position) {
   localGridDetailValue = 1.0 + (2.0 * (stretched * stretched * (3.0 - 2.0 * stretched)) - 1.0) * noiseAmount;
   return localGridDetailValue;
 }
-` : ''}// A grid cell at a world point: x density, y temperature, z flame, all linear taps of the padded texture (a texel centre is at i + 0.5).
-vec3 localGridSample(int index, vec3 position) {
+` : ''}vec4 localGridTexel(int index, vec3 position) {
   vec3 unit = (position - localVolumeCenters[index].xyz) / (localVolumeExtents[index].xyz * 2.0) + 0.5;
   vec3 paddedSize = vec3(textureSize(localGridTexture, 0));
-  ${withGridDetail ? `vec3 cell = textureLod(localGridTexture, (unit * (paddedSize - ${2 * GRID_BORDER_VOXELS}.0) + ${GRID_BORDER_VOXELS}.0) / paddedSize, 0.0).rgb;
-  if (cell.x == 0.0 && cell.z == 0.0) return cell;
-  float detail = localGridDetail(index, position);
-  return vec3(cell.x * detail, cell.y, cell.z * detail);` : `return textureLod(localGridTexture, (unit * (paddedSize - ${2 * GRID_BORDER_VOXELS}.0) + ${GRID_BORDER_VOXELS}.0) / paddedSize, 0.0).rgb;`}
+  return textureLod(localGridTexture, (unit * (paddedSize - ${2 * GRID_BORDER_VOXELS}.0) + ${GRID_BORDER_VOXELS}.0) / paddedSize, 0.0);
 }
-` : ''}${withGrid ? `// The baked blackbody radiance at a world point (volume-grid.js bakedGridEmission), before the blackbody intensity and the emission strength.
-vec3 localGridBlackbody(int index, vec3 position) {
-  vec3 unit = (position - localVolumeCenters[index].xyz) / (localVolumeExtents[index].xyz * 2.0) + 0.5;
-  vec3 paddedSize = vec3(textureSize(localGridEmissionTexture, 0));
-  ${withGridDetail ? `vec3 radiance = textureLod(localGridEmissionTexture, (unit * (paddedSize - ${2 * GRID_BORDER_VOXELS}.0) + ${GRID_BORDER_VOXELS}.0) / paddedSize, 0.0).rgb;
-  return radiance == vec3(0.0) ? radiance : radiance * localGridDetail(index, position);` : `return textureLod(localGridEmissionTexture, (unit * (paddedSize - ${2 * GRID_BORDER_VOXELS}.0) + ${GRID_BORDER_VOXELS}.0) / paddedSize, 0.0).rgb;`}
+vec3 localGridSample(int index, vec3 position) {
+  vec3 cell = localGridTexel(index, position).rgb;
+  ${withGridDetail ? `if (cell.x == 0.0 && cell.z == 0.0) return cell;
+  float detail = localGridDetail(index, position);
+  return vec3(cell.x * detail, cell.y, cell.z * detail);` : 'return cell;'}
+}
+` : ''}${withGrid ? `vec3 localGridBlackbody(int index, vec3 position) {
+  float kelvin = localGridTexel(index, position).a * localVolumeGrid[index].y;
+  if (kelvin <= 0.0) return vec3(0.0);
+  float tableU = (clamp((kelvin - ${BLACKBODY_TABLE_FIRST_KELVIN}.0) / ${BLACKBODY_TABLE_STEP_KELVIN}.0, 0.0, ${BLACKBODY_TABLE_COUNT - 1}.0) + 0.5) / ${BLACKBODY_TABLE_COUNT}.0;
+  float kilo = kelvin * 0.001;
+  float kilo2 = kilo * kilo;
+  vec3 radiance = textureLod(localGridBlackbodyTable, vec2(tableU, 0.5), 0.0).rgb * (${(BLACKBODY_RADIANCE_SCALE * 1e12).toFixed(8)} * kilo2 * kilo2);
+  ${withGridDetail ? 'return radiance * localGridDetail(index, position);' : 'return radiance;'}
 }
 ` : ''}${motion ? LOCAL_MOTION_POSITION_FUNCTION : ''}${STEP_INTEGRAL_GLSL}// The emission ramp of a volume (#1046): the light per unit length at a source value, 0 where the volume has no ramp. localVolumeRampSetup holds x the source
 // code (0 none, 1 density, 2 temperature, 3 flame), y the stop count and z, w the source range; the stops are baked in local-volume-ramp.js with the exposure and
