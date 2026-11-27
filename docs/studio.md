@@ -309,7 +309,7 @@ What a press does in the viewport. A press that moves more than 4 pixels is a dr
 | Middle drag | Pan |
 | Space + left drag | Pan. A Space tap with no drag still does what Space is bound to (play, or place a held object), once the key comes up; holding the key until it repeats, or pressing it away from the viewport, acts at once. In a text field Space types a space |
 | Middle click | Set the orbit point: the view moves so the point under the pointer is what it orbits, and the angle and distance stay. It does not select. Over empty space it does nothing and says so. It works in edit mode too |
-| Alt + right click | The same as a middle click, and it does not open the object menu. In the Maya and Cinema 4D keymaps an Alt + right drag still zooms and an unmoved press sets the orbit point |
+| Alt + right click | The same as a middle click, and it does not open the object menu. In a keymap preset where Alt + right drag zooms, the drag still zooms and an unmoved press sets the orbit point |
 | Back button click | Undo, as the Undo button does. The browser does not go back while Studio is the page. A text field that has focus, an open dialog and a held object leave undo alone |
 | Forward button click | Redo, in the same way |
 | Wheel | Zoom (see **Zoom direction** in Settings) |
