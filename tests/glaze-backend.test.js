@@ -2,8 +2,11 @@
 // A recording context stands in for WebGL2; the expected lists below are the calls of the old renderer code, in order.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGlazeBackend } from '../src/glaze-backend.js';
+import { asGlazeBackend, backendFor, createGlazeBackend } from '../src/glaze-backend.js';
 import { WebGL2GlazeBackend } from '../src/glaze-backend-webgl2.js';
+import { createFloatOutput, outputFor, readFloatPixels, readFrame, requireFloatTargets } from '../src/float-output.js';
+import { installReversedDepth } from '../src/reversed-depth.js';
+import { installRenderPasses, RENDER_PASS_MODES } from '../src/render-passes.js';
 
 // Constants answer their own name, so the log reads GL_CONSTANT; methods log their call and return a numbered object.
 function createRecordingContext(overrides = {}) {
@@ -182,4 +185,249 @@ test('a rendered frame allocates, draws and resolves through the backend', async
     assert.ok(result.counts.resolveMultisample >= 1, 'the frame resolves through the backend');
     assert.ok(result.counts.drawIndexedInstanced >= 1, 'the opaque draw goes through the backend');
   });
+});
+
+function createRecordingBackend(overrides = {}) {
+  const calls = [];
+  let created = 0;
+  const values = {
+    extension: () => ({}),
+    createFramebufferTarget: (options) => ({
+      framebuffer: { label: `fb${++created}` },
+      colorTexture: options.color === false ? null : { label: `color${created}` },
+      depthTexture: options.depth && options.depthAsTexture ? { label: `depthTex${created}` } : null,
+      depthRenderbuffer: options.depth && !options.depthAsTexture ? { label: `depthRb${created}` } : null,
+      complete: true,
+    }),
+    setFloatDepthTargets: () => true,
+    compileProgram: () => ({ label: `program${++created}` }),
+    uniformLocation: (_program, name) => `loc:${name}`,
+    ...overrides,
+  };
+  const backend = new Proxy({}, {
+    get(_target, name) {
+      if (name === 'name') return 'recording';
+      return (...args) => {
+        calls.push([name, ...args]);
+        if (name in values) return values[name](...args);
+        return undefined;
+      };
+    },
+  });
+  return { backend, calls };
+}
+
+test('extension, framebuffer targets, depth targets, uniforms, fullscreen draws, clip control and float readback issue exact WebGL2 calls', () => {
+  const clipExtension = {
+    LOWER_LEFT_EXT: 'LOWER_LEFT_EXT',
+    ZERO_TO_ONE_EXT: 'ZERO_TO_ONE_EXT',
+    NEGATIVE_ONE_TO_ONE_EXT: 'NEGATIVE_ONE_TO_ONE_EXT',
+    clipControlEXT: (...args) => calls.push(['clipControlEXT', ...args]),
+  };
+  const { context, calls } = createRecordingContext({
+    getExtension: (name) => (name === 'EXT_color_buffer_float' ? { name } : null),
+    getUniformLocation: (_program, name) => `uniform:${name}`,
+    getProgramParameter: () => true,
+    getShaderParameter: () => true,
+  });
+  const backend = new WebGL2GlazeBackend(context);
+
+  assert.deepEqual(backend.extension('EXT_color_buffer_float'), { name: 'EXT_color_buffer_float' });
+  assert.equal(backend.extension('MISSING_EXT'), null);
+
+  const floatTarget = backend.createFramebufferTarget({ width: 16, height: 8, hdr: true, unbind: true });
+  assert.equal(floatTarget.complete, true);
+  assert.equal(floatTarget.colorTexture.label, 'texture1');
+  assert.equal(floatTarget.framebuffer.label, 'framebuffer2');
+
+  const passTarget = backend.createFramebufferTarget({ width: 16, height: 8, hdr: false, depth: true, floatDepth: true });
+  assert.equal(passTarget.depthRenderbuffer.label, 'renderbuffer5');
+
+  const depthTarget = backend.createFramebufferTarget({ width: 16, height: 8, color: false, depth: true, floatDepth: true, depthAsTexture: true });
+  assert.equal(depthTarget.depthTexture.label, 'texture7');
+
+  const depthComplete = backend.setFloatDepthTargets({
+    multisampleDepth: { label: 'msDepth' },
+    multisampleSamples: 4,
+    depthTexture: { label: 'sceneDepth' },
+    framebuffers: [{ label: 'msFb' }, { label: 'resFb' }],
+    width: 16,
+    height: 8,
+  });
+  assert.equal(depthComplete, true);
+
+  backend.copyDepth({ source: { label: 'resFb' }, destination: { label: 'copyFb' }, width: 16, height: 8 });
+  const program = backend.compileProgram('vs', 'fs');
+  const location = backend.uniformLocation(program, 'u');
+  backend.useProgram(program);
+  backend.uniform1f(location, 1);
+  backend.uniform1fv(location, new Float32Array([1, 2]));
+  backend.uniform3f(location, 1, 2, 3);
+  backend.uniform3fv(location, new Float32Array([1, 2, 3]));
+  backend.uniform4fv(location, new Float32Array([1, 2, 3, 4]));
+  backend.uniformMatrix4fv(location, new Float32Array(16));
+  backend.drawFullscreenTexture({ framebuffer: null, width: 16, height: 8, program, textureUniform: location, texture: floatTarget.colorTexture, depthWriteOnly: false });
+  backend.drawFullscreenTexture({ framebuffer: { label: 'resFb' }, width: 16, height: 8, program, textureUniform: location, texture: depthTarget.depthTexture, depthWriteOnly: true });
+  backend.setClipControlZeroToOne(clipExtension, true);
+  backend.setClipControlZeroToOne(clipExtension, false);
+  backend.clearDepthBuffer(0);
+  backend.readFloatPixels(floatTarget.framebuffer, 1, 2, 3, 4, new Float32Array(48));
+  backend.deleteProgram(program);
+
+  assert.ok(calls.some((call) => call[0] === 'renderbufferStorageMultisample' && call[3] === 'DEPTH_COMPONENT32F'));
+  assert.ok(calls.some((call) => call[0] === 'blitFramebuffer' && call[9] === 256));
+  assert.ok(calls.some((call) => call[0] === 'clipControlEXT' && call[2] === 'ZERO_TO_ONE_EXT'));
+  assert.ok(calls.some((call) => call[0] === 'clipControlEXT' && call[2] === 'NEGATIVE_ONE_TO_ONE_EXT'));
+
+  const readIndex = calls.findIndex((call) => call[0] === 'readPixels');
+  assert.deepEqual(calls.slice(readIndex - 1, readIndex + 3), [
+    ['bindFramebuffer', 'READ_FRAMEBUFFER', 'framebuffer2'],
+    ['readPixels', 1, 2, 3, 4, 'RGBA', 'FLOAT', 'data'],
+    ['bindFramebuffer', 'READ_FRAMEBUFFER', null],
+    ['deleteProgram', 'program8'],
+  ]);
+  const depthOnlyStart = calls.findIndex((call) => call[0] === 'depthFunc' && call[1] === 'ALWAYS');
+  assert.ok(depthOnlyStart > 0);
+  assert.deepEqual(calls.slice(depthOnlyStart, depthOnlyStart + 8), [
+    ['depthFunc', 'ALWAYS'],
+    ['colorMask', false, false, false, false],
+    ['drawArrays', 'TRIANGLES', 0, 3],
+    ['colorMask', true, true, true, true],
+    ['depthFunc', 'LESS'],
+    ['disable', 'DEPTH_TEST'],
+    ['clipControlEXT', 'LOWER_LEFT_EXT', 'ZERO_TO_ONE_EXT'],
+    ['depthFunc', 'GREATER'],
+  ]);
+});
+
+test('float-output.js routes through GlazeBackend when given a backend and wraps a raw context for standalone callers', () => {
+  const { backend, calls } = createRecordingBackend();
+  const throwingContext = new Proxy({}, { get() { throw new Error('raw context touched'); } });
+
+  requireFloatTargets(backend);
+  const output = createFloatOutput(backend, 8, 4);
+  const pixels = readFloatPixels(backend, output.framebuffer, 8, 4, { x: 1, y: 1, width: 2, height: 2 });
+  assert.equal(pixels.length, 16);
+  output.dispose();
+
+  const record = { renderer: { backend, context: throwingContext, canvas: { width: 8, height: 4 } } };
+  const cached = outputFor(record, { width: 8, height: 4 });
+  assert.equal(cached.width, 8);
+  const frame = readFrame(record, { width: 8, height: 4 }, 'frame');
+  assert.equal(frame.width, 8);
+  assert.equal(frame.height, 4);
+
+  const methodNames = calls.map((call) => call[0]);
+  assert.ok(methodNames.includes('extension'));
+  assert.ok(methodNames.includes('createFramebufferTarget'));
+  assert.ok(methodNames.includes('readFloatPixels'));
+  assert.ok(methodNames.includes('deleteFramebuffer'));
+  assert.ok(methodNames.includes('deleteTexture'));
+
+  const { context, calls: rawCalls } = createRecordingContext({ getExtension: () => ({}) });
+  const rawOutput = createFloatOutput(context, 4, 4);
+  readFloatPixels(context, rawOutput.framebuffer, 4, 4);
+  rawOutput.dispose();
+  assert.ok(rawCalls.some((call) => call[0] === 'readPixels'));
+  assert.equal(asGlazeBackend(backend), backend);
+  assert.equal(backendFor({ backend, context: throwingContext }), backend);
+});
+
+test('reversed-depth.js routes depth target, clip control, uniforms and depth conversion through renderer.backend', () => {
+  const { backend, calls } = createRecordingBackend();
+  const throwingContext = new Proxy({}, { get() { throw new Error('raw context touched'); } });
+  const renderer = {
+    backend,
+    context: throwingContext,
+    canvas: { width: 32, height: 16 },
+    benchmark: false,
+    capabilities: {},
+    postStages: [],
+    multisampleFramebuffer: { label: 'msFb' },
+    multisampleDepth: { label: 'msDepth' },
+    multisampleSamples: 4,
+    resolveFramebuffer: { label: 'resFb' },
+    depthTexture: { label: 'depthTex' },
+    program: { label: 'mainProgram' },
+    projection: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, 0, 0, -0.2, 0]),
+    view: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+    uniforms: { viewProjection: 'loc:viewProjection' },
+    setFlushProjection() {},
+    applyEnvironmentUniforms() {},
+    applyDepthRank() {},
+    resolveFrame() {},
+    allocateFrameTargets() {},
+    render() {
+      this.applyEnvironmentUniforms(null, undefined);
+      this.resolveFrame();
+    },
+  };
+
+  installReversedDepth(renderer, true);
+  assert.equal(renderer.reversedDepth, true);
+  renderer.allocateFrameTargets(32, 16);
+  renderer.render({ eye: [0, 1, 5] });
+  renderer.postStages[0].apply(renderer);
+  renderer.postStages[0].releaseTargets(throwingContext);
+  renderer.postStages[0].dispose(throwingContext);
+
+  const methodNames = calls.map((call) => call[0]);
+  assert.ok(methodNames.includes('extension'));
+  assert.ok(methodNames.includes('setFloatDepthTargets'));
+  assert.ok(methodNames.includes('uniformMatrix4fv'));
+  assert.ok(methodNames.includes('uniform4fv'));
+  assert.ok(methodNames.includes('clearDepthBuffer'));
+  assert.ok(methodNames.includes('setClipControlZeroToOne'));
+  assert.ok(methodNames.includes('compileProgram'));
+  assert.ok(methodNames.includes('copyDepth'));
+  assert.ok(methodNames.includes('drawFullscreenTexture'));
+  assert.ok(methodNames.includes('deleteProgram'));
+});
+
+test('render-passes.js routes targets, uniforms, fullscreen copy and cleanup through renderer.backend', () => {
+  const { backend, calls } = createRecordingBackend();
+  const throwingContext = new Proxy({}, { get() { throw new Error('raw context touched'); } });
+  const batch = {
+    parts: [{ name: 'hero', matrix: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]), material: { id: 'steel', aov: [0.2, 0.4, 0.6] } }],
+    layerState: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    textures: ['t0', 't1', 't2', 't3', 't4'],
+  };
+  const renderer = {
+    backend,
+    context: throwingContext,
+    canvas: { width: 16, height: 16 },
+    benchmark: false,
+    reversedDepth: true,
+    program: { label: 'mainProgram' },
+    viewProjection: new Float32Array(16),
+    renderTargets: { record() {}, release() {} },
+    requireFeatureNames() {},
+    drawsInOpaqueLoop: () => true,
+    takesObjectIds: () => true,
+    createTexture: (descriptor) => descriptor,
+    drawAlphaBatch() {},
+    batches: [batch],
+  };
+
+  installRenderPasses(renderer);
+  assert.equal(renderer.passSupport.prepare({ pass: 'aov', passFloat: true }), RENDER_PASS_MODES.aov);
+  renderer.passSupport.bindFrame({ passFloat: true }, { fogDensity: 0.01, fogColor: [0.2, 0.3, 0.4] }, { density: 0, color: [0, 0, 0] });
+  renderer.passSupport.drawBatch(batch, RENDER_PASS_MODES.aov, {}, 0);
+  renderer.passSupport.copyToCanvas();
+  renderer.passSupport.dispose(throwingContext);
+
+  const methodNames = calls.map((call) => call[0]);
+  assert.ok(methodNames.includes('compileProgram'));
+  assert.ok(methodNames.includes('createFramebufferTarget'));
+  assert.ok(methodNames.includes('uniformLocation'));
+  assert.ok(methodNames.includes('uniform1f'));
+  assert.ok(methodNames.includes('uniform1fv'));
+  assert.ok(methodNames.includes('uniform3f'));
+  assert.ok(methodNames.includes('uniform3fv'));
+  assert.ok(methodNames.includes('uniformMatrix4fv'));
+  assert.ok(methodNames.includes('drawFullscreenTexture'));
+  assert.ok(methodNames.includes('deleteTexture'));
+  assert.ok(methodNames.includes('deleteRenderbuffer'));
+  assert.ok(methodNames.includes('deleteFramebuffer'));
+  assert.ok(methodNames.includes('deleteProgram'));
 });
