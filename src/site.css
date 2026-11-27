@@ -106,12 +106,12 @@ body.site .icon { width: 18px; height: 18px; margin: 0; flex: none; }
   --muted: color-mix(in srgb, var(--code-fg) 62%, var(--code-bg));
   --tint: color-mix(in srgb, var(--code-fg) 8%, transparent);
   --tint-strong: color-mix(in srgb, var(--code-fg) 16%, transparent);
-  --syntax-keyword: var(--code-fg);
-  --syntax-string: var(--accent);
-  --syntax-number: var(--code-fg);
-  --syntax-flag: var(--muted);
+  --syntax-keyword: #ffb25e;
+  --syntax-string: #5fc48a;
+  --syntax-number: #ffb25e;
+  --syntax-flag: color-mix(in srgb, var(--code-fg) 68%, var(--code-bg));
   --syntax-name: var(--code-fg);
-  --syntax-comment: var(--muted);
+  --syntax-comment: color-mix(in srgb, var(--code-fg) 54%, var(--code-bg));
   --edge: var(--code-border);
   background: var(--code-bg);
   color: var(--code-fg);
@@ -123,6 +123,8 @@ body.site > main > section { scroll-margin-top: calc(var(--nav-height) + 24px); 
 
 .site .command-row { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; border-radius: var(--panel-radius); }
 .site .command-row code { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-size: 13px; line-height: 1.6; }
+.site .command-row code::before { content: '$ '; color: var(--accent); user-select: none; }
+.site .command-row .hljs-built_in { font-weight: 600; }
 .site .command-row button { flex: none; }
 
 .site .package-logo { display: inline-block; flex: none; width: 18px; height: 18px; background: currentColor; mask: center / contain no-repeat; }

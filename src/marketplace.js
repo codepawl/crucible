@@ -2,6 +2,7 @@ import './site-chrome.js';
 import './site.css';
 import './marketplace.css';
 import { ADDON_AREAS, ADDON_CATALOG, addonImportLine } from './addon-catalog.js';
+import { highlightElement } from './code-highlight.js';
 import { filterBuiltinAddons } from './marketplace-filter.js';
 import { addonPackages, firstPartyPackages, npmManifestPath } from './marketplace-npm.js';
 
@@ -76,11 +77,32 @@ function countLabel(kind, count) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+function copyIcon() {
+  const svg = document.createElementNS(SVG_NAMESPACE, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('class', 'market-copy-icon');
+  svg.setAttribute('aria-hidden', 'true');
+  const rect = document.createElementNS(SVG_NAMESPACE, 'rect');
+  rect.setAttribute('x', '9');
+  rect.setAttribute('y', '9');
+  rect.setAttribute('width', '13');
+  rect.setAttribute('height', '13');
+  rect.setAttribute('rx', '2');
+  const back = document.createElementNS(SVG_NAMESPACE, 'path');
+  back.setAttribute('d', 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1');
+  svg.append(rect, back);
+  return svg;
+}
+
+function checkIcon() {
+  return icon('M20 6 9 17l-5-5', 'market-copy-icon market-check-icon');
+}
+
 async function copyText(button, text, copiedLabel = 'Copied') {
   const originalChildren = [...button.childNodes];
   try {
     await navigator.clipboard.writeText(text);
-    button.textContent = copiedLabel;
+    button.replaceChildren(checkIcon(), document.createTextNode(copiedLabel));
   } catch {
     button.textContent = 'Copy failed';
   }
@@ -88,8 +110,9 @@ async function copyText(button, text, copiedLabel = 'Copied') {
 }
 
 function copyButton(text, label = 'Copy', className = 'market-copy') {
-  const button = element('button', className, label);
+  const button = element('button', className);
   button.type = 'button';
+  button.append(copyIcon(), document.createTextNode(label));
   button.addEventListener('click', () => copyText(button, text));
   return button;
 }
@@ -99,7 +122,7 @@ function checksumCopyButton(sha256) {
   button.type = 'button';
   button.title = `Copy full SHA-256: ${sha256}`;
   button.setAttribute('aria-label', `Copy SHA-256 checksum starting with ${sha256.slice(0, 8)}`);
-  button.append(element('span', '', 'SHA-256'), element('code', '', `${sha256.slice(0, 8)}...`));
+  button.append(copyIcon(), element('span', '', 'SHA-256'), element('code', '', `${sha256.slice(0, 8)}...`));
   button.addEventListener('click', () => copyText(button, sha256, 'SHA-256 copied'));
   return button;
 }
@@ -244,8 +267,10 @@ function packageCard(entry) {
   body.append(title);
   if (entry.description) body.append(element('p', 'market-description', entry.description));
   const command = `npm install ${entry.name}`;
+  const code = element('code', '', command);
+  highlightElement(code, 'shell');
   const row = element('div', 'command-row');
-  row.append(element('code', '', command), copyButton(command));
+  row.append(code, copyButton(command));
   body.append(row);
   card.append(body);
   return card;
@@ -384,6 +409,9 @@ function loadBuiltinAddons() {
   refresh();
 }
 
+document.querySelectorAll('.market-install .command-row code').forEach(codeElement => {
+  highlightElement(codeElement, 'shell');
+});
 document.querySelectorAll('[data-copy]').forEach(button => {
   button.addEventListener('click', () => copyText(button, button.dataset.copy));
 });
