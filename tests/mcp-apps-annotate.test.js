@@ -120,3 +120,33 @@ test('the submit tool bounds what a view can send and passes the marks to the ru
   }
   assert.equal(record.submits.length, 1);
 });
+
+test('the inline view includes all four mark tools and scene_ask_user_submit accepts color and view marks (#922)', async context => {
+  const html = annotateViewHtml();
+  for (const id of ['tool-pin', 'tool-lasso', 'tool-color', 'tool-view', 'color-picker', 'capture-view']) {
+    assert.ok(html.includes(`id="${id}"`), `missing ${id}`);
+  }
+  const { client, record } = await connect(context, APPS_CAPABILITIES);
+  const sent = await client.callTool({
+    name: 'scene_ask_user_submit',
+    arguments: {
+      nonce: NONCE,
+      marks: [
+        { kind: 'color', x: 10, y: 20, hex: '#ff5a4f', note: 'paint warm' },
+        { kind: 'view', camera: { eye: [2, 3, 4], target: [0, 0, 0], fov: 45 }, note: 'hero angle' },
+      ],
+      image: PNG,
+    },
+  });
+  assert.equal(sent.isError, undefined);
+  assert.equal(record.submits.length, 1);
+  assert.equal(record.submits[0].marks[0].kind, 'color');
+  assert.equal(record.submits[0].marks[1].kind, 'view');
+  for (const badMark of [
+    { kind: 'color', x: 10, y: 20, hex: 'red' },
+    { kind: 'view', camera: { eye: [1, 2, 3], target: [0, 0, 0], fov: 121 } },
+  ]) {
+    const rejected = await client.callTool({ name: 'scene_ask_user_submit', arguments: { nonce: NONCE, marks: [badMark], image: PNG } }).catch(error => ({ isError: true, error }));
+    assert.equal(rejected.isError, true);
+  }
+});

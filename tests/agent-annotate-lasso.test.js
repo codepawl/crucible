@@ -40,7 +40,7 @@ test('validateMarks keeps a lasso as rounded points and names the field of a bad
   assert.throws(() => validateMarks(lassoWith({ points: [[0, 0], [10, 10, 5], [0, 10]] }), view), /points\[1\]/);
   assert.throws(() => validateMarks(lassoWith({ points: [[0, 0], [10, 10], [20, 20]] }), view), /outline an area/);
   assert.throws(() => validateMarks(lassoWith({ note: 'x'.repeat(281) }), view), /mark 1 note must be text of at most 280 characters/);
-  assert.throws(() => validateMarks([{ kind: 'box', x: 1, y: 1 }], view), /mark 1 kind must be "pin" or "lasso", got "box"/);
+  assert.throws(() => validateMarks([{ kind: 'box', x: 1, y: 1 }], view), /mark 1 kind must be "pin", "lasso", "color" or "view", got "box"/);
   assert.deepEqual(validateMarks([{ kind: 'pin', x: 1, y: 2, note: 'a' }], view), [{ x: 1, y: 2, note: 'a' }]);
   assert.equal(validateMarks(Array(ANNOTATE_LIMITS.maxMarks).fill({ kind: 'lasso', points: square }), view).length, ANNOTATE_LIMITS.maxMarks);
 });
