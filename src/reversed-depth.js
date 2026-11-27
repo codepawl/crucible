@@ -6,7 +6,8 @@
 // once wherever EXT_clip_control exists, at any far / near ratio. `false` opts out, and a browser without the extension keeps the
 // standard path with a 24-bit buffer and a fitted near plane (near-plane-fit.js).
 import { mat4 } from 'gl-matrix';
-import { compileProgram, fullscreenVertex } from './gl-program.js';
+import { fullscreenVertex } from './gl-program.js';
+import { backendFor } from './glaze-backend.js';
 import { shaderTransforms } from './shader-registry.js';
 
 const ZERO_VECTOR = new Float32Array(4);
@@ -52,64 +53,50 @@ void main() {
   gl_FragDepth = 1.0 - texelFetch(reversedDepth, ivec2(gl_FragCoord.xy), 0).r;
 }`;
 
-function createDepthConversionStage() {
+function createDepthConversionStage(resolveBackend) {
   let program = null;
   let uniform = null;
   let copy = null;
 
-  function releaseTargets(context) {
+  function releaseTargets() {
     if (!copy) return;
-    context.deleteTexture(copy.texture);
-    context.deleteFramebuffer(copy.framebuffer);
+    const backend = resolveBackend();
+    backend.deleteTexture(copy.texture);
+    backend.deleteFramebuffer(copy.framebuffer);
     copy = null;
   }
 
-  function createCopy(context, width, height) {
-    const texture = context.createTexture();
-    context.bindTexture(context.TEXTURE_2D, texture);
-    context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT32F, width, height, 0, context.DEPTH_COMPONENT, context.FLOAT, null);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
-    const framebuffer = context.createFramebuffer();
-    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-    context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, texture, 0);
-    return { texture, framebuffer, width, height };
+  function createCopy(backend, width, height) {
+    const created = backend.createFramebufferTarget({ width, height, color: false, depth: true, floatDepth: true, depthAsTexture: true });
+    return { texture: created.depthTexture, framebuffer: created.framebuffer, width, height };
   }
 
   function apply(renderer) {
     if (!renderer.depthTexture) return null;
-    const context = renderer.context;
+    const backend = resolveBackend();
     const { width, height } = renderer.canvas;
     if (!program) {
-      program = compileProgram(context, fullscreenVertex, STANDARD_DEPTH_FRAGMENT);
-      uniform = context.getUniformLocation(program, 'reversedDepth');
+      program = backend.compileProgram(fullscreenVertex, STANDARD_DEPTH_FRAGMENT);
+      uniform = backend.uniformLocation(program, 'reversedDepth');
     }
-    if (copy && (copy.width !== width || copy.height !== height)) releaseTargets(context);
-    copy ??= createCopy(context, width, height);
-    context.bindFramebuffer(context.READ_FRAMEBUFFER, renderer.resolveFramebuffer);
-    context.bindFramebuffer(context.DRAW_FRAMEBUFFER, copy.framebuffer);
-    context.blitFramebuffer(0, 0, width, height, 0, 0, width, height, context.DEPTH_BUFFER_BIT, context.NEAREST);
-    context.bindFramebuffer(context.FRAMEBUFFER, renderer.resolveFramebuffer);
-    context.viewport(0, 0, width, height);
-    context.useProgram(program);
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, copy.texture);
-    context.uniform1i(uniform, 0);
-    context.enable(context.DEPTH_TEST);
-    context.depthFunc(context.ALWAYS);
-    context.colorMask(false, false, false, false);
-    context.disable(context.CULL_FACE);
-    context.bindVertexArray(null);
-    context.drawArrays(context.TRIANGLES, 0, 3);
-    context.colorMask(true, true, true, true);
-    context.depthFunc(context.LESS);
-    context.disable(context.DEPTH_TEST);
+    if (copy && (copy.width !== width || copy.height !== height)) releaseTargets();
+    copy ??= createCopy(backend, width, height);
+    backend.copyDepth({ source: renderer.resolveFramebuffer, destination: copy.framebuffer, width, height });
+    backend.drawFullscreenTexture({
+      framebuffer: renderer.resolveFramebuffer,
+      width,
+      height,
+      program,
+      textureUniform: uniform,
+      texture: copy.texture,
+      depthWriteOnly: true,
+    });
     return null;
   }
 
-  function dispose(context) {
-    releaseTargets(context);
-    if (program) context.deleteProgram(program);
+  function dispose() {
+    releaseTargets();
+    if (program) resolveBackend().deleteProgram(program);
     program = null;
   }
 
@@ -117,23 +104,20 @@ function createDepthConversionStage() {
 }
 
 // The frame targets are allocated with 24-bit depth by the core; this respecifies the two depth stores as 32-bit float.
-function useFloatDepthTargets(renderer) {
-  const context = renderer.context;
+function useFloatDepthTargets(renderer, backend) {
   if (!renderer.multisampleFramebuffer) return;
   const { width, height } = renderer.canvas;
-  context.bindRenderbuffer(context.RENDERBUFFER, renderer.multisampleDepth);
-  context.renderbufferStorageMultisample(context.RENDERBUFFER, renderer.multisampleSamples, context.DEPTH_COMPONENT32F, width, height);
+  const complete = backend.setFloatDepthTargets({
+    multisampleDepth: renderer.multisampleDepth,
+    multisampleSamples: renderer.multisampleSamples,
+    depthTexture: renderer.depthTexture,
+    framebuffers: [renderer.multisampleFramebuffer, renderer.resolveFramebuffer],
+    width,
+    height,
+  });
   renderer.renderTargets?.record('multisampleDepth', { width, height, format: 'DEPTH_COMPONENT32F', samples: renderer.multisampleSamples });
-  if (renderer.depthTexture) {
-    context.bindTexture(context.TEXTURE_2D, renderer.depthTexture);
-    context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT32F, width, height, 0, context.DEPTH_COMPONENT, context.FLOAT, null);
-    renderer.renderTargets?.record('sceneDepth', { width, height, format: 'DEPTH_COMPONENT32F' });
-  }
-  for (const framebuffer of [renderer.multisampleFramebuffer, renderer.resolveFramebuffer]) {
-    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-    if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Reversed depth targets failed to allocate. Pass reversedDepth: false to the install.');
-  }
-  context.bindFramebuffer(context.FRAMEBUFFER, null);
+  if (renderer.depthTexture) renderer.renderTargets?.record('sceneDepth', { width, height, format: 'DEPTH_COMPONENT32F' });
+  if (!complete) throw new Error('Reversed depth targets failed to allocate. Pass reversedDepth: false to the install.');
 }
 
 /**
@@ -166,7 +150,11 @@ export function prepareCameraRelativeProgram(renderer) {
 export function installReversedDepth(renderer, mode = 'auto') {
   if (mode === false) renderer.reversedDepth ??= false;
   if (mode === false || renderer.reversedDepth !== undefined) return renderer;
-  const context = renderer.context;
+  let fallbackBackend = null;
+  function backend() {
+    if (renderer.backend && typeof renderer.backend.name === 'string' && typeof renderer.backend.createFramebufferTarget === 'function') return renderer.backend;
+    return fallbackBackend ??= backendFor(renderer);
+  }
   const original = {
     render: renderer.render,
     applyEnvironmentUniforms: renderer.applyEnvironmentUniforms,
@@ -187,40 +175,38 @@ export function installReversedDepth(renderer, mode = 'auto') {
   // Back to the standard range before the backgrounds, the post passes and the shadow maps draw.
   function endReversed() {
     if (!reversed || clipControl.active === false) return;
-    clipControl.extension.clipControlEXT(clipControl.extension.LOWER_LEFT_EXT, clipControl.extension.NEGATIVE_ONE_TO_ONE_EXT);
-    context.depthFunc(context.LESS);
+    backend().setClipControlZeroToOne(clipControl.extension, false);
     clipControl.active = false;
   }
 
   // The main program is in use. A program that a new shader feature builds starts with both uniforms at zero.
   function setCameraRelative(offset, shift) {
-    context.uniform4fv(context.getUniformLocation(renderer.program, 'cameraOffset'), offset);
-    context.uniform4fv(context.getUniformLocation(renderer.program, 'cameraShift'), shift);
+    const activeBackend = backend();
+    activeBackend.uniform4fv(activeBackend.uniformLocation(renderer.program, 'cameraOffset'), offset);
+    activeBackend.uniform4fv(activeBackend.uniformLocation(renderer.program, 'cameraShift'), shift);
     cameraRelativeProgram = renderer.program;
   }
 
   // The next frame, or a pass that draws with the standard matrix, expects the camera offset to be off.
   function clearCameraRelative() {
     if (cameraRelativeProgram !== renderer.program) return;
-    context.useProgram(renderer.program);
+    backend().useProgram(renderer.program);
     setCameraRelative(ZERO_VECTOR, ZERO_VECTOR);
     cameraRelativeProgram = null;
   }
 
   // Called with the main program in use, after its standard matrix is set: swap in the reversed one and clear to the far value.
   function beginReversed() {
+    const activeBackend = backend();
     reverseProjectionDepth(rasterProjection, renderer.projection);
     mat4.multiply(rasterViewProjection, rasterProjection, renderer.view);
-    context.uniformMatrix4fv(renderer.uniforms.viewProjection, false, rasterViewProjection);
+    activeBackend.uniformMatrix4fv(renderer.uniforms.viewProjection, rasterViewProjection);
     renderer.setFlushProjection(rasterViewProjection);
     cameraOffset.set(frameEye);
     cameraShift.set(rasterProjection.subarray(12, 16));
     setCameraRelative(cameraOffset, cameraShift);
-    context.clearDepth(0);
-    context.clear(context.DEPTH_BUFFER_BIT);
-    context.clearDepth(1);
-    clipControl.extension.clipControlEXT(clipControl.extension.LOWER_LEFT_EXT, clipControl.extension.ZERO_TO_ONE_EXT);
-    context.depthFunc(context.GREATER);
+    activeBackend.clearDepthBuffer(0);
+    activeBackend.setClipControlZeroToOne(clipControl.extension, true);
     clipControl.active = true;
   }
 
@@ -234,7 +220,7 @@ export function installReversedDepth(renderer, mode = 'auto') {
   }
 
   function enable() {
-    const extension = renderer.benchmark ? null : context.getExtension?.('EXT_clip_control');
+    const extension = renderer.benchmark ? null : backend().extension('EXT_clip_control');
     if (!extension) {
       renderer.reversedDepth = false;
       return false;
@@ -259,10 +245,10 @@ export function installReversedDepth(renderer, mode = 'auto') {
     };
     renderer.allocateFrameTargets = function allocateFloatDepthTargets(width, height) {
       original.allocateFrameTargets.call(this, width, height);
-      useFloatDepthTargets(this);
+      useFloatDepthTargets(this, backend());
     };
-    renderer.postStages.unshift(createDepthConversionStage());
-    useFloatDepthTargets(renderer);
+    renderer.postStages.unshift(createDepthConversionStage(backend));
+    useFloatDepthTargets(renderer, backend());
     useCameraRelativeProgram();
     return true;
   }

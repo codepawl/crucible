@@ -1,6 +1,7 @@
 import { mat4 } from 'gl-matrix';
 import { applyProjection } from './camera.js';
-import { compileProgram, fullscreenVertex } from './gl-program.js';
+import { fullscreenVertex } from './gl-program.js';
+import { backendFor } from './glaze-backend.js';
 import { invalidField } from './field-error.js';
 import './lighting-pass-shader.js';
 
@@ -52,25 +53,16 @@ void main() { outputColor = vec4(texelFetch(sourceTexture, ivec2(gl_FragCoord.xy
 
 // A float target keeps the pass values as half floats (frame.passFloat) for 16-bit PNG and EXR output; the shader writes the same values.
 // With reversed-Z (reversed-depth.js) the beauty pass keeps depth in a 32-bit float buffer, so a pass draws into the same format.
-function createPassTarget(context, width, height, float = false, floatDepth = false) {
-  if (float && !context.getExtension('EXT_color_buffer_float')) throw new Error('16-bit PNG and EXR output need EXT_color_buffer_float. Use format png.');
-  const texture = context.createTexture();
-  context.bindTexture(context.TEXTURE_2D, texture);
-  if (float) context.texImage2D(context.TEXTURE_2D, 0, context.RGBA16F, width, height, 0, context.RGBA, context.HALF_FLOAT, null);
-  else context.texImage2D(context.TEXTURE_2D, 0, context.RGBA8, width, height, 0, context.RGBA, context.UNSIGNED_BYTE, null);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
-  const depth = context.createRenderbuffer();
-  context.bindRenderbuffer(context.RENDERBUFFER, depth);
-  context.renderbufferStorage(context.RENDERBUFFER, floatDepth ? context.DEPTH_COMPONENT32F : context.DEPTH_COMPONENT24, width, height);
-  const framebuffer = context.createFramebuffer();
-  context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-  context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
-  context.framebufferRenderbuffer(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.RENDERBUFFER, depth);
-  if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) {
+function createPassTarget(backend, width, height, float = false, floatDepth = false) {
+  if (float && !backend.extension('EXT_color_buffer_float')) throw new Error('16-bit PNG and EXR output need EXT_color_buffer_float. Use format png.');
+  const created = backend.createFramebufferTarget({ width, height, hdr: float, depth: true, floatDepth });
+  if (!created.complete) {
+    backend.deleteFramebuffer(created.framebuffer);
+    backend.deleteRenderbuffer(created.depthRenderbuffer);
+    backend.deleteTexture(created.colorTexture);
     throw new Error('Render pass framebuffer allocation failed. Choose a lower quality preset.');
   }
-  return { texture, depth, framebuffer, float, floatDepth };
+  return { texture: created.colorTexture, depth: created.depthRenderbuffer, framebuffer: created.framebuffer, float, floatDepth };
 }
 
 /**
@@ -80,6 +72,11 @@ function createPassTarget(context, width, height, float = false, floatDepth = fa
  */
 export function installRenderPasses(renderer) {
   if (renderer.passSupport) return renderer;
+  let fallbackBackend = null;
+  function backend() {
+    if (renderer.backend && typeof renderer.backend.name === 'string' && typeof renderer.backend.createFramebufferTarget === 'function') return renderer.backend;
+    return fallbackBackend ??= backendFor(renderer);
+  }
   let target = null;
   let copyProgram = null;
   let copyTextureUniform = null;
@@ -91,35 +88,36 @@ export function installRenderPasses(renderer) {
 
   function uniformsFor(program) {
     if (cachedProgram === program && passUniforms) return passUniforms;
-    const context = renderer.context;
+    const activeBackend = backend();
     cachedProgram = program;
     passUniforms = {
-      passFloatOutput: context.getUniformLocation(program, 'passFloatOutput'),
-      passCurrentViewProjection: context.getUniformLocation(program, 'passCurrentViewProjection'),
-      passPreviousViewProjection: context.getUniformLocation(program, 'passPreviousViewProjection'),
-      passObjectDeltas: context.getUniformLocation(program, 'passObjectDeltas[0]'),
-      passVolumeDensity: context.getUniformLocation(program, 'passVolumeDensity'),
-      passVolumeColor: context.getUniformLocation(program, 'passVolumeColor'),
-      passMaterialIds: context.getUniformLocation(program, 'passMaterialIds[0]'),
-      passTransmission: context.getUniformLocation(program, 'passTransmission'),
-      passMaterialAov: context.getUniformLocation(program, 'passMaterialAov'),
-      hasPassAuxMap: context.getUniformLocation(program, 'hasPassAuxMap'),
+      passFloatOutput: activeBackend.uniformLocation(program, 'passFloatOutput'),
+      passCurrentViewProjection: activeBackend.uniformLocation(program, 'passCurrentViewProjection'),
+      passPreviousViewProjection: activeBackend.uniformLocation(program, 'passPreviousViewProjection'),
+      passObjectDeltas: activeBackend.uniformLocation(program, 'passObjectDeltas[0]'),
+      passVolumeDensity: activeBackend.uniformLocation(program, 'passVolumeDensity'),
+      passVolumeColor: activeBackend.uniformLocation(program, 'passVolumeColor'),
+      passMaterialIds: activeBackend.uniformLocation(program, 'passMaterialIds[0]'),
+      passTransmission: activeBackend.uniformLocation(program, 'passTransmission'),
+      passMaterialAov: activeBackend.uniformLocation(program, 'passMaterialAov'),
+      hasPassAuxMap: activeBackend.uniformLocation(program, 'hasPassAuxMap'),
     };
     return passUniforms;
   }
 
-  function releaseTargets(context) {
+  function releaseTargets() {
     if (!target) return;
-    context.deleteTexture(target.texture);
-    context.deleteRenderbuffer(target.depth);
-    context.deleteFramebuffer(target.framebuffer);
+    const activeBackend = backend();
+    activeBackend.deleteTexture(target.texture);
+    activeBackend.deleteRenderbuffer(target.depth);
+    activeBackend.deleteFramebuffer(target.framebuffer);
     renderer.renderTargets.release('passColor', 'passDepth');
     target = null;
   }
 
-  function dispose(context) {
-    releaseTargets(context);
-    if (copyProgram) context.deleteProgram(copyProgram);
+  function dispose() {
+    releaseTargets();
+    if (copyProgram) backend().deleteProgram(copyProgram);
     copyProgram = null;
     cachedProgram = null;
     passUniforms = null;
@@ -132,18 +130,18 @@ export function installRenderPasses(renderer) {
     if (mode === RENDER_PASS_MODES.velocity) validateVelocityPassInputs(frame);
     const depthRange = frame.passDepthRange ?? 1;
     if (!Number.isFinite(depthRange) || depthRange <= 0) throw new RangeError('Pass depth range must be positive and finite.');
-    const context = renderer.context;
+    const activeBackend = backend();
     renderer.requireFeatureNames(mode > LAST_RAW_PASS_MODE ? ['renderPass', 'lightingPass'] : ['renderPass']);
     if (!copyProgram) {
-      copyProgram = compileProgram(context, fullscreenVertex, passCopyFragment);
-      copyTextureUniform = context.getUniformLocation(copyProgram, 'sourceTexture');
+      copyProgram = activeBackend.compileProgram(fullscreenVertex, passCopyFragment);
+      copyTextureUniform = activeBackend.uniformLocation(copyProgram, 'sourceTexture');
     }
     const float = frame.passFloat === true;
     const floatDepth = renderer.reversedDepth === true;
-    if (target && (target.float !== float || target.floatDepth !== floatDepth)) releaseTargets(context);
+    if (target && (target.float !== float || target.floatDepth !== floatDepth)) releaseTargets();
     if (!target) {
       const { width, height } = renderer.canvas;
-      target = createPassTarget(context, width, height, float, floatDepth);
+      target = createPassTarget(activeBackend, width, height, float, floatDepth);
       renderer.renderTargets.record('passColor', { width, height, format: float ? 'RGBA16F' : 'RGBA8' });
       renderer.renderTargets.record('passDepth', { width, height, format: floatDepth ? 'DEPTH_COMPONENT32F' : 'DEPTH_COMPONENT24' });
     }
@@ -151,19 +149,16 @@ export function installRenderPasses(renderer) {
   }
 
   function copyToCanvas() {
-    const context = renderer.context;
     // An addon finishes the pass in its target first, while the depth state of the pass is still set (wireframe-pass.js).
     renderer.passSupport.overlay?.();
-    context.bindFramebuffer(context.FRAMEBUFFER, null);
-    context.viewport(0, 0, renderer.canvas.width, renderer.canvas.height);
-    context.disable(context.DEPTH_TEST);
-    context.disable(context.CULL_FACE);
-    context.bindVertexArray(null);
-    context.useProgram(copyProgram);
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, target.texture);
-    context.uniform1i(copyTextureUniform, 0);
-    context.drawArrays(context.TRIANGLES, 0, 3);
+    backend().drawFullscreenTexture({
+      framebuffer: null,
+      width: renderer.canvas.width,
+      height: renderer.canvas.height,
+      program: copyProgram,
+      textureUniform: copyTextureUniform,
+      texture: target.texture,
+    });
   }
 
   function drawsInPass(batch, passMode) {
@@ -243,21 +238,21 @@ export function installRenderPasses(renderer) {
   }
 
   function bindFrame(frame, environment, volume) {
-    const context = renderer.context;
+    const activeBackend = backend();
     const uniforms = uniformsFor(renderer.program);
     const density = volume.density > 0 ? volume.density : (environment.fogDensity ?? 0.006);
     const color = volume.density > 0 ? volume.color : (environment.fogColor ?? [0.35, 0.43, 0.43]);
-    context.uniform1f(uniforms.passFloatOutput, frame.passFloat ? 1 : 0);
-    context.uniformMatrix4fv(uniforms.passCurrentViewProjection, false, renderer.viewProjection);
-    context.uniformMatrix4fv(uniforms.passPreviousViewProjection, false, previousViewProjectionFor(frame));
-    context.uniform1f(uniforms.passVolumeDensity, density);
-    context.uniform3fv(uniforms.passVolumeColor, color);
+    activeBackend.uniform1f(uniforms.passFloatOutput, frame.passFloat ? 1 : 0);
+    activeBackend.uniformMatrix4fv(uniforms.passCurrentViewProjection, renderer.viewProjection);
+    activeBackend.uniformMatrix4fv(uniforms.passPreviousViewProjection, previousViewProjectionFor(frame));
+    activeBackend.uniform1f(uniforms.passVolumeDensity, density);
+    activeBackend.uniform3fv(uniforms.passVolumeColor, color);
     frameMaterials = materialTable();
   }
 
   function drawBatch(batch, passMode, frame, objectBase) {
     const materials = frameMaterials ?? materialTable();
-    const context = renderer.context;
+    const activeBackend = backend();
     const uniforms = uniformsFor(renderer.program);
     const count = Math.min(batch.parts.length, 8);
     for (let index = 0; index < 8; index++) {
@@ -280,21 +275,21 @@ export function installRenderPasses(renderer) {
       }
       slot.set(IDENTITY_MAT4);
     }
-    context.uniformMatrix4fv(uniforms.passObjectDeltas, false, deltaBuffer);
+    activeBackend.uniformMatrix4fv(uniforms.passObjectDeltas, deltaBuffer);
     materialIdBuffer.fill(1);
     for (let index = 0; index < Math.min(batch.parts.length, 32); index++) {
       const material = batch.parts[index].material;
       materialIdBuffer[index] = materials.get(material.id ?? material.name ?? material)?.id ?? 1;
     }
-    context.uniform1fv(uniforms.passMaterialIds, materialIdBuffer);
-    context.uniform1f(uniforms.passTransmission, batch.layerState[9] ?? 0);
+    activeBackend.uniform1fv(uniforms.passMaterialIds, materialIdBuffer);
+    activeBackend.uniform1f(uniforms.passTransmission, batch.layerState[9] ?? 0);
     const firstMaterial = batch.parts[0].material;
     const aov = firstMaterial.aov ?? (firstMaterial.aovMap ? [1, 1, 1] : [0, 0, 0]);
-    context.uniform3f(uniforms.passMaterialAov, aov[0], aov[1], aov[2]);
+    activeBackend.uniform3f(uniforms.passMaterialAov, aov[0], aov[1], aov[2]);
     const auxDescriptor = passMode === RENDER_PASS_MODES.aov ? firstMaterial.aovMap
       : passMode === RENDER_PASS_MODES.transmission ? firstMaterial.transmissionMap
       : null;
-    context.uniform1f(uniforms.hasPassAuxMap, auxDescriptor ? 1 : 0);
+    activeBackend.uniform1f(uniforms.hasPassAuxMap, auxDescriptor ? 1 : 0);
     const savedEmissiveTexture = batch.textures[4];
     if (auxDescriptor) batch.textures[4] = renderer.createTexture(auxDescriptor);
     try {
