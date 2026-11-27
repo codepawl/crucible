@@ -1,5 +1,6 @@
 import { createSvgElement } from './studio-svg.js';
 import { studioIconPath } from './studio-icons.js';
+import { renderLightReach } from './studio-light-reach-view.js';
 import { markIsOnFarSide, sunAnglesUnderRay, sunMarkPosition, sunMarkSphereOf, sunRayEnd } from './studio-sun-mark.js';
 
 // The marks over the viewport for the lights and the sun, and the drags that move them.
@@ -52,7 +53,9 @@ function appendSunRay(documentReference, gizmoSvg, controller, object, projected
 export function renderSceneObjectMarks(documentReference, gizmoSvg, controller) {
   const width = controller.viewportWidth;
   const height = controller.viewportHeight;
-  for (const object of controller.listSceneObjects()) {
+  const sceneObjects = controller.listSceneObjects();
+  renderLightReach(documentReference, gizmoSvg, controller, sceneObjects);
+  for (const object of sceneObjects) {
     if (object.kind === 'camera' && !controller.freeView) {
       continue;
     }
