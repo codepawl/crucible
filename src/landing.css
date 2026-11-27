@@ -159,21 +159,26 @@
   .landing .tiers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 820px) {
-  .landing .frame .poster { left: 0; top: 0; width: 100%; height: 44%; }
-  .landing .pin { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 43%) minmax(0, 1fr); gap: 10px; }
+  .landing .frame .poster { left: 0; top: 0; width: 100%; height: 35%; }
+  .landing .pin { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 35%) minmax(0, 1fr); gap: 10px; }
   .landing .scene { grid-row: 1 / -1; gap: 4px; }
-  .landing .words { grid-row: 2; align-content: start; margin-bottom: 34px; }
+  .landing .words { grid-row: 2; align-content: start; margin-bottom: 68px; }
   .landing .beat { gap: 10px; align-content: start; }
   .landing .beat h1 { font-size: clamp(27px, 7.6vw, 34px); }
   .landing .beat h2 { font-size: clamp(40px, 13vw, 56px); }
   .landing .command code { padding: 9px 10px; font-size: 12px; }
-  .landing .hud { gap: 4px 10px; font-size: 11px; min-height: 24px; }
+  .landing .hud { gap: 4px 10px; font-size: 11px; min-height: 36px; }
   .landing .hud b { font-size: 13px; }
+  .landing .ladder button { min-height: 36px; padding: 6px 8px; }
   .landing .split, .landing .gallery, .landing .cards, .landing .trio { grid-template-columns: minmax(0, 1fr); }
   .landing .story.is-static .beat { grid-template-columns: minmax(0, 1fr); }
   .landing .story.is-static .still { grid-column: 1; grid-row: auto; max-height: 46vh; }
 }
 @media (max-width: 520px) {
+  .landing .frame .poster { height: 36%; }
+  .landing .pin { grid-template-rows: minmax(0, 36%) minmax(0, 1fr); }
+  .landing .words { margin-bottom: 56px; }
+  .landing .cue { display: none; }
   .landing .tiers { grid-template-columns: minmax(0, 1fr); }
   .landing .actions { gap: 8px; }
   .landing .actions .button { padding: 0 11px; font-size: 13px; }
@@ -188,4 +193,7 @@
 }
 @media (max-height: 620px) and (min-width: 821px) {
   .landing .beat { gap: 10px; }
+}
+@media (max-width: 820px) and (max-height: 740px) {
+  .landing .cue { display: none; }
 }
