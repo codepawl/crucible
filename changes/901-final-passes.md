@@ -1,0 +1,1 @@
+- Volume fog (`fog-shader.js`, `fog-field.js`), line art (`line-art.js`) and liquid/glass (`liquid-renderer.js`) now route their WebGL2 calls through `GlazeBackend` while keeping raw-context fallback for standalone callers; rendered frames are unchanged (Part of #901).

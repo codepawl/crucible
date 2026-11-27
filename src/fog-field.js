@@ -98,14 +98,26 @@ export function packFogLights(lighting, buffers) {
  * frame that carries a field uploads it.
  */
 export class FogFieldTexture {
-  constructor(context) {
-    this.context = context;
+  constructor(contextOrBackend) {
+    this.backend = typeof contextOrBackend?.name === 'string' && typeof contextOrBackend?.createDataTexture2D === 'function' ? contextOrBackend : null;
+    this.context = this.backend ? null : contextOrBackend;
     this.texture = null;
     this.width = 0;
     this.height = 0;
   }
 
   upload(field) {
+    if (this.backend) {
+      if (!this.texture) {
+        this.texture = this.backend.createDataTexture2D({ width: field.width, height: field.height, format: 'rgba16fFloat', linear: true, clamp: true, data: field.data });
+      } else {
+        const reallocate = field.width !== this.width || field.height !== this.height;
+        this.backend.uploadDataTexture2D(this.texture, { width: field.width, height: field.height, format: 'rgba16fFloat', data: field.data, reallocate });
+      }
+      this.width = field.width;
+      this.height = field.height;
+      return;
+    }
     const context = this.context;
     if (!this.texture) {
       this.texture = context.createTexture();
@@ -127,7 +139,7 @@ export class FogFieldTexture {
   }
 
   dispose() {
-    if (this.texture) this.context.deleteTexture(this.texture);
+    if (this.texture) (this.backend ?? this.context).deleteTexture(this.texture);
     this.texture = null;
     this.width = 0;
     this.height = 0;

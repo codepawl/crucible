@@ -16,6 +16,11 @@ import { installMeshBlend } from '../src/mesh-blend.js';
 import { drawMeshVolumes } from '../src/mesh-volume-pass.js';
 import { installUserPasses } from '../src/user-pass.js';
 import { attachGaussianSplats, createGaussianSplats } from '../src/gaussian-splats.js';
+import { FogFieldTexture } from '../src/fog-field.js';
+import '../src/fog-shader.js';
+import { requireFeatureCode } from '../src/shader-registry.js';
+import { installLineArt, resolveLineArt } from '../src/line-art.js';
+import { copySceneIntoMipChain, drawGlassBackFaces, drawLiquidPass, resolveSceneDepth } from '../src/liquid-renderer.js';
 
 // Constants answer their own name, so the log reads GL_CONSTANT; methods log their call and return a numbered object.
 function createRecordingContext(overrides = {}) {
@@ -953,6 +958,315 @@ test('gaussian-splats.js routes textures, buffers, VAOs, states, draws, update a
     'bindTextureUnit', 'bindVertexArray', 'drawInstancedStrip', 'activeTextureUnit',
     'isContextLost', 'readIntegerTexture2D', 'uploadDataTexture2D', 'deleteTexture',
     'deleteBuffer', 'deleteVertexArray', 'deleteProgram',
+  ]) {
+    assert.ok(methodNames.includes(expected), `expected ${expected} call`);
+  }
+});
+
+test('storage targets, 3D textures, attributes, clearColorAndDepth, blit strings and instanced triangles issue exact WebGL2 calls', () => {
+  const { context, calls } = createRecordingContext({
+    getAttribLocation: (_program, name) => (name === 'startPoint' ? 0 : 1),
+  });
+  const backend = new WebGL2GlazeBackend(context);
+
+  const storageTarget = backend.createFramebufferTarget({
+    width: 16,
+    height: 16,
+    colorFormat: 'rgba16f',
+    depth: true,
+    floatDepth: true,
+    depthAsTexture: true,
+    storage: true,
+    levels: 4,
+    linear: true,
+    clamp: true,
+  });
+  assert.equal(storageTarget.complete, true);
+  backend.blitTarget({ label: 'src' }, { label: 'dst' }, 16, 16, 'color');
+  backend.blitTarget({ label: 'src' }, { label: 'dst' }, 16, 16, 'depth');
+  backend.uniform4f({ label: 'u4' }, 1, 2, 3, 4);
+  const texture3d = backend.createTexture3D({ width: 4, height: 4, depth: 4, data: new Uint16Array(256) });
+  backend.uploadTexture3D(texture3d, { width: 4, height: 4, depth: 4, data: new Uint16Array(256) });
+  backend.bindTextureUnit(8, texture3d, '3d');
+  backend.clearColorAndDepth([0, 0, 0, 0], 1);
+  backend.setRenderState({ depthFunc: 'greater', cullMode: 'front', blend: true, blendMode: 'alpha' });
+  assert.equal(backend.attribLocation({ label: 'prog' }, 'startPoint'), 0);
+  backend.bindArrayBuffer({ label: 'buf' });
+  backend.bindVertexAttributes({ label: 'buf' }, [{ location: 0, size: 3, stride: 24, offset: 0, divisor: 1 }]);
+  backend.setConstantAttribute1f(1, 0);
+  backend.drawInstancedTriangles(6, 3);
+
+  assert.ok(calls.some((call) => call[0] === 'texStorage2D' && call[2] === 4 && call[3] === 'RGBA16F'));
+  assert.ok(calls.some((call) => call[0] === 'texStorage2D' && call[2] === 1 && call[3] === 'DEPTH_COMPONENT32F'));
+  assert.ok(calls.some((call) => call[0] === 'texParameteri' && call[2] === 'TEXTURE_MIN_FILTER' && call[3] === 'LINEAR_MIPMAP_LINEAR'));
+  assert.ok(calls.some((call) => call[0] === 'blitFramebuffer' && call[9] === 16384));
+  assert.ok(calls.some((call) => call[0] === 'blitFramebuffer' && call[9] === 256));
+  assert.ok(calls.some((call) => call[0] === 'uniform4f' && call[2] === 1 && call[5] === 4));
+  assert.ok(calls.some((call) => call[0] === 'texImage3D' && call[1] === 'TEXTURE_3D' && call[3] === 'RGBA16F'));
+  assert.ok(calls.some((call) => call[0] === 'texSubImage3D' && call[1] === 'TEXTURE_3D'));
+  assert.ok(calls.some((call) => call[0] === 'bindTexture' && call[1] === 'TEXTURE_3D' && call[2] === texture3d.label));
+  assert.ok(calls.some((call) => call[0] === 'clearColor' && call[1] === 0 && call[4] === 0));
+  assert.ok(calls.some((call) => call[0] === 'clear' && call[1] === (16384 | 256)));
+  assert.ok(calls.some((call) => call[0] === 'depthFunc' && call[1] === 'GREATER'));
+  assert.ok(calls.some((call) => call[0] === 'cullFace' && call[1] === 'FRONT'));
+  assert.ok(calls.some((call) => call[0] === 'blendFuncSeparate' && call[1] === 'SRC_ALPHA'));
+  assert.ok(calls.some((call) => call[0] === 'vertexAttribPointer' && call[2] === 3 && call[5] === 24));
+  assert.ok(calls.some((call) => call[0] === 'vertexAttribDivisor' && call[1] === 0 && call[2] === 1));
+  assert.ok(calls.some((call) => call[0] === 'disableVertexAttribArray' && call[1] === 1));
+  assert.ok(calls.some((call) => call[0] === 'vertexAttrib1f' && call[1] === 1 && call[2] === 0));
+  assert.ok(calls.some((call) => call[0] === 'drawArraysInstanced' && call[1] === 'TRIANGLES' && call[3] === 6 && call[4] === 3));
+});
+
+test('fog-shader.js and fog-field.js route field textures, 3D grid textures, composite passes and cleanup through GlazeBackend', () => {
+  const { backend, calls } = createRecordingBackend({
+    createDataTexture2D: () => ({ label: 'fieldTex' }),
+    createTexture3D: () => ({ label: 'gridTex3d' }),
+  });
+  const throwingContext = new Proxy({}, { get() { throw new Error('raw context touched'); } });
+  const fogSupport = requireFeatureCode('volumeFog').support;
+  const post = {
+    program: { label: 'postProg' },
+    uniforms: new Proxy({}, { get: (target, name) => (name in target ? target[name] : `loc:${String(name)}`) }),
+  };
+  const grid = { resolution: [2, 2, 2], channels: { density: new Float32Array(8).fill(0.5), temperature: new Float32Array(8).fill(1500) } };
+  const renderer = {
+    backend,
+    context: throwingContext,
+    canvas: { width: 32, height: 24 },
+    shadowTexture: { label: 'shadowTex' },
+    depthTexture: { label: 'depthTex' },
+    whiteTexture: { label: 'whiteTex' },
+    lightProjection: new Float32Array(16),
+    inverseViewProjection: new Float32Array(16),
+    lighting: { keyColor: [1, 1, 1], ambientIntensity: 0.3 },
+    sceneParts: [],
+    fogLightBuffers: {
+      count: 1,
+      positions: new Float32Array(32),
+      colors: new Float32Array(32),
+      directions: new Float32Array(32),
+      cones: new Float32Array(32),
+    },
+    localVolumeBuffers: {
+      count: 1,
+      kind: 'grid',
+      noiseOctaves: false,
+      gridDetail: false,
+      gridShutter: 0,
+      blurred: true,
+      centers: new Float32Array(32),
+      extents: new Float32Array(32),
+      absorption: new Float32Array(32),
+      emission: new Float32Array(32),
+      steps: new Float32Array(32),
+      axes: new Float32Array(96),
+      meshParts: [],
+      grid: new Float32Array(32),
+      rampSetup: new Float32Array(32),
+      rampColors: new Float32Array(32),
+      gridVolume: { gridData: grid, temperatureScale: 1, flameTemperature: { ignition: 1000, maximum: 3000 } },
+    },
+  };
+
+  const volume = {
+    density: 0.4,
+    minimum: [-1, -1, -1],
+    maximum: [1, 1, 1],
+    color: [1, 1, 1],
+    ambient: [0.1, 0.1, 0.1],
+    drift: [0, 0, 0],
+    steps: 12,
+    anisotropy: 0.2,
+    noiseAmount: 0.2,
+    noiseScale: 0.5,
+    maxDistance: 50,
+    heightFalloff: 0,
+    field: { width: 2, height: 2, data: new Float32Array(16) },
+  };
+  const frame = { eye: [0, 1, 4], projection: 'perspective' };
+  const environment = { lightDirection: [0, 1, 0], skyTop: [0.2, 0.3, 0.4], skyBottom: [0.5, 0.6, 0.7] };
+
+  fogSupport.bindUniforms(renderer, post, volume, environment, frame);
+  fogSupport.bindUniforms(renderer, post, volume, environment, frame);
+  const texture = fogSupport.compositeLocalVolumes(renderer, frame, environment, { label: 'srcTex' });
+  assert.ok(texture);
+  renderer.localVolumeBuffers.gridVolume.gridData = { ...grid, channels: { density: new Float32Array(8).fill(0.8), temperature: new Float32Array(8).fill(1800) } };
+  renderer.localVolumeBuffers.kind = 'both';
+  fogSupport.compositeLocalVolumes(renderer, frame, environment, { label: 'srcTex' });
+  renderer.fogFieldTexture.dispose();
+  fogSupport.releaseLocalVolumeComposite(renderer, true);
+
+  assert.ok(FogFieldTexture);
+  const methodNames = calls.map((call) => call[0]);
+  for (const expected of [
+    'bindTextureUnit', 'uniform1i', 'uniformMatrix4fv', 'uniform3fv', 'uniform1f',
+    'createDataTexture2D', 'uploadDataTexture2D', 'activeTextureUnit', 'uniformLocation',
+    'uniform4fv', 'compileProgram', 'createFramebufferTarget', 'beginFullscreenPass',
+    'setTextureMipmaps', 'uniform2f', 'createTexture3D', 'uploadTexture3D',
+    'drawFullscreenTriangles', 'deleteTexture', 'deleteFramebuffer', 'deleteProgram',
+  ]) {
+    assert.ok(methodNames.includes(expected), `expected ${expected} call`);
+  }
+});
+
+test('line-art.js routes guides, node table, outlines, polylines and cleanup through GlazeBackend', () => {
+  const { backend, calls } = createRecordingBackend({
+    createDataTexture2D: () => ({ label: 'nodeTex' }),
+    createBuffer: () => ({ label: 'polyBuf' }),
+    createVertexArray: () => ({ label: 'polyVao' }),
+    attribLocation: (_program, name) => (name === 'startPoint' ? 0 : name === 'endPoint' ? 1 : 2),
+  });
+  const throwingContext = new Proxy({}, { get() { throw new Error('raw context touched'); } });
+  const renderer = {
+    backend,
+    context: throwingContext,
+    canvas: { width: 32, height: 24 },
+    benchmark: false,
+    hdr: true,
+    depthTexture: { label: 'depthTex' },
+    program: { label: 'mainProgram' },
+    uniforms: {},
+    shaderFeatures: new Set(['toon']),
+    batches: [{ label: 'b1' }],
+    projection: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, 0, 0, -0.2, 0]),
+    view: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+    viewProjection: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1]),
+    postStages: [],
+    passSupport: {
+      framebuffer: { label: 'passFb' },
+      objectNodes: () => ({ hero: [1] }),
+    },
+    requireFeatureNames() {},
+    rebuildMainProgram() {},
+    render(frame) {
+      if (frame.pass) return;
+      for (const stage of this.postStages) stage.apply(this, frame, {}, { label: 'sourceTex' });
+    },
+  };
+
+  installLineArt(renderer);
+  renderer.rebuildMainProgram();
+  renderer.render({
+    lines: resolveLineArt({
+      width: 2,
+      toon: 3,
+      nodes: { hero: { color: [1, 0, 0] } },
+      polylines: [
+        { points: [[0, 0, 0], [1, 0, 0]], color: [0, 0, 0], width: 2, style: 'solid' },
+        { points: [[0, 1, 0], [1, 1, 0]], color: [0, 0, 1], width: 2, style: 'dashed', dashLength: 6, gapLength: 4 },
+      ],
+    }),
+  });
+  renderer.render({
+    lines: resolveLineArt({
+      boundaries: false,
+      creaseAngle: 0,
+      depthJump: 0,
+      polylines: [{ points: [[0, 0, 0], [1, 0, 0]], color: [0, 0, 0], width: 2 }],
+    }),
+  });
+  renderer.postStages[0].releaseTargets(throwingContext);
+  renderer.postStages[0].dispose(throwingContext);
+
+  const methodNames = calls.map((call) => call[0]);
+  for (const expected of [
+    'uniformLocation', 'useProgram', 'uniform1f', 'blitTarget', 'createFramebufferTarget',
+    'beginFullscreenPass', 'compileProgram', 'bindTextureUnit', 'uniform1i',
+    'createDataTexture2D', 'uploadDataTexture2D', 'uniform3fv', 'uniform3f',
+    'drawFullscreenTriangles', 'createVertexArray', 'setRenderState', 'uniformMatrix4fv',
+    'uniform2f', 'attribLocation', 'createBuffer', 'uploadBuffer', 'bindVertexAttributes',
+    'setConstantAttribute1f', 'drawInstancedTriangles', 'deleteTexture',
+    'deleteFramebuffer', 'deleteBuffer', 'deleteProgram', 'deleteVertexArray',
+  ]) {
+    assert.ok(methodNames.includes(expected), `expected ${expected} call`);
+  }
+});
+
+test('liquid-renderer.js routes mip chain, scene depth, back faces, glass draws, foams and release through GlazeBackend', () => {
+  const { backend, calls } = createRecordingBackend();
+  const throwingContext = new Proxy({}, { get() { throw new Error('raw context touched'); } });
+  const unitBox = { positions: new Float32Array([-0.5, -0.5, -0.5, 0.5, 0.5, 0.5]) };
+  const makeBatch = (scale, zPositions = [0], closed = true) => {
+    const layerState = new Float32Array(32);
+    layerState[9] = 1;
+    layerState[10] = 1.5;
+    layerState[11] = closed ? 1 : 0;
+    layerState[12] = 10;
+    layerState[13] = 1;
+    layerState[14] = 1;
+    layerState[15] = 1;
+    return {
+      alphaMode: 'blend',
+      opacity: 0.5,
+      doubleSided: true,
+      mirrored: true,
+      layerState,
+      mapState: [],
+      textures: [],
+      instanceCount: zPositions.length,
+      indexCount: 36,
+      instanceBuffer: zPositions.length > 1 ? { label: 'instBuf' } : null,
+      instanceData: zPositions.length > 1 ? new Float32Array(42 * zPositions.length) : null,
+      vertexArray: { label: 'glassVao' },
+      parts: zPositions.map((z) => ({
+        name: 'glass',
+        geometry: unitBox,
+        matrix: new Float32Array([scale, 0, 0, 0, 0, scale, 0, 0, 0, 0, scale, 0, 0, 0, z, 1]),
+        material: { mediumContinues: !closed },
+      })),
+    };
+  };
+  const overlapping = makeBatch(0.5, [-2, 0]);
+  const thinPane = makeBatch(0.5, [1], false);
+  const outer = makeBatch(2, [0]);
+  const inner = makeBatch(0.5, [0]);
+  const renderer = {
+    backend,
+    context: throwingContext,
+    canvas: { width: 32, height: 24 },
+    hdr: true,
+    reversedDepth: true,
+    multisampleFramebuffer: { label: 'msFb' },
+    resolveFramebuffer: { label: 'resFb' },
+    frameTexture: { label: 'frameTex' },
+    view: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+    viewProjection: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1]),
+    lightProjection: new Float32Array(16),
+    lighting: { keyColor: [1, 1, 1], ambientIntensity: 0.3 },
+    batches: [overlapping, thinPane],
+    renderTargets: { record() {}, release() {} },
+    withViewTransform: (source) => source,
+    applyEnvironmentUniforms() {},
+  };
+
+  assert.ok(copySceneIntoMipChain(renderer, 32, 24));
+  assert.ok(resolveSceneDepth(renderer, 32, 24));
+  drawLiquidPass(renderer, {
+    frame: { eye: [0, 0, 5] },
+    environment: { daylight: 1, lightDirection: [0, 1, 0], fogColor: [0, 0, 0], fogDensity: 0, explosionCenter: [0, 0, 0] },
+    assemblyAmount: 0,
+    environmentMap: null,
+    liquids: [overlapping, thinPane],
+    foams: [{ vertexArray: { label: 'foamVao' }, indexCount: 6, instanceCount: 1 }],
+    environmentSpecularUnit: 9,
+    maximumDistance: 100,
+    vertexSource: 'vs',
+    fragmentSource: 'fs',
+  });
+  renderer.batches = [outer, inner];
+  const backFaces = drawGlassBackFaces(renderer, [outer, inner], 32, 24);
+  assert.equal(backFaces.farLayer, true);
+  renderer.refractionChain.release();
+  renderer.refractionDepth.release();
+
+  const methodNames = calls.map((call) => call[0]);
+  for (const expected of [
+    'activeTextureUnit', 'createFramebufferTarget', 'blitTarget', 'bindTextureUnit',
+    'generateMipmap', 'compileProgram', 'uniformLocation', 'useProgram', 'uniform1i',
+    'bindFramebuffer', 'setViewport', 'clearColorAndDepth', 'setRenderState', 'uniform1f',
+    'setFrontFaceClockwise', 'bindVertexArray', 'updateBuffer', 'bindArrayBuffer',
+    'drawIndexedInstanced', 'uniformMatrix4fv', 'uniform3fv', 'uniform2f', 'uniform4f',
+    'uniform3f', 'deleteTexture', 'deleteFramebuffer',
   ]) {
     assert.ok(methodNames.includes(expected), `expected ${expected} call`);
   }

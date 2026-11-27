@@ -1,0 +1,28 @@
+- entry:core: porting `fog-shader.js` (with `fog-field.js`), `line-art.js` and `liquid-renderer.js` onto `WebGL2GlazeBackend` (#901) adds 590 bytes gzip of shared storage-target, 3D-texture, vertex-attribute, blit, clear and render-state methods on the backend class so a future backend can replace them; `entry:core` growth stays well under the +2 KB slice limit
+- entry:core+lazy: same shared backend methods on `WebGL2GlazeBackend` (+590 bytes gzip)
+- entry:model+lazy: transitively imports `liquid-renderer.js`, which now imports `backendFor` from `glaze-backend.js`, pulling `WebGL2GlazeBackend` into the standalone bundle (+4,865 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- entry:gltf: transitively imports `liquid-renderer.js`, which now imports `backendFor` from `glaze-backend.js`, pulling `WebGL2GlazeBackend` into the standalone bundle (+5,293 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- entry:gltf+lazy: transitively imports `liquid-renderer.js`, which now imports `backendFor` from `glaze-backend.js`, pulling `WebGL2GlazeBackend` into the standalone bundle (+4,867 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- entry:spume: transitively imports `liquid-renderer.js`, which now imports `backendFor` from `glaze-backend.js`, pulling `WebGL2GlazeBackend` into the standalone bundle (+4,700 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- entry:ground-bounce: transitively imports `glaze-backend.js` via `environment.js`, carrying the new `WebGL2GlazeBackend` methods (+557 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:hdri: transitively imports `glaze-backend.js` via `environment.js`, carrying the new `WebGL2GlazeBackend` methods (+558 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:camera-effects: already imports `glaze-backend.js` and now carries the new `WebGL2GlazeBackend` methods (+570 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:water-reflection: transitively imports `glaze-backend.js` via `environment.js`, carrying the new `WebGL2GlazeBackend` methods (+552 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:render-passes: already imports `glaze-backend.js` and now carries the new `WebGL2GlazeBackend` methods (+556 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:user-pass: already imports `glaze-backend.js` via `post-mask.js` and now carries the new `WebGL2GlazeBackend` methods (+553 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:line-art: `line-art.js` now imports `backendFor` from `glaze-backend.js`, pulling `WebGL2GlazeBackend` and `gl-program.js` into the standalone bundle (+5,267 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- entry:mesh-blend: already imports `glaze-backend.js` and now carries the new `WebGL2GlazeBackend` methods (+553 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:reversed-depth: already imports `glaze-backend.js` and now carries the new `WebGL2GlazeBackend` methods (+557 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:liquid-shader: `liquid-renderer.js` now imports `backendFor` from `glaze-backend.js`, pulling `WebGL2GlazeBackend` into the standalone bundle (+4,665 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- entry:splat-shader: already imports `glaze-backend.js` via `splat-renderer.js` and now carries the new `WebGL2GlazeBackend` methods (+549 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:cascaded-shadows: already imports `glaze-backend.js` and now carries the new `WebGL2GlazeBackend` methods (+574 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:gaussian-splats: already imports `glaze-backend.js` and now carries the new `WebGL2GlazeBackend` methods (+552 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:streaming+lazy: transitively imports `liquid-renderer.js`, which now imports `backendFor` from `glaze-backend.js`, pulling `WebGL2GlazeBackend` into the standalone bundle (+4,865 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- scene:lit-box: carries the new `WebGL2GlazeBackend` methods (+610 bytes gzip) for the #901 part 5 backend boundary slice while remaining 49 KB under three.js
+- scene:lit-box+lazy: same shared `WebGL2GlazeBackend` methods (+609 bytes gzip)
+- scene:gltf-box: carries the new `WebGL2GlazeBackend` methods (+513 bytes gzip) for the #901 part 5 backend boundary slice
+- scene:gltf-box+lazy: same shared `WebGL2GlazeBackend` methods (+87 bytes gzip)
+- scene:agent-scene: carries the new `WebGL2GlazeBackend` methods (+732 bytes gzip) for the #901 part 5 backend boundary slice
+- goal:lit-box: carries the #901 part 5 `WebGL2GlazeBackend` methods for `fog-shader.js`, `line-art.js` and `liquid-renderer.js` (+610 bytes gzip, same slice allowance as PR #3619 and PR #3621)
+- goal:gltf-box: carries the #901 part 5 `WebGL2GlazeBackend` methods for `fog-shader.js`, `line-art.js` and `liquid-renderer.js` (+513 bytes gzip, same slice allowance as PR #3619 and PR #3621)
+- goal:agent-scene: carries the #901 part 5 `WebGL2GlazeBackend` methods for `fog-shader.js`, `line-art.js` and `liquid-renderer.js` (+732 bytes gzip, same slice allowance as PR #3619 and PR #3621)

@@ -1,8 +1,8 @@
 import './toon-shader.js';
+import { backendFor } from './glaze-backend.js';
 export { normalizeToonRim, normalizeToonBase, copyToon } from './toon-shader.js';
 
-// gl-program.js is not imported on purpose: this module loads on demand, and sharing a module with the scene entry makes
-// the bundler hoist the shared code into the entry chunk (measured: about 350 bytes gzip on entry:agent-scene).
+// gl-program.js is not imported directly for fullscreenVertex so the scene entry keeps its own copy.
 const fullscreenVertex = `#version 300 es
 precision highp float;
 out vec2 textureCoordinate;
@@ -11,27 +11,6 @@ void main() {
   textureCoordinate = position;
   gl_Position = vec4(position * 2.0 - 1.0, 0.0, 1.0);
 }`;
-
-function compileShader(context, kind, source) {
-  const shader = context.createShader(kind);
-  context.shaderSource(shader, source);
-  context.compileShader(shader);
-  if (!context.getShaderParameter(shader, context.COMPILE_STATUS)) {
-    throw new Error(`Line art shader compilation failed: ${context.getShaderInfoLog(shader)}`);
-  }
-  return shader;
-}
-
-function compileProgram(context, vertexSource, fragmentSource) {
-  const program = context.createProgram();
-  context.attachShader(program, compileShader(context, context.VERTEX_SHADER, vertexSource));
-  context.attachShader(program, compileShader(context, context.FRAGMENT_SHADER, fragmentSource));
-  context.linkProgram(program);
-  if (!context.getProgramParameter(program, context.LINK_STATUS)) {
-    throw new Error(`Line art shader linking failed: ${context.getProgramInfoLog(program)}`);
-  }
-  return program;
-}
 
 // Outlines, toon light and screen-width lines as one addon. Nothing here is in the core renderer: installLineArt adds a
 // post stage and wraps render, and a frame draws lines only when it carries `frame.lines` (the resolved
@@ -616,26 +595,18 @@ void main() {
   outputColor = vec4(lineColor * alpha, alpha);
 }`;
 
-function uniformLocations(context, program, names) {
-  return Object.fromEntries(names.map(name => [name, context.getUniformLocation(program, name)]));
+function uniformLocations(backend, program, names) {
+  return Object.fromEntries(names.map(name => [name, backend.uniformLocation(program, name)]));
 }
 
-function createColorTarget(context, width, height, floatColor, filter) {
-  const texture = context.createTexture();
-  context.bindTexture(context.TEXTURE_2D, texture);
-  context.texImage2D(context.TEXTURE_2D, 0, floatColor ? context.RGBA16F : context.RGBA8, width, height, 0, context.RGBA,
-    floatColor ? context.HALF_FLOAT : context.UNSIGNED_BYTE, null);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, filter);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, filter);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
-  const framebuffer = context.createFramebuffer();
-  context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-  context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
-  if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) {
+function createColorTarget(backend, width, height, hdr, linear) {
+  const target = backend.createFramebufferTarget({ width, height, hdr, linear, clamp: true });
+  if (!target.complete) {
+    backend.deleteFramebuffer(target.framebuffer);
+    backend.deleteTexture(target.colorTexture);
     throw new Error('Line art framebuffer allocation failed. Choose a lower quality preset.');
   }
-  return { texture, framebuffer };
+  return { texture: target.colorTexture, framebuffer: target.framebuffer };
 }
 
 function projectClipPoint(point, viewProjection) {
@@ -696,7 +667,7 @@ function polylineSegments(polyline) {
   return segments;
 }
 
-function createLineArtStage(state) {
+function createLineArtStage(state, backend) {
   let outlineProgram = null;
   let outlineUniforms = null;
   let polylineProgram = null;
@@ -711,35 +682,32 @@ function createLineArtStage(state) {
   const segmentBuffers = new Map();
 
   function guideTarget(renderer, name) {
-    const { context } = renderer;
     if (!guideTargets.has(name)) {
-      guideTargets.set(name, createColorTarget(context, renderer.canvas.width, renderer.canvas.height, false, context.NEAREST));
+      guideTargets.set(name, createColorTarget(backend, renderer.canvas.width, renderer.canvas.height, false, false));
     }
     return guideTargets.get(name);
   }
 
   // The pass target is reused by the next pass, so each guide is copied out of it into a texture of its own.
   function captureGuide(renderer, name) {
-    const { context, canvas } = renderer;
+    const { canvas } = renderer;
     const target = guideTarget(renderer, name);
-    context.bindFramebuffer(context.READ_FRAMEBUFFER, renderer.passSupport.framebuffer);
-    context.bindFramebuffer(context.DRAW_FRAMEBUFFER, target.framebuffer);
-    context.blitFramebuffer(0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height, context.COLOR_BUFFER_BIT, context.NEAREST);
+    backend.blitTarget(renderer.passSupport.framebuffer, target.framebuffer, canvas.width, canvas.height, 'color');
   }
 
-  function releaseTargets(context) {
+  function releaseTargets() {
     if (outputTarget) {
-      context.deleteTexture(outputTarget.texture);
-      context.deleteFramebuffer(outputTarget.framebuffer);
+      backend.deleteTexture(outputTarget.texture);
+      backend.deleteFramebuffer(outputTarget.framebuffer);
       outputTarget = null;
     }
     for (const target of guideTargets.values()) {
-      context.deleteTexture(target.texture);
-      context.deleteFramebuffer(target.framebuffer);
+      backend.deleteTexture(target.texture);
+      backend.deleteFramebuffer(target.framebuffer);
     }
     guideTargets.clear();
     if (nodeTexture) {
-      context.deleteTexture(nodeTexture);
+      backend.deleteTexture(nodeTexture);
       nodeTexture = null;
       nodeTextureIsEmpty = false;
     }
@@ -749,51 +717,55 @@ function createLineArtStage(state) {
   // Uploads the per-ID table. A frame without per-node settings gets a one-texel table, made once and not rebuilt.
   // The texture is bound on its own unit: binding first would replace the guide of whichever unit was active.
   function bindNodeTable(renderer, lines, unit) {
-    const { context } = renderer;
     const hasNodes = Boolean(lines.nodes) && Object.keys(lines.nodes).length > 0;
-    context.activeTexture(context.TEXTURE0 + unit);
     if (!nodeTexture) {
-      nodeTexture = context.createTexture();
-      context.bindTexture(context.TEXTURE_2D, nodeTexture);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
-      nodeTextureIsEmpty = false;
+      nodeTexture = backend.createDataTexture2D({
+        width: 1,
+        height: 1,
+        format: 'rgba32f',
+        linear: false,
+        clamp: false,
+        unit,
+        data: hasNodes ? null : new Float32Array(4),
+      });
+      nodeTextureIsEmpty = !hasNodes;
+      if (!hasNodes) return 0;
     } else {
-      context.bindTexture(context.TEXTURE_2D, nodeTexture);
-    }
-    if (!hasNodes) {
-      cachedNodeState = null;
-      if (!nodeTextureIsEmpty) {
-        context.texImage2D(context.TEXTURE_2D, 0, context.RGBA32F, 1, 1, 0, context.RGBA, context.FLOAT, new Float32Array(4));
-        nodeTextureIsEmpty = true;
+      backend.bindTextureUnit(unit, nodeTexture);
+      if (!hasNodes) {
+        cachedNodeState = null;
+        if (!nodeTextureIsEmpty) {
+          backend.uploadDataTexture2D(nodeTexture, { width: 1, height: 1, format: 'rgba32f', data: new Float32Array(4), reallocate: true, unit });
+          nodeTextureIsEmpty = true;
+        }
+        return 0;
       }
-      return 0;
     }
     const groups = Array.isArray(renderer.batches) ? null : renderer.passSupport.objectNodes();
     const key = JSON.stringify([lines.color, lines.nodes, groups ?? renderer.batches.length]);
     if (cachedNodeState?.key === key && cachedNodeState.batches === renderer.batches) return cachedNodeState.count;
     const table = lineNodeTable(lines, groups ?? renderer.passSupport.objectNodes());
-    context.texImage2D(context.TEXTURE_2D, 0, context.RGBA32F, table.width, table.height, 0, context.RGBA, context.FLOAT, table.data);
+    backend.uploadDataTexture2D(nodeTexture, { width: table.width, height: table.height, format: 'rgba32f', data: table.data, reallocate: true, unit });
     nodeTextureIsEmpty = false;
     cachedNodeState = { key, batches: renderer.batches, count: table.count };
     return table.count;
   }
 
-  function releaseSegmentBuffers(context, keep = new Set()) {
+  function releaseSegmentBuffers(keep = new Set()) {
     for (const [key, entry] of segmentBuffers) {
       if (keep.has(key)) continue;
-      context.deleteBuffer(entry.buffer);
+      backend.deleteBuffer(entry.buffer);
       segmentBuffers.delete(key);
     }
   }
 
-  function dispose(context) {
-    releaseTargets(context);
-    releaseSegmentBuffers(context);
-    if (offsetBuffer) context.deleteBuffer(offsetBuffer);
-    if (outlineProgram) context.deleteProgram(outlineProgram);
-    if (polylineProgram) context.deleteProgram(polylineProgram);
-    if (vertexArray) context.deleteVertexArray(vertexArray);
+  function dispose() {
+    releaseTargets();
+    releaseSegmentBuffers();
+    if (offsetBuffer) backend.deleteBuffer(offsetBuffer);
+    if (outlineProgram) backend.deleteProgram(outlineProgram);
+    if (polylineProgram) backend.deleteProgram(polylineProgram);
+    if (vertexArray) backend.deleteVertexArray(vertexArray);
     offsetBuffer = null;
     outlineProgram = null;
     polylineProgram = null;
@@ -807,48 +779,45 @@ function createLineArtStage(state) {
   }
 
   function drawOutlines(renderer, lines, sourceTexture) {
-    const { context } = renderer;
     if (!outlineProgram) {
-      outlineProgram = compileProgram(context, fullscreenVertex, outlineFragment);
-      outlineUniforms = uniformLocations(context, outlineProgram, ['sourceTexture', 'sceneDepth', 'partTexture', 'normalTexture',
+      outlineProgram = backend.compileProgram(fullscreenVertex, outlineFragment);
+      outlineUniforms = uniformLocations(backend, outlineProgram, ['sourceTexture', 'sceneDepth', 'partTexture', 'normalTexture',
         'projectionDepth', 'halfWidth', 'lineColor', 'useBoundaries', 'creaseCosine', 'depthJump', 'nodeTexture', 'nodeCount',
         'darkenFactor', 'frontOnly', 'convexLift', 'cameraRight', 'cameraUp']);
     }
-    context.useProgram(outlineProgram);
+    backend.useProgram(outlineProgram);
     const partTexture = guideTarget(renderer, 'part').texture;
     const normalTexture = needsNormalGuide(lines) ? guideTarget(renderer, 'normal').texture : partTexture;
     const bindings = [[sourceTexture, 'sourceTexture'], [renderer.depthTexture, 'sceneDepth'], [partTexture, 'partTexture'], [normalTexture, 'normalTexture']];
     bindings.forEach(([texture, uniform], unit) => {
-      context.activeTexture(context.TEXTURE0 + unit);
-      context.bindTexture(context.TEXTURE_2D, texture);
-      context.uniform1i(outlineUniforms[uniform], unit);
+      backend.bindTextureUnit(unit, texture);
+      backend.uniform1i(outlineUniforms[uniform], unit);
     });
-    context.uniform1i(outlineUniforms.nodeTexture, bindings.length);
-    context.uniform1i(outlineUniforms.nodeCount, bindNodeTable(renderer, lines, bindings.length));
-    context.uniform3fv(outlineUniforms.projectionDepth, projectionDepth(renderer));
-    context.uniform1f(outlineUniforms.halfWidth, lines.width / 2);
-    context.uniform3fv(outlineUniforms.lineColor, lines.color);
-    context.uniform1f(outlineUniforms.useBoundaries, lines.boundaries ? 1 : 0);
-    context.uniform1f(outlineUniforms.creaseCosine, lines.creaseAngle > 0 ? Math.cos(lines.creaseAngle * Math.PI / 180) : -2);
-    context.uniform1f(outlineUniforms.depthJump, lines.depthJump);
+    backend.uniform1i(outlineUniforms.nodeTexture, bindings.length);
+    backend.uniform1i(outlineUniforms.nodeCount, bindNodeTable(renderer, lines, bindings.length));
+    backend.uniform3fv(outlineUniforms.projectionDepth, projectionDepth(renderer));
+    backend.uniform1f(outlineUniforms.halfWidth, lines.width / 2);
+    backend.uniform3fv(outlineUniforms.lineColor, lines.color);
+    backend.uniform1f(outlineUniforms.useBoundaries, lines.boundaries ? 1 : 0);
+    backend.uniform1f(outlineUniforms.creaseCosine, lines.creaseAngle > 0 ? Math.cos(lines.creaseAngle * Math.PI / 180) : -2);
+    backend.uniform1f(outlineUniforms.depthJump, lines.depthJump);
     // A darkenFactor below zero is the shader's "solid ink" switch.
-    context.uniform1f(outlineUniforms.darkenFactor, lines.colorMode === 'darken' ? lines.darkenFactor : -1);
-    context.uniform1f(outlineUniforms.frontOnly, lines.silhouetteSide === 'front' ? 1 : 0);
-    context.uniform1f(outlineUniforms.convexLift, lines.convexHighlight);
+    backend.uniform1f(outlineUniforms.darkenFactor, lines.colorMode === 'darken' ? lines.darkenFactor : -1);
+    backend.uniform1f(outlineUniforms.frontOnly, lines.silhouetteSide === 'front' ? 1 : 0);
+    backend.uniform1f(outlineUniforms.convexLift, lines.convexHighlight);
     const { view } = renderer;
-    context.uniform3f(outlineUniforms.cameraRight, view[0], view[4], view[8]);
-    context.uniform3f(outlineUniforms.cameraUp, view[1], view[5], view[9]);
-    context.drawArrays(context.TRIANGLES, 0, 3);
+    backend.uniform3f(outlineUniforms.cameraRight, view[0], view[4], view[8]);
+    backend.uniform3f(outlineUniforms.cameraUp, view[1], view[5], view[9]);
+    backend.drawFullscreenTriangles();
   }
 
-  function segmentBufferFor(context, polyline) {
+  function segmentBufferFor(polyline) {
     const key = JSON.stringify([polyline.points, polyline.closed]);
     let entry = segmentBuffers.get(key);
     if (!entry) {
       const segments = polylineSegments(polyline);
-      const buffer = context.createBuffer();
-      context.bindBuffer(context.ARRAY_BUFFER, buffer);
-      context.bufferData(context.ARRAY_BUFFER, segments, context.STATIC_DRAW);
+      const buffer = backend.createBuffer();
+      backend.uploadBuffer('array', buffer, segments, 'static');
       entry = { buffer, count: segments.length / 6 };
       segmentBuffers.set(key, entry);
     }
@@ -856,61 +825,53 @@ function createLineArtStage(state) {
   }
 
   function drawPolylines(renderer, polylines) {
-    const { context, canvas } = renderer;
+    const { canvas } = renderer;
     if (!polylineProgram) {
-      polylineProgram = compileProgram(context, polylineVertex, polylineFragment);
-      polylineUniforms = uniformLocations(context, polylineProgram, ['viewProjection', 'resolution', 'lineWidth', 'sceneDepth',
+      polylineProgram = backend.compileProgram(polylineVertex, polylineFragment);
+      polylineUniforms = uniformLocations(backend, polylineProgram, ['viewProjection', 'resolution', 'lineWidth', 'sceneDepth',
         'projectionDepth', 'lineColor', 'depthTest', 'lineStyle', 'dashPattern']);
-      vertexArray = context.createVertexArray();
+      vertexArray = backend.createVertexArray([]);
     }
-    context.useProgram(polylineProgram);
-    context.bindVertexArray(vertexArray);
-    context.enable(context.BLEND);
-    context.blendFuncSeparate(context.ONE, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, renderer.depthTexture);
-    context.uniform1i(polylineUniforms.sceneDepth, 0);
-    context.uniformMatrix4fv(polylineUniforms.viewProjection, false, renderer.viewProjection);
-    context.uniform2f(polylineUniforms.resolution, canvas.width, canvas.height);
-    context.uniform3fv(polylineUniforms.projectionDepth, projectionDepth(renderer));
-    const startLocation = context.getAttribLocation(polylineProgram, 'startPoint');
-    const endLocation = context.getAttribLocation(polylineProgram, 'endPoint');
-    const offsetLocation = context.getAttribLocation(polylineProgram, 'startOffset');
+    backend.useProgram(polylineProgram);
+    backend.bindVertexArray(vertexArray);
+    backend.setRenderState({ blend: true, blendMode: 'premultiplied' });
+    backend.bindTextureUnit(0, renderer.depthTexture);
+    backend.uniform1i(polylineUniforms.sceneDepth, 0);
+    backend.uniformMatrix4fv(polylineUniforms.viewProjection, renderer.viewProjection);
+    backend.uniform2f(polylineUniforms.resolution, canvas.width, canvas.height);
+    backend.uniform3fv(polylineUniforms.projectionDepth, projectionDepth(renderer));
+    const startLocation = backend.attribLocation(polylineProgram, 'startPoint');
+    const endLocation = backend.attribLocation(polylineProgram, 'endPoint');
+    const offsetLocation = backend.attribLocation(polylineProgram, 'startOffset');
     const used = new Set();
     for (const polyline of polylines) {
-      const { key, buffer, count } = segmentBufferFor(context, polyline);
+      const { key, buffer, count } = segmentBufferFor(polyline);
       used.add(key);
-      context.bindBuffer(context.ARRAY_BUFFER, buffer);
-      for (const [location, offset] of [[startLocation, 0], [endLocation, 12]]) {
-        context.enableVertexAttribArray(location);
-        context.vertexAttribPointer(location, 3, context.FLOAT, false, 24, offset);
-        context.vertexAttribDivisor(location, 1);
-      }
+      backend.bindVertexAttributes(buffer, [
+        { location: startLocation, size: 3, stride: 24, offset: 0, divisor: 1 },
+        { location: endLocation, size: 3, stride: 24, offset: 12, divisor: 1 },
+      ]);
       const style = polyline.style ?? 'solid';
       if (offsetLocation >= 0) {
         if (style === 'dashed' || style === 'dotted') {
-          offsetBuffer ??= context.createBuffer();
+          offsetBuffer ??= backend.createBuffer();
           const offsets = polylineSegmentOffsets(polyline, renderer.viewProjection, canvas.width, canvas.height);
-          context.bindBuffer(context.ARRAY_BUFFER, offsetBuffer);
-          context.bufferData(context.ARRAY_BUFFER, offsets, context.DYNAMIC_DRAW);
-          context.enableVertexAttribArray(offsetLocation);
-          context.vertexAttribPointer(offsetLocation, 1, context.FLOAT, false, 0, 0);
-          context.vertexAttribDivisor(offsetLocation, 1);
+          backend.uploadBuffer('array', offsetBuffer, offsets, 'dynamic');
+          backend.bindVertexAttributes(offsetBuffer, [{ location: offsetLocation, size: 1, divisor: 1 }]);
         } else {
-          context.disableVertexAttribArray(offsetLocation);
-          context.vertexAttrib1f(offsetLocation, 0);
+          backend.setConstantAttribute1f(offsetLocation, 0);
         }
       }
-      context.uniform1f(polylineUniforms.lineWidth, polyline.width);
-      context.uniform3fv(polylineUniforms.lineColor, polyline.color);
-      context.uniform1f(polylineUniforms.depthTest, polyline.depthTest ? 1 : 0);
-      context.uniform1f(polylineUniforms.lineStyle, POLYLINE_STYLE_CODE[style]);
-      context.uniform3f(polylineUniforms.dashPattern, polyline.dashLength ?? 0, polyline.gapLength ?? 0, polyline.dashOffset ?? 0);
-      context.drawArraysInstanced(context.TRIANGLES, 0, 6, count);
+      backend.uniform1f(polylineUniforms.lineWidth, polyline.width);
+      backend.uniform3fv(polylineUniforms.lineColor, polyline.color);
+      backend.uniform1f(polylineUniforms.depthTest, polyline.depthTest ? 1 : 0);
+      backend.uniform1f(polylineUniforms.lineStyle, POLYLINE_STYLE_CODE[style]);
+      backend.uniform3f(polylineUniforms.dashPattern, polyline.dashLength ?? 0, polyline.gapLength ?? 0, polyline.dashOffset ?? 0);
+      backend.drawInstancedTriangles(6, count);
     }
-    releaseSegmentBuffers(context, used);
-    context.disable(context.BLEND);
-    context.bindVertexArray(null);
+    releaseSegmentBuffers(used);
+    backend.setRenderState({ blend: false });
+    backend.bindVertexArray(null);
   }
 
   // Draws the outlines, then the polylines, into a target of its own; null leaves the frame as it is.
@@ -921,17 +882,13 @@ function createLineArtStage(state) {
     const polylines = lines.polylines?.length > 0;
     if (!outlines && !polylines) return null;
     if (!renderer.depthTexture) throw new Error('Line art requires depth:true on the renderer.');
-    const { context, canvas } = renderer;
-    outputTarget ??= createColorTarget(context, canvas.width, canvas.height, renderer.hdr, context.LINEAR);
-    context.bindFramebuffer(context.FRAMEBUFFER, outputTarget.framebuffer);
-    context.viewport(0, 0, canvas.width, canvas.height);
-    context.disable(context.DEPTH_TEST);
-    context.disable(context.CULL_FACE);
-    context.bindVertexArray(null);
+    const { canvas } = renderer;
+    outputTarget ??= createColorTarget(backend, canvas.width, canvas.height, Boolean(renderer.hdr), true);
+    backend.beginFullscreenPass(outputTarget.framebuffer, canvas.width, canvas.height);
     if (outlines) {
       drawOutlines(renderer, lines, sourceTexture);
     } else {
-      copyTexture(renderer, sourceTexture);
+      copyTexture(sourceTexture);
     }
     if (polylines) drawPolylines(renderer, lines.polylines);
     return outputTarget.texture;
@@ -945,17 +902,15 @@ void main() { outputColor = texelFetch(sourceTexture, ivec2(gl_FragCoord.xy), 0)
   let copyProgram = null;
   let copyUniform = null;
 
-  function copyTexture(renderer, sourceTexture) {
-    const { context } = renderer;
+  function copyTexture(sourceTexture) {
     if (!copyProgram) {
-      copyProgram = compileProgram(context, fullscreenVertex, copyFragment);
-      copyUniform = context.getUniformLocation(copyProgram, 'sourceTexture');
+      copyProgram = backend.compileProgram(fullscreenVertex, copyFragment);
+      copyUniform = backend.uniformLocation(copyProgram, 'sourceTexture');
     }
-    context.useProgram(copyProgram);
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, sourceTexture);
-    context.uniform1i(copyUniform, 0);
-    context.drawArrays(context.TRIANGLES, 0, 3);
+    backend.useProgram(copyProgram);
+    backend.bindTextureUnit(0, sourceTexture);
+    backend.uniform1i(copyUniform, 0);
+    backend.drawFullscreenTriangles();
   }
 
   return {
@@ -963,9 +918,9 @@ void main() { outputColor = texelFetch(sourceTexture, ivec2(gl_FragCoord.xy), 0)
     apply,
     captureGuide,
     releaseTargets,
-    dispose(context) {
-      dispose(context);
-      if (copyProgram) context.deleteProgram(copyProgram);
+    dispose() {
+      dispose();
+      if (copyProgram) backend.deleteProgram(copyProgram);
       copyProgram = null;
     },
   };
@@ -979,8 +934,9 @@ void main() { outputColor = texelFetch(sourceTexture, ivec2(gl_FragCoord.xy), 0)
 export function installLineArt(renderer) {
   if (renderer.lineArt) return renderer;
   if (!renderer.passSupport) throw new Error('Line art needs installRenderPasses(renderer) from crucible/addons/render-passes first.');
+  const backend = backendFor(renderer);
   const state = { lines: null };
-  const stage = createLineArtStage(state);
+  const stage = createLineArtStage(state, backend);
   renderer.postStages.push(stage);
   const drawFrame = renderer.render.bind(renderer);
   let toonBands = 0;
@@ -988,15 +944,15 @@ export function installLineArt(renderer) {
   // The toon uniforms are not in the core renderer's list, so the addon finds them itself after each program build.
   function locateToonUniforms() {
     for (const name of ['materialToon', 'toonDefault']) {
-      renderer.uniforms[name] = renderer.context.getUniformLocation(renderer.program, name);
+      renderer.uniforms[name] = backend.uniformLocation(renderer.program, name);
     }
   }
 
   // The default bands reach the main program as a uniform, and a rebuilt program starts again at zero.
   function pushDefaultToon() {
     if (!renderer.shaderFeatures?.has('toon')) return;
-    renderer.context.useProgram(renderer.program);
-    renderer.context.uniform1f(renderer.uniforms.toonDefault, toonBands);
+    backend.useProgram(renderer.program);
+    backend.uniform1f(renderer.uniforms.toonDefault, toonBands);
   }
 
   const rebuildMainProgram = renderer.rebuildMainProgram.bind(renderer);
