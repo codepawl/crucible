@@ -3,6 +3,8 @@
 // exact per pixel, so it has hard edges where a part meets another (an object ID cannot be antialiased); a depth range softens
 // its ends with `feather`. A step with no mask applies to the whole frame, as before.
 
+import { asGlazeBackend } from './glaze-backend.js';
+
 export const MAXIMUM_MASK_OBJECTS = 16;
 /** Part IDs one mask can hold after names resolve: a placed asset name stands for all of its parts. */
 export const MAXIMUM_MASK_PARTS = 64;
@@ -118,30 +120,30 @@ export function objectIdentifiers(renderer, names) {
 }
 
 /** Sets the mask uniforms of a stage. A step with no mask gets a mask of one everywhere. Leaves texture unit 1 active. */
-export function bindMask(context, uniforms, renderer, frame, mask) {
+export function bindMask(contextOrBackend, uniforms, renderer, frame, mask) {
+  const backend = asGlazeBackend(contextOrBackend);
   const identifiers = mask?.objects ? objectIdentifiers(renderer, mask.objects) : [];
-  context.uniform1i(uniforms.maskObjectCount, identifiers.length);
+  backend.uniform1i(uniforms.maskObjectCount, identifiers.length);
   if (identifiers.length > 0) {
     const padded = new Int32Array(MAXIMUM_MASK_PARTS);
     padded.set(identifiers);
-    context.uniform1iv(uniforms.maskObjectIds, padded);
-    context.activeTexture(context.TEXTURE2);
-    context.bindTexture(context.TEXTURE_2D, renderer.passSupport.texture);
-    context.uniform1i(uniforms.objectIds, 2);
+    backend.uniform1iv(uniforms.maskObjectIds, padded);
+    backend.bindTextureUnit(2, renderer.passSupport.texture);
+    backend.uniform1i(uniforms.objectIds, 2);
   }
-  context.uniform1f(uniforms.maskUseDepth, mask?.depth ? 1 : 0);
+  backend.uniform1f(uniforms.maskUseDepth, mask?.depth ? 1 : 0);
   if (mask?.depth) {
-    context.uniform3f(uniforms.maskDepth, mask.depth.near, mask.depth.far, mask.depth.feather);
-    context.uniform3fv(uniforms.maskEye, frame.eye);
-    context.uniform3fv(uniforms.maskForward, renderer.viewForward);
+    backend.uniform3f(uniforms.maskDepth, mask.depth.near, mask.depth.far, mask.depth.feather);
+    backend.uniform3fv(uniforms.maskEye, frame.eye);
+    backend.uniform3fv(uniforms.maskForward, renderer.viewForward);
   }
-  context.uniform1f(uniforms.maskInvert, mask?.invert ? 1 : 0);
-  context.activeTexture(context.TEXTURE1);
+  backend.uniform1f(uniforms.maskInvert, mask?.invert ? 1 : 0);
+  backend.activeTextureUnit(1);
 }
 
 /** Clears the object ID texture from unit 2 after the draw, so the pass framebuffer can be drawn into again. Leaves unit 1 active. */
-export function unbindMask(context) {
-  context.activeTexture(context.TEXTURE2);
-  context.bindTexture(context.TEXTURE_2D, null);
-  context.activeTexture(context.TEXTURE1);
+export function unbindMask(contextOrBackend) {
+  const backend = asGlazeBackend(contextOrBackend);
+  backend.bindTextureUnit(2, null);
+  backend.activeTextureUnit(1);
 }

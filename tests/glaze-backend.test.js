@@ -7,6 +7,11 @@ import { WebGL2GlazeBackend } from '../src/glaze-backend-webgl2.js';
 import { createFloatOutput, outputFor, readFloatPixels, readFrame, requireFloatTargets } from '../src/float-output.js';
 import { installReversedDepth } from '../src/reversed-depth.js';
 import { installRenderPasses, RENDER_PASS_MODES } from '../src/render-passes.js';
+import { createCascadedShadows } from '../src/cascaded-shadows.js';
+import { createEnvironmentMap, createEnvironmentResources, createEnvironmentResourcesInSlices } from '../src/environment.js';
+import { installPostSteps } from '../src/post-steps.js';
+import { initializeSplatPlaceholders, createSplatResources, bindSplat, disposeSplatResources } from '../src/splat-renderer.js';
+import { resolveEffects } from '../src/effects.js';
 
 // Constants answer their own name, so the log reads GL_CONSTANT; methods log their call and return a numbered object.
 function createRecordingContext(overrides = {}) {
@@ -430,4 +435,215 @@ test('render-passes.js routes targets, uniforms, fullscreen copy and cleanup thr
   assert.ok(methodNames.includes('deleteRenderbuffer'));
   assert.ok(methodNames.includes('deleteFramebuffer'));
   assert.ok(methodNames.includes('deleteProgram'));
+});
+
+test('new texture, uniform, depth-pass and fullscreen backend methods issue exact WebGL2 calls', () => {
+  const anisotropyExtension = { MAX_TEXTURE_MAX_ANISOTROPY_EXT: 'MAX_ANISO', TEXTURE_MAX_ANISOTROPY_EXT: 'TEX_ANISO' };
+  const { context, calls } = createRecordingContext({
+    getExtension: (name) => (name === 'EXT_texture_filter_anisotropic' ? anisotropyExtension : null),
+    getParameter: (parameter) => (parameter === 'MAX_TEXTURE_SIZE' ? 8192 : parameter === 'MAX_ANISO' ? 8 : 0),
+    TEXTURE0: 33984,
+    NONE: 'NONE',
+  });
+  const backend = new WebGL2GlazeBackend(context);
+
+  const location = { label: 'u' };
+  backend.uniform1i(location, 2);
+  backend.uniform1iv(location, new Int32Array([1, 2]));
+  backend.uniform2f(location, 3, 4);
+  backend.uniform2fv(location, new Float32Array([5, 6]));
+  assert.equal(backend.maxTextureSize(), 8192);
+  backend.activeTextureUnit(2);
+  backend.bindTextureUnit(1, { label: 'tex2d' }, false);
+  backend.bindTextureUnit(3, { label: 'texArr' }, true);
+  backend.generateMipmap(false);
+  backend.generateMipmap(true);
+  backend.setTextureMipmaps({ label: 'mipTex' }, true);
+  backend.setTextureMipmaps({ label: 'mipTex' }, false);
+  const halfFloat = backend.createHalfFloatStorageTexture({ width: 16, height: 8, levels: 3, repeatHorizontal: true });
+  assert.equal(halfFloat.label, 'texture1');
+  backend.uploadFloatTexture2D(halfFloat, 0, 2, 16, 4, new Float32Array(16 * 4 * 4));
+  const depthArray = backend.createTextureArray({ width: 32, height: 32, layers: 3, format: 'depth24', wrap: 'clamp' });
+  assert.equal(depthArray.label, 'texture2');
+  const colorArray = backend.createTextureArray({
+    width: 16,
+    height: 16,
+    layers: 2,
+    format: 'srgb8Alpha8',
+    mipmaps: true,
+    wrap: 'repeat',
+    linear: true,
+    data: new Uint8Array(16 * 16 * 4 * 2),
+    unpackRaw: true,
+    anisotropy: 16,
+  });
+  assert.equal(colorArray.label, 'texture3');
+  assert.throws(() => backend.createTextureArray({ width: 4, height: 4, layers: 1, format: 'bad' }), /Unsupported texture array format/);
+
+  const framebuffer = backend.createFramebuffer();
+  backend.beginDepthOnlyPass(framebuffer, 32, 32);
+  backend.bindDepthTextureLayer(depthArray, 1, true);
+  backend.setFullscreenState();
+  backend.beginFullscreenPass(framebuffer, 16, 8, { label: 'prog' });
+  backend.drawIntoTextureLevel(framebuffer, halfFloat, 0, 16, 8, 'incomplete');
+  backend.finish();
+
+  const { context: failContext } = createRecordingContext({ checkFramebufferStatus: () => 'FRAMEBUFFER_INCOMPLETE_ATTACHMENT' });
+  assert.throws(() => new WebGL2GlazeBackend(failContext).drawIntoTextureLevel({ label: 'fb' }, { label: 'tx' }, 0, 4, 4, 'boom'), /boom/);
+
+  assert.ok(calls.some((call) => call[0] === 'activeTexture' && call[1] === 33986));
+  assert.ok(calls.some((call) => call[0] === 'bindTexture' && call[1] === 'TEXTURE_2D_ARRAY' && call[2] === 'texArr'));
+  assert.ok(calls.some((call) => call[0] === 'texStorage2D' && call[1] === 'TEXTURE_2D' && call[2] === 3 && call[3] === 'RGBA16F'));
+  assert.ok(calls.some((call) => call[0] === 'texImage3D' && call[1] === 'TEXTURE_2D_ARRAY' && call[3] === 'DEPTH_COMPONENT24'));
+  assert.ok(calls.some((call) => call[0] === 'texStorage3D' && call[1] === 'TEXTURE_2D_ARRAY' && call[2] === 5 && call[3] === 'SRGB8_ALPHA8'));
+  assert.ok(calls.some((call) => call[0] === 'texParameterf' && call[1] === 'TEXTURE_2D_ARRAY' && call[2] === 'TEX_ANISO' && call[3] === 8));
+  assert.ok(calls.some((call) => call[0] === 'drawBuffers'));
+  assert.ok(calls.some((call) => call[0] === 'readBuffer' && call[1] === 'NONE'));
+  assert.ok(calls.some((call) => call[0] === 'framebufferTextureLayer' && call[3] === 'texture2' && call[5] === 1));
+  assert.ok(calls.some((call) => call[0] === 'clear' && call[1] === 256));
+  assert.ok(calls.some((call) => call[0] === 'finish'));
+});
+
+test('cascaded-shadows.js routes allocation, pass drawing, uniforms and cleanup through GlazeBackend', () => {
+  const { backend, calls } = createRecordingBackend({
+    createTextureArray: () => ({ label: 'cascadeTex' }),
+    createFramebuffer: () => ({ label: 'cascadeFb' }),
+  });
+  const throwingContext = new Proxy({}, { get() { throw new Error('raw context touched'); } });
+  const cascades = createCascadedShadows({ count: 2, resolution: 256 });
+  const drawn = [];
+  const renderer = {
+    backend,
+    context: throwingContext,
+    program: { label: 'mainProgram' },
+    environment: { sunAngularRadius: 0.01 },
+    tintView: { depthRange: 20, uvPerMetre: 0.1, biasPerSlope: 0.001 },
+    world: true,
+    activeLightDirection: [-3, 6, 4],
+    shadowBounds: { target: [0, 0, 0], extent: 10 },
+    view: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, -5, 1]),
+    inverseViewProjection: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1]),
+    viewForward: [0, 0, -1],
+    renderTargets: { record() {}, release() {} },
+    drawShadowCasters: (matrix) => drawn.push(matrix[0]),
+  };
+  cascades.fitToCamera = () => true;
+  cascades.update(renderer, true);
+  cascades.bindUniforms(renderer);
+  cascades.dispose(throwingContext, renderer.renderTargets);
+
+  assert.equal(drawn.length, 2);
+  const methodNames = calls.map((call) => call[0]);
+  for (const expected of ['activeTextureUnit', 'createTextureArray', 'createFramebuffer', 'beginDepthOnlyPass', 'bindDepthTextureLayer', 'bindCanvasTarget', 'uniformLocation', 'uniform1i', 'bindTextureUnit', 'uniformMatrix4fv', 'uniform4fv', 'uniform1f', 'uniform3f', 'deleteTexture', 'deleteFramebuffer']) {
+    assert.ok(methodNames.includes(expected), `expected ${expected} call`);
+  }
+});
+
+test('environment.js routes prefiltering, BRDF LUT and irradiance upload through GlazeBackend', async () => {
+  const { backend, calls } = createRecordingBackend({
+    createHalfFloatStorageTexture: () => ({ label: 'envTex' }),
+    createFramebuffer: () => ({ label: 'envFb' }),
+  });
+  const map = createEnvironmentMap({ width: 8, height: 4, data: new Float32Array(8 * 4 * 3).fill(0.5) });
+  const whole = createEnvironmentResources(backend, map, { fullscreenVertex: 'vs' });
+  whole.dispose();
+  const sliced = await createEnvironmentResourcesInSlices(backend, map, { fullscreenVertex: 'vs' }, async () => {});
+  sliced.dispose();
+
+  const methodNames = calls.map((call) => call[0]);
+  for (const expected of ['extension', 'createHalfFloatStorageTexture', 'uploadFloatTexture2D', 'generateMipmap', 'createFramebuffer', 'compileProgram', 'setFullscreenState', 'useProgram', 'bindTextureUnit', 'uniformLocation', 'uniform1i', 'uniform2f', 'uniform1f', 'drawIntoTextureLevel', 'bindCanvasTarget', 'deleteFramebuffer', 'deleteProgram', 'deleteTexture', 'finish']) {
+    assert.ok(methodNames.includes(expected), `expected ${expected} call`);
+  }
+});
+
+test('post-steps.js routes targets, mipmaps, masks, sun rays and stages through GlazeBackend', () => {
+  const { backend, calls } = createRecordingBackend();
+  const throwingContext = new Proxy({}, { get() { throw new Error('raw context touched'); } });
+  const renderer = installPostSteps({
+    backend,
+    context: throwingContext,
+    postStages: [],
+    canvas: { width: 16, height: 9 },
+    hdr: true,
+    depthTexture: { label: 'depth' },
+    inverseViewProjection: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+    viewProjection: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+    viewForward: [0, 0, -1],
+    activeLightDirection: [0, 0, 1],
+    lighting: { keyColor: [3, 2, 1] },
+    passSupport: { texture: { label: 'ids' }, objectNames: () => ['hero'] },
+  });
+
+  const baseEffects = resolveEffects({});
+  const stageInputs = [
+    ['Glare', { glare: { streaks: 0.5, fogGlow: 0.3 } }],
+    ['Local tone mapping', { localToneMapping: { strength: 0.8 } }],
+    ['Lens distortion', { lensDistortion: { distortion: 0.2, dispersion: 0.1 } }],
+    ['Color balance', { colorBalance: { gain: [1.1, 1, 0.9], mask: { objects: ['hero'], depth: { near: 1, far: 5 } } } }],
+    ['Color correction', { colorCorrection: { saturation: 0.2 } }],
+    ['Sun rays', { sunRays: { intensity: 0.4 } }],
+    ['Stylize', { stylize: { pixelate: 4, mask: { objects: ['hero'] } } }],
+    ['Composite', { composite: { background: { color: [0, 0, 0] }, key: { luma: { low: 0.1, high: 0.5 } }, mask: { objects: ['hero'] } } }],
+  ];
+  for (const [name, input] of stageInputs) {
+    const stage = renderer.postStages.find((candidate) => candidate.name === name);
+    assert.ok(stage.apply(renderer, { eye: [0, 1, 5], effects: input }, baseEffects, { label: 'source' }), `${name} applied`);
+    stage.releaseTargets(throwingContext);
+    stage.dispose(throwingContext);
+  }
+
+  const methodNames = calls.map((call) => call[0]);
+  for (const expected of ['compileProgram', 'uniformLocation', 'createFramebufferTarget', 'beginFullscreenPass', 'bindTextureUnit', 'uniform1i', 'uniform1iv', 'uniform1f', 'uniform2f', 'uniform2fv', 'uniform3f', 'uniform3fv', 'uniformMatrix4fv', 'activeTextureUnit', 'setTextureMipmaps', 'drawFullscreenTriangles', 'deleteTexture', 'deleteFramebuffer', 'deleteProgram']) {
+    assert.ok(methodNames.includes(expected), `expected ${expected} call`);
+  }
+});
+
+test('splat-renderer.js routes placeholders, texture arrays, bindings and disposal through GlazeBackend', () => {
+  const { backend, calls } = createRecordingBackend({
+    maxTextureSize: () => 2048,
+    createTextureArray: () => ({ label: 'splatArray' }),
+  });
+  const throwingContext = new Proxy({}, { get() { throw new Error('raw context touched'); } });
+  const renderer = {
+    backend,
+    context: throwingContext,
+    program: { label: 'mainProgram' },
+    whiteTexture: { label: 'white' },
+    splatResources: new Map(),
+    maxAnisotropy: 8,
+    uniforms: Object.fromEntries([
+      'splatColor', 'splatNormal', 'splatPacked', 'splatMask', 'splatEnabled',
+      'splatLayer[0]', 'splatTint[0]', 'splatSlope[0]', 'splatHeightRange[0]',
+      'splatMaskChannel[0]', 'splatMaskInvert[0]', 'splatBlend', 'splatOptions',
+      'splatMaskBounds', 'splatVariation',
+    ].map((name) => [name, `loc:${name}`])),
+  };
+  const material = { layers: [{ scale: 2 }] };
+  const support = {
+    resolveSize: () => 16,
+    buildPixels: () => ({ color: new Uint8Array(16), normal: new Uint8Array(16), packed: new Uint8Array(16) }),
+    packParameters: () => ({
+      layer: new Float32Array(16),
+      tint: new Float32Array(16),
+      slope: new Float32Array(16),
+      height: new Float32Array(16),
+      mask: new Float32Array(4),
+      maskInvert: new Float32Array(4),
+      blend: new Float32Array(4),
+      options: new Float32Array(4),
+      maskBounds: new Float32Array(4),
+      variation: new Float32Array(4),
+    }),
+  };
+
+  initializeSplatPlaceholders(renderer);
+  const resources = createSplatResources(renderer, material, support);
+  bindSplat(renderer, resources);
+  bindSplat(renderer, null);
+  disposeSplatResources(renderer);
+
+  const methodNames = calls.map((call) => call[0]);
+  for (const expected of ['createTextureArray', 'useProgram', 'uniform1i', 'bindTextureUnit', 'uniform1f', 'maxTextureSize', 'uniform4fv', 'uniform1fv', 'deleteTexture']) {
+    assert.ok(methodNames.includes(expected), `expected ${expected} call`);
+  }
 });

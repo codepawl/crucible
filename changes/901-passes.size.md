@@ -1,0 +1,25 @@
+- entry:core: porting `cascaded-shadows.js`, `environment.js`, `post-steps.js` and `splat-renderer.js` onto `WebGL2GlazeBackend` (#901) adds 987 bytes gzip of shared texture-array, half-float storage, mipmap, depth-pass, fullscreen-pass and uniform methods on the backend class so a future backend can replace them; `entry:core` remains well under the +2 KB slice limit
+- entry:core+lazy: same shared backend methods on `WebGL2GlazeBackend` (+985 bytes gzip)
+- entry:ground-bounce: `ground-bounce.js` imports `environment.js`, which now pulls `asGlazeBackend` / `WebGL2GlazeBackend` into the standalone bundle (+3,582 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- entry:floor-sky-visibility: imports `ground-bounce.js` -> `environment.js`, pulling `WebGL2GlazeBackend` into the standalone bundle (+3,694 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- entry:agent-scene: imports `environment.js` and post/mask helpers, pulling the expanded `WebGL2GlazeBackend` into the standalone bundle (+4,317 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- entry:agent-asset: imports `environment.js` and post/mask helpers, pulling the expanded `WebGL2GlazeBackend` into the standalone bundle (+4,321 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- entry:hdri: imports `environment.js`, pulling `WebGL2GlazeBackend` into the standalone bundle (+3,595 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- entry:camera-effects: `camera-effects.js` now imports `backendFor` / `resolveGlazeBackend` from `glaze-backend.js` (+3,135 bytes gzip when bundled standalone; shared when loaded with `CrucibleRenderer`)
+- entry:water-reflection: transitively imports `environment.js`, pulling `WebGL2GlazeBackend` into the standalone bundle (+3,716 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- entry:render-passes: already imports `glaze-backend.js` and now carries the additional `WebGL2GlazeBackend` methods (+1,171 bytes gzip standalone)
+- entry:user-pass: imports `post-mask.js`, which now imports `asGlazeBackend` from `glaze-backend.js` (+3,651 bytes gzip when bundled standalone; shared when loaded with `CrucibleRenderer`)
+- entry:reversed-depth: already imports `glaze-backend.js` and now carries the additional `WebGL2GlazeBackend` methods (+1,193 bytes gzip standalone)
+- entry:splat-shader: `splat-renderer.js` now imports `backendFor` from `glaze-backend.js` (+3,636 bytes gzip when bundled standalone; shared when loaded with `CrucibleRenderer`)
+- entry:fog-shader+lazy: transitively imports `render-passes.js` / `glaze-backend.js` and now carries the additional `WebGL2GlazeBackend` methods (+1,183 bytes gzip standalone)
+- entry:cascaded-shadows: `cascaded-shadows.js` now imports `glaze-backend.js` (+3,816 bytes gzip when bundled standalone; shared when loaded with `CrucibleRenderer`)
+- entry:reflection-probes: imports `environment.js`, pulling `WebGL2GlazeBackend` into the standalone bundle (+3,578 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- scene:lit-box: carries the new `WebGL2GlazeBackend` methods (+1,203 bytes gzip) for the #901 part 3 backend boundary slice while remaining 51 KB under three.js
+- scene:lit-box+lazy: same shared `WebGL2GlazeBackend` methods (+1,200 bytes gzip)
+- scene:gltf-box: carries the new `WebGL2GlazeBackend` methods (+1,196 bytes gzip) for the #901 part 3 backend boundary slice
+- scene:gltf-box+lazy: same shared `WebGL2GlazeBackend` methods (+1,195 bytes gzip)
+- scene:agent-scene: carries the new `WebGL2GlazeBackend` methods (+969 bytes gzip) for the #901 part 3 backend boundary slice
+- scene:agent-scene+lazy: same shared `WebGL2GlazeBackend` methods (+567 bytes gzip)
+- goal:lit-box: carries the #901 part 3 `WebGL2GlazeBackend` methods for `cascaded-shadows.js`, `environment.js`, `post-steps.js` and `splat-renderer.js` (+1,203 bytes gzip, same slice allowance as PR #3610)
+- goal:gltf-box: carries the #901 part 3 `WebGL2GlazeBackend` methods for `cascaded-shadows.js`, `environment.js`, `post-steps.js` and `splat-renderer.js` (+1,196 bytes gzip, same slice allowance as PR #3610)
+- goal:agent-scene: carries the #901 part 3 `WebGL2GlazeBackend` methods for `cascaded-shadows.js`, `environment.js`, `post-steps.js` and `splat-renderer.js` (+969 bytes gzip, same slice allowance as PR #3610)

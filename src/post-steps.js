@@ -2,7 +2,8 @@ import { postStepSupport } from './shader-registry.js';
 import { resolveAutoExposure } from './auto-exposure.js';
 import './bloom-keep-hue.js';
 import { createStage, createTarget, sharedFragmentHeader } from './camera-effects.js';
-import { compileProgram, fullscreenVertex } from './gl-program.js';
+import { fullscreenVertex } from './gl-program.js';
+import { backendFor, resolveGlazeBackend } from './glaze-backend.js';
 import { numberInRange, groupOf, onlyKeys, triple } from './post-fields.js';
 import { resolveDistortion, resolveFlash, createDistortionStage, createFlashStage } from './post-air.js';
 import { resolveMask, usesObjectMask, maskShader, bindMask, unbindMask, MASK_UNIFORM_NAMES } from './post-mask.js';
@@ -592,7 +593,21 @@ function withMaskUnbound(stage) {
     ...stage,
     apply(renderer, frame, effects, sourceTexture) {
       const result = stage.apply(renderer, frame, effects, sourceTexture);
-      if (result) unbindMask(renderer.context);
+      if (result) unbindMask(backendFor(renderer));
+      return result;
+    },
+  };
+}
+
+function withSourceMipmaps(stage, isStageActive) {
+  return {
+    ...stage,
+    apply(renderer, frame, effects, sourceTexture) {
+      const backend = backendFor(renderer);
+      const active = isStageActive(renderer, frame);
+      if (active) backend.setTextureMipmaps(sourceTexture, true);
+      const result = stage.apply(renderer, frame, effects, sourceTexture);
+      if (active) backend.setTextureMipmaps(sourceTexture, false);
       return result;
     },
   };
@@ -604,12 +619,13 @@ function createColorBalanceStage() {
     fragment: colorBalanceFragment,
     uniformNames: ['lift', 'inverseGamma', 'gain', ...MASK_UNIFORM_NAMES],
     isActive: (effects, frame) => isColorBalanceActive(stepsOf(frame).colorBalance),
-    setUniforms(context, uniforms, renderer, frame) {
+    setUniforms(_context, uniforms, renderer, frame) {
+      const backend = backendFor(renderer);
       const { colorBalance } = stepsOf(frame);
-      context.uniform3fv(uniforms.lift, colorBalance.lift);
-      context.uniform3fv(uniforms.inverseGamma, colorBalance.gamma.map(gamma => 1 / gamma));
-      context.uniform3fv(uniforms.gain, colorBalance.gain);
-      bindMask(context, uniforms, renderer, frame, colorBalance.mask);
+      backend.uniform3fv(uniforms.lift, colorBalance.lift);
+      backend.uniform3fv(uniforms.inverseGamma, colorBalance.gamma.map(gamma => 1 / gamma));
+      backend.uniform3fv(uniforms.gain, colorBalance.gain);
+      bindMask(backend, uniforms, renderer, frame, colorBalance.mask);
     },
   }));
 }
@@ -624,10 +640,11 @@ function createColorCorrectionStage() {
     fragment: colorCorrectionFragment,
     uniformNames: ['tint', 'gradeControls'],
     isActive: (effects, frame) => isColorCorrectionActive(stepsOf(frame).colorCorrection),
-    setUniforms(context, uniforms, renderer, frame) {
+    setUniforms(_context, uniforms, renderer, frame) {
+      const backend = backendFor(renderer);
       const { colorCorrection } = stepsOf(frame);
-      context.uniform3fv(uniforms.tint, colorCorrection.tint);
-      context.uniform3f(uniforms.gradeControls, colorCorrection.brightness, colorCorrection.contrast, colorCorrection.saturation);
+      backend.uniform3fv(uniforms.tint, colorCorrection.tint);
+      backend.uniform3f(uniforms.gradeControls, colorCorrection.brightness, colorCorrection.contrast, colorCorrection.saturation);
     },
   });
 }
@@ -655,6 +672,7 @@ function createSunRaysStage() {
   let gatherProgram = null;
   let gatherUniforms = null;
   let gatherTarget = null;
+  let activeBackend = null;
   let rayTexture = null;
   let rayColor = [1, 1, 1];
   let intensity = 0;
@@ -663,46 +681,43 @@ function createSunRaysStage() {
     fragment: sunRaysFragment,
     uniformNames: ['rayTexture', 'rayColor', 'intensity'],
     isActive: () => true,
-    setUniforms(context, uniforms) {
-      context.activeTexture(context.TEXTURE2);
-      context.bindTexture(context.TEXTURE_2D, rayTexture);
-      context.uniform1i(uniforms.rayTexture, 2);
-      context.uniform3fv(uniforms.rayColor, rayColor);
-      context.uniform1f(uniforms.intensity, intensity);
-      context.activeTexture(context.TEXTURE0);
+    setUniforms(_context, uniforms, renderer) {
+      const backend = backendFor(renderer);
+      backend.bindTextureUnit(2, rayTexture);
+      backend.uniform1i(uniforms.rayTexture, 2);
+      backend.uniform3fv(uniforms.rayColor, rayColor);
+      backend.uniform1f(uniforms.intensity, intensity);
+      backend.activeTextureUnit(0);
     },
   });
 
-  function releaseTargets(context) {
+  function releaseTargets(contextOrBackend) {
+    const backend = resolveGlazeBackend(contextOrBackend, activeBackend);
     if (gatherTarget) {
-      context.deleteTexture(gatherTarget.texture);
-      context.deleteFramebuffer(gatherTarget.framebuffer);
+      backend.deleteTexture(gatherTarget.texture);
+      backend.deleteFramebuffer(gatherTarget.framebuffer);
       gatherTarget = null;
     }
-    composite.releaseTargets(context);
+    composite.releaseTargets(backend);
   }
 
   function gather(renderer, sunPosition, spread) {
-    const context = renderer.context;
+    const backend = activeBackend = backendFor(renderer);
     if (!gatherProgram) {
-      gatherProgram = compileProgram(context, fullscreenVertex, sunRaysGatherFragment);
-      gatherUniforms = Object.fromEntries(['sceneDepth', 'resolution', 'sunPosition', 'spread'].map(name => [name, context.getUniformLocation(gatherProgram, name)]));
+      gatherProgram = backend.compileProgram(fullscreenVertex, sunRaysGatherFragment);
+      gatherUniforms = Object.fromEntries(['sceneDepth', 'resolution', 'sunPosition', 'spread'].map(name => [name, backend.uniformLocation(gatherProgram, name)]));
     }
     gatherTarget ??= createTarget(renderer, SUN_RAY_RESOLUTION_DIVISOR);
-    context.bindFramebuffer(context.FRAMEBUFFER, gatherTarget.framebuffer);
-    context.viewport(0, 0, Math.ceil(renderer.canvas.width / SUN_RAY_RESOLUTION_DIVISOR), Math.ceil(renderer.canvas.height / SUN_RAY_RESOLUTION_DIVISOR));
-    context.disable(context.DEPTH_TEST);
-    context.disable(context.CULL_FACE);
-    context.bindVertexArray(null);
-    context.useProgram(gatherProgram);
-    context.activeTexture(context.TEXTURE1);
-    context.bindTexture(context.TEXTURE_2D, renderer.depthTexture);
-    context.uniform1i(gatherUniforms.sceneDepth, 1);
-    context.uniform2f(gatherUniforms.resolution, renderer.canvas.width, renderer.canvas.height);
-    context.uniform2f(gatherUniforms.sunPosition, sunPosition[0], sunPosition[1]);
-    context.uniform1f(gatherUniforms.spread, spread);
-    context.drawArrays(context.TRIANGLES, 0, 3);
-    context.activeTexture(context.TEXTURE0);
+    const width = Math.ceil(renderer.canvas.width / SUN_RAY_RESOLUTION_DIVISOR);
+    const height = Math.ceil(renderer.canvas.height / SUN_RAY_RESOLUTION_DIVISOR);
+    backend.beginFullscreenPass(gatherTarget.framebuffer, width, height, gatherProgram);
+    backend.bindTextureUnit(1, renderer.depthTexture);
+    backend.uniform1i(gatherUniforms.sceneDepth, 1);
+    backend.uniform2f(gatherUniforms.resolution, renderer.canvas.width, renderer.canvas.height);
+    backend.uniform2f(gatherUniforms.sunPosition, sunPosition[0], sunPosition[1]);
+    backend.uniform1f(gatherUniforms.spread, spread);
+    backend.drawFullscreenTriangles();
+    backend.activeTextureUnit(0);
     return gatherTarget.texture;
   }
 
@@ -720,11 +735,12 @@ function createSunRaysStage() {
     return composite.apply(renderer, frame, effects, sourceTexture);
   }
 
-  function dispose(context) {
-    releaseTargets(context);
-    if (gatherProgram) context.deleteProgram(gatherProgram);
+  function dispose(contextOrBackend) {
+    const backend = resolveGlazeBackend(contextOrBackend, activeBackend);
+    releaseTargets(backend);
+    if (gatherProgram) backend.deleteProgram(gatherProgram);
     gatherProgram = null;
-    composite.dispose(context);
+    composite.dispose(backend);
   }
 
   return { name: 'Sun rays', apply, releaseTargets, dispose };
@@ -740,15 +756,16 @@ function createStylizeStage() {
     fragment: stylizeFragment,
     uniformNames: ['sharpenAmount', 'kuwaharaRadius', 'posterizeLevels', 'pixelateSize', 'pixelateOrigin', ...MASK_UNIFORM_NAMES],
     isActive: (effects, frame) => isStylizeActive(stepsOf(frame).stylize),
-    setUniforms(context, uniforms, renderer, frame) {
+    setUniforms(_context, uniforms, renderer, frame) {
+      const backend = backendFor(renderer);
       const { stylize } = stepsOf(frame);
-      context.uniform1f(uniforms.sharpenAmount, stylize.sharpen ?? 0);
-      context.uniform1i(uniforms.kuwaharaRadius, stylize.kuwahara ?? 0);
-      context.uniform1f(uniforms.posterizeLevels, stylize.posterize ?? 0);
-      context.uniform1f(uniforms.pixelateSize, stylize.pixelate ?? 0);
+      backend.uniform1f(uniforms.sharpenAmount, stylize.sharpen ?? 0);
+      backend.uniform1i(uniforms.kuwaharaRadius, stylize.kuwahara ?? 0);
+      backend.uniform1f(uniforms.posterizeLevels, stylize.posterize ?? 0);
+      backend.uniform1f(uniforms.pixelateSize, stylize.pixelate ?? 0);
       // On a pixel grid the blocks start on a lattice that moves with the snapped camera, so they stay on the same geometry.
-      context.uniform2fv(uniforms.pixelateOrigin, stylize.pixelate > 0 ? renderer.pixelGrid?.latticeOrigin(stylize.pixelate) ?? [0, 0] : [0, 0]);
-      bindMask(context, uniforms, renderer, frame, stylize.mask);
+      backend.uniform2fv(uniforms.pixelateOrigin, stylize.pixelate > 0 ? renderer.pixelGrid?.latticeOrigin(stylize.pixelate) ?? [0, 0] : [0, 0]);
+      bindMask(backend, uniforms, renderer, frame, stylize.mask);
     },
   }));
 }
@@ -759,21 +776,22 @@ function createCompositeStage() {
     fragment: compositeFragment,
     uniformNames: ['keyMode', 'keyColor', 'keyRange', 'keyInvert', 'backgroundTop', 'backgroundBottom', ...MASK_UNIFORM_NAMES],
     isActive: (effects, frame) => Boolean(stepsOf(frame).composite?.background),
-    setUniforms(context, uniforms, renderer, frame) {
+    setUniforms(_context, uniforms, renderer, frame) {
+      const backend = backendFor(renderer);
       const { composite } = stepsOf(frame);
       const { background, key } = composite;
-      context.uniform3fv(uniforms.backgroundTop, background.color ?? background.top);
-      context.uniform3fv(uniforms.backgroundBottom, background.color ?? background.bottom);
+      backend.uniform3fv(uniforms.backgroundTop, background.color ?? background.top);
+      backend.uniform3fv(uniforms.backgroundBottom, background.color ?? background.bottom);
       const chroma = key?.chroma;
       const luma = key?.luma;
-      context.uniform1f(uniforms.keyMode, chroma ? 1 : luma ? 2 : 0);
-      context.uniform3fv(uniforms.keyColor, chroma?.color ?? [0, 0, 0]);
+      backend.uniform1f(uniforms.keyMode, chroma ? 1 : luma ? 2 : 0);
+      backend.uniform3fv(uniforms.keyColor, chroma?.color ?? [0, 0, 0]);
       const range = chroma
         ? [chroma.tolerance * CHROMA_DISTANCE_SCALE, Math.max(chroma.softness * CHROMA_DISTANCE_SCALE, 0.0001), 0]
         : [luma?.low ?? 0, luma?.high ?? 1, 0];
-      context.uniform3fv(uniforms.keyRange, range);
-      context.uniform1f(uniforms.keyInvert, luma?.invert ? 1 : 0);
-      bindMask(context, uniforms, renderer, frame, composite.mask);
+      backend.uniform3fv(uniforms.keyRange, range);
+      backend.uniform1f(uniforms.keyInvert, luma?.invert ? 1 : 0);
+      bindMask(backend, uniforms, renderer, frame, composite.mask);
     },
   }));
 }
@@ -787,40 +805,22 @@ function createGlareStage() {
       const { glare } = stepsOf(frame);
       return Boolean(glare) && (glare.streaks > 0 || glare.fogGlow > 0);
     },
-    setUniforms(context, uniforms, renderer, frame) {
+    setUniforms(_context, uniforms, renderer, frame) {
+      const backend = backendFor(renderer);
       const { glare } = stepsOf(frame);
-      context.uniform1f(uniforms.streakAmount, glare.streaks);
-      context.uniform1i(uniforms.streakCount, glare.count);
-      context.uniform1f(uniforms.streakAngle, glare.angle * Math.PI / 180);
-      context.uniform1f(uniforms.fogAmount, glare.fogGlow);
-      context.uniform1f(uniforms.threshold, glare.threshold);
+      backend.uniform1f(uniforms.streakAmount, glare.streaks);
+      backend.uniform1i(uniforms.streakCount, glare.count);
+      backend.uniform1f(uniforms.streakAngle, glare.angle * Math.PI / 180);
+      backend.uniform1f(uniforms.fogAmount, glare.fogGlow);
+      backend.uniform1f(uniforms.threshold, glare.threshold);
       const sizePixels = glare.size * renderer.canvas.height;
-      context.uniform1f(uniforms.sizePixels, sizePixels);
+      backend.uniform1f(uniforms.sizePixels, sizePixels);
       // The halo blurs at about two thirds of its radius: coarse enough to hide the tap spacing, fine enough to keep its shape.
-      context.uniform1f(uniforms.fogLod, Math.max(0, Math.log2(sizePixels / 1.5)));
+      backend.uniform1f(uniforms.fogLod, Math.max(0, Math.log2(sizePixels / 1.5)));
     },
   });
   // The halo reads blurred levels of the frame, so the frame gets a mip chain for this draw and goes back to one level after it.
-  return {
-    ...stage,
-    apply(renderer, frame, effects, sourceTexture) {
-      const context = renderer.context;
-      const fogOn = stepsOf(frame).glare?.fogGlow > 0;
-      if (fogOn) {
-        context.activeTexture(context.TEXTURE0);
-        context.bindTexture(context.TEXTURE_2D, sourceTexture);
-        context.generateMipmap(context.TEXTURE_2D);
-        context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR_MIPMAP_LINEAR);
-      }
-      const result = stage.apply(renderer, frame, effects, sourceTexture);
-      if (fogOn) {
-        context.activeTexture(context.TEXTURE0);
-        context.bindTexture(context.TEXTURE_2D, sourceTexture);
-        context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
-      }
-      return result;
-    },
-  };
+  return withSourceMipmaps(stage, (_renderer, frame) => stepsOf(frame).glare?.fogGlow > 0);
 }
 
 function createLensDistortionStage() {
@@ -832,10 +832,11 @@ function createLensDistortionStage() {
       const { lensDistortion } = stepsOf(frame);
       return Boolean(lensDistortion) && (lensDistortion.distortion !== 0 || lensDistortion.dispersion > 0);
     },
-    setUniforms(context, uniforms, renderer, frame) {
+    setUniforms(_context, uniforms, renderer, frame) {
+      const backend = backendFor(renderer);
       const { lensDistortion } = stepsOf(frame);
-      context.uniform1f(uniforms.distortion, lensDistortion.distortion);
-      context.uniform1f(uniforms.dispersion, lensDistortion.dispersion);
+      backend.uniform1f(uniforms.distortion, lensDistortion.distortion);
+      backend.uniform1f(uniforms.dispersion, lensDistortion.dispersion);
     },
   });
 }
@@ -846,39 +847,27 @@ function createLocalToneMappingStage() {
     fragment: localToneMappingFragment,
     uniformNames: ['strength', 'highlightContrast', 'shadowContrast', 'detailGain', 'radiusPixels', 'baseLod', 'kneeLog'],
     isActive: (effects, frame) => isLocalToneMappingActive(stepsOf(frame).localToneMapping),
-    setUniforms(context, uniforms, renderer, frame) {
+    setUniforms(_context, uniforms, renderer, frame) {
+      const backend = backendFor(renderer);
       const { localToneMapping } = stepsOf(frame);
-      context.uniform1f(uniforms.strength, localToneMapping.strength);
-      context.uniform1f(uniforms.highlightContrast, localToneMapping.highlightContrast);
-      context.uniform1f(uniforms.shadowContrast, localToneMapping.shadowContrast);
-      context.uniform1f(uniforms.detailGain, localToneMapping.detail);
+      backend.uniform1f(uniforms.strength, localToneMapping.strength);
+      backend.uniform1f(uniforms.highlightContrast, localToneMapping.highlightContrast);
+      backend.uniform1f(uniforms.shadowContrast, localToneMapping.shadowContrast);
+      backend.uniform1f(uniforms.detailGain, localToneMapping.detail);
       const radiusPixels = localToneMapping.blurRadius * renderer.canvas.height;
-      context.uniform1f(uniforms.radiusPixels, radiusPixels);
-      context.uniform1f(uniforms.kneeLog, localToneMapping.midtoneRange * Math.LN2);
-      context.uniform1f(uniforms.baseLod, Math.max(0, Math.log2(radiusPixels / 3)));
+      backend.uniform1f(uniforms.radiusPixels, radiusPixels);
+      backend.uniform1f(uniforms.kneeLog, localToneMapping.midtoneRange * Math.LN2);
+      backend.uniform1f(uniforms.baseLod, Math.max(0, Math.log2(radiusPixels / 3)));
     },
   });
   // The base reads blurred levels of the frame, so the frame gets a mip chain for this draw and goes back to one level after it.
+  const wrapped = withSourceMipmaps(stage, (_renderer, frame) => isLocalToneMappingActive(stepsOf(frame).localToneMapping));
   return {
-    ...stage,
+    ...wrapped,
     apply(renderer, frame, effects, sourceTexture) {
       // Without a float frame (a benchmark renderer, or no float buffers) the picture is already clamped, so the step stays off.
       if (!renderer.hdr) return null;
-      const context = renderer.context;
-      const active = isLocalToneMappingActive(stepsOf(frame).localToneMapping);
-      if (active) {
-        context.activeTexture(context.TEXTURE0);
-        context.bindTexture(context.TEXTURE_2D, sourceTexture);
-        context.generateMipmap(context.TEXTURE_2D);
-        context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR_MIPMAP_LINEAR);
-      }
-      const result = stage.apply(renderer, frame, effects, sourceTexture);
-      if (active) {
-        context.activeTexture(context.TEXTURE0);
-        context.bindTexture(context.TEXTURE_2D, sourceTexture);
-        context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
-      }
-      return result;
+      return wrapped.apply(renderer, frame, effects, sourceTexture);
     },
   };
 }

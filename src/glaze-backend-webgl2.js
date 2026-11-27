@@ -94,7 +94,7 @@ export class WebGL2GlazeBackend {
 
   /** A single-sample framebuffer with a linear colour texture and, with `depth`, a readable 24-bit depth texture. Returns { framebuffer, colorTexture, depthTexture }. */
   createResolveTarget({ width, height, hdr, depth }) {
-    const target = this.createFramebufferTarget({ width, height, hdr, depth, depthAsTexture: true, colorFilter: this.context.LINEAR, clamp: true });
+    const target = this.createFramebufferTarget({ width, height, hdr, depth, depthAsTexture: true, linear: true, clamp: true });
     if (!target.complete) {
       this.deleteFramebuffer(target.framebuffer);
       this.deleteTexture(target.colorTexture);
@@ -105,7 +105,7 @@ export class WebGL2GlazeBackend {
   }
 
   /** A single-sample framebuffer with optional colour texture (`rgba8` / `rgba16f`) and depth store (`depth24` / `depth32f`). */
-  createFramebufferTarget({ width, height, color = true, hdr = false, depth = false, floatDepth = false, depthAsTexture = false, colorFilter = this.context.NEAREST, clamp = false, unbind = false }) {
+  createFramebufferTarget({ width, height, color = true, hdr = false, depth = false, floatDepth = false, depthAsTexture = false, linear = false, colorFilter = linear ? this.context.LINEAR : this.context.NEAREST, clamp = false, unbind = false }) {
     const context = this.context;
     const colorTexture = color ? this.createTexture2D(
       hdr ? context.RGBA16F : context.RGBA8,
@@ -314,5 +314,170 @@ export class WebGL2GlazeBackend {
     context.bindFramebuffer(context.READ_FRAMEBUFFER, framebuffer);
     this.readPixels(x, y, width, height, context.RGBA, context.FLOAT, destination);
     context.bindFramebuffer(context.READ_FRAMEBUFFER, null);
+  }
+
+  uniform1i(location, value) {
+    this.context.uniform1i(location, value);
+  }
+
+  uniform1iv(location, values) {
+    this.context.uniform1iv(location, values);
+  }
+
+  uniform2f(location, first, second) {
+    this.context.uniform2f(location, first, second);
+  }
+
+  uniform2fv(location, values) {
+    this.context.uniform2fv(location, values);
+  }
+
+  maxTextureSize() {
+    return this.context.getParameter(this.context.MAX_TEXTURE_SIZE);
+  }
+
+  activeTextureUnit(unit) {
+    this.context.activeTexture(this.context.TEXTURE0 + unit);
+  }
+
+  bindTextureUnit(unit, texture, array = false) {
+    const context = this.context;
+    this.activeTextureUnit(unit);
+    context.bindTexture(array ? context.TEXTURE_2D_ARRAY : context.TEXTURE_2D, texture);
+  }
+
+  generateMipmap(array = false) {
+    const context = this.context;
+    context.generateMipmap(array ? context.TEXTURE_2D_ARRAY : context.TEXTURE_2D);
+  }
+
+  /** Enables or restores linear mipmapped filtering on a 2D texture bound to `unit`. */
+  setTextureMipmaps(texture, enabled, unit = 0) {
+    const context = this.context;
+    this.bindTextureUnit(unit, texture);
+    if (enabled) context.generateMipmap(context.TEXTURE_2D);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, enabled ? context.LINEAR_MIPMAP_LINEAR : context.LINEAR);
+  }
+
+  /** Allocates an immutable RGBA16F 2D texture with optional mip chain and horizontal repeat. */
+  createHalfFloatStorageTexture({ width, height, levels = 1, repeatHorizontal = false }) {
+    const context = this.context;
+    const texture = context.createTexture();
+    context.bindTexture(context.TEXTURE_2D, texture);
+    context.texStorage2D(context.TEXTURE_2D, levels, context.RGBA16F, width, height);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, levels > 1 ? context.LINEAR_MIPMAP_LINEAR : context.LINEAR);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, repeatHorizontal ? context.REPEAT : context.CLAMP_TO_EDGE);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+    return texture;
+  }
+
+  uploadFloatTexture2D(texture, x, y, width, height, data) {
+    const context = this.context;
+    if (texture) context.bindTexture(context.TEXTURE_2D, texture);
+    context.texSubImage2D(context.TEXTURE_2D, 0, x, y, width, height, context.RGBA, context.FLOAT, data);
+  }
+
+  applyAnisotropy(target, maximum = 16) {
+    const context = this.context;
+    const extension = this.extension('EXT_texture_filter_anisotropic');
+    if (!extension) return;
+    this.maximumAnisotropy ??= context.getParameter(extension.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+    context.texParameterf(target, extension.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(maximum, this.maximumAnisotropy));
+  }
+
+  /** Allocates a 2D texture array (`depth24`, `rgba8`, `srgb8Alpha8`) with optional mip chain, wrapping and anisotropy. */
+  createTextureArray({ width, height, layers, format = 'rgba8', mipmaps = false, wrap = null, linear = false, data = null, unpackRaw = false, anisotropy = 0 }) {
+    const context = this.context;
+    const formats = {
+      depth24: [context.DEPTH_COMPONENT24, context.DEPTH_COMPONENT, context.UNSIGNED_INT],
+      rgba8: [context.RGBA8, context.RGBA, context.UNSIGNED_BYTE],
+      srgb8Alpha8: [context.SRGB8_ALPHA8, context.RGBA, context.UNSIGNED_BYTE],
+    };
+    const spec = formats[format];
+    if (!spec) throw new RangeError(`Unsupported texture array format "${format}". Pass depth24, rgba8 or srgb8Alpha8.`);
+    const [internalFormat, uploadFormat, uploadType] = spec;
+    const texture = context.createTexture();
+    context.bindTexture(context.TEXTURE_2D_ARRAY, texture);
+    if (mipmaps) {
+      const levels = Math.floor(Math.log2(Math.max(width, height))) + 1;
+      context.texStorage3D(context.TEXTURE_2D_ARRAY, levels, internalFormat, width, height, layers);
+      if (unpackRaw) {
+        context.pixelStorei(context.UNPACK_FLIP_Y_WEBGL, false);
+        context.pixelStorei(context.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        context.pixelStorei(context.UNPACK_COLORSPACE_CONVERSION_WEBGL, context.NONE);
+      }
+      if (data) context.texSubImage3D(context.TEXTURE_2D_ARRAY, 0, 0, 0, 0, width, height, layers, uploadFormat, uploadType, data);
+      context.generateMipmap(context.TEXTURE_2D_ARRAY);
+    } else {
+      context.texImage3D(context.TEXTURE_2D_ARRAY, 0, internalFormat, width, height, layers, 0, uploadFormat, uploadType, data);
+    }
+    const minFilter = mipmaps ? (linear ? context.LINEAR_MIPMAP_LINEAR : context.NEAREST_MIPMAP_NEAREST) : (linear ? context.LINEAR : context.NEAREST);
+    const magFilter = linear ? context.LINEAR : context.NEAREST;
+    if (wrap) {
+      const wrapMode = wrap === 'repeat' ? context.REPEAT : context.CLAMP_TO_EDGE;
+      context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_WRAP_S, wrapMode);
+      context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_WRAP_T, wrapMode);
+    }
+    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_MIN_FILTER, minFilter);
+    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_MAG_FILTER, magFilter);
+    if (anisotropy > 0) this.applyAnisotropy(context.TEXTURE_2D_ARRAY, anisotropy);
+    return texture;
+  }
+
+  createFramebuffer() {
+    return this.context.createFramebuffer();
+  }
+
+  beginDepthOnlyPass(framebuffer, width, height) {
+    const context = this.context;
+    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
+    context.drawBuffers([context.NONE]);
+    context.readBuffer(context.NONE);
+    context.viewport(0, 0, width, height);
+    context.enable(context.DEPTH_TEST);
+    context.enable(context.CULL_FACE);
+  }
+
+  bindDepthTextureLayer(texture, layer, clear = true) {
+    const context = this.context;
+    context.framebufferTextureLayer(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, texture, 0, layer);
+    if (clear) context.clear(context.DEPTH_BUFFER_BIT);
+  }
+
+  setFullscreenState() {
+    const context = this.context;
+    context.disable(context.DEPTH_TEST);
+    context.disable(context.CULL_FACE);
+    context.disable(context.BLEND);
+    context.disable(context.SCISSOR_TEST);
+    context.bindVertexArray(null);
+  }
+
+  beginFullscreenPass(framebuffer, width, height, program = null) {
+    const context = this.context;
+    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
+    context.viewport(0, 0, width, height);
+    context.disable(context.DEPTH_TEST);
+    context.disable(context.CULL_FACE);
+    context.bindVertexArray(null);
+    if (program) context.useProgram(program);
+  }
+
+  drawFullscreenTriangles() {
+    this.context.drawArrays(this.context.TRIANGLES, 0, 3);
+  }
+
+  drawIntoTextureLevel(framebuffer, texture, level, width, height, errorMessage = 'Framebuffer is incomplete.') {
+    const context = this.context;
+    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
+    context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, level);
+    if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error(errorMessage);
+    context.viewport(0, 0, width, height);
+    this.drawFullscreenTriangles();
+  }
+
+  finish() {
+    this.context.finish();
   }
 }
