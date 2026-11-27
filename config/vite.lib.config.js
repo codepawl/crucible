@@ -112,6 +112,7 @@ export default defineConfig({
         'retro-shader': 'src/retro-shader.js',
         'glitter-shader': 'src/glitter-shader.js',
         'height-parallax-shader': 'src/height-parallax-shader.js',
+        'detail-normal-shader': 'src/detail-normal-shader.js',
         'surface-cover': 'src/surface-cover.js',
         'light-linking': 'src/light-linking.js',
         'cascaded-shadows': 'src/cascaded-shadows.js',
