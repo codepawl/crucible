@@ -118,8 +118,31 @@ body.site .icon { width: 18px; height: 18px; margin: 0; flex: none; }
 }
 .site :is(.code-block, .live-example, .command-row) button { border-color: color-mix(in srgb, var(--code-fg) 45%, var(--code-bg)); color: var(--code-fg); }
 
-body.site > main { flex: 1; width: var(--page); margin-inline: auto; padding-block: 28px 0; display: grid; gap: 64px; align-content: start; }
+body.site > main { flex: 1; width: var(--page); margin-inline: auto; padding-block: 32px 64px; display: grid; gap: 36px; align-content: start; }
 body.site > main > section { scroll-margin-top: calc(var(--nav-height) + 24px); }
+
+.site .page-hero { display: grid; gap: 10px; align-content: start; }
+.site .page-hero h1 { font-size: clamp(32px, 4.2vw, 48px); line-height: 1.06; }
+.site .page-hero .page-lede { max-width: 68ch; color: var(--muted); font-size: 15.5px; line-height: 1.5; margin: 0; }
+
+.site .site-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: var(--control-height);
+  padding: 6px 14px;
+  border: var(--edge-width) solid var(--edge);
+  border-radius: var(--round);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--site-motion-quick) var(--site-ease-out);
+}
+.site .site-action-button:hover { background: var(--tint-strong); text-decoration: none; }
 
 .site .command-row { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; border-radius: var(--panel-radius); }
 .site .command-row code { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-size: 13px; line-height: 1.6; }
@@ -134,10 +157,10 @@ body.site > main > section { scroll-margin-top: calc(var(--nav-height) + 24px); 
 .site .package-logo-bun { mask-image: url('/logos/bun.svg'); }
 .site .package-logo-github { mask-image: url('/logos/github.svg'); }
 
-.site .section-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; }
-.site .section-heading a { color: var(--muted); font-size: 15px; }
-.site .section-heading a:hover { color: var(--text); text-decoration: underline; }
-.site .section-heading-links { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.site .section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; }
+.site .section-heading a:not(.site-action-button) { color: var(--muted); font-size: 15px; }
+.site .section-heading a:not(.site-action-button):hover { color: var(--text); text-decoration: underline; }
+.site .section-heading-links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 
 /* Docs and changelog: the reading page keeps its own layout (documentation.css). */
 .documentation.site { --container: 1320px; --page: min(var(--container), calc(100% - var(--side-left) - var(--side-right))); }
@@ -149,7 +172,7 @@ body.site > main > section { scroll-margin-top: calc(var(--nav-height) + 24px); 
 .site .docs-search input { width: 100%; color: var(--text); font: inherit; }
 
 @media (max-width: 760px) {
-  body.site > main { gap: 48px; }
+  body.site > main { padding-block: 24px 48px; gap: 28px; }
 }
 
 /* One Copy button everywhere: the same size on the marketplace's command rows, checksum row and install steps. */

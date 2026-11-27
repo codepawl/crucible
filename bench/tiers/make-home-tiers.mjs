@@ -148,7 +148,7 @@ function renderFootnotes(matrix, figures) {
   const referenceSamples = matrix.referenceSamples ?? REFERENCE_SAMPLES;
   return `      <div class="tier-notes">
         <p class="fine">Six scenes at ${resolution} on RTX 3060 (${measuredDate}). Bars compare Crucible to the slowest scene of each reference.</p>
-        <p class="fine">Error vs Cycles ${referenceSamples} samples (FLIP, lower is closer): draft ${words(draft.glazeFlip, trimmed)} (EEVEE ${words(draft.blenderFlip, trimmed)}), realtime ${words(realtime.glazeFlip, trimmed)} (EEVEE ${words(realtime.blenderFlip, trimmed)}). Cook native takes ${words(noise, twoDigits)}x Cycles time for equal noise on ${reachedText} scenes${notReached} and uses optional @codepawlhq/cook. EEVEE times are one whole render call (scene sync, ray tracing off, no GI). <a href="/tiers.html">Full tier breakdown</a>, <a href="https://github.com/codepawl/crucible/blob/main/bench/tiers/results/matrix-960.table.md">raw matrix</a>.</p>
+        <p class="fine">Error vs Cycles ${referenceSamples} samples (FLIP, lower is closer): draft ${words(draft.glazeFlip, trimmed)} (EEVEE ${words(draft.blenderFlip, trimmed)}), realtime ${words(realtime.glazeFlip, trimmed)} (EEVEE ${words(realtime.blenderFlip, trimmed)}). Cook native takes ${words(noise, twoDigits)}x Cycles time for equal noise on ${reachedText} scenes${notReached} and uses optional @codepawlhq/cook. EEVEE times are one whole render call (scene sync, ray tracing off, no GI). <a href="/benchmark.html">Full tier breakdown</a>, <a href="https://github.com/codepawl/crucible/blob/main/bench/tiers/results/matrix-960.table.md">raw matrix</a>.</p>
       </div>`;
 }
 

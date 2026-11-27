@@ -1,12 +1,8 @@
 /* The marketplace page: packs and community addons on npm. */
-body.marketplace > main { gap: 40px; }
 .marketplace main > section { display: grid; gap: 16px; }
-.market-hero { display: grid; gap: 14px; }
-.market-hero h1 { font-size: clamp(32px, 4.4vw, 48px); }
-.market-lede { color: var(--muted); font-size: 16px; max-width: 74ch; }
 .marketplace .market-builtin-link { white-space: nowrap; color: var(--text); text-decoration: underline; text-underline-offset: 4px; font-weight: 500; }
 .marketplace .market-builtin-link:hover { color: var(--accent); }
-.market-jumps { display: flex; flex-wrap: wrap; gap: 8px; }
+.market-jumps { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .market-jump { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 6px 12px; border: var(--edge-width) solid var(--edge); border-radius: var(--chip-round); background: var(--bg); color: var(--text); font-size: 13px; font-weight: 500; }
 .market-jump:hover { background: var(--tint-strong); }
 .market-jump-count { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }

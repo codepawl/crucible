@@ -94,8 +94,10 @@ export function renderRecipePage(recipe) {
   const before = beforeSource(recipe.slug);
   const blocks = [codeBlock({ id: 'scene-code', heading: 'Scene code', source: recipeSource(recipe.slug) })];
   if (before) blocks.push(codeBlock({ id: 'before-code', heading: `Merge into the environment for “${recipe.frames[0].label}”`, source: before }));
-  const body = `      <p class="recipe-back"><a href="/recipes.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>Recipes</a></p>
-      <h1>${escapeHtml(recipe.title)}</h1>
+  const body = `      <header class="page-hero">
+        <p class="recipe-back"><a href="/recipes.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>Recipes</a></p>
+        <h1>${escapeHtml(recipe.title)}</h1>
+      </header>
 ${mediaSection(recipe)}
       <div class="recipe-why">${whyLines}</div>
 ${blocks.join('\n')}
@@ -109,8 +111,10 @@ export function renderIndexPage() {
           <h2>${escapeHtml(recipe.title)}</h2>
           <p>${escapeHtml(recipe.summary)}</p>
         </a>`).join('\n');
-  const body = `      <h1>Recipes</h1>
-      <p class="lede">Short scene blueprints rendered by Crucible. Scrub before and after, inspect the JSON, or drop it into <code>scene_create</code>.</p>
+  const body = `      <header class="page-hero">
+        <h1>Recipes</h1>
+        <p class="page-lede lede">Short scene blueprints rendered by Crucible. Scrub before and after, inspect the JSON, or drop it into <code>scene_create</code>.</p>
+      </header>
       <div class="recipe-list">
 ${cards}
       </div>`;
