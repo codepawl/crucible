@@ -3,6 +3,7 @@ import './brand-fonts.css';
 import './site-chrome.css';
 import './landing.css';
 import { highlightElement } from './code-highlight.js';
+import { observeCodeBlocks } from './site-code.js';
 import { beatIndexAt, prefersStillStory } from './landing-story.js';
 
 const PACKAGE_COMMANDS = { npm: 'npm install', pnpm: 'pnpm add', yarn: 'yarn add', bun: 'bun add' };
@@ -97,8 +98,7 @@ async function copyText(button) {
   setTimeout(() => button.classList.remove('copied'), 1400);
 }
 for (const button of document.querySelectorAll('.copy')) button.addEventListener('click', () => copyText(button));
-document.querySelectorAll('.command code').forEach((element) => highlightElement(element, 'shell'));
-document.querySelectorAll('#code .code-block').forEach((element) => highlightElement(element, 'javascript'));
+observeCodeBlocks(page);
 
 // ---- Photos: each starts as a 1-bit ordered dither of its own pixels and develops into the full render when it scrolls in ----
 
@@ -172,10 +172,8 @@ const beats = [...document.querySelectorAll('.beat')];
 const heroBeat = beats[0];
 const calloutNotes = [...document.querySelectorAll('.callout')];
 const leader = document.getElementById('leader');
-const ladder = document.getElementById('ladder');
 const cue = document.getElementById('cue');
 const canvas = document.getElementById('foundry');
-const readoutFields = { fill: document.getElementById('hud-fill'), heat: document.getElementById('hud-heat') };
 
 let foundry = null;
 let easeUnit = null;
@@ -190,12 +188,6 @@ let plainView = false;
 function jumpTo(progress) {
   const travel = story.offsetHeight - window.innerHeight;
   window.scrollTo({ top: window.scrollY + story.getBoundingClientRect().top + travel * progress, behavior: reducedMotion ? 'auto' : 'smooth' });
-}
-if (ladder) {
-  ladder.addEventListener('click', (event) => {
-    const step = event.target.closest('button[data-jump]');
-    if (step) jumpTo(Number(step.dataset.jump));
-  });
 }
 if (cue) {
   cue.addEventListener('click', (event) => {
@@ -279,18 +271,6 @@ function showBeat(progress) {
   if (beatIndex === activeBeat) return;
   activeBeat = beatIndex;
   beats.forEach((beat, index) => beat.classList.toggle('on', index === beatIndex));
-  if (ladder) {
-    [...ladder.children].forEach((step, index) => {
-      step.classList.toggle('on', index === beatIndex);
-      step.classList.toggle('done', index < beatIndex);
-    });
-  }
-}
-
-function showReadout() {
-  const readout = foundry.readout();
-  readoutFields.fill.textContent = `${readout.fillPercent}%`;
-  readoutFields.heat.textContent = `${readout.temperature}°C`;
 }
 
 function drawAt(progress, seconds) {
@@ -300,7 +280,6 @@ function drawAt(progress, seconds) {
   foundry.set({ heroAmount: fadeHero(progress), region: narrowScreen.matches ? HERO_REGION_TALL : HERO_REGION_WIDE });
   foundry.draw();
   placeCallout(progress);
-  showReadout();
 }
 
 function readScroll() {

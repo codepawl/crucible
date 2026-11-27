@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AXIS_COLORS, GRID_PART_PREFIX, axisWidgetEnds, buildGridParts, cameraVisibleHeight, describeBounds, describeCamera, describeGridStep, gridLayout, placeGridParts, viewportClipPlanes, viewportFloorPart } from '../src/studio-viewport-aids.js';
+import { AXIS_COLORS, GRID_PART_PREFIX, axisWidgetEnds, buildGridParts, cameraVisibleHeight, describeBounds, describeCamera, describeGridStep, gridLayout, placeGridParts, viewportClipPlanes, viewportFloorPart, viewportGridLayout } from '../src/studio-viewport-aids.js';
 
 test('buildGridParts makes textured quads whose cells tile a one-texel line, and two axis strips', () => {
   const parts = buildGridParts();
@@ -98,6 +98,32 @@ test('gridLayout grows its step tenfold as the view widens, keeps lines about a 
   assert.equal(cameraVisibleHeight({ projection: 'orthographic', orthoScale: 8 }), 8);
   assert.ok(Math.abs(cameraVisibleHeight({ eye: [0, 0, 10], target: [0, 0, 0], fov: 90 }) - 20) < 1e-9);
   assert.ok(Math.abs(cameraVisibleHeight({ eye: [0, 0, 10], target: [0, 0, 0], focalLength: 24 }) - 10) < 1e-9);
+});
+
+test('a view straight along X or Z stands the grid up behind the target, facing the camera, with the floor axis across it', () => {
+  const matrixOf = entry => {
+    const matrix = new Float32Array(16);
+    placeGridParts(new Map([[entry.id, { matrix, material: {} }]]), { sheets: [entry], lines: [] });
+    return matrix;
+  };
+  const shownSheet = layout => layout.sheets.find(sheet => sheet.opacity > 0);
+  const front = viewportGridLayout({ eye: [0.4, 1, 6], target: [0.4, 1, 0], fov: 45 }, 720);
+  const frontSheet = matrixOf(shownSheet(front));
+  assert.ok(Math.abs(frontSheet[14] + 6) < 1e-9, 'the front grid stands one view distance behind the target');
+  assert.equal(frontSheet[6], 1, 'and faces along Z');
+  assert.ok(frontSheet[0] > 0 && frontSheet[9] > 0, 'its cells run along X and up Y');
+  const frontAxes = front.lines.filter(line => line.translation[1] !== -1e5);
+  assert.deepEqual(frontAxes.map(line => line.id), [`${GRID_PART_PREFIX}axis-x`], 'the red X axis runs across the front view');
+  assert.ok(frontAxes[0].translation[1] > 0.019 && frontAxes[0].translation[1] < 0.05, 'just above the floor');
+  assert.ok(frontAxes[0].translation[2] > -6, 'in front of the sheets');
+  const right = viewportGridLayout({ eye: [8, 0.5, 0], target: [0, 0.5, 0], projection: 'orthographic', orthoScale: 4 }, 720);
+  const rightSheet = matrixOf(shownSheet(right));
+  assert.ok(Math.abs(rightSheet[12] + 8) < 1e-9, 'the right view stands it behind the target on X');
+  assert.equal(right.step, viewportGridLayout({ eye: [0, 5, 0.01], target: [0, 0, 0], projection: 'orthographic', orthoScale: 4 }, 720).step, 'orthographic steps match the floor');
+  assert.deepEqual(right.lines.filter(line => line.translation[1] !== -1e5).map(line => line.id), [`${GRID_PART_PREFIX}axis-z`], 'the blue Z axis runs across the right view');
+  const tilted = viewportGridLayout({ eye: [0, 3, 6], target: [0, 0, 0], fov: 45 }, 720);
+  assert.ok(tilted.sheets.every(sheet => sheet.basis === undefined), 'a tilted view keeps the grid on the floor');
+  assert.deepEqual(tilted, gridLayout({ visibleHeight: cameraVisibleHeight({ eye: [0, 3, 6], target: [0, 0, 0], fov: 45 }), viewportHeight: 720, target: [0, 0, 0], eye: [0, 3, 6] }));
 });
 
 test('the viewport planes follow the camera out, and its floor reaches past them', () => {

@@ -57,45 +57,59 @@ function validateLassoPoints(lasso, where) {
   if (badIndex >= 0) throw fixtureError(`${where} lasso point ${badIndex + 1} must be [x, y], two numbers from 0 to ${ASK_USER_FIXTURE_LIMITS.maxPixel}.`);
 }
 
+function validateViaMarks(candidate, where) {
+  try {
+    const [validated] = validateMarks([candidate], { width: ASK_USER_FIXTURE_LIMITS.maxPixel, height: ASK_USER_FIXTURE_LIMITS.maxPixel });
+    return validated;
+  } catch (error) {
+    throw fixtureError(`${where} ${error.message.replace(/^The annotate marks are invalid: mark 1 /, '')}`);
+  }
+}
+
 function validateFixtureMark(mark, index, name) {
   const where = `${name} mark ${index + 1}`;
   if (!mark || typeof mark !== 'object' || Array.isArray(mark)) throw fixtureError(`${where} must be an object with pixel and note.`);
-  const { pixel, lasso, color, hex, view, note = '', motionTime } = mark;
+  const { pixel, lasso, color, hex, view, deltaPosition, deltaRotation, scaleFactor, note = '', motionTime, time } = mark;
   const hasColor = color !== undefined || hex !== undefined;
-  if (view !== undefined && (pixel !== undefined || lasso !== undefined || hasColor)) {
-    throw fixtureError(`${where} cannot combine view with pixel, lasso or color.`);
+  const hasTransform = deltaPosition !== undefined || deltaRotation !== undefined || scaleFactor !== undefined;
+  if (view !== undefined && (pixel !== undefined || lasso !== undefined || hasColor || hasTransform)) {
+    throw fixtureError(`${where} cannot combine view with pixel, lasso, color or transform.`);
   }
   if (pixel !== undefined && lasso !== undefined) throw fixtureError(`${where} has both pixel and lasso. Keep one of them.`);
-  if (lasso !== undefined && hasColor) throw fixtureError(`${where} cannot combine lasso with color.`);
+  if (lasso !== undefined && (hasColor || hasTransform)) throw fixtureError(`${where} cannot combine lasso with color or transform.`);
+  if (hasColor && hasTransform) throw fixtureError(`${where} cannot combine color with transform.`);
   if (typeof note !== 'string' || note.length > ANNOTATE_LIMITS.maxNoteLength) {
     throw fixtureError(`${where} note must be text of at most ${ANNOTATE_LIMITS.maxNoteLength} characters.`);
   }
   if (motionTime !== undefined && !(Number.isFinite(motionTime) && motionTime >= 0 && motionTime <= ASK_USER_FIXTURE_LIMITS.maxMotionTime)) {
     throw fixtureError(`${where} motionTime must be a number of seconds from 0 to ${ASK_USER_FIXTURE_LIMITS.maxMotionTime}.`);
   }
+  const timeField = time !== undefined ? { time } : {};
   if (view !== undefined) {
-    try {
-      const [validated] = validateMarks([{ kind: 'view', camera: view, note }], { width: ASK_USER_FIXTURE_LIMITS.maxPixel, height: ASK_USER_FIXTURE_LIMITS.maxPixel });
-      return validated;
-    } catch (error) {
-      throw fixtureError(`${where} ${error.message.replace(/^The annotate marks are invalid: mark 1 /, '')}`);
-    }
+    return validateViaMarks({ kind: 'view', camera: view, note, ...timeField }, where);
   }
   if (lasso !== undefined) {
     validateLassoPoints(lasso, where);
-    return { kind: 'lasso', points: lasso, note };
+    return time !== undefined ? validateViaMarks({ kind: 'lasso', points: lasso, note, time }, where) : { kind: 'lasso', points: lasso, note };
   }
   validatePixel(pixel, where);
   if (hasColor) {
-    try {
-      const [validated] = validateMarks([{ kind: 'color', x: pixel[0], y: pixel[1], ...(color !== undefined ? { color } : {}), ...(hex !== undefined ? { hex } : {}), note }], { width: ASK_USER_FIXTURE_LIMITS.maxPixel, height: ASK_USER_FIXTURE_LIMITS.maxPixel });
-      return validated;
-    } catch (error) {
-      throw fixtureError(`${where} ${error.message.replace(/^The annotate marks are invalid: mark 1 /, '')}`);
-    }
+    return validateViaMarks({ kind: 'color', x: pixel[0], y: pixel[1], ...(color !== undefined ? { color } : {}), ...(hex !== undefined ? { hex } : {}), note, ...timeField }, where);
   }
-  // Marks of the browser flow are { x, y, note }, { kind: 'lasso', points, note }, { kind: 'color', x, y, color, hex, note } or { kind: 'view', camera, note }; motionTime is checked and then ignored, the pick is of the still frame.
-  return { x: pixel[0], y: pixel[1], note };
+  if (hasTransform) {
+    return validateViaMarks({
+      kind: 'transform',
+      x: pixel[0],
+      y: pixel[1],
+      ...(deltaPosition !== undefined ? { deltaPosition } : {}),
+      ...(deltaRotation !== undefined ? { deltaRotation } : {}),
+      ...(scaleFactor !== undefined ? { scaleFactor } : {}),
+      note,
+      ...timeField,
+    }, where);
+  }
+  // Marks of the browser flow are { x, y, note }, { kind: 'lasso', points, note }, { kind: 'color', x, y, color, hex, note }, { kind: 'view', camera, note } or { kind: 'transform', x, y, ..., note } (with optional time); motionTime is checked and then ignored, the pick is of the still frame.
+  return time !== undefined ? validateViaMarks({ x: pixel[0], y: pixel[1], note, time }, where) : { x: pixel[0], y: pixel[1], note };
 }
 
 /**

@@ -1,6 +1,6 @@
 import { createImage } from './material-texture-kit.js';
 import { invalidField } from './field-error.js';
-import { HEIGHT_PARALLAX_FIELDS, HEIGHT_PARALLAX_LIMITS, NORMAL_CONVENTIONS, TEXTURE_MAP_FIELDS, UV_TRANSFORM_FIELDS, UV_TRANSFORM_LIMITS } from './texture-set-fields.js';
+import { DETAIL_NORMAL_FIELDS, DETAIL_NORMAL_LIMITS, HEIGHT_PARALLAX_FIELDS, HEIGHT_PARALLAX_LIMITS, NORMAL_CONVENTIONS, TEXTURE_MAP_FIELDS, UV_TRANSFORM_FIELDS, UV_TRANSFORM_LIMITS } from './texture-set-fields.js';
 
 // Scanned PBR maps on a recipe material: `colorMap`, `normalMap`, `roughnessMap`, `metallicMap`, `occlusionMap` and `heightMap`
 // each take a catalog image asset ID (the MCP server turns `textureSet: "<name>"` into those IDs before the scene is built).
@@ -13,7 +13,7 @@ const BYTES_PER_PIXEL = 4;
 /** The catalog image IDs a material (a recipe material, or any object with the map fields) names, in field order. */
 export function textureMapIds(material) {
   const ids = [];
-  for (const field of TEXTURE_MAP_FIELDS) {
+  for (const field of [...TEXTURE_MAP_FIELDS, 'detailNormalMap']) {
     const id = material?.[field];
     if (typeof id === 'string' && ASSET_ID.test(id.toLowerCase())) ids.push(id.toLowerCase());
   }
@@ -22,7 +22,7 @@ export function textureMapIds(material) {
 
 /** Whether a recipe material uses any of the catalog map fields. */
 export function usesTextureMaps(material) {
-  return TEXTURE_MAP_FIELDS.some(field => material?.[field] !== undefined) || material?.textureSet !== undefined;
+  return TEXTURE_MAP_FIELDS.some(field => material?.[field] !== undefined) || material?.detailNormalMap !== undefined || material?.textureSet !== undefined;
 }
 
 /**
@@ -34,11 +34,13 @@ export function applyTextureMaps(value, result) {
     throw invalidField('textureSet', value.textureSet, 'a recipe with the maps already filled in: the MCP server swaps textureSet for the catalog image IDs of its maps, so a library caller passes colorMap, normalMap, roughnessMap, metallicMap, occlusionMap and heightMap itself');
   }
   const used = TEXTURE_MAP_FIELDS.filter(field => value[field] !== undefined);
-  applyUvTransform(value, result, used.length > 0 || value.map !== undefined);
+  applyUvTransform(value, result, used.length > 0 || value.map !== undefined || value.detailNormalMap !== undefined);
   const usesParallax = HEIGHT_PARALLAX_FIELDS.some(field => value[field] !== undefined);
-  if (used.length === 0 && value.normalConvention === undefined && !usesParallax) return;
-  if (result.tag !== 'surface') throw invalidField(used[0] ?? 'normalConvention', value[used[0]], 'a material with the surface tag; remove the map fields or use the surface tag');
-  if (value.pattern !== undefined) throw invalidField(used[0] ?? 'normalConvention', value[used[0]], 'nothing, because a material takes a pattern or catalog maps, not both', TypeError);
+  const usesDetailNormal = DETAIL_NORMAL_FIELDS.some(field => value[field] !== undefined);
+  if (used.length === 0 && value.normalConvention === undefined && !usesParallax && !usesDetailNormal) return;
+  const firstField = used[0] ?? (usesDetailNormal ? DETAIL_NORMAL_FIELDS.find(field => value[field] !== undefined) : 'normalConvention');
+  if (result.tag !== 'surface') throw invalidField(firstField, value[firstField], 'a material with the surface tag; remove the map fields or use the surface tag');
+  if (value.pattern !== undefined) throw invalidField(firstField, value[firstField], 'nothing, because a material takes a pattern or catalog maps, not both', TypeError);
   if (value.colorMap !== undefined && value.map !== undefined) throw invalidField('colorMap', value.colorMap, 'nothing, because the colour map is either a map sequence or a catalog colorMap, not both', TypeError);
   for (const field of used) {
     const id = value[field];
@@ -53,6 +55,7 @@ export function applyTextureMaps(value, result) {
     result.normalConvention = value.normalConvention;
   }
   if (usesParallax) applyHeightParallax(value, result);
+  if (usesDetailNormal) applyDetailNormal(value, result);
 }
 
 const HEIGHT_EXAMPLES = Object.freeze({ heightScale: '0.02 (2 cm deep)', heightFade: '12 (metres)', heightSteps: '16' });
@@ -67,6 +70,63 @@ function applyHeightParallax(value, result) {
     result.heightSteps = checkedNumber('heightSteps', value.heightSteps, HEIGHT_PARALLAX_LIMITS.steps, HEIGHT_EXAMPLES.heightSteps);
   }
   if (value.heightMap === undefined) throw invalidField(named, value[named], 'a material that sets heightMap; add the height map, or remove the parallax fields');
+}
+
+function checkedPositiveScale(field, value, maximum, example) {
+  if (typeof value !== 'number') throw invalidField(field, value, `a positive number up to ${maximum}, such as ${example}`, TypeError);
+  if (!Number.isFinite(value) || value <= 0 || value > maximum) {
+    throw invalidField(field, value, `a positive number up to ${maximum}, such as ${example}`);
+  }
+  return value;
+}
+
+function checkedFiniteFloat(field, value, example) {
+  if (typeof value !== 'number') throw invalidField(field, value, `a finite number, such as ${example}`, TypeError);
+  if (!Number.isFinite(value) || !Number.isFinite(Math.fround(value))) {
+    throw invalidField(field, value, `a finite float, such as ${example}`);
+  }
+  return value;
+}
+
+function applyDetailNormal(value, result) {
+  if (value.detailNormalScale !== undefined) {
+    const scale = value.detailNormalScale;
+    if (typeof scale === 'number') {
+      const checked = checkedFiniteFloat('detailNormalScale', scale, 1);
+      result.detailNormalScale = [checked, checked];
+    } else if (Array.isArray(scale) && scale.length === 2) {
+      result.detailNormalScale = scale.map((component, index) => checkedFiniteFloat(`detailNormalScale[${index}]`, component, 1));
+    } else {
+      throw invalidField('detailNormalScale', scale, 'a finite number or [scaleX, scaleY] array, such as [1, 1]', TypeError);
+    }
+  }
+  if (value.detailUvScale !== undefined) {
+    const maximum = DETAIL_NORMAL_LIMITS.uvScale[1];
+    const uvScale = value.detailUvScale;
+    if (typeof uvScale === 'number') {
+      const checked = checkedPositiveScale('detailUvScale', uvScale, maximum, 8);
+      result.detailUvScale = [checked, checked];
+    } else if (Array.isArray(uvScale) && uvScale.length === 2) {
+      result.detailUvScale = uvScale.map((component, index) => checkedPositiveScale(`detailUvScale[${index}]`, component, maximum, 8));
+    } else {
+      throw invalidField('detailUvScale', uvScale, `a positive number or [u, v] up to ${maximum}, such as 8`, TypeError);
+    }
+  }
+  if (value.detailRoughnessStrength !== undefined) {
+    if (typeof value.detailRoughnessStrength !== 'number') {
+      throw invalidField('detailRoughnessStrength', value.detailRoughnessStrength, 'a number from 0 to 1, such as 0.45', TypeError);
+    }
+    result.detailRoughnessStrength = checkedNumber('detailRoughnessStrength', value.detailRoughnessStrength, DETAIL_NORMAL_LIMITS.roughnessStrength, 0.45);
+  }
+  if (value.detailNormalMap === undefined) {
+    const named = DETAIL_NORMAL_FIELDS.find(field => value[field] !== undefined);
+    throw invalidField(named, value[named], 'a material that sets detailNormalMap; add detailNormalMap, or remove the detail normal fields');
+  }
+  const id = value.detailNormalMap;
+  if (typeof id !== 'string' || !ASSET_ID.test(id.toLowerCase())) {
+    throw invalidField('detailNormalMap', id, 'the 64 hexadecimal characters of a catalog image asset ID; scene_asset_catalog lists them', TypeError);
+  }
+  result.detailNormalMap = id.toLowerCase();
 }
 
 function sameSize(left, right) {
@@ -127,6 +187,7 @@ export function createTextureMaps(materialId, material, pool) {
   }
   if (material.occlusionMap) textures.occlusionMap = descriptorOf(frameOf('occlusionMap'), 'linear');
   if (material.heightMap) textures.heightMap = descriptorOf(frameOf('heightMap'), 'linear');
+  if (material.detailNormalMap) textures.detailNormalMap = descriptorOf(frameOf('detailNormalMap'), 'linear');
   return textures;
 }
 

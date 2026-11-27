@@ -392,6 +392,25 @@ test('Studio undo groups one slider drag into one step and keeps the camera wher
   controller.dispose();
 });
 
+test('an axis view centres the selection and looks at it straight along the axis', () => {
+  const controller = createStudioController({ scene: createAgentScene(makeStudioRecipe()), viewportWidth: 800, viewportHeight: 600 });
+  controller.selectNode('orb');
+  const bounds = controller.nodeBounds('orb');
+  const centre = bounds.min.map((value, axis) => (value + bounds.max[axis]) / 2);
+  const straightAxes = { front: [0, 1], right: [1, 2], top: null };
+  for (const [view, crossAxes] of Object.entries(straightAxes)) {
+    controller.setCameraViewPreset(view);
+    const { eye, target } = controller.scene.camera;
+    target.forEach((value, axis) => assert.ok(Math.abs(value - centre[axis]) < 1e-3, `${view} view aims at the middle of the orb, not the old target`));
+    for (const axis of crossAxes ?? []) {
+      assert.ok(Math.abs(eye[axis] - target[axis]) < 1e-3, `${view} view looks along its axis with no sideways offset`);
+    }
+    const onScreen = controller.projectWorldPoint(centre);
+    assert.ok(Math.abs(onScreen.x - 400) < 0.5 && Math.abs(onScreen.y - 300) < 0.5, `${view} view puts the orb in the middle of the viewport`);
+  }
+  controller.dispose();
+});
+
 test('Studio undo restores the camera when the undone step was a camera edit', () => {
   const controller = createStudioController({ scene: createAgentScene(makeStudioRecipe()) });
   const eyeBefore = [...controller.scene.camera.eye];

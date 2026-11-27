@@ -1631,7 +1631,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         inlineAsks.set(nonce, { sessionId: input.sessionId, frame, maxMarks, expiresAt: Date.now() + timeoutSeconds * 1000 });
         while (inlineAsks.size > MAXIMUM_INLINE_ASKS) inlineAsks.delete(inlineAsks.keys().next().value);
         return { image: frame.data, viewMeta: { nonce }, content: { sessionId: input.sessionId, outcome: 'pending', revision: frame.metadata.revision,
-          view: annotateViewOf(frame), maxMarks, maxNoteLength: ANNOTATE_LIMITS.maxNoteLength, prompt: input.prompt ?? '',
+          view: annotateViewOf(frame), ...(frame.motion ? { motion: frame.motion } : {}), maxMarks, maxNoteLength: ANNOTATE_LIMITS.maxNoteLength, prompt: input.prompt ?? '',
           message: 'The view is open in the chat for the person. Their marks arrive as a message from them: stop here and do not call scene_ask_user again.' } };
       }
       const askController = new AbortController();
@@ -1639,8 +1639,8 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
       let session;
       try {
         session = await runAnnotateSession({ png: frame.data, width: frame.width, height: frame.height, prompt: input.prompt ?? '',
-          maxMarks, camera: frame.camera, waitMs: timeoutSeconds * 1000, signal: askController.signal,
-          renderView: async viewCamera => (await captureAnnotateFrame(input.sessionId, frame.width, frame.height, input.motionTime, viewCamera)).data,
+          maxMarks, camera: frame.camera, ...(frame.motion ? { motion: frame.motion } : {}), waitMs: timeoutSeconds * 1000, signal: askController.signal,
+          renderView: async (viewCamera, motionTime) => (await captureAnnotateFrame(input.sessionId, frame.width, frame.height, motionTime ?? input.motionTime, viewCamera)).data,
           open: async url => {
             console.error(`Crucible annotate page: ${url}`);
             await openPage(url);

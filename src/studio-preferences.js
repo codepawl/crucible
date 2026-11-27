@@ -3,6 +3,7 @@
 
 import { KEYMAP_PRESET_IDS } from './studio-keymap.js';
 import { normalizeKeyOverrides } from './studio-key-overrides.js';
+import { normalizeMouseOverrides } from './studio-mouse-map.js';
 import { SNAP_TARGET_IDS } from './studio-snapping.js';
 import { STUDIO_LENGTH_UNITS } from './studio-units.js';
 
@@ -105,6 +106,8 @@ export const STUDIO_PREFERENCE_DEFAULTS = Object.freeze({
   numberPadNoticeShown: false,
   // What a person changed in each keymap preset, by preset: { crucible: { 'tool.select': { key: 'v' } } }.
   keyOverrides: Object.freeze({}),
+  // What a person changed in the mouse map, for every preset: { 'undo.back': { button: 1, modifiers: {} } }.
+  mouseOverrides: Object.freeze({}),
   motion: 'system',
   zoomDirection: 'normal',
   setupDone: false,
@@ -136,6 +139,8 @@ export function normalizeStudioPreferences(value) {
       preferences[name] = propertyGroupStatesOf(candidate);
     } else if (name === 'keyOverrides') {
       // Normalized below once `numberPad` has been resolved.
+    } else if (name === 'mouseOverrides') {
+      preferences[name] = normalizeMouseOverrides(candidate);
     } else if (sizeInRange) {
       if (Number.isFinite(candidate)) {
         preferences[name] = sizeInRange(candidate);

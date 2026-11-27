@@ -1,0 +1,2 @@
+- entry:line-art: Adds validation, CPU reference math, and GLSL shader support for `toonRim` and `toonBase` in the lazy toon shader addon.
+- scene:agent-scene+lazy: Loads the lazy `toonRim` and `toonBase` validation and shader code when a recipe uses toon shading.

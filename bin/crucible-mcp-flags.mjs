@@ -25,8 +25,9 @@ export function mcpOptionSummary() {
   return MCP_OPTION_FLAGS.map(flag => `${flag.name} ${flag.value}${flag.note ? ` (${flag.note})` : ''}`).join(', ');
 }
 
-export function mcpHelpText(version) {
+export function mcpHelpText(version, { noPromo = process.env.CRUCIBLE_NO_PROMO === '1' } = {}) {
   const lines = MCP_OPTION_FLAGS.map(flag => `  ${flag.name} ${flag.value}${flag.note ? `  -- ${flag.note}` : ''}`);
+  const promoNote = noPromo ? '' : ' (250 free credits, no card needed)';
   return `crucible-mcp ${version}
 Usage: crucible-mcp [options]
        crucible-mcp --version | --check-update | --help
@@ -36,5 +37,9 @@ ${lines.join('\n')}
 
 Connect an MCP client over stdin/stdout. Chrome starts on the first scene.
 Render jobs require --jobs; MP4 encoding uses FFmpeg on PATH unless --ffmpeg is supplied.
-Documentation: https://crucible.codepawl.com/mcp.md`;
+Documentation: https://crucible.codepawl.com/mcp.md
+
+Built-in headless AI:
+  Run \`crucible auth login\`${promoNote} to sign in.
+  Run \`crucible agent "<prompt>"\` to build or edit scenes from the terminal.`;
 }

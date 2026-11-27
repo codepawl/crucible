@@ -200,3 +200,37 @@
 .documentation #doc-article .api-source { margin-left:auto; font-size:12px; color:var(--muted); }
 .documentation .docs .api-entry pre { padding:6px 0 0; font-size:12.5px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
 .documentation #doc-article .api-entry p { margin:6px 0 0; font-size:13.5px; line-height:1.65; color:var(--muted); }
+
+/* Built-in addons browser under Addons and limits. */
+.docs-addons { display:grid; gap:14px; margin:20px 0 32px; }
+.docs-addons-toolbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px 14px; }
+.docs-addon-areas { display:flex; flex-wrap:wrap; gap:6px; }
+.documentation .docs-addon-chip { min-height:36px; padding:6px 12px; border:var(--edge-width) solid var(--edge); border-radius:var(--chip-round); background:transparent; color:var(--muted); font-size:13px; font-weight:500; }
+.documentation .docs-addon-chip:hover { background:var(--tint); color:var(--text); }
+.documentation .docs-addon-chip[aria-pressed='true'] { background:var(--primary); border-color:var(--primary); color:var(--primary-text); }
+.documentation .docs-addon-chip[aria-pressed='true'] .docs-addon-chip-count { color:inherit; opacity:.78; }
+.docs-addon-chip-count { font-family:var(--mono); font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.documentation .docs-addon-filter { flex:1 1 220px; max-width:280px; min-width:0; min-height:var(--control-height); padding:6px 12px; border-radius:var(--radius); background:var(--bg); color:var(--text); font:inherit; font-size:14px; }
+.documentation #doc-article .docs-addons-count { margin:0; font-size:13px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.docs-addon-list { display:grid; gap:24px; margin-top:4px; }
+.docs-addon-group { display:grid; gap:10px; }
+.docs-addon-group[hidden], .docs-addon-card[hidden] { display:none; }
+.documentation #doc-article .docs-addon-area { display:flex; align-items:baseline; gap:10px; margin:0; font-size:16px; font-weight:600; color:var(--text); }
+.docs-addon-area-count { font-family:var(--mono); font-size:13px; font-weight:400; color:var(--muted); font-variant-numeric:tabular-nums; }
+.docs-addon-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:12px; }
+.docs-addon-card { display:grid; gap:8px; align-content:start; padding:14px; border-radius:var(--panel-radius); background:var(--bg); min-width:0; }
+.docs-addon-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.documentation #doc-article .docs-addon-name { margin:0; font-family:var(--mono); font-size:14px; font-weight:600; overflow-wrap:anywhere; }
+.documentation #doc-article .docs-addon-name a { text-decoration:none; }
+.documentation #doc-article .docs-addon-name a:hover { text-decoration:underline; }
+.documentation .docs-addon-copy { flex:none; min-height:32px; padding:4px 10px; font-size:12px; font-weight:500; background:var(--tint); }
+.documentation .docs-addon-copy:hover { background:var(--tint-strong); }
+.documentation #doc-article .docs-addon-summary { margin:0; color:var(--muted); font-size:13.5px; line-height:1.5; }
+.documentation #doc-article .docs-addon-specifier { display:block; margin-top:auto; padding:0; background:transparent; color:var(--muted); font-size:12px; overflow-wrap:anywhere; user-select:text; }
+.documentation #doc-article .docs-addon-empty { margin:0; padding:14px 16px; border:1px dashed var(--border); border-radius:var(--panel-radius); background:transparent; color:var(--muted); font-size:14px; }
+@media (max-width:640px) {
+  .docs-addon-grid { grid-template-columns:minmax(0, 1fr); }
+  .documentation .docs-addon-filter { max-width:none; width:100%; flex-basis:100%; }
+  .documentation .docs-addon-chip { min-height:40px; }
+  .documentation .docs-addon-copy { min-height:36px; }
+}

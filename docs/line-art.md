@@ -35,6 +35,10 @@ The width is in pixels of the output, so a 480 pixel preview and a 1920 pixel re
 
 `toonEdge` on a material (0 to 2, default 0) picks the edge between two steps: 0 the soft edge, 1 a hard step, 2 a hard step after an ordered Bayer 4 by 4 threshold moves each pixel's light by up to half a step either way, so the edge becomes a pattern of pixels. It needs `toon` above 0.
 
+`toonRim` on a toon material (`{ color, strength, power }`, needs `toon` above 0) adds a sun-side silver lining rim highlight at grazing view angles (`pow(1 - max(dot(normal, viewDirection), 0), power)` gated toward the sun with `smoothstep(-0.15, 0.55, dot(normal, sunDirection))`). `color` is linear RGB from 0 to 4 (default `[1, 1, 1]`), `strength` is 0 to 4 (default 1) and `power` is 0.5 to 12 (default 3). Raster only.
+
+`toonBase` on a toon material (`{ color, strength }`, needs `toon` above 0) softly lifts and tints downward-facing shaded undersides (`smoothstep(0.1, 0.75, -worldNormal.y)`) toward a sky or sea bounce glow without washing out upper lit steps. `color` is linear RGB from 0 to 4 (default `[0.65, 0.82, 1]`) and `strength` is 0 to 2 (default 0.5). Raster only.
+
 ## Lines on some nodes
 
 `nodes` keys are node IDs (a placed asset is one node, however many parts it has). A node it does not name draws as usual.

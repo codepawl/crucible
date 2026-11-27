@@ -798,6 +798,18 @@ void prepareSurface(vec3 normal, vec3 view) {
   surfaceCoatChance = sum > 0.0 ? coatChance / sum : 0.0;
 }
 
+vec3 firstHitAlbedo(vec3 normal, vec3 view, float transmission) {
+  float viewCosine = max(dot(normal, view), 1e-4);
+  float ratio = (hitIor - 1.0) / (hitIor + 1.0);
+  float glassFresnel = schlick(ratio * ratio, viewCosine);
+  vec3 glass = vec3(glassFresnel) + hitColor * (1.0 - glassFresnel);
+  vec3 opaque = vec3(0.0);
+  if (transmission < 1.0) {
+    opaque = surfaceDiffuse + surfaceSpecularWeight * schlickColor(surfaceSpecularNormal, surfaceViewCosine) + vec3(surfaceCoatWeight);
+  }
+  return clamp(opaque * (1.0 - transmission) + glass * transmission, vec3(0.0), vec3(1.0));
+}
+
 float microfacetTerm(float alpha, float viewCosine, float lightCosine, float halfCosine) {
   return ggxDistribution(alpha, halfCosine) * smithMasking(alpha, viewCosine) * smithMasking(alpha, lightCosine) / (4.0 * viewCosine * lightCosine);
 }
@@ -1262,18 +1274,18 @@ void tracePath(vec3 origin, vec3 startDirection, uint pixel, uint sampleIndex, b
       entering = dot(hitNormal, direction) < 0.0;
       normal = entering ? hitNormal : -hitNormal;
       isGlass = hitTransmission > 0.0 && nextRandom() < hitTransmission;
+      needsLights = !isGlass;
+      float albedoTransmission = hitTransmission * (1.0 - hitMetallic);
+      if (needsLights || (!featuresRecorded && albedoTransmission < 1.0)) prepareSurface(normal, -direction);
       if (!featuresRecorded) {
-        featureAlbedo = isGlass ? vec3(1.0) : hitColor;
+        featureAlbedo = firstHitAlbedo(normal, -direction, albedoTransmission);
         featureNormal = normal;
         featureDepth = hitDistance;
         featuresRecorded = true;
       }
       addRadiance(depth, throughput * hitEmission);
-      needsLights = !isGlass;
-      if (needsLights) {
-        prepareSurface(normal, -direction);
-${hasSubsurface ? SUBSURFACE_SPLIT : ''}
-      }
+${hasSubsurface ? `      if (needsLights) {${SUBSURFACE_SPLIT}
+      }` : ''}
     }
     if (needsLights) addLights(depth, normal);
     inMedium = false;

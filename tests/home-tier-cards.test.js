@@ -9,6 +9,9 @@ const homePage = readFileSync(HOME_PAGE_PATH, 'utf8');
 
 test('the tier cards of the home page are what the generator writes from the committed matrix', () => {
   assert.equal(replaceTierCards(homePage, renderTierCards(matrix)), homePage, `site/index.html has tier-card figures that differ from bench/tiers/results/matrix-960.json; run: ${REGENERATE_COMMAND}`);
+  assert.equal((renderTierCards(matrix).match(/data-tier="/g) ?? []).length, 3);
+  assert.ok(!homePage.includes('realtime-high'));
+  assert.ok(!homePage.includes('data-status="planned"'));
 });
 
 test('the figures are the lowest and highest per-scene median over all six scenes', () => {

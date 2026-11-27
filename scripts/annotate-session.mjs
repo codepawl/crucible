@@ -24,22 +24,34 @@ main{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
 .outline{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
 .outline polygon,.outline polyline{fill:rgba(255,90,79,.22);stroke:#ff5a4f;stroke-width:2;stroke-linejoin:round;vector-effect:non-scaling-stroke}
 .outline polyline{fill:none;stroke:#fff}
-.tools{display:flex;gap:6px;flex-wrap:wrap}
-.tool{padding:0 10px;gap:6px;background:#202c33;color:#d6e0e4}
+.tools{display:flex;gap:4px;flex-wrap:nowrap}
+.tool{padding:0 8px;gap:5px;background:#202c33;color:#d6e0e4;font-size:13px;white-space:nowrap}
+.tool svg{width:16px;height:16px}
 .tool-options{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#202c33;padding:8px 10px;border-radius:8px}
 .tool-options[hidden]{display:none}
 .tool-options label{font-size:13px;color:#9db0b8}
+.tf-grid{display:grid;grid-template-columns:46px repeat(3,minmax(0,1fr));gap:6px;align-items:center;width:100%}
+.tf-label{font-size:13px;color:#9db0b8}
+.tf-field{display:flex;align-items:center;gap:4px;background:#26343b;border-radius:6px;padding:0 6px;height:32px;min-width:0}
+.tf-field span{font-size:12px;color:#9db0b8;flex:none}
+.tf-field input[type=number]{width:100%;height:30px;padding:0;background:transparent;min-width:0;font-size:13px}
+.tf-field input[type=number]:focus{outline:none}
+.tf-field:focus-within{outline:2px solid #6fb7ff}
+.tf-reset{height:32px;padding:0 10px;font-size:13px;background:#26343b;justify-content:center}
 input[type=color]{flex:none;width:40px;height:36px;padding:2px;border-radius:6px;background:#26343b;cursor:pointer}
 input[type=number]{flex:none;width:72px;height:36px}
+input[type=range]{flex:1;min-width:90px;height:24px;padding:0;background:transparent;accent-color:#2f7dd1;cursor:pointer}
+input[type=number].time-num{width:68px;height:32px;font-size:13px}
 .color-hex,.view-summary{font-family:ui-monospace,monospace;font-size:12px;color:#9db0b8}
 .pin{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;background:#ff5a4f;color:#fff;font:600 13px/26px system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px #fff;pointer-events:none}
-aside{flex:1 1 300px;max-width:420px;display:flex;flex-direction:column;gap:12px;user-select:none}
-.row{display:flex;gap:8px;align-items:center}
+.pin.transform,.badge.transform{background:#0f766e;color:#fff}
+aside{flex:1 1 340px;max-width:440px;display:flex;flex-direction:column;gap:12px;user-select:none}
+.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .badge{flex:none;width:26px;height:26px;border-radius:50%;background:#ff5a4f;color:#fff;font:600 13px/26px system-ui,sans-serif;text-align:center}
 .badge.view{background:#2f7dd1;color:#fff}
 .row-swatch{flex:none;width:30px;height:36px;padding:2px;border-radius:6px;background:#26343b;cursor:pointer}
-.row-meta{flex:none;font-size:12px;color:#9db0b8;background:#202c33;padding:4px 8px;border-radius:6px}
-input{flex:1;min-width:0;height:36px;border:0;border-radius:6px;background:#26343b;color:inherit;padding:0 10px;font:inherit;user-select:text}
+.row-meta{flex:none;font-size:12px;color:#9db0b8;background:#202c33;padding:4px 7px;border-radius:6px}
+input{flex:1 1 150px;min-width:0;height:36px;border:0;border-radius:6px;background:#26343b;color:inherit;padding:0 10px;font:inherit;user-select:text}
 input:focus{outline:2px solid #6fb7ff}
 button{height:36px;border:0;border-radius:6px;padding:0 14px;font:inherit;color:inherit;background:transparent;cursor:pointer;display:inline-flex;gap:8px;align-items:center}
 button:hover{background:#26343b}
@@ -64,6 +76,7 @@ export function annotateToolbarMarkup() {
 <button class="tool" id="tool-lasso" aria-pressed="false" aria-label="Lasso" title="Lasso: draw around a region"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="icon-fill" d="M12 4C7 4 3 6.5 3 10s4 6 9 6 9-2.5 9-6-4-6-9-6z"/><path d="M9 16c-1 2-1 3.5 1 4"/></svg><span>Lasso</span></button>
 <button class="tool" id="tool-color" aria-pressed="false" aria-label="Color" title="Color: click a part and pick its colour"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="icon-fill" d="M12 3l5.5 6.5a6.5 6.5 0 1 1-11 0L12 3z"/></svg><span>Color</span></button>
 <button class="tool" id="tool-view" aria-pressed="false" aria-label="Save view" title="View: frame the camera and save a view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="icon-fill" fill-rule="evenodd" d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zm8 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg><span>Save view</span></button>
+<button class="tool" id="tool-transform" aria-pressed="false" aria-label="Transform" title="Transform: click a part with move, rotate or scale deltas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="icon-fill" d="M12 2l3 3h-2v6h6V9l3 3-3 3v-2h-6v6h2l-3 3-3-3h2v-6H5v2l-3-3 3-3v2h6V5H9l3-3z"/></svg><span>Transform</span></button>
 </div>
 <div class="tool-options" id="color-options" hidden>
 <label for="color-picker">Target colour</label>
@@ -76,10 +89,31 @@ export function annotateToolbarMarkup() {
 <button type="button" class="primary" id="capture-view">Save view</button>
 <button type="button" id="reset-view">Reset</button>
 <span class="view-summary" id="view-summary"></span>
+</div>
+<div class="tool-options" id="transform-options" hidden>
+<div class="tf-grid">
+<span class="tf-label">Move</span>
+<label class="tf-field"><span>dX</span><input type="number" id="tf-dx" value="0" step="0.1" min="-1000" max="1000" aria-label="Move dX"></label>
+<label class="tf-field"><span>dY</span><input type="number" id="tf-dy" value="0" step="0.1" min="-1000" max="1000" aria-label="Move dY"></label>
+<label class="tf-field"><span>dZ</span><input type="number" id="tf-dz" value="0" step="0.1" min="-1000" max="1000" aria-label="Move dZ"></label>
+<span class="tf-label">Rotate</span>
+<label class="tf-field"><span>rX</span><input type="number" id="tf-rx" value="0" step="5" min="-360" max="360" aria-label="Rotate rX"></label>
+<label class="tf-field"><span>rY</span><input type="number" id="tf-ry" value="0" step="5" min="-360" max="360" aria-label="Rotate rY"></label>
+<label class="tf-field"><span>rZ</span><input type="number" id="tf-rz" value="0" step="5" min="-360" max="360" aria-label="Rotate rZ"></label>
+<span class="tf-label">Scale</span>
+<label class="tf-field"><span>s</span><input type="number" id="tf-s" value="1" step="0.1" min="0.01" max="100" aria-label="Scale s"></label>
+<button type="button" class="tf-reset" id="reset-transform">Reset</button>
+</div>
+</div>
+<div class="tool-options" id="motion-options" hidden>
+<label for="motion-time">Time</label>
+<input type="range" id="motion-scrub" min="0" max="10" step="0.01" value="0" aria-label="Motion time scrubber">
+<input type="number" class="time-num" id="motion-time" min="0" max="3600" step="0.01" value="0" aria-label="Motion time seconds">
+<span class="view-summary" id="motion-duration"></span>
 </div>`;
 }
 
-function pageHtml({ prompt, width, height, maxMarks, maxNoteLength, camera, canRender }) {
+function pageHtml({ prompt, width, height, maxMarks, maxNoteLength, camera, motion, canRender }) {
   const escaped = prompt.replace(/[&<>"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[character]);
   const limits = {
     width,
@@ -91,6 +125,7 @@ function pageHtml({ prompt, width, height, maxMarks, maxNoteLength, camera, canR
     minViewFov: ANNOTATE_LIMITS.minViewFov,
     maxViewFov: ANNOTATE_LIMITS.maxViewFov,
     camera,
+    ...(motion ? { motion } : {}),
     canRender,
   };
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><title>Mark the scene</title><style>${annotateStyle(width)}</style></head><body>
@@ -99,7 +134,7 @@ function pageHtml({ prompt, width, height, maxMarks, maxNoteLength, camera, canR
 <div class="stage" id="stage"><img id="frame" src="frame.png" width="${width}" height="${height}" alt="Rendered scene"></div>
 <aside id="side">
 ${annotateToolbarMarkup()}
-<div class="hint" id="hint">Click the picture to drop a pin, draw with lasso, pick a colour, or frame and save a view.</div>
+<div class="hint" id="hint">Click the picture to drop a pin, draw with lasso, pick a colour, save a view, or set a transform.</div>
 <div id="rows" style="display:flex;flex-direction:column;gap:8px"></div>
 <div class="count" id="count"></div>
 <div class="actions"><button class="primary" id="send">Send</button><button id="cancel">Cancel</button></div>
@@ -128,6 +163,19 @@ const viewFovInput = document.getElementById('view-fov');
 const viewSummary = document.getElementById('view-summary');
 const captureViewButton = document.getElementById('capture-view');
 const resetViewButton = document.getElementById('reset-view');
+const transformOptions = document.getElementById('transform-options');
+const tfDx = document.getElementById('tf-dx');
+const tfDy = document.getElementById('tf-dy');
+const tfDz = document.getElementById('tf-dz');
+const tfRx = document.getElementById('tf-rx');
+const tfRy = document.getElementById('tf-ry');
+const tfRz = document.getElementById('tf-rz');
+const tfS = document.getElementById('tf-s');
+const resetTransformButton = document.getElementById('reset-transform');
+const motionOptions = document.getElementById('motion-options');
+const motionScrub = document.getElementById('motion-scrub');
+const motionTimeInput = document.getElementById('motion-time');
+const motionDuration = document.getElementById('motion-duration');
 const trash = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>';
 const svgNamespace = 'http://www.w3.org/2000/svg';
 const outline = document.createElementNS(svgNamespace, 'svg');
@@ -142,6 +190,9 @@ function cloneCamera(source) {
 function roundVector(vector) {
   return vector.map(component => Math.round(component * 1000) / 1000);
 }
+function roundTime(value) {
+  return Math.round(Math.max(0, Math.min(3600, value)) * 1000) / 1000;
+}
 function camerasMatch(first, second) {
   const sameVector = (left, right) => left.every((component, index) => Math.abs(component - right[index]) < 1e-4);
   return sameVector(first.eye, second.eye) && sameVector(first.target, second.target) && Math.abs(first.fov - second.fov) < 1e-3;
@@ -150,6 +201,8 @@ const initialCamera = cloneCamera(limits.camera);
 let markingCamera = cloneCamera(initialCamera);
 let markingFrameSource = initialFrameSource;
 let viewCamera = cloneCamera(initialCamera);
+const hasMotion = Boolean(limits.motion);
+let activeTime = hasMotion ? roundTime(Number(limits.motion.time) || 0) : 0;
 let previewBlobUrl = null;
 let renderTimer = null;
 let tool = 'pin';
@@ -160,9 +213,22 @@ const toolButtons = {
   lasso: document.getElementById('tool-lasso'),
   color: document.getElementById('tool-color'),
   view: document.getElementById('tool-view'),
+  transform: document.getElementById('tool-transform'),
 };
 function hasPixelMarks() {
   return marks.some(mark => mark.kind !== 'view');
+}
+function syncMotionControls() {
+  if (!hasMotion) {
+    motionOptions.hidden = true;
+    return;
+  }
+  motionOptions.hidden = false;
+  const duration = Number(limits.motion.duration) || 0;
+  motionScrub.max = String(Math.max(0.01, Math.min(3600, duration)));
+  motionScrub.value = String(Math.min(Number(motionScrub.max), activeTime));
+  motionTimeInput.value = String(activeTime);
+  motionDuration.textContent = '/ ' + roundTime(duration) + 's';
 }
 function updateViewReadout() {
   viewFovInput.value = String(Math.round(viewCamera.fov));
@@ -170,14 +236,16 @@ function updateViewReadout() {
   const target = roundVector(viewCamera.target);
   viewSummary.textContent = 'eye [' + eye.join(', ') + '] target [' + target.join(', ') + ']';
 }
-async function renderCameraPreview(camera) {
+async function renderCameraPreview(camera, motionTime) {
   if (!limits.canRender) return;
   try {
-    const response = await fetch('render', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ camera }) });
+    const body = hasMotion ? { camera, motionTime } : { camera };
+    const response = await fetch('render', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!response.ok) return;
     const blob = await response.blob();
     const nextUrl = URL.createObjectURL(blob);
     frame.src = nextUrl;
+    if (camerasMatch(camera, markingCamera)) markingFrameSource = nextUrl;
     if (previewBlobUrl && previewBlobUrl !== markingFrameSource) URL.revokeObjectURL(previewBlobUrl);
     previewBlobUrl = nextUrl;
   } catch (error) {
@@ -187,7 +255,7 @@ async function renderCameraPreview(camera) {
 function scheduleCameraRender() {
   if (!limits.canRender) return;
   clearTimeout(renderTimer);
-  renderTimer = setTimeout(() => renderCameraPreview(viewCamera), 60);
+  renderTimer = setTimeout(() => renderCameraPreview(viewCamera, hasMotion ? activeTime : undefined), 60);
 }
 function chooseTool(name) {
   const previousTool = tool;
@@ -196,6 +264,7 @@ function chooseTool(name) {
   stage.classList.toggle('view', name === 'view');
   colorOptions.hidden = name !== 'color';
   viewOptions.hidden = name !== 'view';
+  transformOptions.hidden = name !== 'transform';
   Object.entries(toolButtons).forEach(([key, button]) => button.setAttribute('aria-pressed', String(key === name)));
   if (previousTool === 'view' && name !== 'view') {
     if (!hasPixelMarks()) {
@@ -213,7 +282,26 @@ toolButtons.pin.addEventListener('click', () => chooseTool('pin'));
 toolButtons.lasso.addEventListener('click', () => chooseTool('lasso'));
 toolButtons.color.addEventListener('click', () => chooseTool('color'));
 toolButtons.view.addEventListener('click', () => chooseTool('view'));
+toolButtons.transform.addEventListener('click', () => chooseTool('transform'));
 colorPicker.addEventListener('input', () => { colorHex.textContent = colorPicker.value.toLowerCase(); });
+resetTransformButton.addEventListener('click', () => {
+  tfDx.value = '0'; tfDy.value = '0'; tfDz.value = '0';
+  tfRx.value = '0'; tfRy.value = '0'; tfRz.value = '0';
+  tfS.value = '1';
+});
+motionScrub.addEventListener('input', () => {
+  const parsed = Number(motionScrub.value);
+  if (!Number.isFinite(parsed)) return;
+  activeTime = roundTime(parsed);
+  motionTimeInput.value = String(activeTime);
+  scheduleCameraRender();
+});
+motionTimeInput.addEventListener('change', () => {
+  const parsed = Number(motionTimeInput.value);
+  if (Number.isFinite(parsed)) activeTime = roundTime(parsed);
+  syncMotionControls();
+  scheduleCameraRender();
+});
 function contrastTextColor(hex) {
   const red = parseInt(hex.slice(1, 3), 16) / 255;
   const green = parseInt(hex.slice(3, 5), 16) / 255;
@@ -272,6 +360,46 @@ function zoomCameraBy(deltaY) {
   const scale = nextDistance / distance;
   viewCamera.eye = [0, 1, 2].map(axis => viewCamera.target[axis] + offset[axis] * scale);
 }
+function transformSummary(mark) {
+  const parts = [];
+  if (mark.deltaPosition) parts.push('d(' + mark.deltaPosition.join(',') + ')');
+  if (mark.deltaRotation) parts.push('r(' + mark.deltaRotation.join(',') + ')');
+  if (mark.scaleFactor !== undefined) parts.push('s' + (Array.isArray(mark.scaleFactor) ? mark.scaleFactor.join(',') : mark.scaleFactor));
+  return parts.join(' ');
+}
+function readTransformInputs() {
+  const pos = [Number(tfDx.value), Number(tfDy.value), Number(tfDz.value)];
+  const rot = [Number(tfRx.value), Number(tfRy.value), Number(tfRz.value)];
+  const scale = Number(tfS.value);
+  if (!pos.every(value => Number.isFinite(value) && value >= -1000 && value <= 1000)) {
+    hint.textContent = 'Move dX, dY, dZ must be numbers from -1000 to 1000.';
+    return null;
+  }
+  if (!rot.every(value => Number.isFinite(value) && value >= -360 && value <= 360)) {
+    hint.textContent = 'Rotate rX, rY, rZ must be degrees from -360 to 360.';
+    return null;
+  }
+  if (!Number.isFinite(scale) || scale <= 0 || scale > 100) {
+    hint.textContent = 'Scale must be greater than 0 and at most 100.';
+    return null;
+  }
+  const cleanPos = roundVector(pos);
+  const cleanRot = roundVector(rot);
+  const cleanScale = Math.round(scale * 1000) / 1000 || scale;
+  const hasMove = cleanPos.some(value => value !== 0);
+  const hasRotate = cleanRot.some(value => value !== 0);
+  const hasScale = cleanScale !== 1;
+  if (!hasMove && !hasRotate && !hasScale) {
+    hint.textContent = 'Set at least one Move, Rotate or Scale value before clicking a part.';
+    tfDx.focus();
+    return null;
+  }
+  return {
+    ...(hasMove ? { deltaPosition: cleanPos } : {}),
+    ...(hasRotate ? { deltaRotation: cleanRot } : {}),
+    ...(hasScale ? { scaleFactor: cleanScale } : {}),
+  };
+}
 function render() {
   stage.querySelectorAll('.pin').forEach(pin => pin.remove());
   outline.textContent = '';
@@ -286,20 +414,22 @@ function render() {
         outline.appendChild(shape);
       }
       const pin = document.createElement('div');
-      pin.className = 'pin';
+      pin.className = mark.kind === 'transform' ? 'pin transform' : 'pin';
       pin.textContent = index + 1;
       pin.style.left = (centre[0] / limits.width * 100) + '%';
       pin.style.top = (centre[1] / limits.height * 100) + '%';
       if (mark.kind === 'color') {
         pin.style.background = mark.hex;
         pin.style.color = contrastTextColor(mark.hex);
+      } else if (mark.kind === 'transform') {
+        pin.title = transformSummary(mark);
       }
       stage.appendChild(pin);
     }
     const row = document.createElement('div');
     row.className = 'row';
     const badge = document.createElement('span');
-    badge.className = mark.kind === 'view' ? 'badge view' : 'badge';
+    badge.className = mark.kind === 'view' ? 'badge view' : (mark.kind === 'transform' ? 'badge transform' : 'badge');
     badge.textContent = index + 1;
     if (mark.kind === 'color') {
       badge.style.background = mark.hex;
@@ -323,11 +453,22 @@ function render() {
       meta.textContent = 'FOV ' + Math.round(mark.camera.fov);
       meta.title = 'eye [' + mark.camera.eye.join(', ') + '] target [' + mark.camera.target.join(', ') + ']';
       row.appendChild(meta);
+    } else if (mark.kind === 'transform') {
+      const meta = document.createElement('span');
+      meta.className = 'row-meta';
+      meta.textContent = transformSummary(mark);
+      row.appendChild(meta);
+    }
+    if (mark.time !== undefined) {
+      const timeTag = document.createElement('span');
+      timeTag.className = 'row-meta';
+      timeTag.textContent = mark.time + 's';
+      row.appendChild(timeTag);
     }
     const input = document.createElement('input');
     input.maxLength = limits.maxNoteLength;
     input.value = mark.note;
-    input.placeholder = mark.kind === 'view' ? 'Why this view?' : (mark.kind === 'color' ? 'Colour note' : 'What should change here?');
+    input.placeholder = mark.kind === 'view' ? 'Why this view?' : (mark.kind === 'color' ? 'Colour note' : (mark.kind === 'transform' ? 'Transform note' : 'What should change here?'));
     input.addEventListener('input', () => { mark.note = input.value; });
     const remove = document.createElement('button');
     remove.className = 'icon';
@@ -358,12 +499,17 @@ function polygonArea(points) {
   return Math.abs(twice) / 2;
 }
 stage.addEventListener('click', event => {
-  if ((tool !== 'pin' && tool !== 'color') || marks.length >= limits.maxMarks) return;
+  if ((tool !== 'pin' && tool !== 'color' && tool !== 'transform') || marks.length >= limits.maxMarks) return;
   const [x, y] = pixelOf(event);
+  const timeField = hasMotion ? { time: activeTime } : {};
   if (tool === 'color') {
-    marks.push({ kind: 'color', x, y, hex: colorPicker.value.toLowerCase(), note: '' });
+    marks.push({ kind: 'color', x, y, hex: colorPicker.value.toLowerCase(), note: '', ...timeField });
+  } else if (tool === 'transform') {
+    const delta = readTransformInputs();
+    if (!delta) return;
+    marks.push({ kind: 'transform', x, y, ...delta, note: '', ...timeField });
   } else {
-    marks.push({ x, y, note: '' });
+    marks.push({ x, y, note: '', ...timeField });
   }
   render();
   marks[marks.length - 1].input.focus();
@@ -412,7 +558,9 @@ function endPointer(event) {
   if (!drawing) return;
   const points = thinned(drawing.points);
   drawing = null;
-  if (points.length >= limits.minLassoPoints && polygonArea(points) >= 1) marks.push({ kind: 'lasso', points, note: '' });
+  if (points.length >= limits.minLassoPoints && polygonArea(points) >= 1) {
+    marks.push({ kind: 'lasso', points, note: '', ...(hasMotion ? { time: activeTime } : {}) });
+  }
   render();
   if (marks.length && marks[marks.length - 1].points === points) marks[marks.length - 1].input.focus();
 }
@@ -439,6 +587,7 @@ captureViewButton.addEventListener('click', () => {
     kind: 'view',
     camera: { eye: roundVector(viewCamera.eye), target: roundVector(viewCamera.target), fov: Math.round(viewCamera.fov * 100) / 100 },
     note: '',
+    ...(hasMotion ? { time: activeTime } : {}),
   });
   render();
   marks[marks.length - 1].input.focus();
@@ -448,18 +597,51 @@ resetViewButton.addEventListener('click', () => {
   updateViewReadout();
   render();
   if (limits.canRender) {
-    frame.src = initialFrameSource;
-    if (!hasPixelMarks()) {
-      markingCamera = cloneCamera(initialCamera);
-      markingFrameSource = initialFrameSource;
+    if (hasMotion) {
+      renderCameraPreview(viewCamera, activeTime);
+    } else {
+      frame.src = initialFrameSource;
+      if (!hasPixelMarks()) {
+        markingCamera = cloneCamera(initialCamera);
+        markingFrameSource = initialFrameSource;
+      }
     }
   }
 });
 function serializeMark(mark) {
-  if (mark.kind === 'lasso') return { kind: 'lasso', points: mark.points, note: mark.note };
-  if (mark.kind === 'color') return { kind: 'color', x: mark.x, y: mark.y, hex: mark.hex, note: mark.note };
-  if (mark.kind === 'view') return { kind: 'view', camera: mark.camera, note: mark.note };
-  return { x: mark.x, y: mark.y, note: mark.note };
+  const timeField = mark.time !== undefined ? { time: mark.time } : {};
+  if (mark.kind === 'lasso') return { kind: 'lasso', points: mark.points, note: mark.note, ...timeField };
+  if (mark.kind === 'color') return { kind: 'color', x: mark.x, y: mark.y, hex: mark.hex, note: mark.note, ...timeField };
+  if (mark.kind === 'view') return { kind: 'view', camera: mark.camera, note: mark.note, ...timeField };
+  if (mark.kind === 'transform') {
+    return {
+      kind: 'transform',
+      x: mark.x,
+      y: mark.y,
+      ...(mark.deltaPosition !== undefined ? { deltaPosition: mark.deltaPosition } : {}),
+      ...(mark.deltaRotation !== undefined ? { deltaRotation: mark.deltaRotation } : {}),
+      ...(mark.scaleFactor !== undefined ? { scaleFactor: mark.scaleFactor } : {}),
+      note: mark.note,
+      ...timeField,
+    };
+  }
+  return { x: mark.x, y: mark.y, note: mark.note, ...timeField };
+}
+function drawPill(context, x, y, text) {
+  context.font = '600 11px system-ui, sans-serif';
+  const width = Math.ceil(context.measureText(text).width) + 12;
+  const height = 18;
+  const left = Math.max(4, Math.min(limits.width - width - 4, x));
+  const top = Math.max(4, Math.min(limits.height - height - 4, y));
+  context.fillStyle = 'rgba(24,33,38,0.88)';
+  context.fillRect(left, top, width, height);
+  context.lineWidth = 1;
+  context.strokeStyle = '#fff';
+  context.strokeRect(left + 0.5, top + 0.5, width - 1, height - 1);
+  context.fillStyle = '#fff';
+  context.textAlign = 'left';
+  context.textBaseline = 'middle';
+  context.fillText(text, left + 6, top + height / 2 + 0.5);
 }
 function markedImage() {
   const canvas = document.createElement('canvas');
@@ -467,9 +649,6 @@ function markedImage() {
   canvas.height = limits.height;
   const context = canvas.getContext('2d');
   context.drawImage(frame, 0, 0, limits.width, limits.height);
-  context.font = '600 15px system-ui, sans-serif';
-  context.textAlign = 'center';
-  context.textBaseline = 'middle';
   marks.forEach(mark => {
     if (mark.points === undefined) return;
     context.beginPath();
@@ -481,18 +660,36 @@ function markedImage() {
     context.strokeStyle = '#ff5a4f';
     context.stroke();
   });
+  let viewBadgeRow = 0;
   marks.forEach((mark, index) => {
-    if (mark.kind === 'view') return;
+    if (mark.kind === 'view') {
+      if (mark.time !== undefined) {
+        drawPill(context, 8, 8 + viewBadgeRow * 22, (index + 1) + ' view ' + mark.time + 's');
+        viewBadgeRow += 1;
+      }
+      return;
+    }
     const [centreX, centreY] = markCentre(mark);
     context.beginPath();
     context.arc(centreX, centreY, 14, 0, Math.PI * 2);
-    context.fillStyle = mark.kind === 'color' ? mark.hex : '#ff5a4f';
+    context.fillStyle = mark.kind === 'color' ? mark.hex : (mark.kind === 'transform' ? '#0f766e' : '#ff5a4f');
     context.fill();
     context.lineWidth = 2;
     context.strokeStyle = '#fff';
     context.stroke();
+    context.font = '600 15px system-ui, sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
     context.fillStyle = mark.kind === 'color' ? contrastTextColor(mark.hex) : '#fff';
     context.fillText(String(index + 1), centreX, centreY + 1);
+    if (mark.kind === 'transform' || mark.time !== undefined) {
+      const parts = [];
+      if (mark.kind === 'transform') parts.push('T ' + transformSummary(mark));
+      if (mark.time !== undefined) parts.push(mark.time + 's');
+      const label = parts.join(' ');
+      const pillX = centreX + 18 + label.length * 6.5 > limits.width - 6 ? centreX - 18 - label.length * 6.5 - 12 : centreX + 18;
+      drawPill(context, pillX, centreY - 9, label);
+    }
   });
   return canvas.toDataURL('image/png').split(',')[1];
 }
@@ -528,6 +725,7 @@ document.getElementById('cancel').addEventListener('click', async () => {
   await post('cancel', {}).catch(() => {});
   finish('stop', 'Cancelled. You can close this tab.');
 });
+syncMotionControls();
 updateViewReadout();
 render();
 })();`;
@@ -552,11 +750,11 @@ function readBody(request) {
 
 /**
  * Serves one annotate page and waits for the person. `open(url)` shows the page (the runtime opens the browser; a test fetches it).
- * `renderView(camera)` optionally re-renders the live scene preview when the person frames a camera in View mode.
+ * `renderView(camera, motionTime)` optionally re-renders the live scene preview when the person frames a camera or scrubs motion time.
  * `signal` ends the wait early with outcome 'aborted'; the server and the timer are released at once.
  * Resolves { outcome: 'sent' | 'cancelled' | 'timeout' | 'aborted', url, marks?, image?, camera? }; a rejected `open` rejects with the page address.
  */
-export async function runAnnotateSession({ png, width, height, prompt = '', maxMarks = ANNOTATE_LIMITS.maxMarks, camera = DEFAULT_CAMERA, renderView, waitMs, open, signal }) {
+export async function runAnnotateSession({ png, width, height, prompt = '', maxMarks = ANNOTATE_LIMITS.maxMarks, camera = DEFAULT_CAMERA, motion, renderView, waitMs, open, signal }) {
   const token = randomBytes(16).toString('hex');
   const base = `/${token}/`;
   const frameBytes = Buffer.from(png, 'base64');
@@ -566,7 +764,7 @@ export async function runAnnotateSession({ png, width, height, prompt = '', maxM
     up: Array.from(camera?.up ?? DEFAULT_CAMERA.up),
     fov: camera?.fov ?? DEFAULT_CAMERA.fov,
   };
-  const html = pageHtml({ prompt, width, height, maxMarks, maxNoteLength: ANNOTATE_LIMITS.maxNoteLength, camera: initialCamera, canRender: typeof renderView === 'function' });
+  const html = pageHtml({ prompt, width, height, maxMarks, maxNoteLength: ANNOTATE_LIMITS.maxNoteLength, camera: initialCamera, motion, canRender: typeof renderView === 'function' });
   let finish;
   const finished = new Promise(resolve => { finish = resolve; });
   const server = createServer(async (request, response) => {
@@ -593,7 +791,14 @@ export async function runAnnotateSession({ png, width, height, prompt = '', maxM
         const body = JSON.parse(await readBody(request));
         if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Expected a JSON object body.');
         const requestedCamera = validateViewCamera(body.camera, 'camera');
-        const renderedPng = await renderView({ ...requestedCamera, up: body.camera.up ?? initialCamera.up });
+        let requestedTime;
+        if (body.motionTime !== undefined) {
+          if (typeof body.motionTime !== 'number' || !Number.isFinite(body.motionTime) || body.motionTime < 0 || body.motionTime > ANNOTATE_LIMITS.maxMotionTime) {
+            throw new TypeError(`motionTime must be a number of seconds from 0 to ${ANNOTATE_LIMITS.maxMotionTime}.`);
+          }
+          requestedTime = Math.round(body.motionTime * 1000) / 1000;
+        }
+        const renderedPng = await renderView({ ...requestedCamera, up: body.camera.up ?? initialCamera.up }, requestedTime);
         response.setHeader('Content-Type', 'image/png');
         response.end(Buffer.from(renderedPng, 'base64'));
       } else if (request.method === 'POST' && route === 'cancel') {

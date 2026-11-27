@@ -23,34 +23,52 @@ const defaultCamera = { eye: [0, 2, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 4
 let limits = null;
 let nonce = null;
 const marks = [];
-const stage = document.getElementById('stage');
-const frame = document.getElementById('frame');
-const rows = document.getElementById('rows');
-const count = document.getElementById('count');
-const hint = document.getElementById('hint');
-const sendButton = document.getElementById('send');
-const colorOptions = document.getElementById('color-options');
-const colorPicker = document.getElementById('color-picker');
-const colorHex = document.getElementById('color-hex');
-const viewOptions = document.getElementById('view-options');
-const viewFovInput = document.getElementById('view-fov');
-const viewSummary = document.getElementById('view-summary');
-const captureViewButton = document.getElementById('capture-view');
-const resetViewButton = document.getElementById('reset-view');
+const byId = id => document.getElementById(id);
+const on = (node, type, listener, options) => node.addEventListener(type, listener, options);
+const make = (name, className, text) => {
+  const node = document.createElement(name);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
+const stage = byId('stage');
+const frame = byId('frame');
+const rows = byId('rows');
+const count = byId('count');
+const hint = byId('hint');
+const sendButton = byId('send');
+const colorOptions = byId('color-options');
+const colorPicker = byId('color-picker');
+const colorHex = byId('color-hex');
+const viewOptions = byId('view-options');
+const viewFovInput = byId('view-fov');
+const viewSummary = byId('view-summary');
+const captureViewButton = byId('capture-view');
+const resetViewButton = byId('reset-view');
+const transformOptions = byId('transform-options');
+const posInputs = ['dx', 'dy', 'dz'].map(axis => byId('tf-' + axis));
+const rotInputs = ['rx', 'ry', 'rz'].map(axis => byId('tf-' + axis));
+const scaleInput = byId('tf-s');
+const resetTransformButton = byId('reset-transform');
+const motionOptions = byId('motion-options');
+const motionScrub = byId('motion-scrub');
+const motionTimeInput = byId('motion-time');
+const motionDuration = byId('motion-duration');
 const trash = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>';
-const outline = document.getElementById('outline');
+const outline = byId('outline');
 const svgNamespace = outline.namespaceURI;
 let tool = 'pin';
 let drawing = null;
 let orbiting = null;
+let hasMotion = false;
+let activeTime = 0;
 let initialCamera = cloneCamera(defaultCamera);
 let viewCamera = cloneCamera(defaultCamera);
-const toolButtons = {
-  pin: document.getElementById('tool-pin'),
-  lasso: document.getElementById('tool-lasso'),
-  color: document.getElementById('tool-color'),
-  view: document.getElementById('tool-view'),
-};
+const toolButtons = {};
+for (const key of ['pin', 'lasso', 'color', 'view', 'transform']) {
+  toolButtons[key] = byId('tool-' + key);
+  on(toolButtons[key], 'click', () => chooseTool(key));
+}
 let nextId = 1;
 const waiting = new Map();
 function post(message) { window.parent.postMessage({ jsonrpc: '2.0', ...message }, '*'); }
@@ -61,7 +79,7 @@ function request(method, params) {
     post({ id, method, params });
   });
 }
-window.addEventListener('message', event => {
+on(window, 'message', event => {
   const message = event.data;
   if (event.source !== window.parent || !message || message.jsonrpc !== '2.0') return;
   if (message.method === 'ui/notifications/tool-result') {
@@ -77,7 +95,6 @@ function textOf(result) {
   const part = (result && result.content || []).find(item => item.type === 'text');
   return part ? part.text : '';
 }
-// The nonce travels in the result _meta, which the host gives the view and not the model.
 function nonceOf(result) {
   const meta = result && result._meta && result._meta["crucible/annotate"];
   return meta && meta.nonce;
@@ -89,6 +106,21 @@ function cloneCamera(source) {
 function roundVector(vector) {
   return vector.map(component => Math.round(component * 1000) / 1000);
 }
+function roundTime(value) {
+  return Math.round(Math.max(0, Math.min(3600, value)) * 1000) / 1000;
+}
+function syncMotionControls() {
+  if (!hasMotion || !limits || !limits.motion) {
+    motionOptions.hidden = true;
+    return;
+  }
+  motionOptions.hidden = false;
+  const duration = Number(limits.motion.duration) || 0;
+  motionScrub.max = String(Math.max(0.01, Math.min(3600, duration)));
+  motionScrub.value = String(Math.min(Number(motionScrub.max), activeTime));
+  motionTimeInput.value = String(activeTime);
+  motionDuration.textContent = '/ ' + roundTime(duration) + 's';
+}
 function updateViewReadout() {
   viewFovInput.value = String(Math.round(viewCamera.fov));
   viewSummary.textContent = 'eye [' + roundVector(viewCamera.eye).join(', ') + '] target [' + roundVector(viewCamera.target).join(', ') + ']';
@@ -99,15 +131,27 @@ function chooseTool(name) {
   stage.classList.toggle('view', name === 'view');
   colorOptions.hidden = name !== 'color';
   viewOptions.hidden = name !== 'view';
+  transformOptions.hidden = name !== 'transform';
   Object.entries(toolButtons).forEach(([key, button]) => button.setAttribute('aria-pressed', String(key === name)));
   updateViewReadout();
   reportSize();
 }
-toolButtons.pin.addEventListener('click', () => chooseTool('pin'));
-toolButtons.lasso.addEventListener('click', () => chooseTool('lasso'));
-toolButtons.color.addEventListener('click', () => chooseTool('color'));
-toolButtons.view.addEventListener('click', () => chooseTool('view'));
-colorPicker.addEventListener('input', () => { colorHex.textContent = colorPicker.value.toLowerCase(); });
+on(colorPicker, 'input', () => { colorHex.textContent = colorPicker.value.toLowerCase(); });
+on(resetTransformButton, 'click', () => {
+  posInputs.concat(rotInputs).forEach(input => { input.value = '0'; });
+  scaleInput.value = '1';
+});
+on(motionScrub, 'input', () => {
+  const parsed = Number(motionScrub.value);
+  if (!Number.isFinite(parsed)) return;
+  activeTime = roundTime(parsed);
+  motionTimeInput.value = String(activeTime);
+});
+on(motionTimeInput, 'change', () => {
+  const parsed = Number(motionTimeInput.value);
+  if (Number.isFinite(parsed)) activeTime = roundTime(parsed);
+  syncMotionControls();
+});
 function contrastTextColor(hex) {
   const red = parseInt(hex.slice(1, 3), 16) / 255;
   const green = parseInt(hex.slice(3, 5), 16) / 255;
@@ -166,6 +210,46 @@ function zoomCameraBy(deltaY) {
   const scale = nextDistance / distance;
   viewCamera.eye = [0, 1, 2].map(axis => viewCamera.target[axis] + offset[axis] * scale);
 }
+function transformSummary(mark) {
+  const parts = [];
+  if (mark.deltaPosition) parts.push('d(' + mark.deltaPosition.join(',') + ')');
+  if (mark.deltaRotation) parts.push('r(' + mark.deltaRotation.join(',') + ')');
+  if (mark.scaleFactor !== undefined) parts.push('s' + (Array.isArray(mark.scaleFactor) ? mark.scaleFactor.join(',') : mark.scaleFactor));
+  return parts.join(' ');
+}
+function readTransformInputs() {
+  const pos = posInputs.map(input => Number(input.value));
+  const rot = rotInputs.map(input => Number(input.value));
+  const scale = Number(scaleInput.value);
+  if (!pos.every(value => Number.isFinite(value) && value >= -1000 && value <= 1000)) {
+    hint.textContent = 'Move dX, dY, dZ must be numbers from -1000 to 1000.';
+    return null;
+  }
+  if (!rot.every(value => Number.isFinite(value) && value >= -360 && value <= 360)) {
+    hint.textContent = 'Rotate rX, rY, rZ must be degrees from -360 to 360.';
+    return null;
+  }
+  if (!Number.isFinite(scale) || scale <= 0 || scale > 100) {
+    hint.textContent = 'Scale must be greater than 0 and at most 100.';
+    return null;
+  }
+  const cleanPos = roundVector(pos);
+  const cleanRot = roundVector(rot);
+  const cleanScale = Math.round(scale * 1000) / 1000 || scale;
+  const hasMove = cleanPos.some(value => value !== 0);
+  const hasRotate = cleanRot.some(value => value !== 0);
+  const hasScale = cleanScale !== 1;
+  if (!hasMove && !hasRotate && !hasScale) {
+    hint.textContent = 'Set at least one Move, Rotate or Scale value before clicking a part.';
+    posInputs[0].focus();
+    return null;
+  }
+  return {
+    ...(hasMove ? { deltaPosition: cleanPos } : {}),
+    ...(hasRotate ? { deltaRotation: cleanRot } : {}),
+    ...(hasScale ? { scaleFactor: cleanScale } : {}),
+  };
+}
 function render() {
   if (!limits) return;
   stage.querySelectorAll('.pin').forEach(pin => pin.remove());
@@ -179,56 +263,54 @@ function render() {
         shape.setAttribute('points', pointsText(mark.points));
         outline.appendChild(shape);
       }
-      const pin = document.createElement('div');
-      pin.className = 'pin';
-      pin.textContent = index + 1;
+      const pin = make('div', mark.kind === 'transform' ? 'pin transform' : 'pin', index + 1);
       pin.style.left = (centre[0] / limits.view.width * 100) + '%';
       pin.style.top = (centre[1] / limits.view.height * 100) + '%';
       if (mark.kind === 'color') {
         pin.style.background = mark.hex;
         pin.style.color = contrastTextColor(mark.hex);
+      } else if (mark.kind === 'transform') {
+        pin.title = transformSummary(mark);
       }
       stage.appendChild(pin);
     }
-    const row = document.createElement('div');
-    row.className = 'row';
-    const badge = document.createElement('span');
-    badge.className = mark.kind === 'view' ? 'badge view' : 'badge';
-    badge.textContent = index + 1;
+    const row = make('div', 'row');
+    const badge = make('span', mark.kind === 'view' ? 'badge view' : (mark.kind === 'transform' ? 'badge transform' : 'badge'), index + 1);
     if (mark.kind === 'color') {
       badge.style.background = mark.hex;
       badge.style.color = contrastTextColor(mark.hex);
     }
     row.appendChild(badge);
     if (mark.kind === 'color') {
-      const swatch = document.createElement('input');
+      const swatch = make('input', 'row-swatch');
       swatch.type = 'color';
-      swatch.className = 'row-swatch';
       swatch.value = mark.hex;
       swatch.setAttribute('aria-label', 'Mark ' + (index + 1) + ' colour');
-      swatch.addEventListener('input', () => {
+      on(swatch, 'input', () => {
         mark.hex = swatch.value.toLowerCase();
         render();
       });
       row.appendChild(swatch);
     } else if (mark.kind === 'view') {
-      const meta = document.createElement('span');
-      meta.className = 'row-meta';
-      meta.textContent = 'FOV ' + Math.round(mark.camera.fov);
+      const meta = make('span', 'row-meta', 'FOV ' + Math.round(mark.camera.fov));
       meta.title = 'eye [' + mark.camera.eye.join(', ') + '] target [' + mark.camera.target.join(', ') + ']';
       row.appendChild(meta);
+    } else if (mark.kind === 'transform') {
+      row.appendChild(make('span', 'row-meta', transformSummary(mark)));
     }
-    const input = document.createElement('input');
+    if (mark.time !== undefined) {
+      row.appendChild(make('span', 'row-meta', mark.time + 's'));
+    }
+    const input = make('input');
     input.maxLength = limits.maxNoteLength;
     input.value = mark.note;
-    input.placeholder = mark.kind === 'view' ? 'Why this view?' : (mark.kind === 'color' ? 'Colour note' : 'What should change here?');
-    input.addEventListener('input', () => { mark.note = input.value; });
-    const remove = document.createElement('button');
-    remove.className = 'icon';
+    input.placeholder = mark.kind === 'view' ? 'Why this view?' : (mark.kind === 'color' ? 'Colour note' : (mark.kind === 'transform' ? 'Transform note' : 'What should change here?'));
+    on(input, 'input', () => { mark.note = input.value; });
+    const remove = make('button', 'icon');
     remove.title = 'Remove mark';
     remove.setAttribute('aria-label', 'Remove mark ' + (index + 1));
     remove.innerHTML = trash;
-    remove.addEventListener('click', () => { marks.splice(index, 1); render(); reportSize(); });
+    on(remove, 'click', () => { marks.splice(index, 1); render(); reportSize(); });
     row.append(input, remove);
     rows.appendChild(row);
     mark.input = input;
@@ -247,14 +329,17 @@ function showResult(result) {
   }
   limits = details;
   nonce = nonceOf(result);
+  hasMotion = Boolean(details.motion);
+  activeTime = hasMotion ? roundTime(Number(details.motion.time) || 0) : 0;
   initialCamera = cloneCamera(details.view && details.view.camera);
   viewCamera = cloneCamera(initialCamera);
-  document.getElementById('title').textContent = details.prompt || 'Click the scene to mark what you mean';
+  byId('title').textContent = details.prompt || 'Click the scene to mark what you mean';
   frame.width = details.view.width;
   frame.height = details.view.height;
   outline.setAttribute('viewBox', '0 0 ' + details.view.width + ' ' + details.view.height);
   frame.src = 'data:image/png;base64,' + image.data;
-  hint.textContent = 'Click the picture to drop a pin, draw with lasso, pick a colour, or frame and save a view.';
+  hint.textContent = 'Click the picture to drop a pin, draw with lasso, pick a colour, save a view, or set a transform.';
+  syncMotionControls();
   updateViewReadout();
   render();
   reportSize();
@@ -276,20 +361,25 @@ function polygonArea(points) {
   });
   return Math.abs(twice) / 2;
 }
-stage.addEventListener('click', event => {
-  if (!limits || (tool !== 'pin' && tool !== 'color') || marks.length >= limits.maxMarks) return;
+on(stage, 'click', event => {
+  if (!limits || (tool !== 'pin' && tool !== 'color' && tool !== 'transform') || marks.length >= limits.maxMarks) return;
   const [x, y] = pixelOf(event);
+  const timeField = hasMotion ? { time: activeTime } : {};
   if (tool === 'color') {
-    marks.push({ kind: 'color', x, y, hex: colorPicker.value.toLowerCase(), note: '' });
+    marks.push({ kind: 'color', x, y, hex: colorPicker.value.toLowerCase(), note: '', ...timeField });
+  } else if (tool === 'transform') {
+    const delta = readTransformInputs();
+    if (!delta) return;
+    marks.push({ kind: 'transform', x, y, ...delta, note: '', ...timeField });
   } else {
-    marks.push({ x, y, note: '' });
+    marks.push({ x, y, note: '', ...timeField });
   }
   render();
   marks[marks.length - 1].input.focus();
   reportSize();
 });
-stage.addEventListener('contextmenu', event => { if (tool === 'view') event.preventDefault(); });
-stage.addEventListener('pointerdown', event => {
+on(stage, 'contextmenu', event => { if (tool === 'view') event.preventDefault(); });
+on(stage, 'pointerdown', event => {
   if (!limits) return;
   if (tool === 'view' && (event.button === 0 || event.button === 2)) {
     event.preventDefault();
@@ -304,7 +394,7 @@ stage.addEventListener('pointerdown', event => {
   outline.appendChild(trail);
   drawing = { points: [pixelOf(event)], trail };
 });
-stage.addEventListener('pointermove', event => {
+on(stage, 'pointermove', event => {
   if (orbiting) {
     const deltaX = event.clientX - orbiting.lastX;
     const deltaY = event.clientY - orbiting.lastY;
@@ -331,46 +421,78 @@ function endPointer() {
   const points = thinned(drawing.points);
   drawing = null;
   const minLassoPoints = (limits && limits.minLassoPoints) || 3;
-  if (points.length >= minLassoPoints && polygonArea(points) >= 1) marks.push({ kind: 'lasso', points, note: '' });
+  if (points.length >= minLassoPoints && polygonArea(points) >= 1) {
+    marks.push({ kind: 'lasso', points, note: '', ...(hasMotion ? { time: activeTime } : {}) });
+  }
   render();
   if (marks.length && marks[marks.length - 1].points === points) marks[marks.length - 1].input.focus();
   reportSize();
 }
-stage.addEventListener('pointerup', endPointer);
-stage.addEventListener('pointercancel', endPointer);
-stage.addEventListener('wheel', event => {
+on(stage, 'pointerup', endPointer);
+on(stage, 'pointercancel', endPointer);
+on(stage, 'wheel', event => {
   if (tool !== 'view') return;
   event.preventDefault();
   zoomCameraBy(event.deltaY);
   updateViewReadout();
 }, { passive: false });
-viewFovInput.addEventListener('change', () => {
+on(viewFovInput, 'change', () => {
   const parsed = Number(viewFovInput.value);
   const minFov = (limits && limits.minViewFov) || 5;
   const maxFov = (limits && limits.maxViewFov) || 120;
   viewCamera.fov = Number.isFinite(parsed) ? Math.max(minFov, Math.min(maxFov, parsed)) : viewCamera.fov;
   updateViewReadout();
 });
-captureViewButton.addEventListener('click', () => {
+on(captureViewButton, 'click', () => {
   if (!limits || marks.length >= limits.maxMarks) return;
   marks.push({
     kind: 'view',
     camera: { eye: roundVector(viewCamera.eye), target: roundVector(viewCamera.target), fov: Math.round(viewCamera.fov * 100) / 100 },
     note: '',
+    ...(hasMotion ? { time: activeTime } : {}),
   });
   render();
   marks[marks.length - 1].input.focus();
   reportSize();
 });
-resetViewButton.addEventListener('click', () => {
+on(resetViewButton, 'click', () => {
   viewCamera = cloneCamera(initialCamera);
   updateViewReadout();
 });
 function serializeMark(mark) {
-  if (mark.kind === 'lasso') return { kind: 'lasso', points: mark.points, note: mark.note };
-  if (mark.kind === 'color') return { kind: 'color', x: mark.x, y: mark.y, hex: mark.hex, note: mark.note };
-  if (mark.kind === 'view') return { kind: 'view', camera: mark.camera, note: mark.note };
-  return { x: mark.x, y: mark.y, note: mark.note };
+  const timeField = mark.time !== undefined ? { time: mark.time } : {};
+  if (mark.kind === 'lasso') return { kind: 'lasso', points: mark.points, note: mark.note, ...timeField };
+  if (mark.kind === 'color') return { kind: 'color', x: mark.x, y: mark.y, hex: mark.hex, note: mark.note, ...timeField };
+  if (mark.kind === 'view') return { kind: 'view', camera: mark.camera, note: mark.note, ...timeField };
+  if (mark.kind === 'transform') {
+    return {
+      kind: 'transform',
+      x: mark.x,
+      y: mark.y,
+      ...(mark.deltaPosition !== undefined ? { deltaPosition: mark.deltaPosition } : {}),
+      ...(mark.deltaRotation !== undefined ? { deltaRotation: mark.deltaRotation } : {}),
+      ...(mark.scaleFactor !== undefined ? { scaleFactor: mark.scaleFactor } : {}),
+      note: mark.note,
+      ...timeField,
+    };
+  }
+  return { x: mark.x, y: mark.y, note: mark.note, ...timeField };
+}
+function drawPill(context, x, y, text, width, height) {
+  context.font = '600 11px system-ui, sans-serif';
+  const pillW = Math.ceil(context.measureText(text).width) + 12;
+  const pillH = 18;
+  const left = Math.max(4, Math.min(width - pillW - 4, x));
+  const top = Math.max(4, Math.min(height - pillH - 4, y));
+  context.fillStyle = 'rgba(24,33,38,0.88)';
+  context.fillRect(left, top, pillW, pillH);
+  context.lineWidth = 1;
+  context.strokeStyle = '#fff';
+  context.strokeRect(left + 0.5, top + 0.5, pillW - 1, pillH - 1);
+  context.fillStyle = '#fff';
+  context.textAlign = 'left';
+  context.textBaseline = 'middle';
+  context.fillText(text, left + 6, top + pillH / 2 + 0.5);
 }
 function markedImage() {
   const canvas = document.createElement('canvas');
@@ -378,9 +500,6 @@ function markedImage() {
   canvas.height = limits.view.height;
   const context = canvas.getContext('2d');
   context.drawImage(frame, 0, 0, canvas.width, canvas.height);
-  context.font = '600 15px system-ui, sans-serif';
-  context.textAlign = 'center';
-  context.textBaseline = 'middle';
   marks.forEach(mark => {
     if (mark.points === undefined) return;
     context.beginPath();
@@ -392,18 +511,36 @@ function markedImage() {
     context.strokeStyle = '#ff5a4f';
     context.stroke();
   });
+  let viewBadgeRow = 0;
   marks.forEach((mark, index) => {
-    if (mark.kind === 'view') return;
+    if (mark.kind === 'view') {
+      if (mark.time !== undefined) {
+        drawPill(context, 8, 8 + viewBadgeRow * 22, (index + 1) + ' view ' + mark.time + 's', canvas.width, canvas.height);
+        viewBadgeRow += 1;
+      }
+      return;
+    }
     const [centreX, centreY] = markCentre(mark);
     context.beginPath();
     context.arc(centreX, centreY, 14, 0, Math.PI * 2);
-    context.fillStyle = mark.kind === 'color' ? mark.hex : '#ff5a4f';
+    context.fillStyle = mark.kind === 'color' ? mark.hex : (mark.kind === 'transform' ? '#0f766e' : '#ff5a4f');
     context.fill();
     context.lineWidth = 2;
     context.strokeStyle = '#fff';
     context.stroke();
+    context.font = '600 15px system-ui, sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
     context.fillStyle = mark.kind === 'color' ? contrastTextColor(mark.hex) : '#fff';
     context.fillText(String(index + 1), centreX, centreY + 1);
+    if (mark.kind === 'transform' || mark.time !== undefined) {
+      const parts = [];
+      if (mark.kind === 'transform') parts.push('T ' + transformSummary(mark));
+      if (mark.time !== undefined) parts.push(mark.time + 's');
+      const label = parts.join(' ');
+      const pillX = centreX + 18 + label.length * 6.5 > canvas.width - 6 ? centreX - 18 - label.length * 6.5 - 12 : centreX + 18;
+      drawPill(context, pillX, centreY - 9, label, canvas.width, canvas.height);
+    }
   });
   return canvas.toDataURL('image/png').split(',')[1];
 }
@@ -416,7 +553,7 @@ function finish(kind, text) {
 function tellChat(text) {
   return request('ui/message', { role: 'user', content: { type: 'text', text } }).catch(() => {});
 }
-sendButton.addEventListener('click', async () => {
+on(sendButton, 'click', async () => {
   sendButton.disabled = true;
   try {
     const answer = await request('tools/call', { name: submitTool, arguments: { nonce, marks: marks.map(serializeMark), image: markedImage() } });
@@ -428,7 +565,7 @@ sendButton.addEventListener('click', async () => {
     hint.textContent = error.message;
   }
 });
-document.getElementById('cancel').addEventListener('click', async () => {
+on(byId('cancel'), 'click', async () => {
   finish('stop', 'Cancelled.');
   await tellChat('I closed the scene annotate view without marking anything.');
 });
@@ -439,20 +576,10 @@ request('ui/initialize', { appInfo: { name: 'crucible-annotate', version: '1.0.0
 
 /** The whole page as one string: inline style and script, no remote reference, nothing taken from the model. */
 export function annotateViewHtml() {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mark the scene</title><style>${annotateStyle(768)}</style></head><body>
-<h1 id="title">Waiting for the scene</h1>
-<main>
-<div class="stage" id="stage"><img id="frame" width="768" height="512" alt="Rendered scene"><svg class="outline" id="outline" preserveAspectRatio="none"></svg></div>
-<aside id="side">
-${annotateToolbarMarkup()}
-<div class="hint" id="hint">Loading the view.</div>
-<div id="rows" style="display:flex;flex-direction:column;gap:8px"></div>
-<div class="count" id="count"></div>
-<div class="actions"><button class="primary" id="send" disabled>Send</button><button id="cancel">Cancel</button></div>
-</aside>
-</main>
-<script>${VIEW_SCRIPT}</script>
-</body></html>`;
+  const script = VIEW_SCRIPT.replace(/^[ \t]+/gm, '').replace(/^\/\/[^\n]*\n/gm, '').replace(/\n+/g, '\n');
+  const style = annotateStyle(768).replace(/\n+/g, '');
+  const toolbar = annotateToolbarMarkup().replace(/\n+/g, '');
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mark the scene</title><style>${style}</style></head><body><h1 id="title">Waiting for the scene</h1><main><div class="stage" id="stage"><img id="frame" width="768" height="512" alt="Rendered scene"><svg class="outline" id="outline" preserveAspectRatio="none"></svg></div><aside id="side">${toolbar}<div class="hint" id="hint">Loading the view.</div><div id="rows" style="display:flex;flex-direction:column;gap:8px"></div><div class="count" id="count"></div><div class="actions"><button class="primary" id="send" disabled>Send</button><button id="cancel">Cancel</button></div></aside></main><script>${script}</script></body></html>`;
   if (Buffer.byteLength(html) > MAXIMUM_VIEW_BYTES) throw new RangeError(`The annotate view is larger than ${MAXIMUM_VIEW_BYTES} bytes.`);
   return html;
 }

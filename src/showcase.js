@@ -26,17 +26,11 @@ const SCENE_LABELS = {
   airport: 'Airport ramp',
   datacenter: 'AI data center',
   port: 'Container port',
-  chipfab: 'Chip fab',
-  darkstore: 'Dark store',
-  warehouse: 'Warehouse',
 };
 const SCENE_GLOWS = {
   airport: '#ff6a2b',
   datacenter: '#3b82f6',
   port: '#f59e0b',
-  chipfab: '#eab308',
-  darkstore: '#10b981',
-  warehouse: '#6366f1',
 };
 const SCENE_IDS = Object.keys(SCENE_LABELS);
 const MIN_PITCH = 0.05;

@@ -59,7 +59,7 @@ test('validateMarks validates view marks and camera bounds cleanly (#922)', () =
   assert.throws(() => validateMarks([{ kind: 'view', camera: { eye: [1, 2, 3], target: [0, 0, 0], fov: Number.NaN } }], view), /fov/);
   assert.throws(() => validateMarks([{ kind: 'view', camera: { eye: [1, 2, 3], target: [0, 0, 0], fov: 45, up: [0, 0, 0] } }], view), /camera\.up/);
   assert.throws(() => validateMarks([{ kind: 'view', camera: { eye: [1, 2, 3], target: [0, 0, 0], fov: 45 }, note: 'x'.repeat(281) }], view), /280 characters/);
-  assert.throws(() => validateMarks([{ kind: 'unknown', x: 1, y: 1 }], view), /kind must be "pin", "lasso", "color" or "view", got "unknown"/);
+  assert.throws(() => validateMarks([{ kind: 'unknown', x: 1, y: 1 }], view), /kind must be "pin", "lasso", "color", "view" or "transform", got "unknown"/);
   assert.throws(() => validateMarks(Array(ANNOTATE_LIMITS.maxMarks + 1).fill({ kind: 'view', camera: { eye: [1, 2, 3], target: [0, 0, 0], fov: 45 } }), view), /at most 16 marks/);
 });
 

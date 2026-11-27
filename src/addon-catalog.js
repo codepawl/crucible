@@ -36,6 +36,7 @@ export const ADDON_CATALOG = [
   { name: 'replace-textured-parts', area: 'modeling', summary: 'Add and remove textured parts on a live renderer.' },
   { name: 'texture-update', area: 'modeling', summary: 'Push new pixels from a canvas, video or simulation into a texture.' },
   { name: 'texture-set', area: 'modeling', summary: 'Load a scanned material set: color, normal, roughness, height.' },
+  { name: 'three-bridge', area: 'modeling', summary: 'Convert between live three.js object trees and Crucible parts.', doc: true },
 
   { name: 'material-layer-shaders', area: 'look', summary: 'Anisotropy and iridescence material layers.' },
   { name: 'subsurface-shader', area: 'look', summary: 'Subsurface scattering for skin, wax and leaves.' },
@@ -43,6 +44,7 @@ export const ADDON_CATALOG = [
   { name: 'world-material-shader', area: 'look', summary: 'Water bodies with absorption and turbidity.' },
   { name: 'glitter-shader', area: 'look', summary: 'Stylized water glint with a hard edge and sparkle.' },
   { name: 'height-parallax-shader', area: 'look', summary: 'Parallax relief from a height map on a material.' },
+  { name: 'detail-normal-shader', area: 'look', summary: 'Tiled detail normal map and micro-roughness modulation on standard PBR materials.' },
   { name: 'retro-shader', area: 'look', summary: 'The PlayStation 1 look: vertex snap and affine textures.' },
   { name: 'surface-cover', area: 'look', summary: 'A snow or dust layer masked per pixel, smooth on huge meshes.' },
   { name: 'splat-shader', area: 'look', summary: 'Splat-mapped ground material blended by a control texture.' },
@@ -67,6 +69,7 @@ export const ADDON_CATALOG = [
   { name: 'water-reflection', area: 'light', summary: 'Mirror reflection on lakes, rivers and polished floors.' },
 
   { name: 'path-tracer', area: 'render', summary: 'Offline path-traced stills with denoising.', doc: true },
+  { name: 'denoise-oidn', area: 'render', summary: 'Native Intel Open Image Denoise (OIDN) wrapper for path-traced stills.' },
   { name: 'path-tracer-progressive', area: 'render', summary: 'A progressive view of the GPU path tracer.' },
   { name: 'path-tracer-realtime', area: 'render', summary: 'A real-time hybrid view of the GPU path tracer.' },
   { name: 'render-passes', area: 'render', summary: 'Depth, normals, object IDs and other render passes.' },

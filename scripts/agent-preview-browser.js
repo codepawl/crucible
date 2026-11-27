@@ -1526,9 +1526,14 @@ window.__agentPreview = {
     const record = requireSession(sessionId);
     const serializeCamera = sourceCamera => Object.fromEntries(Object.entries(sourceCamera)
       .map(([field, value]) => [field, ArrayBuffer.isView(value) ? Array.from(value) : value]));
+    const annotateMotion = () => {
+      const recipeMotion = typeof record.scene.exportRecipe === 'function' ? record.scene.exportRecipe().motion : null;
+      return recipeMotion ? { duration: recipeMotion.duration, time: record.scene.motionTime ?? 0 } : undefined;
+    };
     if (!requestedCamera) {
       const frame = this.look({ sessionId, motionTime });
-      return { ...frame, width: canvas.width, height: canvas.height, camera: serializeCamera(record.scene.camera) };
+      const motion = annotateMotion();
+      return { ...frame, width: canvas.width, height: canvas.height, camera: serializeCamera(record.scene.camera), ...(motion ? { motion } : {}) };
     }
     const overrideCamera = {
       ...record.scene.camera,
@@ -1547,12 +1552,14 @@ window.__agentPreview = {
     const poseTime = record.scene.motionTime ?? undefined;
     draw(record, 0, overrideCamera, poseTime === undefined ? {} : { passTime: poseTime });
     const dataUrl = canvas.toDataURL('image/png');
+    const motion = annotateMotion();
     return {
       data: dataUrl.slice('data:image/png;base64,'.length),
       mimeType: 'image/png',
       width: canvas.width,
       height: canvas.height,
       camera: serializeCamera(overrideCamera),
+      ...(motion ? { motion } : {}),
       metadata: {
         sessionId,
         revision: record.scene.revision,
@@ -1567,8 +1574,44 @@ window.__agentPreview = {
     if (motionTime !== undefined) sampleMotionTime(record.scene, motionTime);
     if (!allAgentSceneModulesLoaded()) await loadAllAgentSceneModules();
     const clean = validateMarks(marks, { width, height });
-    const query = sceneQueryFor(record);
-    return { revision: record.scene.revision, marks: describeMarks(clean, camera, { width, height, raycast: ray => query.raycast(ray), partMaterials: partMaterialsFor(record) }) };
+    const partMaterials = partMaterialsFor(record);
+    const hasPerMarkTime = clean.some(mark => mark.time !== undefined);
+    const info = typeof record.scene.inspect === 'function' ? record.scene.inspect() : null;
+    const recipe = typeof record.scene.exportRecipe === 'function' ? record.scene.exportRecipe() : null;
+    const canSample = typeof record.scene.sampleMotion === 'function' && Boolean(
+      info?.motion || info?.physics || info?.cloth || info?.particles || info?.billboards || info?.textureSequences?.length
+      || recipe?.motion || recipe?.physics || recipe?.cloth || recipe?.particles || recipe?.environment?.localVolumes?.some(volume => volume.frames),
+    );
+    if (!hasPerMarkTime || !canSample) {
+      const query = sceneQueryFor(record);
+      return { revision: record.scene.revision, marks: describeMarks(clean, camera, { width, height, raycast: ray => query.raycast(ray), partMaterials }) };
+    }
+    const baseTime = motionTime ?? record.scene.motionTime ?? null;
+    let activeTime = record.scene.motionTime ?? null;
+    let query = sceneQueryFor(record);
+    try {
+      const described = describeMarks(clean, camera, {
+        width,
+        height,
+        partMaterials,
+        raycast: (ray, mark) => {
+          const targetTime = mark?.time !== undefined ? mark.time : baseTime;
+          if (targetTime !== activeTime) {
+            if (targetTime === null) record.scene.sampleMotion(null);
+            else sampleMotionTime(record.scene, targetTime);
+            activeTime = targetTime;
+            query = sceneQueryFor(record);
+          }
+          return query.raycast(ray);
+        },
+      });
+      return { revision: record.scene.revision, marks: described };
+    } finally {
+      if (baseTime !== activeTime) {
+        if (baseTime === null) record.scene.sampleMotion(null);
+        else sampleMotionTime(record.scene, baseTime);
+      }
+    }
   },
   checkpoint({ sessionId, checkpointId }) {
     const record = requireSession(sessionId);

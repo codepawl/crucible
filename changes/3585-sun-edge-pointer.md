@@ -1,0 +1,1 @@
+- When the Studio sun mark is out of view, a pointer with the sun glyph and a chevron stands on the viewport's edge toward it (also when the sun is behind the camera), keeps clear of the viewport's overlays, and selects the sun on a click (#3585)

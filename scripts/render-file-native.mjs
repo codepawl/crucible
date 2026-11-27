@@ -81,7 +81,7 @@ async function exportTablesInPage({ width, height, bounces, seed, clipSeconds, i
 
 async function loadOidnIfAvailable() {
   try {
-    const denoiser = await import('../packages/denoise-oidn/index.mjs');
+    const denoiser = await import('../src/denoise-oidn.js');
     return denoiser;
   } catch {
     return null;

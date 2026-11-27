@@ -1,4 +1,5 @@
 import './toon-shader.js';
+export { normalizeToonRim, normalizeToonBase, copyToon } from './toon-shader.js';
 
 // gl-program.js is not imported on purpose: this module loads on demand, and sharing a module with the scene entry makes
 // the bundler hoist the shared code into the entry chunk (measured: about 350 bytes gzip on entry:agent-scene).

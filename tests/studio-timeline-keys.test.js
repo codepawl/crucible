@@ -94,7 +94,7 @@ test('the stylesheet draws the thumb at the width the markers assume', () => {
 test('the Auto-key toggle shows its state, sets the controller flag and follows it', testContext => {
   const ui = mountKeyedStudio(testContext);
   assert.equal(ui.autoKeyButton.getAttribute('aria-pressed'), 'true');
-  assert.equal(ui.autoKeyButton.title, 'Auto-key');
+  assert.equal(ui.autoKeyButton.getAttribute('aria-label'), 'Auto-key');
   assert.equal(ui.autoKeyButton.dataset.icon, 'autoKey');
   ui.autoKeyButton.click();
   assert.equal(ui.controller.autoKey, false);

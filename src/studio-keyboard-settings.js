@@ -4,6 +4,7 @@
 import { formatBinding } from './studio-keymap.js';
 import { sheetLabelOf, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
 import { leadWithActionIcon } from './studio-icons.js';
+import { createMouseRows } from './studio-mouse-settings.js';
 import {
   bindingFromKeyEvent,
   browserReservedNote,
@@ -18,9 +19,10 @@ const NOT_SET_LABEL = 'Not set';
 /**
  * Builds the section. `getKeymap()`, `getPresetId()` and `getOverrides()` read the keymap in force, its preset and that preset's
  * changes; `onOverridesChange(overrides)` stores new changes and Studio calls `refresh()` once they are in effect.
+ * `getMouseMap()`, `getMouseOverrides()` and `onMouseOverridesChange(overrides)` do the same for the mouse rows, which are not per preset.
  * `presetRow` and `showSheetButton` are the existing preset choice and the button that opens the sheet.
  */
-export function createKeyboardSection({ documentReference, createElement, createIcon, getKeymap, getPresetId, getNumberPad, getOverrides, onOverridesChange, presetRow, numberPadRow, showSheetButton }) {
+export function createKeyboardSection({ documentReference, createElement, createIcon, getKeymap, getPresetId, getNumberPad, getOverrides, onOverridesChange, getMouseMap, getMouseOverrides, onMouseOverridesChange, presetRow, numberPadRow, showSheetButton }) {
   const state = { recordingId: null, note: null, pending: null, confirmingReset: false, query: '', focusActionId: null, rendering: false };
 
   const filterInput = createElement(documentReference, 'input', { type: 'search', placeholder: 'Find a shortcut', attributes: { 'aria-label': 'Filter shortcuts' } });
@@ -72,6 +74,7 @@ export function createKeyboardSection({ documentReference, createElement, create
   }
 
   function stopRecording() {
+    mouseRows.cancelRecording();
     state.recordingId = null;
     state.pending = null;
     state.note = null;
@@ -79,6 +82,7 @@ export function createKeyboardSection({ documentReference, createElement, create
   }
 
   function startRecording(actionId) {
+    mouseRows.cancelRecording();
     state.recordingId = actionId;
     state.pending = null;
     state.note = null;
@@ -203,7 +207,12 @@ export function createKeyboardSection({ documentReference, createElement, create
     return item;
   }
 
-  function mouseRow(row) {
+  function listRow(row) {
+    if (row.mouseRowId) return mouseRows.row(row);
+    return row.actionId ? actionRow(row) : fixedMouseRow(row);
+  }
+
+  function fixedMouseRow(row) {
     return createElement(
       documentReference,
       'div',
@@ -213,8 +222,28 @@ export function createKeyboardSection({ documentReference, createElement, create
     );
   }
 
+  const mouseRows = createMouseRows({
+    documentReference,
+    createElement,
+    getMouseMap,
+    getOverrides: getMouseOverrides,
+    onOverridesChange: onMouseOverridesChange,
+    requestRender: () => render(),
+    noteLine,
+    textButton,
+    iconButton,
+    cancelHint,
+    onRecordingStart: () => {
+      state.recordingId = null;
+      state.pending = null;
+      state.note = null;
+    },
+  });
+
+  const changedCount = () => Object.keys(getOverrides()).length + Object.keys(getMouseOverrides()).length;
+
   function resetCountLabel() {
-    const count = Object.keys(getOverrides()).length;
+    const count = changedCount();
     return count === 1 ? 'Reset 1 shortcut' : `Reset ${count} shortcuts`;
   }
 
@@ -233,6 +262,7 @@ export function createKeyboardSection({ documentReference, createElement, create
         keep,
         textButton(resetCountLabel(), 'warning', () => {
           state.confirmingReset = false;
+          onMouseOverridesChange({});
           commit({});
         }, 'crucible-studio-keyboard-confirm'),
       );
@@ -244,27 +274,29 @@ export function createKeyboardSection({ documentReference, createElement, create
       renderTools({ focusKeep: true });
     });
     resetAll.dataset.resetAll = 'true';
-    resetAll.disabled = Object.keys(getOverrides()).length === 0;
+    resetAll.disabled = changedCount() === 0;
     toolButtons.append(showSheetButton, resetAll);
   }
 
   function render() {
     state.rendering = true;
+    mouseRows.beginRender();
     const scrollTop = list.scrollTop;
     renderTools();
     list.replaceChildren();
-    const groups = shortcutSheetGroups(getKeymap(), { includeUnbound: true });
+    const groups = shortcutSheetGroups(getKeymap(), { includeUnbound: true, mouseMap: getMouseMap() });
     let shown = 0;
     for (const group of groups) {
       const rows = group.rows.filter(row => state.query === '' || row.label.toLowerCase().includes(state.query));
       if (rows.length === 0) continue;
       shown += rows.length;
+      const hasMouseMapRows = rows.some(row => row.mouseRowId);
       list.append(createElement(
         documentReference,
         'section',
-        { className: 'crucible-studio-keyboard-group' },
+        { className: hasMouseMapRows ? 'crucible-studio-mouse-group' : 'crucible-studio-keyboard-group' },
         createElement(documentReference, 'h4', {}, createIcon(documentReference, group.icon), createElement(documentReference, 'span', { textContent: group.title })),
-        createElement(documentReference, 'div', { className: 'crucible-studio-keyboard-rows' }, ...rows.map(row => (row.actionId ? actionRow(row) : mouseRow(row)))),
+        createElement(documentReference, 'div', { className: 'crucible-studio-keyboard-rows' }, ...rows.map(listRow)),
       ));
     }
     if (shown === 0) list.append(noteLine('search', 'No shortcut has that name'));
@@ -275,6 +307,7 @@ export function createKeyboardSection({ documentReference, createElement, create
       target?.focus?.({ preventScroll: true });
       target?.closest?.('.crucible-studio-keyboard-row')?.scrollIntoView?.({ block: 'nearest' });
     }
+    mouseRows.endRender(list);
     syncListFades();
     state.rendering = false;
   }

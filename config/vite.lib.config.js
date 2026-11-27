@@ -112,6 +112,7 @@ export default defineConfig({
         'retro-shader': 'src/retro-shader.js',
         'glitter-shader': 'src/glitter-shader.js',
         'height-parallax-shader': 'src/height-parallax-shader.js',
+        'detail-normal-shader': 'src/detail-normal-shader.js',
         'surface-cover': 'src/surface-cover.js',
         'light-linking': 'src/light-linking.js',
         'cascaded-shadows': 'src/cascaded-shadows.js',
@@ -138,6 +139,8 @@ export default defineConfig({
         fracture: 'src/fracture.js',
         morph: 'src/morph.js',
         skinning: 'src/skinning.js',
+        'three-bridge': 'src/three-bridge.js',
+        'denoise-oidn': 'src/denoise-oidn.js',
         studio: 'src/studio.js',
         // Page of the MCP preview. It imports the engine chunks above instead of bundling its own copy.
         'mcp/preview': 'scripts/agent-preview-browser.js',

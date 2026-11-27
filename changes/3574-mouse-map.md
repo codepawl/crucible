@@ -1,0 +1,1 @@
+- Studio sets the orbit point with a middle click or Alt + right click, pans with Space + left drag, undoes and redoes with the mouse's Back and Forward buttons, and keeps your last edit in the draft and asks before the page closes with unsaved changes; each of those mouse presses can be changed in Settings (#3574)

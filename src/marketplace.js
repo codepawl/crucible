@@ -1,12 +1,12 @@
 import './site-chrome.js';
 import './site.css';
 import './marketplace.css';
-import { ADDON_AREAS, ADDON_CATALOG, addonImportLine } from './addon-catalog.js';
-import { addonPackages, firstPartyPackages, npmManifestPath } from './marketplace-npm.js';
+import { ADDON_CATALOG } from './addon-catalog.js';
+import { addonPackages, npmManifestPath } from './marketplace-npm.js';
+import { copyTextWithFeedback, createCopyIcon } from './site-code.js';
 
 const NPM_SEARCH_URL = 'https://registry.npmjs.org/-/v1/search?text=keywords:crucible-addon&size=50';
 const NPM_MANIFEST_URL = 'https://registry.npmjs.org/';
-const FIRST_PARTY_SEARCH_URL = 'https://registry.npmjs.org/-/v1/search?text=@codepawlhq&size=50';
 const MAXIMUM_RANGE_LOOKUPS = 20;
 const CONCURRENT_RANGE_LOOKUPS = 5;
 const ADDONS_DOC_URL = 'https://github.com/codepawl/crucible/blob/main/docs/addons.md';
@@ -50,6 +50,11 @@ function link(text, href, className) {
   return anchor;
 }
 
+function setJumpCount(id, count) {
+  const badge = document.querySelector(`#${id}`);
+  if (badge) badge.textContent = String(count);
+}
+
 function showState(container, state, message, ...links) {
   const notice = element('p', `market-state market-state-${state}`);
   notice.setAttribute('role', state === 'error' ? 'alert' : 'status');
@@ -68,21 +73,14 @@ function countLabel(kind, count) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-async function copyText(button, text) {
-  const label = button.textContent;
-  try {
-    await navigator.clipboard.writeText(text);
-    button.textContent = 'Copied';
-  } catch {
-    button.textContent = 'Copy failed';
-  }
-  setTimeout(() => { button.textContent = label; }, 1800);
-}
-
-function copyButton(text, label = 'Copy') {
-  const button = element('button', 'market-copy', label);
+function checksumCopyButton(sha256) {
+  const button = element('button', 'market-checksum-button');
   button.type = 'button';
-  button.addEventListener('click', () => copyText(button, text));
+  button.dataset.copyBound = '1';
+  button.title = `Copy full SHA-256: ${sha256}`;
+  button.setAttribute('aria-label', `Copy SHA-256 checksum starting with ${sha256.slice(0, 8)}`);
+  button.append(createCopyIcon(), element('span', '', 'SHA-256'), element('code', '', `${sha256.slice(0, 8)}...`));
+  button.addEventListener('click', () => void copyTextWithFeedback(button, sha256, 'SHA-256 copied'));
   return button;
 }
 
@@ -103,15 +101,19 @@ function packCard(pack) {
   const title = element('h3', '', pack.name);
   title.append(element('span', 'market-version', pack.version));
   const facts = element('ul', 'market-facts');
-  const factTexts = [...Object.entries(pack.items).map(([kind, count]) => countLabel(kind, count)), pack.license, `Crucible ${pack.engines}`, formatBytes(pack.bytes), `by ${pack.author}`];
+  const factTexts = [
+    ...Object.entries(pack.items).map(([kind, count]) => countLabel(kind, count)),
+    pack.license,
+    `Crucible ${pack.engines}`,
+    formatBytes(pack.bytes),
+    `by ${pack.author}`,
+  ];
   for (const text of factTexts) facts.append(element('li', '', text));
   const download = link('Download', pack.zip, 'market-button');
   download.setAttribute('download', '');
   download.prepend(icon('M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4', 'market-icon market-button-icon'));
-  const checksum = element('div', 'pack-checksum');
-  checksum.append(element('span', '', 'SHA-256'), element('code', '', pack.sha256), copyButton(pack.sha256));
   const actions = element('div', 'pack-actions');
-  actions.append(download, checksum);
+  actions.append(download, checksumCopyButton(pack.sha256));
   body.append(title, element('p', 'market-description', pack.description), facts, actions);
   card.append(body);
   return card;
@@ -124,9 +126,11 @@ async function loadPacks(container) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const { packs } = await response.json();
     if (!Array.isArray(packs) || packs.length === 0) {
+      setJumpCount('count-packs', 0);
       showState(container, 'empty', 'No packs are published yet.', link('How to make one', 'https://github.com/codepawl/crucible/blob/main/docs/packs.md'));
       return;
     }
+    setJumpCount('count-packs', packs.length);
     container.replaceChildren(...packs.map(packCard));
   } catch {
     showState(container, 'error', 'The pack list did not load. Reload the page to try again.');
@@ -137,7 +141,6 @@ function npmUrl(name) {
   return `https://www.npmjs.com/package/${name}`;
 }
 
-// The npm link sits on the title row, after the name and the version, so a card is one column.
 function npmLink(name) {
   const npm = link('npm', npmUrl(name), 'market-npm-link');
   const logo = element('span', 'package-logo package-logo-npm');
@@ -147,7 +150,6 @@ function npmLink(name) {
   return npm;
 }
 
-// One title row: the name (which may wrap) and the version on the left, the npm link on the right.
 function npmCardTitle(entry) {
   const title = element('h3', 'market-card-title');
   const name = element('span', 'market-card-name');
@@ -183,15 +185,14 @@ async function fetchLatestRange(name) {
   }
 }
 
-// The search result carries no `crucible` field, so the latest manifest of each listed package is read, a few at a time.
 async function fillRanges(addons, container) {
   const queue = addons.slice(0, MAXIMUM_RANGE_LOOKUPS);
   const workers = Array.from({ length: Math.min(CONCURRENT_RANGE_LOOKUPS, queue.length) }, async () => {
     while (queue.length > 0) {
       const addon = queue.shift();
       addon.range = await fetchLatestRange(addon.name);
-      const row = container.querySelector(`[data-addon="${CSS.escape(addon.name)}"]`);
-      if (row) row.replaceWith(addonCard(addon));
+      const card = container.querySelector(`[data-addon="${CSS.escape(addon.name)}"]`);
+      if (card) card.replaceWith(addonCard(addon));
     }
   });
   await Promise.all(workers);
@@ -204,6 +205,7 @@ async function loadAddons(container) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const { objects } = await response.json();
     const addons = addonPackages(objects);
+    setJumpCount('count-community', addons.length);
     if (addons.length === 0) {
       showState(container, 'empty', 'No third-party addons on npm yet.', link('Write an addon', ADDONS_DOC_URL));
       return;
@@ -215,93 +217,6 @@ async function loadAddons(container) {
   }
 }
 
-function packageCard(entry) {
-  const card = element('article', 'market-card addon-card');
-  const title = npmCardTitle(entry);
-  const body = element('div', 'addon-body');
-  body.append(title);
-  if (entry.description) body.append(element('p', 'market-description', entry.description));
-  const command = `npm install ${entry.name}`;
-  const row = element('div', 'command-row');
-  row.append(element('code', '', command), copyButton(command));
-  body.append(row);
-  card.append(body);
-  return card;
-}
-
-async function loadFirstPartyPackages(container) {
-  showState(container, 'loading', 'Searching npm for packages');
-  try {
-    const response = await fetch(FIRST_PARTY_SEARCH_URL);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const { objects } = await response.json();
-    const packages = firstPartyPackages(objects);
-    if (packages.length === 0) {
-      showState(container, 'empty', 'No companion packages are published yet.');
-      return;
-    }
-    container.replaceChildren(...packages.map(packageCard));
-  } catch {
-    showState(container, 'error', 'npm did not answer, so the package list is missing.', link('Open the npm search', 'https://www.npmjs.com/search?q=%40codepawlhq%2Fcrucible-'));
-  }
-}
-
-const REPOSITORY_URL = 'https://github.com/codepawl/crucible/blob/main';
-
-
-function builtinRow(addon) {
-  const row = element('article', 'builtin-row');
-  row.dataset.search = `${addon.name} ${addon.area} ${addon.summary}`.toLowerCase();
-  const docUrl = addon.doc ? `${REPOSITORY_URL}/docs/${addon.name}.md` : `${REPOSITORY_URL}/src/${addon.name}.js`;
-  const heading = element('h4', 'builtin-name');
-  heading.append(link(addon.name, docUrl));
-  const command = element('div', 'command-row');
-  const line = addonImportLine(addon.name);
-  command.append(element('code', '', line), copyButton(line));
-  row.append(heading, element('p', 'market-description', addon.summary), command);
-  return row;
-}
-
-function builtinGroup(area) {
-  const group = element('section', 'builtin-group');
-  const addons = ADDON_CATALOG.filter(addon => addon.area === area.id);
-  const heading = element('h4', 'builtin-area', area.label);
-  heading.append(element('span', 'market-version', String(addons.length)));
-  group.append(heading, ...addons.map(builtinRow));
-  return group;
-}
-
-function applyBuiltinFilter(container, query) {
-  const words = query.toLowerCase().split(/s+/).filter(Boolean);
-  let shown = 0;
-  for (const group of container.querySelectorAll('.builtin-group')) {
-    let groupShown = 0;
-    for (const row of group.querySelectorAll('.builtin-row')) {
-      const matches = words.every(word => row.dataset.search.includes(word));
-      row.hidden = !matches;
-      if (matches) groupShown += 1;
-    }
-    group.hidden = groupShown === 0;
-    shown += groupShown;
-  }
-  container.querySelector('.market-state')?.remove();
-  if (shown === 0) {
-    const notice = element('p', 'market-state market-state-empty');
-    notice.setAttribute('role', 'status');
-    notice.append(icon(STATE_ICONS.empty), element('span', '', `No built-in addon matches "${query.trim()}".`));
-    container.append(notice);
-  }
-}
-
-function loadBuiltinAddons(container, filter) {
-  container.replaceChildren(...ADDON_AREAS.map(builtinGroup));
-  filter.addEventListener('input', () => applyBuiltinFilter(container, filter.value));
-}
-
-document.querySelectorAll('[data-copy]').forEach(button => {
-  button.addEventListener('click', () => copyText(button, button.dataset.copy));
-});
+setJumpCount('count-builtin-link', ADDON_CATALOG.length);
 loadPacks(document.querySelector('#pack-list'));
-loadBuiltinAddons(document.querySelector('#builtin-list'), document.querySelector('#builtin-filter'));
 loadAddons(document.querySelector('#addon-list'));
-loadFirstPartyPackages(document.querySelector('#package-list'));

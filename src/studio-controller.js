@@ -40,6 +40,8 @@ import {
   toNodeLocalDelta,
 } from './studio-multi-edit.js';
 import { formatLength, STUDIO_LENGTH_UNITS } from './studio-units.js';
+import { motionIsEmpty } from './studio-motion-content.js';
+import { createOrbitPivot } from './studio-orbit-pivot.js';
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
 // The furthest a typed move may go in metres: the coordinate limit the recipe keeps for positions.
@@ -99,19 +101,6 @@ export function roundVector(values, precision = ROUND_PRECISION) {
 }
 
 const SCENE_LIGHT_FIELDS = Object.freeze({ point: 'pointLights', spot: 'spotLights', area: 'areaLights' });
-
-/** True when a motion has no track and nothing else that animates, so it can be dropped from the recipe. */
-function motionIsEmpty(motion) {
-  return !(
-    motion.tracks?.length ||
-    motion.ik?.length ||
-    motion.layers?.length ||
-    motion.drivers?.length ||
-    motion.constraints?.length ||
-    motion.springs ||
-    motion.drive
-  );
-}
 
 function assertPositiveFinite(value, label) {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
@@ -1255,6 +1244,8 @@ export function createStudioController({
     notify({ kind: 'pick', hit: result });
     return result;
   }
+
+  const { surfacePointAt, setOrbitPivot } = createOrbitPivot({ ensureQuery, screenRay, viewCamera, moveViewportCamera });
 
   function gizmoHandles() {
     const pivot = selectedPivotWorld();
@@ -2802,8 +2793,8 @@ export function createStudioController({
     if (!STUDIO_VIEW_PRESETS.includes(presetName)) {
       throw new RangeError(`Unknown camera view "${String(presetName)}". Use ${STUDIO_VIEW_PRESETS.join(', ')}.`);
     }
-    const camera = viewCamera();
-    const distance = Math.max(MINIMUM_DISTANCE, vec3.distance(camera.eye, camera.target));
+    // A view along an axis centres the selection (or the scene) first, so the axis passes through what you look at. It
+    // keeps the distance unless the object would not fit, so a turn from afar stays afar.
     const unitDirections = {
       front: [0, 0, 1],
       back: [0, 0, -1],
@@ -2812,13 +2803,8 @@ export function createStudioController({
       top: [0.002, 1, 0.002],
       isometric: [1, 0.72, 1],
     };
-    const unit = vec3.normalize(vec3.create(), unitDirections[presetName]);
-    const eye = roundVector([
-      camera.target[0] + unit[0] * distance,
-      camera.target[1] + unit[1] * distance,
-      camera.target[2] + unit[2] * distance,
-    ]);
-    return moveView({ eye, up: [0, 1, 0] }, { recordUndo: true });
+    const pose = frameSelectionPose(unitDirections[presetName], { keepDistance: true });
+    return moveView({ ...pose, up: [0, 1, 0] }, { recordUndo: true });
   }
 
   function toggleCameraProjection() {
@@ -2851,16 +2837,16 @@ export function createStudioController({
   }
 
   /**
-   * The camera that frames the selection (or the whole scene when nothing is selected): it keeps the direction it looks
-   * from and stands back just far enough for the object to fit the view. Returns a set-camera patch and changes nothing.
+   * The camera that frames the selection (or the whole scene when nothing is selected): it looks from `lookFrom` when given,
+   * else keeps the direction it looks from, and stands back just far enough for the object to fit. Returns a set-camera patch.
    */
-  function frameSelectionPose() {
+  function frameSelectionPose(lookFrom = null, { keepDistance = false } = {}) {
     const camera = viewCamera();
     const bounds = framedBounds();
     const target = bounds ? bounds.min.map((value, axis) => (value + bounds.max[axis]) / 2) : selectedPivotWorld() ?? [...camera.target];
     const radius = bounds ? Math.max(FRAME_MINIMUM_RADIUS, vec3.distance(bounds.min, bounds.max) / 2) : FRAME_MINIMUM_RADIUS;
     const offset = vec3.subtract(vec3.create(), camera.eye, camera.target);
-    const direction = vec3.normalize(vec3.create(), offset);
+    const direction = vec3.normalize(vec3.create(), lookFrom ?? offset);
     if (vec3.length(direction) < 1e-6) {
       vec3.set(direction, 0.5, 0.4, 0.8);
       vec3.normalize(direction, direction);
@@ -2876,7 +2862,7 @@ export function createStudioController({
       const halfAngle = Math.atan(Math.tan((cameraFieldOfView(camera, aspect) * Math.PI) / 360) * narrowSide);
       distance = (radius * FRAME_MARGIN) / Math.sin(halfAngle);
     }
-    distance = Math.max(MINIMUM_DISTANCE, Math.min(MAXIMUM_DISTANCE, distance));
+    distance = Math.max(MINIMUM_DISTANCE, Math.min(MAXIMUM_DISTANCE, keepDistance ? Math.max(distance, vec3.length(offset)) : distance));
     pose.target = roundVector(target);
     pose.eye = roundVector([target[0] + direction[0] * distance, target[1] + direction[1] * distance, target[2] + direction[2] * distance]);
     return pose;
@@ -3167,6 +3153,8 @@ export function createStudioController({
     setElementSession,
     screenRay,
     pickAt,
+    surfacePointAt,
+    setOrbitPivot,
     gizmoHandles,
     rotationSweep,
     dragTrace,

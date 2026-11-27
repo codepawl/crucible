@@ -3,6 +3,9 @@
 import './site-tokens.css';
 import './brand-fonts.css';
 import './site-chrome.css';
+import { observeCodeBlocks } from './site-code.js';
+
+observeCodeBlocks();
 
 async function showReleaseVersion() {
   const labels = document.querySelectorAll('[data-release-version]');

@@ -1,0 +1,1 @@
+- Toon materials take `toonRim` for a sun-side silver lining rim highlight and `toonBase` for a lifted glowing underside, enabled in the `cumulus-towers` recipe (Part of #2039)

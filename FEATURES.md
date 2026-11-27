@@ -497,6 +497,20 @@ An id is the name in the `###` heading of its block, not a file name: `drive.mjs
 - Source: `bin/crucible-mcp.mjs`
 - Drive: none: not a page
 
+### `crucible-agent`
+- Name: Built-in headless AI agent CLI driving `crucible-mcp` and writing updated scene recipes (docs/cli-agent.md)
+- Surface: CLI
+- Reach: command `npx crucible agent "<prompt>"`
+- Source: `bin/crucible.mjs`, `bin/crucible-agent.mjs`, `bin/crucible-mcp-client.mjs`
+- Drive: none: not a page
+
+### `crucible-auth`
+- Name: OAuth 2.1 + PKCE sign-in, credit status, and session storage for `crucible agent` (docs/cli-agent.md)
+- Surface: CLI
+- Reach: command `npx crucible auth login`, `npx crucible auth status`, `npx crucible auth logout`
+- Source: `bin/crucible.mjs`, `bin/crucible-auth.mjs`, `bin/crucible-auth-store.mjs`
+- Drive: none: not a page
+
 ### `crucible-pack`
 - Name: Compiles a recipe into a runtime-only web bundle with a `<crucible-scene>` element (docs/pack.md)
 - Surface: CLI

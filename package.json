@@ -31,6 +31,7 @@
     "docs/agent-render-jobs.md",
     "docs/agent-review.md",
     "docs/agent-scene.md",
+    "docs/cli-agent.md",
     "docs/clip-planes.md",
     "docs/export-glb.md",
     "docs/gltf.md",
@@ -70,7 +71,8 @@
   "bin": {
     "crucible-mcp": "./bin/crucible-mcp.mjs",
     "crucible": "./bin/crucible.mjs",
-    "crucible-addon-check": "./bin/crucible-addon-check.mjs"
+    "crucible-addon-check": "./bin/crucible-addon-check.mjs",
+    "crucible-oidn-fetch": "./bin/crucible-oidn-fetch.mjs"
   },
   "engines": {
     "node": ">=20.19.0"
@@ -139,6 +141,7 @@
     "./addons/retro-shader": "./build/retro-shader.js",
     "./addons/glitter-shader": "./build/glitter-shader.js",
     "./addons/height-parallax-shader": "./build/height-parallax-shader.js",
+    "./addons/detail-normal-shader": "./build/detail-normal-shader.js",
     "./addons/surface-cover": "./build/surface-cover.js",
     "./addons/fog-shader": "./build/fog-shader.js",
     "./addons/linear-output-shader": "./build/linear-output-shader.js",
@@ -167,6 +170,8 @@
     "./addons/fracture": "./build/fracture.js",
     "./addons/morph": "./build/morph.js",
     "./addons/skinning": "./build/skinning.js",
+    "./addons/three-bridge": "./build/three-bridge.js",
+    "./addons/denoise-oidn": "./build/denoise-oidn.js",
     "./addons/studio": "./build/studio.js",
     "./package.json": "./package.json"
   },

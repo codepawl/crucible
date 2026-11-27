@@ -31,7 +31,7 @@ export const publishedDocuments = [
   'agent-review.md',
   // Guides that other published guides and llms.txt link to (#1249).
   'game.md', 'addons.md', 'scene-query.md', 'line-art.md', 'rain.md', 'mesh-blend.md', 'kinetic-text.md', 'material-maps.md', 'user-passes.md', 'clip-planes.md', 'meshlets.md', 'roblox-import.md',
-  'webgpu-decision.md', 'render-engines.md', 'packs.md', 'pack.md', 'studio.md',
+  'webgpu-decision.md', 'render-engines.md', 'packs.md', 'pack.md', 'studio.md', 'cli-agent.md',
   // Pictures that a published guide shows.
   'cook-light-portals.jpg', 'cook-camera-environment.jpg', 'roblox-import-comparison.jpg',
 ];

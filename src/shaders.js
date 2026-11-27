@@ -4,7 +4,7 @@ import { TANGENT_CODE_MINIMUM } from './tangent-encoding.js';
 import { UNBAKED_ALPHA_THRESHOLD, NORMAL_SPREAD_GAIN } from './normal-map-variance.js';
 import { MAX_POINT_LIGHTS, MAX_SPOT_LIGHTS, MAX_AREA_LIGHTS } from './light-limits.js';
 import { LIGHT_DATA_BLOCK, uniformBlockDeclaration } from './light-uniform-block.js';
-import { registeredFeatureCode, HEIGHT_MAP_FEATURE, requireFeatureCode, requireHeightParallaxSupport, registerShaderFeatureCode, registerSplatSupport, requireSplatSupport, layerTextureSupport, viewTransformShader, SPLAT_UNITS } from './shader-registry.js';
+import { registeredFeatureCode, HEIGHT_MAP_FEATURE, DETAIL_NORMAL_FEATURE, requireFeatureCode, requireHeightParallaxSupport, registerShaderFeatureCode, registerSplatSupport, requireSplatSupport, layerTextureSupport, viewTransformShader, SPLAT_UNITS } from './shader-registry.js';
 
 export { registerShaderFeatureCode, registerSplatSupport, requireSplatSupport, layerTextureSupport, viewTransformShader, SPLAT_UNITS };
 
@@ -1137,7 +1137,7 @@ export const LIGHT_SHADING_FEATURE = 'lightShading';
 export const WETNESS_FEATURE = 'wetness';
 // Parallax occlusion mapping of a material's heightMap (height-parallax-shader.js): spliced in only when a material has one, so it is not in SHADER_FEATURES.
 // Its code is a lazy module that registers itself on import, like the other optional features.
-export { HEIGHT_MAP_FEATURE };
+export { HEIGHT_MAP_FEATURE, DETAIL_NORMAL_FEATURE };
 /** Renderer option values: 'full' is the default picture, 'light' leaves out costly terms for weak machines. */
 export const SHADING_MODES = Object.freeze(['full', 'light']);
 /** The light preset resolves at most this many MSAA samples (on SwiftShader 2 cost a third of 4 in the blend heavy scene). */
@@ -1195,7 +1195,7 @@ export function liquidPassDrawer() {
 function hasSeparateCode(feature) {
   if (feature in MODULE_FEATURES) return true;
   if (feature === TANGENT_FEATURE) return false;
-  if (feature in SHADER_FEATURE_CONDITIONS || feature === LIGHT_SHADING_FEATURE || feature === WETNESS_FEATURE || feature === HEIGHT_MAP_FEATURE || feature === FRAGMENT_SHADOW_POSITION_FEATURE || feature === FADING_SHADOWS_FEATURE) return false;
+  if (feature in SHADER_FEATURE_CONDITIONS || feature === LIGHT_SHADING_FEATURE || feature === WETNESS_FEATURE || feature === HEIGHT_MAP_FEATURE || feature === DETAIL_NORMAL_FEATURE || feature === FRAGMENT_SHADOW_POSITION_FEATURE || feature === FADING_SHADOWS_FEATURE) return false;
   return !ENVIRONMENT_FEATURES.includes(feature) && !VERTEX_ONLY_FEATURES.includes(feature) && feature !== VERTEX_OPACITY_FEATURE;
 }
 
@@ -1208,7 +1208,7 @@ function featureCodeSplicer(features) {
   if (WORLD_MATERIAL_FEATURES.some(feature => enabled.has(feature))) codes.push(requireFeatureCode('worldMaterials'));
   if (enabled.has(WETNESS_FEATURE)) codes.push(WETNESS_CODE);
   if (enabled.has(HEIGHT_MAP_FEATURE)) codes.push(requireFeatureCode(HEIGHT_MAP_FEATURE));
-  if (enabled.has('normalMap')) codes.push(NORMAL_MAP_SPECULAR_CODE);
+  if (enabled.has('normalMap') || enabled.has(DETAIL_NORMAL_FEATURE)) codes.push(NORMAL_MAP_SPECULAR_CODE);
   if (enabled.has(TANGENT_FEATURE)) codes.push(tangentFragmentCode(enabled.has('normalMapTransform') ? requireFeatureCode('normalMapTransform').normalUv ?? '' : ''));
   codes.push(enabled.has('environmentMap') ? registeredFeatureCode.get('environmentMap') ?? ENVIRONMENT_STUB : ENVIRONMENT_STUB);
   return slot => codes.map(code => code[slot] ?? '').join('');
@@ -1277,7 +1277,8 @@ export function createFragmentShader(features = SHADER_FEATURES) {
   // Not in SHADER_FEATURES: the preset is chosen by the renderer, so a shader built from every feature keeps the full look.
   lines.push(`#define LIGHT_SHADING ${enabled.has(LIGHT_SHADING_FEATURE) ? 'true' : 'false'}`);
   const built = buildFragmentShader(lines.join('\n'), featureCodeSplicer([...enabled]));
-  const source = enabled.has(HEIGHT_MAP_FEATURE) ? requireHeightParallaxSupport().rewrite(built) : built;
+  const withHeight = enabled.has(HEIGHT_MAP_FEATURE) ? requireHeightParallaxSupport().rewrite(built) : built;
+  const source = enabled.has(DETAIL_NORMAL_FEATURE) ? requireFeatureCode(DETAIL_NORMAL_FEATURE).rewrite(withHeight) : withHeight;
   const withOpacity = enabled.has(VERTEX_OPACITY_FEATURE) ? withVertexOpacityFragment(source) : source;
   return enabled.has('alphaMode') ? withBlendCoverage(withOpacity) : withOpacity;
 }

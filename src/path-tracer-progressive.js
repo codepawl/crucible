@@ -54,8 +54,8 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
     return { divisor, levelWidth: Math.max(1, Math.ceil(width / divisor)), levelHeight: Math.max(1, Math.ceil(height / divisor)) };
   };
 
-  const loadScene = (parts, environment) => {
-    const nextTraceScene = buildTraceScene(parts, environment, { gpuTriangleLimit: gpuTriangleLimit() });
+  const loadScene = (parts, environment, eye = currentCamera?.eye) => {
+    const nextTraceScene = buildTraceScene(parts, environment, { gpuTriangleLimit: gpuTriangleLimit(), ...(eye ? { eye } : {}) });
     refuseLocalVolumes(nextTraceScene, 'the progressive path tracer');
     releaseResources(gl);
     traceScene = nextTraceScene;
@@ -91,7 +91,7 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
     clearTargets();
   };
 
-  loadScene(currentParts, currentEnvironment);
+  loadScene(currentParts, currentEnvironment, currentCamera?.eye);
   loadCamera(currentCamera);
   startOver();
 
@@ -108,10 +108,11 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
       if (hasParts || hasEnvironment) {
         const nextParts = hasParts ? parts : currentParts;
         const nextEnvironment = hasEnvironment ? (environment ?? {}) : currentEnvironment;
-        loadScene(nextParts, nextEnvironment);
+        const nextCamera = camera ?? currentCamera;
+        loadScene(nextParts, nextEnvironment, nextCamera?.eye);
         currentParts = nextParts;
         currentEnvironment = nextEnvironment;
-        loadCamera(camera ?? currentCamera);
+        loadCamera(nextCamera);
         if (camera) currentCamera = camera;
       } else if (camera) {
         loadCamera(camera);

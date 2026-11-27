@@ -1,0 +1,1 @@
+- Path tracers (CPU, WebGL2, WebGPU and native) now subdivide and displace geometry from `material.heightMap` with `heightScale` and `heightFade` (#2839)
