@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   EDGE_POINTER_CLEAR_RADIUS,
+  EDGE_POINTER_EDGE_GAP,
   EDGE_POINTER_INSET,
+  EDGE_POINTER_OUTERMOST_DISTANCE,
   edgePointerPlacement,
   screenPointOfWorldPoint,
 } from '../src/studio-edge-pointer.js';
@@ -49,6 +51,17 @@ test('a mark beyond one side puts the pointer on that side of the inset rectangl
   const below = placementToward(500, 1500);
   assertNear(below.y, HEIGHT - EDGE_POINTER_INSET, 'bottom edge');
   assertNear(below.angle, 90, 'points down');
+});
+
+test('the chevron tip keeps the same 8 px gap from whichever edge the pointer faces', () => {
+  const left = placementToward(-400, 300);
+  const right = placementToward(1900, 300);
+  const above = placementToward(500, -900);
+  const below = placementToward(500, 1500);
+  assertNear(left.x - EDGE_POINTER_OUTERMOST_DISTANCE, EDGE_POINTER_EDGE_GAP, 'left gap');
+  assertNear(WIDTH - (right.x + EDGE_POINTER_OUTERMOST_DISTANCE), EDGE_POINTER_EDGE_GAP, 'right gap');
+  assertNear(above.y - EDGE_POINTER_OUTERMOST_DISTANCE, EDGE_POINTER_EDGE_GAP, 'top gap');
+  assertNear(HEIGHT - (below.y + EDGE_POINTER_OUTERMOST_DISTANCE), EDGE_POINTER_EDGE_GAP, 'bottom gap');
 });
 
 test('a mark toward a corner puts the pointer on the line from the centre to it, on the inset rectangle', () => {

@@ -1,13 +1,26 @@
 // A mark that is out of view gets a pointer on the viewport's edge. This module only does the geometry: where on the edge
 // the pointer stands and which way it points, so any scene mark (the sun today, the lights later) can use it.
 
-// The pointer's disc and the chevron on its rim reach this far from its centre.
+// The pointer is a disc with a ring, and a chevron that starts a little beyond the ring so all of it shows. Sizes in pixels.
 export const EDGE_POINTER_DISC_RADIUS = 10;
-export const EDGE_POINTER_CHEVRON_REACH = 7;
-// The distance from the viewport's edge to the pointer's centre: the whole pointer, chevron included, stays inside with a gap.
-export const EDGE_POINTER_INSET = EDGE_POINTER_DISC_RADIUS + EDGE_POINTER_CHEVRON_REACH + 7;
+export const EDGE_POINTER_STROKE_WIDTH = 1.5;
+// The chevron's dark under-stroke is this much wider than its light stroke, so it reads on pale and dark surfaces.
+export const EDGE_POINTER_UNDERSTROKE_EXTRA = 2;
+export const EDGE_POINTER_CHEVRON_HEIGHT = 12;
+export const EDGE_POINTER_CHEVRON_DEPTH = 6;
+const EDGE_POINTER_RING_OUTER_RADIUS = EDGE_POINTER_DISC_RADIUS + EDGE_POINTER_STROKE_WIDTH / 2;
+const EDGE_POINTER_CHEVRON_CLEARANCE_FROM_RING = 2;
+// Where the chevron's path starts and ends along its direction, measured from the pointer's centre.
+export const EDGE_POINTER_CHEVRON_BASE_DISTANCE = EDGE_POINTER_RING_OUTER_RADIUS + EDGE_POINTER_CHEVRON_CLEARANCE_FROM_RING + EDGE_POINTER_UNDERSTROKE_EXTRA / 2;
+export const EDGE_POINTER_CHEVRON_TIP_DISTANCE = EDGE_POINTER_CHEVRON_BASE_DISTANCE + EDGE_POINTER_CHEVRON_DEPTH;
+// The outermost point of the pointer: the chevron's tip with its under-stroke.
+export const EDGE_POINTER_OUTERMOST_DISTANCE = EDGE_POINTER_CHEVRON_TIP_DISTANCE + EDGE_POINTER_UNDERSTROKE_EXTRA / 2;
+// The gap between the outermost point and the viewport's edge it faces (the 8 px spacing step).
+export const EDGE_POINTER_EDGE_GAP = 8;
+// The distance from the viewport's edge to the pointer's centre.
+export const EDGE_POINTER_INSET = EDGE_POINTER_OUTERMOST_DISTANCE + EDGE_POINTER_EDGE_GAP;
 // Half the side of the square the pointer needs kept free of overlays.
-export const EDGE_POINTER_CLEAR_RADIUS = EDGE_POINTER_DISC_RADIUS + EDGE_POINTER_CHEVRON_REACH + 4;
+export const EDGE_POINTER_CLEAR_RADIUS = EDGE_POINTER_OUTERMOST_DISTANCE + 4;
 
 const SLIDE_STEP_PIXELS = 2;
 const BEHIND_EYE_EPSILON = 1e-6;
