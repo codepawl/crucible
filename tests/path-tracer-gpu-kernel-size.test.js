@@ -40,7 +40,8 @@ for (const [name, variant] of Object.entries(VARIANTS)) {
 // 1.2 KB and the limits by 1 KB, so the plain kernel (47.3 KB) now leaves 0.7 KB under its limit; the demo room measured 23.7 s cold at 47.3 KB (2026-11-15, RTX 3060).
 // The flat camera background of world false (#2016) added about 0.3 KB to every kernel. Measured KB on main, then merged (limit): plain 47.74, 48.04 (48.5); texelBake 47.89, 48.19 (48.5); blueNoise 47.74, 48.04 (48.5); importance 47.74, 48.04 (48.5); tree 51.90, 52.20 (52.5); radianceCache 49.76, 50.06 (50.5); everything 58.85, 59.15 (59.5). Each failing limit is the merged size rounded up to the next 0.5 KB.
 // The emission Fresnel factor of #3282 added 0.25 KB of straight-line code to fillHit (no new call site); the subsurface limit moved from 53 to 53.5 KB.
-const SIZE_LIMIT_KILOBYTES = { plain: 48.5, subsurface: 53.5, texelBake: 48.5, blueNoise: 48.5, importance: 48.5, tree: 52.5, radianceCache: 50.5, everything: 59.5 };
+// The shared first-hit albedo (#1941) added ~0.7 KB (plain 48.924, subsurface 53.884, texelBake 49.074, blueNoise 48.923, importance 48.923, tree 53.085, radianceCache 50.945, everything 60.064); bench/reference/cold-draw.mjs lit-interior measured 10.32 s coldTotal (10.38 s wall, RTX 3060).
+const SIZE_LIMIT_KILOBYTES = { plain: 49, subsurface: 54, texelBake: 49.5, blueNoise: 49, importance: 49, tree: 53.5, radianceCache: 51, everything: 60.5 };
 
 for (const [name, variant] of Object.entries(VARIANTS)) {
   test(`the ${name} kernel stays under its source size`, () => {
