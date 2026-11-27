@@ -1,7 +1,7 @@
 import test from 'node:test';
 import { request } from 'node:http';
 import assert from 'node:assert/strict';
-import { ANNOTATE_LIMITS, validateMarks, isBoundedPng, pixelRay, describeMarks } from '../src/agent-annotate.js';
+import { ANNOTATE_LIMITS, ASK_USER_CAPABILITY_NOTE, validateMarks, isBoundedPng, pixelRay, describeMarks } from '../src/agent-annotate.js';
 import { runAnnotateSession } from '../scripts/annotate-session.mjs';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
@@ -129,4 +129,44 @@ test('a browser that cannot open rejects with the page address', async () => {
     runAnnotateSession({ png: PNG, width: 400, height: 200, waitMs: 50, open: async () => { throw new Error('no browser'); } }),
     /no browser\). The annotate page was http:\/\/127\.0\.0\.1:\d+\//,
   );
+});
+
+test('validateMarks and describeMarks support transform marks and per-mark time across kinds (#922)', () => {
+  assert.equal(ANNOTATE_LIMITS.maxDeltaPosition, 1000);
+  assert.equal(ANNOTATE_LIMITS.maxDeltaRotation, 360);
+  assert.equal(ANNOTATE_LIMITS.maxScaleFactor, 100);
+  assert.equal(ANNOTATE_LIMITS.maxMotionTime, 3600);
+  assert.match(ASK_USER_CAPABILITY_NOTE, /transform/);
+  assert.match(ASK_USER_CAPABILITY_NOTE, /time/);
+  const validated = validateMarks([
+    { kind: 'transform', x: 100, y: 80, deltaPosition: [1.2345, 0, -2], deltaRotation: [0, 45, 0], scaleFactor: 1.5, note: '  nudge  ', time: 1.2345 },
+    { x: 20, y: 30, note: 'pin at zero', time: 0 },
+  ], view);
+  assert.deepEqual(validated[0], { kind: 'transform', x: 100, y: 80, deltaPosition: [1.235, 0, -2], deltaRotation: [0, 45, 0], scaleFactor: 1.5, note: 'nudge', time: 1.235 });
+  assert.deepEqual(validated[1], { x: 20, y: 30, note: 'pin at zero', time: 0 });
+  assert.throws(() => validateMarks([{ kind: 'transform', x: 10, y: 10 }], view), /at least one of deltaPosition, deltaRotation or scaleFactor/);
+  assert.throws(() => validateMarks([{ kind: 'transform', x: 10, y: 10, deltaPosition: [0, 0, 0] }], view), /must change deltaPosition/);
+  assert.throws(() => validateMarks([{ x: 10, y: 10, time: 3601 }], view), /mark 1 time/);
+  const described = describeMarks(validated, camera, {
+    ...view,
+    partMaterials: { box: 'wood', floor: 'wood' },
+    raycast: ray => (ray.direction[0] < 0 ? { id: 'box', point: [-1, 0, 0], normal: [0, 0, 1], distance: 9, material: 'wood' } : null),
+  });
+  assert.deepEqual(described[0], {
+    number: 1,
+    kind: 'transform',
+    pixel: [100, 80],
+    deltaPosition: [1.235, 0, -2],
+    deltaRotation: [0, 45, 0],
+    scaleFactor: 1.5,
+    note: 'nudge',
+    time: 1.235,
+    partId: 'box',
+    point: [-1, 0, 0],
+    normal: [0, 0, 1],
+    distance: 9,
+    material: 'wood',
+    materialSharedWith: ['floor'],
+  });
+  assert.equal(described[1].time, 0);
 });

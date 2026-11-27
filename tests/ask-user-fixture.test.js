@@ -220,3 +220,33 @@ test('only a bench task tagged askUser gets the fixture, and its pin lands on th
   assert.equal(picked.marks[0].note, 'make this red');
   assert.equal(picked.marks[0].material, 'bronze');
 });
+
+test('a fixture mark may carry transform deltas and per-mark time (#922)', async context => {
+  const validPath = await fixtureFile(context, 'transform-time.json', {
+    marks: [
+      { pixel: [200, 150], deltaPosition: [1, 0, -0.5], deltaRotation: [0, 90, 0], scaleFactor: 1.25, note: 'turn right', time: 1.5 },
+      { pixel: [100, 100], note: 'pin at 2s', time: 2 },
+    ],
+  });
+  const loaded = loadFrom(validPath);
+  assert.deepEqual(loaded.marks[0], {
+    kind: 'transform',
+    x: 200,
+    y: 150,
+    deltaPosition: [1, 0, -0.5],
+    deltaRotation: [0, 90, 0],
+    scaleFactor: 1.25,
+    note: 'turn right',
+    time: 1.5,
+  });
+  assert.deepEqual(loaded.marks[1], { x: 100, y: 100, note: 'pin at 2s', time: 2 });
+  for (const badContent of [
+    { marks: [{ pixel: [10, 10], deltaPosition: [0, 0, 0] }] },
+    { marks: [{ pixel: [10, 10], scaleFactor: 0 }] },
+    { marks: [{ pixel: [10, 10], deltaPosition: [1, 0, 0], color: '#ff0000' }] },
+    { marks: [{ pixel: [10, 10], time: -0.1 }] },
+  ]) {
+    const badPath = await fixtureFile(context, 'bad-transform.json', badContent);
+    assert.throws(() => loadFrom(badPath));
+  }
+});
