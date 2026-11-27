@@ -55,7 +55,7 @@ import { SNAP_TARGETS } from './studio-snapping.js';
 import { createOutlinerParentDrag } from './studio-parenting.js';
 import { editIconName } from './studio-edit-names.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
-import { chooseViewportLook } from './studio-workspace-viewport.js';
+import { applyViewportLook } from './studio-workspace-viewport.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, frameFailureReason, watchContextLoss } from './studio-context-loss.js';
 import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgentEdit, diffRecipeNodes } from './studio-agent-presence.js';
 import { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, primitiveGeometrySpec, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, buildTemplateRecipe } from './studio-templates.js';
@@ -4007,14 +4007,7 @@ export function createStudio(container, {
 
   function drawSceneFrame() {
     const activeRenderer = syncPartsWithoutStall(ensureRenderer());
-    const { environment, effects, passScene, shadowsVisible } = chooseViewportLook({
-      workspaceId: root.dataset.workspace,
-      drawingTheShot: drawingTheShot(),
-      environment: controller.scene.environment,
-      effects: controller.scene.effects,
-      scene: controller.scene,
-    });
-    activeRenderer.shadowsHidden = !shadowsVisible;
+    const { environment, effects, passScene } = applyViewportLook(activeRenderer, controller.scene, root.dataset.workspace, drawingTheShot());
     const shadow = fitAgentShadow(controller.scene.shadow, controller.scene.parts);
     const shadowKey = JSON.stringify([environment.lightDirection, shadow]);
     if (renderedShadowKey !== shadowKey) {

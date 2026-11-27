@@ -49,3 +49,13 @@ export function chooseViewportLook({ workspaceId, drawingTheShot, environment, e
   }
   return { environment: plainEnvironmentOf(environment), effects: EFFECT_PRESETS.neutral, passScene: SCENE_WITHOUT_POST_PASSES, shadowsVisible: false };
 }
+
+/**
+ * Applies the viewport look to the renderer and returns what the frame still needs. shadowsHidden is a display switch on
+ * the renderer: when true every surface is lit as if nothing shadowed it. No recipe field sets it.
+ */
+export function applyViewportLook(renderer, scene, workspaceId, drawingTheShot) {
+  const look = chooseViewportLook({ workspaceId, drawingTheShot, environment: scene.environment, effects: scene.effects, scene });
+  renderer.shadowsHidden = !look.shadowsVisible;
+  return look;
+}

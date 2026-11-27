@@ -1194,8 +1194,6 @@ export class CrucibleRenderer {
     this.splatResources = new Map();
     this.textureBytes = 4;
     this.shadowsDirty = true;
-    // A display switch (Studio's Build view): when true every surface is lit as if nothing shadowed it. No recipe field sets it.
-    this.shadowsHidden = false;
     this.windState = { time: 0, strength: 0.3 };
     // The shadow map the constructor draws uses no assembly, so a first frame with none does not draw it again.
     this.assemblyAmount = 0;
