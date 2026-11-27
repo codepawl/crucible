@@ -37,6 +37,7 @@ export const EMPTY_SELECT_CSS = `
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--studio-space-8);
   padding: var(--studio-space-8);
   border: 1px dashed color-mix(in srgb, var(--studio-text) 30%, transparent);
@@ -44,7 +45,7 @@ export const EMPTY_SELECT_CSS = `
   color: var(--studio-muted);
 }
 .crucible-studio-empty-slot[hidden] { display: none; }
-.crucible-studio-empty-slot > span { padding-inline-start: var(--studio-space-4); min-inline-size: 0; }
+.crucible-studio-empty-slot > span { padding-inline-start: var(--studio-space-4); min-inline-size: 0; white-space: nowrap; }
 .crucible-studio button.crucible-studio-empty-action {
   flex: none;
   gap: var(--studio-space-4);
