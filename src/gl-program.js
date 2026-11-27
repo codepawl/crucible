@@ -14,7 +14,7 @@ void main() {
 // Starting a program without asking for its result lets the driver build several programs at once.
 export function startProgram(context, vertexSource, fragmentSource) {
   const program = context.createProgram();
-  context.getExtension('KHR_parallel_shader_compile');
+  context.getExtension?.('KHR_parallel_shader_compile');
   const shaders = [];
   for (const [kind, source] of [[context.VERTEX_SHADER, vertexSource], [context.FRAGMENT_SHADER, fragmentSource]]) {
     const shader = context.createShader(kind);
@@ -42,7 +42,7 @@ export class ProgramNotReady extends Error {
 
 /** True once the driver has finished building the program; always true where the driver cannot say, since asking then waits. */
 export function isLinkComplete(context, program) {
-  const parallelCompile = context.getExtension('KHR_parallel_shader_compile');
+  const parallelCompile = context.getExtension?.('KHR_parallel_shader_compile');
   return !parallelCompile || Boolean(context.getProgramParameter(program, parallelCompile.COMPLETION_STATUS_KHR));
 }
 
@@ -69,15 +69,15 @@ export function finishProgram(context, { program, shaders }) {
   // A linked program has compiled shaders, so the per-shader status and the logs are read only to explain a failure. Each of
   // those reads is a round trip to the GPU process that waits for everything queued before it (up to 70 ms on a busy card).
   if (linked) {
-    shaders.forEach((shader) => context.deleteShader(shader));
+    shaders.forEach((shader) => context.deleteShader?.(shader));
     return program;
   }
   const failedShader = shaders.find(shader => !context.getShaderParameter(shader, context.COMPILE_STATUS));
   const message = failedShader ? context.getShaderInfoLog(failedShader) : context.getProgramInfoLog(program);
-  shaders.forEach((shader) => context.deleteShader(shader));
-  context.deleteProgram(program);
+  shaders.forEach((shader) => context.deleteShader?.(shader));
+  context.deleteProgram?.(program);
   // On a lost context every link reports false with a null log; the context is gone, so there is nothing to report (#541).
-  if (context.isContextLost()) return program;
+  if (context.isContextLost?.()) return program;
   throw new Error(failedShader ? `Shader compilation failed: ${message}` : `Shader linking failed: ${message}`);
 }
 

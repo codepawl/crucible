@@ -29,7 +29,7 @@ test('the top bar has the same links in the same order on every page', () => {
 
 test('the footer lists every page, since the phone top bar keeps only Docs, GitHub and Install', () => {
   const footer = renderFooter();
-  for (const href of ['/docs.html', '/recipes.html', '/showcase.html', '/marketplace.html', '/benchmark.html', '/changelog.html']) {
+  for (const href of ['/docs.html', '/recipes.html', '/showcase.html', '/marketplace.html', '/changelog.html']) {
     assert.ok(footer.includes(`<a href="${href}">`), `${href} is missing from the footer`);
   }
 });
@@ -62,7 +62,7 @@ test('no page head still carries the unused color script', () => {
 });
 
 test('each page marks its own place in the top bar with aria-current', () => {
-  const expected = { index: null, film: null, motion: null, modeling: null, nature: null, object: null, view2d: null, assets: null, docs: '/docs.html', changelog: '/changelog.html', recipes: '/recipes.html', 'recipe-dolly-zoom': '/recipes.html', marketplace: '/marketplace.html', benchmark: '/benchmark.html', showcase: '/showcase.html' };
+  const expected = { index: null, film: null, motion: null, modeling: null, nature: null, object: null, view2d: null, assets: null, docs: '/docs.html', changelog: '/changelog.html', recipes: '/recipes.html', 'recipe-dolly-zoom': '/recipes.html', marketplace: '/marketplace.html', showcase: '/showcase.html' };
   for (const [pageName, href] of Object.entries(expected)) {
     const marked = [...renderHeader(pageName).matchAll(/<a[^>]*href="([^"]+)" aria-current="page"/g)].map((match) => match[1]);
     assert.deepEqual(marked, href ? [href] : [], pageName);
@@ -74,7 +74,6 @@ const SITE_NAV_ENTRIES = [
   { href: '/recipes.html', label: 'Recipes' },
   { href: '/showcase.html', label: 'Showcase' },
   { href: '/marketplace.html', label: 'Marketplace' },
-  { href: '/benchmark.html', label: 'Benchmark' },
   { href: '/changelog.html', label: 'Changelog' },
 ];
 
@@ -91,7 +90,7 @@ function textOutsideTags(markup) {
   return pieces.join('').trim();
 }
 
-test('every site page shows Docs, Recipes, Showcase, Marketplace, Benchmark and Changelog in that order, with no Studio', () => {
+test('every site page shows Docs, Recipes, Showcase, Marketplace and Changelog in that order, with no Studio', () => {
   for (const pageName of CHROME_PAGES) {
     const entries = navEntries(readPage(pageName));
     const publicEntries = entries.filter((entry) => SITE_NAV_ENTRIES.some((expected) => expected.href === entry.href));
@@ -101,7 +100,7 @@ test('every site page shows Docs, Recipes, Showcase, Marketplace, Benchmark and 
 });
 
 test('every real site page is covered by the shared chrome; only redirects and the render canvas are left out', () => {
-  const redirectsAndCanvas = new Set(['downloads', 'getting-started', 'modeling', 'tiers', 'file']);
+  const redirectsAndCanvas = new Set(['downloads', 'getting-started', 'modeling', 'file']);
   const fileNames = readdirSync(new URL('../site/', import.meta.url)).filter((fileName) => fileName.endsWith('.html'));
   for (const fileName of fileNames) {
     const pageName = fileName.replace(/\.html$/, '');
@@ -123,7 +122,7 @@ test('every page wears the shared theme class and loads the shared styles', () =
   for (const pageName of CHROME_PAGES) {
     assert.match(readPage(pageName), /<body class="[^"]*\bthemed\b/, `${pageName} body needs the themed class`);
   }
-  const scripts = ['landing', 'documentation', 'changelog', 'recipes', 'marketplace', 'showcase', 'tiers'];
+  const scripts = ['landing', 'documentation', 'changelog', 'recipes', 'marketplace', 'showcase'];
   for (const name of scripts) {
     const source = readFileSync(new URL(`../src/${name}.js`, import.meta.url), 'utf8');
     assert.match(source, /site-chrome\.(css|js)'/, `src/${name}.js must load the shared chrome`);

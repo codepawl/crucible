@@ -1,7 +1,8 @@
 import { registerShaderFeatureCode } from './shader-registry.js';
 import { resolveLocalVolumes, createLocalVolumeBuffers, packLocalVolumes, LOCAL_VOLUME_MAXIMUM_STEPS, LOCAL_VOLUME_MAXIMUM_OCTAVE_STEPS, LOCAL_VOLUME_DETAIL_SHADOW_TAPS, LOCAL_VOLUME_STEPS_PER_NOISE_CELL, LOCAL_VOLUME_BLUR_PIXELS, LOCAL_VOLUME_BLUR_RATE, LOCAL_VOLUME_EDGE_WARP, LOCAL_VOLUME_KEY_GAIN, LOCAL_VOLUME_LIGHT_DEPTH_SATURATION, LOCAL_VOLUME_SHADOW_STRENGTH, LOCAL_VOLUME_SKY_GAIN, LOCAL_VOLUME_SUN_FLATTEN, LOCAL_VOLUME_GRID_MAXIMUM_STEPS, LOCAL_VOLUME_SURFACE_SHADOW_TAPS, LOCAL_VOLUME_GRID_SHADOW_TAPS, LOCAL_VOLUME_MAXIMUM_SCATTER_OCTAVES, LOCAL_VOLUME_MAXIMUM_NOISE_OCTAVES, LOCAL_VOLUME_MULTI_SCATTER, LOCAL_VOLUME_MULTI_EXTINCTION, LOCAL_VOLUME_MULTI_ANISOTROPY, MAX_LOCAL_VOLUMES } from './local-volumes.js';
 import { createLocalVolumeCompositeFragment } from './post.js';
-import { compileProgram, fullscreenVertex } from './gl-program.js';
+import { fullscreenVertex } from './gl-program.js';
+import { backendFor } from './glaze-backend.js';
 import { LOCAL_VOLUME_RAMP_STOPS } from './local-volume-ramp.js';
 import { bindLocalVolumeParts } from './local-volume-parts.js';
 import { fireLightsOf } from './local-volume-fire-light.js';
@@ -16,31 +17,30 @@ import { FogFieldTexture, createFogLightBuffers, packFogLights, volumeShadowAmbi
 // cloudNoise from the post shader. Recipes and the film load it by themselves.
 
 function bindUniforms(renderer, post, volume, environment, frame) {
-  const context = renderer.context;
-  context.activeTexture(context.TEXTURE3);
-  context.bindTexture(context.TEXTURE_2D, renderer.shadowTexture);
-  context.uniform1i(post.uniforms.volumeShadowMap, 3);
-  context.uniformMatrix4fv(post.uniforms.volumeLightProjection, false, renderer.lightProjection);
-  context.uniform3fv(post.uniforms.volumeLightDirection, environment.lightDirection);
-  context.uniform3fv(post.uniforms.volumeLightColor, renderer.lighting.keyColor);
-  context.uniform1f(post.uniforms.volumeDensity, volume.density);
-  context.uniform3fv(post.uniforms.volumeMinimum, volume.minimum);
-  context.uniform3fv(post.uniforms.volumeMaximum, volume.maximum);
-  context.uniform3fv(post.uniforms.volumeColor, volume.color);
-  context.uniform3fv(post.uniforms.volumeAmbient, volume.ambient);
-  context.uniform3fv(post.uniforms.volumeDrift, volume.drift);
-  context.uniform1i(post.uniforms.volumeSteps, volume.steps);
-  context.uniform1f(post.uniforms.volumeAnisotropy, volume.anisotropy);
-  context.uniform1f(post.uniforms.volumeShadowAmbient, volumeShadowAmbient(volume, renderer.sceneParts, renderer.skyOpenness));
-  context.uniform1f(post.uniforms.volumeNoiseAmount, volume.noiseAmount);
-  context.uniform1f(post.uniforms.volumeNoiseScale, volume.noiseScale);
-  context.uniform1f(post.uniforms.volumeMaxDistance, volume.maxDistance);
-  context.uniform1f(post.uniforms.volumeHeightFalloff, volume.heightFalloff);
-  bindFieldAndLights(renderer, post, volume);
-  bindDetail(context, post, volume);
-  context.uniform1f(post.uniforms.orthographic, frame.projection === 'orthographic' ? 1 : 0);
-  context.uniform1i(post.uniforms.fogSkyVisibility, 5);
-  context.uniform1f(post.uniforms.volumeGridFog, fogIsLitByGrid(renderer.sceneParts) ? 1 : 0);
+  const backend = backendFor(renderer);
+  backend.bindTextureUnit(3, renderer.shadowTexture);
+  backend.uniform1i(post.uniforms.volumeShadowMap, 3);
+  backend.uniformMatrix4fv(post.uniforms.volumeLightProjection, renderer.lightProjection);
+  backend.uniform3fv(post.uniforms.volumeLightDirection, environment.lightDirection);
+  backend.uniform3fv(post.uniforms.volumeLightColor, renderer.lighting.keyColor);
+  backend.uniform1f(post.uniforms.volumeDensity, volume.density);
+  backend.uniform3fv(post.uniforms.volumeMinimum, volume.minimum);
+  backend.uniform3fv(post.uniforms.volumeMaximum, volume.maximum);
+  backend.uniform3fv(post.uniforms.volumeColor, volume.color);
+  backend.uniform3fv(post.uniforms.volumeAmbient, volume.ambient);
+  backend.uniform3fv(post.uniforms.volumeDrift, volume.drift);
+  backend.uniform1i(post.uniforms.volumeSteps, volume.steps);
+  backend.uniform1f(post.uniforms.volumeAnisotropy, volume.anisotropy);
+  backend.uniform1f(post.uniforms.volumeShadowAmbient, volumeShadowAmbient(volume, renderer.sceneParts, renderer.skyOpenness));
+  backend.uniform1f(post.uniforms.volumeNoiseAmount, volume.noiseAmount);
+  backend.uniform1f(post.uniforms.volumeNoiseScale, volume.noiseScale);
+  backend.uniform1f(post.uniforms.volumeMaxDistance, volume.maxDistance);
+  backend.uniform1f(post.uniforms.volumeHeightFalloff, volume.heightFalloff);
+  bindFieldAndLights(renderer, post, volume, backend);
+  bindDetail(backend, post, volume);
+  backend.uniform1f(post.uniforms.orthographic, frame.projection === 'orthographic' ? 1 : 0);
+  backend.uniform1i(post.uniforms.fogSkyVisibility, 5);
+  backend.uniform1f(post.uniforms.volumeGridFog, fogIsLitByGrid(renderer.sceneParts) ? 1 : 0);
 }
 
 /** True when a baked irradiance grid lights the fog. A sky-only grid (src/sky-occlusion-grid.js) holds no light, so it leaves the fog as it was (#3289). */
@@ -49,44 +49,43 @@ export function fogIsLitByGrid(parts) {
 }
 
 // Detail, layer top and key light controls. The detail ones only act in a program with the detail step compiled in (fogUsesDetail).
-function bindDetail(context, post, volume) {
+function bindDetail(backend, post, volume) {
   const detail = resolveFogDetail(volume);
   // The renderer's post uniform list knows only the older fields; these locations are looked up here, once per program.
-  const locate = name => (post.uniforms[name] ??= context.getUniformLocation(post.program, name));
-  context.uniform1i(locate('volumeDetailOctaves'), detail.detailOctaves);
-  context.uniform1f(locate('volumeDetailAmount'), detail.detailAmount);
-  context.uniform1f(locate('volumeWarp'), detail.warp);
-  context.uniform1f(locate('volumeContrast'), detail.contrast);
-  context.uniform1f(locate('volumeProfileStart'), detail.profileSoftness);
-  context.uniform1f(locate('volumeKeyScattering'), detail.keyScattering);
-  context.uniform1i(locate('volumeScatterOctaves'), detail.scatterOctaves);
-  context.uniform1f(locate('volumeMultiScatter'), detail.multiScatter);
-  context.uniform1f(locate('volumeMultiExtinction'), detail.multiExtinction);
-  context.uniform1f(locate('volumeMultiAnisotropy'), detail.multiAnisotropy);
-  context.uniform1f(locate('volumeKeyTransmittance'), detail.keyTransmittance);
-  context.uniform1f(locate('volumeSurfaceTransmittance'), detail.surfaceTransmittance);
-  context.uniform1f(locate('volumeBeamRadius'), detail.beamRadius);
+  const locate = name => (post.uniforms[name] ??= backend.uniformLocation(post.program, name));
+  backend.uniform1i(locate('volumeDetailOctaves'), detail.detailOctaves);
+  backend.uniform1f(locate('volumeDetailAmount'), detail.detailAmount);
+  backend.uniform1f(locate('volumeWarp'), detail.warp);
+  backend.uniform1f(locate('volumeContrast'), detail.contrast);
+  backend.uniform1f(locate('volumeProfileStart'), detail.profileSoftness);
+  backend.uniform1f(locate('volumeKeyScattering'), detail.keyScattering);
+  backend.uniform1i(locate('volumeScatterOctaves'), detail.scatterOctaves);
+  backend.uniform1f(locate('volumeMultiScatter'), detail.multiScatter);
+  backend.uniform1f(locate('volumeMultiExtinction'), detail.multiExtinction);
+  backend.uniform1f(locate('volumeMultiAnisotropy'), detail.multiAnisotropy);
+  backend.uniform1f(locate('volumeKeyTransmittance'), detail.keyTransmittance);
+  backend.uniform1f(locate('volumeSurfaceTransmittance'), detail.surfaceTransmittance);
+  backend.uniform1f(locate('volumeBeamRadius'), detail.beamRadius);
 }
 
 // The fog's field texture and light buffers; a program without those steps has no such uniforms, and a null location is ignored.
-function bindFieldAndLights(renderer, post, volume) {
-  const context = renderer.context;
+function bindFieldAndLights(renderer, post, volume, backend = backendFor(renderer)) {
   if (volume.field) {
-    renderer.fogFieldTexture ??= new FogFieldTexture(context);
-    context.activeTexture(context.TEXTURE6);
+    renderer.fogFieldTexture ??= new FogFieldTexture(backend);
+    backend.activeTextureUnit(6);
     renderer.fogFieldTexture.upload(volume.field);
-    context.uniform1i(post.uniforms.volumeField, 6);
-    context.uniform1f(post.uniforms.volumeProfile, volume.profile === 'smoothstep' ? 1 : 0);
-    context.uniform1f(post.uniforms.volumeFlowStrength, volume.flowStrength ?? DEFAULT_FLOW_STRENGTH);
-    context.uniform1f(post.uniforms.volumeFlowPeriod, volume.flowPeriod ?? DEFAULT_FLOW_PERIOD);
+    backend.uniform1i(post.uniforms.volumeField, 6);
+    backend.uniform1f(post.uniforms.volumeProfile, volume.profile === 'smoothstep' ? 1 : 0);
+    backend.uniform1f(post.uniforms.volumeFlowStrength, volume.flowStrength ?? DEFAULT_FLOW_STRENGTH);
+    backend.uniform1f(post.uniforms.volumeFlowPeriod, volume.flowPeriod ?? DEFAULT_FLOW_PERIOD);
   }
   const lights = renderer.fogLightBuffers;
-  context.uniform1i(post.uniforms.volumeLightCount, lights.count);
+  backend.uniform1i(post.uniforms.volumeLightCount, lights.count);
   if (lights.count === 0) return;
-  context.uniform4fv(post.uniforms['volumeLightPositions[0]'], lights.positions);
-  context.uniform4fv(post.uniforms['volumeLightColors[0]'], lights.colors);
-  context.uniform4fv(post.uniforms['volumeLightDirections[0]'], lights.directions);
-  context.uniform4fv(post.uniforms['volumeLightCones[0]'], lights.cones);
+  backend.uniform4fv(post.uniforms['volumeLightPositions[0]'], lights.positions);
+  backend.uniform4fv(post.uniforms['volumeLightColors[0]'], lights.colors);
+  backend.uniform4fv(post.uniforms['volumeLightDirections[0]'], lights.directions);
+  backend.uniform4fv(post.uniforms['volumeLightCones[0]'], lights.cones);
 }
 
 // The local volumes of the frame (environment.localVolumes), checked and packed once before the post program is chosen, so a bad
@@ -116,14 +115,14 @@ function withVolumeFireLights(renderer, environment, volumeTime = 0) {
 // Draws the local volumes over the frame into a texture of their own, before bloom extraction, so the glow of an emitting volume blooms (#1046). The final pass then
 // skips its local step and reads this texture. The pass runs only for a frame with bloom and a glowing volume, so every other frame draws as before.
 function compositeLocalVolumes(renderer, frame, environment, sourceTexture) {
-  const context = renderer.context;
+  const backend = backendFor(renderer);
   const composite = (renderer.localVolumeComposite ??= { program: null, uniforms: {}, target: null, motion: false, kind: 'both' });
   const motion = renderer.localVolumeBuffers.gridShutter > 0;
   const kind = renderer.localVolumeBuffers.kind;
   const noiseOctaves = renderer.localVolumeBuffers.noiseOctaves;
   const gridDetail = renderer.localVolumeBuffers.gridDetail;
   if (composite.program && (composite.motion !== motion || composite.kind !== kind || composite.noiseOctaves !== noiseOctaves || composite.gridDetail !== gridDetail)) {
-    context.deleteProgram(composite.program);
+    backend.deleteProgram(composite.program);
     composite.program = null;
     composite.uniforms = {};
   }
@@ -132,113 +131,95 @@ function compositeLocalVolumes(renderer, frame, environment, sourceTexture) {
     composite.kind = kind;
     composite.noiseOctaves = noiseOctaves;
     composite.gridDetail = gridDetail;
-    composite.program = compileProgram(context, fullscreenVertex, createLocalVolumeCompositeFragment(motion, kind, noiseOctaves, gridDetail));
-    for (const name of ['frameTexture', 'sceneDepth', 'resolution', 'inverseViewProjection', 'eye']) composite.uniforms[name] = context.getUniformLocation(composite.program, name);
+    composite.program = backend.compileProgram(fullscreenVertex, createLocalVolumeCompositeFragment(motion, kind, noiseOctaves, gridDetail));
+    for (const name of ['frameTexture', 'sceneDepth', 'resolution', 'inverseViewProjection', 'eye']) composite.uniforms[name] = backend.uniformLocation(composite.program, name);
   }
-  if (!composite.target) composite.target = createCompositeTarget(renderer);
-  context.bindFramebuffer(context.FRAMEBUFFER, composite.target.framebuffer);
-  context.viewport(0, 0, renderer.canvas.width, renderer.canvas.height);
-  context.disable(context.DEPTH_TEST);
-  context.disable(context.CULL_FACE);
-  context.bindVertexArray(null);
-  context.useProgram(composite.program);
-  context.activeTexture(context.TEXTURE0);
-  context.bindTexture(context.TEXTURE_2D, sourceTexture);
+  if (!composite.target) composite.target = createCompositeTarget(backend, renderer.canvas);
+  backend.beginFullscreenPass(composite.target.framebuffer, renderer.canvas.width, renderer.canvas.height, composite.program);
   if (renderer.localVolumeBuffers.blurred) {
-    context.generateMipmap(context.TEXTURE_2D);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR_MIPMAP_LINEAR);
+    backend.setTextureMipmaps(sourceTexture, true, 0);
+  } else {
+    backend.bindTextureUnit(0, sourceTexture);
   }
-  context.uniform1i(composite.uniforms.frameTexture, 0);
-  context.activeTexture(context.TEXTURE1);
-  context.bindTexture(context.TEXTURE_2D, renderer.depthTexture ?? renderer.whiteTexture);
-  context.uniform1i(composite.uniforms.sceneDepth, 1);
-  context.uniform2f(composite.uniforms.resolution, renderer.canvas.width, renderer.canvas.height);
-  context.uniformMatrix4fv(composite.uniforms.inverseViewProjection, false, renderer.inverseViewProjection);
-  context.uniform3fv(composite.uniforms.eye, frame.eye);
+  backend.uniform1i(composite.uniforms.frameTexture, 0);
+  backend.bindTextureUnit(1, renderer.depthTexture ?? renderer.whiteTexture);
+  backend.uniform1i(composite.uniforms.sceneDepth, 1);
+  backend.uniform2f(composite.uniforms.resolution, renderer.canvas.width, renderer.canvas.height);
+  backend.uniformMatrix4fv(composite.uniforms.inverseViewProjection, renderer.inverseViewProjection);
+  backend.uniform3fv(composite.uniforms.eye, frame.eye);
   bindLocalVolumes(renderer, composite, frame, environment);
-  context.drawArrays(context.TRIANGLES, 0, 3);
+  backend.drawFullscreenTriangles();
   if (renderer.localVolumeBuffers.blurred) {
     // Only this pass reads the mip chain; the frame goes back to one level so a later pass never reads a stale one.
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, sourceTexture);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
+    backend.setTextureMipmaps(sourceTexture, false, 0);
   }
   return composite.target.texture;
 }
 
-function createCompositeTarget(renderer) {
-  const context = renderer.context;
-  const { width, height } = renderer.canvas;
-  const texture = context.createTexture();
-  context.bindTexture(context.TEXTURE_2D, texture);
-  context.texImage2D(context.TEXTURE_2D, 0, context.RGBA16F, width, height, 0, context.RGBA, context.HALF_FLOAT, null);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
-  const framebuffer = context.createFramebuffer();
-  context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-  context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
-  if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('The local volume composite target could not be allocated. Choose a lower quality preset.');
-  return { texture, framebuffer };
+function createCompositeTarget(backend, { width, height }) {
+  const target = backend.createFramebufferTarget({ width, height, hdr: true, linear: true, clamp: true });
+  if (!target.complete) {
+    backend.deleteFramebuffer(target.framebuffer);
+    backend.deleteTexture(target.colorTexture);
+    throw new Error('The local volume composite target could not be allocated. Choose a lower quality preset.');
+  }
+  return { texture: target.colorTexture, framebuffer: target.framebuffer };
 }
 
 // Frees the composite target (at a resize or a release) or the target and the program (at dispose).
 function releaseLocalVolumeComposite(renderer, disposeProgram) {
   const composite = renderer.localVolumeComposite;
   if (!composite) return;
-  const context = renderer.context;
+  const backend = backendFor(renderer);
   if (composite.target) {
-    context.deleteTexture(composite.target.texture);
-    context.deleteFramebuffer(composite.target.framebuffer);
+    backend.deleteTexture(composite.target.texture);
+    backend.deleteFramebuffer(composite.target.framebuffer);
     composite.target = null;
   }
   if (disposeProgram && composite.program) {
-    context.deleteProgram(composite.program);
+    backend.deleteProgram(composite.program);
     renderer.localVolumeComposite = null;
   }
 }
 
 // Uploads the packed volumes. Their uniforms exist only in a program with the local step compiled in.
 function bindLocalVolumes(renderer, post, frame, environment) {
-  const context = renderer.context;
+  const backend = backendFor(renderer);
   const buffers = renderer.localVolumeBuffers;
-  const locate = name => (post.uniforms[name] ??= context.getUniformLocation(post.program, name));
-  bindKeyLight(renderer, locate, environment);
-  context.uniform1i(locate('localVolumeCount'), buffers.count);
-  context.uniform1f(locate('localOrthographic'), frame.projection === 'orthographic' ? 1 : 0);
-  context.uniform4fv(locate('localVolumeCenters[0]'), buffers.centers);
-  context.uniform4fv(locate('localVolumeExtents[0]'), buffers.extents);
-  context.uniform4fv(locate('localVolumeAbsorption[0]'), buffers.absorption);
-  context.uniform4fv(locate('localVolumeEmission[0]'), buffers.emission);
-  context.uniform4fv(locate('localVolumeSteps[0]'), buffers.steps);
-  context.uniform4fv(locate('localVolumeAxes[0]'), buffers.axes);
+  const locate = name => (post.uniforms[name] ??= backend.uniformLocation(post.program, name));
+  bindKeyLight(renderer, locate, environment, backend);
+  backend.uniform1i(locate('localVolumeCount'), buffers.count);
+  backend.uniform1f(locate('localOrthographic'), frame.projection === 'orthographic' ? 1 : 0);
+  backend.uniform4fv(locate('localVolumeCenters[0]'), buffers.centers);
+  backend.uniform4fv(locate('localVolumeExtents[0]'), buffers.extents);
+  backend.uniform4fv(locate('localVolumeAbsorption[0]'), buffers.absorption);
+  backend.uniform4fv(locate('localVolumeEmission[0]'), buffers.emission);
+  backend.uniform4fv(locate('localVolumeSteps[0]'), buffers.steps);
+  backend.uniform4fv(locate('localVolumeAxes[0]'), buffers.axes);
+  const gridTexture = localGridTexture(renderer, buffers.gridVolume?.gridData ?? null);
+  const gridEmission = localGridEmissionTexture(renderer, buffers.gridVolume);
+  const gridVelocity = buffers.gridShutter > 0 ? localGridVelocityTexture(renderer, buffers.gridVolume) : null;
   // The sampler always gets a texture of its own type, so the program is valid in a frame with no mesh volume.
-  context.activeTexture(context.TEXTURE7);
-  context.bindTexture(context.TEXTURE_2D, buffers.meshParts.length > 0 ? renderer.meshVolumePass.target.texture : renderer.whiteTexture);
-  context.uniform1i(locate('localMeshVolumes'), 7);
-  context.uniform4fv(locate('localVolumeGrid[0]'), buffers.grid);
-  context.uniform4fv(locate('localVolumeRampSetup[0]'), buffers.rampSetup);
-  context.uniform4fv(locate('localVolumeRamp[0]'), buffers.rampColors);
-  context.activeTexture(context.TEXTURE8);
-  context.bindTexture(context.TEXTURE_3D, localGridTexture(renderer, buffers.gridVolume?.gridData ?? null));
-  context.uniform1i(locate('localGridTexture'), 8);
-  context.activeTexture(context.TEXTURE9);
-  context.bindTexture(context.TEXTURE_3D, localGridEmissionTexture(renderer, buffers.gridVolume));
-  context.uniform1i(locate('localGridEmissionTexture'), 9);
+  backend.bindTextureUnit(7, buffers.meshParts.length > 0 ? renderer.meshVolumePass.target.texture : renderer.whiteTexture);
+  backend.uniform1i(locate('localMeshVolumes'), 7);
+  backend.uniform4fv(locate('localVolumeGrid[0]'), buffers.grid);
+  backend.uniform4fv(locate('localVolumeRampSetup[0]'), buffers.rampSetup);
+  backend.uniform4fv(locate('localVolumeRamp[0]'), buffers.rampColors);
+  backend.bindTextureUnit(8, gridTexture, '3d');
+  backend.uniform1i(locate('localGridTexture'), 8);
+  backend.bindTextureUnit(9, gridEmission, '3d');
+  backend.uniform1i(locate('localGridEmissionTexture'), 9);
   // The velocity texture and the shutter exist only in the 'gridMotion' program variant, so a frame with the shutter off binds nothing more than it did before (#1759).
-  if (buffers.gridShutter > 0) {
-    context.uniform1f(locate('localGridShutter'), buffers.gridShutter);
-    context.activeTexture(context.TEXTURE10);
-    context.bindTexture(context.TEXTURE_3D, localGridVelocityTexture(renderer, buffers.gridVolume));
-    context.uniform1i(locate('localGridVelocityTexture'), 10);
+  if (gridVelocity) {
+    backend.uniform1f(locate('localGridShutter'), buffers.gridShutter);
+    backend.bindTextureUnit(10, gridVelocity, '3d');
+    backend.uniform1i(locate('localGridVelocityTexture'), 10);
   }
   // The emission of the glowing surfaces, when the frame drew it (drawEmissionMask): the surface shadow leaves it alone.
   const maskReady = renderer.localEmissionMaskReady === true;
-  context.activeTexture(context.TEXTURE11);
-  context.bindTexture(context.TEXTURE_2D, maskReady ? renderer.passSupport.texture : renderer.whiteTexture);
-  context.uniform1i(locate('localEmissionMask'), 11);
-  context.uniform1f(locate('localEmissionMaskReady'), maskReady ? 1 : 0);
+  backend.bindTextureUnit(11, maskReady ? renderer.passSupport.texture : renderer.whiteTexture);
+  backend.uniform1i(locate('localEmissionMask'), 11);
+  backend.uniform1f(locate('localEmissionMaskReady'), maskReady ? 1 : 0);
 }
 
 let emissionMaskDrawer = null;
@@ -311,7 +292,7 @@ function localGridVelocityTexture(renderer, volume) {
 }
 
 function uploadGridTexture(renderer, cacheName, grid, scale, writeVoxel) {
-  const context = renderer.context;
+  const backend = backendFor(renderer);
   const cached = renderer[cacheName];
   if (cached && cached.grid === grid && cached.scale === scale) return cached.texture;
   const resolution = grid ? grid.resolution : [1, 1, 1];
@@ -323,14 +304,7 @@ function uploadGridTexture(renderer, cacheName, grid, scale, writeVoxel) {
     renderer[cacheName] = { ...cached, grid, scale };
     return cached.texture;
   }
-  const texture = reuse ? cached.texture : context.createTexture();
-  if (cached && !reuse) context.deleteTexture(cached.texture);
-  context.bindTexture(context.TEXTURE_3D, texture);
-  if (!reuse) {
-    context.texParameteri(context.TEXTURE_3D, context.TEXTURE_MIN_FILTER, context.LINEAR);
-    context.texParameteri(context.TEXTURE_3D, context.TEXTURE_MAG_FILTER, context.LINEAR);
-    for (const wrap of [context.TEXTURE_WRAP_S, context.TEXTURE_WRAP_T, context.TEXTURE_WRAP_R]) context.texParameteri(context.TEXTURE_3D, wrap, context.CLAMP_TO_EDGE);
-  }
+  if (cached && !reuse) backend.deleteTexture(cached.texture);
   const padded = resolution.map(count => count + 2 * GRID_BORDER_VOXELS);
   // The padded buffer is kept with the texture: its border is never written, and a frame with the same resolution overwrites every interior voxel, so a
   // sequence allocates it once instead of once per frame (#1045).
@@ -348,11 +322,13 @@ function uploadGridTexture(renderer, cacheName, grid, scale, writeVoxel) {
       }
     }
   }
-  context.pixelStorei(context.UNPACK_ALIGNMENT, 1);
+  const dimensions = { width: padded[0], height: padded[1], depth: padded[2], data: texels };
+  let texture;
   if (reuse) {
-    context.texSubImage3D(context.TEXTURE_3D, 0, 0, 0, 0, padded[0], padded[1], padded[2], context.RGBA, context.HALF_FLOAT, texels);
+    texture = cached.texture;
+    backend.uploadTexture3D(texture, dimensions);
   } else {
-    context.texImage3D(context.TEXTURE_3D, 0, context.RGBA16F, padded[0], padded[1], padded[2], 0, context.RGBA, context.HALF_FLOAT, texels);
+    texture = backend.createTexture3D(dimensions);
   }
   renderer[cacheName] = { grid, scale, texture, resolution, filled, texels };
   return texture;
@@ -371,17 +347,13 @@ function localSkyAmbient(renderer, environment) {
 
 // The key light's shadow map, direction and colour, and the sky term, for volumes that scatter. The sampler always has the shadow map
 // on its unit, so the program is valid in a frame where no volume scatters.
-function bindKeyLight(renderer, locate, environment) {
-  const context = renderer.context;
-  if (renderer.shadowTexture) {
-    context.activeTexture(context.TEXTURE3);
-    context.bindTexture(context.TEXTURE_2D, renderer.shadowTexture);
-  }
-  context.uniform1i(locate('volumeShadowMap'), 3);
-  context.uniformMatrix4fv(locate('volumeLightProjection'), false, renderer.lightProjection);
-  context.uniform3fv(locate('volumeLightDirection'), environment.lightDirection);
-  context.uniform3fv(locate('volumeLightColor'), renderer.lighting.keyColor);
-  context.uniform3fv(locate('localSkyAmbient'), localSkyAmbient(renderer, environment));
+function bindKeyLight(renderer, locate, environment, backend = backendFor(renderer)) {
+  if (renderer.shadowTexture) backend.bindTextureUnit(3, renderer.shadowTexture);
+  backend.uniform1i(locate('volumeShadowMap'), 3);
+  backend.uniformMatrix4fv(locate('volumeLightProjection'), renderer.lightProjection);
+  backend.uniform3fv(locate('volumeLightDirection'), environment.lightDirection);
+  backend.uniform3fv(locate('volumeLightColor'), renderer.lighting.keyColor);
+  backend.uniform3fv(locate('localSkyAmbient'), localSkyAmbient(renderer, environment));
 }
 
 // The in-scatter light of a volume (the sky light through its own depth, the key light through the shadow map) is inlined at every march step, and

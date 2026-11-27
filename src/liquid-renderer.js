@@ -1,4 +1,4 @@
-import { compileProgram } from './gl-program.js';
+import { backendFor } from './glaze-backend.js';
 import { CLIP_PLANES_FEATURE, addClipPlanesToLiquidShader, bindClipPlanes, clipPlaneLocations } from './clip-planes.js';
 import { resolveLiquidOptics } from './liquid-optics.js';
 import { batchesNeedRefractionMips, mipLevelCount } from './transmission-blur.js';
@@ -37,20 +37,18 @@ const IDENTITY_MORPH_SLOTS = Float32Array.from({ length: MORPH_SLOT_COUNT }, (_,
 const MORPH_SLOT_TARGETS = new Float32Array(MORPH_SLOT_COUNT);
 const MORPH_SLOT_WEIGHTS = new Float32Array(MORPH_SLOT_COUNT);
 
-function bindLiquidMorph(renderer, batch, uniforms) {
+function bindLiquidMorph(renderer, batch, uniforms, backend = backendFor(renderer)) {
   if (!renderer.hasMorphs || !uniforms?.morphEnabled) return;
-  const context = renderer.context;
-  context.uniform1f(uniforms.morphEnabled, batch.morph ? 1 : 0);
+  backend.uniform1f(uniforms.morphEnabled, batch.morph ? 1 : 0);
   if (!batch.morph) return;
-  context.uniform1i(uniforms.morphVertexCount, batch.morphTexture.info.vertexCount);
+  backend.uniform1i(uniforms.morphVertexCount, batch.morphTexture.info.vertexCount);
   const targetCount = batch.morphWeights.length;
   const selected = targetCount > MORPH_SLOT_COUNT;
   const slotCount = selected ? requireDeformationSupport('selectMorphSlots', 'morph.js').selectMorphSlots(batch.morphWeights, MORPH_SLOT_TARGETS, MORPH_SLOT_WEIGHTS) : targetCount;
-  context.uniform1i(uniforms.morphTargetCount, slotCount);
-  context.uniform1fv(uniforms['morphWeights[0]'], selected ? MORPH_SLOT_WEIGHTS : batch.morphWeights);
-  context.uniform1fv(uniforms['morphSlotTargets[0]'], selected ? MORPH_SLOT_TARGETS : IDENTITY_MORPH_SLOTS);
-  context.activeTexture(context.TEXTURE0 + 8);
-  context.bindTexture(context.TEXTURE_2D, batch.morphTexture.texture);
+  backend.uniform1i(uniforms.morphTargetCount, slotCount);
+  backend.uniform1fv(uniforms['morphWeights[0]'], selected ? MORPH_SLOT_WEIGHTS : batch.morphWeights);
+  backend.uniform1fv(uniforms['morphSlotTargets[0]'], selected ? MORPH_SLOT_TARGETS : IDENTITY_MORPH_SLOTS);
+  backend.bindTextureUnit(8, batch.morphTexture.texture);
 }
 
 function vertexSourceForLiquid(renderer, vertexSource) {
@@ -64,31 +62,23 @@ function vertexSourceForLiquid(renderer, vertexSource) {
 }
 
 // The program compiles when the first liquid or foam batch draws, so a renderer without them never builds it.
-function ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fragmentSource) {
+function ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fragmentSource, backend = backendFor(renderer)) {
   if (renderer.liquidProgram) return;
-  const context = renderer.context;
   const clipped = renderer.shaderFeatures?.has(CLIP_PLANES_FEATURE) && !renderer.benchmark;
-  renderer.liquidProgram = compileProgram(context, vertexSourceForLiquid(renderer, vertexSource), renderer.withViewTransform(clipped ? addClipPlanesToLiquidShader(fragmentSource) : fragmentSource, 'liquid'));
-  renderer.liquidClipLocations = clipped ? clipPlaneLocations(context, renderer.liquidProgram) : null;
-  renderer.liquidUniforms = Object.fromEntries(LIQUID_UNIFORMS.map(name => [name, context.getUniformLocation(renderer.liquidProgram, name)]));
-  context.useProgram(renderer.liquidProgram);
-  context.uniform1i(renderer.liquidUniforms.metallicRoughnessMap, METALLIC_ROUGHNESS_UNIT);
-  context.uniform1i(renderer.liquidUniforms.sceneDepth, SCENE_DEPTH_UNIT);
-  context.uniform1i(renderer.liquidUniforms.glassBackDepth, BACK_DEPTH_UNIT);
-  context.uniform1i(renderer.liquidUniforms.glassBackNormal, BACK_NORMAL_UNIT);
-  context.uniform1i(renderer.liquidUniforms.glassBackFarDepth, BACK_FAR_DEPTH_UNIT);
-  context.uniform1i(renderer.liquidUniforms.glassBackFarNormal, BACK_FAR_NORMAL_UNIT);
-  context.uniform1i(renderer.liquidUniforms.skinInfluences, 6);
-  context.uniform1i(renderer.liquidUniforms.jointPalette, 7);
-  context.uniform1i(renderer.liquidUniforms.morphTargets, 8);
-  context.uniform1i(renderer.liquidUniforms.environmentSpecular, environmentSpecularUnit);
-}
-
-function configureTexture2D(context, minFilter, magFilter = minFilter) {
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, minFilter);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, magFilter);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
+  renderer.liquidProgram = backend.compileProgram(vertexSourceForLiquid(renderer, vertexSource), renderer.withViewTransform(clipped ? addClipPlanesToLiquidShader(fragmentSource) : fragmentSource, 'liquid'));
+  renderer.liquidClipLocations = clipped ? clipPlaneLocations(renderer.context ?? backend.context, renderer.liquidProgram) : null;
+  renderer.liquidUniforms = Object.fromEntries(LIQUID_UNIFORMS.map(name => [name, backend.uniformLocation(renderer.liquidProgram, name)]));
+  backend.useProgram(renderer.liquidProgram);
+  backend.uniform1i(renderer.liquidUniforms.metallicRoughnessMap, METALLIC_ROUGHNESS_UNIT);
+  backend.uniform1i(renderer.liquidUniforms.sceneDepth, SCENE_DEPTH_UNIT);
+  backend.uniform1i(renderer.liquidUniforms.glassBackDepth, BACK_DEPTH_UNIT);
+  backend.uniform1i(renderer.liquidUniforms.glassBackNormal, BACK_NORMAL_UNIT);
+  backend.uniform1i(renderer.liquidUniforms.glassBackFarDepth, BACK_FAR_DEPTH_UNIT);
+  backend.uniform1i(renderer.liquidUniforms.glassBackFarNormal, BACK_FAR_NORMAL_UNIT);
+  backend.uniform1i(renderer.liquidUniforms.skinInfluences, 6);
+  backend.uniform1i(renderer.liquidUniforms.jointPalette, 7);
+  backend.uniform1i(renderer.liquidUniforms.morphTargets, 8);
+  backend.uniform1i(renderer.liquidUniforms.environmentSpecular, environmentSpecularUnit);
 }
 
 /**
@@ -97,34 +87,35 @@ function configureTexture2D(context, minFilter, magFilter = minFilter) {
  * the frames that draw rough glass) here; a frame with no glass, or only smooth glass, never allocates or fills it.
  */
 export function copySceneIntoMipChain(renderer, width, height) {
-  const context = renderer.context;
-  context.activeTexture(context.TEXTURE0);
+  const backend = backendFor(renderer);
+  backend.activeTextureUnit(0);
   const hdr = Boolean(renderer.hdr);
   let chain = renderer.refractionChain;
   if (!chain || chain.width !== width || chain.height !== height || chain.hdr !== hdr) {
     chain?.release();
-    const texture = context.createTexture();
-    context.bindTexture(context.TEXTURE_2D, texture);
-    context.texStorage2D(context.TEXTURE_2D, mipLevelCount(width, height), hdr ? context.RGBA16F : context.RGBA8, width, height);
-    configureTexture2D(context, context.LINEAR_MIPMAP_LINEAR, context.LINEAR);
-    const framebuffer = context.createFramebuffer();
-    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-    context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
+    const target = backend.createFramebufferTarget({
+      width,
+      height,
+      colorFormat: hdr ? 'rgba16f' : 'rgba8',
+      storage: true,
+      levels: mipLevelCount(width, height),
+      linear: true,
+      clamp: true,
+    });
+    const texture = target.colorTexture;
+    const framebuffer = target.framebuffer;
     const release = () => {
-      context.deleteTexture(texture);
-      context.deleteFramebuffer(framebuffer);
+      backend.deleteTexture(texture);
+      backend.deleteFramebuffer(framebuffer);
       renderer.refractionChain = null;
     };
     chain = { texture, framebuffer, width, height, hdr, release };
     renderer.refractionChain = chain;
   }
   // A blit, not copyTexSubImage2D: the opaque frame may be stored without alpha, and a copy needs the two formats to match.
-  context.bindFramebuffer(context.READ_FRAMEBUFFER, renderer.resolveFramebuffer);
-  context.bindFramebuffer(context.DRAW_FRAMEBUFFER, chain.framebuffer);
-  context.blitFramebuffer(0, 0, width, height, 0, 0, width, height, context.COLOR_BUFFER_BIT, context.NEAREST);
-  context.activeTexture(context.TEXTURE0);
-  context.bindTexture(context.TEXTURE_2D, chain.texture);
-  context.generateMipmap(context.TEXTURE_2D);
+  backend.blitTarget(renderer.resolveFramebuffer, chain.framebuffer, width, height, 'color');
+  backend.bindTextureUnit(0, chain.texture);
+  backend.generateMipmap(false);
   return chain.texture;
 }
 
@@ -134,24 +125,27 @@ export function copySceneIntoMipChain(renderer, width, height) {
  * glass never allocates or fills it. The depth stays in the buffer's own convention, which depthMapping describes to the shader.
  */
 export function resolveSceneDepth(renderer, width, height) {
-  const context = renderer.context;
-  context.activeTexture(context.TEXTURE0);
+  const backend = backendFor(renderer);
+  backend.activeTextureUnit(0);
   const reversed = Boolean(renderer.reversedDepth);
   let target = renderer.refractionDepth;
   if (!target || target.width !== width || target.height !== height || target.reversed !== reversed) {
     target?.release();
-    const texture = context.createTexture();
-    context.bindTexture(context.TEXTURE_2D, texture);
-    const internalFormat = reversed ? context.DEPTH_COMPONENT32F : context.DEPTH_COMPONENT24;
-    context.texImage2D(context.TEXTURE_2D, 0, internalFormat, width, height, 0, context.DEPTH_COMPONENT, reversed ? context.FLOAT : context.UNSIGNED_INT, null);
-    configureTexture2D(context, context.NEAREST);
-    const framebuffer = context.createFramebuffer();
-    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-    context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, texture, 0);
+    const created = backend.createFramebufferTarget({
+      width,
+      height,
+      color: false,
+      depth: true,
+      floatDepth: reversed,
+      depthAsTexture: true,
+      clamp: true,
+    });
+    const texture = created.depthTexture;
+    const framebuffer = created.framebuffer;
     renderer.renderTargets?.record('refractionDepth', { width, height, format: reversed ? 'DEPTH_COMPONENT32F' : 'DEPTH_COMPONENT24' });
     const release = () => {
-      context.deleteTexture(texture);
-      context.deleteFramebuffer(framebuffer);
+      backend.deleteTexture(texture);
+      backend.deleteFramebuffer(framebuffer);
       renderer.renderTargets?.release('refractionDepth');
       renderer.refractionDepth = null;
       // The back-face target is only built on top of this one, so it goes with it.
@@ -161,9 +155,7 @@ export function resolveSceneDepth(renderer, width, height) {
     target = { texture, framebuffer, width, height, reversed, release };
     renderer.refractionDepth = target;
   }
-  context.bindFramebuffer(context.READ_FRAMEBUFFER, renderer.multisampleFramebuffer);
-  context.bindFramebuffer(context.DRAW_FRAMEBUFFER, target.framebuffer);
-  context.blitFramebuffer(0, 0, width, height, 0, 0, width, height, context.DEPTH_BUFFER_BIT, context.NEAREST);
+  backend.blitTarget(renderer.multisampleFramebuffer, target.framebuffer, width, height, 'depth');
   return target.texture;
 }
 
@@ -172,8 +164,7 @@ export function resolveSceneDepth(renderer, width, height) {
  * buffer's convention. Built on the first frame that draws closed glass (8 bytes a pixel) and freed with the frame targets; a frame with no
  * closed glass never allocates it.
  */
-function ensureGlassBackTarget(renderer, width, height, far = false) {
-  const context = renderer.context;
+function ensureGlassBackTarget(renderer, width, height, far = false, backend = backendFor(renderer)) {
   const reversed = Boolean(renderer.reversedDepth);
   const property = far ? 'glassBackFarFaces' : 'glassBackFaces';
   const ledgerName = far ? 'glassBackFarFaces' : 'glassBackFaces';
@@ -181,34 +172,34 @@ function ensureGlassBackTarget(renderer, width, height, far = false) {
   if (target && target.width === width && target.height === height && target.reversed === reversed) return target;
   target?.release();
   // Built on a spare unit, so the scene texture bound to unit 0 stays bound.
-  context.activeTexture(context.TEXTURE0 + (far ? BACK_FAR_DEPTH_UNIT : BACK_DEPTH_UNIT));
-  const makeTexture = () => {
-    const texture = context.createTexture();
-    context.bindTexture(context.TEXTURE_2D, texture);
-    configureTexture2D(context, context.NEAREST);
-    return texture;
-  };
-  const normalTexture = makeTexture();
-  context.texStorage2D(context.TEXTURE_2D, 1, context.RGBA8, width, height);
-  const depthTexture = makeTexture();
-  context.texStorage2D(context.TEXTURE_2D, 1, reversed ? context.DEPTH_COMPONENT32F : context.DEPTH_COMPONENT24, width, height);
-  const framebuffer = context.createFramebuffer();
-  context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-  context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, normalTexture, 0);
-  context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, depthTexture, 0);
+  backend.activeTextureUnit(far ? BACK_FAR_DEPTH_UNIT : BACK_DEPTH_UNIT);
+  const created = backend.createFramebufferTarget({
+    width,
+    height,
+    colorFormat: 'rgba8',
+    depth: true,
+    floatDepth: reversed,
+    depthAsTexture: true,
+    storage: true,
+    linear: false,
+    clamp: true,
+  });
+  const normalTexture = created.colorTexture;
+  const depthTexture = created.depthTexture;
+  const framebuffer = created.framebuffer;
   renderer.renderTargets?.record(ledgerName, { width, height, format: 'RGBA8' });
   renderer.renderTargets?.record(`${ledgerName}Depth`, { width, height, format: reversed ? 'DEPTH_COMPONENT32F' : 'DEPTH_COMPONENT24' });
   const release = () => {
-    context.deleteTexture(normalTexture);
-    context.deleteTexture(depthTexture);
-    context.deleteFramebuffer(framebuffer);
+    backend.deleteTexture(normalTexture);
+    backend.deleteTexture(depthTexture);
+    backend.deleteFramebuffer(framebuffer);
     renderer.renderTargets?.release(ledgerName);
     renderer.renderTargets?.release(`${ledgerName}Depth`);
     renderer[property] = null;
   };
   target = { normalTexture, depthTexture, framebuffer, width, height, reversed, release };
   renderer[property] = target;
-  context.activeTexture(context.TEXTURE0);
+  backend.activeTextureUnit(0);
   return target;
 }
 
@@ -291,75 +282,69 @@ function resolveClosedGlassMetadata(renderer, liquids) {
   return entry;
 }
 
-function unbindBackFaceTextures(context) {
+function unbindBackFaceTextures(backend) {
   for (const unit of [BACK_DEPTH_UNIT, BACK_NORMAL_UNIT, BACK_FAR_DEPTH_UNIT, BACK_FAR_NORMAL_UNIT]) {
-    context.activeTexture(context.TEXTURE0 + unit);
-    context.bindTexture(context.TEXTURE_2D, null);
+    backend.bindTextureUnit(unit, null);
   }
-  context.activeTexture(context.TEXTURE0);
+  backend.activeTextureUnit(0);
 }
 
-function drawBatchInstance(context, batch, instanceIndex) {
-  context.bindVertexArray(batch.vertexArray);
+function drawBatchInstance(backend, batch, instanceIndex) {
+  backend.bindVertexArray(batch.vertexArray);
   if (batch.instanceCount <= 1 || instanceIndex == null || !batch.instanceBuffer || !batch.instanceData) {
-    context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
+    backend.drawIndexedInstanced(batch.indexCount, batch.instanceCount);
     return;
   }
   const stride = batch.instanceData.length / batch.instanceCount;
   const start = instanceIndex * stride;
-  context.bindBuffer(context.ARRAY_BUFFER, batch.instanceBuffer);
-  if (instanceIndex > 0) context.bufferSubData(context.ARRAY_BUFFER, 0, batch.instanceData.subarray(start, start + stride));
+  if (instanceIndex > 0) backend.updateBuffer(batch.instanceBuffer, batch.instanceData.subarray(start, start + stride));
+  else backend.bindArrayBuffer(batch.instanceBuffer);
   try {
-    context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, 1);
+    backend.drawIndexedInstanced(batch.indexCount, 1);
   } finally {
-    if (instanceIndex > 0) context.bufferSubData(context.ARRAY_BUFFER, 0, batch.instanceData.subarray(0, stride));
-    context.bindBuffer(context.ARRAY_BUFFER, null);
+    if (instanceIndex > 0) backend.updateBuffer(batch.instanceBuffer, batch.instanceData.subarray(0, stride));
+    backend.bindArrayBuffer(null);
   }
 }
 
 /** Draws one layer of back faces into its target: the nearest per pixel, or with `far` the farthest. */
-function drawBackLayer(renderer, target, items, firstInstances, width, height, far) {
-  const context = renderer.context;
+function drawBackLayer(renderer, target, items, firstInstances, width, height, far, backend) {
   const uniforms = renderer.liquidUniforms;
   const reversed = Boolean(renderer.reversedDepth);
-  const nearestFunction = reversed ? context.GREATER : context.LESS;
-  const farthestFunction = reversed ? context.LESS : context.GREATER;
+  const nearestFunction = reversed ? 'greater' : 'less';
+  const farthestFunction = reversed ? 'less' : 'greater';
   const farthestClear = reversed ? 1 : 0;
-  context.bindFramebuffer(context.FRAMEBUFFER, target.framebuffer);
-  context.viewport(0, 0, width, height);
-  context.clearColor(0, 0, 0, 0);
-  context.clearDepth(far ? farthestClear : reversed ? 0 : 1);
-  context.clear(context.COLOR_BUFFER_BIT | context.DEPTH_BUFFER_BIT);
-  context.clearDepth(1);
-  if (far) context.depthFunc(farthestFunction);
-  context.cullFace(context.FRONT);
-  context.uniform1f(uniforms.glassBackPass, 1);
+  backend.bindFramebuffer(target.framebuffer);
+  backend.setViewport(width, height);
+  backend.clearColorAndDepth([0, 0, 0, 0], far ? farthestClear : reversed ? 0 : 1);
+  if (far) backend.setRenderState({ depthFunc: farthestFunction });
+  backend.setRenderState({ cullMode: 'front' });
+  backend.uniform1f(uniforms.glassBackPass, 1);
   for (const item of items) {
     const batch = item.batch ?? item;
     const instanceIndex = item.batch ? item.instanceIndex : null;
-    bindLiquidMorph(renderer, batch, uniforms);
-    context.uniform1f(uniforms.glassBackFirst, firstInstances.get(batch));
+    bindLiquidMorph(renderer, batch, uniforms, backend);
+    backend.uniform1f(uniforms.glassBackFirst, firstInstances.get(batch));
     if (renderer.liquidClipLocations) bindClipPlanes(renderer, batch, renderer.liquidClipLocations);
-    if (batch.mirrored) context.frontFace(context.CW);
-    drawBatchInstance(context, batch, instanceIndex);
-    if (batch.mirrored) context.frontFace(context.CCW);
+    if (batch.mirrored) backend.setFrontFaceClockwise(true);
+    drawBatchInstance(backend, batch, instanceIndex);
+    if (batch.mirrored) backend.setFrontFaceClockwise(false);
   }
-  if (uniforms.morphEnabled) context.uniform1f(uniforms.morphEnabled, 0);
-  context.uniform1f(uniforms.glassBackPass, 0);
-  context.cullFace(context.BACK);
-  if (far) context.depthFunc(nearestFunction);
+  if (uniforms.morphEnabled) backend.uniform1f(uniforms.morphEnabled, 0);
+  backend.uniform1f(uniforms.glassBackPass, 0);
+  backend.setRenderState({ cullMode: 'back' });
+  if (far) backend.setRenderState({ depthFunc: nearestFunction });
 }
 
-function bindBackFaceTarget(context, renderer, target, farTarget = null) {
+function bindBackFaceTarget(backend, renderer, target, farTarget = null) {
   // With no second layer the far units hold the first one, which the shader never reads there; they only keep the samplers valid.
   const farSource = farTarget ?? target;
   const bindings = [[BACK_DEPTH_UNIT, target.depthTexture], [BACK_NORMAL_UNIT, target.normalTexture], [BACK_FAR_DEPTH_UNIT, farSource.depthTexture], [BACK_FAR_NORMAL_UNIT, farSource.normalTexture]];
   for (const [unit, texture] of bindings) {
-    context.activeTexture(context.TEXTURE0 + unit);
-    context.bindTexture(context.TEXTURE_2D, texture);
+    backend.bindTextureUnit(unit, texture);
   }
-  context.activeTexture(context.TEXTURE0);
-  context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
+  backend.activeTextureUnit(0);
+  backend.bindFramebuffer(renderer.multisampleFramebuffer);
 }
 
 /**
@@ -370,91 +355,80 @@ function bindBackFaceTarget(context, renderer, target, farTarget = null) {
  */
 export function drawGlassBackFaces(renderer, liquids, width, height, cachedMetadata = null) {
   const { closedBatches, firstInstances, farLayer } = cachedMetadata ?? resolveClosedGlassMetadata(renderer, liquids);
-  const context = renderer.context;
+  const backend = backendFor(renderer);
   if (closedBatches.length === 0) {
     if (renderer.glassBackFarFaces) {
-      unbindBackFaceTextures(context);
+      unbindBackFaceTextures(backend);
       renderer.glassBackFarFaces.release();
     }
     return null;
   }
-  const target = ensureGlassBackTarget(renderer, width, height);
+  const target = ensureGlassBackTarget(renderer, width, height, false, backend);
   // The previous frame left these bound to the attachments; drawing into them while the program samples them is a feedback loop.
-  unbindBackFaceTextures(context);
+  unbindBackFaceTextures(backend);
   if (!farLayer) renderer.glassBackFarFaces?.release();
-  const farTarget = farLayer ? ensureGlassBackTarget(renderer, width, height, true) : null;
-  drawBackLayer(renderer, target, closedBatches, firstInstances, width, height, false);
-  if (farTarget) drawBackLayer(renderer, farTarget, closedBatches, firstInstances, width, height, true);
-  bindBackFaceTarget(context, renderer, target, farTarget);
+  const farTarget = farLayer ? ensureGlassBackTarget(renderer, width, height, true, backend) : null;
+  drawBackLayer(renderer, target, closedBatches, firstInstances, width, height, false, backend);
+  if (farTarget) drawBackLayer(renderer, farTarget, closedBatches, firstInstances, width, height, true, backend);
+  bindBackFaceTarget(backend, renderer, target, farTarget);
   return { firstInstances, farLayer };
 }
 
-function drawLayerBackFaces(renderer, layerShells, firstInstances, width, height) {
-  const context = renderer.context;
-  const target = ensureGlassBackTarget(renderer, width, height);
-  unbindBackFaceTextures(context);
+function drawLayerBackFaces(renderer, layerShells, firstInstances, width, height, backend) {
+  const target = ensureGlassBackTarget(renderer, width, height, false, backend);
+  unbindBackFaceTextures(backend);
   renderer.glassBackFarFaces?.release();
-  drawBackLayer(renderer, target, layerShells, firstInstances, width, height, false);
-  bindBackFaceTarget(context, renderer, target);
+  drawBackLayer(renderer, target, layerShells, firstInstances, width, height, false, backend);
+  bindBackFaceTarget(backend, renderer, target);
 }
 
-function resolveRefractionTargets(renderer, width, height, needsRefractionMips, hasGlass) {
-  const context = renderer.context;
+function resolveRefractionTargets(renderer, width, height, needsRefractionMips, hasGlass, backend) {
   // Liquids refract the opaque scene (or already-drawn glass layers), so resolve it into frameTexture before drawing on top.
-  context.bindFramebuffer(context.READ_FRAMEBUFFER, renderer.multisampleFramebuffer);
-  context.bindFramebuffer(context.DRAW_FRAMEBUFFER, renderer.resolveFramebuffer);
-  context.blitFramebuffer(0, 0, width, height, 0, 0, width, height, context.COLOR_BUFFER_BIT, context.NEAREST);
+  backend.blitTarget(renderer.multisampleFramebuffer, renderer.resolveFramebuffer, width, height, 'color');
   const sceneTexture = needsRefractionMips ? copySceneIntoMipChain(renderer, width, height) : renderer.frameTexture;
   const sceneDepthTexture = hasGlass ? resolveSceneDepth(renderer, width, height) : null;
-  context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
-  context.viewport(0, 0, width, height);
+  backend.bindFramebuffer(renderer.multisampleFramebuffer);
+  backend.setViewport(width, height);
   return { sceneTexture, sceneDepthTexture };
 }
 
-function bindRefractionTargets(context, uniforms, sceneTexture, sceneDepthTexture, reversed) {
-  context.activeTexture(context.TEXTURE0);
-  context.bindTexture(context.TEXTURE_2D, sceneTexture);
-  context.uniform1i(uniforms.sceneColor, 0);
+function bindRefractionTargets(backend, uniforms, sceneTexture, sceneDepthTexture, reversed) {
+  backend.bindTextureUnit(0, sceneTexture);
+  backend.uniform1i(uniforms.sceneColor, 0);
   if (!sceneDepthTexture) return;
   const mapping = depthMapping(reversed);
-  context.activeTexture(context.TEXTURE0 + SCENE_DEPTH_UNIT);
-  context.bindTexture(context.TEXTURE_2D, sceneDepthTexture);
-  context.activeTexture(context.TEXTURE0);
-  context.uniform3f(uniforms.depthMapping, mapping.scale, mapping.bias, reversed ? 1 : 0);
+  backend.bindTextureUnit(SCENE_DEPTH_UNIT, sceneDepthTexture);
+  backend.activeTextureUnit(0);
+  backend.uniform3f(uniforms.depthMapping, mapping.scale, mapping.bias, reversed ? 1 : 0);
 }
 
-function drawGlassBatchFront(renderer, uniforms, batch, backFirstInstances, maximumDistance, instanceIndex = null, skipDepthWrite = false) {
-  const context = renderer.context;
+function drawGlassBatchFront(renderer, uniforms, batch, backFirstInstances, maximumDistance, instanceIndex = null, skipDepthWrite = false, backend = backendFor(renderer)) {
   const part = batch.parts[instanceIndex ?? 0];
-  bindLiquidMorph(renderer, batch, uniforms);
+  bindLiquidMorph(renderer, batch, uniforms, backend);
   const layers = batch.layerState;
-  context.uniform4f(uniforms.glassState, layers[9], layers[10], layers[11] * partScale(part.matrix), Math.min(layers[12], maximumDistance));
-  context.uniform3f(uniforms.glassTint, layers[13], layers[14], layers[15]);
+  backend.uniform4f(uniforms.glassState, layers[9], layers[10], layers[11] * partScale(part.matrix), Math.min(layers[12], maximumDistance));
+  backend.uniform3f(uniforms.glassTint, layers[13], layers[14], layers[15]);
   // Blended glass covers the refracted picture by its alpha, over the opaque scene already in the frame.
-  context.uniform1f(uniforms.glassBackFirst, backFirstInstances?.get(batch) ?? 0);
-  context.uniform1f(uniforms.glassMediumContinues, part.material.mediumContinues === true ? 1 : 0);
-  context.uniform1f(uniforms.materialEmissionFresnel, layers[24]);
+  backend.uniform1f(uniforms.glassBackFirst, backFirstInstances?.get(batch) ?? 0);
+  backend.uniform1f(uniforms.glassMediumContinues, part.material.mediumContinues === true ? 1 : 0);
+  backend.uniform1f(uniforms.materialEmissionFresnel, layers[24]);
   const covering = batch.opacity < 1;
-  context.uniform1f(uniforms.glassCoverage, covering ? batch.opacity : 1);
-  if (covering) {
-    context.enable(context.BLEND);
-    context.blendFuncSeparate(context.ONE, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
-  }
-  if (skipDepthWrite) context.depthMask(false);
-  if (batch.doubleSided) context.disable(context.CULL_FACE);
-  if (batch.mirrored) context.frontFace(context.CW);
+  backend.uniform1f(uniforms.glassCoverage, covering ? batch.opacity : 1);
+  if (covering) backend.setRenderState({ blend: true, blendMode: 'premultiplied' });
+  if (skipDepthWrite) backend.setRenderState({ depthWrite: false });
+  if (batch.doubleSided) backend.setRenderState({ cullFace: false });
+  if (batch.mirrored) backend.setFrontFaceClockwise(true);
   const metallicRoughnessState = batch.mapState[METALLIC_ROUGHNESS_MAP_INDEX];
-  context.activeTexture(context.TEXTURE0 + METALLIC_ROUGHNESS_UNIT);
-  context.bindTexture(context.TEXTURE_2D, batch.textures[METALLIC_ROUGHNESS_MAP_INDEX]);
-  context.uniform1f(uniforms.hasMetallicRoughnessMap, metallicRoughnessState ? 1 + (metallicRoughnessState.uvChannel ?? 0) : 0);
+  backend.bindTextureUnit(METALLIC_ROUGHNESS_UNIT, batch.textures[METALLIC_ROUGHNESS_MAP_INDEX]);
+  backend.uniform1f(uniforms.hasMetallicRoughnessMap, metallicRoughnessState ? 1 + (metallicRoughnessState.uvChannel ?? 0) : 0);
   if (renderer.liquidClipLocations) bindClipPlanes(renderer, batch, renderer.liquidClipLocations);
   liquidWaterSupport.bind?.(renderer, uniforms, batch);
   liquidProbeSupport.bind?.(renderer, uniforms, batch);
-  drawBatchInstance(context, batch, instanceIndex);
-  if (batch.mirrored) context.frontFace(context.CCW);
-  if (batch.doubleSided) context.enable(context.CULL_FACE);
-  if (skipDepthWrite) context.depthMask(true);
-  if (covering) context.disable(context.BLEND);
+  drawBatchInstance(backend, batch, instanceIndex);
+  if (batch.mirrored) backend.setFrontFaceClockwise(false);
+  if (batch.doubleSided) backend.setRenderState({ cullFace: true });
+  if (skipDepthWrite) backend.setRenderState({ depthWrite: true });
+  if (covering) backend.setRenderState({ blend: false });
 }
 
 // KHR_materials_volume gives the thickness in the mesh's own units, so a placed or scaled asset thickens with its transform.
@@ -470,45 +444,44 @@ function batchViewDepth(batch, view) {
 }
 
 export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, environmentMap, liquids, foams, environmentSpecularUnit, maximumDistance, vertexSource, fragmentSource }) {
+  const backend = backendFor(renderer);
   const optics = resolveLiquidOptics({ ...environment.liquid, ...frame.liquid });
-  ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fragmentSource);
-  const context = renderer.context;
+  ensureLiquidProgram(renderer, environmentSpecularUnit, vertexSource, fragmentSource, backend);
   const width = renderer.canvas.width;
   const height = renderer.canvas.height;
   const needsRefractionMips = batchesNeedRefractionMips(liquids, width, height);
   const hasGlass = liquids.some(batch => batch.layerState[9] > 0);
-  const { sceneTexture, sceneDepthTexture } = resolveRefractionTargets(renderer, width, height, needsRefractionMips, hasGlass);
-  context.enable(context.DEPTH_TEST);
-  context.enable(context.CULL_FACE);
-  context.useProgram(renderer.liquidProgram);
+  const { sceneTexture, sceneDepthTexture } = resolveRefractionTargets(renderer, width, height, needsRefractionMips, hasGlass, backend);
+  backend.setRenderState({ depthTest: true, cullFace: true });
+  backend.useProgram(renderer.liquidProgram);
   const uniforms = renderer.liquidUniforms;
   const viewProjection = renderer.rasterViewProjection ?? renderer.viewProjection;
-  context.uniformMatrix4fv(uniforms.viewProjection, false, viewProjection);
-  context.uniformMatrix4fv(uniforms.lightProjection, false, renderer.lightProjection);
-  context.uniform3fv(uniforms.eye, frame.eye);
-  context.uniform2f(uniforms.resolution, width, height);
-  context.uniform1f(uniforms.exposure, frame.exposure ?? 1);
-  context.uniform1f(uniforms.hdrEnabled, renderer.hdr ? 1 : 0);
-  context.uniform1f(uniforms.worldMode, renderer.world ? 1 : 0);
-  context.uniform1f(uniforms.daylight, environment.daylight);
-  context.uniform3fv(uniforms.lightDirection, environment.lightDirection);
-  context.uniform3fv(uniforms.keyColor, renderer.lighting.keyColor);
-  context.uniform1f(uniforms.ambientIntensity, renderer.lighting.ambientIntensity);
-  context.uniform3fv(uniforms.fogColor, environment.fogColor);
-  context.uniform1f(uniforms.fogDensity, environment.fogDensity);
-  context.uniform4f(uniforms.liquidOptics, optics.thickness, optics.ior, optics.refraction, optics.scattering);
-  context.uniform2f(uniforms.foamShape, optics.foamOpacity, optics.foamSoftness);
+  backend.uniformMatrix4fv(uniforms.viewProjection, viewProjection);
+  backend.uniformMatrix4fv(uniforms.lightProjection, renderer.lightProjection);
+  backend.uniform3fv(uniforms.eye, frame.eye);
+  backend.uniform2f(uniforms.resolution, width, height);
+  backend.uniform1f(uniforms.exposure, frame.exposure ?? 1);
+  backend.uniform1f(uniforms.hdrEnabled, renderer.hdr ? 1 : 0);
+  backend.uniform1f(uniforms.worldMode, renderer.world ? 1 : 0);
+  backend.uniform1f(uniforms.daylight, environment.daylight);
+  backend.uniform3fv(uniforms.lightDirection, environment.lightDirection);
+  backend.uniform3fv(uniforms.keyColor, renderer.lighting.keyColor);
+  backend.uniform1f(uniforms.ambientIntensity, renderer.lighting.ambientIntensity);
+  backend.uniform3fv(uniforms.fogColor, environment.fogColor);
+  backend.uniform1f(uniforms.fogDensity, environment.fogDensity);
+  backend.uniform4f(uniforms.liquidOptics, optics.thickness, optics.ior, optics.refraction, optics.scattering);
+  backend.uniform2f(uniforms.foamShape, optics.foamOpacity, optics.foamSoftness);
   renderer.applyEnvironmentUniforms(environmentMap, uniforms);
-  context.uniform1f(uniforms.time, frame.time ?? 0);
-  context.uniform1f(uniforms.wind, frame.wind ?? 0.3);
-  context.uniform1f(uniforms.explosionProgress, frame.explosionProgress ?? 1);
-  context.uniform3fv(uniforms.explosionCenter, environment.explosionCenter);
-  context.uniform1f(uniforms.assemblyAmount, assemblyAmount);
-  if (uniforms.skinEnabled) context.uniform1f(uniforms.skinEnabled, 0);
-  if (uniforms.morphEnabled) context.uniform1f(uniforms.morphEnabled, 0);
+  backend.uniform1f(uniforms.time, frame.time ?? 0);
+  backend.uniform1f(uniforms.wind, frame.wind ?? 0.3);
+  backend.uniform1f(uniforms.explosionProgress, frame.explosionProgress ?? 1);
+  backend.uniform3fv(uniforms.explosionCenter, environment.explosionCenter);
+  backend.uniform1f(uniforms.assemblyAmount, assemblyAmount);
+  if (uniforms.skinEnabled) backend.uniform1f(uniforms.skinEnabled, 0);
+  if (uniforms.morphEnabled) backend.uniform1f(uniforms.morphEnabled, 0);
   const reversed = Boolean(renderer.reversedDepth);
-  bindRefractionTargets(context, uniforms, sceneTexture, sceneDepthTexture, reversed);
-  context.uniform1f(uniforms.glassBackPass, 0);
+  bindRefractionTargets(backend, uniforms, sceneTexture, sceneDepthTexture, reversed);
+  backend.uniform1f(uniforms.glassBackPass, 0);
   const hasThroughGlass = renderer.batches?.some(batch => batch.alphaMode === 'add' && batch.throughGlass);
   const hasAdditiveAfter = hasThroughGlass || renderer.batches?.some(batch => batch.alphaMode === 'add' && batch.depthTest !== false && !renderer.additiveBehindShells?.has(batch));
   const skipDepthWriteFor = batch => hasThroughGlass || (hasAdditiveAfter && batch.alphaMode === 'blend');
@@ -517,51 +490,48 @@ export function drawLiquidPass(renderer, { frame, environment, assemblyAmount, e
   if (refractionLayers) {
     const closedSet = new Set(metadata.closedBatches);
     const otherLiquids = liquids.filter(batch => !closedSet.has(batch));
-    context.uniform1f(uniforms.glassBackEnabled, 1);
-    context.uniform1f(uniforms.glassBackFarEnabled, 0);
+    backend.uniform1f(uniforms.glassBackEnabled, 1);
+    backend.uniform1f(uniforms.glassBackFarEnabled, 0);
     for (let layerIndex = 0; layerIndex < refractionLayers.length; layerIndex++) {
       if (layerIndex > 0) {
-        const resolved = resolveRefractionTargets(renderer, width, height, needsRefractionMips, true);
-        bindRefractionTargets(context, uniforms, resolved.sceneTexture, resolved.sceneDepthTexture, reversed);
+        const resolved = resolveRefractionTargets(renderer, width, height, needsRefractionMips, true, backend);
+        bindRefractionTargets(backend, uniforms, resolved.sceneTexture, resolved.sceneDepthTexture, reversed);
       }
-      drawLayerBackFaces(renderer, refractionLayers[layerIndex], metadata.firstInstances, width, height);
+      drawLayerBackFaces(renderer, refractionLayers[layerIndex], metadata.firstInstances, width, height, backend);
       for (const shell of refractionLayers[layerIndex]) {
-        drawGlassBatchFront(renderer, uniforms, shell.batch, metadata.firstInstances, maximumDistance, shell.instanceIndex, skipDepthWriteFor(shell.batch));
+        drawGlassBatchFront(renderer, uniforms, shell.batch, metadata.firstInstances, maximumDistance, shell.instanceIndex, skipDepthWriteFor(shell.batch), backend);
       }
     }
     if (otherLiquids.length > 0) {
-      const resolved = resolveRefractionTargets(renderer, width, height, needsRefractionMips, true);
-      bindRefractionTargets(context, uniforms, resolved.sceneTexture, resolved.sceneDepthTexture, reversed);
-      context.uniform1f(uniforms.glassBackEnabled, 0);
+      const resolved = resolveRefractionTargets(renderer, width, height, needsRefractionMips, true, backend);
+      bindRefractionTargets(backend, uniforms, resolved.sceneTexture, resolved.sceneDepthTexture, reversed);
+      backend.uniform1f(uniforms.glassBackEnabled, 0);
       for (const batch of otherLiquids) {
-        drawGlassBatchFront(renderer, uniforms, batch, metadata.firstInstances, maximumDistance, null, skipDepthWriteFor(batch));
+        drawGlassBatchFront(renderer, uniforms, batch, metadata.firstInstances, maximumDistance, null, skipDepthWriteFor(batch), backend);
       }
     }
   } else {
     const backFaces = sceneDepthTexture ? drawGlassBackFaces(renderer, liquids, width, height, metadata) : null;
     const backFirstInstances = backFaces?.firstInstances ?? null;
-    context.uniform1f(uniforms.glassBackEnabled, backFaces ? 1 : 0);
-    context.uniform1f(uniforms.glassBackFarEnabled, backFaces?.farLayer ? 1 : 0);
+    backend.uniform1f(uniforms.glassBackEnabled, backFaces ? 1 : 0);
+    backend.uniform1f(uniforms.glassBackFarEnabled, backFaces?.farLayer ? 1 : 0);
     const orderedLiquids = liquids.length > 1 && renderer.view
       ? [...liquids].sort((first, second) => batchViewDepth(first, renderer.view) - batchViewDepth(second, renderer.view))
       : liquids;
     for (const batch of orderedLiquids) {
-      drawGlassBatchFront(renderer, uniforms, batch, backFirstInstances, maximumDistance, null, skipDepthWriteFor(batch));
+      drawGlassBatchFront(renderer, uniforms, batch, backFirstInstances, maximumDistance, null, skipDepthWriteFor(batch), backend);
     }
   }
   liquidProbeSupport.finish?.(renderer, uniforms);
-  if (uniforms.morphEnabled) context.uniform1f(uniforms.morphEnabled, 0);
+  if (uniforms.morphEnabled) backend.uniform1f(uniforms.morphEnabled, 0);
   if (foams.length > 0) {
-    context.enable(context.BLEND);
-    context.blendFuncSeparate(context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
-    context.depthMask(false);
+    backend.setRenderState({ blend: true, blendMode: 'alpha', depthWrite: false });
     for (const batch of foams) {
       if (renderer.liquidClipLocations) bindClipPlanes(renderer, batch, renderer.liquidClipLocations);
-      context.bindVertexArray(batch.vertexArray);
-      context.drawElementsInstanced(context.TRIANGLES, batch.indexCount, context.UNSIGNED_INT, 0, batch.instanceCount);
+      backend.bindVertexArray(batch.vertexArray);
+      backend.drawIndexedInstanced(batch.indexCount, batch.instanceCount);
     }
-    context.depthMask(true);
-    context.disable(context.BLEND);
+    backend.setRenderState({ depthWrite: true, blend: false });
   }
-  context.bindVertexArray(null);
+  backend.bindVertexArray(null);
 }
