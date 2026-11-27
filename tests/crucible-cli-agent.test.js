@@ -401,10 +401,10 @@ test('crucible agent prints actionable signed-out and HTTP 402 messages and hono
     mcpClientOptions: { serverCommand: process.execPath, serverArgs: [mockMcpPath] },
   });
   assert.equal(signedOutCode, 1);
-  assert.match(signedOutErrors[0], /crucible auth login/);
-  assert.match(signedOutErrors[0], /250 free credits, no card needed/);
-  assert.match(signedOutErrors[0], /https:\/\/accounts\.codepawl\.com/);
-  assert.match(signedOutErrors[0], /crucible-mcp/);
+  assert.ok(signedOutErrors[0].includes('crucible auth login'));
+  assert.ok(signedOutErrors[0].includes('250 free credits, no card needed'));
+  assert.ok(signedOutErrors[0].includes('https://accounts.codepawl.com'));
+  assert.ok(signedOutErrors[0].includes('crucible-mcp'));
 
   const noPromoErrors = [];
   await runAgentCommand(['Make a box'], {
@@ -413,7 +413,7 @@ test('crucible agent prints actionable signed-out and HTTP 402 messages and hono
     error: line => noPromoErrors.push(line),
     mcpClientOptions: { serverCommand: process.execPath, serverArgs: [mockMcpPath] },
   });
-  assert.doesNotMatch(noPromoErrors[0], /250 free credits/);
+  assert.equal(noPromoErrors[0].includes('250 free credits'), false);
 
   const proxy402 = await startMockAgentProxy(() => ({
     status: 402,
@@ -428,9 +428,9 @@ test('crucible agent prints actionable signed-out and HTTP 402 messages and hono
       mcpClientOptions: { serverCommand: process.execPath, serverArgs: [mockMcpPath] },
     });
     assert.equal(creditsCode, 1);
-    assert.match(creditsErrors[0], /HTTP 402/);
-    assert.match(creditsErrors[0], /https:\/\/accounts\.codepawl\.com\/account/);
-    assert.match(creditsErrors[0], /crucible-mcp/);
+    assert.ok(creditsErrors[0].includes('HTTP 402'));
+    assert.ok(creditsErrors[0].includes('https://accounts.codepawl.com/account'));
+    assert.ok(creditsErrors[0].includes('crucible-mcp'));
   } finally {
     await proxy402.close();
     await rm(temporaryDirectory, { recursive: true, force: true });
