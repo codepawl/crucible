@@ -529,8 +529,10 @@ test('Properties card marks differing object, shape and material fields as Mixed
   studio.controller.undo();
   assert.equal(doubleSidedButton.textContent, 'Double sided (Mixed)');
 
-  // Clicking a palette swatch assigns that material to all selected geometry nodes in one undo step.
-  byLabel('Material stone').click();
+  // Choosing a material in the Material dropdown assigns it to all selected geometry nodes in one undo step.
+  const assignedMaterialSelect = byLabel('Assigned material');
+  assignedMaterialSelect.value = 'stone';
+  dispatch(assignedMaterialSelect, 'change');
   for (const id of ['left', 'middle', 'right']) {
     assert.equal(nodeOf(studio.controller, id).material, 'stone');
   }

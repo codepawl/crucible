@@ -60,7 +60,9 @@ import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgent
 import { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, primitiveGeometrySpec, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, buildTemplateRecipe } from './studio-templates.js';
 import { createStudioController, hasAnimatedData, linearRgbToHex, quaternionToEulerDegrees, roundValue } from './studio-controller.js';
 import { createPartSyncTracker } from './studio-live-parts.js';
-import { assignSwatchMaterialInEditMode, createFaceMaterialPanel, planJoinOperations } from './studio-material-slots.js';
+import { createFaceMaterialPanel, planJoinOperations } from './studio-material-slots.js';
+import { createMaterialSwatches } from './studio-material-swatches.js';
+import { createEmptySelectState } from './studio-empty-select.js';
 import {
   BASE_STUDIO_WORKSPACES,
   createWorkspaceTabBar,
@@ -1905,13 +1907,7 @@ export function createStudio(container, {
     isEditingName: () => Boolean(activeNameEditor),
   });
   watchScrollFade(outlinerTree);
-  const swatchContainer = createElement(documentReference, 'div', { className: 'crucible-studio-swatches crucible-studio-scroll' });
-  const newMaterialQuickButton = createIconButton(documentReference, 'add', 'New material', { className: 'crucible-studio-swatch-add' });
-  newMaterialQuickButton.addEventListener('click', () => {
-    const created = controller.createMaterial({ assignToNodeIds: selectedTargets() });
-    selectInspectorTab('material');
-    announceSuccess(`Created ${created.id}`);
-  });
+  const materialSwatches = createMaterialSwatches({ documentReference, createElement, createIcon, createIconButton, controller, selectedTargets, announce: message => announceSuccess(message) });
 
   const sceneMinimizeButton = createIconButton(documentReference, 'minimize', 'Minimize Scene', { attributes: { 'aria-expanded': 'true' } });
   sceneMinimizeButton.addEventListener('click', () => setPreference('sceneMinimized', !preferences.sceneMinimized));
@@ -1937,7 +1933,6 @@ export function createStudio(container, {
     ),
     filterRow,
     outlinerTree,
-    createElement(documentReference, 'div', { className: 'crucible-studio-palette-section' }, swatchContainer, newMaterialQuickButton),
   );
   outlinerSearch.addEventListener('input', () => syncUi());
   // The filter box stays out of the way until its button is pressed; closing it clears the filter, so a closed box
@@ -2437,17 +2432,24 @@ export function createStudio(container, {
   const emissionField = createSliderField(documentReference, 'Emission', { min: 0, max: 12, step: 0.1, value: 0 }, value => applyMaterialsPatch({ emission: value }));
   const colorField = createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'div', { className: 'crucible-studio-field-head' }, createElement(documentReference, 'span', { textContent: 'Color' }), colorMixedTag), colorInput);
   const emissiveField = createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'div', { className: 'crucible-studio-field-head' }, createElement(documentReference, 'span', { textContent: 'Glow color' }), emissiveMixedTag), emissiveColorInput);
-  const faceMaterialPanel = createFaceMaterialPanel({ documentReference, createElement, controller, getMeshEditor: () => meshEditor, announceError, onAssigned: () => updateMeshSelectionView() });
+  const faceMaterialPanel = createFaceMaterialPanel({ documentReference, createElement, createIcon, controller, getMeshEditor: () => meshEditor, announceError, onAssigned: () => updateMeshSelectionView() });
   const materialEmptyPrompt = createElement(documentReference, 'p', {
     className: 'crucible-studio-panel-empty',
-    textContent: 'Select an object with a material, or pick a swatch in Scene.',
+    textContent: 'Select an object with a material.',
     hidden: true,
+  });
+  const materialEmptyState = createEmptySelectState({
+    documentReference,
+    createElement,
+    createIcon,
+    message: 'No materials yet',
+    actionLabel: 'New material',
+    onAction: () => announceSuccess(`Created ${controller.createMaterial({ assignToNodeIds: selectedTargets() }).id}`),
   });
   const materialControls = createElement(
     documentReference,
     'div',
     { className: 'crucible-studio-panel-controls' },
-    faceMaterialPanel.element,
     createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'span', { className: 'crucible-studio-field-head', textContent: 'Material' }), materialSelect),
     createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'span', { className: 'crucible-studio-field-head', textContent: 'Presets' }), createElement(documentReference, 'div', { className: 'crucible-studio-chips' }, ...materialPresetChips)),
     colorField,
@@ -2464,6 +2466,9 @@ export function createStudio(container, {
     documentReference,
     'div',
     { className: 'crucible-studio-panel-body' },
+    materialSwatches.element,
+    faceMaterialPanel.element,
+    materialEmptyState.element,
     materialEmptyPrompt,
     materialControls,
   );
@@ -4202,8 +4207,6 @@ export function createStudio(container, {
 
   // UI Synchronization
   let lastTreeKey = '';
-  let lastSwatchesKey = '';
-  let lastPressedMaterialId;
   let lastBookmarksKey = '';
   let lastParentOptionsKey = '';
 
@@ -4536,78 +4539,6 @@ export function createStudio(container, {
     }
   }
 
-  // The swatches are rebuilt only when a material was added, removed or recoloured; moving the pressed state to another
-  // swatch touches two buttons. The strip scrolls to the pressed swatch at the end of the sync, only when it moved.
-  let swatchScrollWanted = false;
-
-  function renderPaletteSwatches(recipe, boundMaterialId) {
-    const swatchesKey = recipe.materials.map(material => `${material.id}:${linearRgbToHex(material.color)}`).join('|');
-    if (swatchesKey !== lastSwatchesKey) {
-      lastSwatchesKey = swatchesKey;
-      swatchScrollWanted = true;
-      swatchContainer.replaceChildren(...recipe.materials.map(material => {
-        const hex = linearRgbToHex(material.color);
-        const swatch = createElement(documentReference, 'button', {
-          type: 'button',
-          className: 'crucible-studio-swatch-btn',
-          title: material.id,
-          attributes: { 'aria-pressed': 'false', 'aria-label': `Material ${material.id}` },
-        });
-        swatch.style.background = hex;
-        swatch.addEventListener('click', () => {
-          if (meshEditor?.active) {
-            assignSwatchMaterialInEditMode({ meshEditor, materialId: material.id, onAssigned: () => updateMeshSelectionView() });
-            selectInspectorTab('material');
-            return;
-          }
-          const targets = selectedTargets();
-          if (targets.length > 0) {
-            try {
-              if (targets.length === 1) controller.assignNodeMaterial(targets[0], material.id);
-              else controller.assignNodesMaterial(targets, material.id);
-            } catch {
-              // group node has no geometry; still open material tab
-            }
-          }
-          selectInspectorTab('material');
-        });
-        return swatch;
-      }));
-      lastPressedMaterialId = undefined;
-    }
-    if (boundMaterialId === lastPressedMaterialId) {
-      return;
-    }
-    lastPressedMaterialId = boundMaterialId;
-    swatchScrollWanted = true;
-    recipe.materials.forEach((material, index) => {
-      const pressed = material.id === boundMaterialId ? 'true' : 'false';
-      const swatch = swatchContainer.children[index];
-      if (swatch.getAttribute('aria-pressed') !== pressed) {
-        swatch.setAttribute('aria-pressed', pressed);
-      }
-    });
-  }
-
-  // The strip is one row that scrolls sideways; the swatch of the selected node stays inside it.
-  function scrollPressedSwatchIntoView() {
-    if (!swatchScrollWanted) {
-      return;
-    }
-    swatchScrollWanted = false;
-    const pressedSwatch = [...swatchContainer.children].find(swatch => swatch.getAttribute('aria-pressed') === 'true');
-    if (!pressedSwatch || !Number.isFinite(pressedSwatch.offsetLeft)) {
-      return;
-    }
-    const swatchStart = pressedSwatch.offsetLeft;
-    const swatchEnd = swatchStart + pressedSwatch.offsetWidth;
-    if (swatchStart < swatchContainer.scrollLeft) {
-      swatchContainer.scrollLeft = swatchStart - 4;
-    } else if (swatchEnd > swatchContainer.scrollLeft + swatchContainer.clientWidth) {
-      swatchContainer.scrollLeft = swatchEnd - swatchContainer.clientWidth + 4;
-    }
-  }
-
   // The Scene list shows whole rows only: when it scrolls, its rows grow by a pixel or two until a whole number of them fills it.
   // The natural row height comes from one measurement that holds until something that sets it changes: the list's own height
   // (read live), the kind of the first row (a camera row or a node row), the fonts, the window size, or the first row's own
@@ -4782,10 +4713,10 @@ export function createStudio(container, {
       setRowLockedByTrack,
       syncTreeInspector,
       shapeSettings,
-      renderPaletteSwatches,
+      renderPaletteSwatches: materialSwatches.sync,
       controls: {
         nodeEmptyPrompt, nodeControls, nodeLabelInput, nodeParentSelect, visibleToggle, castShadowToggle, receiveShadowToggle,
-        positionRow, rotationRow, scaleRow, materialEmptyPrompt, materialControls, materialSelect, colorInput, colorMixedTag, colorField,
+        positionRow, rotationRow, scaleRow, materialEmptyPrompt, materialEmptyState, materialControls, materialSelect, colorInput, colorMixedTag, colorField,
         emissiveColorInput, emissiveMixedTag, emissiveField, roughnessField, metallicField,
         clearcoatField, clearcoatRoughnessField, doubleSidedToggle, opacityField, emissionField,
       },
@@ -4845,7 +4776,7 @@ export function createStudio(container, {
     syncPropertyPanels();
     syncHintBar();
     syncFileBanner();
-    scrollPressedSwatchIntoView();
+    materialSwatches.scrollPressedIntoView();
   }
 
   // Only the panel in view is redrawn: orbiting the viewport notifies a change many times a second.

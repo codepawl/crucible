@@ -528,22 +528,19 @@ test('popover buttons open each menu, close it again on a click inside and stay 
   assert.equal(syncPopover.style.top, '500px');
 });
 
-test('a material swatch assigns its material and opens the Material tab', testContext => {
+test('the material swatches live in the Material tab and show the material of the selection', testContext => {
   const ui = mountStudio(testContext);
   const swatches = ui.root.querySelectorAll('.crucible-studio-swatch-btn');
   assert.deepEqual(swatches.map(swatch => swatch.title), ['stone', 'paint']);
   assert.equal(swatches[0].getAttribute('aria-pressed'), 'true');
   assert.equal(swatches[1].getAttribute('aria-pressed'), 'false');
-  swatches[1].click();
-  assert.equal(ui.controller.activeTab, 'material');
+  const materialBody = ui.root.querySelector('.crucible-studio-palette-section').parentNode;
+  assert.ok(materialBody.querySelectorAll('select').includes(ui.label('Assigned material')), 'the swatches share a panel with the Material dropdown');
+  assert.equal(ui.root.querySelector('.crucible-studio-outliner').querySelector('.crucible-studio-swatches'), null, 'the Scene panel holds no swatches');
+  ui.label('Assigned material').value = 'paint';
+  dispatch(ui.label('Assigned material'), 'change');
   assert.equal(ui.node('ground').material, 'paint');
-  assert.equal(ui.label('Assigned material').value, 'paint');
   assert.equal(ui.root.querySelectorAll('.crucible-studio-swatch-btn')[1].getAttribute('aria-pressed'), 'true');
-
-  ui.controller.selectNode(null);
-  ui.root.querySelectorAll('.crucible-studio-swatch-btn')[0].click();
-  assert.equal(ui.controller.activeTab, 'material');
-  assert.equal(ui.node('ground').material, 'paint');
 });
 
 test('Material tab edits colours and sliders as single undo steps', testContext => {
@@ -636,9 +633,8 @@ test('material presets, the material list and new materials work from the Materi
   dispatch(materialSelect, 'change');
   assert.equal(ui.node('orb').material, 'stone');
 
-  ui.tab('node').click();
-  ui.label('New material').click();
-  assert.equal(ui.controller.activeTab, 'material');
+  ui.label('Add a colour').click();
+  ui.button('Add colour').click();
   assert.match(ui.status(), /^Created /);
   assert.equal(ui.studio.exportRecipe().materials.length, 3);
   assert.equal(ui.node('orb').material, ui.studio.exportRecipe().materials[2].id);

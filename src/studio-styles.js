@@ -1,4 +1,7 @@
 import { SCRUB_THUMB_WIDTH } from './studio-timeline-keys.js';
+import { COLOUR_PICKER_CSS } from './studio-colour-picker.js';
+import { EMPTY_SELECT_CSS } from './studio-empty-select.js';
+import { MATERIAL_SWATCHES_CSS } from './studio-material-swatches.js';
 import { MODIFIER_CSS } from './studio-modifier-styles.js';
 import { STUDIO_NUMPAD_CSS } from './studio-numpad.js';
 import { STUDIO_MOTION_CSS } from './studio-motion-styles.js';
@@ -1513,73 +1516,6 @@ export const STUDIO_CSS = `
 @media (hover: none) {
   .crucible-studio button.crucible-studio-tree-eye { opacity: 1; }
 }
-.crucible-studio-palette-section {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  /* The right inset matches the fields below: the panel padding plus the room its scrollbar keeps. */
-  padding: 12px 24px 12px 12px;
-}
-/* One row that scrolls sideways, so it never sits beside the list's own scrollbar. The padding keeps the ring of the chosen swatch inside the strip. */
-.crucible-studio-swatches {
-  position: relative;
-  display: flex;
-  flex: 1 1 auto;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 4px;
-  min-inline-size: 0;
-  padding: 4px;
-  margin: -4px 0 -4px -4px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  container-type: scroll-state;
-}
-.crucible-studio-swatches::-webkit-scrollbar { display: none; }
-/* While more swatches lie to the right, the last one in view dissolves into the panel instead of being sliced. */
-.crucible-studio-swatches::after {
-  content: "";
-  position: sticky;
-  inset-inline-end: -4px;
-  flex: none;
-  inline-size: 28px;
-  block-size: 24px;
-  margin-inline-start: -28px;
-  background: linear-gradient(to right, transparent, var(--studio-panel) 85%);
-  opacity: 0;
-  pointer-events: none;
-}
-@container scroll-state(scrollable: right) {
-  .crucible-studio-swatches::after { opacity: 1; }
-}
-.crucible-studio-swatches > button { flex: none; }
-.crucible-studio button.crucible-studio-swatch-btn,
-.crucible-studio button.crucible-studio-swatch-add {
-  min-inline-size: 24px;
-  min-block-size: 24px;
-  inline-size: 24px;
-  block-size: 24px;
-  padding: 0;
-  border-radius: 999px;
-}
-.crucible-studio button.crucible-studio-swatch-btn {
-  border: 1px solid var(--studio-border);
-}
-.crucible-studio button.crucible-studio-swatch-btn[aria-pressed="true"] {
-  box-shadow: 0 0 0 2px var(--studio-panel), 0 0 0 3.5px var(--studio-text);
-}
-.crucible-studio button.crucible-studio-swatch-add {
-  flex: none;
-  color: var(--studio-muted);
-  border: 1px dashed color-mix(in srgb, var(--studio-text) 30%, transparent);
-}
-.crucible-studio-swatch-add .crucible-studio-icon {
-  inline-size: 13px;
-  block-size: 13px;
-}
-
 .crucible-studio-hintbar {
   position: absolute;
   inset-inline-start: 50%;
@@ -1781,6 +1717,8 @@ export const STUDIO_CSS = `
   display: grid;
   gap: 4px;
 }
+/* Without this the grid above wins over the hidden attribute and the Face material row shows outside edit mode. */
+.crucible-studio-field[hidden] { display: none; }
 .crucible-studio-field-head {
   display: flex;
   justify-content: space-between;
@@ -3644,4 +3582,4 @@ export const STUDIO_CSS = `
     outline: 2px solid Highlight;
   }
 }
-${MODIFIER_CSS}${STUDIO_NUMPAD_CSS}${STUDIO_MOTION_CSS}`;
+${MODIFIER_CSS}${MATERIAL_SWATCHES_CSS}${COLOUR_PICKER_CSS}${EMPTY_SELECT_CSS}${STUDIO_NUMPAD_CSS}${STUDIO_MOTION_CSS}`;

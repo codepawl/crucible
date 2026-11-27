@@ -8,6 +8,7 @@ export const STUDIO_ICON_PATHS = Object.freeze({
   undo: 'M8 5L3 10l5 5M3 10h11a5.5 5.5 0 0 1 0 11h-3',
   redo: 'M16 5l5 5-5 5M21 10H10a5.5 5.5 0 0 0 0 11h3',
   add: 'M12 5v14M5 12h14',
+  edit: 'M4 20h4L19 9l-4-4L4 16zM13 7l4 4',
   close: 'M6 6l12 12M18 6L6 18',
   newScene: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M12 11v6M9 14h6',
   recent: 'M12 7v5l3 2M3.5 12a8.5 8.5 0 1 0 2.5-6M3.5 4v4h4',
