@@ -67,7 +67,7 @@ import { filmTimelineDuration, filmTimelineShotStarts, sampleFilmTimeline } from
 import { isPreviewHost } from './preview-host.mjs';
 import { runAnnotateSession } from './annotate-session.mjs';
 import { openInDefaultBrowser } from './annotate-open.mjs';
-import { ANNOTATE_LIMITS, validateMarks, isBoundedPng } from '../src/agent-annotate.js';
+import { ANNOTATE_LIMITS, ASK_USER_CAPABILITY_NOTE, validateMarks, isBoundedPng } from '../src/agent-annotate.js';
 import { REVIEW_LINK_LIMITS, newReviewId, parseReviewFile, validateReviewMarks } from '../src/review-link.js';
 import { writeReviewBuild } from './review-page.mjs';
 import { normalizeReview, reviewDeadlineMessage, REVIEW_LIMITS } from './agent-review.mjs';
@@ -256,7 +256,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
   const savedGlbPaths = [];
   const savedWebBuildPaths = [];
   // One frame for marking, with the camera it was drawn with. Shared by the local annotate page and the exported review page.
-  async function captureAnnotateFrame(sessionId, width, height, motionTime) {
+  async function captureAnnotateFrame(sessionId, width, height, motionTime, camera) {
     if (![width, height].every(value => Number.isInteger(value) && value >= 64 && value <= 1024)) {
       throw new RangeError('Preview dimensions must be integers from 64 to 1024.');
     }
@@ -264,7 +264,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
       await requirePreviewRenderer();
       requireSession(sessionId);
       await page.setViewportSize({ width, height });
-      return invoke('annotateFrame', { sessionId, ...(motionTime === undefined ? {} : { motionTime }) });
+      return invoke('annotateFrame', { sessionId, ...(motionTime === undefined ? {} : { motionTime }), ...(camera === undefined ? {} : { camera }) });
     });
   }
   // The view the marks were made on. A film scene also names the time it was drawn at (`motionTime`), so a note like "too bright
@@ -876,9 +876,10 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
     bakedSessionIds.clear();
   }
 
-  async function resolveSentMarks({ sessionId, frame, marks, image }) {
-    const base = { sessionId, revision: frame.metadata.revision, view: annotateViewOf(frame) };
-    return { image, content: await sentMarksContent(base, frame.camera, marks, 'while the person marked') };
+  async function resolveSentMarks({ sessionId, frame, camera, marks, image }) {
+    const activeCamera = camera ?? frame.camera;
+    const base = { sessionId, revision: frame.metadata.revision, view: { ...annotateViewOf(frame), camera: activeCamera } };
+    return { image, content: await sentMarksContent(base, activeCamera, marks, 'while the person marked') };
   }
 
   function requireSession(sessionId) {
@@ -1411,7 +1412,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         return tierReport({ backend, nativeTracer: Boolean((await nativeTracerLocator.find()).tracer) });
       };
       return {
-        scene: { ...AGENT_SCENE_CAPABILITIES, game: GAME_CAPABILITIES, postPasses: USER_PASS_CAPABILITIES, meshBlend: MESH_BLEND_CAPABILITIES, materialSnippet: MATERIAL_SNIPPET_CAPABILITIES, vegetation: VEGETATION_CAPABILITY_NOTE, treeGrowth: TREE_GROWTH_CAPABILITIES, clutter: CLUTTER_CAPABILITY_NOTE, grass: GRASS_CAPABILITY_NOTE, fitLook: FIT_LOOK_CAPABILITY_NOTE, crowd: CROWD_CAPABILITY_NOTE, settle: SETTLE_CAPABILITY_NOTE, applyOperations: FOLDED_APPLY_OPERATION_NOTES, textureSequence: TEXTURE_SEQUENCE_CAPABILITIES, faceImages: FACE_IMAGE_CAPABILITIES, textureSet: TEXTURE_SET_CAPABILITIES },
+        scene: { ...AGENT_SCENE_CAPABILITIES, askUser: ASK_USER_CAPABILITY_NOTE, game: GAME_CAPABILITIES, postPasses: USER_PASS_CAPABILITIES, meshBlend: MESH_BLEND_CAPABILITIES, materialSnippet: MATERIAL_SNIPPET_CAPABILITIES, vegetation: VEGETATION_CAPABILITY_NOTE, treeGrowth: TREE_GROWTH_CAPABILITIES, clutter: CLUTTER_CAPABILITY_NOTE, grass: GRASS_CAPABILITY_NOTE, fitLook: FIT_LOOK_CAPABILITY_NOTE, crowd: CROWD_CAPABILITY_NOTE, settle: SETTLE_CAPABILITY_NOTE, applyOperations: FOLDED_APPLY_OPERATION_NOTES, textureSequence: TEXTURE_SEQUENCE_CAPABILITIES, faceImages: FACE_IMAGE_CAPABILITIES, textureSet: TEXTURE_SET_CAPABILITIES },
         sceneLimits: SCENE_LIMITS,
         preview: { backend, memoryBudgetMiB: memory, maximumWidth: 1024, maximumHeight: 1024, maximumImageBytes: MAXIMUM_IMAGE_BYTES, maximumActiveScenes: SCENE_STORE_LIMITS.maxOpenScenes, maximumOpenSceneBytes: SCENE_STORE_LIMITS.maxOpenSceneBytes, maximumQueuedCalls: MAXIMUM_QUEUED_CALLS, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS },
         review: { ...REVIEW_LIMITS, backend, memoryBudgetMiB: memory, evaluationTimeoutMs: EVALUATION_TIMEOUT_MS,
@@ -1630,7 +1631,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         inlineAsks.set(nonce, { sessionId: input.sessionId, frame, maxMarks, expiresAt: Date.now() + timeoutSeconds * 1000 });
         while (inlineAsks.size > MAXIMUM_INLINE_ASKS) inlineAsks.delete(inlineAsks.keys().next().value);
         return { image: frame.data, viewMeta: { nonce }, content: { sessionId: input.sessionId, outcome: 'pending', revision: frame.metadata.revision,
-          view: annotateViewOf(frame), maxMarks, maxNoteLength: ANNOTATE_LIMITS.maxNoteLength, prompt: input.prompt ?? '',
+          view: annotateViewOf(frame), ...(frame.motion ? { motion: frame.motion } : {}), maxMarks, maxNoteLength: ANNOTATE_LIMITS.maxNoteLength, prompt: input.prompt ?? '',
           message: 'The view is open in the chat for the person. Their marks arrive as a message from them: stop here and do not call scene_ask_user again.' } };
       }
       const askController = new AbortController();
@@ -1638,7 +1639,9 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
       let session;
       try {
         session = await runAnnotateSession({ png: frame.data, width: frame.width, height: frame.height, prompt: input.prompt ?? '',
-          maxMarks, waitMs: timeoutSeconds * 1000, signal: askController.signal, open: async url => {
+          maxMarks, camera: frame.camera, ...(frame.motion ? { motion: frame.motion } : {}), waitMs: timeoutSeconds * 1000, signal: askController.signal,
+          renderView: async (viewCamera, motionTime) => (await captureAnnotateFrame(input.sessionId, frame.width, frame.height, motionTime ?? input.motionTime, viewCamera)).data,
+          open: async url => {
             console.error(`Crucible annotate page: ${url}`);
             await openPage(url);
           } });
@@ -1652,7 +1655,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
           ? `The person did not press Send within ${timeoutSeconds} seconds. Ask in text, or call scene_ask_user again with a longer timeoutSeconds.`
           : 'The person cancelled without sending marks. Ask what they meant in text.' } };
       }
-      return resolveSentMarks({ sessionId: input.sessionId, frame, marks: session.marks, image: session.image });
+      return resolveSentMarks({ sessionId: input.sessionId, frame, camera: session.camera, marks: session.marks, image: session.image });
     },
     // The second half of an inline scene_ask_user: the MCP Apps view sends the marks it collected, the answer has the same shape as a
     // browser answer. Only the nonce the view received can submit, so the model cannot forge an answer; an unknown, used or

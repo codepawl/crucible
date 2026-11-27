@@ -1,0 +1,1 @@
+- Add `crucible/addons/prop-grip` addon for hand grip-socket prop attachment and auto finger curl (#3553)

@@ -42,6 +42,7 @@ const MODULE_LOADERS = {
   retroShader: () => import('./retro-shader.js'),
   glitterShader: () => import('./glitter-shader.js'),
   heightParallaxShader: () => import('./height-parallax-shader.js'),
+  detailNormalShader: () => import('./detail-normal-shader.js'),
   surfaceCover: () => import('./surface-cover.js'),
   worldMaterials: () => import('./world-material-shader.js'),
   terrain: () => import('./agent-terrain.js'),
@@ -137,6 +138,7 @@ const MODULE_MARKERS = {
   glitterShader: ['"waterGlint"'],
   // Relief needs a heightScale above 0; a heightMap alone is ignored, so the scale is the marker (a texture set sets its height the same way).
   heightParallaxShader: ['"heightScale"'],
+  detailNormalShader: ['"detailNormalMap"'],
   surfaceCover: ['"surfaceCover"'],
   // Any mention loads it, because an edit can set the density through a path or the environment of an operation.
   fogShader: ['volumeFog', 'localVolumes', '"add-explosion"'],
@@ -152,12 +154,12 @@ const MODULE_MARKERS = {
   lightParenting: [/"(?:pointLights|spotLights|areaLights)":\[(?:[^\[\]]|\[[^\]]*\])*?"(?:parent|face)"/],
   // The cascade module also loads light-shapes (soft area shadows, IES profiles), so these markers bring both.
   cascades: [/"(?:shadowCascades|sunAngularRadius|ies|hard)"|"areaLights":\[\{/],
-  assets: ['"asset":{', '"sequence":{', '"faceImages":', /"(?:colorMap|normalMap|roughnessMap|metallicMap|occlusionMap|heightMap|textureSet)":"/],
+  assets: ['"asset":{', '"sequence":{', '"faceImages":', /"(?:colorMap|normalMap|roughnessMap|metallicMap|occlusionMap|heightMap|detailNormalMap|textureSet)":"|"(?:detailNormalScale|detailUvScale|detailRoughnessStrength)":/],
   vegetation: ['"vegetation":{', '"wind":{'],
   clutter: ['"clutter":['],
   grass: ['"grass":{'],
   crowd: ['"crowd":{'],
-  lineArt: ['"lines":{', '"toon":'],
+  lineArt: ['"lines":{', '"toon'],
   rain: ['"rain":{'],
   wetnessPuddles: [/"from":"(?:cavity|mask)"/],
   viewTransform: ['"viewTransform":"agx"', '"viewTransform":"neutral"', '"viewTransform":"standard"', '"look":"'],

@@ -83,6 +83,7 @@ export default defineConfig({
         recipeHdriLighting: 'site/recipe-hdri-lighting.html',
         recipeViewTransform: 'site/recipe-view-transform.html',
         recipeDollyZoom: 'site/recipe-dolly-zoom.html',
+        recipeCumulusTowers: 'site/recipe-cumulus-towers.html',
         docs: 'site/docs.html',
         changelog: 'site/changelog.html',
         showcase: 'site/showcase.html',

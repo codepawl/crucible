@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en" data-theme="crucible">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f8f7f1" media="(prefers-color-scheme: light)" /><meta name="theme-color" content="#17161a" media="(prefers-color-scheme: dark)" />
+    <link rel="preload" href="/fonts/plus-jakarta-sans-latin-3.woff2" as="font" type="font/woff2" crossorigin /><link rel="preload" href="/fonts/inter-latin-6.woff2" as="font" type="font/woff2" crossorigin />
+    <meta name="description" content="Three seeded cloud meshes with soft lobes and a six-step cool-to-warm toon ramp over an ocean mesh." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Crucible" />
+    <meta property="og:title" content="Cumulus towers: procedural cloud lobes over ocean waves - Crucible" />
+    <meta property="og:description" content="Three seeded cloud meshes with soft lobes and a six-step cool-to-warm toon ramp over an ocean mesh." />
+    <meta property="og:url" content="https://crucible.codepawl.com/recipe-cumulus-towers.html" />
+    <meta property="og:image" content="https://crucible.codepawl.com/recipes/cumulus-towers.webp" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://crucible.codepawl.com/recipe-cumulus-towers.html" />
+    <title>Cumulus towers: procedural cloud lobes over ocean waves - Crucible</title>
+    <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" /><link rel="icon" href="/favicon.ico?v=2" sizes="48x48" /><link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <script defer src="/analytics.js" data-cf-site="d25c310f7f5c46049586a2ddc0e57b03"></script>
+  </head>
+  <body class="site themed recipes">
+    <a class="skip-link" href="#content">Skip to content</a>
+    <!-- site-chrome:header -->
+<header class="nav">
+  <a class="brand" href="/" aria-label="Crucible home"><picture><source media="(prefers-color-scheme: dark)" srcset="/brand/crucible-mark-64-dark.webp"><img src="/brand/crucible-mark-64.webp" alt="" width="28" height="28" decoding="async"></picture>Crucible</a>
+  <span class="version" data-release-version>Loading release</span>
+  <nav class="nav-links" aria-label="Site">
+    <a href="/docs.html"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>Docs</a>
+    <a class="wide" href="/recipes.html" aria-current="page"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>Recipes</a>
+    <a class="wide" href="/showcase.html"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="9.5" r="1.2"/></svg>Showcase</a>
+    <a class="wide" href="/marketplace.html"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>Marketplace</a>
+    <a class="wide" href="/changelog.html"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Changelog</a>
+    <a href="https://github.com/codepawl/crucible" aria-label="GitHub"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg><span class="wide">GitHub</span></a>
+    <a class="button" href="/#install">Install</a>
+  </nav>
+</header>
+<!-- /site-chrome:header -->
+    <main id="content">
+      <p class="recipe-back"><a href="/recipes.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>Recipes</a></p>
+      <h1>Cumulus towers: procedural cloud lobes over ocean waves</h1>
+      <figure class="recipe-still"><img src="/recipes/cumulus-towers.webp" width="960" height="540" alt="Cumulus towers: procedural cloud lobes over ocean waves: Cumulus towers" /></figure>
+      <div class="recipe-why"><p>Each cloud is a declarative cloud geometry with three nested levels of soft lobes and a flat base, seeded separately so the three towers read as distinct shapes.</p><p>A six-step toon ramp shifts shadows cool blue-grey and highlights warm cream under a physical sky.</p></div>
+      <section class="recipe-code" aria-labelledby="scene-code-title">
+        <div class="recipe-code-heading"><h2 id="scene-code-title">Scene code</h2><button type="button" data-copy-code="scene-code">Copy</button></div>
+        <pre><code id="scene-code">{
+  &quot;format&quot;: &quot;crucible.scene&quot;,
+  &quot;schemaVersion&quot;: 1,
+  &quot;geometries&quot;: [
+    {
+      &quot;id&quot;: &quot;sea&quot;,
+      &quot;type&quot;: &quot;mesh&quot;,
+      &quot;base&quot;: {
+        &quot;type&quot;: &quot;box&quot;,
+        &quot;bevel&quot;: 0.002
+      },
+      &quot;edits&quot;: [
+        {
+          &quot;op&quot;: &quot;delete&quot;,
+          &quot;select&quot;: {
+            &quot;not&quot;: {
+              &quot;normal&quot;: [
+                0,
+                1,
+                0
+              ],
+              &quot;maxAngle&quot;: 10
+            }
+          }
+        },
+        {
+          &quot;op&quot;: &quot;subdivide_edges&quot;,
+          &quot;edges&quot;: {
+            &quot;all&quot;: true
+          },
+          &quot;cuts&quot;: 16
+        },
+        {
+          &quot;op&quot;: &quot;subdivide&quot;,
+          &quot;levels&quot;: 3
+        },
+        {
+          &quot;op&quot;: &quot;set_position&quot;,
+          &quot;position&quot;: {
+            &quot;mul&quot;: [
+              {
+                &quot;attr&quot;: &quot;position&quot;
+              },
+              [
+                600,
+                1,
+                600
+              ]
+            ]
+          }
+        },
+        {
+          &quot;op&quot;: &quot;ocean&quot;,
+          &quot;axis&quot;: &quot;y&quot;,
+          &quot;windSpeed&quot;: 10,
+          &quot;direction&quot;: 100,
+          &quot;choppiness&quot;: 1,
+          &quot;size&quot;: 50,
+          &quot;seed&quot;: 7,
+          &quot;time&quot;: 2,
+          &quot;resolution&quot;: 10
+        }
+      ]
+    },
+    {
+      &quot;id&quot;: &quot;tower-left&quot;,
+      &quot;type&quot;: &quot;cloud&quot;,
+      &quot;seed&quot;: 12,
+      &quot;width&quot;: 52,
+      &quot;height&quot;: 50,
+      &quot;flatBase&quot;: 1,
+      &quot;upBias&quot;: 0.5,
+      &quot;unionSoftness&quot;: 0.3,
+      &quot;resolution&quot;: 112,
+      &quot;levels&quot;: [
+        {
+          &quot;count&quot;: 6,
+          &quot;sizeRatio&quot;: 1,
+          &quot;softness&quot;: 0.4
+        },
+        {
+          &quot;count&quot;: 60,
+          &quot;sizeRatio&quot;: 0.34,
+          &quot;softness&quot;: 0.28
+        },
+        {
+          &quot;count&quot;: 300,
+          &quot;sizeRatio&quot;: 0.15,
+          &quot;softness&quot;: 0.3
+        }
+      ]
+    },
+    {
+      &quot;id&quot;: &quot;tower-middle&quot;,
+      &quot;type&quot;: &quot;cloud&quot;,
+      &quot;seed&quot;: 7,
+      &quot;width&quot;: 58,
+      &quot;height&quot;: 62,
+      &quot;flatBase&quot;: 1,
+      &quot;upBias&quot;: 0.5,
+      &quot;unionSoftness&quot;: 0.3,
+      &quot;resolution&quot;: 112,
+      &quot;levels&quot;: [
+        {
+          &quot;count&quot;: 6,
+          &quot;sizeRatio&quot;: 1,
+          &quot;softness&quot;: 0.4
+        },
+        {
+          &quot;count&quot;: 60,
+          &quot;sizeRatio&quot;: 0.34,
+          &quot;softness&quot;: 0.28
+        },
+        {
+          &quot;count&quot;: 300,
+          &quot;sizeRatio&quot;: 0.15,
+          &quot;softness&quot;: 0.3
+        }
+      ]
+    },
+    {
+      &quot;id&quot;: &quot;tower-right&quot;,
+      &quot;type&quot;: &quot;cloud&quot;,
+      &quot;seed&quot;: 33,
+      &quot;width&quot;: 48,
+      &quot;height&quot;: 46,
+      &quot;flatBase&quot;: 1,
+      &quot;upBias&quot;: 0.5,
+      &quot;unionSoftness&quot;: 0.3,
+      &quot;resolution&quot;: 112,
+      &quot;levels&quot;: [
+        {
+          &quot;count&quot;: 6,
+          &quot;sizeRatio&quot;: 1,
+          &quot;softness&quot;: 0.4
+        },
+        {
+          &quot;count&quot;: 60,
+          &quot;sizeRatio&quot;: 0.34,
+          &quot;softness&quot;: 0.28
+        },
+        {
+          &quot;count&quot;: 300,
+          &quot;sizeRatio&quot;: 0.15,
+          &quot;softness&quot;: 0.3
+        }
+      ]
+    }
+  ],
+  &quot;materials&quot;: [
+    {
+      &quot;id&quot;: &quot;water&quot;,
+      &quot;tag&quot;: &quot;water&quot;,
+      &quot;color&quot;: [
+        0.0033,
+        0.042,
+        0.069
+      ],
+      &quot;metallic&quot;: 0,
+      &quot;roughness&quot;: 0.14
+    },
+    {
+      &quot;id&quot;: &quot;cumulus&quot;,
+      &quot;color&quot;: [
+        0.9,
+        0.9,
+        0.9
+      ],
+      &quot;metallic&quot;: 0,
+      &quot;roughness&quot;: 1,
+      &quot;toon&quot;: 6,
+      &quot;toonColors&quot;: [
+        [
+          0.3,
+          0.38,
+          0.52
+        ],
+        [
+          0.5,
+          0.58,
+          0.7
+        ],
+        [
+          0.72,
+          0.77,
+          0.86
+        ],
+        [
+          0.95,
+          0.94,
+          0.92
+        ],
+        [
+          1.2,
+          1.1,
+          0.95
+        ],
+        [
+          1.4,
+          1.22,
+          1
+        ]
+      ],
+      &quot;toonRim&quot;: {
+        &quot;color&quot;: [
+          1,
+          0.98,
+          0.94
+        ],
+        &quot;strength&quot;: 2.2,
+        &quot;power&quot;: 4.5
+      },
+      &quot;toonBase&quot;: {
+        &quot;color&quot;: [
+          0.58,
+          0.72,
+          0.88
+        ],
+        &quot;strength&quot;: 0.45
+      }
+    }
+  ],
+  &quot;nodes&quot;: [
+    {
+      &quot;id&quot;: &quot;sea&quot;,
+      &quot;geometry&quot;: &quot;sea&quot;,
+      &quot;material&quot;: &quot;water&quot;
+    },
+    {
+      &quot;id&quot;: &quot;tower-left&quot;,
+      &quot;geometry&quot;: &quot;tower-left&quot;,
+      &quot;material&quot;: &quot;cumulus&quot;,
+      &quot;translation&quot;: [
+        -52,
+        10,
+        -34
+      ]
+    },
+    {
+      &quot;id&quot;: &quot;tower-middle&quot;,
+      &quot;geometry&quot;: &quot;tower-middle&quot;,
+      &quot;material&quot;: &quot;cumulus&quot;,
+      &quot;translation&quot;: [
+        10,
+        10,
+        -90
+      ]
+    },
+    {
+      &quot;id&quot;: &quot;tower-right&quot;,
+      &quot;geometry&quot;: &quot;tower-right&quot;,
+      &quot;material&quot;: &quot;cumulus&quot;,
+      &quot;translation&quot;: [
+        66,
+        10,
+        -50
+      ]
+    }
+  ],
+  &quot;camera&quot;: {
+    &quot;eye&quot;: [
+      0,
+      14,
+      70
+    ],
+    &quot;target&quot;: [
+      0,
+      38,
+      -40
+    ],
+    &quot;fov&quot;: 50
+  },
+  &quot;effects&quot;: {
+    &quot;exposure&quot;: 0.9
+  },
+  &quot;environment&quot;: {
+    &quot;sky&quot;: {
+      &quot;type&quot;: &quot;physical&quot;,
+      &quot;sunElevation&quot;: 28,
+      &quot;sunRotation&quot;: 145,
+      &quot;turbidity&quot;: 2,
+      &quot;aerialPerspective&quot;: 0.3
+    },
+    &quot;world&quot;: true,
+    &quot;ground&quot;: false,
+    &quot;ambientIntensity&quot;: 0.3,
+    &quot;keyIntensity&quot;: 2.2
+  }
+}</code></pre>
+      </section>
+      <p class="recipe-file"><a href="/recipes/cumulus-towers.json" download>Download cumulus-towers.json</a><span>Paste it into <code>scene_create</code> as <code>recipe</code>.</span></p>
+    </main>
+    <!-- site-chrome:footer -->
+<footer class="footer">
+  <div class="inner">
+    <p><a class="brand" href="/" aria-label="Crucible home"><picture><source media="(prefers-color-scheme: dark)" srcset="/brand/crucible-mark-64-dark.webp"><img src="/brand/crucible-mark-64.webp" alt="" width="28" height="28" decoding="async"></picture>Crucible</a></p>
+    <p>by <a href="https://codepawl.com">CodePawl</a>, formerly 67js</p>
+    <nav aria-label="Site pages">
+      <a href="/docs.html">Docs</a>
+      <a href="/recipes.html">Recipes</a>
+      <a href="/showcase.html">Showcase</a>
+      <a href="/marketplace.html">Marketplace</a>
+      <a href="/tiers.html">Tiers</a>
+      <a href="/changelog.html">Changelog</a>
+    </nav>
+    <nav aria-label="Project links">
+      <a href="https://github.com/codepawl/crucible"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>GitHub</a>
+      <a href="https://www.npmjs.com/package/@codepawlhq/crucible"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 9v6M12 9v6M16 9v6M8 9h8"/></svg>npm</a>
+      <a data-release-commit href="https://github.com/codepawl/crucible">Release commit</a>
+      <a href="/license.txt">MIT license</a>
+      <a href="/logo.svg" download>Logo SVG</a>
+      <a href="https://github.com/sponsors/codepawl">Sponsor</a>
+    </nav>
+    <nav aria-label="Social links">
+      <a href="https://x.com/anxuanng">X (@anxuanng)</a>
+      <a href="https://x.com/codepawl">X (@codepawl)</a>
+      <a href="https://www.threads.com/@codepawl">Threads</a>
+      <a href="https://www.youtube.com/@codepawlhq">YouTube</a>
+      <a href="https://huggingface.co/codepawl">Hugging Face</a>
+    </nav>
+  </div>
+</footer>
+<!-- /site-chrome:footer -->
+    <script type="module" src="/src/recipes.js"></script>
+  </body>
+</html>

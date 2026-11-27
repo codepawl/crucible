@@ -59,6 +59,15 @@ export const HEIGHT_MAP_UNIT = Math.max(...Object.values(SPLAT_UNITS)) + 1;
 /** The name of the parallax relief feature: its code is the lazy height-parallax-shader module. */
 export const HEIGHT_MAP_FEATURE = 'heightMap';
 
+/**
+ * The tiled detail normal map sits past the parallax height map (18) and the puddle mask (19), keeping it free of every
+ * other sampler unit while staying within WebGL2's 32 combined texture image units.
+ */
+export const DETAIL_NORMAL_UNIT = HEIGHT_MAP_UNIT + 2;
+
+/** The name of the tiled detail normal feature: its code is the lazy detail-normal-shader module. */
+export const DETAIL_NORMAL_FEATURE = 'detailNormalMap';
+
 export function registerSplatSupport(functions) {
   Object.assign(splatSupport, functions);
 }
@@ -86,7 +95,7 @@ export function requireHeightParallaxSupport() {
 }
 
 // The addon that registers each feature's code; a feature not listed here is registered by material-layer-shaders.
-const FEATURE_ADDONS = { heightMap: 'height-parallax-shader', splat: 'splat-shader', liquid: 'liquid-shader', worldMaterials: 'world-material-shader', subsurface: 'subsurface-shader', volumeFog: 'fog-shader', linearOutput: 'linear-output-shader', autoExposure: 'post-steps', keepHue: 'post-steps', retro: 'retro-shader', waterGlint: 'glitter-shader', surfaceCover: 'surface-cover' };
+const FEATURE_ADDONS = { detailNormalMap: 'detail-normal-shader', heightMap: 'height-parallax-shader', splat: 'splat-shader', liquid: 'liquid-shader', worldMaterials: 'world-material-shader', subsurface: 'subsurface-shader', volumeFog: 'fog-shader', linearOutput: 'linear-output-shader', autoExposure: 'post-steps', keepHue: 'post-steps', retro: 'retro-shader', waterGlint: 'glitter-shader', surfaceCover: 'surface-cover' };
 
 export function requireFeatureCode(feature) {
   if (typeof feature !== 'string' || feature.length === 0) {

@@ -26,6 +26,7 @@ function crossPortal(portal, x, y, z, directionX, directionY, directionZ) {
 
 /** The solid-angle density of drawing `direction` from the point through the portals: the sum over the portals it crosses of d^2 / (area cos) / count. 0 when it crosses none. */
 export function portalPdf(portals, x, y, z, directionX, directionY, directionZ) {
+  if (!portals?.length) return 0;
   let pdf = 0;
   for (const portal of portals) {
     const crossing = crossPortal(portal, x, y, z, directionX, directionY, directionZ);
@@ -36,9 +37,10 @@ export function portalPdf(portals, x, y, z, directionX, directionY, directionZ) 
 
 /**
  * Draws a direction from the point through one portal chosen uniformly and returns its pdf (see portalPdf), writing the direction into `out`.
- * Returns 0 and leaves `out` alone when the point is outside the room of the chosen portal.
+ * Returns 0 and leaves `out` alone when the list is empty or the point is outside the room of the chosen portal.
  */
 export function samplePortalDirection(portals, x, y, z, portalUnit, acrossUnit, alongUnit, out) {
+  if (!portals?.length) return 0;
   const portal = portals[Math.min(portals.length - 1, Math.floor(portalUnit * portals.length))];
   const across = (acrossUnit - 0.5) * portal.width;
   const along = (alongUnit - 0.5) * portal.height;

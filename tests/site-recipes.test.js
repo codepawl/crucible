@@ -24,12 +24,17 @@ test('every committed recipe page is what the generator writes, so the code show
 
 test('each recipe file builds a scene, has its pictures, and its before frame differs only in the environment', () => {
   for (const recipe of RECIPES) {
-    assert.doesNotThrow(() => createAgentScene(recipeForFrame(recipe.slug, 'after')), recipe.slug);
-    assert.doesNotThrow(() => createAgentScene(recipeForFrame(recipe.slug, 'before')), recipe.slug);
     const after = recipeForFrame(recipe.slug, 'after');
-    const before = recipeForFrame(recipe.slug, 'before');
-    assert.deepEqual({ ...before, environment: null }, { ...after, environment: null });
-    for (const frame of recipe.frames) assert.ok(existsSync(new URL(`../public/recipes/${recipe.slug}-${frame.id}.webp`, import.meta.url)), `${recipe.slug}-${frame.id}.webp`);
+    assert.doesNotThrow(() => createAgentScene(after), recipe.slug);
+    for (const frame of recipe.frames) {
+      const stillPath = frame.image ?? `/recipes/${recipe.slug}-${frame.id}.webp`;
+      assert.ok(existsSync(new URL(`../public${stillPath}`, import.meta.url)), stillPath);
+    }
+    if (recipe.frames.length > 1) {
+      const before = recipeForFrame(recipe.slug, 'before');
+      assert.doesNotThrow(() => createAgentScene(before), recipe.slug);
+      assert.deepEqual({ ...before, environment: null }, { ...after, environment: null });
+    }
     if (recipe.clip) assert.ok(existsSync(new URL(`../public/recipes/${recipe.slug}.mp4`, import.meta.url)));
   }
   assert.notDeepEqual(recipeForFrame('hdri-lighting', 'before').environment, recipeForFrame('hdri-lighting', 'after').environment);

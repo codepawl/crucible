@@ -78,12 +78,18 @@
 .themed .footer a { display: inline-flex; align-items: center; gap: 6px; text-underline-offset: 4px; }
 
 @media (max-width: 820px) {
-  .themed .nav { gap: 10px; }
-  .themed .nav-links { gap: 14px; }
+  .themed .nav { gap: 8px; }
+  .themed .nav-links { gap: 4px; }
+  .themed .nav-links a:not(.button) { min-width: 38px; min-height: 40px; padding: 0 6px; justify-content: center; }
   .themed .nav-links .wide { display: none; }
 }
 @media (max-width: 520px) {
+  .themed .nav { gap: 6px; padding: 0 12px; }
+  .themed .brand { gap: 6px; font-size: 20px; }
+  .themed .nav-links { gap: 2px; }
+  .themed .nav-links a:not(.button) { min-width: 36px; padding: 0 6px; }
   .themed .version { display: none; }
+  .themed .nav .button { min-height: 40px; padding: 0 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .themed *, .themed *::before, .themed *::after { animation: none !important; transition: none !important; }

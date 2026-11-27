@@ -24,6 +24,7 @@ const addonLoaders = import.meta.glob([
   './retarget.js',
   './crowd-skinning.js',
   './skeleton-pose.js',
+  './prop-grip.js',
   './vehicle.js',
   './vegetation.js',
   './terrain.js',
@@ -119,17 +120,22 @@ async function loadNamespace(sourceFile) {
 // One re-export module per specifier. Blob URLs are same-origin, so they pass the site's cross-origin isolation headers.
 async function importMapFor(source) {
   const imports = {};
-  for (const specifier of importSpecifiers(source)) {
-    const sourceFile = sourceFileFor(specifier);
-    if (!sourceFile) continue;
-    const namespace = await loadNamespace(sourceFile);
-    liveModules[sourceFile] = namespace;
-    const names = Object.keys(namespace).filter(name => name !== 'default' && /^[A-Za-z_$][\w$]*$/.test(name));
-    const lines = names.map(name => `export const ${name} = modules[${JSON.stringify(sourceFile)}].${name};`);
-    const text = `const modules = window.parent.__docsLiveModules;\n${lines.join('\n')}\n`;
-    imports[specifier] = URL.createObjectURL(new Blob([text], { type: 'text/javascript' }));
+  try {
+    for (const specifier of importSpecifiers(source)) {
+      const sourceFile = sourceFileFor(specifier);
+      if (!sourceFile) continue;
+      const namespace = await loadNamespace(sourceFile);
+      liveModules[sourceFile] = namespace;
+      const names = Object.keys(namespace).filter(name => name !== 'default' && /^[A-Za-z_$][\w$]*$/.test(name));
+      const lines = names.map(name => `export const ${name} = modules[${JSON.stringify(sourceFile)}].${name};`);
+      const text = `const modules = window.parent.__docsLiveModules;\n${lines.join('\n')}\n`;
+      imports[specifier] = URL.createObjectURL(new Blob([text], { type: 'text/javascript' }));
+    }
+    return imports;
+  } catch (error) {
+    revokeImportUrls(imports);
+    throw error;
   }
-  return imports;
 }
 
 // The engine runs in the page and checks `instanceof Float32Array` and friends, which fails for arrays made in the iframe's
@@ -229,7 +235,7 @@ export function createLiveExample({ source, title, poster, file = 'main.js', asp
   const safeAspect = escapeHtml(aspect);
   root.innerHTML = `
     <div class="live-stage" style="aspect-ratio:${safeAspect}">
-      ${poster ? `<img class="live-poster" src="/docs-media/${safePoster}.webp" alt="" width="960" height="540" loading="lazy" decoding="async" onerror="this.remove()">` : ''}
+      ${poster ? `<img class="live-poster" src="/docs-media/${safePoster}.webp" alt="" width="960" height="540" loading="lazy" decoding="async">` : ''}
       <button class="live-start" type="button">${icon('run')}Run example</button>
     </div>
     <pre class="live-console" aria-label="Console output" hidden></pre>
@@ -245,6 +251,7 @@ export function createLiveExample({ source, title, poster, file = 'main.js', asp
       <textarea spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Editable code for ${safeTitle}"></textarea>
     </div>`;
   const stage = root.querySelector('.live-stage');
+  root.querySelector('.live-poster')?.addEventListener('error', (event) => event.currentTarget.remove(), { once: true });
   const startButton = root.querySelector('.live-start');
   const status = root.querySelector('.live-status');
   const consoleOutput = root.querySelector('.live-console');
@@ -308,7 +315,7 @@ export function createLiveExample({ source, title, poster, file = 'main.js', asp
     try {
       imports = await importMapFor(editor.value);
     } catch (error) {
-      if (!disposed) setStatus('error', error.message);
+      if (!disposed && thisRun === runNumber) setStatus('error', error.message);
       return;
     }
     if (disposed || thisRun !== runNumber) {
@@ -329,6 +336,7 @@ export function createLiveExample({ source, title, poster, file = 'main.js', asp
     runNumber++;
     releaseFrame(frame);
     frame = null;
+    clearStoredImports();
     running = false;
     root.classList.remove('is-running');
     delete root.dataset.ready;

@@ -122,7 +122,7 @@ function invalidate() {
 function initialize() {
   const visibleParts = state.layer === 'all' ? parts : parts.filter((part) => part.assembly?.layer === state.layer);
   renderer = new CrucibleRenderer(canvas, visibleParts, { hdr: true, samples: Number(renderParameters.get('samples') ?? 4), memoryBudgetMiB: Number(renderParameters.get('memory') ?? 256), pixelRatio: selectedPixelRatio, ground: microscopeFloor(visibleParts), createGpuTimer: isExport ? null : createGpuTimer, shadowBounds: { extent: 6, eye: [-3, 7, 4], target: [0, 1.5, 0] } });
-  document.querySelector('#parts').textContent = `${visibleParts.length} parts · ${Math.round(renderer.triangles / 1000)}k triangles`;
+  document.querySelector('#parts').textContent = `${visibleParts.length} parts, ${Math.round(renderer.triangles / 1000)}k triangles`;
   document.querySelector('#calls').textContent = `${renderer.batches.length} geometry draws`;
   invalidate();
   window.__studio = { parts, get renderer() { return renderer; }, state, camera, invalidate };
@@ -284,7 +284,7 @@ document.querySelector('#benchmark').addEventListener('click', async (event) => 
     const { runBenchmark } = await import('./benchmark.js');
     const report = await runBenchmark(parts, (progress) => { summary.textContent = `◷ ${progress}`; });
     window.__benchmarkReport = report;
-    summary.textContent = `✓ Measured on this browser\n${report.results.map((result) => `${result.name}: ${result.milliseconds === 0 ? '<0.013' : result.milliseconds.toFixed(3)} ms · ${result.calls} calls`).join('\n')}`;
+    summary.textContent = `✓ Measured on this browser\n${report.results.map((result) => `${result.name}: ${result.milliseconds === 0 ? '<0.013' : result.milliseconds.toFixed(3)} ms, ${result.calls} calls`).join('\n')}`;
   } catch (error) { summary.textContent = `⚠ Benchmark failed: ${error.message}`; }
   finally {
     button.disabled = false;

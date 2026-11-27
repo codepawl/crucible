@@ -5,6 +5,7 @@ const reindexedGeometries = new WeakSet();
 
 /** `reindexed` marks a geometry whose triangle indices are rewritten too (a sea: the diagonal of each quad follows the waves). */
 export function markLiveGeometry(geometry, { reindexed = false } = {}) {
+  if (!geometry || typeof geometry !== 'object') throw new TypeError('Geometry must be an object.');
   liveGeometries.add(geometry);
   if (reindexed) reindexedGeometries.add(geometry);
   return geometry;

@@ -224,7 +224,7 @@ The directional shadow map shadows the sun. A point light with `castShadow: true
 { "type": "set-environment", "environment": { "lines": { "width": 2, "toon": 3 } } }
 ```
 
-`"lines": null` turns it off. A material can also set `toon` (0 to 8) for its own bands. The fields, limits and costs are in [line art](line-art.md). `scene_capabilities` reports `lineArt` and the `toon` layer field.
+`"lines": null` turns it off. A material can also set `toon` (0 to 8) for its own bands, along with `toonColors`, `toonEdge`, `toonRim` (sun-side silver lining rim) and `toonBase` (lifted underside glow). The fields, limits and costs are in [line art](line-art.md). `scene_capabilities` reports `lineArt` and the `toon` layer field.
 
 ## Volume fog
 

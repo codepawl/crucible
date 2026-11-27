@@ -208,10 +208,17 @@ function main() {
   let mergedOut = null;
   let expectedShards = null;
   for (let index = 0; index < args.length; index++) {
-    if (args[index] === '--baseline') baselinePath = args[++index];
-    else if (args[index] === '--merged-out') mergedOut = args[++index];
-    else if (args[index] === '--expect-shards') expectedShards = parseExpectedShards(args[++index]);
-    else inputs.push(args[index]);
+    if (args[index] === '--baseline') {
+      if (args[index + 1] === undefined) throw new Error('Pass a baseline file path after --baseline.');
+      baselinePath = args[++index];
+    } else if (args[index] === '--merged-out') {
+      if (args[index + 1] === undefined) throw new Error('Pass an output path after --merged-out.');
+      mergedOut = args[++index];
+    } else if (args[index] === '--expect-shards') {
+      expectedShards = parseExpectedShards(args[++index]);
+    } else {
+      inputs.push(args[index]);
+    }
   }
   const paths = collectLcovPaths(inputs);
   if (paths.length === 0) throw new Error('No lcov files found.');
@@ -236,7 +243,14 @@ function main() {
     console.error(`The lcov files hold no ${unmeasured.join(' or ')} records, so that figure would read 100%. Rerun the tests with the same coverage reporters and pass the lcov they write.`);
     process.exit(1);
   }
-  const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
+  let baselineText;
+  try {
+    baselineText = readFileSync(baselinePath, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new Error(`Coverage baseline file not found: ${baselinePath}`);
+    throw error;
+  }
+  const baseline = JSON.parse(baselineText);
   const results = compareWithBaseline(percentages, baseline);
 
   const table = [
@@ -257,4 +271,11 @@ function main() {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    main();
+  } catch (error) {
+    console.error(`coverage-gate: ${error.message}`);
+    process.exit(1);
+  }
+}

@@ -3,7 +3,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-export const CHROME_PAGES = ['index', 'docs', 'changelog', 'recipes', 'recipe-dolly-zoom', 'recipe-hdri-lighting', 'recipe-view-transform', 'marketplace', 'showcase', 'tiers', 'film', 'motion', 'nature', 'object', 'view2d', 'assets'];
+export const CHROME_PAGES = ['index', 'docs', 'changelog', 'recipes', 'recipe-dolly-zoom', 'recipe-hdri-lighting', 'recipe-view-transform', 'recipe-cumulus-towers', 'marketplace', 'showcase', 'tiers', 'film', 'motion', 'nature', 'object', 'view2d', 'assets'];
 
 // Full-screen viewer pages have no scroll area to end in, so they carry the top bar and no footer. Modeling scrolls and keeps its footer.
 export const FOOTERLESS_PAGES = new Set(['film', 'motion', 'nature', 'object', 'view2d', 'assets']);
@@ -16,6 +16,7 @@ const CURRENT_LINK = {
   'recipe-dolly-zoom': '/recipes.html',
   'recipe-hdri-lighting': '/recipes.html',
   'recipe-view-transform': '/recipes.html',
+  'recipe-cumulus-towers': '/recipes.html',
   marketplace: '/marketplace.html',
   showcase: '/showcase.html',
 };
@@ -23,6 +24,7 @@ const CURRENT_LINK = {
 // The browser bar colours, the light and dark site background from src/site-tokens.css, written the same in every page head.
 export const THEME_COLOR_META = '<meta name="theme-color" content="#f8f7f1" media="(prefers-color-scheme: light)" /><meta name="theme-color" content="#17161a" media="(prefers-color-scheme: dark)" />';
 export const FONT_PRELOAD_META = '<link rel="preload" href="/fonts/plus-jakarta-sans-latin-3.woff2" as="font" type="font/woff2" crossorigin /><link rel="preload" href="/fonts/inter-latin-6.woff2" as="font" type="font/woff2" crossorigin />';
+export const ANALYTICS_SCRIPT_TAG = '<script defer src="/analytics.js" data-cf-site="d25c310f7f5c46049586a2ddc0e57b03"></script>';
 
 const ICON_PATHS = {
   docs: '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>',
@@ -93,11 +95,18 @@ export function renderFooter() {
     `      <a href="https://www.npmjs.com/package/@codepawlhq/crucible">${icon('npm')}npm</a>`,
     '      <a data-release-commit href="https://github.com/codepawl/crucible">Release commit</a>',
     '      <a href="/license.txt">MIT license</a>',
-    '      <a href="/logo.svg" download>Logo SVG</a>',
-    '      <a href="https://github.com/sponsors/codepawl">Sponsor</a>',
-    '    </nav>',
-    '  </div>',
-    '</footer>',
+      '      <a href="/logo.svg" download>Logo SVG</a>',
+      '      <a href="https://github.com/sponsors/codepawl">Sponsor</a>',
+      '    </nav>',
+      '    <nav aria-label="Social links">',
+      '      <a href="https://x.com/anxuanng">X (@anxuanng)</a>',
+      '      <a href="https://x.com/codepawl">X (@codepawl)</a>',
+      '      <a href="https://www.threads.com/@codepawl">Threads</a>',
+      '      <a href="https://www.youtube.com/@codepawlhq">YouTube</a>',
+      '      <a href="https://huggingface.co/codepawl">Hugging Face</a>',
+      '    </nav>',
+      '  </div>',
+      '</footer>',
   ].join('\n');
 }
 
@@ -106,11 +115,15 @@ const REGIONS = {
   footer: { pattern: /<!-- site-chrome:footer -->[\s\S]*?<!-- \/site-chrome:footer -->/, render: renderFooter },
 };
 
-// Returns the page source with its marked header and footer regions and font preloads rewritten.
+// Returns the page source with its marked header and footer regions, font preloads and analytics script rewritten.
 export function applyChrome(source, pageName) {
   let result = source;
   if (result.includes(THEME_COLOR_META) && !result.includes(FONT_PRELOAD_META)) {
     result = result.replace(THEME_COLOR_META, `${THEME_COLOR_META}\n    ${FONT_PRELOAD_META}`);
+  }
+  result = result.replace(/\n?[ \t]*<script defer src="\/analytics\.js"[^>]*><\/script>/g, '');
+  if (result.includes('</head>')) {
+    result = result.replace('</head>', `  ${ANALYTICS_SCRIPT_TAG}\n  </head>`);
   }
   for (const [part, { pattern, render }] of Object.entries(REGIONS)) {
     if (part === 'footer' && FOOTERLESS_PAGES.has(pageName)) {

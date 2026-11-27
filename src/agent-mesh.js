@@ -131,7 +131,8 @@ export function generateMeshGeometry(baseGeometry, edits, {
   }
   const resolveHeight = heightSources ? createHeightSourceResolver(heightSources) : undefined;
   const editsKey = cacheKey === undefined ? undefined : `${cacheKey}|edits|${JSON.stringify(edits)}`;
-  let edited = editsKey === undefined ? undefined : evaluationCache.get(editsKey);
+  const editsCacheKey = editsKey === undefined ? undefined : `${editsKey}|${maxVertices}`;
+  let edited = editsCacheKey === undefined ? undefined : evaluationCache.get(editsCacheKey);
   if (!edited) {
     const base = meshFromGeometry(baseGeometry());
     const outcome = applyMeshEdits(base, edits, {
@@ -141,7 +142,7 @@ export function generateMeshGeometry(baseGeometry, edits, {
       resolveJoinMesh: resolveCutter && (geometry => polygonMeshOf(resolveCutter({ geometry }))),
     });
     edited = { mesh: outcome.mesh, result: outcome.results };
-    if (editsKey !== undefined) evaluationCache.set(editsKey, edited);
+    if (editsCacheKey !== undefined) evaluationCache.set(editsCacheKey, edited);
   }
   const evaluated = evaluateMeshStack(edited.mesh, stack, { maxVertices, maxFaces: maxVertices, cache: evaluationCache, cacheKey: editsKey, resolveHeight });
   const { geometry, renderVertexSource, triangleFaces } = extractRender(evaluated.mesh, { sharpAngle: smoothAngle * Math.PI / 180 });

@@ -177,6 +177,33 @@ test('the bench pin on the plinth lands on it at the stage camera and warns that
   assert.equal('materialSharedWith' in statuePick.marks[0], false, 'the statue has a material of its own');
 });
 
+test('a fixture mark may carry color or view marks and rejects invalid bounds (#922)', async context => {
+  const validPath = await fixtureFile(context, 'color-view.json', {
+    marks: [
+      { pixel: [384, 256], color: '#FF0000', note: 'red statue' },
+      { pixel: [100, 120], color: [0, 0.5, 1], note: 'blue accent' },
+      { view: { eye: [2, 3, 5], target: [0, 1, 0], fov: 40 }, note: 'closer' },
+    ],
+  });
+  const loaded = loadFrom(validPath);
+  assert.deepEqual(loaded.marks[0], { kind: 'color', x: 384, y: 256, color: [1, 0, 0], hex: '#ff0000', note: 'red statue' });
+  assert.equal(loaded.marks[1].kind, 'color');
+  assert.deepEqual(loaded.marks[1].color, [0, 0.5, 1]);
+  assert.deepEqual(loaded.marks[2], { kind: 'view', camera: { eye: [2, 3, 5], target: [0, 1, 0], fov: 40 }, note: 'closer' });
+
+  const invalidCases = [
+    [{ marks: [{ pixel: [10, 10], color: [1.2, 0, 0] }] }, /mark 1 color/],
+    [{ marks: [{ pixel: [10, 10], hex: 'not-hex' }] }, /mark 1 hex/],
+    [{ marks: [{ lasso: [[1, 1], [10, 1], [10, 10]], color: '#ff0000' }] }, /cannot combine lasso with color/],
+    [{ marks: [{ view: { eye: [1, 2, 3], target: [0, 0, 0], fov: 4 }, pixel: [1, 1] }] }, /cannot combine view/],
+    [{ marks: [{ view: { eye: [1, 2, 3], target: [0, 0, 0], fov: 121 } }] }, /mark 1 camera\.fov/],
+  ];
+  for (const [content, message] of invalidCases) {
+    const filePath = await fixtureFile(context, 'bad-color-view.json', content);
+    assert.throws(() => loadFrom(filePath), message);
+  }
+});
+
 test('only a bench task tagged askUser gets the fixture, and its pin lands on the statue at the bench camera', async () => {
   const task = taskById('ask-user-pin');
   assert.ok(BENCH_TASKS.find(candidate => candidate.id === 'ask-user-pin').topics.includes('askUser'));
@@ -192,4 +219,34 @@ test('only a bench task tagged askUser gets the fixture, and its pin lands on th
   assert.equal(picked.marks[0].partId, 'statue');
   assert.equal(picked.marks[0].note, 'make this red');
   assert.equal(picked.marks[0].material, 'bronze');
+});
+
+test('a fixture mark may carry transform deltas and per-mark time (#922)', async context => {
+  const validPath = await fixtureFile(context, 'transform-time.json', {
+    marks: [
+      { pixel: [200, 150], deltaPosition: [1, 0, -0.5], deltaRotation: [0, 90, 0], scaleFactor: 1.25, note: 'turn right', time: 1.5 },
+      { pixel: [100, 100], note: 'pin at 2s', time: 2 },
+    ],
+  });
+  const loaded = loadFrom(validPath);
+  assert.deepEqual(loaded.marks[0], {
+    kind: 'transform',
+    x: 200,
+    y: 150,
+    deltaPosition: [1, 0, -0.5],
+    deltaRotation: [0, 90, 0],
+    scaleFactor: 1.25,
+    note: 'turn right',
+    time: 1.5,
+  });
+  assert.deepEqual(loaded.marks[1], { x: 100, y: 100, note: 'pin at 2s', time: 2 });
+  for (const badContent of [
+    { marks: [{ pixel: [10, 10], deltaPosition: [0, 0, 0] }] },
+    { marks: [{ pixel: [10, 10], scaleFactor: 0 }] },
+    { marks: [{ pixel: [10, 10], deltaPosition: [1, 0, 0], color: '#ff0000' }] },
+    { marks: [{ pixel: [10, 10], time: -0.1 }] },
+  ]) {
+    const badPath = await fixtureFile(context, 'bad-transform.json', badContent);
+    assert.throws(() => loadFrom(badPath));
+  }
 });

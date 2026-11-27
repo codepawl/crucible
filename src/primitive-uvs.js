@@ -115,7 +115,7 @@ export function primitiveUvs(definition, geometry) {
 
 function materialNeedsUvs(material) {
   if (material.boxMapScale) return false;
-  return material.map !== undefined || TEXTURE_MAP_FIELDS.some(field => material[field] !== undefined);
+  return material.map !== undefined || material.detailNormalMap !== undefined || TEXTURE_MAP_FIELDS.some(field => material[field] !== undefined);
 }
 
 /**

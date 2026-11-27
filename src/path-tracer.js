@@ -48,7 +48,7 @@ const ADAPTIVE_MINIMUM_SAMPLES = 16;
 const ADAPTIVE_BATCH_SAMPLES = 8;
 // Mean luminance added to the standard error's reference, so very dark pixels are not held to a relative error.
 const CONVERGENCE_LUMINANCE_FLOOR = 0.05;
-const IGNORED_MAP_FIELDS = [];
+const IGNORED_MAP_FIELDS = ['detailNormalMap'];
 // Shading layers of the rasterizer that the tracer's surface model has no term for.
 const IGNORED_LAYERS = [
   ['anisotropy', material => material.anisotropy > 0, true],

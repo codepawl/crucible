@@ -34,6 +34,9 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
   const options = await withBlueNoiseTile(normalizePathTracerOptions({ ...rawOptions, backend: 'gpu', samples: 1, maxSeconds: rawOptions.maxSeconds ?? 3600 }));
   const { gl, gpu } = getContext();
   const { width, height } = options;
+  let currentParts = scene.parts;
+  let currentEnvironment = scene.environment ?? {};
+  let currentCamera = scene.camera;
   let traceScene = null;
   let sceneOptions = options;
   let program = null;
@@ -51,10 +54,11 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
     return { divisor, levelWidth: Math.max(1, Math.ceil(width / divisor)), levelHeight: Math.max(1, Math.ceil(height / divisor)) };
   };
 
-  const loadScene = (parts, environment, eye) => {
+  const loadScene = (parts, environment, eye = currentCamera?.eye) => {
+    const nextTraceScene = buildTraceScene(parts, environment, { gpuTriangleLimit: gpuTriangleLimit(), ...(eye ? { eye } : {}) });
+    refuseLocalVolumes(nextTraceScene, 'the progressive path tracer');
     releaseResources(gl);
-    traceScene = buildTraceScene(parts, environment, { gpuTriangleLimit: gpuTriangleLimit(), ...(eye ? { eye } : {}) });
-    refuseLocalVolumes(traceScene, 'the progressive path tracer');
+    traceScene = nextTraceScene;
     sceneOptions = { ...options, lightSelection: resolveLightSelection(options.lightSelection, traceScene.lights) };
     const kernel = getKernel(sceneUsesSubsurface(traceScene.materials), false, { ...sceneOptions, vertexAlpha: Boolean(traceScene.vertexAlpha) });
     program = kernel.program;
@@ -87,8 +91,8 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
     clearTargets();
   };
 
-  loadScene(scene.parts, scene.environment ?? {}, scene.camera?.eye);
-  loadCamera(scene.camera);
+  loadScene(currentParts, currentEnvironment, currentCamera?.eye);
+  loadCamera(currentCamera);
   startOver();
 
   return {
@@ -97,10 +101,23 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
     get samples() { return samples; },
     get level() { return { ...levelSize(), final: levelIndex === resolutionDivisors.length - 1 }; },
 
-    /** A new camera, and with `parts` a new scene: the image starts over at the reduced size. */
-    update({ camera, parts, environment }) {
-      if (parts) loadScene(parts, environment ?? {}, camera?.eye);
-      if (camera) loadCamera(camera);
+    /** A new camera, and with `parts` or `environment` a new scene: the image starts over at the reduced size. */
+    update({ camera, parts, environment } = {}) {
+      const hasParts = parts !== undefined;
+      const hasEnvironment = environment !== undefined;
+      if (hasParts || hasEnvironment) {
+        const nextParts = hasParts ? parts : currentParts;
+        const nextEnvironment = hasEnvironment ? (environment ?? {}) : currentEnvironment;
+        const nextCamera = camera ?? currentCamera;
+        loadScene(nextParts, nextEnvironment, nextCamera?.eye);
+        currentParts = nextParts;
+        currentEnvironment = nextEnvironment;
+        loadCamera(nextCamera);
+        if (camera) currentCamera = camera;
+      } else if (camera) {
+        loadCamera(camera);
+        currentCamera = camera;
+      }
       startOver();
     },
 
@@ -128,6 +145,7 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
      * `denoise` is off), tone mapped bytes and the samples each pixel holds. It reads the targets back, so it is not free.
      */
     snapshot() {
+      if (disposed) throw new Error('This progressive tracer was disposed.');
       const { levelWidth, levelHeight } = levelSize();
       const buffers = averageBuffers(gl, levelWidth, levelHeight, samples);
       for (let pixel = 0; pixel < levelWidth * levelHeight; pixel++) {
@@ -135,7 +153,7 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
         for (let channel = 0; channel < 3; channel++) buffers.normal[pixel * 3 + channel] /= length;
       }
       const { samplesTaken, ...features } = buffers;
-      const linear = options.denoiser === 'wavelet' ? denoiseRadiance({ width: levelWidth, height: levelHeight, ...features }) : buffers.color;
+      const linear = samples > 0 && options.denoiser === 'wavelet' ? denoiseRadiance({ width: levelWidth, height: levelHeight, ...features }) : buffers.color;
       return { width: levelWidth, height: levelHeight, linear, rgba: toneMapToRgba8(linear, levelWidth, levelHeight, options), samples, features };
     },
 

@@ -11,7 +11,7 @@ import { cameraFieldsToClear, splitClearedLookFields, mergeGroupPatch } from './
 import { postStepSupport } from './shader-registry.js';
 import { agentSceneModule, agentSceneModuleActive, agentSceneModuleLoaded, defaultStageModulesNamed } from './agent-scene-modules.js';
 import { CURVE_TEXT_LIMITS, AGENT_SCENE_CAPABILITIES, AGENT_SCENE_DEFAULT_LIMITS, MAX_MATERIAL_PATTERNS, RECIPE_ALPHA_MODES } from './agent-scene-capabilities.js';
-import { TEXTURE_SET_RECIPE_FIELDS, TEXTURE_MAP_FIELDS, UV_TRANSFORM_FIELDS, HEIGHT_PARALLAX_FIELDS } from './texture-set-fields.js';
+import { TEXTURE_SET_RECIPE_FIELDS, TEXTURE_MAP_FIELDS, UV_TRANSFORM_FIELDS, HEIGHT_PARALLAX_FIELDS, DETAIL_NORMAL_FIELDS, textureMapSignature } from './texture-set-fields.js';
 import { normalizeMaterialWear, geometryWithSurfaceMasks } from './material-wear.js';
 import { ALL_LIGHTS_MASK, MATERIAL_LAYER_FIELDS, validateMaterialLayers } from './material-layers.js';
 import { recipeDiagnostics, closedRoomDiagnostic, droppedVertexAlphaDiagnostics } from './agent-diagnostics.js';
@@ -101,7 +101,13 @@ const NODE_FIELDS = [
 ];
 // Optional/newer material fields join this sorted list (one per line) so parallel pull requests never collide while core packed key order stays identical.
 const EXTRA_MATERIAL_FIELDS = [
+  'detailNormalMap',
+  'detailNormalScale',
+  'detailRoughnessStrength',
+  'detailUvScale',
   'layers',
+  'toonBase',
+  'toonRim',
   'waterGlint',
 ];
 const MATERIAL_FIELDS = [
@@ -388,11 +394,8 @@ function copyMaterialLayers(value, result) {
     if (value[field] === undefined) continue;
     result[field] = Array.isArray(value[field]) ? vector(value[field], 3, field) : value[field];
   }
-  if (value.toonColors !== undefined) {
-    result.toonColors = Array.isArray(value.toonColors)
-      ? Object.freeze(value.toonColors.map((color, index) => Object.freeze(vector(color, 3, `toonColors[${index}]`))))
-      : value.toonColors;
-  }
+  if (result.toon > 0 || value.toonRim != null || value.toonBase != null) agentSceneModule('lineArt').copyToon(value, result, vector);
+  else if (value.toonColors !== undefined) result.toonColors = value.toonColors;
   validateMaterialLayers(result);
   if (value.emissionMask !== undefined) {
     result.emissionMask = Object.freeze(agentSceneModule('emissionMask').normalizeEmissionMask(value.emissionMask));
@@ -400,7 +403,6 @@ function copyMaterialLayers(value, result) {
   if (value.subsurface !== undefined) result.subsurface = agentSceneModule('subsurfaceShader').copySubsurface(value.subsurface, result.tag);
   if (value.snippet) result.snippet = agentSceneModule('materialSnippet').normalizeMaterialSnippet(value.snippet, { hasMap: Boolean(value.map || value.pattern) });
   if (result.anisotropy > 0 || result.iridescence > 0 || result.softEdge > 0 || JSON.stringify(value.pattern?.graph?.emission ?? null).includes('"fresnel"')) agentSceneModule('layerShaders');
-  if (result.toon > 0) agentSceneModule('lineArt');
 }
 
 /** alphaCutoff is the alpha below which a masked surface is cut out; it means nothing for other alpha modes, so it is refused there. */
@@ -436,7 +438,7 @@ function materialFrom(recipeValue) {
     if (hasPattern || value.map !== undefined || value.colorMap !== undefined) throw invalidField('text', value.text?.content, 'nothing besides it: a material draws a text panel, a pattern, a map sequence or a catalog colour map, not two of them', TypeError);
     result.text = agentSceneModule('textPanel').normalizeTextPanel(value.text);
   }
-  if (TEXTURE_SET_RECIPE_FIELDS.some(field => value[field] !== undefined)) agentSceneModule('assets').applyTextureMaps(value, result);
+  if (TEXTURE_SET_RECIPE_FIELDS.some(field => value[field] !== undefined) || DETAIL_NORMAL_FIELDS.some(field => value[field] !== undefined)) agentSceneModule('assets').applyTextureMaps(value, result);
   const graphHasOpacity = hasPattern && agentSceneModule('patterns').applyRecipePattern(value, result, invalidField);
   result.opacity = unitRange(defaultValue(value.opacity, 1), 'opacity');
   // A panel without a background is transparent, so it blends unless the recipe says otherwise.
@@ -1425,12 +1427,6 @@ function geometryWithMaterialUvs(geometry, recipe, materialId, graph, nodeId) {
   return agentSceneModule('assets').geometryWithUvTransform(geometry, material, graph.getNode(nodeId).worldMatrix, nodeId);
 }
 
-// The catalog maps of a material are textures fixed per renderer like a pattern, so another map or convention builds a new handle. Empty for a material without them.
-function textureMapSignature(material) {
-  const maps = TEXTURE_MAP_FIELDS.filter(field => material[field] !== undefined).map(field => `${field}:${material[field]}`);
-  return maps.length ? `|${maps.join(',')}|${material.normalConvention ?? ''}` : '';
-}
-
 function materialHandle(snapshot, sequence, images) {
   const holder = { snapshot, sequence, images };
   holder.catalogTextures = catalogTexturesOf(holder);
@@ -1469,7 +1465,7 @@ function catalogTexturesOf(holder) {
       return panelTextures;
     };
   }
-  if (!TEXTURE_MAP_FIELDS.some(field => holder.snapshot[field] !== undefined)) return null;
+  if (!TEXTURE_MAP_FIELDS.some(field => holder.snapshot[field] !== undefined) && holder.snapshot.detailNormalMap === undefined) return null;
   let textures;
   return () => {
     textures ??= agentSceneModule('assets').createTextureMaps(holder.snapshot.id, holder.snapshot, holder.images);
@@ -1477,17 +1473,17 @@ function catalogTexturesOf(holder) {
   };
 }
 
-// The two catalog map fields that no pattern bakes: they exist on the handle only for a material that names them.
+// The catalog map fields that no pattern bakes: they exist on the handle only for a material that names them.
 function defineCatalogOnlyTextureFields(output, holder) {
   if (!holder.catalogTextures) return;
-  for (const field of ['occlusionMap', 'heightMap']) {
+  for (const field of ['occlusionMap', 'heightMap', 'detailNormalMap']) {
     Object.defineProperty(output, field, { enumerable: true, configurable: true, get: () => holder.catalogTextures()[field] });
   }
 }
 
 function immutableMaterial(snapshot) {
-  for (const field of ['color', 'emissiveColor', 'absorption', 'aov']) {
-    if (snapshot[field]) {
+  for (const field of ['color', 'emissiveColor', 'absorption', 'aov', 'detailNormalScale', 'detailUvScale']) {
+    if (Array.isArray(snapshot[field])) {
       Object.freeze(snapshot[field]);
     }
   }

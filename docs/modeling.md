@@ -159,7 +159,7 @@ With `levels` such as `[{"count": 7, "sizeRatio": 1}, {"count": 60, "sizeRatio":
 
 A level may set its own `softness` (0.02 to 1, a share of its lobe radius). Without it the level takes the cloud's `unionSoftness`, so a recipe that leaves it out builds the same bytes as before. A small `softness` such as 0.1 on the last level keeps its bumps crisp while the big lobes under it stay soft at 0.5.
 
-Three wide cumulus over a sea, each with a flat base and three levels of lobes, soft on the big ones and a little crisper on the small ones (a `softness` per level), shaded with six toon steps (`toonColors`, darkest to lightest) from blue-grey in the shade to warm white in the sun, are in [`recipes/cumulus-towers.json`](https://crucible.codepawl.com/recipes/cumulus-towers.json). A still of it, rendered by Crucible:
+Three wide cumulus over a sea, each with a flat base and three levels of lobes, soft on the big ones and a little crisper on the small ones (a `softness` per level), shaded with six toon steps (`toonColors`, darkest to lightest) from blue-grey in the shade to warm white in the sun plus a sun-side silver lining (`toonRim`) and lifted sea-bounce underside (`toonBase`), are in [`recipes/cumulus-towers.json`](https://crucible.codepawl.com/recipes/cumulus-towers.json). A still of it, rendered by Crucible:
 
 ![Three cumulus towers over the sea](https://crucible.codepawl.com/recipes/cumulus-towers.webp)
 

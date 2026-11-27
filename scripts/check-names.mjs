@@ -344,6 +344,14 @@ function startsMethodDefinition(code, nameIndex) {
   return index < 0 || '{};,'.includes(code[index]);
 }
 
+function collectMethodParameters(code, openIndex, found) {
+  const closeIndex = matchingCloser(code, openIndex);
+  if (closeIndex === -1) return;
+  let afterIndex = closeIndex + 1;
+  while (afterIndex < code.length && /\s/.test(code[afterIndex])) afterIndex++;
+  if (code[afterIndex] === '{') collectParameters(code, openIndex, found);
+}
+
 function findJavaScriptBindings(code) {
   const found = [];
 
@@ -372,13 +380,13 @@ function findJavaScriptBindings(code) {
   for (const match of code.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*\(/g)) {
     const name = match[1];
     if (NOT_A_METHOD_NAME.has(name) || !startsMethodDefinition(code, match.index)) continue;
-    const openIndex = match.index + match[0].length - 1;
-    const closeIndex = matchingCloser(code, openIndex);
-    if (closeIndex === -1) continue;
-    let afterIndex = closeIndex + 1;
-    while (afterIndex < code.length && /\s/.test(code[afterIndex])) afterIndex++;
-    if (code[afterIndex] !== '{') continue;
-    collectParameters(code, openIndex, found);
+    collectMethodParameters(code, match.index + match[0].length - 1, found);
+  }
+
+  for (const match of code.matchAll(/\]\s*\(/g)) {
+    const keyOpenIndex = matchingOpener(code, match.index);
+    if (keyOpenIndex === -1 || !startsMethodDefinition(code, keyOpenIndex)) continue;
+    collectMethodParameters(code, match.index + match[0].length - 1, found);
   }
 
   return found;
@@ -506,10 +514,20 @@ function trackedFiles() {
   return result.stdout.split('\n').filter(Boolean);
 }
 
+function readSourceText(filePath) {
+  try {
+    return readFileSync(resolve(root, filePath), 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new Error(`Source file not found: ${filePath}`);
+    throw error;
+  }
+}
+
 function main() {
+  const paths = process.argv.length > 2 ? process.argv.slice(2) : trackedFiles().filter(isScannedPath);
   let problemCount = 0;
-  for (const path of trackedFiles().filter(isScannedPath)) {
-    const text = readFileSync(resolve(root, path), 'utf8');
+  for (const path of paths) {
+    const text = readSourceText(path);
     const findings = PYTHON_FILE.test(path) ? findAbbreviatedPythonNames(text) : findAbbreviatedNames(text);
     for (const { line, name } of findings) {
       console.error(`${path}:${line}  \`${name}\` is a short name. Rename it to what it holds (for example thirdVertexOffset, not c).`);
@@ -523,4 +541,11 @@ function main() {
   console.log('check-names: clean');
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) main();
+if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href) {
+  try {
+    main();
+  } catch (error) {
+    console.error(`check-names: ${error.message}`);
+    process.exit(1);
+  }
+}

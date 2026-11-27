@@ -46,6 +46,34 @@ A normal map can hold detail finer than a pixel, such as the one-texel bevel aro
 
 Without `tangents` (recipe meshes, box-mapped materials, a primitive without UVs) the renderer derives an orthogonal tangent basis from position and UV screen derivatives, including mirrored UV handedness. Degenerate UVs retain the geometric normal because they have no tangent basis. Derivative tangents differ from authored tangent bases on curved meshes, which is why a map baked in MikkTSpace wants `tangents`. The path tracers still use their own frame.
 
+## Tiled detail normals and micro-roughness
+
+Standard metallic/roughness materials with UVs can layer a secondary tiled tangent-space normal map (`detailNormalMap`, linear color space) over `normalMap` to keep close-ups crisp without inflating primary atlases:
+
+```js
+import '@codepawlhq/crucible/addons/detail-normal-shader';
+
+const material = {
+  color: [0.75, 0.75, 0.78],
+  metallic: 0.9,
+  roughness: 0.35,
+  normalMap: { image: baseNormalImage, colorSpace: 'linear' },
+  detailNormalMap: { image: grainNormalImage, colorSpace: 'linear' },
+  detailNormalScale: [1, 1],
+  detailUvScale: 8,
+  detailRoughnessStrength: 0.45,
+};
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `detailNormalMap` | none | Linear tangent-space normal descriptor (`colorSpace: 'linear'`). |
+| `detailNormalScale` | `[1, 1]` | Finite `[scaleX, scaleY]` pair (or single number expanded to `[s, s]`) weighting the detail normal. |
+| `detailUvScale` | `1` | Positive tiling multiplier in `(0, 1024]` (number or `[u, v]`) applied to `geometry.uvs` (including any `heightMap` parallax shift). |
+| `detailRoughnessStrength` | `0` | Micro-slope roughness modulation in `[0, 1]`: adds `strength * microSlope` clamped to `[0.04, 1.0]` (`0` leaves roughness bit-identical). |
+
+When `normalMap` is present, the shader reorients `detailNormalMap` onto the primary normal in tangent space via Reoriented Normal Mapping (RNM). When `normalMap` is absent, `detailNormalMap` perturbs the geometric normal directly through the TBN or cotangent frame. The shader code lives in `@codepawlhq/crucible/addons/detail-normal-shader` so scenes without `detailNormalMap` emit identical GLSL; `detailNormalScale`, `detailUvScale`, and `detailRoughnessStrength` require `detailNormalMap`, and procedural tags, `unlit`, and `boxMapScale` reject it. Path tracers ignore `detailNormalMap` and list it under `ignored`.
+
 ## Descriptors and batching
 
 A descriptor contains `image`, `uvChannel`, `colorSpace`, `flipY`, `wrapS`, `wrapT`, `minFilter`, and `magFilter`.

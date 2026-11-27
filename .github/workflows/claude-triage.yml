@@ -149,7 +149,7 @@ jobs:
       - name: Review with Claude (read only)
         id: claude
         if: steps.gate.outputs.run == 'true'
-        uses: anthropics/claude-code-action@5a856893345e332afa621934082d8c660c26d689 # v1.0.282
+        uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
         with:

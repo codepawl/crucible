@@ -18,7 +18,10 @@ export function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function pageShell({ title, description, path, body }) {
+function pageShell({ title, description, path, image = '/og.jpg', body }) {
+  const canonicalUrl = `${ORIGIN}${path}`;
+  const imageUrl = `${ORIGIN}${image}`;
+  const fullTitle = `${title} - Crucible`;
   const page = `<!doctype html>
 <html lang="en" data-theme="crucible">
   <head>
@@ -26,8 +29,15 @@ function pageShell({ title, description, path, body }) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     ${THEME_COLOR_META}
     <meta name="description" content="${escapeHtml(description)}" />
-    <link rel="canonical" href="${ORIGIN}${path}" />
-    <title>${escapeHtml(title)} · Crucible</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Crucible" />
+    <meta property="og:title" content="${escapeHtml(fullTitle)}" />
+    <meta property="og:description" content="${escapeHtml(description)}" />
+    <meta property="og:url" content="${canonicalUrl}" />
+    <meta property="og:image" content="${imageUrl}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="${canonicalUrl}" />
+    <title>${escapeHtml(fullTitle)}</title>
     <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" /><link rel="icon" href="/favicon.ico?v=2" sizes="48x48" /><link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   </head>
   <body class="site themed recipes">
@@ -51,7 +61,16 @@ function codeBlock({ id, heading, source }) {
       </section>`;
 }
 
+function cardImageOf(recipe) {
+  if (recipe.frames.length === 1) return recipe.frames[0].image ?? `/recipes/${recipe.slug}.webp`;
+  return `/recipes/${recipe.slug}-after.webp`;
+}
+
 function mediaSection(recipe) {
+  if (recipe.frames.length === 1) {
+    const [frame] = recipe.frames;
+    return `      <figure class="recipe-still"><img src="${cardImageOf(recipe)}" width="960" height="540" alt="${escapeHtml(`${recipe.title}: ${frame.label}`)}" /></figure>`;
+  }
   const [before, after] = recipe.frames;
   const compare = `      <div class="recipe-compare" data-recipe-compare style="--compare: 50%">
         <img class="recipe-compare-after" src="/recipes/${recipe.slug}-${after.id}.webp" width="960" height="540" alt="${escapeHtml(`${recipe.title}: ${after.label}`)}" />
@@ -81,12 +100,12 @@ ${mediaSection(recipe)}
       <div class="recipe-why">${whyLines}</div>
 ${blocks.join('\n')}
       <p class="recipe-file"><a href="/recipes/${recipe.slug}.json" download>Download ${recipe.slug}.json</a><span>Paste it into <code>scene_create</code> as <code>recipe</code>.</span></p>`;
-  return pageShell({ title: recipe.title, description: recipe.summary, path, body });
+  return pageShell({ title: recipe.title, description: recipe.summary, path, image: cardImageOf(recipe), body });
 }
 
 export function renderIndexPage() {
   const cards = RECIPES.map(recipe => `        <a class="recipe-card" href="/${pageFileName(recipe.slug)}">
-          <img src="/recipes/${recipe.slug}-after.webp" width="960" height="540" alt="" loading="lazy" />
+          <img src="${cardImageOf(recipe)}" width="960" height="540" alt="" loading="lazy" />
           <h2>${escapeHtml(recipe.title)}</h2>
           <p>${escapeHtml(recipe.summary)}</p>
         </a>`).join('\n');

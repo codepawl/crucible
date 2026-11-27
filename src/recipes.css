@@ -9,6 +9,9 @@ body.site.recipes main > h1 { font-size: clamp(30px, 4.2vw, 48px); max-width: 22
 
 .recipe-clip { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border: var(--edge-width) solid var(--edge); border-radius: var(--card-round); background: var(--surface); }
 
+.recipe-still { margin: 0; overflow: hidden; border: var(--edge-width) solid var(--edge); border-radius: var(--card-round); background: var(--surface); }
+.recipe-still img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; }
+
 .recipe-compare { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border: var(--edge-width) solid var(--edge); border-radius: var(--card-round); background: var(--surface); user-select: none; }
 .recipe-compare img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
 .recipe-compare-before { position: absolute; inset: 0; clip-path: inset(0 calc(100% - var(--compare, 50%)) 0 0); }
