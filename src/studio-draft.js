@@ -133,3 +133,19 @@ export function createDraftNotice({ documentReference, createIcon, onRestore, on
 export function decideBeforeUnload({ isDirty, hasDesktopShell }) {
   return { flushDraft: true, askToStay: Boolean(isDirty) && !hasDesktopShell };
 }
+
+/**
+ * Listens for the page going away on `windowReference` and applies `decideBeforeUnload`. `readIsDirty()` and `readHasDesktopShell()` are
+ * read at that moment. Returns the function that stops listening.
+ */
+export function watchBeforeUnload(windowReference, { readIsDirty, readHasDesktopShell, flushDraft }) {
+  const onBeforeUnload = event => {
+    const decision = decideBeforeUnload({ isDirty: readIsDirty(), hasDesktopShell: readHasDesktopShell() });
+    if (decision.flushDraft) flushDraft();
+    if (!decision.askToStay) return;
+    event.preventDefault();
+    event.returnValue = '';
+  };
+  windowReference?.addEventListener?.('beforeunload', onBeforeUnload);
+  return () => windowReference?.removeEventListener?.('beforeunload', onBeforeUnload);
+}

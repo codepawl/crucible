@@ -39,6 +39,8 @@ import {
   toNodeLocalDelta,
 } from './studio-multi-edit.js';
 import { formatLength, STUDIO_LENGTH_UNITS } from './studio-units.js';
+import { motionIsEmpty } from './studio-motion-content.js';
+import { createOrbitPivot } from './studio-orbit-pivot.js';
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
 // The furthest a typed move may go in metres: the coordinate limit the recipe keeps for positions.
@@ -98,19 +100,6 @@ export function roundVector(values, precision = ROUND_PRECISION) {
 }
 
 const SCENE_LIGHT_FIELDS = Object.freeze({ point: 'pointLights', spot: 'spotLights', area: 'areaLights' });
-
-/** True when a motion has no track and nothing else that animates, so it can be dropped from the recipe. */
-function motionIsEmpty(motion) {
-  return !(
-    motion.tracks?.length ||
-    motion.ik?.length ||
-    motion.layers?.length ||
-    motion.drivers?.length ||
-    motion.constraints?.length ||
-    motion.springs ||
-    motion.drive
-  );
-}
 
 function assertPositiveFinite(value, label) {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
@@ -1255,21 +1244,7 @@ export function createStudioController({
     return result;
   }
 
-  // The point on a surface under a pixel, or null over empty space. It never touches the selection.
-  function surfacePointAt(pixelX, pixelY) {
-    const hit = ensureQuery().raycast(screenRay(pixelX, pixelY));
-    return hit ? Array.from(hit.point) : null;
-  }
-
-  // Makes `point` the centre the view orbits: eye and target move by the same offset, so the view angle and distance stay.
-  function setOrbitPivot(point) {
-    if (!Array.isArray(point) || point.length !== 3 || !point.every(Number.isFinite)) {
-      throw new TypeError('setOrbitPivot requires a point of three finite numbers, such as [0, 1, 0].');
-    }
-    const camera = viewCamera();
-    const offset = point.map((component, axis) => component - camera.target[axis]);
-    return moveViewportCamera({ eye: camera.eye.map((component, axis) => component + offset[axis]), target: [...point] });
-  }
+  const { surfacePointAt, setOrbitPivot } = createOrbitPivot({ ensureQuery, screenRay, viewCamera, moveViewportCamera });
 
   function gizmoHandles() {
     const pivot = selectedPivotWorld();

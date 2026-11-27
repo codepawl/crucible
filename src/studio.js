@@ -18,7 +18,8 @@ import { STUDIO_CSS } from './studio-styles.js';
 import { AGENT_CHAT_CSS, createAgentPanel } from './studio-agent-chat.js';
 import { createApplyMenus } from './studio-apply-menu.js';
 import { createMeshMenus } from './studio-mesh-menus.js';
-import { DEFAULT_MOUSE_MAP, findMouseAction } from './studio-mouse-map.js';
+import { DEFAULT_MOUSE_MAP } from './studio-mouse-map.js';
+import { createMouseInput, createViewportTargetFilter, isEditableTarget } from './studio-mouse-input.js';
 import { findKeymapAction, findMouseNavigation, formatShortcutKeys, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
 import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
@@ -43,7 +44,7 @@ import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, des
 import { formatLengthInputValue, lengthFromUnit, parseLengthInput } from './studio-units.js';
 // The grid is textured, and replaceParts takes a textured part only with this module loaded.
 import './replace-textured-parts.js';
-import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, decideBeforeUnload, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
+import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft, watchBeforeUnload } from './studio-draft.js';
 import { createBakeMark } from './studio-bake-mark.js';
 import { watchScrollFade } from './studio-scroll-cue.js';
 import { extensionOf, openNameEditor, splitFileName, validateFileStem, validateNodeLabel, validateShotName } from './studio-name-editor.js';
@@ -5088,7 +5089,7 @@ export function createStudio(container, {
 
   // The window losing focus: the key-up of Ctrl or Space will never arrive, so a handle drag goes on as if Ctrl were up and a held Space is let go.
   function onWindowBlur() {
-    spaceHold = null;
+    mouseInput.letGoOfSpace();
     if (pointerState?.mode === 'gizmo') replayDragWithCtrl(false);
   }
 
@@ -5249,7 +5250,7 @@ export function createStudio(container, {
     if (mode === null) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    beginCameraDrag(event, mode, true, viewportElement);
+    pointerState = mouseInput.startCameraDrag(event, mode, true, viewportElement);
   });
 
   gizmoSvg.addEventListener('pointerdown', event => {
@@ -5279,7 +5280,7 @@ export function createStudio(container, {
       return;
     }
     if (findMouseNavigation(keymap, { button: 2, altKey: event.altKey }) !== null) return;
-    if (findMouseAction(mouseMap, { ...mousePressOf(event, 'click'), button: 2 }) === 'view.setPivot') return;
+    if (mouseInput.claimsRightClick(event)) return;
     if (controller.selectedNodeId) {
       openObjectMenu(event.clientX, event.clientY);
     }
@@ -5313,51 +5314,14 @@ export function createStudio(container, {
     viewportElement.setPointerCapture?.(event.pointerId);
   });
 
-  // A camera drag: orbit, pan or zoom. `keymapNavigation` marks one a keymap asked for (Alt and a button), which never also picks.
-  function beginCameraDrag(event, mode, keymapNavigation, captureElement) {
-    const coordinates = localCoordinates(event);
-    pointerState = {
-      mode,
-      keymapNavigation,
-      startX: coordinates.x,
-      startY: coordinates.y,
-      lastX: coordinates.x,
-      lastY: coordinates.y,
-      moved: false,
-      pointerId: event.pointerId,
-    };
-    captureElement.setPointerCapture?.(event.pointerId);
-  }
-
-  function targetPassesThroughViewport(target, { checkScroll = false } = {}) {
-    for (let node = target; node && node !== viewportElement && node.tagName; node = node.parentNode) {
-      const tag = node.tagName.toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || tag === 'a' || tag === 'dialog') return false;
-      if (node.getAttribute?.('popover') !== null || node.getAttribute?.('data-view') !== null) return false;
-      const classes = String(node.className ?? '').split(/\s+/);
-      if (classes.some(name => name === 'crucible-studio-dock' || name === 'crucible-studio-popover' || name === 'crucible-studio-view-widget' || name === 'crucible-studio-paused' || name === 'crucible-studio-draft' || name === 'crucible-studio-pass-notice')) {
-        return false;
-      }
-      if (checkScroll) {
-        const style = documentReference.defaultView?.getComputedStyle?.(node);
-        const overflow = `${style?.overflowX ?? ''}${style?.overflowY ?? ''}`;
-        if (/auto|scroll/.test(overflow) && (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth)) return false;
-      }
-    }
-    return true;
-  }
+  const targetPassesThroughViewport = createViewportTargetFilter(viewportElement, documentReference);
 
   viewportElement.addEventListener('pointerdown', event => {
     if (viewingShot()) return;
     if (event.button !== 0 && event.button !== 1 && event.button !== 2) return;
     if (!targetPassesThroughViewport(event.target)) return;
     const keymapMode = findMouseNavigation(keymap, event);
-    const dragAction = findMouseAction(mouseMap, mousePressOf(event, 'drag'));
-    if (spaceHold) {
-      spaceHold.pending = null;
-      spaceHold.dragged = true;
-    }
-    beginCameraDrag(event, keymapMode ?? CAMERA_MODE_BY_MOUSE_ACTION[dragAction] ?? null, keymapMode !== null, event.target === canvas ? canvas : viewportElement);
+    pointerState = mouseInput.startCameraDrag(event, keymapMode ?? mouseInput.cameraModeOf(event), keymapMode !== null, event.target === canvas ? canvas : viewportElement);
   });
 
   viewportElement.addEventListener('pointermove', event => {
@@ -5374,21 +5338,7 @@ export function createStudio(container, {
       dragLight(coordinates);
       return;
     }
-    const deltaX = coordinates.x - pointerState.lastX;
-    const deltaY = coordinates.y - pointerState.lastY;
-    if (Math.hypot(coordinates.x - pointerState.startX, coordinates.y - pointerState.startY) > 4) {
-      pointerState.moved = true;
-    }
-    pointerState.lastX = coordinates.x;
-    pointerState.lastY = coordinates.y;
-    if (!pointerState.moved || pointerState.mode === null) return;
-    if (pointerState.mode === 'pan') {
-      controller.orbitCamera({ panX: -deltaX * 0.002, panY: deltaY * 0.002 });
-    } else if (pointerState.mode === 'zoom') {
-      controller.orbitCamera({ zoomScale: Math.min(1.5, Math.max(0.5, 1 - (deltaX - deltaY) * 0.005)) });
-    } else {
-      controller.orbitCamera({ deltaAzimuth: -deltaX * 0.008, deltaElevation: deltaY * 0.008 });
-    }
+    mouseInput.dragCamera(pointerState, coordinates);
   });
 
   function dragLight(coordinates) {
@@ -5405,31 +5355,23 @@ export function createStudio(container, {
     }
   }
 
-  // The map's rows in force. Settings will replace it when a person changes a press.
-  const mouseMap = DEFAULT_MOUSE_MAP;
-  const CAMERA_MODE_BY_MOUSE_ACTION = Object.freeze({ 'view.orbit': 'orbit', 'view.pan': 'pan' });
-
-  function mousePressOf(event, gesture) {
-    return {
-      button: event.button ?? 0,
-      shiftKey: event.shiftKey,
-      altKey: event.altKey,
-      ctrlKey: event.ctrlKey || event.metaKey,
-      spaceHeld: Boolean(spaceHold),
-      gesture,
-    };
-  }
-
-  function setOrbitPivotAt(coordinates) {
-    const point = controller.surfacePointAt(coordinates.x, coordinates.y);
-    if (!point) {
-      announce('No surface there to orbit around');
-      return;
-    }
-    stopFlight();
-    controller.setOrbitPivot(point);
-    announce('Orbiting around that point');
-  }
+  const mouseInput = createMouseInput({
+    documentReference,
+    viewportElement,
+    controller,
+    mouseMap: DEFAULT_MOUSE_MAP,
+    isConnected: () => root.isConnected,
+    isInputBlocked: () => anyDialogIsOpen() || Boolean(modalTransform),
+    getViewportPointer: () => viewportPointer,
+    isPointerActive: () => Boolean(pointerState),
+    isBoundToSpace: event => resolveStudioKeyAction(keymap, event, Boolean(meshEditor?.active), findKeymapAction, MESH_EDIT_PASS_THROUGH).match,
+    replayKeyDown: event => onWindowKeyDown(event),
+    localCoordinates,
+    announce,
+    stopFlight,
+    undo: () => undoButton.click(),
+    redo: () => redoButton.click(),
+  });
 
   function finishPointer(event) {
     if (!pointerState) return;
@@ -5447,10 +5389,7 @@ export function createStudio(container, {
       controller.endGizmoDrag();
       return;
     }
-    if (!finished.moved && findMouseAction(mouseMap, mousePressOf(event, 'click')) === 'view.setPivot') {
-      setOrbitPivotAt(localCoordinates(event));
-      return;
-    }
+    if (!finished.moved && mouseInput.runClickAction(event)) return;
     if (!finished.moved && !finished.keymapNavigation) {
       const coordinates = localCoordinates(event);
       if (meshEditor?.active) {
@@ -5527,22 +5466,6 @@ export function createStudio(container, {
     }
     await openPickedFile({ text: await file.text(), fileName: file.name, filePath: file.path || null, verb: 'Loaded' });
   });
-
-  // A slider or a switch keeps the focus after a click, but nothing is typed into it, so only the keys it moves with stay its own.
-  const SLIDER_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
-  const SWITCH_KEYS = new Set([...SLIDER_KEYS, 'Enter', ' ']);
-  const SWITCH_INPUT_TYPES = new Set(['checkbox', 'radio', 'button', 'color']);
-
-  function isEditableTarget(target, key) {
-    const tag = target?.tagName?.toLowerCase?.();
-    if (tag === 'input' && target.type === 'range') {
-      return SLIDER_KEYS.has(key);
-    }
-    if (tag === 'input' && SWITCH_INPUT_TYPES.has(target.type)) {
-      return SWITCH_KEYS.has(key);
-    }
-    return tag === 'input' || tag === 'textarea' || tag === 'select' || Boolean(target?.isContentEditable);
-  }
 
   function selectedObjectIsDeletable() {
     return controller.selectedObjectKey !== null && controller.selectedObjectKey !== 'camera' && controller.selectedObjectKey !== 'sun';
@@ -6058,45 +5981,6 @@ export function createStudio(container, {
     return recipeDialog.open || shortcutsDialog.open || settingsDialog.open || setup.dialog.open || Boolean(newSceneDialogs?.dialogs.some(dialog => dialog.open));
   }
 
-  // Space held with the pointer over the viewport turns a left drag into a pan. A tap with no drag still does what Space is
-  // bound to, so that action waits for the key to come up; holding the key long enough to repeat, or Space anywhere but the
-  // viewport, runs it at once as before. `dragged` is set by the press that used the key.
-  let spaceHold = null;
-  const isSpaceEvent = event => event.code === 'Space' || event.key === ' ';
-  const spaceBelongsToViewport = event => {
-    const tag = event.target?.tagName?.toLowerCase?.();
-    return !isEditableTarget(event.target, event.key) && tag !== 'button' && tag !== 'a' && tag !== 'summary' && !anyDialogIsOpen() && !modalTransform;
-  };
-
-  // True when Space was taken here and must not reach the key handler yet.
-  function holdSpaceForPan(event) {
-    if (!isSpaceEvent(event) || event.ctrlKey || event.metaKey || event.altKey || !spaceBelongsToViewport(event)) return false;
-    if (!event.repeat) {
-      spaceHold = { pending: null, dragged: false };
-      const bound = resolveStudioKeyAction(keymap, event, Boolean(meshEditor?.active), findKeymapAction, MESH_EDIT_PASS_THROUGH).match;
-      if (!viewportPointer || !bound) return false;
-      event.preventDefault();
-      spaceHold.pending = event;
-      return true;
-    }
-    if (!spaceHold) return false;
-    if (spaceHold.dragged || pointerState) {
-      event.preventDefault();
-      return true;
-    }
-    const waiting = spaceHold.pending;
-    spaceHold.pending = null;
-    if (waiting) onWindowKeyDown(waiting);
-    return false;
-  }
-
-  function releaseSpace(event) {
-    if (!isSpaceEvent(event) || !spaceHold) return;
-    const { pending, dragged } = spaceHold;
-    spaceHold = null;
-    if (pending && !dragged) onWindowKeyDown(pending);
-  }
-
   const onWindowKeyDown = async event => {
     if (!root.isConnected) return;
     if (faceToolInput?.handleKey(event)) return;
@@ -6135,28 +6019,14 @@ export function createStudio(container, {
     blockPageSelectAll(event);
     if (!isModifierKey(event.key)) root.dataset.input = 'keyboard';
     if (event.key === 'Control' && !event.repeat) replayDragWithCtrl(true);
-    if (holdSpaceForPan(event)) return;
+    if (mouseInput.holdSpaceForPan(event)) return;
     onWindowKeyDown(event);
   };
   const onKeyUp = event => {
     if (event.key === 'Control') replayDragWithCtrl(false);
-    releaseSpace(event);
+    mouseInput.releaseSpace(event);
   };
 
-  // The side buttons run undo and redo, and the browser never turns them into Back and Forward while Studio is the page.
-  // The action runs on the release only, once per click; the other events of the press are only stopped.
-  const SIDE_BUTTON_EVENTS = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'auxclick'];
-  const SIDE_BUTTON_ACTIONS = Object.freeze({ 'edit.undo': () => undoButton.click(), 'edit.redo': () => redoButton.click() });
-  const onSideButton = event => {
-    if (event.button !== 3 && event.button !== 4) return;
-    if (!root.isConnected) return;
-    event.preventDefault();
-    if (event.type !== 'pointerup') return;
-    const typing = isEditableTarget(documentReference.activeElement, '');
-    if (typing || anyDialogIsOpen() || modalTransform) return;
-    SIDE_BUTTON_ACTIONS[findMouseAction(mouseMap, mousePressOf(event, 'click'))]?.();
-  };
-  for (const eventName of SIDE_BUTTON_EVENTS) documentReference.addEventListener(eventName, onSideButton, true);
   const onPointerInput = event => {
     root.dataset.input = 'pointer';
     pointerStartedInStudio = (event.composedPath?.() ?? []).includes(root);
@@ -6237,14 +6107,7 @@ export function createStudio(container, {
   documentReference.defaultView?.addEventListener?.('pagehide', flushDraftSave);
 
   // The browser asks before it drops unsaved changes; a desktop host owns window close, so there the unload goes ahead.
-  const onBeforeUnload = event => {
-    const decision = decideBeforeUnload({ isDirty, hasDesktopShell: Boolean(globalThis.crucibleShell) });
-    if (decision.flushDraft) flushDraftSave();
-    if (!decision.askToStay) return;
-    event.preventDefault();
-    event.returnValue = '';
-  };
-  documentReference.defaultView?.addEventListener?.('beforeunload', onBeforeUnload);
+  const stopWatchingBeforeUnload = watchBeforeUnload(documentReference.defaultView, { readIsDirty: () => isDirty, readHasDesktopShell: () => Boolean(globalThis.crucibleShell), flushDraft: flushDraftSave });
 
   // Forgets the draft: the scene was saved, or the person chose another scene on purpose.
   function discardDraft() {
@@ -6452,12 +6315,12 @@ export function createStudio(container, {
       documentReference.removeEventListener('keydown', onKeyDown);
       documentReference.removeEventListener('keyup', onKeyUp);
       documentReference.defaultView?.removeEventListener?.('blur', onWindowBlur);
-      for (const eventName of SIDE_BUTTON_EVENTS) documentReference.removeEventListener(eventName, onSideButton, true);
+      mouseInput.dispose();
       documentReference.removeEventListener('pointerdown', onPointerInput, true);
       documentReference.removeEventListener('visibilitychange', onVisibilityChange);
       documentReference.removeEventListener('visibilitychange', flushDraftWhenHidden);
       documentReference.defaultView?.removeEventListener?.('pagehide', flushDraftSave);
-      documentReference.defaultView?.removeEventListener?.('beforeunload', onBeforeUnload);
+      stopWatchingBeforeUnload();
       stopWatchingContextLoss();
       stopWatchingDiagnostics();
       pausedNotice.hide();
