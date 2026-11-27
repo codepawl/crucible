@@ -1,8 +1,7 @@
-// Writes the tier cards of the home page (site/index.html, between the tier-cards markers) from the results file of the tier matrix.
-//   node bench/tiers/make-home-tiers.mjs [results.json]            print the cards
-//   node bench/tiers/make-home-tiers.mjs [results.json] --write    rewrite the cards in site/index.html
-// Every figure is the lowest and highest per-scene median over the scenes of the matrix, as in the summary of make-table.mjs, and the runs the
-// idle gate marked contended stay out. tests/home-tier-cards.test.js fails when site/index.html differs from what this prints.
+// Writes the compact quality-tier table of the home page (site/index.html, between the tier-cards markers) from the tier matrix results.
+//   node bench/tiers/make-home-tiers.mjs [results.json]            print the table markup
+//   node bench/tiers/make-home-tiers.mjs [results.json] --write    rewrite the table markup in site/index.html
+// Every figure is the lowest and highest per-scene median over the scenes of the matrix, and runs marked contended stay out.
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -16,21 +15,17 @@ export const CARDS_START_MARKER = '<!-- tier-cards:start (written by bench/tiers
 export const CARDS_END_MARKER = '<!-- tier-cards:end -->';
 export const REGENERATE_COMMAND = 'node bench/tiers/make-home-tiers.mjs --write';
 
-// The full width of the error bars (FLIP) and of the equal-noise bars (times Cycles' time). A figure past its axis would be cut off.
+// Bar axis upper bounds verified against the matrix so oversized figures fail loudly.
 const FLIP_AXIS_MAXIMUM = 0.6;
 const NOISE_TIME_AXIS_MAXIMUM = 4.5;
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six'];
 const BLENDER_LABEL = { 'eevee-lowest': 'EEVEE 1 sample', 'eevee-default': 'EEVEE 64 samples' };
-// Thin-line sprite icons of the tier names, referencing symbols defined in site/index.html.
-const TIER_ICON_ID = {
-  draft: 'ic-zap',
-  realtime: 'ic-gauge',
-  'realtime-high': 'ic-sparkles',
-  final: 'ic-award',
-};
-const tierIcon = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#${TIER_ICON_ID[name]}"/></svg>`;
-const TIER_ICON = { draft: tierIcon('draft'), realtime: tierIcon('realtime'), 'realtime-high': tierIcon('realtime-high'), final: tierIcon('final') };
-const TIER_PURPOSE = { draft: 'A quick look while editing', realtime: 'Interactive use' };
+const TIER_ICON_ID = { draft: 'ic-zap', realtime: 'ic-gauge', final: 'ic-award' };
+const TIER_PURPOSE = { draft: 'Quick edits', realtime: 'Interactive scenes', final: 'Path-traced stills' };
+
+function tierIcon(name) {
+  return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#${TIER_ICON_ID[name]}"/></svg>`;
+}
 
 function fail(message) {
   throw new Error(`make-home-tiers: ${message}`);
@@ -42,12 +37,10 @@ function medianOfCells(matrix, scene, part, read) {
   return median(values);
 }
 
-// Figures are rounded to the digits the card prints, so a bar is drawn from the numbers beside it.
 function roundedRange(values, digits) {
   return { low: Number(Math.min(...values).toFixed(digits)), high: Number(Math.max(...values).toFixed(digits)) };
 }
 
-// Lowest and highest per-scene median of one figure.
 function acrossScenes(matrix, part, read, digits) {
   return roundedRange(matrix.scenes.map(scene => medianOfCells(matrix, scene, part, read)), digits);
 }
@@ -65,7 +58,6 @@ function countedPoints(matrix, scene, engine) {
   });
 }
 
-// Cook native against Cycles at equal noise: the sampling-time ratio over the scenes where both errors fall as 1/N, and the scenes where they do not.
 function equalNoise(matrix) {
   const assessments = matrix.scenes.map(scene => equalErrorAssessment(scene, (sceneId, engine) => countedPoints(matrix, sceneId, engine))).filter(Boolean);
   const reached = assessments.filter(assessment => assessment.outcome === 'noise');
@@ -106,91 +98,76 @@ export function buildHomeTierFigures(matrix) {
 const twoDigits = value => value.toFixed(2);
 const noDigits = value => value.toFixed(0);
 const trimmed = value => String(Number(value.toFixed(3)));
-const range = (figure, format) => `${format(figure.low)}–${format(figure.high)}`;
-const attribute = (figure, format) => `${format(figure.low)}-${format(figure.high)}`;
 const words = (figure, format) => `${format(figure.low)} to ${format(figure.high)}`;
+const attribute = (figure, format) => `${format(figure.low)}-${format(figure.high)}`;
 const percent = value => `${Number(value.toFixed(1))}%`;
 
 function checkAxis(name, value, axisMaximum, constantName) {
   if (value > axisMaximum) fail(`${name} is ${value}, past the bar axis of ${axisMaximum}; raise ${constantName} in bench/tiers/make-home-tiers.mjs`);
 }
 
-// Meter rows are written as a label line over a bar; src/landing.css draws the bar from --share (width) and --from (start of a range).
-function meterRow({ ours, label, value, share, from }) {
-  const classes = [ours ? 'ours' : '', from === undefined ? '' : 'range'].filter(Boolean).join(' ');
-  const classAttribute = classes ? ` class="${classes}"` : '';
-  const style = from === undefined ? `--share: ${share}` : `--from: ${from}; --share: ${share}`;
-  return `<span><span>${label}</span><span>${value}</span></span><i${classAttribute} style="${style}"></i>`;
-}
-
-function meter(ariaLabel, rows) {
-  return `          <div class="meter" role="img" aria-label="${ariaLabel}">
-            ${rows.join('\n            ')}
-          </div>`;
-}
-
-const rangeRow = (row, figure, axisMaximum) => meterRow({ ...row, from: percent((figure.low / axisMaximum) * 100), share: percent(((figure.high - figure.low) / axisMaximum) * 100) });
-
-function frameCard(id, figures) {
+function frameRow(id, figures) {
   const { glazeMilliseconds: glaze, blenderMilliseconds: blender, glazeFlip, blenderFlip, blenderLabel } = figures;
   checkAxis('A FLIP error', Math.max(glazeFlip.high, blenderFlip.high), FLIP_AXIS_MAXIMUM, 'FLIP_AXIS_MAXIMUM');
-  const glazeText = range(glaze, twoDigits);
-  const speedMeter = meter(`Glaze ${words(glaze, twoDigits)} ms a frame; ${blenderLabel} ${words(blender, noDigits)} ms a render call`, [
-    meterRow({ ours: true, label: 'Crucible Glaze', value: `${glazeText} ms`, share: percent((glaze.high / blender.high) * 100) }),
-    meterRow({ ours: false, label: blenderLabel, value: `${range(blender, noDigits)} ms`, share: '100%' }),
-  ]);
-  const errorMeter = meter(`Error vs Cycles, lower is better: Glaze ${words(glazeFlip, trimmed)}, EEVEE ${words(blenderFlip, trimmed)}`, [
-    rangeRow({ ours: true, label: 'Error, Glaze', value: range(glazeFlip, trimmed) }, glazeFlip, FLIP_AXIS_MAXIMUM),
-    rangeRow({ ours: false, label: 'Error, EEVEE', value: range(blenderFlip, trimmed) }, blenderFlip, FLIP_AXIS_MAXIMUM),
-  ]);
-  return `        <li class="tier" data-tier="${id}" data-glaze-ms="${attribute(glaze, twoDigits)}" data-eevee-ms="${attribute(blender, noDigits)}" data-flip-glaze="${attribute(glazeFlip, trimmed)}" data-flip-eevee="${attribute(blenderFlip, trimmed)}">
-          <h3>${TIER_ICON[id]}${id}</h3><p>${TIER_PURPOSE[id]}</p>
-          <p class="big">${glazeText} <span>ms a frame</span></p>
-${speedMeter}
-${errorMeter}
+  const glazeText = `${words(glaze, twoDigits)} ms`;
+  const blenderText = `${words(blender, noDigits)} ms`;
+  const share = percent((glaze.high / blender.high) * 100);
+  return `        <li class="tier-row" data-tier="${id}" data-glaze-ms="${attribute(glaze, twoDigits)}" data-eevee-ms="${attribute(blender, noDigits)}" data-flip-glaze="${attribute(glazeFlip, trimmed)}" data-flip-eevee="${attribute(blenderFlip, trimmed)}">
+          <div class="tier-name">${tierIcon(id)}<div><strong>${id}</strong><span>${TIER_PURPOSE[id]}</span></div></div>
+          <div class="tier-metric">
+            <div class="tier-value"><b>${glazeText}</b><span>per frame, Glaze</span></div>
+            <span class="tier-bar" role="img" aria-label="Crucible Glaze ${glazeText} per frame versus ${blenderLabel} ${blenderText} per render call"><i style="--share: ${share}"></i></span>
+          </div>
+          <div class="tier-ref"><b>${blenderText}</b><span>${blenderLabel}</span></div>
         </li>`;
 }
 
-const PLANNED_CARD = `        <li class="tier" data-tier="realtime-high" data-status="planned">
-          <h3>${TIER_ICON['realtime-high']}realtime-high</h3><p>Better live frames</p>
-          <p class="big">Planned <span>not measured</span></p>
-          <p>WebGPU, GI cache, upscaling. Issues <a href="https://github.com/codepawl/crucible/issues/901">901</a> and <a href="https://github.com/codepawl/crucible/issues/902">902</a>.</p>
-        </li>`;
-
-function finalCard(figures) {
-  const { cookMilliseconds: cook, cyclesMilliseconds: cycles, noise, sceneCount } = figures;
+function finalRow(figures) {
+  const { cookMilliseconds: cook, cyclesMilliseconds: cycles, noise } = figures;
   checkAxis('The equal-noise time', noise.high, NOISE_TIME_AXIS_MAXIMUM, 'NOISE_TIME_AXIS_MAXIMUM');
-  const cookText = range(cook, twoDigits);
-  const reachedText = `${NUMBER_WORDS[noise.reachedCount]} of ${NUMBER_WORDS[sceneCount]}`;
-  const notReached = noise.notReached.length > 0 ? `Not reached on ${noise.notReached.join(', ')}. ` : '';
-  const speedMeter = meter(`Per sample: Cook native ${words(cook, twoDigits)} ms, Cycles OptiX ${words(cycles, twoDigits)} ms`, [
-    meterRow({ ours: true, label: 'Cook native', value: `${cookText} ms`, share: percent((cook.high / cycles.high) * 100) }),
-    meterRow({ ours: false, label: 'Cycles OptiX', value: `${range(cycles, twoDigits)} ms`, share: '100%' }),
-  ]);
-  const noiseMeter = meter(`Time to the same noise, Cycles is 1 times: Cook needs ${words(noise, twoDigits)} times, on ${reachedText} scenes`, [
-    meterRow({ ours: false, label: 'Same noise, Cycles', value: '1×', share: percent((1 / NOISE_TIME_AXIS_MAXIMUM) * 100) }),
-    rangeRow({ ours: true, label: 'Same noise, Cook', value: `${range(noise, twoDigits)}×` }, noise, NOISE_TIME_AXIS_MAXIMUM),
-  ]);
-  return `        <li class="tier" data-tier="final" data-cook-ms="${attribute(cook, twoDigits)}" data-cycles-ms="${attribute(cycles, twoDigits)}" data-noise-time-x="${attribute(noise, twoDigits)}">
-          <h3>${TIER_ICON.final}final</h3><p>Finished stills</p>
-          <p class="big">${cookText} <span>ms per sample</span></p>
-${speedMeter}
-${noiseMeter}
-          <p>Slower to the same noise. ${notReached}Vulkan needs the optional Cook package.</p>
+  const cookText = `${words(cook, twoDigits)} ms`;
+  const cyclesText = `${words(cycles, twoDigits)} ms`;
+  const share = percent((cook.high / cycles.high) * 100);
+  return `        <li class="tier-row" data-tier="final" data-cook-ms="${attribute(cook, twoDigits)}" data-cycles-ms="${attribute(cycles, twoDigits)}" data-noise-time-x="${attribute(noise, twoDigits)}">
+          <div class="tier-name">${tierIcon('final')}<div><strong>final</strong><span>${TIER_PURPOSE.final}</span></div></div>
+          <div class="tier-metric">
+            <div class="tier-value"><b>${cookText}</b><span>per sample, Cook</span></div>
+            <span class="tier-bar" role="img" aria-label="Cook native ${cookText} per sample versus Cycles OptiX ${cyclesText} per sample"><i style="--share: ${share}"></i></span>
+          </div>
+          <div class="tier-ref"><b>${cyclesText}</b><span>Cycles OptiX</span></div>
         </li>`;
+}
+
+function renderFootnotes(matrix, figures) {
+  const { draft, realtime, final } = figures;
+  const { noise, sceneCount } = final;
+  const reachedText = `${NUMBER_WORDS[noise.reachedCount] ?? noise.reachedCount} of ${NUMBER_WORDS[sceneCount] ?? sceneCount}`;
+  const notReached = noise.notReached.length > 0 ? ` (not reached on ${noise.notReached.join(', ')})` : '';
+  const resolution = matrix.width && matrix.height ? `${matrix.width}x${matrix.height}` : '960x540';
+  const measuredDate = matrix.conditions?.date ?? '2026-11-11';
+  const referenceSamples = matrix.referenceSamples ?? REFERENCE_SAMPLES;
+  return `      <div class="tier-notes">
+        <p class="fine">Six scenes at ${resolution} on RTX 3060 (${measuredDate}). Bars compare Crucible to the slowest scene of each reference.</p>
+        <p class="fine">Error vs Cycles ${referenceSamples} samples (FLIP, lower is closer): draft ${words(draft.glazeFlip, trimmed)} (EEVEE ${words(draft.blenderFlip, trimmed)}), realtime ${words(realtime.glazeFlip, trimmed)} (EEVEE ${words(realtime.blenderFlip, trimmed)}). Cook native takes ${words(noise, twoDigits)}x Cycles time for equal noise on ${reachedText} scenes${notReached} and uses optional @codepawlhq/cook. EEVEE times are one whole render call (scene sync, ray tracing off, no GI). <a href="/tiers.html">Full tier breakdown</a>, <a href="https://github.com/codepawl/crucible/blob/main/bench/tiers/results/matrix-960.table.md">raw matrix</a>.</p>
+      </div>`;
 }
 
 export function renderTierCards(matrix) {
   const figures = buildHomeTierFigures(matrix);
-  return [frameCard('draft', figures.draft), frameCard('realtime', figures.realtime), PLANNED_CARD, finalCard(figures.final)].join('\n');
+  const rows = [frameRow('draft', figures.draft), frameRow('realtime', figures.realtime), finalRow(figures.final)].join('\n');
+  return `      <ol class="tier-table">
+        <li class="tier-row tier-row-head" aria-hidden="true"><span>Tier</span><span>Crucible</span><span>Blender reference</span></li>
+${rows}
+      </ol>
+${renderFootnotes(matrix, figures)}`;
 }
 
-// Replaces what sits between the markers of the page with the cards.
+// Replaces what sits between the markers of the page with the compact tier table.
 export function replaceTierCards(pageHtml, cards) {
   const start = pageHtml.indexOf(CARDS_START_MARKER);
   const end = pageHtml.indexOf(CARDS_END_MARKER);
   if (start === -1 || end === -1 || end < start) fail(`site/index.html needs the lines ${CARDS_START_MARKER} and ${CARDS_END_MARKER} around the tier cards`);
-  return `${pageHtml.slice(0, start + CARDS_START_MARKER.length)}\n${cards}\n        ${pageHtml.slice(end)}`;
+  return `${pageHtml.slice(0, start + CARDS_START_MARKER.length)}\n${cards}\n      ${pageHtml.slice(end)}`;
 }
 
 async function main(argumentsGiven) {
