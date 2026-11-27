@@ -1,10 +1,11 @@
 {
   "name": "@codepawlhq/crucible",
+  "mcpName": "io.github.codepawl/crucible",
   "version": "0.22.0",
   "private": false,
   "type": "module",
   "description": "3D engine that AI agents drive: a WebGL2 rasterizer, a path tracer on CPU and WebGL2 (Vulkan with an optional package, WebGPU opt-in), an MCP server, and PNG, MP4 and GLB export",
-  "keywords": ["webgl2", "webgpu", "path-tracing", "mcp", "ai-agents", "3d"],
+  "keywords": ["crucible", "3d", "3d-engine", "webgl2", "webgpu", "path-tracing", "mcp", "mcp-server", "ai-agents", "gltf", "glb", "threejs-alternative"],
   "license": "MIT",
   "homepage": "https://crucible.codepawl.com",
   "repository": {
