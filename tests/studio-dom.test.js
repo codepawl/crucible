@@ -4015,7 +4015,7 @@ function mountStudioSeeingTheSunMark(testContext, options) {
 }
 
 function sunMarkCircle(ui) {
-  return ui.gizmo.descendants().find(element => element.getAttribute('data-scene-object') === 'sun' && element.tagName.toLowerCase() === 'circle');
+  return ui.gizmo.descendants().find(element => element.getAttribute('data-scene-object') === 'sun' && element.getAttribute('data-edge-pointer') !== 'true' && element.tagName.toLowerCase() === 'circle');
 }
 
 test('the sun mark stays at one world point through an orbit, a pan and a zoom, and is drawn where that point projects', testContext => {
@@ -4111,6 +4111,65 @@ test('a sun that a track turns refuses the drag and says why', testContext => {
   dispatch(driven.canvas, 'pointerup', driven.clientPoint(drivenGrab));
   assert.deepEqual(driven.studio.exportRecipe().environment.lightDirection, drivenStart);
   assert.match(driven.status(), /sun direction is animated/);
+});
+
+function sunEdgePointerDisc(ui) {
+  return ui.gizmo.descendants().find(element => element.getAttribute('data-edge-pointer') === 'true' && element.tagName.toLowerCase() === 'circle');
+}
+
+// Close to the scene's middle the eye sits inside the sphere the mark stands on, so the mark lies behind it.
+function pullEyeInsideTheMarkSphere(ui) {
+  ui.controller.orbitCamera({ zoomScale: 0.1 });
+  ui.studio.renderNow();
+}
+
+test('the sun has an edge pointer only while its mark is out of view', testContext => {
+  const ui = mountStudioSeeingTheSunMark(testContext);
+  assert.ok(!sunEdgePointerDisc(ui), 'no pointer while the mark is in view');
+  ui.controller.orbitCamera({ deltaAzimuth: 1.5 });
+  ui.studio.renderNow();
+  const projected = ui.controller.projectWorldPoint(sunMarkWorldPoint(ui));
+  assert.ok(projected.visible, 'the mark is in front of the eye');
+  assert.ok(projected.x < 0 || projected.x > ui.controller.viewportWidth || projected.y < 0 || projected.y > ui.controller.viewportHeight, 'the orbit took the mark off the screen');
+  assert.ok(!sunMarkCircle(ui), 'the mark itself is not drawn');
+  const pointer = sunEdgePointerDisc(ui);
+  assert.ok(pointer, 'the pointer stands in for the mark');
+  assert.equal(pointer.getAttribute('data-scene-object'), 'sun');
+  assert.match(pointer.parentNode.querySelector('title').textContent, /^Sun \(out of view\)$/);
+  const [, x, y] = pointer.parentNode.getAttribute('transform').match(/translate\(([-\d.]+) ([-\d.]+)\)/).map(Number);
+  assert.ok(x >= 0 && x <= ui.controller.viewportWidth && y >= 0 && y <= ui.controller.viewportHeight, 'inside the viewport');
+  ui.controller.orbitCamera({ deltaAzimuth: -1.5 });
+  ui.studio.renderNow();
+  assert.ok(!sunEdgePointerDisc(ui), 'the pointer goes when the mark comes back');
+  assert.ok(sunMarkCircle(ui));
+});
+
+test('the sun has an edge pointer while the sun lies behind the camera', testContext => {
+  const ui = mountStudioSeeingTheSunMark(testContext);
+  pullEyeInsideTheMarkSphere(ui);
+  const camera = ui.controller.viewCamera;
+  const toMark = sunMarkWorldPoint(ui).map((component, axis) => component - camera.eye[axis]);
+  const forward = camera.target.map((component, axis) => component - camera.eye[axis]);
+  assert.ok(toMark.reduce((sum, component, axis) => sum + component * forward[axis], 0) < 0, 'the mark is behind the eye');
+  assert.ok(sunEdgePointerDisc(ui), 'the pointer still shows');
+  assert.ok(!sunMarkCircle(ui), 'the mark itself is not drawn');
+});
+
+test('pressing the sun edge pointer selects the sun and, with the move tool, starts no drag', testContext => {
+  const ui = mountStudioSeeingTheSunMark(testContext);
+  pullEyeInsideTheMarkSphere(ui);
+  const startDirection = [...ui.studio.exportRecipe().environment.lightDirection];
+  assert.equal(ui.controller.tool, 'translate');
+  const pointer = sunEdgePointerDisc(ui);
+  const down = dispatch(pointer, 'pointerdown', { clientX: 400, clientY: 300, pointerId: 21 });
+  assert.equal(down.defaultPrevented, true);
+  assert.equal(ui.controller.selectedObjectKey, 'sun');
+  dispatch(ui.canvas, 'pointermove', { clientX: 300, clientY: 340 });
+  dispatch(ui.canvas, 'pointermove', { clientX: 200, clientY: 380 });
+  dispatch(ui.canvas, 'pointerup', { clientX: 200, clientY: 380 });
+  assert.deepEqual(ui.studio.exportRecipe().environment.lightDirection, startDirection, 'the sun did not turn');
+  ui.studio.renderNow();
+  assert.equal(sunEdgePointerDisc(ui).parentNode.getAttribute('data-selected'), 'true', 'the pointer wears the selected style');
 });
 
 test('the camera is drawn once the view looks away from it', testContext => {
