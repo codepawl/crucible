@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -80,12 +80,21 @@ export function scaffoldTemplate({
     throw new RangeError(`Unknown template "${template}". Choose showcase or addon.`);
   }
   const sourceDir = resolve(packageRoot, TEMPLATES[template]);
-  if (!existsSync(sourceDir)) {
-    throw new Error(`Template directory not found at ${sourceDir}.`);
+  try {
+    readdirSync(sourceDir);
+  } catch (error) {
+    if (error?.code === 'ENOENT') throw new Error(`Template directory not found at ${sourceDir}.`);
+    throw error;
   }
   const resolvedOutDir = resolve(outDir);
-  if (existsSync(resolvedOutDir) && readdirSync(resolvedOutDir).length > 0 && !force) {
-    throw new Error(`${resolvedOutDir} already exists and is not empty. Pass --force to overwrite existing files.`);
+  if (!force) {
+    try {
+      if (readdirSync(resolvedOutDir).length > 0) {
+        throw new Error(`${resolvedOutDir} already exists and is not empty. Pass --force to overwrite existing files.`);
+      }
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
   }
   mkdirSync(resolvedOutDir, { recursive: true });
   cpSync(sourceDir, resolvedOutDir, { recursive: true, force: true });
@@ -93,7 +102,7 @@ export function scaffoldTemplate({
   const resolvedPackageName = sanitizePackageName(packageName ?? basename(resolvedOutDir));
   const cruciblePackage = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
   const targetPackagePath = join(resolvedOutDir, 'package.json');
-  if (existsSync(targetPackagePath)) {
+  try {
     const targetPackage = JSON.parse(readFileSync(targetPackagePath, 'utf8'));
     targetPackage.name = resolvedPackageName;
     if (targetPackage.dependencies?.['@codepawlhq/crucible']) {
@@ -103,6 +112,8 @@ export function scaffoldTemplate({
       targetPackage.devDependencies['@codepawlhq/crucible'] = `^${cruciblePackage.version}`;
     }
     writeFileSync(targetPackagePath, `${JSON.stringify(targetPackage, null, 2)}\n`);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
   }
 
   return {

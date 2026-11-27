@@ -78,6 +78,7 @@ export const ADDON_CATALOG = [
   { name: 'meshlets', area: 'render', summary: 'Build meshoptimizer meshlets and cull clusters per draw on dense meshes.', doc: true },
   { name: 'reversed-depth', area: 'render', summary: 'Reversed-Z depth for far-away precision.' },
   { name: 'crucible-scene', area: 'render', summary: 'The <crucible-scene> web component for packed scenes.' },
+  { name: 'showcase', area: 'render', summary: 'Interactive 3D product showcase viewer with Prototype and Studio themes.', doc: true },
 
   { name: 'motion', area: 'motion', summary: 'Motion scenes: one geometry graph and a bound player.' },
   { name: 'morph', area: 'motion', summary: 'Morph targets with a static preflight.' },
