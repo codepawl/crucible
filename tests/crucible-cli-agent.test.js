@@ -15,6 +15,11 @@ import {
   CORE_TOOL_NAMES,
   createCrucibleMcpClient,
 } from '../bin/crucible-mcp-client.mjs';
+import { ACCOUNTS_WEB_URL } from '../bin/crucible-auth.mjs';
+
+function extractHttpsUrls(text) {
+  return (text.match(/https:\/\/[^\s)]+/g) ?? []).map(rawUrl => new URL(rawUrl.replace(/[.,;)]+$/, '')));
+}
 
 async function createTempDirectory(prefix) {
   return mkdtemp(join(tmpdir(), prefix));
@@ -403,7 +408,7 @@ test('crucible agent prints actionable signed-out and HTTP 402 messages and hono
   assert.equal(signedOutCode, 1);
   assert.ok(signedOutErrors[0].includes('crucible auth login'));
   assert.ok(signedOutErrors[0].includes('250 free credits, no card needed'));
-  assert.ok(signedOutErrors[0].includes('https://accounts.codepawl.com'));
+  assert.ok(extractHttpsUrls(signedOutErrors[0]).some(parsedUrl => parsedUrl.origin === ACCOUNTS_WEB_URL && parsedUrl.pathname === '/'));
   assert.ok(signedOutErrors[0].includes('crucible-mcp'));
 
   const noPromoErrors = [];
@@ -429,7 +434,7 @@ test('crucible agent prints actionable signed-out and HTTP 402 messages and hono
     });
     assert.equal(creditsCode, 1);
     assert.ok(creditsErrors[0].includes('HTTP 402'));
-    assert.ok(creditsErrors[0].includes('https://accounts.codepawl.com/account'));
+    assert.ok(extractHttpsUrls(creditsErrors[0]).some(parsedUrl => parsedUrl.origin === ACCOUNTS_WEB_URL && parsedUrl.pathname === '/account'));
     assert.ok(creditsErrors[0].includes('crucible-mcp'));
   } finally {
     await proxy402.close();

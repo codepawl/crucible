@@ -30,6 +30,10 @@ import { mcpHelpText } from '../bin/crucible-mcp-flags.mjs';
 const crucibleCliPath = fileURLToPath(new URL('../bin/crucible.mjs', import.meta.url));
 const mcpCliPath = fileURLToPath(new URL('../bin/crucible-mcp.mjs', import.meta.url));
 
+function extractHttpsUrls(text) {
+  return (text.match(/https:\/\/[^\s)]+/g) ?? []).map(rawUrl => new URL(rawUrl.replace(/[.,;)]+$/, '')));
+}
+
 async function createTempDirectory(prefix) {
   return mkdtemp(join(tmpdir(), prefix));
 }
@@ -376,7 +380,7 @@ test('crucible auth status and logout report credits, promo tips, CRUCIBLE_NO_PR
     assert.ok(signedOutLogs[0].includes('250 free credits'));
     assert.ok(signedOutLogs[0].includes('no card needed'));
     assert.ok(signedOutLogs[0].includes('crucible auth login'));
-    assert.ok(signedOutLogs[0].includes('https://accounts.codepawl.com'));
+    assert.ok(extractHttpsUrls(signedOutLogs[0]).some(parsedUrl => parsedUrl.origin === ACCOUNTS_WEB_URL && parsedUrl.pathname === '/'));
     assert.ok(signedOutLogs[0].includes('crucible-mcp'));
 
     const noPromoLogs = [];
@@ -399,7 +403,7 @@ test('crucible auth status and logout report credits, promo tips, CRUCIBLE_NO_PR
     const signedInLogs = [];
     assert.equal(await runAuthCommand(['status'], { environment, log: line => signedInLogs.push(line) }), 0);
     assert.match(signedInLogs[0], /187/);
-    assert.ok(signedInLogs[0].includes('https://accounts.codepawl.com/account'));
+    assert.ok(extractHttpsUrls(signedInLogs[0]).some(parsedUrl => parsedUrl.origin === ACCOUNTS_WEB_URL && parsedUrl.pathname === '/account'));
     assert.equal(signedInLogs.join('\n').includes('valid-token-abc'), false);
 
     const jsonLogs = [];
