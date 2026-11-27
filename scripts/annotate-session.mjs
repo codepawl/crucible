@@ -1,35 +1,50 @@
-// The local page behind scene_ask_user (issue #922): it shows one rendered view, lets the person pin points on it with a short
-// note each, and returns the marks when they press Send. It listens on loopback only, under a random path, with no remote assets.
+// The local page behind scene_ask_user (issue #922): it shows one rendered view, lets the person place pin, lasso, colour
+// and saved view marks with a short note each, and returns the marks when they press Send. It listens on loopback only, under a
+// random path, with no remote assets.
 import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { isPreviewHost } from './preview-host.mjs';
-import { ANNOTATE_LIMITS, validateMarks, isBoundedPng } from '../src/agent-annotate.js';
+import { ANNOTATE_LIMITS, validateMarks, validateViewCamera, isBoundedPng } from '../src/agent-annotate.js';
 
 const MAXIMUM_BODY_BYTES = 2 * 1024 * 1024;
+const DEFAULT_CAMERA = Object.freeze({ eye: [0, 2, 5], target: [0, 0, 0], up: [0, 1, 0], fov: 45 });
 
 // Shared with the inline MCP Apps view (scripts/annotate-app-view.mjs) so both look the same.
 export function annotateStyle(width) {
   return `
 *{box-sizing:border-box}
-body{margin:0;min-height:100vh;background:#182126;color:#e8eef0;font:15px/1.4 system-ui,sans-serif;display:flex;flex-direction:column;gap:16px;padding:20px}
+body{margin:0;min-height:100vh;background:#182126;color:#e8eef0;font:15px/1.4 system-ui,sans-serif;display:flex;flex-direction:column;gap:16px;padding:20px;user-select:none}
 h1{margin:0;font-size:18px;font-weight:600}
 main{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
 .stage{position:relative;line-height:0;flex:0 1 ${width}px;max-width:100%;cursor:crosshair;user-select:none}
 .stage img{width:100%;height:auto;border-radius:8px;display:block}
 .stage.lasso{cursor:cell;touch-action:none}
+.stage.view{cursor:grab;touch-action:none}
+.stage.view:active{cursor:grabbing}
 .outline{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
 .outline polygon,.outline polyline{fill:rgba(255,90,79,.22);stroke:#ff5a4f;stroke-width:2;stroke-linejoin:round;vector-effect:non-scaling-stroke}
 .outline polyline{fill:none;stroke:#fff}
-.tools{display:flex;gap:4px}
-button[aria-pressed=true]{background:#26343b;box-shadow:inset 0 0 0 2px #6fb7ff}
+.tools{display:flex;gap:6px;flex-wrap:wrap}
+.tool{padding:0 10px;gap:6px;background:#202c33;color:#d6e0e4}
+.tool-options{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#202c33;padding:8px 10px;border-radius:8px}
+.tool-options[hidden]{display:none}
+.tool-options label{font-size:13px;color:#9db0b8}
+input[type=color]{flex:none;width:40px;height:36px;padding:2px;border-radius:6px;background:#26343b;cursor:pointer}
+input[type=number]{flex:none;width:72px;height:36px}
+.color-hex,.view-summary{font-family:ui-monospace,monospace;font-size:12px;color:#9db0b8}
 .pin{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;background:#ff5a4f;color:#fff;font:600 13px/26px system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px #fff;pointer-events:none}
-aside{flex:1 1 280px;max-width:380px;display:flex;flex-direction:column;gap:12px;user-select:none}
-.row{display:flex;gap:10px;align-items:center}
+aside{flex:1 1 300px;max-width:420px;display:flex;flex-direction:column;gap:12px;user-select:none}
+.row{display:flex;gap:8px;align-items:center}
 .badge{flex:none;width:26px;height:26px;border-radius:50%;background:#ff5a4f;color:#fff;font:600 13px/26px system-ui,sans-serif;text-align:center}
+.badge.view{background:#2f7dd1;color:#fff}
+.row-swatch{flex:none;width:30px;height:36px;padding:2px;border-radius:6px;background:#26343b;cursor:pointer}
+.row-meta{flex:none;font-size:12px;color:#9db0b8;background:#202c33;padding:4px 8px;border-radius:6px}
 input{flex:1;min-width:0;height:36px;border:0;border-radius:6px;background:#26343b;color:inherit;padding:0 10px;font:inherit;user-select:text}
 input:focus{outline:2px solid #6fb7ff}
 button{height:36px;border:0;border-radius:6px;padding:0 14px;font:inherit;color:inherit;background:transparent;cursor:pointer;display:inline-flex;gap:8px;align-items:center}
 button:hover{background:#26343b}
+button[aria-pressed=true],button[aria-pressed=true]:hover{background:#2f7dd1;color:#fff}
+button[aria-pressed=true] svg .icon-fill{fill:currentColor}
 button.primary{background:#2f7dd1;color:#fff}
 button.primary:hover{background:#3a8ae0}
 button.icon{width:36px;padding:0;justify-content:center;flex:none}
@@ -43,24 +58,54 @@ svg{width:18px;height:18px;flex:none}
 `;
 }
 
-function pageHtml({ prompt, width, height, maxMarks, maxNoteLength }) {
+export function annotateToolbarMarkup() {
+  return `<div class="tools" role="group" aria-label="Mark type">
+<button class="tool" id="tool-pin" aria-pressed="true" aria-label="Pin" title="Pin: click a spot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="icon-fill" fill-rule="evenodd" d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.5-6 11-6 11zm0-13a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg><span>Pin</span></button>
+<button class="tool" id="tool-lasso" aria-pressed="false" aria-label="Lasso" title="Lasso: draw around a region"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="icon-fill" d="M12 4C7 4 3 6.5 3 10s4 6 9 6 9-2.5 9-6-4-6-9-6z"/><path d="M9 16c-1 2-1 3.5 1 4"/></svg><span>Lasso</span></button>
+<button class="tool" id="tool-color" aria-pressed="false" aria-label="Color" title="Color: click a part and pick its colour"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="icon-fill" d="M12 3l5.5 6.5a6.5 6.5 0 1 1-11 0L12 3z"/></svg><span>Color</span></button>
+<button class="tool" id="tool-view" aria-pressed="false" aria-label="Save view" title="View: frame the camera and save a view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="icon-fill" fill-rule="evenodd" d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zm8 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg><span>Save view</span></button>
+</div>
+<div class="tool-options" id="color-options" hidden>
+<label for="color-picker">Target colour</label>
+<input type="color" id="color-picker" value="#ff5a4f" aria-label="Target colour">
+<span class="color-hex" id="color-hex">#ff5a4f</span>
+</div>
+<div class="tool-options" id="view-options" hidden>
+<label for="view-fov">FOV</label>
+<input type="number" id="view-fov" min="5" max="120" step="1" aria-label="Field of view">
+<button type="button" class="primary" id="capture-view">Save view</button>
+<button type="button" id="reset-view">Reset</button>
+<span class="view-summary" id="view-summary"></span>
+</div>`;
+}
+
+function pageHtml({ prompt, width, height, maxMarks, maxNoteLength, camera, canRender }) {
   const escaped = prompt.replace(/[&<>"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[character]);
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mark the scene</title><style>${annotateStyle(width)}</style></head><body>
+  const limits = {
+    width,
+    height,
+    maxMarks,
+    maxNoteLength,
+    minLassoPoints: ANNOTATE_LIMITS.minLassoPoints,
+    maxLassoPoints: ANNOTATE_LIMITS.maxLassoPoints,
+    minViewFov: ANNOTATE_LIMITS.minViewFov,
+    maxViewFov: ANNOTATE_LIMITS.maxViewFov,
+    camera,
+    canRender,
+  };
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><title>Mark the scene</title><style>${annotateStyle(width)}</style></head><body>
 <h1>${escaped || 'Click the scene to mark what you mean'}</h1>
 <main>
 <div class="stage" id="stage"><img id="frame" src="frame.png" width="${width}" height="${height}" alt="Rendered scene"></div>
 <aside id="side">
-<div class="tools" role="group" aria-label="Mark type">
-<button class="icon" id="tool-pin" aria-pressed="true" aria-label="Pin" title="Pin: click a spot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.5-6-11a6 6 0 0 1 12 0c0 5.500-6 11-6 11z"/><circle cx="12" cy="10" r="2"/></svg></button>
-<button class="icon" id="tool-lasso" aria-pressed="false" aria-label="Lasso" title="Lasso: draw around a region"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4C7 4 3 6.500 3 10s4 6 9 6 9-2.500 9-6-4-6-9-6z"/><path d="M9 16c-1 2-1 3.500 1 4"/></svg></button>
-</div>
-<div class="hint" id="hint">Click the picture to drop a pin, or draw around a region with the lasso, then say what to change.</div>
+${annotateToolbarMarkup()}
+<div class="hint" id="hint">Click the picture to drop a pin, draw with lasso, pick a colour, or frame and save a view.</div>
 <div id="rows" style="display:flex;flex-direction:column;gap:8px"></div>
 <div class="count" id="count"></div>
 <div class="actions"><button class="primary" id="send">Send</button><button id="cancel">Cancel</button></div>
 </aside>
 </main>
-<script type="application/json" id="limits">${JSON.stringify({ width, height, maxMarks, maxNoteLength, minLassoPoints: ANNOTATE_LIMITS.minLassoPoints, maxLassoPoints: ANNOTATE_LIMITS.maxLassoPoints })}</script>
+<script type="application/json" id="limits">${JSON.stringify(limits)}</script>
 <script src="app.js"></script>
 </body></html>`;
 }
@@ -73,7 +118,16 @@ const stage = document.getElementById('stage');
 const frame = document.getElementById('frame');
 const rows = document.getElementById('rows');
 const count = document.getElementById('count');
+const hint = document.getElementById('hint');
 const sendButton = document.getElementById('send');
+const colorOptions = document.getElementById('color-options');
+const colorPicker = document.getElementById('color-picker');
+const colorHex = document.getElementById('color-hex');
+const viewOptions = document.getElementById('view-options');
+const viewFovInput = document.getElementById('view-fov');
+const viewSummary = document.getElementById('view-summary');
+const captureViewButton = document.getElementById('capture-view');
+const resetViewButton = document.getElementById('reset-view');
 const trash = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>';
 const svgNamespace = 'http://www.w3.org/2000/svg';
 const outline = document.createElementNS(svgNamespace, 'svg');
@@ -81,16 +135,91 @@ outline.setAttribute('class', 'outline');
 outline.setAttribute('viewBox', '0 0 ' + limits.width + ' ' + limits.height);
 outline.setAttribute('preserveAspectRatio', 'none');
 stage.appendChild(outline);
+const initialFrameSource = frame.getAttribute('src');
+function cloneCamera(source) {
+  return { eye: source.eye.slice(0, 3), target: source.target.slice(0, 3), up: (source.up || [0, 1, 0]).slice(0, 3), fov: source.fov };
+}
+function roundVector(vector) {
+  return vector.map(component => Math.round(component * 1000) / 1000);
+}
+function camerasMatch(first, second) {
+  const sameVector = (left, right) => left.every((component, index) => Math.abs(component - right[index]) < 1e-4);
+  return sameVector(first.eye, second.eye) && sameVector(first.target, second.target) && Math.abs(first.fov - second.fov) < 1e-3;
+}
+const initialCamera = cloneCamera(limits.camera);
+let markingCamera = cloneCamera(initialCamera);
+let markingFrameSource = initialFrameSource;
+let viewCamera = cloneCamera(initialCamera);
+let previewBlobUrl = null;
+let renderTimer = null;
 let tool = 'pin';
 let drawing = null;
-const toolButtons = { pin: document.getElementById('tool-pin'), lasso: document.getElementById('tool-lasso') };
+let orbiting = null;
+const toolButtons = {
+  pin: document.getElementById('tool-pin'),
+  lasso: document.getElementById('tool-lasso'),
+  color: document.getElementById('tool-color'),
+  view: document.getElementById('tool-view'),
+};
+function hasPixelMarks() {
+  return marks.some(mark => mark.kind !== 'view');
+}
+function updateViewReadout() {
+  viewFovInput.value = String(Math.round(viewCamera.fov));
+  const eye = roundVector(viewCamera.eye);
+  const target = roundVector(viewCamera.target);
+  viewSummary.textContent = 'eye [' + eye.join(', ') + '] target [' + target.join(', ') + ']';
+}
+async function renderCameraPreview(camera) {
+  if (!limits.canRender) return;
+  try {
+    const response = await fetch('render', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ camera }) });
+    if (!response.ok) return;
+    const blob = await response.blob();
+    const nextUrl = URL.createObjectURL(blob);
+    frame.src = nextUrl;
+    if (previewBlobUrl && previewBlobUrl !== markingFrameSource) URL.revokeObjectURL(previewBlobUrl);
+    previewBlobUrl = nextUrl;
+  } catch (error) {
+    hint.textContent = error.message;
+  }
+}
+function scheduleCameraRender() {
+  if (!limits.canRender) return;
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(() => renderCameraPreview(viewCamera), 60);
+}
 function chooseTool(name) {
+  const previousTool = tool;
   tool = name;
   stage.classList.toggle('lasso', name === 'lasso');
+  stage.classList.toggle('view', name === 'view');
+  colorOptions.hidden = name !== 'color';
+  viewOptions.hidden = name !== 'view';
   Object.entries(toolButtons).forEach(([key, button]) => button.setAttribute('aria-pressed', String(key === name)));
+  if (previousTool === 'view' && name !== 'view') {
+    if (!hasPixelMarks()) {
+      markingCamera = cloneCamera(viewCamera);
+      markingFrameSource = frame.src;
+    } else if (!camerasMatch(viewCamera, markingCamera)) {
+      viewCamera = cloneCamera(markingCamera);
+      frame.src = markingFrameSource;
+    }
+  }
+  updateViewReadout();
+  render();
 }
 toolButtons.pin.addEventListener('click', () => chooseTool('pin'));
 toolButtons.lasso.addEventListener('click', () => chooseTool('lasso'));
+toolButtons.color.addEventListener('click', () => chooseTool('color'));
+toolButtons.view.addEventListener('click', () => chooseTool('view'));
+colorPicker.addEventListener('input', () => { colorHex.textContent = colorPicker.value.toLowerCase(); });
+function contrastTextColor(hex) {
+  const red = parseInt(hex.slice(1, 3), 16) / 255;
+  const green = parseInt(hex.slice(3, 5), 16) / 255;
+  const blue = parseInt(hex.slice(5, 7), 16) / 255;
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue > 0.55 ? '#11181c' : '#fff';
+}
 function pointsText(points) {
   return points.map(point => point[0].toFixed(1) + ',' + point[1].toFixed(1)).join(' ');
 }
@@ -104,32 +233,101 @@ function thinned(points) {
   if (points.length <= limits.maxLassoPoints) return points;
   return Array.from({ length: limits.maxLassoPoints }, (unused, index) => points[Math.floor(index * points.length / limits.maxLassoPoints)]);
 }
+function normalizeVector(vector) {
+  const length = Math.hypot(vector[0], vector[1], vector[2]) || 1;
+  return [vector[0] / length, vector[1] / length, vector[2] / length];
+}
+function crossVectors(left, right) {
+  return [left[1] * right[2] - left[2] * right[1], left[2] * right[0] - left[0] * right[2], left[0] * right[1] - left[1] * right[0]];
+}
+function orbitCameraBy(deltaX, deltaY) {
+  const offset = [0, 1, 2].map(axis => viewCamera.eye[axis] - viewCamera.target[axis]);
+  const radius = Math.hypot(offset[0], offset[1], offset[2]) || 1;
+  const azimuth = Math.atan2(offset[0], offset[2]) - deltaX * 0.008;
+  const elevation = Math.max(-1.48, Math.min(1.48, Math.asin(Math.max(-1, Math.min(1, offset[1] / radius))) + deltaY * 0.008));
+  const horizontal = radius * Math.cos(elevation);
+  viewCamera.eye = [
+    viewCamera.target[0] + horizontal * Math.sin(azimuth),
+    viewCamera.target[1] + radius * Math.sin(elevation),
+    viewCamera.target[2] + horizontal * Math.cos(azimuth),
+  ];
+}
+function panCameraBy(deltaX, deltaY) {
+  const offset = [0, 1, 2].map(axis => viewCamera.target[axis] - viewCamera.eye[axis]);
+  const distance = Math.hypot(offset[0], offset[1], offset[2]) || 1;
+  const forward = normalizeVector(offset);
+  const right = normalizeVector(crossVectors(forward, viewCamera.up));
+  const cameraUp = normalizeVector(crossVectors(right, forward));
+  const step = distance * 0.002;
+  for (let axis = 0; axis < 3; axis++) {
+    const shift = (-deltaX * right[axis] + deltaY * cameraUp[axis]) * step;
+    viewCamera.eye[axis] += shift;
+    viewCamera.target[axis] += shift;
+  }
+}
+function zoomCameraBy(deltaY) {
+  const offset = [0, 1, 2].map(axis => viewCamera.eye[axis] - viewCamera.target[axis]);
+  const distance = Math.hypot(offset[0], offset[1], offset[2]) || 1;
+  const nextDistance = Math.max(0.2, Math.min(500, distance * Math.exp(deltaY * 0.0012)));
+  const scale = nextDistance / distance;
+  viewCamera.eye = [0, 1, 2].map(axis => viewCamera.target[axis] + offset[axis] * scale);
+}
 function render() {
   stage.querySelectorAll('.pin').forEach(pin => pin.remove());
   outline.textContent = '';
   rows.textContent = '';
+  const hideSpatialOverlay = tool === 'view' && !camerasMatch(viewCamera, markingCamera);
   marks.forEach((mark, index) => {
-    const centre = markCentre(mark);
-    if (mark.points !== undefined) {
-      const shape = document.createElementNS(svgNamespace, 'polygon');
-      shape.setAttribute('points', pointsText(mark.points));
-      outline.appendChild(shape);
+    if (mark.kind !== 'view' && !hideSpatialOverlay) {
+      const centre = markCentre(mark);
+      if (mark.points !== undefined) {
+        const shape = document.createElementNS(svgNamespace, 'polygon');
+        shape.setAttribute('points', pointsText(mark.points));
+        outline.appendChild(shape);
+      }
+      const pin = document.createElement('div');
+      pin.className = 'pin';
+      pin.textContent = index + 1;
+      pin.style.left = (centre[0] / limits.width * 100) + '%';
+      pin.style.top = (centre[1] / limits.height * 100) + '%';
+      if (mark.kind === 'color') {
+        pin.style.background = mark.hex;
+        pin.style.color = contrastTextColor(mark.hex);
+      }
+      stage.appendChild(pin);
     }
-    const pin = document.createElement('div');
-    pin.className = 'pin';
-    pin.textContent = index + 1;
-    pin.style.left = (centre[0] / limits.width * 100) + '%';
-    pin.style.top = (centre[1] / limits.height * 100) + '%';
-    stage.appendChild(pin);
     const row = document.createElement('div');
     row.className = 'row';
     const badge = document.createElement('span');
-    badge.className = 'badge';
+    badge.className = mark.kind === 'view' ? 'badge view' : 'badge';
     badge.textContent = index + 1;
+    if (mark.kind === 'color') {
+      badge.style.background = mark.hex;
+      badge.style.color = contrastTextColor(mark.hex);
+    }
+    row.appendChild(badge);
+    if (mark.kind === 'color') {
+      const swatch = document.createElement('input');
+      swatch.type = 'color';
+      swatch.className = 'row-swatch';
+      swatch.value = mark.hex;
+      swatch.setAttribute('aria-label', 'Mark ' + (index + 1) + ' colour');
+      swatch.addEventListener('input', () => {
+        mark.hex = swatch.value.toLowerCase();
+        render();
+      });
+      row.appendChild(swatch);
+    } else if (mark.kind === 'view') {
+      const meta = document.createElement('span');
+      meta.className = 'row-meta';
+      meta.textContent = 'FOV ' + Math.round(mark.camera.fov);
+      meta.title = 'eye [' + mark.camera.eye.join(', ') + '] target [' + mark.camera.target.join(', ') + ']';
+      row.appendChild(meta);
+    }
     const input = document.createElement('input');
     input.maxLength = limits.maxNoteLength;
     input.value = mark.note;
-    input.placeholder = 'What should change here?';
+    input.placeholder = mark.kind === 'view' ? 'Why this view?' : (mark.kind === 'color' ? 'Colour note' : 'What should change here?');
     input.addEventListener('input', () => { mark.note = input.value; });
     const remove = document.createElement('button');
     remove.className = 'icon';
@@ -137,12 +335,13 @@ function render() {
     remove.setAttribute('aria-label', 'Remove mark ' + (index + 1));
     remove.innerHTML = trash;
     remove.addEventListener('click', () => { marks.splice(index, 1); render(); });
-    row.append(badge, input, remove);
+    row.append(input, remove);
     rows.appendChild(row);
     mark.input = input;
   });
   count.textContent = marks.length + ' of ' + limits.maxMarks + ' marks';
   sendButton.disabled = marks.length === 0;
+  captureViewButton.disabled = marks.length >= limits.maxMarks;
 }
 function pixelOf(event) {
   const box = frame.getBoundingClientRect();
@@ -159,13 +358,24 @@ function polygonArea(points) {
   return Math.abs(twice) / 2;
 }
 stage.addEventListener('click', event => {
-  if (tool !== 'pin' || marks.length >= limits.maxMarks) return;
+  if ((tool !== 'pin' && tool !== 'color') || marks.length >= limits.maxMarks) return;
   const [x, y] = pixelOf(event);
-  marks.push({ x, y, note: '' });
+  if (tool === 'color') {
+    marks.push({ kind: 'color', x, y, hex: colorPicker.value.toLowerCase(), note: '' });
+  } else {
+    marks.push({ x, y, note: '' });
+  }
   render();
   marks[marks.length - 1].input.focus();
 });
+stage.addEventListener('contextmenu', event => { if (tool === 'view') event.preventDefault(); });
 stage.addEventListener('pointerdown', event => {
+  if (tool === 'view' && (event.button === 0 || event.button === 2)) {
+    event.preventDefault();
+    stage.setPointerCapture(event.pointerId);
+    orbiting = { lastX: event.clientX, lastY: event.clientY, pan: event.shiftKey || event.button === 2 };
+    return;
+  }
   if (tool !== 'lasso' || marks.length >= limits.maxMarks || event.button !== 0) return;
   event.preventDefault();
   stage.setPointerCapture(event.pointerId);
@@ -174,6 +384,18 @@ stage.addEventListener('pointerdown', event => {
   drawing = { points: [pixelOf(event)], trail };
 });
 stage.addEventListener('pointermove', event => {
+  if (orbiting) {
+    const deltaX = event.clientX - orbiting.lastX;
+    const deltaY = event.clientY - orbiting.lastY;
+    orbiting.lastX = event.clientX;
+    orbiting.lastY = event.clientY;
+    if (orbiting.pan || event.shiftKey) panCameraBy(deltaX, deltaY);
+    else orbitCameraBy(deltaX, deltaY);
+    updateViewReadout();
+    render();
+    scheduleCameraRender();
+    return;
+  }
   if (!drawing) return;
   const point = pixelOf(event);
   const last = drawing.points[drawing.points.length - 1];
@@ -181,7 +403,12 @@ stage.addEventListener('pointermove', event => {
   drawing.points.push(point);
   drawing.trail.setAttribute('points', pointsText(drawing.points));
 });
-function endLasso() {
+function endPointer(event) {
+  if (orbiting) {
+    orbiting = null;
+    scheduleCameraRender();
+    return;
+  }
   if (!drawing) return;
   const points = thinned(drawing.points);
   drawing = null;
@@ -189,8 +416,51 @@ function endLasso() {
   render();
   if (marks.length && marks[marks.length - 1].points === points) marks[marks.length - 1].input.focus();
 }
-stage.addEventListener('pointerup', endLasso);
-stage.addEventListener('pointercancel', endLasso);
+stage.addEventListener('pointerup', endPointer);
+stage.addEventListener('pointercancel', endPointer);
+stage.addEventListener('wheel', event => {
+  if (tool !== 'view') return;
+  event.preventDefault();
+  zoomCameraBy(event.deltaY);
+  updateViewReadout();
+  render();
+  scheduleCameraRender();
+}, { passive: false });
+viewFovInput.addEventListener('change', () => {
+  const parsed = Number(viewFovInput.value);
+  const clamped = Number.isFinite(parsed) ? Math.max(limits.minViewFov, Math.min(limits.maxViewFov, parsed)) : viewCamera.fov;
+  viewCamera.fov = clamped;
+  updateViewReadout();
+  scheduleCameraRender();
+});
+captureViewButton.addEventListener('click', () => {
+  if (marks.length >= limits.maxMarks) return;
+  marks.push({
+    kind: 'view',
+    camera: { eye: roundVector(viewCamera.eye), target: roundVector(viewCamera.target), fov: Math.round(viewCamera.fov * 100) / 100 },
+    note: '',
+  });
+  render();
+  marks[marks.length - 1].input.focus();
+});
+resetViewButton.addEventListener('click', () => {
+  viewCamera = cloneCamera(initialCamera);
+  updateViewReadout();
+  render();
+  if (limits.canRender) {
+    frame.src = initialFrameSource;
+    if (!hasPixelMarks()) {
+      markingCamera = cloneCamera(initialCamera);
+      markingFrameSource = initialFrameSource;
+    }
+  }
+});
+function serializeMark(mark) {
+  if (mark.kind === 'lasso') return { kind: 'lasso', points: mark.points, note: mark.note };
+  if (mark.kind === 'color') return { kind: 'color', x: mark.x, y: mark.y, hex: mark.hex, note: mark.note };
+  if (mark.kind === 'view') return { kind: 'view', camera: mark.camera, note: mark.note };
+  return { x: mark.x, y: mark.y, note: mark.note };
+}
 function markedImage() {
   const canvas = document.createElement('canvas');
   canvas.width = limits.width;
@@ -212,15 +482,16 @@ function markedImage() {
     context.stroke();
   });
   marks.forEach((mark, index) => {
+    if (mark.kind === 'view') return;
     const [centreX, centreY] = markCentre(mark);
     context.beginPath();
     context.arc(centreX, centreY, 14, 0, Math.PI * 2);
-    context.fillStyle = '#ff5a4f';
+    context.fillStyle = mark.kind === 'color' ? mark.hex : '#ff5a4f';
     context.fill();
     context.lineWidth = 2;
     context.strokeStyle = '#fff';
     context.stroke();
-    context.fillStyle = '#fff';
+    context.fillStyle = mark.kind === 'color' ? contrastTextColor(mark.hex) : '#fff';
     context.fillText(String(index + 1), centreX, centreY + 1);
   });
   return canvas.toDataURL('image/png').split(',')[1];
@@ -236,19 +507,28 @@ async function post(path, body) {
   if (!response.ok) throw new Error((await response.text()) || 'The request failed.');
 }
 sendButton.addEventListener('click', async () => {
+  if (tool === 'view' && !hasPixelMarks()) {
+    markingCamera = cloneCamera(viewCamera);
+    markingFrameSource = frame.src;
+  } else if (tool === 'view' && !camerasMatch(viewCamera, markingCamera)) {
+    frame.src = markingFrameSource;
+  }
   sendButton.disabled = true;
   try {
-    await post('send', { marks: marks.map(mark => (mark.points === undefined ? { x: mark.x, y: mark.y, note: mark.note } : { kind: 'lasso', points: mark.points, note: mark.note })), image: markedImage() });
+    const payload = { marks: marks.map(serializeMark), image: markedImage() };
+    if (limits.canRender && !camerasMatch(markingCamera, initialCamera)) payload.camera = markingCamera;
+    await post('send', payload);
     finish('ok', 'Sent to the agent. You can close this tab.');
   } catch (error) {
     sendButton.disabled = false;
-    document.getElementById('hint').textContent = error.message;
+    hint.textContent = error.message;
   }
 });
 document.getElementById('cancel').addEventListener('click', async () => {
   await post('cancel', {}).catch(() => {});
   finish('stop', 'Cancelled. You can close this tab.');
 });
+updateViewReadout();
 render();
 })();`;
 
@@ -272,14 +552,21 @@ function readBody(request) {
 
 /**
  * Serves one annotate page and waits for the person. `open(url)` shows the page (the runtime opens the browser; a test fetches it).
+ * `renderView(camera)` optionally re-renders the live scene preview when the person frames a camera in View mode.
  * `signal` ends the wait early with outcome 'aborted'; the server and the timer are released at once.
- * Resolves { outcome: 'sent' | 'cancelled' | 'timeout' | 'aborted', url, marks?, image? }; a rejected `open` rejects with the page address.
+ * Resolves { outcome: 'sent' | 'cancelled' | 'timeout' | 'aborted', url, marks?, image?, camera? }; a rejected `open` rejects with the page address.
  */
-export async function runAnnotateSession({ png, width, height, prompt = '', maxMarks = ANNOTATE_LIMITS.maxMarks, waitMs, open, signal }) {
+export async function runAnnotateSession({ png, width, height, prompt = '', maxMarks = ANNOTATE_LIMITS.maxMarks, camera = DEFAULT_CAMERA, renderView, waitMs, open, signal }) {
   const token = randomBytes(16).toString('hex');
   const base = `/${token}/`;
   const frameBytes = Buffer.from(png, 'base64');
-  const html = pageHtml({ prompt, width, height, maxMarks, maxNoteLength: ANNOTATE_LIMITS.maxNoteLength });
+  const initialCamera = {
+    eye: Array.from(camera?.eye ?? DEFAULT_CAMERA.eye),
+    target: Array.from(camera?.target ?? DEFAULT_CAMERA.target),
+    up: Array.from(camera?.up ?? DEFAULT_CAMERA.up),
+    fov: camera?.fov ?? DEFAULT_CAMERA.fov,
+  };
+  const html = pageHtml({ prompt, width, height, maxMarks, maxNoteLength: ANNOTATE_LIMITS.maxNoteLength, camera: initialCamera, canRender: typeof renderView === 'function' });
   let finish;
   const finished = new Promise(resolve => { finish = resolve; });
   const server = createServer(async (request, response) => {
@@ -302,6 +589,13 @@ export async function runAnnotateSession({ png, width, height, prompt = '', maxM
       } else if (request.method === 'GET' && route === 'frame.png') {
         response.setHeader('Content-Type', 'image/png');
         response.end(frameBytes);
+      } else if (request.method === 'POST' && route === 'render' && typeof renderView === 'function') {
+        const body = JSON.parse(await readBody(request));
+        if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Expected a JSON object body.');
+        const requestedCamera = validateViewCamera(body.camera, 'camera');
+        const renderedPng = await renderView({ ...requestedCamera, up: body.camera.up ?? initialCamera.up });
+        response.setHeader('Content-Type', 'image/png');
+        response.end(Buffer.from(renderedPng, 'base64'));
       } else if (request.method === 'POST' && route === 'cancel') {
         response.end('ok');
         finish({ outcome: 'cancelled' });
@@ -309,10 +603,11 @@ export async function runAnnotateSession({ png, width, height, prompt = '', maxM
         const body = JSON.parse(await readBody(request));
         if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Expected a JSON object body.');
         const marks = validateMarks(body.marks, { width, height, maxMarks });
-        if (!marks.length) throw new TypeError('Add at least one pin before sending.');
+        if (!marks.length) throw new TypeError('Add at least one mark before sending.');
         if (!isBoundedPng(body.image)) throw new TypeError('The marked picture is not a PNG within 1 MiB.');
+        const sentCamera = body.camera === undefined ? undefined : { ...validateViewCamera(body.camera, 'camera'), up: initialCamera.up };
         response.end('ok');
-        finish({ outcome: 'sent', marks, image: body.image });
+        finish({ outcome: 'sent', marks, image: body.image, ...(sentCamera ? { camera: sentCamera } : {}) });
       } else {
         response.writeHead(404);
         response.end();

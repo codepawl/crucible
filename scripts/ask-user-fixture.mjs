@@ -4,7 +4,7 @@
 // a browser. The variable is read once at start, never appears in a tool schema or the flag list, and no tool call can set it.
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
 import { basename, extname, isAbsolute } from 'node:path';
-import { ANNOTATE_LIMITS } from '../src/agent-annotate.js';
+import { ANNOTATE_LIMITS, validateMarks } from '../src/agent-annotate.js';
 
 export const ASK_USER_FIXTURE_VARIABLE = 'CRUCIBLE_ASK_USER_FIXTURE';
 export const ASK_USER_FIXTURE_LIMITS = Object.freeze({ maxBytes: 64 * 1024, maxPixel: 1024, maxMotionTime: 3600 });
@@ -60,19 +60,42 @@ function validateLassoPoints(lasso, where) {
 function validateFixtureMark(mark, index, name) {
   const where = `${name} mark ${index + 1}`;
   if (!mark || typeof mark !== 'object' || Array.isArray(mark)) throw fixtureError(`${where} must be an object with pixel and note.`);
-  const { pixel, lasso, note = '', motionTime } = mark;
+  const { pixel, lasso, color, hex, view, note = '', motionTime } = mark;
+  const hasColor = color !== undefined || hex !== undefined;
+  if (view !== undefined && (pixel !== undefined || lasso !== undefined || hasColor)) {
+    throw fixtureError(`${where} cannot combine view with pixel, lasso or color.`);
+  }
   if (pixel !== undefined && lasso !== undefined) throw fixtureError(`${where} has both pixel and lasso. Keep one of them.`);
-  if (lasso !== undefined) validateLassoPoints(lasso, where);
-  else validatePixel(pixel, where);
+  if (lasso !== undefined && hasColor) throw fixtureError(`${where} cannot combine lasso with color.`);
   if (typeof note !== 'string' || note.length > ANNOTATE_LIMITS.maxNoteLength) {
     throw fixtureError(`${where} note must be text of at most ${ANNOTATE_LIMITS.maxNoteLength} characters.`);
   }
   if (motionTime !== undefined && !(Number.isFinite(motionTime) && motionTime >= 0 && motionTime <= ASK_USER_FIXTURE_LIMITS.maxMotionTime)) {
     throw fixtureError(`${where} motionTime must be a number of seconds from 0 to ${ASK_USER_FIXTURE_LIMITS.maxMotionTime}.`);
   }
-  // Marks of the browser flow are { x, y, note } or { kind: 'lasso', points, note }; motionTime is checked and then ignored, the
-  // pick is of the still frame.
-  return lasso === undefined ? { x: pixel[0], y: pixel[1], note } : { kind: 'lasso', points: lasso, note };
+  if (view !== undefined) {
+    try {
+      const [validated] = validateMarks([{ kind: 'view', camera: view, note }], { width: ASK_USER_FIXTURE_LIMITS.maxPixel, height: ASK_USER_FIXTURE_LIMITS.maxPixel });
+      return validated;
+    } catch (error) {
+      throw fixtureError(`${where} ${error.message.replace(/^The annotate marks are invalid: mark 1 /, '')}`);
+    }
+  }
+  if (lasso !== undefined) {
+    validateLassoPoints(lasso, where);
+    return { kind: 'lasso', points: lasso, note };
+  }
+  validatePixel(pixel, where);
+  if (hasColor) {
+    try {
+      const [validated] = validateMarks([{ kind: 'color', x: pixel[0], y: pixel[1], ...(color !== undefined ? { color } : {}), ...(hex !== undefined ? { hex } : {}), note }], { width: ASK_USER_FIXTURE_LIMITS.maxPixel, height: ASK_USER_FIXTURE_LIMITS.maxPixel });
+      return validated;
+    } catch (error) {
+      throw fixtureError(`${where} ${error.message.replace(/^The annotate marks are invalid: mark 1 /, '')}`);
+    }
+  }
+  // Marks of the browser flow are { x, y, note }, { kind: 'lasso', points, note }, { kind: 'color', x, y, color, hex, note } or { kind: 'view', camera, note }; motionTime is checked and then ignored, the pick is of the still frame.
+  return { x: pixel[0], y: pixel[1], note };
 }
 
 /**

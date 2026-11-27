@@ -1288,7 +1288,7 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
     regions: z.array(z.strictObject({ label: z.string().max(48), shot: z.string().max(48), rect: fitRect, exclude: z.array(fitRect).max(4).optional(), lab: fitVector, holdout: z.boolean().optional() })).min(1).max(32),
     free: z.array(z.strictObject({ parameter: z.enum(FIT_PARAMETER_NAMES), min: z.number().optional(), max: z.number().optional(), start: z.number().optional() })).min(1).max(8),
     maxIterations: z.number().int().min(1).max(8).optional(), width: z.number().int().min(64).max(512).optional(), height: z.number().int().min(64).max(512).optional() }), edit, async argumentsValue => jsonResult(await runtime.fitLook(argumentsValue)));
-  const askUserTool = register('scene_ask_user', 'Open the view in the browser so the person pins points with notes; waits for Send. Use for a change hard to say in words. Returns marks with partId, point, normal, note, and the marked PNG. materialSharedWith: own material first. reviewFile: the text a review page saved, read instead of opening the browser.', z.strictObject({ ...sessionFields, reviewFile: z.string().max(16384).optional().describe('Text of the file a scene_export_web review page saved.'), prompt: z.string().max(200).optional().describe('Line shown above the picture.'), motionTime: z.number().min(0).max(3600).optional(), maxMarks: z.number().int().min(1).max(16).default(16), timeoutSeconds: z.number().int().min(10).max(900).default(300) }), askUser, async argumentsValue => {
+  const askUserTool = register('scene_ask_user', 'Open the view in the browser so the person marks points, lassos, colours or saved views with notes; waits for Send. Use for a change hard to say in words. Returns marks (partId, point, normal, color/hex or camera) and the marked PNG. materialSharedWith: own material first. reviewFile: saved review page text.', z.strictObject({ ...sessionFields, reviewFile: z.string().max(16384).optional().describe('Text of the file a scene_export_web review page saved.'), prompt: z.string().max(200).optional().describe('Line shown above the picture.'), motionTime: z.number().min(0).max(3600).optional(), maxMarks: z.number().int().min(1).max(16).default(16), timeoutSeconds: z.number().int().min(10).max(900).default(300) }), askUser, async argumentsValue => {
     const { content, image, viewMeta } = await runtime.askUser(clientShowsApps ? { ...argumentsValue, inline: true } : argumentsValue);
     return { content: [...(image ? [{ type: 'image', data: image, mimeType: 'image/png' }] : []), { type: 'text', text: JSON.stringify(content) }], ...(viewMeta ? { _meta: { 'crucible/annotate': viewMeta } } : {}) };
   });
@@ -1298,9 +1298,15 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
   const annotateViewResource = server.registerResource('annotate_view', ANNOTATE_VIEW_URI, { title: 'Mark the scene', description: 'Inline view for scene_ask_user.', mimeType: MCP_APPS_MIME_TYPE },
     async uri => ({ contents: [{ uri: uri.href, mimeType: MCP_APPS_MIME_TYPE, text: annotateViewHtml() }] }));
   annotateViewResource.disable();
-  const submitAskUserTool = register('scene_ask_user_submit', 'Used by the inline annotate view only: send the pins the person placed. Not for the agent.', z.strictObject({
+  const submitMark = z.union([
+    z.strictObject({ kind: z.literal('pin').optional(), x: z.number(), y: z.number(), note: z.string().max(280).optional() }),
+    z.strictObject({ kind: z.literal('lasso'), points: z.array(z.tuple([z.number(), z.number()])).min(3).max(64), note: z.string().max(280).optional() }),
+    z.strictObject({ kind: z.literal('color'), x: z.number(), y: z.number(), color: z.union([vector3, z.string().regex(/^#[0-9a-fA-F]{6}$/)]).optional(), hex: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), note: z.string().max(280).optional() }),
+    z.strictObject({ kind: z.literal('view'), camera: z.strictObject({ eye: vector3, target: vector3, fov: z.number().min(5).max(120) }), note: z.string().max(280).optional() }),
+  ]);
+  const submitAskUserTool = register('scene_ask_user_submit', 'Used by the inline annotate view only: send the marks the person placed. Not for the agent.', z.strictObject({
     nonce: z.string().regex(/^[a-f0-9]{32}$/),
-    marks: z.array(z.strictObject({ x: z.number(), y: z.number(), note: z.string().max(280).optional() })).min(1).max(16),
+    marks: z.array(submitMark).min(1).max(16),
     image: z.string().max(1500000),
   }), askUser, async argumentsValue => {
     const { content, image } = await runtime.submitAskUser(argumentsValue);

@@ -145,3 +145,7 @@ Mesh inspection bounds describe authored geometry. Skinning and morphs can move 
 - It supports procedural recipe scenes, not an imported asset scene. The grid is a PNG of at most 1 MiB under the same total deadline as a review.
 
 The metadata lists each shot with its value. To keep the best value, call `scene_apply` with it. `scene_capabilities` topic `wedge` lists the limits.
+
+## Interactive mark review with a person
+
+When a change is easier to point at than describe, `scene_ask_user` opens an annotate view (in the browser or inline in an MCP Apps host) where a person leaves up to 16 marks: `pin` spots, `lasso` region outlines, `color` picks (`color` linear `[r, g, b]` plus `"#rrggbb"` `hex` on the hit part) and `view` camera framings (`{ eye, target, fov }` within `5` to `120` degrees). See [the MCP guide](mcp.md) for the full mark contract.

@@ -1521,11 +1521,45 @@ window.__agentPreview = {
     return mutationStatus(record);
   },
   // One frame for scene_ask_user: the look, plus the camera it was drawn with so the marks can be turned into rays later.
-  annotateFrame({ sessionId, motionTime }) {
-    const frame = this.look({ sessionId, motionTime });
-    const camera = Object.fromEntries(Object.entries(requireSession(sessionId).scene.camera)
+  // An optional camera renders a preview view for camera framing without mutating the scene camera or revision.
+  annotateFrame({ sessionId, motionTime, camera: requestedCamera }) {
+    const record = requireSession(sessionId);
+    const serializeCamera = sourceCamera => Object.fromEntries(Object.entries(sourceCamera)
       .map(([field, value]) => [field, ArrayBuffer.isView(value) ? Array.from(value) : value]));
-    return { ...frame, width: canvas.width, height: canvas.height, camera };
+    if (!requestedCamera) {
+      const frame = this.look({ sessionId, motionTime });
+      return { ...frame, width: canvas.width, height: canvas.height, camera: serializeCamera(record.scene.camera) };
+    }
+    const overrideCamera = {
+      ...record.scene.camera,
+      eye: Float32Array.from(requestedCamera.eye),
+      target: Float32Array.from(requestedCamera.target),
+      fov: requestedCamera.fov,
+      ...(requestedCamera.up ? { up: Float32Array.from(requestedCamera.up) } : {}),
+    };
+    validatePreviewCamera(overrideCamera);
+    if (motionTime !== undefined) {
+      if (typeof record.scene.sampleMotion !== 'function') {
+        throw new RangeError('Procedural motion time is unavailable for imported assets.');
+      }
+      sampleMotionTime(record.scene, motionTime);
+    }
+    const poseTime = record.scene.motionTime ?? undefined;
+    draw(record, 0, overrideCamera, poseTime === undefined ? {} : { passTime: poseTime });
+    const dataUrl = canvas.toDataURL('image/png');
+    return {
+      data: dataUrl.slice('data:image/png;base64,'.length),
+      mimeType: 'image/png',
+      width: canvas.width,
+      height: canvas.height,
+      camera: serializeCamera(overrideCamera),
+      metadata: {
+        sessionId,
+        revision: record.scene.revision,
+        topologyRevision: record.scene.topologyRevision,
+        motionTime: record.scene.motionTime ?? null,
+      },
+    };
   },
   async pickMarks({ sessionId, camera, marks, width, height, motionTime }) {
     const record = requireSession(sessionId);

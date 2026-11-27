@@ -1,0 +1,1 @@
+- `scene_ask_user` supports `color` picks and saved `view` camera framing marks alongside `pin` and `lasso` (#922)
