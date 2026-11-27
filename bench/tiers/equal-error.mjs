@@ -1,5 +1,5 @@
 // The equal-error assessment of Cook native against Cycles: how many samples Cook needs to reach Cycles' 256 sample error, and what that costs in time.
-// Shared by make-table.mjs (the tables) and make-home-tiers.mjs (the home page cards). The caller says how to read one engine's measured points
+// Shared by make-table.mjs (the tables). The caller says how to read one engine's measured points
 // ({ samples, relMse, samplingSeconds, totalSeconds }) so each keeps its own rule for contended runs.
 import { median } from './idle-gate.mjs';
 
