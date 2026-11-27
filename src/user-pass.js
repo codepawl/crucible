@@ -1,4 +1,5 @@
-import { compileProgram, fullscreenVertex } from './gl-program.js';
+import { fullscreenVertex } from './gl-program.js';
+import { backendFor } from './glaze-backend.js';
 import {
   SNIPPET_LIMITS, requireKnownFields, validateShaderSnippet, validateSnippetUniforms, snippetUniformDeclarations, mapShaderInfoLog,
 } from './shader-snippet-validator.js';
@@ -316,34 +317,23 @@ void main() {
   outputColor = texelFetch(sourceTexture, clamp(block, ivec2(0), textureSize(sourceTexture, 0) - 1), 0);
 }`;
 
-function createTexture(context, width, height, filter, withAlpha = true) {
-  const texture = context.createTexture();
-  context.bindTexture(context.TEXTURE_2D, texture);
-  context.texImage2D(context.TEXTURE_2D, 0, withAlpha ? context.RGBA8 : context.RGB8, width, height, 0, withAlpha ? context.RGBA : context.RGB, context.UNSIGNED_BYTE, null);
-  for (const parameter of [context.TEXTURE_MIN_FILTER, context.TEXTURE_MAG_FILTER]) context.texParameteri(context.TEXTURE_2D, parameter, filter);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
-  return texture;
-}
-
-function createTarget(context, width, height) {
+function createTarget(backend, width, height) {
   // Nearest, so a pass rendered at a lower scale is enlarged into hard pixels by whatever reads it.
-  const texture = createTexture(context, width, height, context.NEAREST);
-  const framebuffer = context.createFramebuffer();
-  context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-  context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
-  if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) {
+  const target = backend.createFramebufferTarget({ width, height, hdr: false, linear: false, clamp: true });
+  if (!target.complete) {
+    backend.deleteFramebuffer(target.framebuffer);
+    backend.deleteTexture(target.colorTexture);
     throw new Error('Post pass framebuffer allocation failed. Fix: lower the pass scale or the render size.');
   }
-  return { texture, framebuffer, width, height };
+  return { texture: target.colorTexture, framebuffer: target.framebuffer, width, height };
 }
 
-function setUniformValue(context, location, { type, value }) {
-  if (type === 'float') context.uniform1f(location, value);
-  else if (type === 'int') context.uniform1i(location, value);
-  else if (type === 'vec2') context.uniform2fv(location, value);
-  else if (type === 'vec3') context.uniform3fv(location, value);
-  else context.uniform4fv(location, value);
+function setUniformValue(backend, location, { type, value }) {
+  if (type === 'float') backend.uniform1f(location, value);
+  else if (type === 'int') backend.uniform1i(location, value);
+  else if (type === 'vec2') backend.uniform2fv(location, value);
+  else if (type === 'vec3') backend.uniform3fv(location, value);
+  else backend.uniform4fv(location, value);
 }
 
 function compilationError(pass, error, built) {
@@ -361,48 +351,48 @@ function compilationError(pass, error, built) {
  */
 export function installUserPasses(renderer) {
   if (renderer.userPasses) return renderer;
+  const backend = backendFor(renderer);
   const state = { passes: [], key: '[]', antialias: 'fxaa', entries: [], capture: null, copy: null, smooth: null };
   const builtByPass = new WeakMap();
-  const inputs = createPassInputs(renderer);
+  const inputs = createPassInputs(renderer, backend);
 
-  function releaseEntryTarget(context, entry) {
+  function releaseEntryTarget(entry) {
     for (const slot of ['target', 'enlarged']) {
       if (!entry[slot]) continue;
-      context.deleteTexture(entry[slot].texture);
-      context.deleteFramebuffer(entry[slot].framebuffer);
+      backend.deleteTexture(entry[slot].texture);
+      backend.deleteFramebuffer(entry[slot].framebuffer);
       entry[slot] = null;
     }
   }
 
-  function releaseEntry(context, entry) {
-    releaseEntryTarget(context, entry);
-    context.deleteProgram(entry.program);
+  function releaseEntry(entry) {
+    releaseEntryTarget(entry);
+    backend.deleteProgram(entry.program);
   }
 
-  function releaseTargets(context) {
-    if (state.capture) context.deleteTexture(state.capture.texture);
+  function releaseTargets() {
+    if (state.capture) backend.deleteTexture(state.capture.texture);
     state.capture = null;
-    state.entries.forEach(entry => releaseEntryTarget(context, entry));
-    inputs.releaseCaptures(context);
+    state.entries.forEach(entry => releaseEntryTarget(entry));
+    inputs.releaseCaptures();
   }
 
-  function dispose(context) {
-    releaseTargets(context);
-    inputs.dispose(context);
-    state.entries.forEach(entry => context.deleteProgram(entry.program));
+  function dispose() {
+    releaseTargets();
+    inputs.dispose();
+    state.entries.forEach(entry => backend.deleteProgram(entry.program));
     state.entries = [];
-    if (state.copy) context.deleteProgram(state.copy.program);
+    if (state.copy) backend.deleteProgram(state.copy.program);
     state.copy = null;
-    if (state.smooth) context.deleteProgram(state.smooth.program);
+    if (state.smooth) backend.deleteProgram(state.smooth.program);
     state.smooth = null;
-    if (state.enlarge) context.deleteProgram(state.enlarge.program);
+    if (state.enlarge) backend.deleteProgram(state.enlarge.program);
     state.enlarge = null;
   }
 
   // One compiled program per pass, rebuilt only when its fragment or its uniform declarations change.
   function compiledEntries() {
-    const context = renderer.context;
-    state.entries.slice(state.passes.length).forEach(entry => releaseEntry(context, entry));
+    state.entries.slice(state.passes.length).forEach(entry => releaseEntry(entry));
     state.entries.length = Math.min(state.entries.length, state.passes.length);
     state.passes.forEach((pass, index) => {
       if (!builtByPass.has(pass)) builtByPass.set(pass, buildPassFragment(pass));
@@ -414,23 +404,18 @@ export function installUserPasses(renderer) {
       }
       let program;
       try {
-        program = compileProgram(context, fullscreenVertex, built.source);
+        program = backend.compileProgram(fullscreenVertex, built.source);
       } catch (error) {
         throw compilationError(pass, error, built);
       }
-      if (entry) releaseEntry(context, entry);
+      if (entry) releaseEntry(entry);
       const names = ['sceneColor', 'sceneDepth', 'sceneObjectIds', 'u67_objectCount', 'u67_objectIds', 'u67_objectSlots', 'u67_inverseViewProjection', 'u67_uvScale', 'u67_uvOffset', 'resolution', 'time', 'cameraEye', 'sceneNormal', 'sceneAlbedo', 'sceneEmission', ...Object.keys(pass.luts ?? {}), ...Object.keys(pass.uniforms)];
       state.entries[index] = {
         pass, source: built.source, program, target: null,
-        locations: Object.fromEntries(names.map(name => [name, context.getUniformLocation(program, name)])),
+        locations: Object.fromEntries(names.map(name => [name, backend.uniformLocation(program, name)])),
       };
     });
     return state.entries;
-  }
-
-  // On a pixel grid (src/pixel-grid.js) the passes read hard pixels and never smooth the edges they draw.
-  function captureFilter() {
-    return renderer.pixelGrid?.active ? renderer.context.NEAREST : renderer.context.LINEAR;
   }
 
   function effectiveAntialias() {
@@ -438,85 +423,74 @@ export function installUserPasses(renderer) {
   }
 
   function captureFinishedFrame(width, height) {
-    const context = renderer.context;
     if (state.capture && (state.capture.width !== width || state.capture.height !== height)) {
-      context.deleteTexture(state.capture.texture);
+      backend.deleteTexture(state.capture.texture);
       state.capture = null;
     }
     // A copy from the canvas needs a texture format the canvas has: without an alpha channel it has none either.
-    const withAlpha = Boolean(context.getContextAttributes()?.alpha);
-    state.capture ??= { texture: createTexture(context, width, height, captureFilter(), withAlpha), width, height };
-    context.bindFramebuffer(context.FRAMEBUFFER, null);
-    context.bindTexture(context.TEXTURE_2D, state.capture.texture);
-    context.copyTexSubImage2D(context.TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
+    const withAlpha = backend.hasCanvasAlpha();
+    // On a pixel grid (src/pixel-grid.js) the passes read hard pixels and never smooth the edges they draw.
+    state.capture ??= { texture: backend.createDataTexture2D({ width, height, format: withAlpha ? 'rgba8' : 'rgb8', linear: !renderer.pixelGrid?.active, clamp: true }), width, height };
+    backend.copyFramebufferToTexture(null, state.capture.texture, width, height);
     return state.capture.texture;
   }
 
   function targetFor(entry, width, height) {
-    if (entry.target && (entry.target.width !== width || entry.target.height !== height)) releaseEntryTarget(renderer.context, entry);
-    entry.target ??= createTarget(renderer.context, width, height);
+    if (entry.target && (entry.target.width !== width || entry.target.height !== height)) releaseEntryTarget(entry);
+    entry.target ??= createTarget(backend, width, height);
     return entry.target;
   }
 
-  function drawPass(entry, inputTexture, width, height, frame, placement = FULL_FRAME_PLACEMENT) {
-    const context = renderer.context;
+  function drawPass(entry, inputTexture, width, height, frame, placement = FULL_FRAME_PLACEMENT, framebuffer = null) {
     const { locations, pass } = entry;
-    context.viewport(0, 0, width, height);
-    context.useProgram(entry.program);
-    context.uniform2fv(locations.u67_uvScale, placement.uvScale);
-    context.uniform2fv(locations.u67_uvOffset, placement.uvOffset);
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, inputTexture);
-    context.uniform1i(locations.sceneColor, 0);
-    context.activeTexture(context.TEXTURE1);
-    context.bindTexture(context.TEXTURE_2D, renderer.depthTexture ?? renderer.whiteTexture);
-    context.uniform1i(locations.sceneDepth, 1);
-    context.uniformMatrix4fv(locations.u67_inverseViewProjection, false, renderer.inverseViewProjection);
-    context.uniform2f(locations.resolution, placement.resolution?.[0] ?? width, placement.resolution?.[1] ?? height);
-    context.uniform1f(locations.time, frame.passTime ?? frame.time ?? 0);
-    context.uniform3fv(locations.cameraEye, frame.eye ?? ORIGIN);
-    for (const [name, uniform] of Object.entries(pass.uniforms)) setUniformValue(context, locations[name], uniform);
+    backend.beginFullscreenPass(framebuffer, width, height, entry.program);
+    backend.uniform2fv(locations.u67_uvScale, placement.uvScale);
+    backend.uniform2fv(locations.u67_uvOffset, placement.uvOffset);
+    backend.bindTextureUnit(0, inputTexture);
+    backend.uniform1i(locations.sceneColor, 0);
+    backend.bindTextureUnit(1, renderer.depthTexture ?? renderer.whiteTexture);
+    backend.uniform1i(locations.sceneDepth, 1);
+    backend.uniformMatrix4fv(locations.u67_inverseViewProjection, renderer.inverseViewProjection);
+    backend.uniform2f(locations.resolution, placement.resolution?.[0] ?? width, placement.resolution?.[1] ?? height);
+    backend.uniform1f(locations.time, frame.passTime ?? frame.time ?? 0);
+    backend.uniform3fv(locations.cameraEye, frame.eye ?? ORIGIN);
+    for (const [name, uniform] of Object.entries(pass.uniforms)) setUniformValue(backend, locations[name], uniform);
     const { identifiers, slots } = pass.objects ? objectIdentifierSlots(renderer, pass.objects) : { identifiers: [], slots: [] };
-    context.uniform1i(locations.u67_objectCount, identifiers.length);
+    backend.uniform1i(locations.u67_objectCount, identifiers.length);
     if (identifiers.length > 0) {
       const padded = new Int32Array(MAXIMUM_MASK_PARTS);
       padded.set(identifiers);
-      context.uniform1iv(locations.u67_objectIds, padded);
+      backend.uniform1iv(locations.u67_objectIds, padded);
       const paddedSlots = new Int32Array(MAXIMUM_MASK_PARTS);
       paddedSlots.set(slots);
-      context.uniform1iv(locations.u67_objectSlots, paddedSlots);
+      backend.uniform1iv(locations.u67_objectSlots, paddedSlots);
     }
     // Before the object IDs: making a texture binds it to the active unit.
-    inputs.bind(context, pass, locations);
+    inputs.bind(pass, locations);
     const readsObjectIds = identifiers.length > 0 || Boolean(pass.needs?.includes('objectId'));
     if (readsObjectIds) {
       const objectIdTexture = renderer.passSupport?.texture;
       if (!objectIdTexture) {
         throw new Error('A user pass with objects or needs: ["objectId"] requires the objectId pass first. Call renderer.render({ ...frame, pass: "objectId" }) before renderer.render(frame).');
       }
-      context.activeTexture(context.TEXTURE2);
-      context.bindTexture(context.TEXTURE_2D, objectIdTexture);
-      context.uniform1i(locations.sceneObjectIds, 2);
+      backend.bindTextureUnit(2, objectIdTexture);
+      backend.uniform1i(locations.sceneObjectIds, 2);
     }
-    context.drawArrays(context.TRIANGLES, 0, 3);
+    backend.drawFullscreenTriangles();
     // The next frame draws into the object ID target, so it must not stay bound as a texture.
-    if (readsObjectIds) unbindMask(context);
+    if (readsObjectIds) unbindMask(backend);
   }
 
   function drawTextureToCanvas(slot, fragment, texture, width, height, offset = null, framebuffer = null) {
-    const context = renderer.context;
     if (!state[slot]) {
-      const program = compileProgram(context, fullscreenVertex, fragment);
-      state[slot] = { program, texture: context.getUniformLocation(program, 'sourceTexture'), offset: context.getUniformLocation(program, 'u67_offset') };
+      const program = backend.compileProgram(fullscreenVertex, fragment);
+      state[slot] = { program, texture: backend.uniformLocation(program, 'sourceTexture'), offset: backend.uniformLocation(program, 'u67_offset') };
     }
-    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-    context.viewport(0, 0, width, height);
-    context.useProgram(state[slot].program);
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, texture);
-    context.uniform1i(state[slot].texture, 0);
-    if (state[slot].offset) context.uniform2f(state[slot].offset, offset?.[0] ?? 0, offset?.[1] ?? 0);
-    context.drawArrays(context.TRIANGLES, 0, 3);
+    backend.beginFullscreenPass(framebuffer, width, height, state[slot].program);
+    backend.bindTextureUnit(0, texture);
+    backend.uniform1i(state[slot].texture, 0);
+    if (state[slot].offset) backend.uniform2f(state[slot].offset, offset?.[0] ?? 0, offset?.[1] ?? 0);
+    backend.drawFullscreenTriangles();
   }
 
   // On a pixel grid a pass below scale 1 draws one pixel per whole block of grid pixels (1 / scale, rounded), on the lattice that
@@ -529,24 +503,22 @@ export function installUserPasses(renderer) {
 
   function enlargedTarget(entry, width, height) {
     if (entry.enlarged && (entry.enlarged.width !== width || entry.enlarged.height !== height)) {
-      renderer.context.deleteTexture(entry.enlarged.texture);
-      renderer.context.deleteFramebuffer(entry.enlarged.framebuffer);
+      backend.deleteTexture(entry.enlarged.texture);
+      backend.deleteFramebuffer(entry.enlarged.framebuffer);
       entry.enlarged = null;
     }
-    entry.enlarged ??= createTarget(renderer.context, width, height);
+    entry.enlarged ??= createTarget(backend, width, height);
     return entry.enlarged;
   }
 
   // Block j covers grid pixels j * size - origin up to the next block; the pass reads uv at the block centre and reports the block
   // count as its resolution. Then each grid pixel takes its block again, into a grid-sized target or onto the canvas.
   function drawBlockPass(entry, inputTexture, width, height, frame, block, toCanvas) {
-    const context = renderer.context;
     const { size, origin } = block;
     const effectiveOrigin = enlargedBlockOrigin(origin, size, entry.pass.offset);
     const columns = Math.ceil((width + origin[0]) / size);
     const rows = Math.ceil((height + origin[1]) / size);
     const target = targetFor(entry, columns, rows);
-    context.bindFramebuffer(context.FRAMEBUFFER, target.framebuffer);
     // An even block has no middle pixel: its centre is a pixel edge, where nearest sampling could take either side, so it reads the
     // pixel just before the centre.
     const centring = size % 2 === 0 ? 0.5 : 0;
@@ -554,32 +526,25 @@ export function installUserPasses(renderer) {
       uvScale: [columns * size / width, rows * size / height],
       uvOffset: [-(origin[0] + centring) / width, -(origin[1] + centring) / height],
       resolution: [width / size, height / size],
-    });
+    }, target.framebuffer);
     const output = toCanvas ? null : enlargedTarget(entry, width, height);
     if (!state.enlarge) {
-      const program = compileProgram(context, fullscreenVertex, blockEnlargeFragment);
-      state.enlarge = { program, uniforms: Object.fromEntries(['sourceTexture', 'blockSize', 'blockOrigin'].map(name => [name, context.getUniformLocation(program, name)])) };
+      const program = backend.compileProgram(fullscreenVertex, blockEnlargeFragment);
+      state.enlarge = { program, uniforms: Object.fromEntries(['sourceTexture', 'blockSize', 'blockOrigin'].map(name => [name, backend.uniformLocation(program, name)])) };
     }
-    context.bindFramebuffer(context.FRAMEBUFFER, output?.framebuffer ?? null);
-    context.viewport(0, 0, width, height);
-    context.useProgram(state.enlarge.program);
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, target.texture);
-    context.uniform1i(state.enlarge.uniforms.sourceTexture, 0);
-    context.uniform1f(state.enlarge.uniforms.blockSize, size);
-    context.uniform2fv(state.enlarge.uniforms.blockOrigin, effectiveOrigin);
-    context.drawArrays(context.TRIANGLES, 0, 3);
+    backend.beginFullscreenPass(output?.framebuffer ?? null, width, height, state.enlarge.program);
+    backend.bindTextureUnit(0, target.texture);
+    backend.uniform1i(state.enlarge.uniforms.sourceTexture, 0);
+    backend.uniform1f(state.enlarge.uniforms.blockSize, size);
+    backend.uniform2fv(state.enlarge.uniforms.blockOrigin, effectiveOrigin);
+    backend.drawFullscreenTriangles();
     return output?.texture ?? null;
   }
 
   function runPasses(frame) {
-    const context = renderer.context;
     const { width, height } = renderer.canvas;
     const entries = compiledEntries();
-    context.disable(context.DEPTH_TEST);
-    context.disable(context.CULL_FACE);
-    context.disable(context.BLEND);
-    context.bindVertexArray(null);
+    backend.setFullscreenState();
     const steps = planUserPassSteps(entries.map(entry => entry.pass), effectiveAntialias());
     const antialiasLast = steps[steps.length - 1].kind === 'antialias';
     let input = captureFinishedFrame(width, height);
@@ -602,8 +567,7 @@ export function installUserPasses(renderer) {
       const passWidth = fullSize ? width : Math.max(1, Math.round(width * entry.pass.scale));
       const passHeight = fullSize ? height : Math.max(1, Math.round(height * entry.pass.scale));
       const target = directToCanvas ? null : targetFor(entry, passWidth, passHeight);
-      context.bindFramebuffer(context.FRAMEBUFFER, target?.framebuffer ?? null);
-      drawPass(entry, input, passWidth, passHeight, frame);
+      drawPass(entry, input, passWidth, passHeight, frame, FULL_FRAME_PLACEMENT, target?.framebuffer ?? null);
       if (hasOffset && (!isLast || antialiasLast)) {
         const enlarged = enlargedTarget(entry, width, height);
         drawTextureToCanvas('copy', copyFragment, target.texture, width, height, offset, enlarged.framebuffer);
@@ -617,7 +581,7 @@ export function installUserPasses(renderer) {
     });
     if (antialiasLast) drawTextureToCanvas('smooth', antialiasFragment, input, width, height);
     else if (!drewToCanvas) drawTextureToCanvas('copy', copyFragment, input, width, height, finalOffset);
-    inputs.prune(context, state.passes);
+    inputs.prune(state.passes);
   }
 
   // A pass that lists `needs` or `objects` reads render passes drawn from this frame's camera, so they are drawn here before the lit frame unless the host already drew `objectId`.

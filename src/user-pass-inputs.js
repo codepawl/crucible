@@ -1,3 +1,4 @@
+import { backendFor } from './glaze-backend.js';
 import { RESERVED_WORDS, UNIFORM_NAME_PATTERN, requireKnownFields } from './shader-snippet-validator.js';
 
 // Extra inputs of a user post pass (issue #2954): exact G-buffer passes the pass opts into with `needs`, and read-only palette
@@ -162,16 +163,8 @@ const FIRST_LUT_UNIT = 6;
 const CAPTURED_ORDER = Object.freeze(['normal', 'albedo', 'emission']);
 
 // Uploading binds the new texture to the active unit; the binding that was there comes back, so a unit already set up for the draw keeps its texture.
-function createInputTexture(context, width, height, bytes) {
-  const previousBinding = context.getParameter(context.TEXTURE_BINDING_2D);
-  const texture = context.createTexture();
-  context.bindTexture(context.TEXTURE_2D, texture);
-  context.texImage2D(context.TEXTURE_2D, 0, context.RGBA8, width, height, 0, context.RGBA, context.UNSIGNED_BYTE, bytes ?? null);
-  for (const parameter of [context.TEXTURE_MIN_FILTER, context.TEXTURE_MAG_FILTER]) context.texParameteri(context.TEXTURE_2D, parameter, context.NEAREST);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
-  context.bindTexture(context.TEXTURE_2D, previousBinding);
-  return texture;
+function createInputTexture(backend, width, height, bytes = null) {
+  return backend.createDataTexture2D({ width, height, format: 'rgba8', linear: false, clamp: true, data: bytes, restoreBinding: true });
 }
 
 /**
@@ -179,7 +172,7 @@ function createInputTexture(context, width, height, bytes) {
  * keeps a copy of each (the render pass target holds only the last one); a frame whose passes ask for none draws nothing.
  * The object ID pass is drawn last, so it stays in renderer.passSupport.texture where the `objects` mask reads it.
  */
-export function createPassInputs(renderer) {
+export function createPassInputs(renderer, backend = backendFor(renderer)) {
   const captured = new Map();
   const paletteTextures = new Map();
 
@@ -187,18 +180,15 @@ export function createPassInputs(renderer) {
     return new Set(passes.flatMap(pass => pass.needs ?? []));
   }
 
-  function capture(context, need, width, height) {
+  function capture(need, width, height) {
     let copy = captured.get(need);
     if (copy && (copy.width !== width || copy.height !== height)) {
-      context.deleteTexture(copy.texture);
+      backend.deleteTexture(copy.texture);
       copy = null;
     }
-    copy ??= { texture: createInputTexture(context, width, height), width, height };
+    copy ??= { texture: createInputTexture(backend, width, height), width, height };
     captured.set(need, copy);
-    context.bindFramebuffer(context.FRAMEBUFFER, renderer.passSupport.framebuffer);
-    context.bindTexture(context.TEXTURE_2D, copy.texture);
-    context.copyTexSubImage2D(context.TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
-    context.bindFramebuffer(context.FRAMEBUFFER, null);
+    backend.copyFramebufferToTexture(renderer.passSupport.framebuffer, copy.texture, width, height);
   }
 
   return {
@@ -214,55 +204,53 @@ export function createPassInputs(renderer) {
       const { width, height } = renderer.canvas;
       for (const need of capturedNeeds) {
         renderPass({ ...frame, pass: need, previousCamera: undefined });
-        capture(renderer.context, need, width, height);
+        capture(need, width, height);
       }
       if (drawsObjectIds) renderPass({ ...frame, pass: 'objectId', previousCamera: undefined });
     },
 
     /** Binds the captured passes and palettes of `pass` to their units and points the uniforms at them. */
-    bind(context, pass, locations) {
+    bind(pass, locations) {
       for (const need of pass.needs ?? []) {
         if (need === 'objectId') continue;
-        context.activeTexture(context.TEXTURE0 + CAPTURED_UNITS[need]);
-        context.bindTexture(context.TEXTURE_2D, captured.get(need).texture);
-        context.uniform1i(locations[`scene${need[0].toUpperCase()}${need.slice(1)}`], CAPTURED_UNITS[need]);
+        backend.bindTextureUnit(CAPTURED_UNITS[need], captured.get(need).texture);
+        backend.uniform1i(locations[`scene${need[0].toUpperCase()}${need.slice(1)}`], CAPTURED_UNITS[need]);
       }
       Object.entries(pass.luts ?? {}).sort(([first], [second]) => (first < second ? -1 : 1)).forEach(([name, lut], index) => {
-        context.activeTexture(context.TEXTURE0 + FIRST_LUT_UNIT + index);
-        context.bindTexture(context.TEXTURE_2D, this.paletteTexture(context, pass, name, lut));
-        context.uniform1i(locations[name], FIRST_LUT_UNIT + index);
+        backend.bindTextureUnit(FIRST_LUT_UNIT + index, this.paletteTexture(pass, name, lut));
+        backend.uniform1i(locations[name], FIRST_LUT_UNIT + index);
       });
     },
 
     /** The texture of one palette, uploaded again only when its pixels changed. */
-    paletteTexture(context, pass, name, lut) {
+    paletteTexture(pass, name, lut) {
       const key = `${pass.name}:${name}`;
       const known = paletteTextures.get(key);
       if (known && known.signature === lut.pixels) return known.texture;
-      if (known) context.deleteTexture(known.texture);
-      const texture = createInputTexture(context, lut.width, lut.height, lutBytes(lut));
+      if (known) backend.deleteTexture(known.texture);
+      const texture = createInputTexture(backend, lut.width, lut.height, lutBytes(lut));
       paletteTextures.set(key, { signature: lut.pixels, texture });
       return texture;
     },
 
     /** Drops the palette textures of passes and palettes that are gone. */
-    prune(context, passes) {
+    prune(passes) {
       const used = new Set(passes.flatMap(pass => Object.keys(pass.luts ?? {}).map(name => `${pass.name}:${name}`)));
       for (const [key, entry] of paletteTextures) {
         if (used.has(key)) continue;
-        context.deleteTexture(entry.texture);
+        backend.deleteTexture(entry.texture);
         paletteTextures.delete(key);
       }
     },
 
-    releaseCaptures(context) {
-      captured.forEach(copy => context.deleteTexture(copy.texture));
+    releaseCaptures() {
+      captured.forEach(copy => backend.deleteTexture(copy.texture));
       captured.clear();
     },
 
-    dispose(context) {
-      this.releaseCaptures(context);
-      paletteTextures.forEach(entry => context.deleteTexture(entry.texture));
+    dispose() {
+      this.releaseCaptures();
+      paletteTextures.forEach(entry => backend.deleteTexture(entry.texture));
       paletteTextures.clear();
     },
   };

@@ -12,6 +12,10 @@ import { createEnvironmentMap, createEnvironmentResources, createEnvironmentReso
 import { installPostSteps } from '../src/post-steps.js';
 import { initializeSplatPlaceholders, createSplatResources, bindSplat, disposeSplatResources } from '../src/splat-renderer.js';
 import { resolveEffects } from '../src/effects.js';
+import { installMeshBlend } from '../src/mesh-blend.js';
+import { drawMeshVolumes } from '../src/mesh-volume-pass.js';
+import { installUserPasses } from '../src/user-pass.js';
+import { attachGaussianSplats, createGaussianSplats } from '../src/gaussian-splats.js';
 
 // Constants answer their own name, so the log reads GL_CONSTANT; methods log their call and return a numbered object.
 function createRecordingContext(overrides = {}) {
@@ -644,6 +648,312 @@ test('splat-renderer.js routes placeholders, texture arrays, bindings and dispos
 
   const methodNames = calls.map((call) => call[0]);
   for (const expected of ['createTextureArray', 'useProgram', 'uniform1i', 'bindTextureUnit', 'uniform1f', 'maxTextureSize', 'uniform4fv', 'uniform1fv', 'deleteTexture']) {
+    assert.ok(methodNames.includes(expected), `expected ${expected} call`);
+  }
+});
+
+test('vertex array, data texture, framebuffer capture, state, draw and multisample attachment methods issue exact WebGL2 calls', () => {
+  const originalUseProgramCalls = [];
+  let activeFramebuffer = { label: 'msFb' };
+  const { context, calls } = createRecordingContext({
+    TEXTURE0: 33984,
+    COLOR_ATTACHMENT0: 36064,
+    COLOR_ATTACHMENT1: 36065,
+    isContextLost: () => true,
+    getContextAttributes: () => ({ alpha: true }),
+    isEnabled: (cap) => cap === 'BLEND',
+    getParameter: (parameter) => {
+      if (parameter === 'TEXTURE_BINDING_2D') return { label: 'prevTex' };
+      if (parameter === 'READ_FRAMEBUFFER_BINDING') return { label: 'prevReadFb' };
+      if (parameter === 'PIXEL_PACK_BUFFER_BINDING') return { label: 'prevPackBuf' };
+      if (parameter === 'DRAW_FRAMEBUFFER_BINDING') return activeFramebuffer;
+      return null;
+    },
+    useProgram: (program) => {
+      originalUseProgramCalls.push(program);
+    },
+  });
+  const backend = new WebGL2GlazeBackend(context);
+
+  const vertexBuffer = backend.createBuffer();
+  backend.uploadBuffer('array', vertexBuffer, new Float32Array(9), 'static');
+  const indexBuffer = backend.createBuffer();
+  backend.uploadBuffer('element', indexBuffer, new Uint16Array(3), 'dynamic');
+  backend.updateBuffer(vertexBuffer, new Float32Array(6), 0, 3);
+  const vertexArray = backend.createVertexArray([
+    { buffer: vertexBuffer, size: 3 },
+    { buffer: vertexBuffer, size: 1, integer: true, divisor: 1 },
+  ], indexBuffer);
+  backend.bindVertexArray(vertexArray);
+  backend.drawIndexed(3, true);
+  backend.drawIndexed(6, false);
+  backend.drawInstancedStrip(4, 5);
+  backend.deleteVertexArray(vertexArray);
+
+  const rgTarget = backend.createFramebufferTarget({ width: 8, height: 8, colorFormat: 'rg32f', clamp: true });
+  assert.equal(rgTarget.complete, true);
+  assert.throws(() => backend.createFramebufferTarget({ width: 4, height: 4, colorFormat: 'bad' }), /Unsupported texture format/);
+
+  assert.equal(backend.isContextLost(), true);
+  assert.equal(backend.hasCanvasAlpha(), true);
+  assert.equal(backend.isBlendEnabled(), true);
+  backend.bindFramebuffer({ label: 'targetFb' });
+  backend.setViewport(16, 8, 2, 4);
+  backend.clearColorBuffer(0, [0, 1, 0, 0]);
+  backend.setRenderState({
+    depthTest: false,
+    depthWrite: false,
+    cullFace: true,
+    blend: true,
+    blendMode: 'one',
+    blendEquation: 'min',
+    colorMask: [true, false, false, false],
+  });
+  backend.setRenderState({ blendMode: 'premultiplied', blendEquation: 'add' });
+
+  const tableTexture = backend.createDataTexture2D({ width: 4, height: 1, format: 'r32f', clamp: false, data: new Float32Array(4) });
+  const restoredTexture = backend.createDataTexture2D({ width: 2, height: 2, format: 'rgba8', linear: true, clamp: true, restoreBinding: true });
+  backend.uploadDataTexture2D(tableTexture, { width: 4, height: 1, format: 'r32f', data: new Float32Array(4), reallocate: true });
+  backend.uploadDataTexture2D(restoredTexture, { y: 1, width: 2, height: 1, format: 'rgba32ui', data: new Uint32Array(8), unit: 10 });
+  backend.copyFramebufferToTexture({ label: 'srcFb' }, restoredTexture, 2, 2);
+  backend.readIntegerTexture2D(restoredTexture, 2, 2, new Uint32Array(16));
+
+  const renderbuffer = backend.createMultisampleColorAttachment({ label: 'msFb' }, 1, 4, 16, 8);
+  assert.equal(renderbuffer.label, 'renderbuffer9');
+  backend.clearColorAttachment({ label: 'msFb' }, 1, [0, 0, 0, 0]);
+  backend.resolveColorAttachment({ label: 'msFb' }, { label: 'partFb' }, 1, 16, 8);
+
+  let enabled = true;
+  const mainProgram = { label: 'mainProg' };
+  backend.watchProgramAttachment(1, () => (enabled ? activeFramebuffer : null), (program) => program === mainProgram);
+  context.useProgram(mainProgram);
+  context.useProgram({ label: 'skyProg' });
+  enabled = false;
+  context.useProgram(mainProgram);
+
+  assert.equal(originalUseProgramCalls.length, 3);
+  assert.ok(calls.some((call) => call[0] === 'bufferData' && call[1] === 'ARRAY_BUFFER' && call[3] === 'STATIC_DRAW'));
+  assert.ok(calls.some((call) => call[0] === 'bufferData' && call[1] === 'ELEMENT_ARRAY_BUFFER' && call[3] === 'DYNAMIC_DRAW'));
+  assert.ok(calls.some((call) => call[0] === 'bufferSubData' && call[1] === 'ARRAY_BUFFER' && call[2] === 0 && call[4] === 0 && call[5] === 3));
+  assert.ok(calls.some((call) => call[0] === 'vertexAttribPointer' && call[1] === 0 && call[2] === 3 && call[3] === 'FLOAT'));
+  assert.ok(calls.some((call) => call[0] === 'vertexAttribIPointer' && call[1] === 1 && call[2] === 1 && call[3] === 'UNSIGNED_INT'));
+  assert.ok(calls.some((call) => call[0] === 'vertexAttribDivisor' && call[1] === 1 && call[2] === 1));
+  assert.ok(calls.some((call) => call[0] === 'drawElements' && call[2] === 3 && call[3] === 'UNSIGNED_SHORT'));
+  assert.ok(calls.some((call) => call[0] === 'drawElements' && call[2] === 6 && call[3] === 'UNSIGNED_INT'));
+  assert.ok(calls.some((call) => call[0] === 'drawArraysInstanced' && call[1] === 'TRIANGLE_STRIP' && call[3] === 4 && call[4] === 5));
+  assert.ok(calls.some((call) => call[0] === 'texImage2D' && call[3] === 'RG32F' && call[7] === 'RG' && call[8] === 'FLOAT'));
+  assert.ok(calls.some((call) => call[0] === 'texImage2D' && call[3] === 'R32F' && call[7] === 'RED' && call[8] === 'FLOAT'));
+  assert.ok(calls.some((call) => call[0] === 'texSubImage2D' && call[4] === 1 && call[7] === 'RGBA_INTEGER' && call[8] === 'UNSIGNED_INT'));
+  assert.ok(calls.some((call) => call[0] === 'copyTexSubImage2D' && call[7] === 2 && call[8] === 2));
+  assert.ok(calls.some((call) => call[0] === 'readPixels' && call[5] === 'RGBA_INTEGER' && call[6] === 'UNSIGNED_INT'));
+  assert.ok(calls.some((call) => call[0] === 'framebufferRenderbuffer' && call[2] === 36065));
+  assert.ok(calls.some((call) => call[0] === 'readBuffer' && call[1] === 36065));
+  assert.ok(calls.some((call) => call[0] === 'drawBuffers'));
+  assert.ok(calls.some((call) => call[0] === 'blendEquation' && call[1] === 'MIN'));
+  assert.ok(calls.some((call) => call[0] === 'blendFuncSeparate'));
+});
+
+test('mesh-blend.js routes attachments, table upload, program hook, fullscreen pass and cleanup through GlazeBackend', () => {
+  const { backend, calls } = createRecordingBackend({
+    createMultisampleColorAttachment: () => ({ label: 'partRb' }),
+    createDataTexture2D: () => ({ label: 'radiusTex' }),
+  });
+  const throwingContext = new Proxy({}, { get() { throw new Error('raw context touched'); } });
+  const batch = { parts: [{ name: 'ground' }, { name: 'rock', blend: { radius: 0.2 } }], cullable: true };
+  const renderer = {
+    backend,
+    context: throwingContext,
+    canvas: { width: 16, height: 12 },
+    benchmark: false,
+    hdr: true,
+    depthTexture: { label: 'depthTex' },
+    multisampleFramebuffer: { label: 'msFb' },
+    multisampleSamples: 4,
+    program: { label: 'mainProgram' },
+    projection: new Float32Array([1, 0, 0, 0, 0, 2, 0, 0, 0, 0, -1, -1, 0, 0, -0.2, 0]),
+    inverseViewProjection: new Float32Array(16),
+    postStages: [],
+    renderTargets: { record() {}, release() {} },
+    batches: [batch],
+    requireFeatureNames() {},
+    drawsInOpaqueLoop: () => true,
+    render() {
+      const result = this.postStages[0].apply(this, { eye: [0, 1, 4] }, {}, { label: 'sourceTex' });
+      assert.ok(result);
+    },
+  };
+
+  installMeshBlend(renderer);
+  renderer.render({ eye: [0, 1, 4] });
+  renderer.postStages[0].releaseTargets(throwingContext);
+  renderer.postStages[0].dispose(throwingContext);
+
+  const methodNames = calls.map((call) => call[0]);
+  for (const expected of [
+    'watchProgramAttachment', 'createDataTexture2D', 'createMultisampleColorAttachment',
+    'createFramebufferTarget', 'clearColorAttachment', 'resolveColorAttachment',
+    'compileProgram', 'uniformLocation', 'beginFullscreenPass', 'bindTextureUnit',
+    'uniform1i', 'uniformMatrix4fv', 'uniform3fv', 'uniform1f', 'drawFullscreenTriangles',
+    'deleteRenderbuffer', 'deleteTexture', 'deleteFramebuffer', 'deleteProgram',
+  ]) {
+    assert.ok(methodNames.includes(expected), `expected ${expected} call`);
+  }
+});
+
+test('mesh-volume-pass.js routes geometry buffers, RG32F target, state, draws and disposal through GlazeBackend', () => {
+  const { backend, calls } = createRecordingBackend({
+    maxTextureSize: () => 4096,
+    createBuffer: () => ({ label: 'meshBuf' }),
+    createVertexArray: () => ({ label: 'meshVao' }),
+    isBlendEnabled: () => false,
+  });
+  const throwingContext = new Proxy({}, { get() { throw new Error('raw context touched'); } });
+  const closedTetrahedron = (offset) => ({
+    positions: new Float32Array([offset, 0, 0, offset + 1, 0, 0, offset, 1, 0, offset, 0, 1]),
+    normals: new Float32Array(12),
+    indices: new Uint32Array([0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3]),
+  });
+  const renderer = {
+    backend,
+    context: throwingContext,
+    dispose() { this.disposed = true; },
+    canvas: { width: 16, height: 12 },
+    depthTexture: { label: 'depthTex' },
+    viewProjection: new Float32Array(16),
+    inverseViewProjection: new Float32Array(16),
+    renderTargets: { record() {}, release() {} },
+    localVolumeBuffers: { meshParts: [{ label: 'environment.localVolumes[0]', part: { name: 'room', geometry: closedTetrahedron(0) } }] },
+  };
+
+  const texture = drawMeshVolumes(renderer, { eye: [0, 0, 5], projection: 'perspective' });
+  assert.ok(texture);
+  renderer.localVolumeBuffers.meshParts[0].part.geometry = closedTetrahedron(2);
+  drawMeshVolumes(renderer, { eye: [0, 0, 5], projection: 'perspective' });
+  renderer.dispose();
+  assert.equal(renderer.disposed, true);
+
+  const methodNames = calls.map((call) => call[0]);
+  for (const expected of [
+    'extension', 'compileProgram', 'uniformLocation', 'createBuffer', 'uploadBuffer',
+    'createVertexArray', 'maxTextureSize', 'createFramebufferTarget', 'isBlendEnabled',
+    'bindFramebuffer', 'setRenderState', 'clearColorBuffer', 'useProgram',
+    'bindTextureUnit', 'uniform1i', 'uniformMatrix4fv', 'uniform3fv', 'uniform1f',
+    'uniform2f', 'setViewport', 'setFrontFaceClockwise', 'bindVertexArray',
+    'drawIndexed', 'deleteVertexArray', 'deleteBuffer', 'deleteTexture',
+    'deleteFramebuffer', 'deleteProgram',
+  ]) {
+    assert.ok(methodNames.includes(expected), `expected ${expected} call`);
+  }
+});
+
+test('user-pass.js and user-pass-inputs.js route passes, needs captures, LUTs and cleanup through GlazeBackend', () => {
+  const { backend, calls } = createRecordingBackend({
+    hasCanvasAlpha: () => true,
+    createDataTexture2D: () => ({ label: 'passTex' }),
+  });
+  const throwingContext = new Proxy({}, { get() { throw new Error('raw context touched'); } });
+  const renderer = {
+    backend,
+    context: throwingContext,
+    canvas: { width: 16, height: 12 },
+    benchmark: false,
+    depthTexture: { label: 'depthTex' },
+    whiteTexture: { label: 'whiteTex' },
+    inverseViewProjection: new Float32Array(16),
+    postStages: [],
+    pixelGrid: { active: false, latticeOrigin: () => [0, 0] },
+    passSupport: {
+      framebuffer: { label: 'passFb' },
+      texture: { label: 'passIdTex' },
+      objectNames: () => ['hero'],
+    },
+    render() {},
+    resolveFrame() {},
+  };
+
+  installUserPasses(renderer);
+  renderer.userPasses.set([
+    {
+      name: 'first',
+      scale: 0.5,
+      offset: [1, 0],
+      needs: ['normal', 'objectId'],
+      objects: ['hero'],
+      luts: { palette: { colors: ['#102030', '#f0f0f0'] } },
+      uniforms: { strength: 0.5 },
+      fragment: 'vec4 userPass(vec2 uv) { return vec4(normalAt(uv) * strength + texture(palette, uv).rgb + float(objectIdAt(uv) + objectSlotAt(uv)), 1.0); }',
+    },
+    {
+      name: 'second',
+      scale: 1,
+      fragment: 'vec4 userPass(vec2 uv) { return texture(sceneColor, uv); }',
+    },
+  ]);
+  renderer.render({ eye: [0, 1, 5], time: 1 });
+  renderer.resolveFrame({ eye: [0, 1, 5], time: 1 });
+  renderer.pixelGrid.active = true;
+  renderer.resolveFrame({ eye: [0, 1, 5], time: 2 });
+  renderer.postStages[0].releaseTargets(throwingContext);
+  renderer.postStages[0].dispose(throwingContext);
+
+  const methodNames = calls.map((call) => call[0]);
+  for (const expected of [
+    'createDataTexture2D', 'copyFramebufferToTexture', 'compileProgram', 'uniformLocation',
+    'setFullscreenState', 'hasCanvasAlpha', 'createFramebufferTarget', 'beginFullscreenPass',
+    'uniform2fv', 'bindTextureUnit', 'uniform1i', 'uniformMatrix4fv', 'uniform2f',
+    'uniform1f', 'uniform3fv', 'uniform1iv', 'activeTextureUnit', 'drawFullscreenTriangles',
+    'deleteTexture', 'deleteFramebuffer', 'deleteProgram',
+  ]) {
+    assert.ok(methodNames.includes(expected), `expected ${expected} call`);
+  }
+});
+
+test('gaussian-splats.js routes textures, buffers, VAOs, states, draws, update and detach through GlazeBackend', () => {
+  const { backend, calls } = createRecordingBackend({
+    maxTextureSize: () => 4096,
+    createDataTexture2D: () => ({ label: 'splatTex' }),
+    createBuffer: () => ({ label: 'orderBuf' }),
+    createVertexArray: () => ({ label: 'splatVao' }),
+    isContextLost: () => false,
+    readIntegerTexture2D: (_texture, _width, _height, destination) => destination.fill(0),
+  });
+  const throwingContext = new Proxy({}, { get() { throw new Error('raw context touched'); } });
+  const renderer = {
+    backend,
+    context: throwingContext,
+    canvas: { width: 32, height: 24 },
+    multisampleFramebuffer: { label: 'msFb' },
+    projection: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, 0, 0, -0.2, 0]),
+    view: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+    hdr: false,
+    drawBlendBatches() {},
+    dispose() {},
+  };
+  const splatData = (alphaCut, extra = {}) => createGaussianSplats({
+    count: 1,
+    positions: new Float32Array([0, 0, -4]),
+    scales: new Float32Array([0.1, 0.1, 0.1]),
+    rotations: new Float32Array([1, 0, 0, 0]),
+    colors: new Uint8Array([200, 100, 50, 255]),
+    bounds: { minimum: [-1, -1, -5], maximum: [1, 1, -3] },
+  }, { alphaCut, ...extra });
+
+  const detachBlended = attachGaussianSplats(renderer, splatData(undefined));
+  const detachStylized = attachGaussianSplats(renderer, splatData(0.5, { palette: ['#101010', '#f0f0f0'], outline: { width: 2, color: '#000000' } }));
+  renderer.drawBlendBatches({ eye: [0, 0, 0], exposure: 1 });
+  detachBlended.update({ positions: new Float32Array([0.5, 0, -4]) });
+  detachBlended();
+  detachStylized();
+
+  const methodNames = calls.map((call) => call[0]);
+  for (const expected of [
+    'compileProgram', 'uniformLocation', 'createDataTexture2D', 'createBuffer', 'uploadBuffer',
+    'createVertexArray', 'bindFramebuffer', 'setViewport', 'setRenderState', 'useProgram',
+    'uniformMatrix4fv', 'uniform2f', 'uniform1f', 'uniform1i', 'uniform3fv', 'updateBuffer',
+    'bindTextureUnit', 'bindVertexArray', 'drawInstancedStrip', 'activeTextureUnit',
+    'isContextLost', 'readIntegerTexture2D', 'uploadDataTexture2D', 'deleteTexture',
+    'deleteBuffer', 'deleteVertexArray', 'deleteProgram',
+  ]) {
     assert.ok(methodNames.includes(expected), `expected ${expected} call`);
   }
 });

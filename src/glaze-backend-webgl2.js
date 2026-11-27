@@ -5,6 +5,20 @@ import { startProgram, finishProgram, compileProgram } from './gl-program.js';
 
 const CONTEXT_OPTIONS_BASE = { antialias: true, premultipliedAlpha: true, powerPreference: 'high-performance' };
 
+function dataTextureSpec(context, format) {
+  const specs = {
+    rgba8: [context.RGBA8, context.RGBA, context.UNSIGNED_BYTE],
+    rgb8: [context.RGB8, context.RGB, context.UNSIGNED_BYTE],
+    rgba16f: [context.RGBA16F, context.RGBA, context.HALF_FLOAT],
+    rg32f: [context.RG32F, context.RG, context.FLOAT],
+    r32f: [context.R32F, context.RED, context.FLOAT],
+    rgba32ui: [context.RGBA32UI, context.RGBA_INTEGER, context.UNSIGNED_INT],
+  };
+  const spec = specs[format];
+  if (!spec) throw new RangeError(`Unsupported texture format "${format}".`);
+  return spec;
+}
+
 export class WebGL2GlazeBackend {
   /** `context` is the raw WebGL2 context. Pass files not yet ported to the boundary still draw with it directly. */
   constructor(context) {
@@ -25,12 +39,48 @@ export class WebGL2GlazeBackend {
 
   /** Fills a buffer. Kept apart from createBuffer so a caller owns the buffer before an upload that may throw. */
   uploadBuffer(target, buffer, data, usage = this.context.STATIC_DRAW) {
-    this.context.bindBuffer(target, buffer);
-    this.context.bufferData(target, data, usage);
+    const context = this.context;
+    const bufferTarget = target === 'element' ? context.ELEMENT_ARRAY_BUFFER : target === 'array' ? context.ARRAY_BUFFER : target;
+    const bufferUsage = usage === 'dynamic' ? context.DYNAMIC_DRAW : usage === 'static' ? context.STATIC_DRAW : usage;
+    context.bindBuffer(bufferTarget, buffer);
+    context.bufferData(bufferTarget, data, bufferUsage);
+  }
+
+  updateBuffer(buffer, data, sourceOffset = 0, length = data.length) {
+    const context = this.context;
+    context.bindBuffer(context.ARRAY_BUFFER, buffer);
+    context.bufferSubData(context.ARRAY_BUFFER, 0, data, sourceOffset, length);
   }
 
   deleteBuffer(buffer) {
     this.context.deleteBuffer(buffer);
+  }
+
+  createVertexArray(attributes, indexBuffer = null) {
+    const context = this.context;
+    const vertexArray = context.createVertexArray();
+    context.bindVertexArray(vertexArray);
+    attributes.forEach((attribute, location) => {
+      context.bindBuffer(context.ARRAY_BUFFER, attribute.buffer);
+      context.enableVertexAttribArray(location);
+      if (attribute.integer) {
+        context.vertexAttribIPointer(location, attribute.size, context.UNSIGNED_INT, 0, 0);
+      } else {
+        context.vertexAttribPointer(location, attribute.size, context.FLOAT, false, 0, 0);
+      }
+      if (attribute.divisor) context.vertexAttribDivisor(location, attribute.divisor);
+    });
+    if (indexBuffer) context.bindBuffer(context.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    context.bindVertexArray(null);
+    return vertexArray;
+  }
+
+  bindVertexArray(vertexArray) {
+    this.context.bindVertexArray(vertexArray);
+  }
+
+  deleteVertexArray(vertexArray) {
+    this.context.deleteVertexArray(vertexArray);
   }
 
   /** Returns the WebGL2 extension object for `name`, or null when unavailable. */
@@ -78,11 +128,11 @@ export class WebGL2GlazeBackend {
     return { framebuffer, colorBuffer, depthBuffer };
   }
 
-  createTexture2D(internalFormat, width, height, format, type, filter, clamp = false) {
+  createTexture2D(internalFormat, width, height, format, type, filter, clamp = false, data = null) {
     const context = this.context;
     const texture = context.createTexture();
     context.bindTexture(context.TEXTURE_2D, texture);
-    context.texImage2D(context.TEXTURE_2D, 0, internalFormat, width, height, 0, format, type, null);
+    context.texImage2D(context.TEXTURE_2D, 0, internalFormat, width, height, 0, format, type, data);
     if (clamp) {
       this.setClampedFiltering(filter);
     } else {
@@ -104,15 +154,16 @@ export class WebGL2GlazeBackend {
     return { framebuffer: target.framebuffer, colorTexture: target.colorTexture, depthTexture: target.depthTexture };
   }
 
-  /** A single-sample framebuffer with optional colour texture (`rgba8` / `rgba16f`) and depth store (`depth24` / `depth32f`). */
-  createFramebufferTarget({ width, height, color = true, hdr = false, depth = false, floatDepth = false, depthAsTexture = false, linear = false, colorFilter = linear ? this.context.LINEAR : this.context.NEAREST, clamp = false, unbind = false }) {
+  /** A single-sample framebuffer with optional colour texture (`rgba8` / `rgba16f` / `rg32f`) and depth store (`depth24` / `depth32f`). */
+  createFramebufferTarget({ width, height, color = true, hdr = false, colorFormat = hdr ? 'rgba16f' : 'rgba8', depth = false, floatDepth = false, depthAsTexture = false, linear = false, colorFilter = linear ? this.context.LINEAR : this.context.NEAREST, clamp = false, unbind = false }) {
     const context = this.context;
+    const colorSpec = color ? dataTextureSpec(context, colorFormat) : null;
     const colorTexture = color ? this.createTexture2D(
-      hdr ? context.RGBA16F : context.RGBA8,
+      colorSpec[0],
       width,
       height,
-      context.RGBA,
-      hdr ? context.HALF_FLOAT : context.UNSIGNED_BYTE,
+      colorSpec[1],
+      colorSpec[2],
       colorFilter,
       clamp,
     ) : null;
@@ -479,5 +530,137 @@ export class WebGL2GlazeBackend {
 
   finish() {
     this.context.finish();
+  }
+
+  isContextLost() {
+    return Boolean(this.context.isContextLost?.());
+  }
+
+  hasCanvasAlpha() {
+    return Boolean(this.context.getContextAttributes?.()?.alpha);
+  }
+
+  bindFramebuffer(framebuffer = null) {
+    this.context.bindFramebuffer(this.context.FRAMEBUFFER, framebuffer);
+  }
+
+  setViewport(width, height, x = 0, y = 0) {
+    this.context.viewport(x, y, width, height);
+  }
+
+  clearColorBuffer(attachmentIndex, values) {
+    this.context.clearBufferfv(this.context.COLOR, attachmentIndex, values);
+  }
+
+  isBlendEnabled() {
+    return Boolean(this.context.isEnabled(this.context.BLEND));
+  }
+
+  setRenderState({ depthTest, depthWrite, cullFace, blend, blendMode, blendEquation, colorMask } = {}) {
+    const context = this.context;
+    if (depthTest !== undefined) context[depthTest ? 'enable' : 'disable'](context.DEPTH_TEST);
+    if (depthWrite !== undefined) context.depthMask(depthWrite);
+    if (cullFace !== undefined) context[cullFace ? 'enable' : 'disable'](context.CULL_FACE);
+    if (blend !== undefined) context[blend ? 'enable' : 'disable'](context.BLEND);
+    if (blendMode === 'one') context.blendFunc(context.ONE, context.ONE);
+    else if (blendMode === 'premultiplied') context.blendFuncSeparate(context.ONE, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
+    if (blendEquation === 'add') context.blendEquation(context.FUNC_ADD);
+    else if (blendEquation === 'min') context.blendEquation(context.MIN);
+    if (colorMask) context.colorMask(...colorMask);
+  }
+
+  drawIndexed(count, shortIndices = false) {
+    const context = this.context;
+    context.drawElements(context.TRIANGLES, count, shortIndices ? context.UNSIGNED_SHORT : context.UNSIGNED_INT, 0);
+  }
+
+  drawInstancedStrip(vertexCount, instanceCount) {
+    this.context.drawArraysInstanced(this.context.TRIANGLE_STRIP, 0, vertexCount, instanceCount);
+  }
+
+  createDataTexture2D({ width, height, format = 'rgba8', linear = false, clamp = false, data = null, unit = null, restoreBinding = false }) {
+    const context = this.context;
+    const [internalFormat, uploadFormat, uploadType] = dataTextureSpec(context, format);
+    const previousBinding = restoreBinding ? context.getParameter(context.TEXTURE_BINDING_2D) : null;
+    if (unit !== null) this.activeTextureUnit(unit);
+    const texture = this.createTexture2D(internalFormat, width, height, uploadFormat, uploadType, linear ? context.LINEAR : context.NEAREST, clamp, data);
+    if (restoreBinding) context.bindTexture(context.TEXTURE_2D, previousBinding);
+    return texture;
+  }
+
+  uploadDataTexture2D(texture, { x = 0, y = 0, width, height, format = 'rgba8', data, reallocate = false, unit = null }) {
+    const context = this.context;
+    const [internalFormat, uploadFormat, uploadType] = dataTextureSpec(context, format);
+    if (unit !== null) this.activeTextureUnit(unit);
+    context.bindTexture(context.TEXTURE_2D, texture);
+    if (reallocate) {
+      context.texImage2D(context.TEXTURE_2D, 0, internalFormat, width, height, 0, uploadFormat, uploadType, data);
+    } else {
+      context.texSubImage2D(context.TEXTURE_2D, 0, x, y, width, height, uploadFormat, uploadType, data);
+    }
+  }
+
+  copyFramebufferToTexture(framebuffer, texture, width, height) {
+    const context = this.context;
+    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
+    context.bindTexture(context.TEXTURE_2D, texture);
+    context.copyTexSubImage2D(context.TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
+    if (framebuffer) this.bindCanvasTarget();
+  }
+
+  readIntegerTexture2D(texture, width, height, destination) {
+    const context = this.context;
+    const previousFramebuffer = context.getParameter(context.READ_FRAMEBUFFER_BINDING);
+    const previousPackBuffer = context.getParameter(context.PIXEL_PACK_BUFFER_BINDING);
+    const framebuffer = context.createFramebuffer();
+    context.bindBuffer(context.PIXEL_PACK_BUFFER, null);
+    context.bindFramebuffer(context.READ_FRAMEBUFFER, framebuffer);
+    context.framebufferTexture2D(context.READ_FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
+    context.readPixels(0, 0, width, height, context.RGBA_INTEGER, context.UNSIGNED_INT, destination);
+    context.bindFramebuffer(context.READ_FRAMEBUFFER, previousFramebuffer);
+    context.bindBuffer(context.PIXEL_PACK_BUFFER, previousPackBuffer);
+    context.deleteFramebuffer(framebuffer);
+  }
+
+  createMultisampleColorAttachment(framebuffer, attachmentIndex, samples, width, height) {
+    const context = this.context;
+    const renderbuffer = context.createRenderbuffer();
+    context.bindRenderbuffer(context.RENDERBUFFER, renderbuffer);
+    context.renderbufferStorageMultisample(context.RENDERBUFFER, samples, context.RGBA8, width, height);
+    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
+    context.framebufferRenderbuffer(context.FRAMEBUFFER, context[`COLOR_ATTACHMENT${attachmentIndex}`], context.RENDERBUFFER, renderbuffer);
+    context.drawBuffers([context.COLOR_ATTACHMENT0, context.NONE]);
+    this.bindCanvasTarget();
+    return renderbuffer;
+  }
+
+  clearColorAttachment(framebuffer, attachmentIndex, values) {
+    const context = this.context;
+    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
+    context.drawBuffers([context.NONE, context[`COLOR_ATTACHMENT${attachmentIndex}`]]);
+    context.clearBufferfv(context.COLOR, attachmentIndex, values);
+    context.drawBuffers([context.COLOR_ATTACHMENT0, context.NONE]);
+  }
+
+  resolveColorAttachment(source, destination, attachmentIndex, width, height) {
+    const context = this.context;
+    context.bindFramebuffer(context.READ_FRAMEBUFFER, source);
+    context.readBuffer(context[`COLOR_ATTACHMENT${attachmentIndex}`]);
+    context.bindFramebuffer(context.DRAW_FRAMEBUFFER, destination);
+    context.blitFramebuffer(0, 0, width, height, 0, 0, width, height, context.COLOR_BUFFER_BIT, context.NEAREST);
+    context.readBuffer(context.COLOR_ATTACHMENT0);
+  }
+
+  watchProgramAttachment(attachmentIndex, activeFramebuffer, shouldEnable) {
+    const context = this.context;
+    const useProgram = context.useProgram.bind(context);
+    const attachment = context[`COLOR_ATTACHMENT${attachmentIndex}`];
+    context.useProgram = (program) => {
+      useProgram(program);
+      const framebuffer = activeFramebuffer();
+      if (framebuffer && context.getParameter(context.DRAW_FRAMEBUFFER_BINDING) === framebuffer) {
+        context.drawBuffers([context.COLOR_ATTACHMENT0, shouldEnable(program) ? attachment : context.NONE]);
+      }
+    };
   }
 }
