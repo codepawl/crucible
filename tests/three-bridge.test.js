@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { exportGlb } from '../src/export.js';
-import { fromThreeObject, toThreeObject } from '../packages/three-bridge/index.mjs';
+import { fromThreeObject, toThreeObject } from '../src/three-bridge.js';
 
 const TOLERANCE = 1e-6;
 
@@ -56,13 +56,12 @@ function maxDifference(left, right) {
 }
 
 test('the addon has no import statement and keeps three.js as a peer dependency only', async () => {
-  const source = await readFile(new URL('../packages/three-bridge/index.mjs', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../src/three-bridge.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /^\s*import\s/m);
-  const pack = JSON.parse(await readFile(new URL('../packages/three-bridge/package.json', import.meta.url), 'utf8'));
-  assert.equal(pack.dependencies, undefined);
-  assert.ok(pack.peerDependencies.three);
-  assert.ok(pack.peerDependencies['@codepawlhq/crucible']);
   const core = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(core.exports['./addons/three-bridge'], './build/three-bridge.js');
+  assert.ok(core.peerDependencies.three);
+  assert.equal(core.peerDependenciesMeta?.three?.optional, true);
   assert.equal(core.dependencies?.three, undefined, 'the core takes no three.js runtime dependency');
 });
 

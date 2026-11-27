@@ -20,10 +20,10 @@ test('a registry error other than 404 stops the release instead of republishing'
   await assert.rejects(() => addonsToPublish(['packages/new'], { fetchImplementation, readText }), /@scope\/new@0\.1\.0 failed: HTTP 503/);
 });
 
-test('the OIDN denoiser is published and its package lists only the files a user needs', async () => {
-  assert.ok(PUBLISHED_ADDONS.includes('packages/denoise-oidn'));
-  const metadata = JSON.parse(await readFile('packages/denoise-oidn/package.json', 'utf8'));
-  assert.equal(metadata.name, '@codepawlhq/crucible-denoise-oidn');
-  assert.ok(!metadata.private, 'a private package cannot be published');
-  assert.ok(!metadata.files.some(file => file.startsWith('vendor')), 'the downloaded binary must not ship in the archive');
+test('denoise-oidn and three-bridge are folded into built-in addons instead of separate addon publishes', async () => {
+  assert.deepEqual(PUBLISHED_ADDONS, []);
+  const core = JSON.parse(await readFile('package.json', 'utf8'));
+  assert.equal(core.exports['./addons/denoise-oidn'], './build/denoise-oidn.js');
+  assert.equal(core.exports['./addons/three-bridge'], './build/three-bridge.js');
+  assert.equal(core.bin['crucible-oidn-fetch'], './bin/crucible-oidn-fetch.mjs');
 });
