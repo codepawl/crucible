@@ -277,7 +277,16 @@ test('the whole group is scaled up by one transform and still fits a 360 px wind
   const leftEdge = origin + (potLeft - barWidth / 2) * scale;
   const rightEdge = origin + (barWidth - barWidth / 2) * scale;
   assert.ok(leftEdge >= 0 && rightEdge <= windowWidth, `the group spans ${leftEdge} to ${rightEdge} of ${windowWidth}`);
-  assert.equal(scale, 1.5);
+  assert.equal(scale, 1.1, 'the loader stays small beside the editor it opens');
+});
+
+test('what the eye sees of the pour sits in the middle of the window', () => {
+  const [, boxWidth, shift, scale] = /#studio-loading [.]pour [{][^}]*width: (\d+)px;[^}]*transform: translateX[(](\d+)px[)] scale[(]([\d.]+)[)]/.exec(LOADING_STYLE).map(Number);
+  // Measured from a screenshot: the tipped pot's drawing starts at x = -59 of the group and the bar ends at x = 120.
+  const drawnLeft = -59;
+  const drawnRight = boxWidth;
+  const drawnMiddleOffset = ((drawnLeft + drawnRight) / 2 - boxWidth / 2) * scale + shift;
+  assert.ok(Math.abs(drawnMiddleOffset) <= 1, `the drawn group's middle is ${drawnMiddleOffset.toFixed(1)} px from the window middle`);
 });
 
 test('the pour animates only transform and opacity, with the fill moved by script and no transition', () => {
