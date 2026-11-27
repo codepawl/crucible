@@ -141,6 +141,7 @@ It gets PNG previews back, compares up to four views in a [review grid](docs/age
 The server accepts no arbitrary code and no remote asset URLs. The [MCP reference](docs/mcp.md) lists its tools.
 
 Two skills teach an agent to drive the MCP tools: [build-crucible-scene](skills/build-crucible-scene/SKILL.md) for scenes and materials, and [render-crucible-media](skills/render-crucible-media/SKILL.md) for image and video export.
+For a built-in headless AI CLI (`crucible auth login` for 250 free credits, no card needed, then `crucible agent`), see [cli-agent](docs/cli-agent.md).
 For a plain-text guide, give the agent [llms.txt](https://crucible.codepawl.com/llms.txt).
 
 [viz3d](https://github.com/codepawl/viz3d) uses Crucible. It is a skill that turns places, systems and events into 3D apps and films, and it renders its films and stills in Crucible.

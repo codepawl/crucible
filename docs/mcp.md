@@ -26,6 +26,7 @@ The browser driver loads when `scene_create` or `scene_create_asset` runs. It do
 
 The runtime serves its bundled scene page on the loopback interface.
 The MCP connection uses stdin and stdout, without an HTTP MCP listener.
+For a built-in headless agent CLI without a separate MCP client, see [cli-agent.md](cli-agent.md).
 
 1. Install the package in your project:
 
