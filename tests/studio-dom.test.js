@@ -3048,6 +3048,7 @@ test('Settings change the snap, the handles and what the viewport shows, and are
     numberPad: false,
     numberPadNoticeShown: false,
     keyOverrides: {},
+    mouseOverrides: {},
     motion: 'system',
     zoomDirection: 'normal',
     setupDone: false,
