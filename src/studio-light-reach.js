@@ -12,15 +12,18 @@ import { sceneSphereOf, sunMarkPosition } from './studio-sun-mark.js';
 /** Radius of the ring and of the reach drawn for a light with no range, as a multiple of the scene radius. */
 export const UNLIMITED_RANGE_SCENE_RADIUS_FACTOR = 1.5;
 export const CIRCLE_SEGMENT_COUNT = 64;
-export const GROUND_FOOTPRINT_SAMPLE_COUNT = 96;
-export const SUN_PARALLEL_ARROW_COUNT = 5;
-const SUN_PARALLEL_ARROW_SPREAD = 0.55;
-const SUN_PARALLEL_ARROW_LENGTH_SHARE = 0.5;
+export const GROUND_FOOTPRINT_SAMPLE_COUNT = 180;
+export const SUN_PARALLEL_ARROW_COUNT = 6;
+const SUN_PARALLEL_ARROW_SPREAD = 0.8;
+const SUN_PARALLEL_ARROW_LENGTH_SHARE = 0.4;
+// The single arrow stops this share of the scene radius upstream of the scene centre, so it does not seem to aim at one object.
+const SUN_SINGLE_ARROW_STOP_SHARE = 0.3;
 const ARROW_HEAD_SHARE = 0.22;
 const AREA_NORMAL_ARROW_SHARE = 0.5;
 const SPOT_EDGE_LINE_COUNT = 4;
 const GROUND_HEIGHT = 0;
 const TINY_LENGTH = 1e-9;
+const CORNER_BISECTION_STEPS = 40;
 
 function subtract(first, second) {
   return first.map((component, axis) => component - second[axis]);
@@ -91,19 +94,22 @@ export function sphereSilhouette(center, radius, eye) {
   return circlePolyline(silhouetteCenter, firstAxis, secondAxis, silhouetteRadius);
 }
 
-/** An arrow from one point to another as polylines: the shaft and two crossed barbs at the tip. */
-export function arrowPolylines(from, to) {
+/**
+ * An arrow from one point to another as polylines: the shaft and one open head. With the eye given the head opens
+ * across the view, so it reads as a clean arrowhead; without it the head opens to an arbitrary side.
+ */
+export function arrowPolylines(from, to, eye = null) {
   const shaft = subtract(to, from);
   const length = Math.hypot(...shaft);
   if (length < TINY_LENGTH) {
     return [];
   }
   const direction = scale(shaft, 1 / length);
-  const [firstAxis, secondAxis] = planeAxesOf(direction);
+  const acrossView = eye ? cross(direction, subtract(eye, to)) : [0, 0, 0];
+  const side = Math.hypot(...acrossView) > 1e-6 ? normalize(acrossView) : planeAxesOf(direction)[0];
   const headLength = length * ARROW_HEAD_SHARE;
   const base = pointAlong(to, direction, -headLength);
-  const barb = axis => [pointAlong(base, axis, headLength * 0.5), to, pointAlong(base, axis, -headLength * 0.5)];
-  return [[from, to], barb(firstAxis), barb(secondAxis)];
+  return [[from, to], [pointAlong(base, side, headLength * 0.5), to, pointAlong(base, side, -headLength * 0.5)]];
 }
 
 /** A point light: its range as three axis-plane circles, the radius of the source, and the range for a facing circle. */
@@ -168,7 +174,7 @@ export function areaLightFrame(light) {
 }
 
 /** An area light: the rectangle of its size facing its direction, and a short arrow out of the lit side. */
-export function areaLightReach(light) {
+export function areaLightReach(light, eye = null) {
   const center = [...light.position];
   const { normal, right, height } = areaLightFrame(light);
   const halfRight = scale(right, light.width / 2);
@@ -185,30 +191,32 @@ export function areaLightReach(light) {
     normal,
     corners,
     rectangle: [...corners, corners[0]],
-    normalArrow: arrowPolylines(center, pointAlong(center, normal, arrowLength)),
+    normalArrow: arrowPolylines(center, pointAlong(center, normal, arrowLength), eye),
   };
 }
 
-/** The sun's whole-scene ring and its two direction indicators; `direction` is the unit vector toward the sun. */
-export function sunReach(bounds, direction) {
+/**
+ * The sun's whole-scene ring and its two direction indicators; `direction` is the unit vector toward the sun.
+ * The parallel arrows are equal and evenly spaced just inside the ring, on its upstream side, each ending at the ring's plane.
+ */
+export function sunReach(bounds, direction, eye = null) {
   const scene = sceneSphereOf(bounds);
   const [firstAxis, secondAxis] = planeAxesOf(direction);
   const arrowLength = scene.radius * SUN_PARALLEL_ARROW_LENGTH_SHARE;
-  const offsets = [[0, 0]];
-  for (let arrow = 0; arrow < SUN_PARALLEL_ARROW_COUNT - 1; arrow += 1) {
-    const turn = (arrow / (SUN_PARALLEL_ARROW_COUNT - 1)) * Math.PI * 2;
-    offsets.push([Math.cos(turn) * SUN_PARALLEL_ARROW_SPREAD, Math.sin(turn) * SUN_PARALLEL_ARROW_SPREAD]);
+  const parallelArrows = [];
+  for (let arrow = 0; arrow < SUN_PARALLEL_ARROW_COUNT; arrow += 1) {
+    const turn = (arrow / SUN_PARALLEL_ARROW_COUNT) * Math.PI * 2;
+    const sideways = add(scale(firstAxis, Math.cos(turn)), scale(secondAxis, Math.sin(turn)));
+    const tip = add(scene.center, scale(sideways, scene.radius * SUN_PARALLEL_ARROW_SPREAD));
+    parallelArrows.push(arrowPolylines(pointAlong(tip, direction, arrowLength), tip, eye));
   }
-  const parallelArrows = offsets.map(([first, second]) => {
-    const middle = add(scene.center, add(scale(firstAxis, first * scene.radius), scale(secondAxis, second * scene.radius)));
-    return arrowPolylines(pointAlong(middle, direction, arrowLength / 2), pointAlong(middle, direction, -arrowLength / 2));
-  });
+  const singleArrowTip = pointAlong(scene.center, direction, scene.radius * SUN_SINGLE_ARROW_STOP_SHARE);
   return {
     center: scene.center,
     radius: scene.radius,
     ring: circlePolyline(scene.center, firstAxis, secondAxis, scene.radius),
     parallelArrows,
-    singleArrow: arrowPolylines(sunMarkPosition(bounds, direction), scene.center),
+    singleArrow: arrowPolylines(sunMarkPosition(bounds, direction), singleArrowTip, eye),
   };
 }
 
@@ -238,6 +246,21 @@ function orderAroundCentroid(points) {
   return { centroid, ordered: [...points].sort((first, second) => turnOf(first) - turnOf(second)) };
 }
 
+/** The last edge ray that still reaches the ground in range between one that does and one that does not: the corner where the cone edge meets the range circle. */
+function cornerBetween(edgeHitAt, reachingTurn, missingTurn) {
+  let reaching = reachingTurn;
+  let missing = missingTurn;
+  for (let step = 0; step < CORNER_BISECTION_STEPS; step += 1) {
+    const middle = (reaching + missing) / 2;
+    if (edgeHitAt(middle)) {
+      reaching = middle;
+    } else {
+      missing = middle;
+    }
+  }
+  return edgeHitAt(reaching);
+}
+
 /**
  * Where a spot's lit cone meets the ground (y = 0), cut at its range. The patch is convex, so its outline is the
  * conic found along the cone's edge rays that reach the ground in range, plus the arc of the range circle that
@@ -255,20 +278,25 @@ export function spotGroundFootprint(light, sceneRadius) {
   const axis = normalize(light.direction);
   const halfAngle = light.angle ?? Math.PI / 4;
   const [firstAxis, secondAxis] = planeAxesOf(axis);
+  const edgeHitAt = turn => {
+    const sideways = add(scale(firstAxis, Math.cos(turn)), scale(secondAxis, Math.sin(turn)));
+    const edgeRay = add(scale(axis, Math.cos(halfAngle)), scale(sideways, Math.sin(halfAngle)));
+    return groundPointAt(apex, edgeRay, reach);
+  };
+  const rangeRadius = Math.sqrt(reach * reach - height * height);
   const points = [];
   for (let sample = 0; sample < GROUND_FOOTPRINT_SAMPLE_COUNT; sample += 1) {
     const turn = (sample / GROUND_FOOTPRINT_SAMPLE_COUNT) * Math.PI * 2;
-    const sideways = add(scale(firstAxis, Math.cos(turn)), scale(secondAxis, Math.sin(turn)));
-    const edgeRay = add(scale(axis, Math.cos(halfAngle)), scale(sideways, Math.sin(halfAngle)));
-    const hit = groundPointAt(apex, edgeRay, reach);
+    const hit = edgeHitAt(turn);
     if (hit) {
       points.push(hit);
     }
-    const groundDirection = [Math.cos(turn), 0, Math.sin(turn)];
-    const rangeRadius = Math.sqrt(reach * reach - height * height);
-    const onRangeCircle = [apex[0] + groundDirection[0] * rangeRadius, GROUND_HEIGHT, apex[2] + groundDirection[2] * rangeRadius];
-    const towardPoint = normalize(subtract(onRangeCircle, apex));
-    if (dot(towardPoint, axis) >= Math.cos(halfAngle)) {
+    const nextTurn = ((sample + 1) / GROUND_FOOTPRINT_SAMPLE_COUNT) * Math.PI * 2;
+    if (Boolean(hit) !== Boolean(edgeHitAt(nextTurn))) {
+      points.push(cornerBetween(edgeHitAt, hit ? turn : nextTurn, hit ? nextTurn : turn));
+    }
+    const onRangeCircle = [apex[0] + Math.cos(turn) * rangeRadius, GROUND_HEIGHT, apex[2] + Math.sin(turn) * rangeRadius];
+    if (dot(normalize(subtract(onRangeCircle, apex)), axis) >= Math.cos(halfAngle)) {
       points.push(onRangeCircle);
     }
   }

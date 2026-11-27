@@ -114,7 +114,7 @@ function lightDrawing(kind, light, context) {
       footprintBody: [],
     };
   }
-  const reach = areaLightReach(light);
+  const reach = areaLightReach(light, context.eye);
   const bodyLines = [{ role: 'main', polylines: [reach.rectangle, ...reach.normalArrow] }];
   return {
     lines: bodyLines,
@@ -142,6 +142,10 @@ function appendGroundPatch(documentReference, layer, project, drawing, light, { 
   appendLines(documentReference, layer, project, [{ role: filled ? 'main' : 'faint', polylines: [outline] }]);
   if (withLink) {
     appendLines(documentReference, layer, project, [{ role: 'link', polylines: [[light.position, center]] }]);
+    const end = project(center);
+    if (end.visible) {
+      layer.push(createSvgElement(documentReference, 'circle', { class: 'crucible-studio-light-reach-dot', cx: end.x.toFixed(1), cy: end.y.toFixed(1), r: 3.5 }));
+    }
   }
 }
 
@@ -161,9 +165,9 @@ function drawSelectedLight(documentReference, layer, project, kind, light, conte
 }
 
 function drawSun(documentReference, layer, project, sunObject, context) {
-  const reach = sunReach(context.bounds, sunObject.direction);
+  const reach = sunReach(context.bounds, sunObject.direction, context.eye);
   const indicator = context.options.sunArrow === 'single' ? reach.singleArrow : reach.parallelArrows.flat();
-  appendLines(documentReference, layer, project, [{ role: 'main', polylines: [reach.ring, ...indicator] }]);
+  appendLines(documentReference, layer, project, [{ role: 'ring', polylines: [reach.ring] }, { role: 'main', polylines: indicator }]);
 }
 
 /**

@@ -86,7 +86,7 @@ test('an area light rectangle follows width, height, direction and up', () => {
   assert.ok(reach.corners.every(corner => Math.abs(corner[2]) < 1e-9), 'the rectangle is perpendicular to its direction');
   assert.equal(reach.rectangle.length, 5);
   assert.deepEqual(reach.rectangle[4], reach.rectangle[0]);
-  assert.equal(reach.normalArrow.length, 3);
+  assert.equal(reach.normalArrow.length, 2);
   assert.ok(reach.normalArrow[0][1][2] > 0, 'the arrow leaves the lit side');
   const taller = areaLightReach({ ...light, height: 6 });
   assertClose(distance(taller.corners[1], taller.corners[2]), 6, 'taller rectangle');
@@ -104,7 +104,7 @@ test('the sun ring wraps the scene in the plane across the light', () => {
   assertClose(reach.radius, Math.hypot(4, 4, 4) / 2, 'ring radius is the scene radius');
   assert.ok(reach.ring.every(point => Math.abs(point[1] - 2) < 1e-9), 'the ring is perpendicular to the direction');
   assertClose(radiusOfRim(reach.ring, reach.center), reach.radius, 'the ring is a circle');
-  assert.equal(reach.parallelArrows.length, 5);
+  assert.equal(reach.parallelArrows.length, 6);
   for (const arrow of reach.parallelArrows) {
     const [shaftStart, shaftEnd] = arrow[0];
     assert.ok(shaftEnd[1] < shaftStart[1], 'arrows travel away from the sun');
@@ -112,7 +112,11 @@ test('the sun ring wraps the scene in the plane across the light', () => {
   }
   const [shaftStart, shaftEnd] = reach.singleArrow[0];
   assert.ok(distance(shaftStart, reach.center) > reach.radius, 'the single arrow starts outside the ring');
-  assert.deepEqual(shaftEnd, reach.center);
+  assert.ok(distance(shaftEnd, reach.center) < reach.radius * 0.5, 'it stops a short way before the scene centre');
+  assert.ok(shaftEnd[1] > reach.center[1], 'and upstream of it');
+  assert.equal(reach.singleArrow.length, 2, 'one shaft and one head');
+  const lengths = reach.parallelArrows.map(arrow => distance(arrow[0][0], arrow[0][1]));
+  assert.ok(lengths.every(length => Math.abs(length - lengths[0]) < 1e-9), 'the parallel arrows are equal');
 });
 
 test('the sun ring has the fallback size for an empty scene', () => {
@@ -146,6 +150,35 @@ test('a tilted spot lights a stretched patch on the far side of its foot', () =>
   const widthAlong = Math.max(...outline.map(point => point[0])) - Math.min(...outline.map(point => point[0]));
   const widthAcross = Math.max(...outline.map(point => point[2])) - Math.min(...outline.map(point => point[2]));
   assert.ok(widthAlong > widthAcross, 'the tilt stretches the patch away from the light');
+});
+
+function segmentsCross(startA, endA, startB, endB) {
+  const side = (origin, target, point) => (target[0] - origin[0]) * (point[2] - origin[2]) - (target[2] - origin[2]) * (point[0] - origin[0]);
+  return side(startA, endA, startB) * side(startA, endA, endB) < 0 && side(startB, endB, startA) * side(startB, endB, endA) < 0;
+}
+
+test('the stills spot lights a closed convex patch inside its cone and range with exact corners', () => {
+  const light = { position: [-3, 4, 2.5], direction: [3, -4, -2.5], angle: 0.5, range: 7 };
+  const { outline } = spotGroundFootprint(light, SCENE_RADIUS);
+  const axisLength = Math.hypot(3, 4, 2.5);
+  for (const point of outline) {
+    assertClose(point[1], 0, 'on the ground');
+    const offset = [point[0] + 3, point[1] - 4, point[2] - 2.5];
+    const reach = Math.hypot(...offset);
+    assert.ok(reach <= 7 + 1e-6, `within range: ${reach}`);
+    const angle = Math.acos((offset[0] * 3 - offset[1] * 4 - offset[2] * 2.5) / (reach * axisLength));
+    assert.ok(angle <= 0.5 + 1e-6, `inside the cone: ${angle}`);
+  }
+  assert.deepEqual(outline[0], outline.at(-1));
+  for (let first = 0; first < outline.length - 1; first += 1) {
+    for (let second = first + 2; second < outline.length - 1; second += 1) {
+      assert.ok(!segmentsCross(outline[first], outline[first + 1], outline[second], outline[second + 1]), `segments ${first} and ${second} cross`);
+    }
+  }
+  const atRangeLimit = outline.filter(point => Math.abs(Math.hypot(point[0] + 3, 4, point[2] - 2.5) - 7) < 1e-6);
+  assert.ok(atRangeLimit.length >= 3, 'the range circle bounds part of the patch');
+  const cornerWhereEdgeMeetsRange = outline.some(point => Math.abs(Math.hypot(point[0] + 3, 4, point[2] - 2.5) - 7) < 1e-6 && Math.abs(Math.acos((((point[0] + 3) * 3) - 4 * -4 + (point[2] - 2.5) * -2.5) / (7 * axisLength)) - 0.5) < 1e-4);
+  assert.ok(cornerWhereEdgeMeetsRange, 'the conic and the range circle meet at an exact corner');
 });
 
 test('a spot whose cone stops short of the ground has no patch', () => {
