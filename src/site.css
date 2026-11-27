@@ -93,7 +93,7 @@ body.site .icon { width: 18px; height: 18px; margin: 0; flex: none; }
 .site button:active:not(:disabled) { transform: scale(0.97); }
 
 /* Panels and pictures: square, with the 2px edge. */
-.site :is(.code-block, .doc-callout, .doc-check, .doc-card, .doc-pagination a, .live-example, .api-entry, .market-card, .builtin-row, .market-trust, .market-state, .market-install, .recipe-card, .tiers-metric, .tiers-planned, .showcase-frame, .docs-search input, .market-filter, .api-filter input, .doc-copy-fallback, .recipe-pair img, .recipe-clip, .showcase-cook img, .community-grid img, .change-media, .doc-figure img, .doc-figure video, .recipe-code pre, .command-row, .market-facts li, #doc-topic-menu > summary) {
+.site :is(.code-block, .doc-callout, .doc-check, .doc-card, .doc-pagination a, .live-example, .api-entry, .market-card, .builtin-card, .market-trust, .market-state, .market-install, .recipe-card, .tiers-metric, .tiers-planned, .showcase-frame, .docs-search input, .market-filter, .api-filter input, .doc-copy-fallback, .recipe-pair img, .recipe-clip, .showcase-cook img, .community-grid img, .change-media, .doc-figure img, .doc-figure video, .recipe-code pre, .command-row, .market-facts li, #doc-topic-menu > summary) {
   border: var(--edge-width) solid var(--edge);
 }
 

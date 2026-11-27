@@ -1,6 +1,6 @@
 # Grass fields
 
-`crucible/addons/grass` is in the current source and not yet published. It covers terrain with clumped, curved blades in tiles, with distance level of detail. Each tile is one part and one draw, and a coarser level keeps a fixed subset of the same blades, so a tile that changes level does not reshuffle.
+`crucible/addons/grass` covers terrain with clumped, curved blades in tiles, with distance level of detail. Each tile is one part and one draw, and a coarser level keeps a fixed subset of the same blades, so a tile that changes level does not reshuffle.
 
 ## Tiles and levels of detail
 
@@ -110,9 +110,9 @@ On the demo meadow (80 by 100 m, eye 1.3 m above the ground, RTX 3060, headless 
 
 ## Clutter and baked light
 
-`crucible/addons/clutter` is in the current source and not yet published. It scatters pebbles, rocks, twigs and fallen leaves over terrain in the same streamed tiles. Pick a `preset` (`meadow`, `forest`, `riverbed`, `scree`), pass `terrainHeight`, and add `clutter.parts` next to the grass. The [clutter contract](https://github.com/codepawl/crucible/blob/main/docs/clutter.md) lists options and budgets.
+`crucible/addons/clutter` scatters pebbles, rocks, twigs and fallen leaves over terrain in the same streamed tiles. Pick a `preset` (`meadow`, `forest`, `riverbed`, `scree`), pass `terrainHeight`, and add `clutter.parts` next to the grass. The [clutter contract](https://github.com/codepawl/crucible/blob/main/docs/clutter.md) lists options and budgets.
 
-`crucible/addons/light-bake` is in the current source and not yet published. `bakeLightmaps(parts, lights, options)` ray traces the light that bounces between surfaces into a lightmap texture for each part, and returns new parts that draw it through the emissive map. Direct light stays live. The [light bake contract](https://github.com/codepawl/crucible/blob/main/docs/light-bake.md) lists the limits.
+`crucible/addons/light-bake` is ready to import. `bakeLightmaps(parts, lights, options)` ray traces the light that bounces between surfaces into a lightmap texture for each part, and returns new parts that draw it through the emissive map. Direct light stays live. The [light bake contract](https://github.com/codepawl/crucible/blob/main/docs/light-bake.md) lists the limits.
 
 ## Limits
 

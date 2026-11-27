@@ -172,10 +172,8 @@ const beats = [...document.querySelectorAll('.beat')];
 const heroBeat = beats[0];
 const calloutNotes = [...document.querySelectorAll('.callout')];
 const leader = document.getElementById('leader');
-const ladder = document.getElementById('ladder');
 const cue = document.getElementById('cue');
 const canvas = document.getElementById('foundry');
-const readoutFields = { fill: document.getElementById('hud-fill'), heat: document.getElementById('hud-heat') };
 
 let foundry = null;
 let easeUnit = null;
@@ -190,12 +188,6 @@ let plainView = false;
 function jumpTo(progress) {
   const travel = story.offsetHeight - window.innerHeight;
   window.scrollTo({ top: window.scrollY + story.getBoundingClientRect().top + travel * progress, behavior: reducedMotion ? 'auto' : 'smooth' });
-}
-if (ladder) {
-  ladder.addEventListener('click', (event) => {
-    const step = event.target.closest('button[data-jump]');
-    if (step) jumpTo(Number(step.dataset.jump));
-  });
 }
 if (cue) {
   cue.addEventListener('click', (event) => {
@@ -279,18 +271,6 @@ function showBeat(progress) {
   if (beatIndex === activeBeat) return;
   activeBeat = beatIndex;
   beats.forEach((beat, index) => beat.classList.toggle('on', index === beatIndex));
-  if (ladder) {
-    [...ladder.children].forEach((step, index) => {
-      step.classList.toggle('on', index === beatIndex);
-      step.classList.toggle('done', index < beatIndex);
-    });
-  }
-}
-
-function showReadout() {
-  const readout = foundry.readout();
-  readoutFields.fill.textContent = `${readout.fillPercent}%`;
-  readoutFields.heat.textContent = `${readout.temperature}°C`;
 }
 
 function drawAt(progress, seconds) {
@@ -300,7 +280,6 @@ function drawAt(progress, seconds) {
   foundry.set({ heroAmount: fadeHero(progress), region: narrowScreen.matches ? HERO_REGION_TALL : HERO_REGION_WIDE });
   foundry.draw();
   placeCallout(progress);
-  showReadout();
 }
 
 function readScroll() {

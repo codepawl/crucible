@@ -4,11 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="theme-color" content="#f8f7f1" media="(prefers-color-scheme: light)" /><meta name="theme-color" content="#17161a" media="(prefers-color-scheme: dark)" />
     <link rel="preload" href="/fonts/plus-jakarta-sans-latin-3.woff2" as="font" type="font/woff2" crossorigin /><link rel="preload" href="/fonts/inter-latin-6.woff2" as="font" type="font/woff2" crossorigin />
-    <meta name="description" content="Download data packs of materials, looks, HDRIs, models and recipes for Crucible, and find code addons from other people." />
+    <meta name="description" content="Download data packs, companion npm packages, and browse built-in and community addons for Crucible." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Crucible" />
     <meta property="og:title" content="Marketplace - Crucible" />
-    <meta property="og:description" content="Download data packs of materials, looks, HDRIs, models and recipes for Crucible, and find code addons from other people." />
+    <meta property="og:description" content="Download data packs, companion npm packages, and browse built-in and community addons for Crucible." />
     <meta property="og:url" content="https://crucible.codepawl.com/marketplace.html" />
     <meta property="og:image" content="https://crucible.codepawl.com/og.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -35,15 +35,25 @@
 </header>
 <!-- /site-chrome:header -->
     <main id="content">
-      <h1>Marketplace</h1>
+      <header class="market-hero">
+        <h1>Marketplace</h1>
+        <p class="market-lede">Data packs, companion packages, and built-in addons for Crucible.</p>
+        <nav class="market-jumps" aria-label="Marketplace sections">
+          <a class="market-jump" href="#packs"><span>Packs</span><span class="market-jump-count" id="count-packs">0</span></a>
+          <a class="market-jump" href="#packages"><span>Packages</span><span class="market-jump-count" id="count-packages">0</span></a>
+          <a class="market-jump" href="#builtin"><span>Built-in addons</span><span class="market-jump-count" id="count-builtin">0</span></a>
+          <a class="market-jump" href="#community-addons"><span>Community npm</span><span class="market-jump-count" id="count-community">0</span></a>
+        </nav>
+      </header>
+
       <section id="packs" aria-labelledby="packs-title">
         <div class="section-heading">
           <h2 id="packs-title">Packs</h2>
           <div class="section-heading-links"><a href="https://github.com/codepawl/crucible/blob/main/docs/packs.md">Make a pack</a><a href="/showcase.html#community">Submit your work</a></div>
         </div>
-        <div id="pack-list" class="market-list" aria-live="polite"></div>
-        <div class="market-install">
-          <h3>Install a pack</h3>
+        <div id="pack-list" class="pack-grid" aria-live="polite"></div>
+        <details class="market-install">
+          <summary>How to install a pack</summary>
           <ol>
             <li>
               <p>Unzip it into its own folder inside your packs folder.</p>
@@ -58,32 +68,38 @@
               <div class="command-row"><code>npm run pack:check -- packs/example-starter</code><button type="button" data-copy="npm run pack:check -- packs/example-starter">Copy</button></div>
             </li>
           </ol>
-        </div>
+        </details>
       </section>
-      <section id="addons" aria-labelledby="addons-title">
+
+      <section id="packages" aria-labelledby="packages-title">
         <div class="section-heading">
-          <h2 id="addons-title">Addons</h2>
+          <h2 id="packages-title">Packages by CodePawl</h2>
+        </div>
+        <div id="package-list" class="market-grid" aria-live="polite"></div>
+      </section>
+
+      <section id="builtin" aria-labelledby="builtin-title">
+        <div class="section-heading">
+          <h2 id="builtin-title">Built into Crucible</h2>
+          <span id="builtin-count" class="market-count" aria-live="polite"></span>
+        </div>
+        <div class="market-toolbar">
+          <div id="builtin-areas" class="market-areas" role="group" aria-label="Filter addons by area"></div>
+          <input id="builtin-filter" class="market-filter" type="search" placeholder="Search addons" aria-label="Search built-in addons" autocomplete="off" />
+        </div>
+        <div id="builtin-list" class="builtin-list" aria-labelledby="builtin-title"></div>
+      </section>
+
+      <section id="community-addons" aria-labelledby="community-addons-title">
+        <div class="section-heading">
+          <h2 id="community-addons-title">Community addons on npm</h2>
           <a href="https://github.com/codepawl/crucible/blob/main/docs/addons.md">Write an addon</a>
         </div>
         <p class="market-trust">
           <svg class="market-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18"/></svg>
           <span>An addon runs with the full rights of your page or Node process. Install only addons you trust and read what they do first. The MCP server loads only the addons you name when you start it, with <code>--addons</code> and <code>--allow-addon</code>, never one a tool call asks for.</span>
         </p>
-        <div class="market-builtin">
-          <div class="market-builtin-head">
-            <h3 id="builtin-title">Built into Crucible</h3>
-            <input id="builtin-filter" class="market-filter" type="search" placeholder="Filter addons" aria-label="Filter built-in addons" autocomplete="off" />
-          </div>
-          <div id="builtin-list" class="builtin-list" aria-labelledby="builtin-title"></div>
-        </div>
-        <h3 class="market-subheading">From npm</h3>
-        <div id="addon-list" class="market-list" aria-live="polite"></div>
-      </section>
-      <section id="packages" aria-labelledby="packages-title">
-        <div class="section-heading">
-          <h2 id="packages-title">Packages by CodePawl</h2>
-        </div>
-        <div id="package-list" class="market-list" aria-live="polite"></div>
+        <div id="addon-list" class="market-grid" aria-live="polite"></div>
       </section>
     </main>
     <!-- site-chrome:footer -->

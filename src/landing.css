@@ -65,9 +65,8 @@
 .landing .frame canvas { opacity: 0; transition: opacity 320ms ease; }
 .landing .story.scene-live .frame canvas { opacity: 1; }
 .landing .story.scene-live .frame .poster { opacity: 0; }
-.landing .hud { display: flex; align-items: center; gap: 6px 16px; flex-wrap: wrap; font: 500 12px/1 var(--mono); color: var(--soft); min-height: 32px; }
-.landing .hud b { font: 600 15px/1 var(--data); color: var(--fg); margin-right: 4px; font-variant-numeric: tabular-nums; }
-.landing .hud .skip { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--fg); font: 600 13px/1 var(--body); text-underline-offset: 4px; }
+.landing .hud { display: flex; align-items: center; justify-content: flex-end; min-height: 32px; }
+.landing .hud .skip { display: inline-flex; align-items: center; gap: 4px; color: var(--fg); font: 600 13px/1 var(--body); text-underline-offset: 4px; }
 
 .landing .story.is-static { height: auto; }
 .landing .story.is-static .pin { position: static; height: auto; display: block; padding-top: 24px; padding-bottom: 24px; }
@@ -76,7 +75,7 @@
 .landing .story.is-static .beat { grid-area: auto; visibility: visible; opacity: 1; transform: none; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr); gap: 16px 32px; align-items: center; }
 .landing .story.is-static .beat > * { grid-column: 1; }
 .landing .story.is-static .still { display: block; grid-column: 2; grid-row: 1 / span 6; width: 100%; max-height: 70vh; object-fit: contain; border-radius: var(--round); image-rendering: pixelated; }
-.landing .story.is-static .cue, .landing .story.is-static .ladder { display: none; }
+.landing .story.is-static .cue { display: none; }
 
 .landing .section { padding: clamp(56px, 8vw, 112px) var(--side-right) 0 var(--side-left); scroll-margin-top: var(--nav-height); }
 .landing .inner { max-width: 1180px; margin: 0 auto; display: grid; gap: 24px; }
@@ -100,18 +99,11 @@
 .landing .shot { position: relative; display: block; overflow: hidden; border-radius: var(--card-round); border: var(--edge-width) solid var(--edge); background: var(--card); aspect-ratio: 16 / 9; }
 .landing .shot img, .landing .shot canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .landing .shot canvas { image-rendering: pixelated; }
-.landing .chips { display: flex; flex-wrap: wrap; gap: 6px; font: 500 12px/1 var(--mono); }
-.landing .chips li { padding: 7px 9px; border-radius: var(--chip-round); background: var(--card); border: var(--edge-width) solid var(--edge); }
 .landing .gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
 .landing .work { display: grid; gap: 10px; text-decoration: none; }
 .landing .work b { display: block; font: 600 18px/1.2 var(--display); letter-spacing: -0.015em; }
 .landing .work span { color: var(--soft); font-size: 14px; }
 .landing .work:hover b { text-decoration: underline; text-underline-offset: 4px; }
-.landing .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.landing .card { display: grid; gap: 8px; align-content: start; padding: 18px; border-radius: var(--card-round); border: var(--edge-width) solid var(--edge); background: var(--card); text-decoration: none; }
-.landing .card p { font-size: 14px; color: var(--soft); }
-.landing .card .icon { width: 24px; height: 24px; color: var(--accent); }
-.landing a.card:hover h3 { text-decoration: underline; text-underline-offset: 4px; }
 .landing .meter { display: grid; gap: 4px; width: 100%; font: 500 12px/1.3 var(--mono); }
 .landing .meter span { display: flex; justify-content: space-between; gap: 12px; }
 .landing .meter i { display: block; height: 10px; border-radius: calc(var(--round) / 3); width: var(--share); min-width: 3px; background: repeating-conic-gradient(var(--fg) 0% 25%, var(--bg) 0% 50%) 0 0 / 4px 4px; }
@@ -135,10 +127,6 @@
 .landing .cue .icon:last-child { color: var(--accent); animation: landing-cue-bob 0.9s steps(2, jump-none) infinite; }
 .landing .cue.gone { visibility: hidden; }
 @keyframes landing-cue-bob { to { transform: translateY(4px); } }
-.landing .ladder { display: flex; gap: 4px; }
-.landing .ladder button { padding: 6px 8px; border: var(--edge-width) solid transparent; border-radius: var(--chip-round); background: transparent; color: var(--soft); font: 600 12px/1 var(--mono); cursor: pointer; }
-.landing .ladder button.done { color: var(--fg); }
-.landing .ladder button.on { background: var(--fg); border-color: var(--fg); color: var(--bg); }
 .landing .scene { grid-column: 1 / -1; grid-row: 1; }
 .landing .words { grid-column: 1; grid-row: 1; z-index: 1; margin-bottom: 40px; pointer-events: none; }
 .landing .beat > * { pointer-events: auto; }
@@ -167,10 +155,8 @@
   .landing .beat h1 { font-size: clamp(27px, 7.6vw, 34px); }
   .landing .beat h2 { font-size: clamp(40px, 13vw, 56px); }
   .landing .command code { padding: 9px 10px; font-size: 12px; }
-  .landing .hud { gap: 4px 10px; font-size: 11px; min-height: 36px; }
-  .landing .hud b { font-size: 13px; }
-  .landing .ladder button { min-height: 36px; padding: 6px 8px; }
-  .landing .split, .landing .gallery, .landing .cards, .landing .trio { grid-template-columns: minmax(0, 1fr); }
+  .landing .hud { min-height: 36px; }
+  .landing .split, .landing .gallery, .landing .trio { grid-template-columns: minmax(0, 1fr); }
   .landing .story.is-static .beat { grid-template-columns: minmax(0, 1fr); }
   .landing .story.is-static .still { grid-column: 1; grid-row: auto; max-height: 46vh; }
 }
@@ -183,7 +169,6 @@
   .landing .actions { gap: 8px; }
   .landing .actions .button { padding: 0 11px; font-size: 13px; }
   .landing .beat p.explain { display: none; }
-  .landing .hud span { display: none; }
   .landing .callout { top: auto; bottom: 14px; right: auto; left: 0; width: 66%; gap: 4px; }
   .landing .callout h2 { font-size: 20px; }
   .landing .callout p { font-size: 12.5px; }
