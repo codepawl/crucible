@@ -102,6 +102,8 @@ const NODE_FIELDS = [
 // Optional/newer material fields join this sorted list (one per line) so parallel pull requests never collide while core packed key order stays identical.
 const EXTRA_MATERIAL_FIELDS = [
   'layers',
+  'toonBase',
+  'toonRim',
   'waterGlint',
 ];
 const MATERIAL_FIELDS = [
@@ -388,11 +390,8 @@ function copyMaterialLayers(value, result) {
     if (value[field] === undefined) continue;
     result[field] = Array.isArray(value[field]) ? vector(value[field], 3, field) : value[field];
   }
-  if (value.toonColors !== undefined) {
-    result.toonColors = Array.isArray(value.toonColors)
-      ? Object.freeze(value.toonColors.map((color, index) => Object.freeze(vector(color, 3, `toonColors[${index}]`))))
-      : value.toonColors;
-  }
+  if (result.toon > 0 || value.toonRim != null || value.toonBase != null) agentSceneModule('lineArt').copyToon(value, result, vector);
+  else if (value.toonColors !== undefined) result.toonColors = value.toonColors;
   validateMaterialLayers(result);
   if (value.emissionMask !== undefined) {
     result.emissionMask = Object.freeze(agentSceneModule('emissionMask').normalizeEmissionMask(value.emissionMask));
@@ -400,7 +399,6 @@ function copyMaterialLayers(value, result) {
   if (value.subsurface !== undefined) result.subsurface = agentSceneModule('subsurfaceShader').copySubsurface(value.subsurface, result.tag);
   if (value.snippet) result.snippet = agentSceneModule('materialSnippet').normalizeMaterialSnippet(value.snippet, { hasMap: Boolean(value.map || value.pattern) });
   if (result.anisotropy > 0 || result.iridescence > 0 || result.softEdge > 0 || JSON.stringify(value.pattern?.graph?.emission ?? null).includes('"fresnel"')) agentSceneModule('layerShaders');
-  if (result.toon > 0) agentSceneModule('lineArt');
 }
 
 /** alphaCutoff is the alpha below which a masked surface is cut out; it means nothing for other alpha modes, so it is refused there. */

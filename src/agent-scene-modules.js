@@ -157,7 +157,7 @@ const MODULE_MARKERS = {
   clutter: ['"clutter":['],
   grass: ['"grass":{'],
   crowd: ['"crowd":{'],
-  lineArt: ['"lines":{', '"toon":'],
+  lineArt: ['"lines":{', '"toon'],
   rain: ['"rain":{'],
   wetnessPuddles: [/"from":"(?:cavity|mask)"/],
   viewTransform: ['"viewTransform":"agx"', '"viewTransform":"neutral"', '"viewTransform":"standard"', '"look":"'],
