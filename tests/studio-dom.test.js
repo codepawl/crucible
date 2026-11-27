@@ -8,6 +8,7 @@ import { createStudio, createStudioController, STUDIO_PRIMITIVES, STUDIO_TABS, S
 import { LIGHTING_SETUP_NAMES } from '../src/agent-scene-capabilities.js';
 import { createAgentScene } from '../src/agent-scene.js';
 import { directionToSunAngles, hexToLinearRgb } from '../src/studio-controller.js';
+import { sunMarkPosition } from '../src/studio-sun-mark.js';
 import { buildGridParts } from '../src/studio-viewport-aids.js';
 import { VIEW_TRANSFORM_NAMES } from '../src/view-transform-names.js';
 import { tinyHdrBytes } from './helpers/tiny-hdr.js';
@@ -859,7 +860,7 @@ test('playback stops by itself when the animation is deleted while playing', asy
 });
 
 test('the gizmo draws handles for each tool and clears them when nothing is selected', testContext => {
-  const ui = mountStudio(testContext);
+  const ui = mountStudioSeeingTheSunMark(testContext);
   const axesDrawn = () => new Set(ui.gizmo.descendants().map(element => element.getAttribute('data-gizmo-axis')).filter(Boolean));
   ui.controller.selectNode(null);
   ui.studio.renderNow();
@@ -990,7 +991,7 @@ test('clicking the canvas picks an object or clears the selection, and dragging 
 });
 
 test('the mouse wheel zooms the camera and the page does not scroll', testContext => {
-  const ui = mountStudio(testContext);
+  const ui = mountStudioSeeingTheSunMark(testContext);
   const distance = () => Math.hypot(...ui.controller.scene.camera.eye.map((value, index) => value - ui.controller.scene.camera.target[index]));
   const before = distance();
   const zoomOut = dispatch(ui.canvas, 'wheel', { deltaY: 100 });
@@ -3939,7 +3940,7 @@ test('the scene list shows the camera, the sun and each light above the nodes, s
 });
 
 test('a light has a mark in the viewport that selects it and drags it in the plane facing the view', testContext => {
-  const ui = mountStudio(testContext);
+  const ui = mountStudioSeeingTheSunMark(testContext);
   ui.controller.addSceneLight('point');
   ui.controller.moveSceneObject('point:0', [1, 1.5, 1]);
   ui.studio.renderNow();
@@ -3996,6 +3997,120 @@ test('a light that a track moves refuses the drag and says why', testContext => 
   dispatch(ui.canvas, 'pointerup', ui.clientPoint(grab));
   assert.deepEqual(ui.studio.exportRecipe().environment.pointLights[0].position, [1, 1.5, 1]);
   assert.match(ui.status(), /point:0 light position is animated/);
+});
+
+function sunMarkWorldPoint(ui) {
+  const sun = ui.controller.listSceneObjects().find(object => object.key === 'sun');
+  return sunMarkPosition(ui.controller.sceneBounds(), sun.direction);
+}
+
+// The test scene's 10 m ground makes its sphere wide, so the sun's fixed mark starts out of view; these tests lower the sun and pull the view back first.
+function mountStudioSeeingTheSunMark(testContext, options) {
+  const ui = mountStudio(testContext, options);
+  if (!options?.recipe) ui.controller.setSunAngles({ azimuthDegrees: 10, elevationDegrees: 20 });
+  ui.controller.orbitCamera({ zoomScale: 2.5 });
+  ui.studio.renderNow();
+  assert.ok(sunMarkCircle(ui), 'the sun mark is in view');
+  return ui;
+}
+
+function sunMarkCircle(ui) {
+  return ui.gizmo.descendants().find(element => element.getAttribute('data-scene-object') === 'sun' && element.tagName.toLowerCase() === 'circle');
+}
+
+test('the sun mark stays at one world point through an orbit, a pan and a zoom, and is drawn where that point projects', testContext => {
+  const ui = mountStudioSeeingTheSunMark(testContext);
+  const before = sunMarkWorldPoint(ui);
+  for (const move of [{ deltaAzimuth: 0.7, deltaElevation: 0.2 }, { panX: 0.12, panY: -0.08 }, { zoomScale: 0.6 }]) {
+    ui.controller.orbitCamera(move);
+    ui.studio.renderNow();
+    assert.deepEqual(sunMarkWorldPoint(ui), before, `the mark did not move after ${Object.keys(move)}`);
+    const projected = ui.controller.projectWorldPoint(before);
+    const drawn = sunMarkCircle(ui);
+    if (drawn) {
+      assert.match(drawn.parentNode.getAttribute('transform'), new RegExp(`translate\\(${projected.x.toFixed(1)} ${projected.y.toFixed(1)}\\)`));
+    }
+  }
+});
+
+test('the sun mark moves with the sun and with the scene bounds', testContext => {
+  const ui = mountStudioSeeingTheSunMark(testContext);
+  const before = sunMarkWorldPoint(ui);
+  ui.controller.setSunAngles({ azimuthDegrees: 120, elevationDegrees: 30 });
+  const turned = sunMarkWorldPoint(ui);
+  assert.notDeepEqual(turned, before);
+  ui.controller.addPrimitive('box', { translation: [20, 0, 0] });
+  assert.notDeepEqual(sunMarkWorldPoint(ui), turned);
+});
+
+test('dragging the sun mark with the move tool turns the sun over a sphere around the scene as one undo step', testContext => {
+  const ui = mountStudioSeeingTheSunMark(testContext);
+  const startDirection = [...ui.studio.exportRecipe().environment.lightDirection];
+  const grab = ui.controller.projectWorldPoint(sunMarkWorldPoint(ui));
+  const down = dispatch(sunMarkCircle(ui), 'pointerdown', { ...ui.clientPoint(grab), pointerId: 11 });
+  assert.equal(down.defaultPrevented, true);
+  assert.equal(ui.controller.selectedObjectKey, 'sun');
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(grab));
+  assert.deepEqual(ui.studio.exportRecipe().environment.lightDirection, startDirection, 'a drag that has not moved leaves the sun where it was');
+
+  const release = { x: grab.x - 90, y: grab.y + 20 };
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint({ x: grab.x - 40, y: grab.y }));
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(release));
+  const angles = directionToSunAngles(ui.studio.exportRecipe().environment.lightDirection);
+  assert.notDeepEqual(ui.studio.exportRecipe().environment.lightDirection, startDirection, 'the sun followed the pointer');
+  assert.ok(angles.elevationDegrees >= 4 && angles.elevationDegrees <= 88);
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint({ x: 0, y: 700 }));
+  const lowest = directionToSunAngles(ui.studio.exportRecipe().environment.lightDirection);
+  assert.ok(lowest.elevationDegrees >= 4 - 1e-6, 'a pointer far off the sphere keeps the sun above the horizon band');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(release));
+
+  ui.controller.undo();
+  assert.deepEqual(ui.studio.exportRecipe().environment.lightDirection, startDirection, 'one undo puts the sun back after the whole drag');
+});
+
+test('pressing a sun mark on the far side of the scene leaves the sun where it was and keeps turning on that side', testContext => {
+  const ui = mountStudioSeeingTheSunMark(testContext);
+  ui.controller.orbitCamera({ deltaAzimuth: Math.PI });
+  ui.studio.renderNow();
+  const startDirection = [...ui.studio.exportRecipe().environment.lightDirection];
+  const grab = ui.controller.projectWorldPoint(sunMarkWorldPoint(ui));
+  dispatch(sunMarkCircle(ui), 'pointerdown', { ...ui.clientPoint(grab), pointerId: 14 });
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint(grab));
+  const stayed = directionToSunAngles(ui.studio.exportRecipe().environment.lightDirection);
+  const started = directionToSunAngles(startDirection);
+  assert.ok(Math.abs(stayed.azimuthDegrees - started.azimuthDegrees) < 1 && Math.abs(stayed.elevationDegrees - started.elevationDegrees) < 1, 'a press with no move does not flip the sun to the near side');
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint({ x: grab.x + 30, y: grab.y }));
+  const turned = directionToSunAngles(ui.studio.exportRecipe().environment.lightDirection);
+  assert.ok(Math.abs(turned.azimuthDegrees - started.azimuthDegrees) < 90, 'the sun stays on the far side while it turns');
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(grab));
+});
+
+test('only the move tool drags the sun mark', testContext => {
+  const ui = mountStudioSeeingTheSunMark(testContext);
+  const startDirection = [...ui.studio.exportRecipe().environment.lightDirection];
+  const grab = ui.controller.projectWorldPoint(sunMarkWorldPoint(ui));
+  ui.tool('select').click();
+  dispatch(sunMarkCircle(ui), 'pointerdown', { ...ui.clientPoint(grab), pointerId: 12 });
+  dispatch(ui.canvas, 'pointermove', ui.clientPoint({ x: grab.x - 60, y: grab.y }));
+  dispatch(ui.canvas, 'pointerup', ui.clientPoint(grab));
+  assert.deepEqual(ui.studio.exportRecipe().environment.lightDirection, startDirection);
+});
+
+test('a sun that a track turns refuses the drag and says why', testContext => {
+  const recipe = makeRecipe();
+  recipe.motion = {
+    duration: 2,
+    loop: false,
+    tracks: [{ kind: 'sun', property: 'direction', interpolation: 'LINEAR', keyframes: [{ time: 0, value: [1, 2.2, 6] }, { time: 2, value: [1.5, 2.2, 6] }] }],
+  };
+  const driven = mountStudioSeeingTheSunMark(testContext, { recipe });
+  const drivenStart = [...driven.studio.exportRecipe().environment.lightDirection];
+  const drivenGrab = driven.controller.projectWorldPoint(sunMarkWorldPoint(driven));
+  dispatch(sunMarkCircle(driven), 'pointerdown', { ...driven.clientPoint(drivenGrab), pointerId: 13 });
+  dispatch(driven.canvas, 'pointermove', driven.clientPoint({ x: drivenGrab.x - 60, y: drivenGrab.y }));
+  dispatch(driven.canvas, 'pointerup', driven.clientPoint(drivenGrab));
+  assert.deepEqual(driven.studio.exportRecipe().environment.lightDirection, drivenStart);
+  assert.match(driven.status(), /sun direction is animated/);
 });
 
 test('the camera is drawn once the view looks away from it', testContext => {

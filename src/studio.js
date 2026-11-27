@@ -22,6 +22,8 @@ import { resolveMouseMap } from './studio-mouse-map.js';
 import { createMouseInput, createViewportTargetFilter, isEditableTarget } from './studio-mouse-input.js';
 import { findKeymapAction, findMouseNavigation, formatShortcutKeys, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
 import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
+import { SCENE_OBJECT_ICONS, beginSceneObjectDrag, dragSceneObject, renderSceneObjectMarks } from './studio-scene-marks.js';
+import { createSvgElement } from './studio-svg.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
 import { createStudioSettings } from './studio-settings.js';
@@ -127,7 +129,6 @@ const TREE_ICON_BY_GEOMETRY = Object.freeze({
 });
 
 // The icon a scene row shows: the shape of the object's geometry, a stack for a group, a cube for any other mesh.
-const SCENE_OBJECT_ICONS = Object.freeze({ camera: 'camera', sun: 'sun', point: 'pointLight', spot: 'spotLight', area: 'areaLight' });
 
 function treeIconName(node, geometriesById) {
   if (!node.geometry) {
@@ -163,14 +164,6 @@ function createElement(documentReference, tagName, properties = {}, ...children)
     }
   }
   element.append(...children);
-  return element;
-}
-
-function createSvgElement(documentReference, tagName, attributes = {}) {
-  const element = documentReference.createElementNS('http://www.w3.org/2000/svg', tagName);
-  for (const [name, value] of Object.entries(attributes)) {
-    element.setAttribute(name, String(value));
-  }
   return element;
 }
 
@@ -1095,80 +1088,6 @@ function appendFreeMoveRing(documentReference, gizmoSvg, origin, radius, axis) {
     createSvgElement(documentReference, 'circle', { ...ringAttributes, stroke: 'var(--studio-bg)', 'stroke-opacity': '0.7', 'stroke-width': '4' }),
     createSvgElement(documentReference, 'circle', { ...ringAttributes, stroke: 'var(--studio-text)', 'stroke-width': '1.5', 'data-gizmo-axis': axis }),
   );
-}
-
-const SCENE_OBJECT_MARK_RADIUS = 13;
-// A sun has no place in the scene, so its mark floats in front of the view at a share of the way to what the view looks at.
-const SUN_MARK_DISTANCE_SHARE = 0.35;
-const SUN_MARK_RAY_SHARE = 0.12;
-
-/** Where a ray meets the plane through a point with a normal, or null when it runs parallel or the plane lies behind it. */
-function intersectPlane(ray, planePoint, planeNormal) {
-  const facing = ray.direction.reduce((sum, component, axis) => sum + component * planeNormal[axis], 0);
-  if (Math.abs(facing) < 1e-6) {
-    return null;
-  }
-  const distance = planePoint.reduce((sum, component, axis) => sum + (component - ray.origin[axis]) * planeNormal[axis], 0) / facing;
-  return distance > 0 ? ray.origin.map((component, axis) => component + ray.direction[axis] * distance) : null;
-}
-
-function sceneObjectMarkPosition(object, viewCamera) {
-  if (object.kind !== 'sun') {
-    return object.position;
-  }
-  const reach = Math.hypot(...viewCamera.eye.map((component, axis) => component - viewCamera.target[axis])) * SUN_MARK_DISTANCE_SHARE;
-  return viewCamera.target.map((component, axis) => component + object.direction[axis] * reach);
-}
-
-function appendSceneObjectMark(documentReference, gizmoSvg, object, projected, selected) {
-  const mark = createSvgElement(documentReference, 'g', {
-    class: 'crucible-studio-scene-mark',
-    'data-selected': selected ? 'true' : 'false',
-    transform: `translate(${projected.x.toFixed(1)} ${projected.y.toFixed(1)})`,
-  });
-  const markAttributes = { 'data-scene-object': object.key };
-  const disc = createSvgElement(documentReference, 'circle', { r: SCENE_OBJECT_MARK_RADIUS, class: 'crucible-studio-scene-mark-disc', ...markAttributes });
-  const glyph = createSvgElement(documentReference, 'path', { d: studioIconPath(SCENE_OBJECT_ICONS[object.kind]), transform: 'translate(-9 -9) scale(0.75)', ...markAttributes });
-  mark.append(disc, glyph);
-  gizmoSvg.append(mark);
-}
-
-function appendSunRay(documentReference, gizmoSvg, controller, object, projected, selected) {
-  const viewCamera = controller.viewCamera;
-  const reach = Math.hypot(...viewCamera.eye.map((component, axis) => component - viewCamera.target[axis])) * SUN_MARK_RAY_SHARE;
-  const origin = sceneObjectMarkPosition(object, viewCamera);
-  const end = controller.projectWorldPoint(origin.map((component, axis) => component - object.direction[axis] * reach));
-  if (!end.visible) {
-    return;
-  }
-  gizmoSvg.append(createSvgElement(documentReference, 'line', {
-    class: 'crucible-studio-scene-mark-ray',
-    'data-selected': selected ? 'true' : 'false',
-    x1: projected.x.toFixed(1),
-    y1: projected.y.toFixed(1),
-    x2: end.x.toFixed(1),
-    y2: end.y.toFixed(1),
-  }));
-}
-
-/** One mark per light and one for the sun; the scene camera is drawn only while the view looks away from it. */
-function renderSceneObjectMarks(documentReference, gizmoSvg, controller) {
-  const width = controller.viewportWidth;
-  const height = controller.viewportHeight;
-  for (const object of controller.listSceneObjects()) {
-    if (object.kind === 'camera' && !controller.freeView) {
-      continue;
-    }
-    const projected = controller.projectWorldPoint(sceneObjectMarkPosition(object, controller.viewCamera));
-    if (!projected.visible || projected.x < 0 || projected.x > width || projected.y < 0 || projected.y > height) {
-      continue;
-    }
-    const selected = object.key === controller.selectedObjectKey;
-    if (object.kind === 'sun') {
-      appendSunRay(documentReference, gizmoSvg, controller, object, projected, selected);
-    }
-    appendSceneObjectMark(documentReference, gizmoSvg, object, projected, selected);
-  }
 }
 
 function buildPackReadyRecipe(recipe) {
@@ -5299,23 +5218,10 @@ export function createStudio(container, {
     event.stopPropagation();
     selectSceneObjectAndShowItsPanel(key);
     const object = controller.listSceneObjects().find(candidate => candidate.key === key);
-    const movable = object.position !== null && key !== 'camera';
-    if (!movable || controller.tool !== 'translate') return;
-    const coordinates = localCoordinates(event);
-    const camera = controller.viewCamera;
-    const normal = camera.target.map((component, axis) => component - camera.eye[axis]);
-    const normalLength = Math.hypot(...normal);
-    const planeNormal = normal.map(component => component / normalLength);
-    const grabbed = intersectPlane(controller.screenRay(coordinates.x, coordinates.y), object.position, planeNormal);
-    if (!grabbed) return;
-    pointerState = {
-      mode: 'light',
-      key,
-      planeNormal,
-      planePoint: object.position,
-      grabOffset: object.position.map((component, axis) => component - grabbed[axis]),
-      pointerId: event.pointerId,
-    };
+    if (controller.tool !== 'translate') return;
+    const dragState = beginSceneObjectDrag(controller, object, localCoordinates(event), event.pointerId, announceError);
+    if (!dragState) return;
+    pointerState = dragState;
     viewportElement.setPointerCapture?.(event.pointerId);
   });
 
@@ -5347,17 +5253,7 @@ export function createStudio(container, {
   });
 
   function dragLight(coordinates) {
-    const { key, planeNormal, planePoint, grabOffset } = pointerState;
-    if (!planeNormal) return;
-    const hit = intersectPlane(controller.screenRay(coordinates.x, coordinates.y), planePoint, planeNormal);
-    if (!hit) return;
-    controller.beginUndoGroup();
-    try {
-      controller.moveSceneObject(key, hit.map((component, axis) => component + grabOffset[axis]));
-    } catch (error) {
-      pointerState.planeNormal = null;
-      announceError(error.message);
-    }
+    dragSceneObject(controller, pointerState, coordinates, announceError);
   }
 
   const mouseInput = createMouseInput({
