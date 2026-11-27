@@ -52,5 +52,6 @@ test('public/_headers CSP connect-src allows registry.npmjs.org for live Marketp
   const headers = readFileSync(new URL('../public/_headers', import.meta.url), 'utf8');
   const csp = headers.match(/Content-Security-Policy:\s*(.+)/)?.[1] ?? '';
   const connectSrc = csp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
-  assert.ok(connectSrc.includes('https://registry.npmjs.org'), 'connect-src must include https://registry.npmjs.org');
+  const allowedSources = connectSrc.trim().split(/\s+/);
+  assert.ok(allowedSources.some(source => source === 'https://registry.npmjs.org'), 'connect-src must list https://registry.npmjs.org');
 });
