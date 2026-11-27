@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { constants, setPriority } from 'node:os';
 import * as RealThree from 'three';
 import * as core from '../src/index.js';
+import { createAgentScene } from '../src/agent-scene.js';
 import { loadGltf } from '../src/gltf.js';
 import { createThreeCompat, unsupportedNames } from '../packages/three-compat/index.mjs';
 import { snippets } from './fixtures/three-compat/snippets.mjs';
@@ -338,4 +339,58 @@ test('the addon stays outside the core bundles and under its size ceiling', asyn
   assert.ok(snippets.length >= 10, `only ${snippets.length} three.js-style snippets; the issue asks for at least 10`);
   const coreSource = await readFile(new URL('../src/index.js', import.meta.url), 'utf8');
   assert.ok(!coreSource.includes('three-compat'), 'the core must not import the addon');
+});
+
+test('core APIs reject three.js objects directly with errors that name the Crucible way (#986)', () => {
+  const surface = { tag: 'surface', color: [1, 1, 1], metallic: 0, roughness: 0.5 };
+  const identity = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+
+  // createSceneGraph: Scene, Mesh, BoxGeometry, MeshStandardMaterial, Matrix4, Vector3
+  assert.throws(() => core.createSceneGraph(new RealThree.Scene()), /THREE\.Scene.*createSceneGraph|parts/);
+  assert.throws(() => core.createSceneGraph([new RealThree.Mesh()]), /THREE\.Mesh.*parts/);
+  assert.throws(() => core.createSceneGraph([{ name: 'a', geometry: new RealThree.BoxGeometry(), material: surface }]), /THREE\.BoxGeometry.*box\(\)/);
+  assert.throws(() => core.createSceneGraph([{ name: 'a', geometry: core.box(0), material: new RealThree.MeshStandardMaterial() }]), /THREE\.MeshStandardMaterial.*tag: "surface"/);
+  assert.throws(() => core.createSceneGraph([{ name: 'a', matrix: new RealThree.Matrix4() }]), /THREE\.Matrix4.*matrix\.elements/);
+  assert.throws(() => core.createSceneGraph([{ name: 'a', pivot: new RealThree.Vector3() }]), /THREE\.Vector3.*\[x, y, z\]/);
+  const graph = core.createSceneGraph([{ name: 'a', geometry: core.box(0), material: surface }]);
+  assert.throws(() => graph.replaceLocalMatrices(new Map([['a', new RealThree.Matrix4()]])), /THREE\.Matrix4.*matrix\.elements/);
+  assert.throws(() => core.createSceneGraph([{ name: 'a', geometry: { isBufferGeometry: true }, material: surface }]), /BufferGeometry.*box\(\)/);
+
+  // camera helpers: PerspectiveCamera, OrthographicCamera, Vector3
+  const unitBounds = { minimum: [-1, -1, -1], maximum: [1, 1, 1] };
+  assert.throws(() => core.fitPerspectiveDistance(unitBounds, new RealThree.PerspectiveCamera(), 1), /THREE\.PerspectiveCamera.*eye, target, up/);
+  assert.throws(() => core.fitOrthographicHeight(unitBounds, new RealThree.OrthographicCamera(), 1), /THREE\.OrthographicCamera.*orthographic/);
+  assert.throws(() => core.projectToScreen(new RealThree.PerspectiveCamera(), [0, 0, 0], 100, 100), /THREE\.PerspectiveCamera.*eye, target/);
+  assert.throws(() => core.projectToScreen({ eye: [0, 0, 5], target: [0, 0, 0] }, new RealThree.Vector3(), 100, 100), /THREE\.Vector3.*\[x, y, z\]/);
+
+  // exportGlb: Scene, Mesh, BoxGeometry, MeshStandardMaterial, Matrix4, PerspectiveCamera
+  assert.throws(() => core.exportGlb(new RealThree.Scene()), /THREE\.Scene.*parts/);
+  assert.throws(() => core.exportGlb([new RealThree.Mesh()]), /THREE\.Mesh.*parts/);
+  assert.throws(() => core.exportGlb([{ name: 'a', geometry: new RealThree.BoxGeometry(), matrix: identity, material: surface }]), /THREE\.BoxGeometry.*box\(\)/);
+  assert.throws(() => core.exportGlb([{ name: 'a', geometry: core.box(0), matrix: identity, material: new RealThree.MeshStandardMaterial() }]), /THREE\.MeshStandardMaterial.*tag: "surface"/);
+  assert.throws(() => core.exportGlb([{ name: 'a', geometry: core.box(0), matrix: new RealThree.Matrix4(), material: surface }]), /THREE\.Matrix4.*matrix\.elements/);
+  assert.throws(() => core.exportGlb([{ name: 'a', geometry: core.box(0), matrix: identity, material: surface }], { camera: new RealThree.PerspectiveCamera() }), /THREE\.PerspectiveCamera.*eye, target/);
+
+  // createAgentScene & scene.apply: real THREE.* objects and plain duck-typed objects
+  assert.throws(() => createAgentScene(new RealThree.Scene()), /THREE\.Scene.*recipe/);
+  assert.throws(() => createAgentScene({ format: 'crucible.scene', schemaVersion: 1, materials: [new RealThree.MeshStandardMaterial()] }), /THREE\.MeshStandardMaterial.*tag: "surface"/);
+  assert.throws(() => createAgentScene({ format: 'crucible.scene', schemaVersion: 1, materials: [{ id: 'm', color: new RealThree.Color(1, 0, 0) }] }), /THREE\.Color.*\[r, g, b\]/);
+  assert.throws(() => createAgentScene({ format: 'crucible.scene', schemaVersion: 1, materials: [{ id: 'm', map: new RealThree.Texture() }] }), /THREE\.Texture.*image, colorSpace/);
+  assert.throws(() => createAgentScene({ format: 'crucible.scene', schemaVersion: 1, geometries: [new RealThree.BoxGeometry()] }), /THREE\.BoxGeometry.*box\(\)/);
+  assert.throws(() => createAgentScene({ format: 'crucible.scene', schemaVersion: 1, camera: new RealThree.PerspectiveCamera() }), /THREE\.PerspectiveCamera.*eye, target/);
+  assert.throws(() => createAgentScene({ format: 'crucible.scene', schemaVersion: 1, materials: [{ id: 'm', isMeshPhysicalMaterial: true }] }), /MeshPhysicalMaterial.*tag: "surface"/);
+  assert.throws(() => createAgentScene({ format: 'crucible.scene', schemaVersion: 1, geometries: [{ id: 'g', isBufferGeometry: true }] }), /BufferGeometry.*box\(\)/);
+
+  const scene = createAgentScene({
+    format: 'crucible.scene',
+    schemaVersion: 1,
+    geometries: [{ id: 'g', type: 'box' }],
+    materials: [{ id: 'm', color: [0.5, 0.5, 0.5] }],
+    nodes: [{ id: 'n', geometry: 'g', material: 'm' }],
+  });
+  assert.throws(() => scene.apply([{ type: 'set-material', id: 'm', color: new RealThree.Color(0, 1, 0) }], { expectedRevision: 0 }), /THREE\.Color.*\[r, g, b\]/);
+  assert.throws(() => scene.apply([{ type: 'add-material', material: { id: 'm2', isMeshLambertMaterial: true } }], { expectedRevision: 0 }), /MeshLambertMaterial.*tag: "surface"/);
+  assert.throws(() => scene.apply([{ type: 'set-camera', isOrthographicCamera: true }], { expectedRevision: 0 }), /OrthographicCamera.*orthographic/);
+  assert.throws(() => scene.apply([new RealThree.DirectionalLight()], { expectedRevision: 0 }), /THREE\.DirectionalLight.*environment/);
+  assert.throws(() => scene.apply([{ type: 'set-node', id: 'n', rotation: new RealThree.Quaternion() }], { expectedRevision: 0 }), /THREE\.Quaternion.*quaternion/);
 });
