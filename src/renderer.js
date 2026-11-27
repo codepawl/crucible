@@ -2722,7 +2722,7 @@ export class CrucibleRenderer {
 
   applyEnvironmentUniforms(map, uniforms = this.uniforms) {
     const backend = backendFor(this);
-    backend.uniform1f(uniforms.environmentEnabled, map ? 1 : 0);
+    backend.uniform1f(uniforms.environmentEnabled, map ? (map.showBackground && !this.transparent ? 2 : 1) : 0);
     if (!map) return;
     this.applyDiffuseUniforms(map, uniforms, true);
     backend.uniform1f(uniforms.environmentIntensity, map.intensity);
