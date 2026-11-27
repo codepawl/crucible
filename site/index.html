@@ -208,56 +208,46 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
 
   <section class="section" id="tiers" aria-labelledby="tiers-title">
     <div class="inner">
-      <h2 id="tiers-title">Quality tiers, measured</h2>
-      <p class="lede">Pick a tier by how long a frame may take.</p>
-      <p class="fine">Six scenes, 960×540, RTX 3060. Time bars show the slowest scene.</p>
-      <ol class="tiers">
-        <!-- tier-cards:start (written by bench/tiers/make-home-tiers.mjs) -->
-        <li class="tier" data-tier="draft" data-glaze-ms="0.54-1.04" data-eevee-ms="56-59" data-flip-glaze="0.045-0.188" data-flip-eevee="0.041-0.562">
-          <h3><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-zap"/></svg>draft</h3><p>A quick look while editing</p>
-          <p class="big">0.54–1.04 <span>ms a frame</span></p>
-          <div class="meter" role="img" aria-label="Glaze 0.54 to 1.04 ms a frame; EEVEE 1 sample 56 to 59 ms a render call">
-            <span><span>Crucible Glaze</span><span>0.54–1.04 ms</span></span><i class="ours" style="--share: 1.8%"></i>
-            <span><span>EEVEE 1 sample</span><span>56–59 ms</span></span><i style="--share: 100%"></i>
+      <div class="tier-head">
+        <div>
+          <h2 id="tiers-title">Quality tiers, measured</h2>
+          <p class="lede">Pick a tier by how long a frame may take.</p>
+        </div>
+        <a class="tier-more" href="/tiers.html">Full breakdown</a>
+      </div>
+      <!-- tier-cards:start (written by bench/tiers/make-home-tiers.mjs) -->
+      <ol class="tier-table">
+        <li class="tier-row tier-row-head" aria-hidden="true"><span>Tier</span><span>Crucible</span><span>Blender reference</span></li>
+        <li class="tier-row" data-tier="draft" data-glaze-ms="0.54-1.04" data-eevee-ms="56-59" data-flip-glaze="0.045-0.188" data-flip-eevee="0.041-0.562">
+          <div class="tier-name"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-zap"/></svg><div><strong>draft</strong><span>Quick edits</span></div></div>
+          <div class="tier-metric">
+            <div class="tier-value"><b>0.54 to 1.04 ms</b><span>per frame, Glaze</span></div>
+            <span class="tier-bar" role="img" aria-label="Crucible Glaze 0.54 to 1.04 ms per frame versus EEVEE 1 sample 56 to 59 ms per render call"><i style="--share: 1.8%"></i></span>
           </div>
-          <div class="meter" role="img" aria-label="Error vs Cycles, lower is better: Glaze 0.045 to 0.188, EEVEE 0.041 to 0.562">
-            <span><span>Error, Glaze</span><span>0.045–0.188</span></span><i class="ours range" style="--from: 7.5%; --share: 23.8%"></i>
-            <span><span>Error, EEVEE</span><span>0.041–0.562</span></span><i class="range" style="--from: 6.8%; --share: 86.8%"></i>
-          </div>
+          <div class="tier-ref"><b>56 to 59 ms</b><span>EEVEE 1 sample</span></div>
         </li>
-        <li class="tier" data-tier="realtime" data-glaze-ms="0.77-0.98" data-eevee-ms="288-363" data-flip-glaze="0.03-0.197" data-flip-eevee="0.042-0.562">
-          <h3><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gauge"/></svg>realtime</h3><p>Interactive use</p>
-          <p class="big">0.77–0.98 <span>ms a frame</span></p>
-          <div class="meter" role="img" aria-label="Glaze 0.77 to 0.98 ms a frame; EEVEE 64 samples 288 to 363 ms a render call">
-            <span><span>Crucible Glaze</span><span>0.77–0.98 ms</span></span><i class="ours" style="--share: 0.3%"></i>
-            <span><span>EEVEE 64 samples</span><span>288–363 ms</span></span><i style="--share: 100%"></i>
+        <li class="tier-row" data-tier="realtime" data-glaze-ms="0.77-0.98" data-eevee-ms="288-363" data-flip-glaze="0.03-0.197" data-flip-eevee="0.042-0.562">
+          <div class="tier-name"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gauge"/></svg><div><strong>realtime</strong><span>Interactive scenes</span></div></div>
+          <div class="tier-metric">
+            <div class="tier-value"><b>0.77 to 0.98 ms</b><span>per frame, Glaze</span></div>
+            <span class="tier-bar" role="img" aria-label="Crucible Glaze 0.77 to 0.98 ms per frame versus EEVEE 64 samples 288 to 363 ms per render call"><i style="--share: 0.3%"></i></span>
           </div>
-          <div class="meter" role="img" aria-label="Error vs Cycles, lower is better: Glaze 0.03 to 0.197, EEVEE 0.042 to 0.562">
-            <span><span>Error, Glaze</span><span>0.03–0.197</span></span><i class="ours range" style="--from: 5%; --share: 27.8%"></i>
-            <span><span>Error, EEVEE</span><span>0.042–0.562</span></span><i class="range" style="--from: 7%; --share: 86.7%"></i>
-          </div>
+          <div class="tier-ref"><b>288 to 363 ms</b><span>EEVEE 64 samples</span></div>
         </li>
-        <li class="tier" data-tier="realtime-high" data-status="planned">
-          <h3><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-sparkles"/></svg>realtime-high</h3><p>Better live frames</p>
-          <p class="big">Planned <span>not measured</span></p>
-          <p>WebGPU, GI cache, upscaling. Issues <a href="https://github.com/codepawl/crucible/issues/901">901</a> and <a href="https://github.com/codepawl/crucible/issues/902">902</a>.</p>
-        </li>
-        <li class="tier" data-tier="final" data-cook-ms="1.73-4.24" data-cycles-ms="6.81-26.41" data-noise-time-x="1.05-4.02">
-          <h3><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-award"/></svg>final</h3><p>Finished stills</p>
-          <p class="big">1.73–4.24 <span>ms per sample</span></p>
-          <div class="meter" role="img" aria-label="Per sample: Cook native 1.73 to 4.24 ms, Cycles OptiX 6.81 to 26.41 ms">
-            <span><span>Cook native</span><span>1.73–4.24 ms</span></span><i class="ours" style="--share: 16.1%"></i>
-            <span><span>Cycles OptiX</span><span>6.81–26.41 ms</span></span><i style="--share: 100%"></i>
+        <li class="tier-row" data-tier="final" data-cook-ms="1.73-4.24" data-cycles-ms="6.81-26.41" data-noise-time-x="1.05-4.02">
+          <div class="tier-name"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-award"/></svg><div><strong>final</strong><span>Path-traced stills</span></div></div>
+          <div class="tier-metric">
+            <div class="tier-value"><b>1.73 to 4.24 ms</b><span>per sample, Cook</span></div>
+            <span class="tier-bar" role="img" aria-label="Cook native 1.73 to 4.24 ms per sample versus Cycles OptiX 6.81 to 26.41 ms per sample"><i style="--share: 16.1%"></i></span>
           </div>
-          <div class="meter" role="img" aria-label="Time to the same noise, Cycles is 1 times: Cook needs 1.05 to 4.02 times, on three of six scenes">
-            <span><span>Same noise, Cycles</span><span>1×</span></span><i style="--share: 22.2%"></i>
-            <span><span>Same noise, Cook</span><span>1.05–4.02×</span></span><i class="ours range" style="--from: 23.3%; --share: 66%"></i>
-          </div>
-          <p>Slower to the same noise. Not reached on metal, glass, outdoor-hdri. Vulkan needs the optional Cook package.</p>
+          <div class="tier-ref"><b>6.81 to 26.41 ms</b><span>Cycles OptiX</span></div>
         </li>
-        <!-- tier-cards:end -->
       </ol>
-      <p class="fine">Blender times are one whole EEVEE render call (scene sync, ray tracing off, no GI), not a frame rate. Details: <a href="https://github.com/codepawl/crucible/blob/main/bench/tiers/results/matrix-960.table.md">bench/tiers</a>.</p>
+      <div class="tier-notes">
+        <p class="fine">Six scenes at 960x540 on RTX 3060 (2026-11-11). Bars compare Crucible to the slowest scene of each reference.</p>
+        <p class="fine">Error vs Cycles 4096 samples (FLIP, lower is closer): draft 0.045 to 0.188 (EEVEE 0.041 to 0.562), realtime 0.03 to 0.197 (EEVEE 0.042 to 0.562). Cook native takes 1.05 to 4.02x Cycles time for equal noise on three of six scenes (not reached on metal, glass, outdoor-hdri) and uses optional @codepawlhq/cook. EEVEE times are one whole render call (scene sync, ray tracing off, no GI). <a href="/tiers.html">Full tier breakdown</a>, <a href="https://github.com/codepawl/crucible/blob/main/bench/tiers/results/matrix-960.table.md">raw matrix</a>.</p>
+      </div>
+      <!-- tier-cards:end -->
     </div>
   </section>
 
