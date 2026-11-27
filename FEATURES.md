@@ -504,6 +504,13 @@ An id is the name in the `###` heading of its block, not a file name: `drive.mjs
 - Source: `bin/crucible.mjs`, `bin/crucible-auth.mjs`, `bin/crucible-auth-store.mjs`
 - Drive: none: not a page
 
+### `crucible-init`
+- Name: Scaffolds an interactive product showcase viewer or addon starter with shared orbit controls (docs/showcase.md)
+- Surface: CLI and addon (`@codepawlhq/crucible/addons/showcase`)
+- Reach: command `npx crucible init [<dir>] [--template showcase|addon]`
+- Source: `bin/crucible.mjs`, `bin/crucible-init.mjs`, `src/showcase-viewer.js`, `src/orbit-controller.js`, `templates/showcase/`
+- Drive: none: not a page
+
 ### `crucible-pack`
 - Name: Compiles a recipe into a runtime-only web bundle with a `<crucible-scene>` element (docs/pack.md)
 - Surface: CLI

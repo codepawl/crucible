@@ -33,6 +33,7 @@ A contract is the exact rule set of one module: inputs, limits, memory and error
 - Files: [glTF import](/gltf.md), [glTF morphs](/gltf-morph.md), [GLB export](/export-glb.md), [floor plan to walls](/floor-plan.md), [three.js bridge](https://github.com/codepawl/crucible/blob/main/docs/three-bridge.md), [Roblox scene import](/roblox-import.md), [data-only packs](/packs.md).
 - Games: [a playable scene from a recipe](/game.md), [game rules](/game-rules.md), [live game loop](/runtime.md), [player and camera rigs](/player.md), [input](/input.md), [audio](/audio.md), [scene queries](/scene-query.md), [live physics](/physics-runtime.md), [animation graph](/animation-graph.md), [streaming](/streaming.md), [culling and levels of detail](https://github.com/codepawl/crucible/blob/main/docs/culling-lod.md), [netcode](/netcode.md).
 - Web delivery and tools: [web bundle](/pack.md), [render engines](/render-engines.md), [Cook in Blender](https://github.com/codepawl/crucible/blob/main/docs/blender-addon.md), [Studio](/studio.md), [addons from other people](/addons.md).
+- Product showcase: [showcase viewer and `crucible init`](/showcase.md).
 
 ## Project
 
