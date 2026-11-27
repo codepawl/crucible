@@ -2729,8 +2729,8 @@ export const STUDIO_CSS = `
   padding-inline-end: var(--studio-space-16);
 }
 .crucible-studio-keyboard-tools > input::placeholder { color: var(--studio-muted); opacity: 1; }
-.crucible-studio-keyboard-group { display: flex; flex-direction: column; gap: var(--studio-space-8); }
-.crucible-studio-keyboard-group h4 {
+.crucible-studio-keyboard-group, .crucible-studio-mouse-group { display: flex; flex-direction: column; gap: var(--studio-space-8); }
+.crucible-studio-keyboard-group h4, .crucible-studio-mouse-group h4 {
   display: flex;
   align-items: center;
   gap: var(--studio-space-8);
@@ -2740,9 +2740,9 @@ export const STUDIO_CSS = `
   font-weight: 700;
   color: var(--studio-text);
 }
-.crucible-studio-keyboard-group h4 .crucible-studio-icon { flex: none; inline-size: 16px; block-size: 16px; color: var(--studio-muted); }
+.crucible-studio-keyboard-group h4 .crucible-studio-icon, .crucible-studio-mouse-group h4 .crucible-studio-icon { flex: none; inline-size: 16px; block-size: 16px; color: var(--studio-muted); }
 .crucible-studio-keyboard-rows { display: flex; flex-direction: column; gap: var(--studio-space-8); }
-.crucible-studio-keyboard-row {
+.crucible-studio-keyboard-row, .crucible-studio-mouse-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -2767,7 +2767,7 @@ export const STUDIO_CSS = `
   background: var(--studio-accent);
 }
 .crucible-studio-keyboard-controls { justify-content: flex-end; }
-.crucible-studio dialog button.crucible-studio-keyboard-keys {
+.crucible-studio dialog button.crucible-studio-keyboard-keys, .crucible-studio dialog button.crucible-studio-mouse-press {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2781,8 +2781,8 @@ export const STUDIO_CSS = `
   white-space: nowrap;
 }
 .crucible-studio dialog button.crucible-studio-keyboard-keys[data-empty="true"] { color: var(--studio-muted); }
-.crucible-studio dialog button.crucible-studio-keyboard-keys[data-pending="true"],
-.crucible-studio dialog button.crucible-studio-keyboard-keys[data-recording="true"] { border-color: var(--studio-accent); }
+.crucible-studio dialog button.crucible-studio-keyboard-keys[data-pending="true"], .crucible-studio dialog button.crucible-studio-mouse-press[data-pending="true"],
+.crucible-studio dialog button.crucible-studio-keyboard-keys[data-recording="true"], .crucible-studio dialog button.crucible-studio-mouse-press[data-recording="true"] { border-color: var(--studio-accent); }
 .crucible-studio-keyboard-dot {
   flex: none;
   inline-size: var(--studio-space-8);
@@ -2828,7 +2828,7 @@ export const STUDIO_CSS = `
 .crucible-studio-keyboard-fixed { color: var(--studio-muted); white-space: nowrap; }
 .crucible-studio-keyboard-note { grid-column: 1 / -1; flex-wrap: wrap; min-block-size: 28px; }
 /* A row with a message to answer (a clash, a refused combination) sits on its own surface, the message on a second line, so it reads as one block. */
-.crucible-studio-keyboard-row[data-noted="true"] {
+.crucible-studio-keyboard-row[data-noted="true"], .crucible-studio-mouse-row[data-noted="true"] {
   margin-inline: calc(var(--studio-space-8) * -1);
   padding: var(--studio-space-8);
   border-radius: 8px;

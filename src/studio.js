@@ -18,7 +18,7 @@ import { STUDIO_CSS } from './studio-styles.js';
 import { AGENT_CHAT_CSS, createAgentPanel } from './studio-agent-chat.js';
 import { createApplyMenus } from './studio-apply-menu.js';
 import { createMeshMenus } from './studio-mesh-menus.js';
-import { DEFAULT_MOUSE_MAP } from './studio-mouse-map.js';
+import { resolveMouseMap } from './studio-mouse-map.js';
 import { createMouseInput, createViewportTargetFilter, isEditableTarget } from './studio-mouse-input.js';
 import { findKeymapAction, findMouseNavigation, formatShortcutKeys, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
 import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
@@ -1393,8 +1393,9 @@ export function createStudio(container, {
   });
   // The keymap in force. Choosing another preset swaps it and every place that shows a key is drawn again.
   const keymapOf = () => resolveKeymapPreset(preferences.keymap, preferences.keyOverrides[preferences.keymap], { numberPad: preferences.numberPad });
-  const keymapSignature = () => JSON.stringify([preferences.keymap, preferences.numberPad, preferences.keyOverrides[preferences.keymap] ?? {}]);
+  const keymapSignature = () => JSON.stringify([preferences.keymap, preferences.numberPad, preferences.keyOverrides[preferences.keymap] ?? {}, preferences.mouseOverrides]);
   let keymap = keymapOf();
+  let mouseMap = resolveMouseMap(preferences.mouseOverrides);
   let appliedKeymap = '';
   const menuKeyViews = [];
   const keyTooltipViews = [];
@@ -3013,7 +3014,7 @@ export function createStudio(container, {
   function fillShortcutsGrid() {
     const columnCount = sheetColumnCount(documentReference.defaultView?.innerWidth ?? 1280);
     shortcutsDialog.dataset.columns = String(columnCount);
-    const columns = balanceSheetColumns(shortcutSheetGroups(keymap, { omittedActionIds: agentPanel ? [] : ['view.agent'] }), columnCount);
+    const columns = balanceSheetColumns(shortcutSheetGroups(keymap, { omittedActionIds: agentPanel ? [] : ['view.agent'], mouseMap }), columnCount);
     shortcutsGrid.replaceChildren(...columns.map(columnGroups => createElement(
       documentReference,
       'div',
@@ -3075,6 +3076,9 @@ export function createStudio(container, {
       getNumberPad: () => preferences.numberPad,
       getOverrides: () => preferences.keyOverrides[preferences.keymap] ?? {},
       onOverridesChange: presetOverrides => setPreference('keyOverrides', withPresetOverrides(preferences.keyOverrides, preferences.keymap, presetOverrides)),
+      getMouseMap: () => mouseMap,
+      getMouseOverrides: () => preferences.mouseOverrides,
+      onMouseOverridesChange: overrides => setPreference('mouseOverrides', overrides),
     },
   });
   const settingsDialog = settings.dialog;
@@ -3111,6 +3115,7 @@ export function createStudio(container, {
     if (keymapSignature() !== appliedKeymap) {
       appliedKeymap = keymapSignature();
       keymap = keymapOf();
+      mouseMap = resolveMouseMap(preferences.mouseOverrides);
       refreshKeyLabels();
     }
     settings.refreshKeyboard();
@@ -5359,7 +5364,7 @@ export function createStudio(container, {
     documentReference,
     viewportElement,
     controller,
-    mouseMap: DEFAULT_MOUSE_MAP,
+    getMouseMap: () => mouseMap,
     isConnected: () => root.isConnected,
     isInputBlocked: () => anyDialogIsOpen() || Boolean(modalTransform),
     getViewportPointer: () => viewportPointer,

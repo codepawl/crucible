@@ -299,7 +299,7 @@ Maya and Cinema 4D also take **Alt** with a mouse button on the viewport: Alt an
 
 ### Mouse
 
-What a press does in the viewport. A press that moves more than 4 pixels is a drag; one that stays put is a click.
+What a press does in the viewport; **Settings ▸ Keyboard** changes each of these presses. A press that moves more than 4 pixels is a drag; one that stays put is a click.
 
 | Press | What it does |
 | --- | --- |
@@ -318,7 +318,7 @@ Left click selects, Shift or Ctrl + click adds to or takes from the selection, a
 
 ### Change a shortcut
 
-**Settings ▸ Keyboard** lists every shortcut of the chosen preset in the same groups as the Help sheet, one row per action with its key as a button. Click the key (or press Enter on it): the button reads **Press keys** with a dot, an **Esc** key cap with "cancels" sits beside it, and the next combination becomes the binding. A modifier alone waits for the key that goes with it. **Esc** cancels, and **Backspace** or **Delete** clears the binding, leaving the action without a key until you set one. An action with several keys (Delete has X, Delete and Backspace) takes the new key in place of all of them; reset it to get them back. The mouse rows are shown and cannot be changed yet.
+**Settings ▸ Keyboard** lists every shortcut of the chosen preset in the same groups as the Help sheet, one row per action with its key as a button. Click the key (or press Enter on it): the button reads **Press keys** with a dot, an **Esc** key cap with "cancels" sits beside it, and the next combination becomes the binding. A modifier alone waits for the key that goes with it. **Esc** cancels, and **Backspace** or **Delete** clears the binding, leaving the action without a key until you set one. An action with several keys (Delete has X, Delete and Backspace) takes the new key in place of all of them; reset it to get them back. The mouse rows sit beside them, under **Mouse view** and **Mouse buttons**: click the press, then press the mouse button you want, with Shift, Alt, Ctrl or Space held if you like. Its gesture (click or drag) stays; **Esc** cancels. A press another row uses asks first, with **Swap** and **Cancel**. A plain left click (it selects) and a plain right click (it opens the object menu) cannot be given to a click row, and the Back and Forward buttons only click. The reset beside a changed row and **Reset shortcuts** cover the mouse rows too, and the Help sheet and the viewport follow a change at once.
 
 - **A clash.** If another action of the same context already has the combination, the row shows a warning, "Used by <action>", with **Swap** and **Cancel**. Nothing is saved until you choose: Swap gives the other action the key this one had, and keeps the other keys that action had.
 - **Keys the browser keeps.** Combinations a page never receives (Ctrl+W, Ctrl+T, Ctrl+N, Ctrl+Tab, Ctrl+1 to 9, Ctrl+Shift+Q, F11, Alt+F4) are refused with a note on the row, and recording goes on so you can press another.

@@ -106,7 +106,7 @@ const MOUSE_VIEW_ACTION_IDS = Object.freeze(['view.orbit', 'view.pan']);
 
 // One row per press of the map, so a changed press shows as its own line; the wheel is not in the map and always zooms.
 function mouseMapRows(mouseMap) {
-  const rows = mouseMap.map(row => ({ action: row.action, label: describeMouseAction(row.action), keys: formatMousePress(row) }));
+  const rows = mouseMap.map(row => ({ action: row.action, label: describeMouseAction(row.action), keys: formatMousePress(row), mouseRowId: row.id }));
   return {
     view: [...rows.filter(row => MOUSE_VIEW_ACTION_IDS.includes(row.action)), { label: 'Zoom', keys: 'Wheel' }],
     buttons: rows.filter(row => !MOUSE_VIEW_ACTION_IDS.includes(row.action)),
@@ -121,7 +121,7 @@ function mouseRows(keymap) {
 /**
  * The sheet as `[{ title, icon, rows: [{ label, keys, actionId? }] }]`: every action of the keymap that has a key, grouped by what a
  * person is doing. Settings reads the same groups with `includeUnbound`, so an action whose key was cleared can still be set again;
- * the mouse rows have no `actionId`.
+ * the mouse rows have no `actionId`, and the ones in the mouse map carry its `mouseRowId`.
  */
 export function shortcutSheetGroups(keymap, { includeUnbound = false, omittedActionIds = [], mouseMap = DEFAULT_MOUSE_MAP } = {}) {
   const rowsByGroup = new Map(SHEET_GROUPS.map(group => [group.title, []]));
@@ -135,8 +135,8 @@ export function shortcutSheetGroups(keymap, { includeUnbound = false, omittedAct
     rowsByGroup.get(title).push({ label, keys: keysOfAction(keymap, item.id, item.bindings.length), actionId: item.id });
   }
   const mapRows = mouseMapRows(mouseMap);
-  rowsByGroup.get('Mouse view').push(...mapRows.view.map(({ label, keys }) => ({ label, keys })));
-  rowsByGroup.get('Mouse buttons').push(...mapRows.buttons.map(({ label, keys }) => ({ label, keys })));
+  rowsByGroup.get('Mouse view').push(...mapRows.view.map(({ label, keys, mouseRowId }) => ({ label, keys, mouseRowId })));
+  rowsByGroup.get('Mouse buttons').push(...mapRows.buttons.map(({ label, keys, mouseRowId }) => ({ label, keys, mouseRowId })));
   rowsByGroup.get('Mouse').push(
     { label: 'Add or remove from the selection', keys: 'Shift + click' },
     { label: 'Snap to a step or an angle', keys: 'Shift + drag' },

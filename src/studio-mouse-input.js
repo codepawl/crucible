@@ -45,12 +45,11 @@ const CAMERA_MODE_BY_MOUSE_ACTION = Object.freeze({ 'view.orbit': 'orbit', 'view
 const SIDE_BUTTON_EVENTS = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'auxclick'];
 
 /**
- * `mouseMap` is the rows in force (it changes when a person rebinds one: call `setMouseMap`). The callbacks: `isConnected()`,
+ * `getMouseMap()` gives the rows in force; it changes when a person rebinds one. The other callbacks: `isConnected()`,
  * `isInputBlocked()` (a dialog is open or an object is held), `getViewportPointer()`, `isPointerActive()`, `isBoundToSpace(event)`,
  * `replayKeyDown(event)`, `localCoordinates(event)`, `announce(text)`, `stopFlight()`, `undo()` and `redo()`.
  */
-export function createMouseInput({ documentReference, viewportElement, controller, mouseMap, isConnected, isInputBlocked, getViewportPointer, isPointerActive, isBoundToSpace, replayKeyDown, localCoordinates, announce, stopFlight, undo, redo }) {
-  let rows = mouseMap;
+export function createMouseInput({ documentReference, viewportElement, controller, getMouseMap, isConnected, isInputBlocked, getViewportPointer, isPointerActive, isBoundToSpace, replayKeyDown, localCoordinates, announce, stopFlight, undo, redo }) {
   // Space held with the pointer over the viewport turns a left drag into a pan. A tap with no drag still does what Space is
   // bound to, so that action waits for the key to come up; holding the key long enough to repeat, or Space anywhere but the
   // viewport, runs it at once as before. `dragged` is set by the press that used the key.
@@ -103,7 +102,7 @@ export function createMouseInput({ documentReference, viewportElement, controlle
 
   // The camera move a press on the viewport starts, or null; a held Space is spent by the drag that uses it.
   function cameraModeOf(event) {
-    const dragAction = findMouseAction(rows, mousePressOf(event, 'drag'));
+    const dragAction = findMouseAction(getMouseMap(), mousePressOf(event, 'drag'));
     if (spaceHold) {
       spaceHold.pending = null;
       spaceHold.dragged = true;
@@ -168,7 +167,7 @@ export function createMouseInput({ documentReference, viewportElement, controlle
 
   /** Runs the action a click is mapped to and returns true, or returns false when the click is not in the map. */
   function runClickAction(event) {
-    const action = findMouseAction(rows, mousePressOf(event, 'click'));
+    const action = findMouseAction(getMouseMap(), mousePressOf(event, 'click'));
     if (!clickActions[action]) return false;
     clickActions[action](event);
     return true;
@@ -176,7 +175,7 @@ export function createMouseInput({ documentReference, viewportElement, controlle
 
   /** True when a right press with these keys is a mapped click, so the object menu stays shut. */
   function claimsRightClick(event) {
-    return findMouseAction(rows, { ...mousePressOf(event, 'click'), button: 2 }) !== null;
+    return findMouseAction(getMouseMap(), { ...mousePressOf(event, 'click'), button: 2 }) !== null;
   }
 
   // The side buttons never turn into Back and Forward while Studio is the page. The action runs on the release only, once per
@@ -193,9 +192,6 @@ export function createMouseInput({ documentReference, viewportElement, controlle
   for (const eventName of SIDE_BUTTON_EVENTS) documentReference.addEventListener(eventName, onSideButton, true);
 
   return {
-    setMouseMap: nextRows => {
-      rows = nextRows;
-    },
     holdSpaceForPan,
     releaseSpace,
     letGoOfSpace: () => {

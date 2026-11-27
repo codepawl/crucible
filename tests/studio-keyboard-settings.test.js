@@ -66,12 +66,12 @@ function memoryStorage() {
 
 test('Settings > Keyboard lists the actions in the Help sheet groups, each with its key as a button, mouse rows without one (#3390)', testContext => {
   const ui = mountStudio(testContext);
-  const titles = ui.settingsDialog.querySelectorAll('.crucible-studio-keyboard-group h4').map(heading => heading.textContent);
+  const titles = ui.settingsDialog.querySelectorAll('.crucible-studio-keyboard-list h4').map(heading => heading.textContent);
   const sheetTitles = ui.sheet.querySelectorAll('.crucible-studio-shortcut-group h3').map(heading => heading.textContent);
   assert.deepEqual(titles, sheetTitles);
   assert.equal(ui.keys('tool.select').textContent, 'Q');
   assert.equal(ui.keys('edit.delete').textContent, 'X, Delete, Backspace');
-  assert.ok(ui.settingsDialog.querySelectorAll('.crucible-studio-keyboard-group h4').every(heading => heading.querySelector('.crucible-studio-icon')));
+  assert.ok(ui.settingsDialog.querySelectorAll('.crucible-studio-keyboard-list h4').every(heading => heading.querySelector('.crucible-studio-icon')));
   assert.ok(ui.settingsDialog.querySelectorAll('.crucible-studio-keyboard-fixed').length > 0, 'mouse rows are shown');
   assert.equal(ui.settingsDialog.querySelectorAll('.crucible-studio-keyboard-fixed').some(span => span.closest('button')), false);
 });

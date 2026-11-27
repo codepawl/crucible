@@ -147,3 +147,97 @@ export function formatMousePress(row) {
 export function describeMouseAction(actionId) {
   return MOUSE_ACTION_LABELS[actionId] ?? actionId;
 }
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function samePress(first, second) {
+  return first.button === second.button && heldModifierNames(first.modifiers).join('+') === heldModifierNames(second.modifiers).join('+');
+}
+
+/**
+ * A sentence for a press that a row cannot take, or null. A plain left click selects and a plain right click opens the object menu,
+ * so a click row keeps clear of them; the Back and Forward buttons give no drag.
+ */
+export function describeRefusedMousePress({ button, modifiers, gesture }) {
+  const held = heldModifierNames(modifiers);
+  if (gesture === 'drag' && button >= 3) return 'Back and Forward only click, so they cannot start a drag';
+  if (gesture !== 'click') return null;
+  if (button === 0 && !held.includes('alt') && !held.includes('space')) return 'Left click selects. Add Alt or Space to use it here';
+  if (button === 2 && held.length === 0) return 'Right click opens the object menu. Add Shift, Alt, Ctrl or Space to use it here';
+  return null;
+}
+
+/** The press a pointer event makes: its button and the Shift, Alt, Ctrl (or Command) and Space it was made with. */
+export function pressFromPointerEvent(event, spaceHeld = false) {
+  const held = { shift: event.shiftKey, alt: event.altKey, ctrl: event.ctrlKey || event.metaKey, space: spaceHeld };
+  const modifiers = Object.fromEntries(MOUSE_MODIFIER_NAMES.filter(name => held[name]).map(name => [name, true]));
+  return { button: event.button ?? 0, modifiers };
+}
+
+/** The other rows a press of `press` would reach: the rows of the same gesture that already hold it. */
+export function findMouseRowHolders(map, rowId, press) {
+  const target = map.find(row => row.id === rowId);
+  if (!target) throw new RangeError(`Unknown mouse row "${rowId}": pass one of ${map.map(row => row.id).join(', ')}.`);
+  return map.filter(row => row.id !== rowId && row.gesture === target.gesture && samePress(row, press));
+}
+
+function cleanMousePress(defaultRow, candidate) {
+  if (!isPlainObject(candidate)) return null;
+  try {
+    const row = validateMouseRow({ ...defaultRow, button: candidate.button, modifiers: candidate.modifiers });
+    if (describeRefusedMousePress(row) !== null || samePress(row, defaultRow)) return null;
+    return { button: row.button, modifiers: { ...row.modifiers } };
+  } catch {
+    return null;
+  }
+}
+
+/** The rows in force for the stored changes. */
+export function resolveMouseMap(overrides) {
+  return applyMouseOverrides(DEFAULT_MOUSE_MAP, overrides).map;
+}
+
+/**
+ * The stored changes that are valid: `{ rowId: { button, modifiers } }`. A row that is unknown, malformed, refused, equal to its default or
+ * on the same press as another row is dropped (the changed rows that clash go back to their defaults), never thrown.
+ */
+export function normalizeMouseOverrides(value) {
+  const overrides = {};
+  if (!isPlainObject(value)) return overrides;
+  for (const defaultRow of DEFAULT_MOUSE_MAP) {
+    const press = cleanMousePress(defaultRow, value[defaultRow.id]);
+    if (press) overrides[defaultRow.id] = press;
+  }
+  for (let pass = 0; pass < DEFAULT_MOUSE_MAP.length; pass += 1) {
+    const clashing = new Set(findMouseMapConflicts(resolveMouseMap(overrides)).flat());
+    const changedClashing = Object.keys(overrides).filter(rowId => clashing.has(rowId));
+    if (changedClashing.length === 0) break;
+    for (const rowId of changedClashing) delete overrides[rowId];
+  }
+  return overrides;
+}
+
+/** `overrides` with one row set to `press`; a press equal to the row's default removes its entry. */
+export function withMousePress(overrides, rowId, press) {
+  const next = { ...overrides, [rowId]: { button: press.button, modifiers: { ...press.modifiers } } };
+  const defaultRow = DEFAULT_MOUSE_MAP.find(row => row.id === rowId);
+  if (samePress(next[rowId], defaultRow)) delete next[rowId];
+  return next;
+}
+
+/** `overrides` without the change to one row. */
+export function withoutMouseOverride(overrides, rowId) {
+  const next = { ...overrides };
+  delete next[rowId];
+  return next;
+}
+
+/** `rowId` takes `press` and every row that held it takes the press `rowId` had, so no two rows share one. */
+export function withSwappedMousePresses(map, overrides, rowId, press, holders) {
+  const previous = map.find(row => row.id === rowId);
+  let next = withMousePress(overrides, rowId, press);
+  for (const holder of holders) next = withMousePress(next, holder.id, previous);
+  return next;
+}
