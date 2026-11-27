@@ -67,3 +67,10 @@ test('the page keeps the sections, release hooks and install paths of the old ho
   assert.ok(landingPage.includes('data-release-commit'));
   assert.ok(landingPage.includes('npx -y --package @codepawlhq/crucible crucible-mcp'));
 });
+
+test('the home page drops the redundant hero HUD gauges, step ladder, chip wall, and duplicate agent cards while keeping skip link', () => {
+  for (const removed of ['id="ladder"', 'id="hud-fill"', 'id="hud-heat"', 'class="chips"', 'class="cards"']) {
+    assert.ok(!landingPage.includes(removed), `${removed} should be removed from site/index.html`);
+  }
+  assert.ok(landingPage.includes('class="skip" href="#install"'), 'Skip the story link stays in .hud');
+});

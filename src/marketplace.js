@@ -2,6 +2,7 @@ import './site-chrome.js';
 import './site.css';
 import './marketplace.css';
 import { ADDON_AREAS, ADDON_CATALOG, addonImportLine } from './addon-catalog.js';
+import { filterBuiltinAddons } from './marketplace-filter.js';
 import { addonPackages, firstPartyPackages, npmManifestPath } from './marketplace-npm.js';
 
 const NPM_SEARCH_URL = 'https://registry.npmjs.org/-/v1/search?text=keywords:crucible-addon&size=50';
@@ -10,6 +11,8 @@ const FIRST_PARTY_SEARCH_URL = 'https://registry.npmjs.org/-/v1/search?text=@cod
 const MAXIMUM_RANGE_LOOKUPS = 20;
 const CONCURRENT_RANGE_LOOKUPS = 5;
 const ADDONS_DOC_URL = 'https://github.com/codepawl/crucible/blob/main/docs/addons.md';
+const REPOSITORY_URL = 'https://github.com/codepawl/crucible/blob/main';
+const PACKAGE_PREFIX = '@codepawlhq/crucible/addons/';
 const KIND_LABELS = {
   assets: ['model', 'models'],
   images: ['image', 'images'],
@@ -50,6 +53,11 @@ function link(text, href, className) {
   return anchor;
 }
 
+function setJumpCount(id, count) {
+  const badge = document.querySelector(`#${id}`);
+  if (badge) badge.textContent = String(count);
+}
+
 function showState(container, state, message, ...links) {
   const notice = element('p', `market-state market-state-${state}`);
   notice.setAttribute('role', state === 'error' ? 'alert' : 'status');
@@ -68,21 +76,31 @@ function countLabel(kind, count) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-async function copyText(button, text) {
-  const label = button.textContent;
+async function copyText(button, text, copiedLabel = 'Copied') {
+  const originalChildren = [...button.childNodes];
   try {
     await navigator.clipboard.writeText(text);
-    button.textContent = 'Copied';
+    button.textContent = copiedLabel;
   } catch {
     button.textContent = 'Copy failed';
   }
-  setTimeout(() => { button.textContent = label; }, 1800);
+  setTimeout(() => { button.replaceChildren(...originalChildren); }, 1800);
 }
 
-function copyButton(text, label = 'Copy') {
-  const button = element('button', 'market-copy', label);
+function copyButton(text, label = 'Copy', className = 'market-copy') {
+  const button = element('button', className, label);
   button.type = 'button';
   button.addEventListener('click', () => copyText(button, text));
+  return button;
+}
+
+function checksumCopyButton(sha256) {
+  const button = element('button', 'market-checksum-button');
+  button.type = 'button';
+  button.title = `Copy full SHA-256: ${sha256}`;
+  button.setAttribute('aria-label', `Copy SHA-256 checksum starting with ${sha256.slice(0, 8)}`);
+  button.append(element('span', '', 'SHA-256'), element('code', '', `${sha256.slice(0, 8)}...`));
+  button.addEventListener('click', () => copyText(button, sha256, 'SHA-256 copied'));
   return button;
 }
 
@@ -103,15 +121,19 @@ function packCard(pack) {
   const title = element('h3', '', pack.name);
   title.append(element('span', 'market-version', pack.version));
   const facts = element('ul', 'market-facts');
-  const factTexts = [...Object.entries(pack.items).map(([kind, count]) => countLabel(kind, count)), pack.license, `Crucible ${pack.engines}`, formatBytes(pack.bytes), `by ${pack.author}`];
+  const factTexts = [
+    ...Object.entries(pack.items).map(([kind, count]) => countLabel(kind, count)),
+    pack.license,
+    `Crucible ${pack.engines}`,
+    formatBytes(pack.bytes),
+    `by ${pack.author}`,
+  ];
   for (const text of factTexts) facts.append(element('li', '', text));
   const download = link('Download', pack.zip, 'market-button');
   download.setAttribute('download', '');
   download.prepend(icon('M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4', 'market-icon market-button-icon'));
-  const checksum = element('div', 'pack-checksum');
-  checksum.append(element('span', '', 'SHA-256'), element('code', '', pack.sha256), copyButton(pack.sha256));
   const actions = element('div', 'pack-actions');
-  actions.append(download, checksum);
+  actions.append(download, checksumCopyButton(pack.sha256));
   body.append(title, element('p', 'market-description', pack.description), facts, actions);
   card.append(body);
   return card;
@@ -124,9 +146,11 @@ async function loadPacks(container) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const { packs } = await response.json();
     if (!Array.isArray(packs) || packs.length === 0) {
+      setJumpCount('count-packs', 0);
       showState(container, 'empty', 'No packs are published yet.', link('How to make one', 'https://github.com/codepawl/crucible/blob/main/docs/packs.md'));
       return;
     }
+    setJumpCount('count-packs', packs.length);
     container.replaceChildren(...packs.map(packCard));
   } catch {
     showState(container, 'error', 'The pack list did not load. Reload the page to try again.');
@@ -137,7 +161,6 @@ function npmUrl(name) {
   return `https://www.npmjs.com/package/${name}`;
 }
 
-// The npm link sits on the title row, after the name and the version, so a card is one column.
 function npmLink(name) {
   const npm = link('npm', npmUrl(name), 'market-npm-link');
   const logo = element('span', 'package-logo package-logo-npm');
@@ -147,7 +170,6 @@ function npmLink(name) {
   return npm;
 }
 
-// One title row: the name (which may wrap) and the version on the left, the npm link on the right.
 function npmCardTitle(entry) {
   const title = element('h3', 'market-card-title');
   const name = element('span', 'market-card-name');
@@ -183,15 +205,14 @@ async function fetchLatestRange(name) {
   }
 }
 
-// The search result carries no `crucible` field, so the latest manifest of each listed package is read, a few at a time.
 async function fillRanges(addons, container) {
   const queue = addons.slice(0, MAXIMUM_RANGE_LOOKUPS);
   const workers = Array.from({ length: Math.min(CONCURRENT_RANGE_LOOKUPS, queue.length) }, async () => {
     while (queue.length > 0) {
       const addon = queue.shift();
       addon.range = await fetchLatestRange(addon.name);
-      const row = container.querySelector(`[data-addon="${CSS.escape(addon.name)}"]`);
-      if (row) row.replaceWith(addonCard(addon));
+      const card = container.querySelector(`[data-addon="${CSS.escape(addon.name)}"]`);
+      if (card) card.replaceWith(addonCard(addon));
     }
   });
   await Promise.all(workers);
@@ -204,6 +225,7 @@ async function loadAddons(container) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const { objects } = await response.json();
     const addons = addonPackages(objects);
+    setJumpCount('count-community', addons.length);
     if (addons.length === 0) {
       showState(container, 'empty', 'No third-party addons on npm yet.', link('Write an addon', ADDONS_DOC_URL));
       return;
@@ -236,6 +258,7 @@ async function loadFirstPartyPackages(container) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const { objects } = await response.json();
     const packages = firstPartyPackages(objects);
+    setJumpCount('count-packages', packages.length);
     if (packages.length === 0) {
       showState(container, 'empty', 'No companion packages are published yet.');
       return;
@@ -246,62 +269,125 @@ async function loadFirstPartyPackages(container) {
   }
 }
 
-const REPOSITORY_URL = 'https://github.com/codepawl/crucible/blob/main';
-
-
-function builtinRow(addon) {
-  const row = element('article', 'builtin-row');
-  row.dataset.search = `${addon.name} ${addon.area} ${addon.summary}`.toLowerCase();
+function builtinCard(addon) {
+  const card = element('article', 'builtin-card');
+  card.dataset.addonName = addon.name;
   const docUrl = addon.doc ? `${REPOSITORY_URL}/docs/${addon.name}.md` : `${REPOSITORY_URL}/src/${addon.name}.js`;
+
+  const top = element('div', 'builtin-card-head');
   const heading = element('h4', 'builtin-name');
   heading.append(link(addon.name, docUrl));
-  const command = element('div', 'command-row');
-  const line = addonImportLine(addon.name);
-  command.append(element('code', '', line), copyButton(line));
-  row.append(heading, element('p', 'market-description', addon.summary), command);
-  return row;
+  const importCopy = copyButton(addonImportLine(addon.name), 'Copy import', 'market-copy-import');
+  importCopy.setAttribute('aria-label', `Copy import statement for ${addon.name}`);
+  top.append(heading, importCopy);
+
+  const specifier = element('code', 'builtin-specifier', `${PACKAGE_PREFIX}${addon.name}`);
+  card.append(top, element('p', 'market-description', addon.summary), specifier);
+  return card;
 }
 
-function builtinGroup(area) {
+function builtinGroup(area, cardsByAddon) {
   const group = element('section', 'builtin-group');
+  group.dataset.area = area.id;
   const addons = ADDON_CATALOG.filter(addon => addon.area === area.id);
-  const heading = element('h4', 'builtin-area', area.label);
-  heading.append(element('span', 'market-version', String(addons.length)));
-  group.append(heading, ...addons.map(builtinRow));
+  const heading = element('h3', 'builtin-area', area.label);
+  const countBadge = element('span', 'market-version', String(addons.length));
+  heading.append(countBadge);
+  const grid = element('div', 'builtin-grid');
+  grid.append(...addons.map(addon => {
+    const card = builtinCard(addon);
+    cardsByAddon.set(addon.name, card);
+    return card;
+  }));
+  group.append(heading, grid);
   return group;
 }
 
-function applyBuiltinFilter(container, query) {
-  const words = query.toLowerCase().split(/s+/).filter(Boolean);
-  let shown = 0;
-  for (const group of container.querySelectorAll('.builtin-group')) {
-    let groupShown = 0;
-    for (const row of group.querySelectorAll('.builtin-row')) {
-      const matches = words.every(word => row.dataset.search.includes(word));
-      row.hidden = !matches;
-      if (matches) groupShown += 1;
-    }
-    group.hidden = groupShown === 0;
-    shown += groupShown;
-  }
-  container.querySelector('.market-state')?.remove();
-  if (shown === 0) {
-    const notice = element('p', 'market-state market-state-empty');
-    notice.setAttribute('role', 'status');
-    notice.append(icon(STATE_ICONS.empty), element('span', '', `No built-in addon matches "${query.trim()}".`));
-    container.append(notice);
-  }
+function areaButton(id, label, count, pressed) {
+  const button = element('button', 'market-area-chip', label);
+  button.type = 'button';
+  button.dataset.area = id;
+  button.setAttribute('aria-pressed', String(pressed));
+  button.append(element('span', 'market-area-count', String(count)));
+  return button;
 }
 
-function loadBuiltinAddons(container, filter) {
-  container.replaceChildren(...ADDON_AREAS.map(builtinGroup));
-  filter.addEventListener('input', () => applyBuiltinFilter(container, filter.value));
+function loadBuiltinAddons() {
+  const listContainer = document.querySelector('#builtin-list');
+  const areaControls = document.querySelector('#builtin-areas');
+  const filterInput = document.querySelector('#builtin-filter');
+  const countLabelNode = document.querySelector('#builtin-count');
+
+  setJumpCount('count-builtin', ADDON_CATALOG.length);
+
+  const cardsByAddon = new Map();
+  const groups = ADDON_AREAS.map(area => builtinGroup(area, cardsByAddon));
+  listContainer.replaceChildren(...groups);
+
+  const areaButtons = [
+    areaButton('all', 'All', ADDON_CATALOG.length, true),
+    ...ADDON_AREAS.map(area => areaButton(area.id, area.label, ADDON_CATALOG.filter(entry => entry.area === area.id).length, false)),
+  ];
+  areaControls.replaceChildren(...areaButtons);
+
+  let selectedArea = 'all';
+
+  function refresh() {
+    const query = filterInput.value;
+    const filtered = filterBuiltinAddons(ADDON_CATALOG, ADDON_AREAS, { area: selectedArea, query });
+    const visibleNames = new Set(filtered.matching.map(addon => addon.name));
+
+    for (const [name, card] of cardsByAddon) {
+      card.hidden = !visibleNames.has(name);
+    }
+
+    for (const group of groups) {
+      const areaId = group.dataset.area;
+      const areaMatches = filtered.matching.filter(addon => addon.area === areaId).length;
+      group.hidden = areaMatches === 0;
+      const groupBadge = group.querySelector('.market-version');
+      if (groupBadge) groupBadge.textContent = String(areaMatches);
+    }
+
+    for (const button of areaButtons) {
+      const areaId = button.dataset.area;
+      button.setAttribute('aria-pressed', String(areaId === selectedArea));
+      const areaCount = areaId === 'all' ? filtered.queryTotal : (filtered.queryCountsByArea[areaId] ?? 0);
+      const countSpan = button.querySelector('.market-area-count');
+      if (countSpan) countSpan.textContent = String(areaCount);
+    }
+
+    const activeQuery = query.trim();
+    if (selectedArea === 'all' && !activeQuery) {
+      countLabelNode.textContent = `${filtered.totalCount} addons`;
+    } else {
+      countLabelNode.textContent = `${filtered.shownCount} of ${filtered.totalCount} addons`;
+    }
+
+    listContainer.querySelector('.market-state')?.remove();
+    if (filtered.shownCount === 0) {
+      const reason = activeQuery ? `No built-in addon matches "${activeQuery}".` : 'No built-in addons in this area.';
+      const notice = element('p', 'market-state market-state-empty');
+      notice.setAttribute('role', 'status');
+      notice.append(icon(STATE_ICONS.empty), element('span', '', reason));
+      listContainer.append(notice);
+    }
+  }
+
+  areaControls.addEventListener('click', event => {
+    const button = event.target.closest('button[data-area]');
+    if (!button) return;
+    selectedArea = button.dataset.area;
+    refresh();
+  });
+  filterInput.addEventListener('input', refresh);
+  refresh();
 }
 
 document.querySelectorAll('[data-copy]').forEach(button => {
   button.addEventListener('click', () => copyText(button, button.dataset.copy));
 });
 loadPacks(document.querySelector('#pack-list'));
-loadBuiltinAddons(document.querySelector('#builtin-list'), document.querySelector('#builtin-filter'));
-loadAddons(document.querySelector('#addon-list'));
 loadFirstPartyPackages(document.querySelector('#package-list'));
+loadBuiltinAddons();
+loadAddons(document.querySelector('#addon-list'));

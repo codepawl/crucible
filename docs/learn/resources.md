@@ -5,14 +5,10 @@
 Each example is a Crucible scene with its source in the repository.
 
 ```cards
-Showcase | /showcase.html | An airport, a data center and a port. | /previews/showcase-port.webp
-Chip fab | #effects-and-lighting | A cleanroom bay with ambient occlusion and bloom. | /previews/showcase-chipfab.webp
-Warehouse | #hdr-environment-lighting | Racks and a forklift lit by a warehouse sky. | /previews/showcase-warehouse.webp
-Dark store | #local-lights-and-volume-fog | Shelves lit by point lights in thin fog. | /previews/showcase-darkstore.webp
-Ocean and boat wake | #ocean-and-boat-wake | Seeded waves with foam veins, buoyancy and a steered boat wake. | /previews/ocean-boat-wake.webp
-Explosions and volumes | #explosions-and-volumes | Gas-simulated fire, smoke plumes, debris and flying sparks. | /previews/explosion-volumes.webp
-Baked light | #bake-light | Indirect bounce light baked into lightmaps over procedural shapes. | /previews/baked-light-room.webp
-Path tracer | #cook-path-tracer | Stills traced by Cook with real bounce light. | /previews/cook-pabellon.webp
+Airport ramp | /showcase.html?scene=airport | A 787 at dusk with turnaround crew, shadows and HDRI lighting. | /previews/showcase-airport.webp
+AI data center | /showcase.html?scene=datacenter | Cutaway server hall with instanced racks, power and cooling. | /previews/showcase-datacenter.webp
+Container port | /showcase.html?scene=port | Quay cranes, container ship and live water reflections. | /previews/showcase-port.webp
+Path tracer | #cook-path-tracer | Physically based stills traced by Cook with real bounce light. | /previews/cook-pabellon.webp
 ```
 
 ## Guides for AI agents

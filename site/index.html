@@ -73,9 +73,7 @@
           <div class="actions">
             <a class="button" href="#install">Install</a>
             <a class="button quiet" href="/docs.html#getting-started">Docs</a>
-            <a class="button quiet" href="#showcase">Showcase</a>
             <a class="button quiet" href="https://studio.codepawl.com">Crucible Studio</a>
-            <a class="button quiet" href="https://www.npmjs.com/package/@codepawlhq/crucible"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-npm"/></svg>npm</a>
           </div>
           <a class="cue" id="cue" href="#story"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-flame"/></svg>Scroll to pour<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-down"/></svg></a>
           <img class="still" src="/previews/foundry-splats-0.webp" width="960" height="540" alt="A crucible with a pour spout, full of molten metal" loading="lazy">
@@ -113,9 +111,6 @@
       <div class="scene">
         <div class="frame"><img class="poster" src="/previews/foundry-splats-0.webp" width="960" height="540" alt="" aria-hidden="true" fetchpriority="high" decoding="async"><canvas id="foundry" role="img" aria-label="A crucible pours molten metal into an icosahedron mould as the page scrolls, rendered live by Crucible"></canvas><div class="callouts"><svg class="leader" id="leader" aria-hidden="true"><polyline points="0,0"></polyline><rect width="6" height="6"></rect></svg><div class="callout" data-anchor="pour" data-aside data-from="0.12" data-to="0.31"><h2>Pour</h2><p>An agent gets a live scene to edit.</p><p class="tools">scene_create, scene_apply</p></div><div class="callout" data-anchor="fill" data-from="0.39" data-to="0.59"><h2>Fill</h2><p>It draws the scene with Glaze or Cook.</p><p class="tools">scene_look, scene_render_submit</p></div><div class="callout" data-anchor="cool" data-from="0.61" data-to="0.78"><h2>Cool</h2><p>It reviews the result from several angles.</p><p class="tools">scene_review, scene_inspect</p></div><div class="callout" data-anchor="cast" data-from="0.9" data-to="1"><h2>Cast</h2><p>Out comes a PNG or an MP4.</p></div></div></div>
         <div class="hud">
-          <div class="ladder" id="ladder" role="group" aria-label="Story steps"><button type="button" class="on" data-jump="0">Pot</button><button type="button" data-jump="0.24">Pour</button><button type="button" data-jump="0.48">Fill</button><button type="button" data-jump="0.7">Cool</button><button type="button" data-jump="0.95">Cast</button></div>
-          <span><b id="hud-fill">0%</b>fill</span>
-          <span><b id="hud-heat">1400°C</b>cast</span>
           <a class="skip" href="#install">Skip the story<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-down"/></svg></a>
         </div>
       </div>
@@ -189,9 +184,6 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
         <a class="work" href="/showcase.html?scene=datacenter"><span class="shot"><img data-dither src="/previews/showcase-datacenter.webp" width="960" height="540" alt="AI data center, rendered by Crucible" loading="lazy"></span><span><b>AI data center</b>Rows of racks, power and cooling, cut open</span></a>
         <a class="work" href="/showcase.html?scene=port"><span class="shot"><img data-dither src="/previews/showcase-port.webp" width="960" height="540" alt="Container port, rendered by Crucible" loading="lazy"></span><span><b>Container port</b>A ship at berth under the quay cranes</span></a>
       </div>
-      <ul class="chips" aria-label="Engine capabilities">
-        <li>PBR materials</li><li>Shadows</li><li>HDR and bloom</li><li>MSAA</li><li>Mesh blend</li><li>Live cloth</li><li>Volumetric fog</li><li>Skinning and morphs</li><li>Physics</li><li>Spume liquid</li><li>Glass and leaf cutouts</li><li>HDRI lighting</li><li>Textured terrain</li><li>Trees and grass</li><li>Vehicles</li><li>GLB import and export</li><li>Cook path tracer</li>
-      </ul>
     </div>
   </section>
 
@@ -208,11 +200,6 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
           </div>
         </div>
         <figure class="shot"><img data-dither src="/previews/cook-monk.webp" width="960" height="720" alt="A monk statue path traced by Cook" loading="lazy"></figure>
-      </div>
-      <div class="cards">
-        <a class="card" href="/docs.html#connect-mcp"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-mcp"/></svg><h3>26 MCP tools</h3><p>Create, edit, explode, blend and render over stdio.</p></a>
-        <a class="card" href="/docs.html#cook-path-tracer"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-sun"/></svg><h3>Glaze + Cook</h3><p>Real-time frames, or path-traced stills.</p></a>
-        <a class="card" href="/docs.html#agent-workflows"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-eye"/></svg><h3>Visual review</h3><p>Compare labeled views and normals from one snapshot.</p></a>
       </div>
     </div>
   </section>
