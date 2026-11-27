@@ -5,6 +5,8 @@ import { markIsOnFarSide, sunAnglesUnderRay, sunMarkPosition, sunMarkSphereOf, s
 // The marks over the viewport for the lights and the sun, and the drags that move them.
 export const SCENE_OBJECT_ICONS = Object.freeze({ camera: 'camera', sun: 'sun', point: 'pointLight', spot: 'spotLight', area: 'areaLight' });
 const SCENE_OBJECT_MARK_RADIUS = 13;
+// The disc of a mark is translucent, so the sun ray starts this far past its edge instead of showing through the glyph.
+export const SUN_RAY_GAP_FROM_MARK = 5;
 
 /** Where a ray meets the plane through a point with a normal, or null when it runs parallel or the plane lies behind it. */
 export function intersectPlane(ray, planePoint, planeNormal) {
@@ -33,16 +35,32 @@ function appendSceneObjectMark(documentReference, gizmoSvg, object, projected, s
   gizmoSvg.append(mark);
 }
 
+/** Where the sun ray starts on screen: on the line to its end, just outside the mark's disc; null when the end lies inside that clearance. */
+export function sunRayStartOutsideMark(markCentre, rayEnd) {
+  const clearance = SCENE_OBJECT_MARK_RADIUS + SUN_RAY_GAP_FROM_MARK;
+  const deltaX = rayEnd.x - markCentre.x;
+  const deltaY = rayEnd.y - markCentre.y;
+  const length = Math.hypot(deltaX, deltaY);
+  if (length <= clearance) {
+    return null;
+  }
+  return { x: markCentre.x + (deltaX / length) * clearance, y: markCentre.y + (deltaY / length) * clearance };
+}
+
 function appendSunRay(documentReference, gizmoSvg, controller, object, projected, selected) {
   const end = controller.projectWorldPoint(sunRayEnd(controller.sceneBounds(), object.direction));
   if (!end.visible) {
     return;
   }
+  const start = sunRayStartOutsideMark(projected, end);
+  if (!start) {
+    return;
+  }
   gizmoSvg.append(createSvgElement(documentReference, 'line', {
     class: 'crucible-studio-scene-mark-ray',
     'data-selected': selected ? 'true' : 'false',
-    x1: projected.x.toFixed(1),
-    y1: projected.y.toFixed(1),
+    x1: start.x.toFixed(1),
+    y1: start.y.toFixed(1),
     x2: end.x.toFixed(1),
     y2: end.y.toFixed(1),
   }));
