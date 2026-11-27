@@ -42,7 +42,7 @@ import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, des
 import { formatLengthInputValue, lengthFromUnit, parseLengthInput } from './studio-units.js';
 // The grid is textured, and replaceParts takes a textured part only with this module loaded.
 import './replace-textured-parts.js';
-import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
+import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, decideBeforeUnload, draftDiffersFrom, loadStudioDraft, saveStudioDraft } from './studio-draft.js';
 import { createBakeMark } from './studio-bake-mark.js';
 import { watchScrollFade } from './studio-scroll-cue.js';
 import { extensionOf, openNameEditor, splitFileName, validateFileStem, validateNodeLabel, validateShotName } from './studio-name-editor.js';
@@ -6139,6 +6139,16 @@ export function createStudio(container, {
   documentReference.addEventListener('visibilitychange', flushDraftWhenHidden);
   documentReference.defaultView?.addEventListener?.('pagehide', flushDraftSave);
 
+  // The browser asks before it drops unsaved changes; a desktop host owns window close, so there the unload goes ahead.
+  const onBeforeUnload = event => {
+    const decision = decideBeforeUnload({ isDirty, hasDesktopShell: Boolean(globalThis.crucibleShell) });
+    if (decision.flushDraft) flushDraftSave();
+    if (!decision.askToStay) return;
+    event.preventDefault();
+    event.returnValue = '';
+  };
+  documentReference.defaultView?.addEventListener?.('beforeunload', onBeforeUnload);
+
   // Forgets the draft: the scene was saved, or the person chose another scene on purpose.
   function discardDraft() {
     clearTimeout(draftTimer);
@@ -6349,6 +6359,7 @@ export function createStudio(container, {
       documentReference.removeEventListener('visibilitychange', onVisibilityChange);
       documentReference.removeEventListener('visibilitychange', flushDraftWhenHidden);
       documentReference.defaultView?.removeEventListener?.('pagehide', flushDraftSave);
+      documentReference.defaultView?.removeEventListener?.('beforeunload', onBeforeUnload);
       stopWatchingContextLoss();
       stopWatchingDiagnostics();
       pausedNotice.hide();

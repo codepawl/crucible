@@ -124,3 +124,12 @@ export function createDraftNotice({ documentReference, createIcon, onRestore, on
     },
   };
 }
+
+/**
+ * What the page does when it is about to go: the draft is always written, and the browser is asked to confirm only when
+ * unsaved changes would be lost. A desktop host owns window close and already hears about unsaved changes, so there the
+ * unload is never cancelled.
+ */
+export function decideBeforeUnload({ isDirty, hasDesktopShell }) {
+  return { flushDraft: true, askToStay: Boolean(isDirty) && !hasDesktopShell };
+}
