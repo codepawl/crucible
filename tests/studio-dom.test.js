@@ -214,15 +214,15 @@ test('arrow keys move focus along the toolbar and the tab list when the browser 
   const ignored = dispatch(ui.dom.document.activeElement, 'keydown', { key: 'a' });
   assert.equal(ignored.defaultPrevented, false);
 
-  // Arrow keys walk only the tabs of the open workspace: Look holds Material and Look.
+  // Arrow keys walk only the tabs of the open workspace: Look holds Looks, Material and Look.
   ui.tab('material').click();
   ui.tab('material').focus();
   dispatch(ui.tab('material'), 'keydown', { key: 'ArrowRight' });
   assert.ok(ui.dom.document.activeElement === ui.tab('look'));
   assert.equal(ui.controller.activeTab, 'look');
   dispatch(ui.tab('look'), 'keydown', { key: 'ArrowRight' });
-  assert.equal(ui.controller.activeTab, 'material', 'the walk wraps inside the workspace and skips the hidden tabs');
-  dispatch(ui.tab('material'), 'keydown', { key: 'ArrowLeft' });
+  assert.equal(ui.controller.activeTab, 'looks', 'the walk wraps inside the workspace and skips the hidden tabs');
+  dispatch(ui.tab('looks'), 'keydown', { key: 'ArrowLeft' });
   assert.equal(ui.controller.activeTab, 'look');
 
   ui.dom.document.activeElement = null;
@@ -2692,9 +2692,9 @@ test('workspaces run Build, Look, Animate, Export and each shows only the panels
   assert.equal(ui.root.dataset.workspace, 'look');
   assert.equal(workspaceTab('build').getAttribute('aria-selected'), 'false');
   assert.equal(workspaceTab('build').hasAttribute('aria-pressed'), false);
-  assert.deepEqual(shownTabs(), ['material', 'look']);
+  assert.deepEqual(shownTabs(), ['looks', 'material', 'look']);
   assert.equal(tabList.hasAttribute('hidden'), false);
-  assert.equal(ui.controller.activeTab, 'material');
+  assert.equal(ui.controller.activeTab, 'looks');
   ui.tab('look').click();
   assert.equal(ui.root.dataset.workspace, 'look');
   assert.equal(ui.controller.activeTab, 'look');
@@ -2703,7 +2703,7 @@ test('workspaces run Build, Look, Animate, Export and each shows only the panels
   assert.deepEqual(shownTabs(), ['node', 'camera'], 'Animate keeps the object panel one tab away, for the object being keyed');
   assert.equal(ui.controller.activeTab, 'camera', 'a workspace opens on its first panel');
   workspaceTab('look').click();
-  assert.equal(ui.controller.activeTab, 'material');
+  assert.equal(ui.controller.activeTab, 'looks');
   assert.equal(JSON.stringify(ui.studio.exportRecipe()), recipeBefore, 'a workspace is not part of the scene');
   assert.equal(ui.controller.canUndo, false);
 
