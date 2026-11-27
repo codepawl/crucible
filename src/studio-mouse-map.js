@@ -10,7 +10,7 @@ export const MOUSE_ACTION_IDS = Object.freeze(['view.orbit', 'view.pan', 'view.s
 const MOUSE_ACTION_LABELS = Object.freeze({
   'view.orbit': 'Orbit',
   'view.pan': 'Pan',
-  'view.setPivot': 'Orbit around the point under the pointer',
+  'view.setPivot': 'Set the orbit point',
   'edit.undo': 'Undo',
   'edit.redo': 'Redo',
 });

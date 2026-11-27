@@ -194,3 +194,24 @@ test('a menu button of the bar is marked expanded while its menu is open', testC
   ui.helpMenu.dispatchEvent(ui.dom.document.createEvent('toggle', { newState: 'closed' }));
   assert.equal(ui.helpButton.getAttribute('aria-expanded'), 'false');
 });
+
+test('the sheet shows every press of the mouse map, in every preset', () => {
+  for (const presetId of ['crucible', 'maya', 'cinema4d']) {
+    const groups = shortcutSheetGroups(resolveKeymapPreset(presetId));
+    const rowsOf = title => groups.find(group => group.title === title).rows.map(row => `${row.label}: ${row.keys}`);
+    assert.deepEqual(rowsOf('Mouse view'), [
+      'Orbit: Left drag',
+      'Pan: Shift + left drag',
+      'Pan: Right drag',
+      'Pan: Middle drag',
+      'Pan: Space + left drag',
+      'Zoom: Wheel',
+    ], presetId);
+    assert.deepEqual(rowsOf('Mouse buttons'), [
+      'Set the orbit point: Middle click',
+      'Set the orbit point: Alt + right click',
+      'Undo: Back button click',
+      'Redo: Forward button click',
+    ], presetId);
+  }
+});
