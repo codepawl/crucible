@@ -1377,3 +1377,21 @@ test('Shift+Tab toggles snapping inside edit mode without leaving edit mode (#33
   assert.equal(ui.root.dataset.meshEdit, 'true', 'Shift+Tab keeps edit mode open');
   assert.equal(ui.controller.interactionSettings.snapEnabled, true, 'Shift+Tab turns snapping on in edit mode');
 });
+
+test('in edit mode a middle click and an Alt + right click set the pivot and leave the mesh selection alone', async testContext => {
+  const ui = mountStudioWithMesh(testContext);
+  ui.press('Tab');
+  await untilEditing(ui);
+  const front = ui.controller.projectWorldPoint([0, 0, 0.5]);
+  const position = { clientX: VIEWPORT_BOX.left + front.x, clientY: VIEWPORT_BOX.top + front.y };
+  const canvas = ui.viewport.querySelector('canvas');
+  const targetBefore = Array.from(ui.controller.viewCamera.target);
+  dispatch(canvas, 'pointerdown', { ...position, button: 1 });
+  dispatch(ui.viewport, 'pointerup', { ...position, button: 1 });
+  const targetAfterMiddle = Array.from(ui.controller.viewCamera.target);
+  assert.notDeepEqual(targetAfterMiddle, targetBefore, 'the middle click moved the orbit centre');
+  dispatch(canvas, 'pointerdown', { ...position, button: 2, altKey: true });
+  dispatch(ui.viewport, 'pointerup', { ...position, button: 2, altKey: true });
+  assert.notDeepEqual(Array.from(ui.controller.viewCamera.target), targetAfterMiddle, 'so did the Alt + right click, from the new view');
+  assert.equal(ui.root.dataset.meshEdit, 'true', 'edit mode stays on');
+});

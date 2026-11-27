@@ -1255,6 +1255,22 @@ export function createStudioController({
     return result;
   }
 
+  // The point on a surface under a pixel, or null over empty space. It never touches the selection.
+  function surfacePointAt(pixelX, pixelY) {
+    const hit = ensureQuery().raycast(screenRay(pixelX, pixelY));
+    return hit ? Array.from(hit.point) : null;
+  }
+
+  // Makes `point` the centre the view orbits: eye and target move by the same offset, so the view angle and distance stay.
+  function setOrbitPivot(point) {
+    if (!Array.isArray(point) || point.length !== 3 || !point.every(Number.isFinite)) {
+      throw new TypeError('setOrbitPivot requires a point of three finite numbers, such as [0, 1, 0].');
+    }
+    const camera = viewCamera();
+    const offset = point.map((component, axis) => component - camera.target[axis]);
+    return moveViewportCamera({ eye: camera.eye.map((component, axis) => component + offset[axis]), target: [...point] });
+  }
+
   function gizmoHandles() {
     const pivot = selectedPivotWorld();
     if (!pivot) {
@@ -3175,6 +3191,8 @@ export function createStudioController({
     setElementSession,
     screenRay,
     pickAt,
+    surfacePointAt,
+    setOrbitPivot,
     gizmoHandles,
     rotationSweep,
     dragTrace,

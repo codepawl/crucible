@@ -18,6 +18,7 @@ import { STUDIO_CSS } from './studio-styles.js';
 import { AGENT_CHAT_CSS, createAgentPanel } from './studio-agent-chat.js';
 import { createApplyMenus } from './studio-apply-menu.js';
 import { createMeshMenus } from './studio-mesh-menus.js';
+import { DEFAULT_MOUSE_MAP, findMouseAction } from './studio-mouse-map.js';
 import { findKeymapAction, findMouseNavigation, formatShortcutKeys, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
 import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
@@ -5277,6 +5278,7 @@ export function createStudio(container, {
       return;
     }
     if (findMouseNavigation(keymap, { button: 2, altKey: event.altKey }) !== null) return;
+    if (findMouseAction(mouseMap, { ...mousePressOf(event, 'click'), button: 2 }) === 'view.setPivot') return;
     if (controller.selectedNodeId) {
       openObjectMenu(event.clientX, event.clientY);
     }
@@ -5349,8 +5351,12 @@ export function createStudio(container, {
     if (event.button !== 0 && event.button !== 1 && event.button !== 2) return;
     if (!targetPassesThroughViewport(event.target)) return;
     const keymapMode = findMouseNavigation(keymap, event);
-    const defaultMode = event.shiftKey || event.button === 2 || event.button === 1 ? 'pan' : 'orbit';
-    beginCameraDrag(event, keymapMode ?? defaultMode, keymapMode !== null, event.target === canvas ? canvas : viewportElement);
+    const dragAction = findMouseAction(mouseMap, mousePressOf(event, 'drag'));
+    if (spaceHold) {
+      spaceHold.pending = null;
+      spaceHold.dragged = true;
+    }
+    beginCameraDrag(event, keymapMode ?? CAMERA_MODE_BY_MOUSE_ACTION[dragAction] ?? null, keymapMode !== null, event.target === canvas ? canvas : viewportElement);
   });
 
   viewportElement.addEventListener('pointermove', event => {
@@ -5374,7 +5380,7 @@ export function createStudio(container, {
     }
     pointerState.lastX = coordinates.x;
     pointerState.lastY = coordinates.y;
-    if (!pointerState.moved) return;
+    if (!pointerState.moved || pointerState.mode === null) return;
     if (pointerState.mode === 'pan') {
       controller.orbitCamera({ panX: -deltaX * 0.002, panY: deltaY * 0.002 });
     } else if (pointerState.mode === 'zoom') {
@@ -5398,6 +5404,32 @@ export function createStudio(container, {
     }
   }
 
+  // The map's rows in force. Settings will replace it when a person changes a press.
+  const mouseMap = DEFAULT_MOUSE_MAP;
+  const CAMERA_MODE_BY_MOUSE_ACTION = Object.freeze({ 'view.orbit': 'orbit', 'view.pan': 'pan' });
+
+  function mousePressOf(event, gesture) {
+    return {
+      button: event.button ?? 0,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      ctrlKey: event.ctrlKey || event.metaKey,
+      spaceHeld: Boolean(spaceHold),
+      gesture,
+    };
+  }
+
+  function setOrbitPivotAt(coordinates) {
+    const point = controller.surfacePointAt(coordinates.x, coordinates.y);
+    if (!point) {
+      announce('No surface there to orbit around');
+      return;
+    }
+    stopFlight();
+    controller.setOrbitPivot(point);
+    announce('Orbiting around that point');
+  }
+
   function finishPointer(event) {
     if (!pointerState) return;
     const finished = pointerState;
@@ -5412,6 +5444,10 @@ export function createStudio(container, {
     if (finished.mode === 'gizmo') {
       delete gizmoSvg.dataset.hoverAxis;
       controller.endGizmoDrag();
+      return;
+    }
+    if (!finished.moved && findMouseAction(mouseMap, mousePressOf(event, 'click')) === 'view.setPivot') {
+      setOrbitPivotAt(localCoordinates(event));
       return;
     }
     if (!finished.moved && !finished.keymapNavigation) {
@@ -6017,6 +6053,53 @@ export function createStudio(container, {
     };
   }
 
+  function anyDialogIsOpen() {
+    return recipeDialog.open || shortcutsDialog.open || settingsDialog.open || setup.dialog.open || Boolean(newSceneDialogs?.dialogs.some(dialog => dialog.open));
+  }
+
+  // Space held with the pointer over the viewport turns a left drag into a pan. A tap with no drag still does what Space is
+  // bound to, so that action waits for the key to come up; holding the key long enough to repeat, or Space anywhere but the
+  // viewport, runs it at once as before. `dragged` is set by the press that used the key.
+  let spaceHold = null;
+  const isSpaceEvent = event => event.code === 'Space' || event.key === ' ';
+  const spaceBelongsToViewport = event => {
+    const tag = event.target?.tagName?.toLowerCase?.();
+    return !isEditableTarget(event.target, event.key) && tag !== 'button' && tag !== 'a' && tag !== 'summary' && !anyDialogIsOpen() && !modalTransform;
+  };
+
+  // True when Space was taken here and must not reach the key handler yet.
+  function holdSpaceForPan(event) {
+    if (!isSpaceEvent(event) || event.ctrlKey || event.metaKey || event.altKey || !spaceBelongsToViewport(event)) return false;
+    if (!event.repeat) {
+      spaceHold = { pending: null, dragged: false };
+      const bound = resolveStudioKeyAction(keymap, event, Boolean(meshEditor?.active), findKeymapAction, MESH_EDIT_PASS_THROUGH).match;
+      if (!viewportPointer || !bound) return false;
+      event.preventDefault();
+      spaceHold.pending = event;
+      return true;
+    }
+    if (!spaceHold) return false;
+    if (spaceHold.dragged || pointerState) {
+      event.preventDefault();
+      return true;
+    }
+    const waiting = spaceHold.pending;
+    spaceHold.pending = null;
+    if (waiting) onWindowKeyDown(waiting);
+    return false;
+  }
+
+  function forgetSpaceHold() {
+    spaceHold = null;
+  }
+
+  function releaseSpace(event) {
+    if (!isSpaceEvent(event) || !spaceHold) return;
+    const { pending, dragged } = spaceHold;
+    spaceHold = null;
+    if (pending && !dragged) onWindowKeyDown(pending);
+  }
+
   const onWindowKeyDown = async event => {
     if (!root.isConnected) return;
     if (faceToolInput?.handleKey(event)) return;
@@ -6029,7 +6112,7 @@ export function createStudio(container, {
     if (meshMenus.isOpen()) return;
     const editingMesh = Boolean(meshEditor?.active);
     const { match, fromMeshContext } = resolveStudioKeyAction(keymap, event, editingMesh, findKeymapAction, MESH_EDIT_PASS_THROUGH);
-    const dialogIsOpen = recipeDialog.open || shortcutsDialog.open || settingsDialog.open || setup.dialog.open || Boolean(newSceneDialogs?.dialogs.some(dialog => dialog.open));
+    const dialogIsOpen = anyDialogIsOpen();
     if (!event.repeat && !dialogIsOpen && isNumpadKeyEvent(event) && !preferences.numberPad && !preferences.numberPadNoticeShown) {
       setPreferences({ numberPadNoticeShown: true });
       numpadNotice.show();
@@ -6055,11 +6138,28 @@ export function createStudio(container, {
     blockPageSelectAll(event);
     if (!isModifierKey(event.key)) root.dataset.input = 'keyboard';
     if (event.key === 'Control' && !event.repeat) replayDragWithCtrl(true);
+    if (holdSpaceForPan(event)) return;
     onWindowKeyDown(event);
   };
   const onKeyUp = event => {
     if (event.key === 'Control') replayDragWithCtrl(false);
+    releaseSpace(event);
   };
+
+  // The side buttons run undo and redo, and the browser never turns them into Back and Forward while Studio is the page.
+  // The action runs on the release only, once per click; the other events of the press are only stopped.
+  const SIDE_BUTTON_EVENTS = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'auxclick'];
+  const SIDE_BUTTON_ACTIONS = Object.freeze({ 'edit.undo': () => undoButton.click(), 'edit.redo': () => redoButton.click() });
+  const onSideButton = event => {
+    if (event.button !== 3 && event.button !== 4) return;
+    if (!root.isConnected) return;
+    event.preventDefault();
+    if (event.type !== 'pointerup') return;
+    const typing = isEditableTarget(documentReference.activeElement, '');
+    if (typing || anyDialogIsOpen() || modalTransform) return;
+    SIDE_BUTTON_ACTIONS[findMouseAction(mouseMap, mousePressOf(event, 'click'))]?.();
+  };
+  for (const eventName of SIDE_BUTTON_EVENTS) documentReference.addEventListener(eventName, onSideButton, true);
   const onPointerInput = event => {
     root.dataset.input = 'pointer';
     pointerStartedInStudio = (event.composedPath?.() ?? []).includes(root);
@@ -6085,6 +6185,7 @@ export function createStudio(container, {
   documentReference.addEventListener('keydown', onKeyDown);
   documentReference.addEventListener('keyup', onKeyUp);
   documentReference.defaultView?.addEventListener?.('blur', onWindowBlur);
+  documentReference.defaultView?.addEventListener?.('blur', forgetSpaceHold);
   documentReference.addEventListener('pointerdown', onPointerInput, true);
 
   const onVisibilityChange = () => {
@@ -6355,6 +6456,8 @@ export function createStudio(container, {
       documentReference.removeEventListener('keydown', onKeyDown);
       documentReference.removeEventListener('keyup', onKeyUp);
       documentReference.defaultView?.removeEventListener?.('blur', onWindowBlur);
+      documentReference.defaultView?.removeEventListener?.('blur', forgetSpaceHold);
+      for (const eventName of SIDE_BUTTON_EVENTS) documentReference.removeEventListener(eventName, onSideButton, true);
       documentReference.removeEventListener('pointerdown', onPointerInput, true);
       documentReference.removeEventListener('visibilitychange', onVisibilityChange);
       documentReference.removeEventListener('visibilitychange', flushDraftWhenHidden);
