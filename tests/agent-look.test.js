@@ -234,3 +234,12 @@ test('valid shadow extremes produce finite nonsingular view, projection and comb
     }
   }
 });
+
+test('explicit skyBottom without fogColor derives linear sky-horizon fog while defaults stay unchanged (#3637)', () => {
+  const derived = normalizeAgentLook({ environment: { skyBottom: [0.68, 0.79, 0.86], skyTop: [0.22, 0.44, 0.68] } });
+  const heightWeight = Math.pow(0.12, 0.6);
+  const expected = [0.68, 0.79, 0.86].map((channel, index) => Math.pow(channel + ([0.22, 0.44, 0.68][index] - channel) * heightWeight, 2.2));
+  derived.environment.fogColor.forEach((channel, index) => assert.ok(Math.abs(channel - expected[index]) < 1e-6));
+  const explicit = normalizeAgentLook({ environment: { skyBottom: [0.68, 0.79, 0.86], fogColor: [0.1, 0.2, 0.3] } });
+  assert.deepEqual(explicit.environment.fogColor, [0.1, 0.2, 0.3]);
+});

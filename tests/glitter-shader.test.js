@@ -66,7 +66,7 @@ test('the default water shader carries no glint code, and the feature adds it af
   assert.doesNotMatch(createFragmentShader([...waterFeatures, 'water']), /waterGlint/);
   const fragment = createFragmentShader([...waterFeatures, 'water', 'waterGlint']);
   assert.match(fragment, /uniform vec4 waterGlintEdge;[\s\S]*float waterGlintSparkles\(/);
-  const mirrorMix = fragment.indexOf('radiance = mix(radiance * 0.6');
+  const mirrorMix = fragment.indexOf('skyColor * ambientIntensity, clamp(reflectivity, 0.0, 1.0)');
   const refraction = fragment.indexOf('refractedBackground(radiance');
   const glintCode = fragment.indexOf('if (TAG_WATER && (waterGlintEdge.x > 0.0');
   assert.ok(mirrorMix > 0 && refraction > mirrorMix && glintCode > refraction, 'the glint is added after the mirror mix and the refraction blend');

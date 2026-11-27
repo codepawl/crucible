@@ -242,3 +242,12 @@ test('foam lace fades to fixed axes where the surface is level, so a wake draws 
   assert.match(shader, /float broadLace = mix\(terrainNoise\(worldPosition\.xz/);
   assert.match(shader, /float fineLace = mix\(terrainNoise\(worldPosition\.xz/);
 });
+
+test('water body and horizon distance fog avoid neon-cyan glow and blend toward sky haze (#3637)', () => {
+  const waterShader = createFragmentShader(['water']);
+  assert.ok(!waterShader.includes('0.0137, 0.147, 0.195'), 'grazing color follows waterAbsorption instead of hardcoded cyan');
+  assert.ok(!waterShader.includes('daylight * 1.7'), 'water body removes unconditional 1.7x neon boost');
+  assert.match(waterShader, /exp\(-waterAbsorption \* 1\.2\)/);
+  assert.match(waterShader, /surroundingsColor\(vec3\(fogDirection\.x/);
+  assert.ok(waterShader.includes('environmentEnabled > 1.5'), 'environment haze only blends into surroundingsColor when the environment map draws the background');
+});
