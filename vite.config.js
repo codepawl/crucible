@@ -89,8 +89,6 @@ export default defineConfig({
         docs: 'site/docs.html',
         changelog: 'site/changelog.html',
         showcase: 'site/showcase.html',
-        benchmark: 'site/benchmark.html',
-        tiers: 'site/tiers.html',
         marketplace: 'site/marketplace.html',
       },
     },

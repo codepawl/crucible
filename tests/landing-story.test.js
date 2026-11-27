@@ -54,7 +54,7 @@ test('the hero shows the first still as a poster until the live scene draws', ()
 });
 
 test('the page keeps the sections, release hooks and install paths of the old home page', () => {
-  for (const id of ['content', 'install', 'code', 'showcase', 'agents', 'tiers']) {
+  for (const id of ['content', 'install', 'code', 'showcase', 'agents']) {
     assert.match(landingPage, new RegExp(`id="${id}"`), `section #${id} is missing`);
   }
   for (const href of ['/docs.html', '/recipes.html', '/showcase.html', '/marketplace.html', '/changelog.html', 'https://github.com/codepawl/crucible']) {
