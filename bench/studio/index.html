@@ -55,7 +55,9 @@
         position: relative;
         width: 120px;
         height: 96px;
-        transform: translateX(70px) scale(1.5);
+        /* The tipped pot is drawn from x = -59 to the bar end at 120, so the drawn group's middle sits at x = 30, 30 px left of
+           the box middle. The shift is that 30 px times the scale, which puts what the eye sees in the middle of the window. */
+        transform: translateX(33px) scale(1.1);
       }
       #studio-loading .pot {
         position: absolute;

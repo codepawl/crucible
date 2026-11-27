@@ -3948,7 +3948,11 @@ test('a light has a mark in the viewport that selects it and drags it in the pla
   assert.ok(markOf('sun'), 'the sun has a mark');
   assert.equal(markOf('camera'), undefined, 'the camera you look through is not drawn');
   assert.ok(markOf('point:0'));
-  assert.ok(ui.gizmo.querySelector('.crucible-studio-scene-mark-ray'), 'the sun points along its light');
+  const sunRay = ui.gizmo.querySelector('.crucible-studio-scene-mark-ray');
+  assert.ok(sunRay, 'the sun points along its light');
+  const sunMarkCentre = markOf('sun').parentNode.getAttribute('transform').match(/translate\(([-\d.]+) ([-\d.]+)\)/).slice(1).map(Number);
+  const rayStartDistance = Math.hypot(Number(sunRay.getAttribute('x1')) - sunMarkCentre[0], Number(sunRay.getAttribute('y1')) - sunMarkCentre[1]);
+  assert.ok(rayStartDistance > 13, `the sun ray starts outside the mark disc, not under its glyph (${rayStartDistance.toFixed(1)} px from the centre)`);
 
   const lightPosition = ui.controller.listSceneObjects().find(object => object.key === 'point:0').position;
   const grab = ui.controller.projectWorldPoint(lightPosition);
