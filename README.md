@@ -185,6 +185,7 @@ Each addon is a separate import, so a page loads only what it uses.
 | Modeling | `crucible/addons/mesh`, `crucible/addons/modeling`, `crucible/addons/sculpt` | [Mesh editing](docs/mesh.md), [modeling](docs/modeling.md) and [sculpt brushes](https://crucible.codepawl.com/sculpt.md) |
 | Offline light | `crucible/addons/path-tracer`, `crucible/addons/light-bake` | [Path-traced stills](https://crucible.codepawl.com/path-tracer.md) and [baked lightmaps](https://crucible.codepawl.com/light-bake.md) |
 | Post passes | `crucible/addons/user-pass` | [Your own full-screen GLSL passes](docs/user-passes.md): dither, pixel downscale, quantise |
+| Showcase | `crucible/addons/showcase` | [Interactive product showcase viewer](docs/showcase.md) and `crucible init` starter with Prototype/Studio themes and shared orbit controls |
 | Agents | `crucible/addons/agent-scene`, `crucible/addons/agent-asset` | [Scene sessions](docs/agent-scene.md) with revisions and checkpoints |
 
 The [documentation page](https://crucible.codepawl.com/docs.html) lists every guide.

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The crucible command line: `crucible agent` (docs/cli-agent.md), `crucible auth`, `crucible pack` (docs/pack.md), and `crucible packs` (docs/packs.md).
+// The crucible command line: `crucible agent` (docs/cli-agent.md), `crucible auth`, `crucible init` (docs/showcase.md), `crucible pack` (docs/pack.md), and `crucible packs` (docs/packs.md).
 import { existsSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE_USAGE = `Usage: crucible agent "<prompt>" [--scene <in.json>] [--out <out.json>] [--model <name>] [--max-turns <1..60>] [--backend cpu|gpu] [--jobs <dir>] [--json] [--quiet]
        crucible auth login [--no-browser] | status [--json] | logout
+       crucible init [<dir>] [--template showcase|addon] [--out <dir>] [--name <pkg-name>] [--force]
        crucible pack <scene.json> --out <dir> [--poster <picture.webp> | --no-poster] [--poster-size <w>x<h>] [--runtime <crucible-scene.js>]
        crucible packs add|list|remove [<name>]`;
 const PROMO_TIP = 'Tip: Run `crucible auth login` for 250 free credits, no card needed, to use `crucible agent`, or connect your own agent free via `crucible-mcp`.';
@@ -77,13 +78,17 @@ async function main(argumentList) {
     const { runAuthCommand } = await import('./crucible-auth.mjs');
     return runAuthCommand(rest);
   }
+  if (command === 'init') {
+    const { runInitCommand } = await import('./crucible-init.mjs');
+    return runInitCommand(rest, { packageRoot });
+  }
   if (command === 'packs') {
     const { runPacksCommand } = await import('./crucible-packs.mjs');
     return runPacksCommand(rest);
   }
   if (command !== 'pack') {
     const usage = usageText();
-    console.error(command === undefined ? usage : `${command}: unknown command; the commands are agent, auth, pack, and packs.\n${usage}`);
+    console.error(command === undefined ? usage : `${command}: unknown command; the commands are agent, auth, init, pack, and packs.\n${usage}`);
     return 1;
   }
   try {

@@ -1,5 +1,6 @@
 import { mat4, vec3 } from 'gl-matrix';
 import { rejectThreeObject } from './field-error.js';
+export { attachOrbitControls, createOrbitController, eyeFromOrbit, orbitFromCamera } from './orbit-controller.js';
 
 /** Lens fields a camera may carry on top of eye, target, up, fov, near and far; each is absent unless the scene sets it. */
 export const CAMERA_LENS_FIELDS = Object.freeze(['projection', 'orthoScale', 'focalLength', 'sensorWidth', 'shift', 'fStop', 'focusDistance']);

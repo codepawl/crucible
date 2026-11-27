@@ -64,7 +64,10 @@
     "docs/skeleton-pose.md",
     "docs/prop-grip.md",
     "docs/studio.md",
-    "docs/verification.md"
+    "docs/showcase.md",
+    "docs/verification.md",
+    "templates/showcase",
+    "templates/addon-starter"
   ],
   "main": "./build/crucible.module.js",
   "module": "./build/crucible.module.js",
@@ -173,6 +176,7 @@
     "./addons/three-bridge": "./build/three-bridge.js",
     "./addons/denoise-oidn": "./build/denoise-oidn.js",
     "./addons/studio": "./build/studio.js",
+    "./addons/showcase": "./build/showcase.js",
     "./package.json": "./package.json"
   },
   "scripts": {
