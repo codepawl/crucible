@@ -1277,3 +1277,184 @@ test('liquid-renderer.js routes mip chain, scene depth, back faces, glass draws,
     assert.ok(methodNames.includes(expected), `expected ${expected} call`);
   }
 });
+
+
+test('renderer and clip-planes backend additions issue exact WebGL2 calls', () => {
+  const { context, calls } = createRecordingContext({
+    TEXTURE0: 33984,
+    getParameter: (parameter) => {
+      if (parameter === 'MAX_TEXTURE_SIZE') return 4096;
+      if (parameter === 'MAX_RENDERBUFFER_SIZE') return 2048;
+      if (parameter === 'MAX_SAMPLES') return 8;
+      if (parameter === 'MAX_VERTEX_TEXTURE_IMAGE_UNITS') return 4;
+      if (parameter === 'MAX_COMBINED_TEXTURE_IMAGE_UNITS') return 16;
+      if (parameter === 'ACTIVE_UNIFORMS') return 2;
+      if (parameter === 'TEXTURE_BINDING_2D') return { label: 'boundTex' };
+      return 0;
+    },
+    getInternalformatParameter: () => [4, 2, 1],
+    getActiveUniform: (_program, index) => (index === 0 ? { name: 'uTex', size: 1, type: 'SAMPLER_2D' } : { name: 'uVal', size: 1, type: 'FLOAT' }),
+    getUniformLocation: (_program, name) => `loc:${name}`,
+    getProgramParameter: (program, parameter) => (parameter === 'ACTIVE_UNIFORMS' ? 2 : true),
+    getError: () => 0,
+  });
+  const backend = new WebGL2GlazeBackend(context);
+
+  const emptyVao = backend.createVertexArray();
+  assert.equal(emptyVao.label, 'vertexarray1');
+  backend.bindElementBuffer({ label: 'elBuf' });
+  backend.enableVertexAttribute(2, 4, 16, 4, 1);
+  backend.setConstantAttribute(13, -1, -1);
+  backend.setConstantAttribute(14, 1, 1, 1);
+  assert.equal(backend.supportedSampleCount('rgba16f', 4), 4);
+  assert.equal(backend.maxRenderbufferAndTextureSize(), 2048);
+  assert.deepEqual(backend.textureUnitLimits(), { vertex: 4, combined: 16 });
+  assert.equal(backend.error(), 0);
+  assert.equal(backend.boundTexture2D().label, 'boundTex');
+
+  const tex = backend.createTexture();
+  backend.uploadDepthTexture2D(tex, 512, 512, { linear: true, compare: true, unit: 0 });
+  const fb = backend.createFramebuffer();
+  backend.attachDepthTexture(fb, tex, 'Shadow');
+  const r8Target = backend.createFramebufferTarget({ width: 8, height: 8, colorFormat: 'r8', linear: true, clamp: true });
+  assert.equal(r8Target.complete, true);
+
+  backend.setTexture2DParameters({ wrapS: 'REPEAT', wrapT: 'REPEAT', minFilter: 'LINEAR', magFilter: 'LINEAR' });
+  backend.uploadTexture2DMipLevels([{ width: 2, height: 2, data: new Uint8Array(16) }], true);
+  const imgTex = backend.createColorTexture2D({ image: { width: 4, height: 4 }, colorSpace: 'srgb', flipY: true }, () => ({ width: 4, height: 4 }), () => {});
+  assert.ok(imgTex.label);
+  const whiteTex = backend.createColorTexture2D(null);
+  assert.ok(whiteTex.label);
+
+  const prog = backend.compileProgram('vs', 'fs');
+  assert.equal(backend.isProgramLinkComplete(prog), true);
+  backend.initializeSampler2DUniforms(prog, 1);
+  backend.deleteStartedProgram({ program: prog, shaders: [{ label: 'sh1' }] });
+  backend.uniformMatrix3fv('loc:mat3', new Float32Array(9));
+  backend.prepareFullscreenDraw(prog);
+  backend.clearColorAndDepth([0, 0, 0, 1], 1, true);
+  backend.setRenderState({
+    sampleAlphaToCoverage: true,
+    polygonOffset: [1, 1],
+    blendMode: 'dstColor',
+    blendEquation: 'addMin',
+  });
+  backend.setRenderState({
+    sampleAlphaToCoverage: false,
+    polygonOffset: false,
+    blendMode: 'srcAlphaOne',
+  });
+  backend.setRenderState({ blendMode: ['ONE', 'ONE_MINUS_SRC_ALPHA', 'ONE', 'ONE_MINUS_SRC_ALPHA'] });
+
+  assert.ok(calls.some((call) => call[0] === 'bindBuffer' && call[1] === 'ELEMENT_ARRAY_BUFFER' && call[2] === 'elBuf'));
+  assert.ok(calls.some((call) => call[0] === 'vertexAttrib2f' && call[1] === 13 && call[2] === -1));
+  assert.ok(calls.some((call) => call[0] === 'vertexAttrib3f' && call[1] === 14 && call[2] === 1));
+  assert.ok(calls.some((call) => call[0] === 'texParameteri' && call[2] === 'TEXTURE_COMPARE_MODE' && call[3] === 'COMPARE_REF_TO_TEXTURE'));
+  assert.ok(calls.some((call) => call[0] === 'texImage2D' && call[3] === 'R8' && call[7] === 'RED'));
+  assert.ok(calls.some((call) => call[0] === 'uniformMatrix3fv' && call[1] === 'loc:mat3'));
+  assert.ok(calls.some((call) => call[0] === 'blendEquationSeparate' && call[1] === 'FUNC_ADD' && call[2] === 'MIN'));
+  assert.ok(calls.some((call) => call[0] === 'enable' && call[1] === 'SAMPLE_ALPHA_TO_COVERAGE'));
+  assert.ok(calls.some((call) => call[0] === 'polygonOffset' && call[1] === 1 && call[2] === 1));
+  assert.ok(calls.some((call) => call[0] === 'clear' && call[1] === 256));
+});
+
+test('src/clip-planes.js and src/renderer.js shadow, sky, AO, post, blend and texture methods route through GlazeBackend without touching raw context', async () => {
+  const { CrucibleRenderer, configureTexture } = await import('../src/renderer.js');
+  const { bindClipPlanes, clipPlaneLocations } = await import('../src/clip-planes.js');
+  const { RenderTargetLedger } = await import('../src/render-target-ledger.js');
+  const { backend, calls } = createRecordingBackend({
+    createTexture: () => ({ label: 'tex' }),
+    createFramebuffer: () => ({ label: 'fb' }),
+    createBuffer: () => ({ label: 'buf' }),
+    createVertexArray: () => ({ label: 'vao' }),
+    createColorTexture2D: (_map, prepare, onConfigure) => {
+      if (prepare) onConfigure(prepare(4096));
+      return { label: 'colorTex' };
+    },
+    startProgram: () => ({ program: { label: 'pendingProg' }, shaders: [] }),
+    finishProgram: () => ({ label: 'finishedProg' }),
+    maxTextureSize: () => 4096,
+    maxRenderbufferAndTextureSize: () => 4096,
+    isContextLost: () => false,
+    error: () => 0,
+  });
+  const throwingContext = new Proxy({}, { get() { throw new Error('raw context touched'); } });
+
+  const locs = clipPlaneLocations(backend, { label: 'prog' });
+  assert.equal(locs.clipPlaneCount, 'loc:clipPlaneCount');
+  const renderer = Object.assign(Object.create(CrucibleRenderer.prototype), {
+    backend,
+    context: throwingContext,
+    canvas: { width: 32, height: 16, clientWidth: 32, clientHeight: 16 },
+    pixelRatio: 1,
+    multisampleSamples: 1,
+    viewTransform: 'aces',
+    look: null,
+    memoryBudgetMiB: 64,
+    geometryBytes: 0,
+    textureBytes: 0,
+    hdr: true,
+    benchmark: false,
+    depth: true,
+    transparent: false,
+    world: false,
+    batching: true,
+    culling: false,
+    maxAnisotropy: 8,
+    renderTargets: new RenderTargetLedger(),
+    textures: new Map(),
+    buffers: [],
+    geometryBuffers: new Map(),
+    postStages: [],
+    postVariants: new Map(),
+    batches: [],
+    activeLightDirection: [0, 1, 0],
+    shadowBounds: {},
+    windState: { time: 0, strength: 0.3 },
+    view: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+    projection: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, 0, 0, -0.2, 0]),
+    inverseViewProjection: new Float32Array(16),
+    lightProjection: new Float32Array(16),
+    clipPlaneValues: new Float32Array(16),
+    clipPlaneCount: 0,
+    program: { label: 'mainProgram' },
+    postProgram: { label: 'postProgram' },
+    skyProgram: { label: 'skyProgram' },
+    depthProgram: { label: 'depthProgram' },
+    uniforms: new Proxy({}, { get: (_t, name) => `loc:${String(name)}` }),
+    postUniforms: new Proxy({}, { get: (_t, name) => `loc:${String(name)}` }),
+    skyUniforms: new Proxy({}, { get: (_t, name) => `loc:${String(name)}` }),
+    depthAlphaUniforms: new Proxy({}, { get: (_t, name) => `loc:${String(name)}` }),
+    depthWindUniforms: new Proxy({}, { get: (_t, name) => `loc:${String(name)}` }),
+    depthClipLocations: locs,
+    shaderFeatures: new Set(['clipPlanes']),
+    whiteTexture: { label: 'white' },
+    frameTexture: { label: 'frameTex' },
+    depthTexture: { label: 'depthTex' },
+    multisampleFramebuffer: { label: 'msFb' },
+    resolveFramebuffer: { label: 'resFb' },
+    environment: {},
+    environmentResources: { levelCount: 3, irradiance: new Float32Array(27), specularTexture: { label: 'spec' }, brdfTexture: { label: 'brdf' }, dispose() {} },
+  });
+
+  bindClipPlanes(renderer, { parts: [{ name: 'wall', clipPlanes: [{ normal: [0, 1, 0], constant: 1 }] }] }, locs);
+  renderer.createTexture({ image: { width: 4, height: 4 }, colorSpace: 'srgb' });
+  configureTexture(renderer, { wrapS: 10497, wrapT: 10497, minFilter: 9987, magFilter: 9729, mipmaps: false });
+  renderer.createShadowMap();
+  renderer.drawSky({ eye: [0, 1, 5] });
+  renderer.drawAmbientOcclusion({ projection: 'perspective' }, { ambientOcclusionRadius: 0.5 });
+  renderer.resolveFrame({ eye: [0, 1, 5] }, { ambientOcclusion: 0.5, bloom: { strength: 0 }, motionBlur: { shutter: 0 }, saturation: 1, contrast: 1, temperature: 0, vignette: 0, grain: 0 }, {}, { density: 0 });
+  renderer.applyDepthRank(2);
+  renderer.setFlushProjection(renderer.view);
+  renderer.dispose();
+
+  const methodNames = calls.map((call) => call[0]);
+  for (const expected of [
+    'uniformLocation', 'uniform4fv', 'uniform1i', 'createColorTexture2D', 'setTexture2DParameters',
+    'uploadDepthTexture2D', 'attachDepthTexture', 'clearDepthBuffer', 'prepareFullscreenDraw',
+    'drawFullscreenTriangles', 'beginFullscreenPass', 'createFramebufferTarget', 'resolveMultisample',
+    'uniform3f', 'setRenderState', 'deleteTexture', 'deleteFramebuffer', 'deleteProgram',
+  ]) {
+    assert.ok(methodNames.includes(expected), `expected ${expected} call`);
+  }
+});

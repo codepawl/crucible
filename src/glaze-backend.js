@@ -1,6 +1,6 @@
 // The Glaze backend boundary (#901): what the real-time renderer asks of a graphics API (see glaze-backend-webgl2.js for the list of calls).
-// WebGL2 is the only implementation today. The renderer's frame core, reversed depth, render passes and float output call the backend
-// instead of the raw context; pass files not yet ported still use `backend.context` directly.
+// WebGL2 is the only implementation today. `CrucibleRenderer`, `clip-planes.js` and the ported pass modules call the backend
+// instead of the raw context; the remaining helper/addon modules still use `backend.context` directly.
 
 import { WebGL2GlazeBackend } from './glaze-backend-webgl2.js';
 

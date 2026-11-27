@@ -1,12 +1,13 @@
 // The WebGL2 implementation of the Glaze backend boundary (glaze-backend.js). Every method issues the calls that
 // CrucibleRenderer made itself before the boundary existed, in the same order, so a frame does not change.
 
-import { startProgram, finishProgram, compileProgram } from './gl-program.js';
+import { startProgram, finishProgram, compileProgram, isLinkComplete, setPreparing, releaseStartedPrograms } from './gl-program.js';
 
 const CONTEXT_OPTIONS_BASE = { antialias: true, premultipliedAlpha: true, powerPreference: 'high-performance' };
 
 function dataTextureSpec(context, format) {
   const specs = {
+    r8: [context.R8, context.RED, context.UNSIGNED_BYTE],
     rgba8: [context.RGBA8, context.RGBA, context.UNSIGNED_BYTE],
     rgb8: [context.RGB8, context.RGB, context.UNSIGNED_BYTE],
     rgba16f: [context.RGBA16F, context.RGBA, context.HALF_FLOAT],
@@ -58,6 +59,10 @@ export class WebGL2GlazeBackend {
     this.context.bindBuffer(this.context.ARRAY_BUFFER, buffer);
   }
 
+  bindElementBuffer(buffer = null) {
+    this.context.bindBuffer(this.context.ELEMENT_ARRAY_BUFFER, buffer);
+  }
+
   deleteBuffer(buffer) {
     this.context.deleteBuffer(buffer);
   }
@@ -66,35 +71,41 @@ export class WebGL2GlazeBackend {
     return this.context.getAttribLocation(program, name);
   }
 
-  bindVertexAttributes(buffer, attributes) {
+  enableVertexAttribute(location, size, stride = 0, offset = 0, divisor = 0, integer = false) {
     const context = this.context;
-    context.bindBuffer(context.ARRAY_BUFFER, buffer);
+    context.enableVertexAttribArray(location);
+    if (integer) context.vertexAttribIPointer(location, size, context.UNSIGNED_INT, stride, offset);
+    else context.vertexAttribPointer(location, size, context.FLOAT, false, stride, offset);
+    if (divisor) context.vertexAttribDivisor(location, divisor);
+  }
+
+  bindVertexAttributes(buffer, attributes) {
+    this.bindArrayBuffer(buffer);
     for (const { location, size, stride = 0, offset = 0, divisor = 0 } of attributes) {
-      context.enableVertexAttribArray(location);
-      context.vertexAttribPointer(location, size, context.FLOAT, false, stride, offset);
-      if (divisor) context.vertexAttribDivisor(location, divisor);
+      this.enableVertexAttribute(location, size, stride, offset, divisor);
     }
   }
 
-  setConstantAttribute1f(location, value = 0) {
+  setConstantAttribute(location, ...values) {
     const context = this.context;
     context.disableVertexAttribArray(location);
-    context.vertexAttrib1f(location, value);
+    if (values.length === 2) context.vertexAttrib2f(location, values[0], values[1]);
+    else if (values.length === 3) context.vertexAttrib3f(location, values[0], values[1], values[2]);
+    else context.vertexAttrib1f(location, values[0] ?? 0);
   }
 
-  createVertexArray(attributes, indexBuffer = null) {
+  setConstantAttribute1f(location, value = 0) {
+    this.setConstantAttribute(location, value);
+  }
+
+  createVertexArray(attributes = null, indexBuffer = null) {
     const context = this.context;
     const vertexArray = context.createVertexArray();
+    if (!attributes) return vertexArray;
     context.bindVertexArray(vertexArray);
     attributes.forEach((attribute, location) => {
       context.bindBuffer(context.ARRAY_BUFFER, attribute.buffer);
-      context.enableVertexAttribArray(location);
-      if (attribute.integer) {
-        context.vertexAttribIPointer(location, attribute.size, context.UNSIGNED_INT, 0, 0);
-      } else {
-        context.vertexAttribPointer(location, attribute.size, context.FLOAT, false, 0, 0);
-      }
-      if (attribute.divisor) context.vertexAttribDivisor(location, attribute.divisor);
+      this.enableVertexAttribute(location, attribute.size, 0, 0, attribute.divisor ?? 0, Boolean(attribute.integer));
     });
     if (indexBuffer) context.bindBuffer(context.ELEMENT_ARRAY_BUFFER, indexBuffer);
     context.bindVertexArray(null);
@@ -126,8 +137,9 @@ export class WebGL2GlazeBackend {
   /** The largest MSAA sample count at most `requested` that the driver offers for both `colorFormat` and a 24-bit depth store (0 when none). */
   supportedSampleCount(colorFormat, requested) {
     const context = this.context;
+    const internalFormat = colorFormat === 'rgba16f' ? context.RGBA16F : colorFormat === 'rgba8' ? context.RGBA8 : colorFormat;
     const limited = Math.min(requested, context.getParameter(context.MAX_SAMPLES));
-    const colorCounts = Array.from(context.getInternalformatParameter(context.RENDERBUFFER, colorFormat, context.SAMPLES));
+    const colorCounts = Array.from(context.getInternalformatParameter(context.RENDERBUFFER, internalFormat, context.SAMPLES));
     const depthCounts = Array.from(context.getInternalformatParameter(context.RENDERBUFFER, context.DEPTH_COMPONENT24, context.SAMPLES));
     return Math.max(0, ...colorCounts.filter((count) => count <= limited && depthCounts.includes(count)));
   }
@@ -154,16 +166,25 @@ export class WebGL2GlazeBackend {
     return { framebuffer, colorBuffer, depthBuffer };
   }
 
+  createTexture() {
+    return this.context.createTexture();
+  }
+
   createTexture2D(internalFormat, width, height, format, type, filter, clamp = false, data = null) {
     const context = this.context;
     const texture = context.createTexture();
     context.bindTexture(context.TEXTURE_2D, texture);
-    context.texImage2D(context.TEXTURE_2D, 0, internalFormat, width, height, 0, format, type, data);
-    if (clamp) {
-      this.setClampedFiltering(filter);
-    } else {
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, filter);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, filter);
+    try {
+      context.texImage2D(context.TEXTURE_2D, 0, internalFormat, width, height, 0, format, type, data);
+      if (clamp) {
+        this.setClampedFiltering(filter);
+      } else {
+        context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, filter);
+        context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, filter);
+      }
+    } catch (error) {
+      context.deleteTexture(texture);
+      throw error;
     }
     return texture;
   }
@@ -302,6 +323,35 @@ export class WebGL2GlazeBackend {
     this.context.deleteProgram(program);
   }
 
+  isProgramLinkComplete(program) {
+    return isLinkComplete(this.context, program);
+  }
+
+  setPreparing(preparing) {
+    setPreparing(this.context, preparing);
+  }
+
+  releaseStartedPrograms() {
+    releaseStartedPrograms(this.context);
+  }
+
+  deleteStartedProgram({ program, shaders }) {
+    const context = this.context;
+    context.getProgramParameter(program, context.LINK_STATUS);
+    shaders.forEach((shader) => context.deleteShader(shader));
+    context.deleteProgram(program);
+  }
+
+  initializeSampler2DUniforms(program, unit = 1) {
+    const context = this.context;
+    context.useProgram(program);
+    const count = context.getProgramParameter(program, context.ACTIVE_UNIFORMS);
+    for (let index = 0; index < count; index++) {
+      const uniform = context.getActiveUniform(program, index);
+      if (uniform.type === context.SAMPLER_2D) context.uniform1iv(context.getUniformLocation(program, uniform.name), new Int32Array(uniform.size).fill(unit));
+    }
+  }
+
   useProgram(program) {
     this.context.useProgram(program);
   }
@@ -332,6 +382,10 @@ export class WebGL2GlazeBackend {
 
   uniform4fv(location, values) {
     this.context.uniform4fv(location, values);
+  }
+
+  uniformMatrix3fv(location, values) {
+    this.context.uniformMatrix3fv(location, false, values);
   }
 
   uniformMatrix4fv(location, values) {
@@ -422,6 +476,91 @@ export class WebGL2GlazeBackend {
     return this.context.getParameter(this.context.MAX_TEXTURE_SIZE);
   }
 
+  maxRenderbufferAndTextureSize() {
+    const context = this.context;
+    return Math.min(context.getParameter(context.MAX_RENDERBUFFER_SIZE), context.getParameter(context.MAX_TEXTURE_SIZE));
+  }
+
+  textureUnitLimits() {
+    const context = this.context;
+    return {
+      vertex: context.getParameter(context.MAX_VERTEX_TEXTURE_IMAGE_UNITS),
+      combined: context.getParameter(context.MAX_COMBINED_TEXTURE_IMAGE_UNITS),
+    };
+  }
+
+  error() {
+    return this.context.getError();
+  }
+
+  boundTexture2D() {
+    return this.context.getParameter(this.context.TEXTURE_BINDING_2D);
+  }
+
+  setTexture2DParameters({ wrapS, wrapT, minFilter, magFilter }) {
+    const context = this.context;
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, wrapS);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, wrapT);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, minFilter);
+    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, magFilter);
+  }
+
+  uploadTexture2DMipLevels(mipLevels, linear) {
+    const context = this.context;
+    const format = linear ? context.RGBA8 : context.SRGB8_ALPHA8;
+    mipLevels.forEach((level, index) => {
+      context.texImage2D(context.TEXTURE_2D, index + 1, format, level.width, level.height, 0, context.RGBA, context.UNSIGNED_BYTE, level.data);
+    });
+  }
+
+  createColorTexture2D(map, prepare, onConfigure) {
+    const context = this.context;
+    const texture = context.createTexture();
+    context.bindTexture(context.TEXTURE_2D, texture);
+    const previousFlip = context.getParameter(context.UNPACK_FLIP_Y_WEBGL);
+    const previousColorSpace = context.getParameter(context.UNPACK_COLORSPACE_CONVERSION_WEBGL);
+    try {
+      context.pixelStorei(context.UNPACK_FLIP_Y_WEBGL, map?.flipY ?? false);
+      context.pixelStorei(context.UNPACK_COLORSPACE_CONVERSION_WEBGL, context.NONE);
+      if (map) {
+        const info = prepare(this.maxTextureSize());
+        if (map.image.compressed) map.image.compressed.upload(context);
+        else context.texImage2D(context.TEXTURE_2D, 0, map.colorSpace === 'linear' ? context.RGBA8 : context.SRGB8_ALPHA8, context.RGBA, context.UNSIGNED_BYTE, map.image);
+        onConfigure(info);
+      } else {
+        context.texImage2D(context.TEXTURE_2D, 0, context.RGBA8, 1, 1, 0, context.RGBA, context.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
+        context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
+        context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
+      }
+    } catch (error) {
+      context.deleteTexture(texture);
+      throw error;
+    } finally {
+      context.pixelStorei(context.UNPACK_FLIP_Y_WEBGL, previousFlip);
+      context.pixelStorei(context.UNPACK_COLORSPACE_CONVERSION_WEBGL, previousColorSpace);
+    }
+    return texture;
+  }
+
+  uploadDepthTexture2D(texture, width, height, { linear = false, compare = false, unit = 0 } = {}) {
+    const context = this.context;
+    this.bindTextureUnit(unit, texture);
+    if (width !== null) context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, width, height, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+    this.setClampedFiltering(linear ? context.LINEAR : context.NEAREST);
+    if (compare) context.texParameteri(context.TEXTURE_2D, context.TEXTURE_COMPARE_MODE, context.COMPARE_REF_TO_TEXTURE);
+  }
+
+  attachDepthTexture(framebuffer, texture, label = null) {
+    const context = this.context;
+    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
+    context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, texture, 0);
+    context.drawBuffers([context.NONE]);
+    context.readBuffer(context.NONE);
+    if (label && context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) {
+      throw new Error(`${label} framebuffer is incomplete.`);
+    }
+  }
+
   activeTextureUnit(unit) {
     this.context.activeTexture(this.context.TEXTURE0 + unit);
   }
@@ -438,10 +577,11 @@ export class WebGL2GlazeBackend {
     context.generateMipmap(array ? context.TEXTURE_2D_ARRAY : context.TEXTURE_2D);
   }
 
-  /** Enables or restores linear mipmapped filtering on a 2D texture bound to `unit`. */
+  /** Enables or restores linear mipmapped filtering on a 2D texture, optionally binding it on `unit`. */
   setTextureMipmaps(texture, enabled, unit = 0) {
     const context = this.context;
-    this.bindTextureUnit(unit, texture);
+    if (unit !== null) this.bindTextureUnit(unit, texture);
+    else context.bindTexture(context.TEXTURE_2D, texture);
     if (enabled) context.generateMipmap(context.TEXTURE_2D);
     context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, enabled ? context.LINEAR_MIPMAP_LINEAR : context.LINEAR);
   }
@@ -534,21 +674,23 @@ export class WebGL2GlazeBackend {
 
   setFullscreenState() {
     const context = this.context;
-    context.disable(context.DEPTH_TEST);
-    context.disable(context.CULL_FACE);
+    this.prepareFullscreenDraw();
     context.disable(context.BLEND);
     context.disable(context.SCISSOR_TEST);
-    context.bindVertexArray(null);
   }
 
-  beginFullscreenPass(framebuffer, width, height, program = null) {
+  prepareFullscreenDraw(program = null) {
     const context = this.context;
-    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-    context.viewport(0, 0, width, height);
     context.disable(context.DEPTH_TEST);
     context.disable(context.CULL_FACE);
     context.bindVertexArray(null);
     if (program) context.useProgram(program);
+  }
+
+  beginFullscreenPass(framebuffer, width, height, program = null) {
+    this.bindFramebuffer(framebuffer);
+    this.setViewport(width, height);
+    this.prepareFullscreenDraw(program);
   }
 
   drawFullscreenTriangles() {
@@ -588,11 +730,11 @@ export class WebGL2GlazeBackend {
     this.context.clearBufferfv(this.context.COLOR, attachmentIndex, values);
   }
 
-  clearColorAndDepth(color, depth) {
+  clearColorAndDepth(color, depth, depthOnly = false) {
     const context = this.context;
     context.clearColor(...color);
     context.clearDepth(depth);
-    context.clear(context.COLOR_BUFFER_BIT | context.DEPTH_BUFFER_BIT);
+    context.clear(depthOnly ? context.DEPTH_BUFFER_BIT : context.COLOR_BUFFER_BIT | context.DEPTH_BUFFER_BIT);
     context.clearDepth(1);
   }
 
@@ -600,7 +742,7 @@ export class WebGL2GlazeBackend {
     return Boolean(this.context.isEnabled(this.context.BLEND));
   }
 
-  setRenderState({ depthTest, depthWrite, depthFunc, cullFace, cullMode, blend, blendMode, blendEquation, colorMask } = {}) {
+  setRenderState({ depthTest, depthWrite, depthFunc, cullFace, cullMode, blend, blendMode, blendEquation, colorMask, sampleAlphaToCoverage, polygonOffset } = {}) {
     const context = this.context;
     if (depthTest !== undefined) context[depthTest ? 'enable' : 'disable'](context.DEPTH_TEST);
     if (depthWrite !== undefined) context.depthMask(depthWrite);
@@ -609,12 +751,19 @@ export class WebGL2GlazeBackend {
     if (cullFace !== undefined) context[cullFace ? 'enable' : 'disable'](context.CULL_FACE);
     if (cullMode === 'front') context.cullFace(context.FRONT);
     else if (cullMode === 'back') context.cullFace(context.BACK);
+    if (sampleAlphaToCoverage !== undefined) context[sampleAlphaToCoverage ? 'enable' : 'disable'](context.SAMPLE_ALPHA_TO_COVERAGE);
+    if (polygonOffset === false) context.disable(context.POLYGON_OFFSET_FILL);
+    else if (polygonOffset) { context.enable(context.POLYGON_OFFSET_FILL); context.polygonOffset(...polygonOffset); }
     if (blend !== undefined) context[blend ? 'enable' : 'disable'](context.BLEND);
     if (blendMode === 'one') context.blendFunc(context.ONE, context.ONE);
     else if (blendMode === 'premultiplied') context.blendFuncSeparate(context.ONE, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
     else if (blendMode === 'alpha') context.blendFuncSeparate(context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
+    else if (blendMode === 'dstColor') context.blendFuncSeparate(context.DST_COLOR, context.ZERO, context.ONE, context.ONE);
+    else if (blendMode === 'srcAlphaOne') context.blendFuncSeparate(context.SRC_ALPHA, context.ONE, context.ZERO, context.ONE);
+    else if (Array.isArray(blendMode)) context.blendFuncSeparate(...blendMode.map((factor) => (typeof factor === 'string' ? context[factor] : factor)));
     if (blendEquation === 'add') context.blendEquation(context.FUNC_ADD);
     else if (blendEquation === 'min') context.blendEquation(context.MIN);
+    else if (blendEquation === 'addMin') context.blendEquationSeparate(context.FUNC_ADD, context.MIN);
     if (colorMask) context.colorMask(...colorMask);
   }
 
