@@ -6,6 +6,9 @@ import { markIsOnFarSide, sunAnglesUnderRay, sunMarkPosition, sunMarkSphereOf, s
 // The marks over the viewport for the lights and the sun, and the drags that move them.
 export const SCENE_OBJECT_ICONS = Object.freeze({ camera: 'camera', sun: 'sun', point: 'pointLight', spot: 'spotLight', area: 'areaLight' });
 const SCENE_OBJECT_MARK_RADIUS = 13;
+// The edge pointer's chevron is 12 px tall; its stroke and its glyph's stroke are the same width on screen.
+const EDGE_POINTER_CHEVRON_HALF_HEIGHT = 6;
+const EDGE_POINTER_STROKE_WIDTH = 1.5;
 
 /** Where a ray meets the plane through a point with a normal, or null when it runs parallel or the plane lies behind it. */
 export function intersectPlane(ray, planePoint, planeNormal) {
@@ -89,19 +92,21 @@ function appendEdgePointer(documentReference, gizmoSvg, object, placement, selec
   const pointerAttributes = { 'data-scene-object': object.key, 'data-edge-pointer': 'true' };
   const glyphScale = (0.75 * EDGE_POINTER_DISC_RADIUS) / SCENE_OBJECT_MARK_RADIUS;
   const glyphOffset = (-12 * glyphScale).toFixed(2);
-  const disc = createSvgElement(documentReference, 'circle', { r: EDGE_POINTER_DISC_RADIUS, class: 'crucible-studio-scene-mark-disc', ...pointerAttributes });
+  const disc = createSvgElement(documentReference, 'circle', { r: EDGE_POINTER_DISC_RADIUS, class: 'crucible-studio-scene-mark-disc', ...pointerAttributes, style: 'stroke: var(--studio-trace-edge); stroke-width: 1.5' });
   const glyph = createSvgElement(documentReference, 'path', {
     d: studioIconPath(SCENE_OBJECT_ICONS[object.kind]),
     transform: `translate(${glyphOffset} ${glyphOffset}) scale(${glyphScale.toFixed(3)})`,
+    // The glyph is scaled down, so its stroke is set in its own units to land on the chevron's weight.
+    style: `stroke-width: ${(EDGE_POINTER_STROKE_WIDTH / glyphScale).toFixed(2)}`,
     ...pointerAttributes,
   });
   const chevronTip = EDGE_POINTER_DISC_RADIUS + EDGE_POINTER_CHEVRON_REACH - 1;
   const chevron = createSvgElement(documentReference, 'path', {
-    d: `M ${chevronTip - 5} -4.5 L ${chevronTip} 0 L ${chevronTip - 5} 4.5`,
+    d: `M ${chevronTip - EDGE_POINTER_CHEVRON_HALF_HEIGHT} ${-EDGE_POINTER_CHEVRON_HALF_HEIGHT} L ${chevronTip} 0 L ${chevronTip - EDGE_POINTER_CHEVRON_HALF_HEIGHT} ${EDGE_POINTER_CHEVRON_HALF_HEIGHT}`,
     transform: `rotate(${placement.angle.toFixed(1)})`,
     class: 'crucible-studio-edge-pointer-chevron',
     // The chevron sits over the dark viewport, not on the disc, so like the sun's ray it takes the trace colours in both themes.
-    style: `stroke: ${selected ? 'var(--studio-accent)' : 'var(--studio-trace)'}; stroke-width: 2.2; filter: drop-shadow(0 0 1px var(--studio-trace-edge)) drop-shadow(0 0 1.5px var(--studio-trace-edge))`,
+    style: `stroke: ${selected ? 'var(--studio-accent)' : 'var(--studio-trace)'}; stroke-width: ${EDGE_POINTER_STROKE_WIDTH}; filter: drop-shadow(0 0 1px var(--studio-trace-edge)) drop-shadow(0 0 1.5px var(--studio-trace-edge))`,
     ...pointerAttributes,
   });
   const tooltip = createSvgElement(documentReference, 'title');
