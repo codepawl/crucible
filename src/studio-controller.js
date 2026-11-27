@@ -41,6 +41,7 @@ import {
 } from './studio-multi-edit.js';
 import { formatLength, STUDIO_LENGTH_UNITS } from './studio-units.js';
 import { motionIsEmpty } from './studio-motion-content.js';
+import { KEYFRAME_TIME_TOLERANCE, POSE_PROPERTIES, editPropertyKey, propertyKeyAt, propertyKeysOf, removePropertyKey } from './studio-property-keys.js';
 import { createOrbitPivot } from './studio-orbit-pivot.js';
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
@@ -158,7 +159,7 @@ export function quaternionToEulerDegrees(quaternion) {
   ];
 }
 
-function eulerDegreesToQuaternion(angles) {
+export function eulerDegreesToQuaternion(angles) {
   const result = quat.create();
   quat.fromEuler(result, angles[0], angles[1], angles[2]);
   quat.normalize(result, result);
@@ -480,9 +481,7 @@ function upsertNodeKeyframeTrack(tracks, nodeId, property, time, value) {
   return nextTracks;
 }
 
-const KEYFRAME_TIME_TOLERANCE = 0.005;
 const MAX_MOTION_SECONDS = 3600;
-const POSE_PROPERTIES = Object.freeze(['translation', 'rotation', 'scale']);
 const REST_POSE = Object.freeze({ translation: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] });
 
 function keyframeIndexAt(keyframes, time) {
@@ -3046,6 +3045,52 @@ export function createStudioController({
     return commitNodeTracks(recipe, moveNodeKeysInTracks(tracks, nodeId, sourceTime, targetTime), duration, nodeId);
   }
 
+  /** The node's animated properties with their keys ({ property, canEase, keys: [{ time, value, easing }] }), for the timeline rows. */
+  function nodePropertyKeys(nodeId = selectedNodeId) {
+    return propertyKeysOf(currentScene.exportRecipe().motion?.tracks ?? [], nodeId);
+  }
+
+  /** Puts a key on one property at the playhead from the pose shown there, or removes it when one is already there. Returns true when a key was added. */
+  function togglePropertyKeyframe(nodeId, property) {
+    const recipe = currentScene.exportRecipe();
+    requireNode(recipe, nodeId);
+    if (!POSE_PROPERTIES.includes(property)) {
+      throw new RangeError(`Property must be one of ${POSE_PROPERTIES.join(', ')}, got ${JSON.stringify(property)}.`);
+    }
+    const tracks = recipe.motion?.tracks ?? [];
+    if (propertyKeyAt(tracks, nodeId, property, motionTime)) {
+      commitNodeTracks(recipe, removePropertyKey(tracks, nodeId, property, motionTime), recipe.motion.duration, nodeId);
+      return false;
+    }
+    const nextTracks = upsertNodeKeyframeTrack(tracks, nodeId, property, motionTime, nodePose(nodeId)[property]);
+    const duration = Math.max(4, recipe.motion?.duration ?? 4, motionTime);
+    const nextMotion = { ...(recipe.motion ?? {}), duration, loop: recipe.motion?.loop ?? true, tracks: nextTracks };
+    applySceneOperations([{ type: 'set-motion', motion: nextMotion }]);
+    settleSelectionAndMotion();
+    notify({ kind: 'motion', nodeId });
+    return true;
+  }
+
+  /** Changes the key of a property at `time` ({ time, value, easing }; a field left out stays) as one undo step. */
+  function updatePropertyKeyframe(nodeId, property, time, patch) {
+    const recipe = currentScene.exportRecipe();
+    requireNode(recipe, nodeId);
+    const edit = { ...patch };
+    if (edit.time !== undefined) {
+      edit.time = validatedKeyTime(edit.time, 'patch.time');
+    }
+    const tracks = editPropertyKey(recipe.motion?.tracks ?? [], nodeId, property, validatedKeyTime(time, 'time'), edit);
+    return commitNodeTracks(recipe, tracks, Math.max(recipe.motion.duration ?? 0, edit.time ?? 0), nodeId);
+  }
+
+  /** Deletes the key of one property at `time` as one undo step; a track left empty is removed. */
+  function deletePropertyKeyframe(nodeId, property, time) {
+    const recipe = currentScene.exportRecipe();
+    requireNode(recipe, nodeId);
+    const tracks = removePropertyKey(recipe.motion?.tracks ?? [], nodeId, property, validatedKeyTime(time, 'time'));
+    return commitNodeTracks(recipe, tracks, recipe.motion?.duration, nodeId);
+  }
+
   /** Deletes every key of the node at `time` as one undo step; a track left empty is removed. */
   function deleteNodeKeyframe(nodeId, time) {
     const recipe = currentScene.exportRecipe();
@@ -3222,6 +3267,10 @@ export function createStudioController({
     moveNodeKeyframe,
     deleteNodeKeyframe,
     nodeKeyframeTimes,
+    nodePropertyKeys,
+    togglePropertyKeyframe,
+    updatePropertyKeyframe,
+    deletePropertyKeyframe,
     animatedNodeProperties,
     nodePose,
     get autoKey() { return autoKey; },
