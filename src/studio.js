@@ -17,7 +17,7 @@ import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shad
 import { STUDIO_CSS } from './studio-styles.js';
 import { AGENT_CHAT_CSS, createAgentPanel } from './studio-agent-chat.js';
 import { createApplyMenus } from './studio-apply-menu.js';
-import { createViewportContextMenus, createViewportMenuOpening, isContextMenuKey, openPopoverNearPointer, selectForContextMenu } from './studio-viewport-context-menu.js';
+import { createViewportContextMenus, createViewportMenuOpening, openPopoverNearPointer, selectForContextMenu } from './studio-viewport-context-menu.js';
 import { createMeshMenus } from './studio-mesh-menus.js';
 import { resolveMouseMap } from './studio-mouse-map.js';
 import { createMouseInput, createViewportTargetFilter, isEditableTarget } from './studio-mouse-input.js';
@@ -1517,15 +1517,9 @@ export function createStudio(container, {
     openPopoverAtMenuPoint: popover => openPopoverAt(popover, ...(lastObjectMenuPoint ?? [0, 0])),
   });
   const viewportMenus = createViewportContextMenus({
-    createMenuPopover,
-    createMenuItem,
-    controller,
-    announce: message => announce(message),
-    announceError: message => announceError(message),
+    createMenuPopover, createMenuItem, controller, announce: message => announce(message), announceError: message => announceError(message),
     openPopoverAtMenuPoint: popover => openPopoverAt(popover, ...(lastObjectMenuPoint ?? [0, 0])),
-    getAddPopover: () => addPopover,
-    onPaste: () => pasteCopy(),
-    onShowAll: () => showAllHidden(),
+    getAddPopover: () => addPopover, onPaste: () => pasteCopy(), onShowAll: () => showAllHidden(),
   });
   const objectPopover = buildRegisteredMenuPopover('crucible-studio-pop-object', 'object', [
     { order: 10, label: 'Frame', actionId: 'view.frame', icon: 'frame', onChoose: () => flyToSelection() },
@@ -5311,14 +5305,8 @@ export function createStudio(container, {
       } else {
         // Shift or Ctrl (Command) with a left click adds the object under the pointer to the selection, or takes it out.
         const mode = (event.button ?? 0) === 0 && (event.shiftKey || event.ctrlKey || event.metaKey) ? 'toggle' : 'replace';
-        // A right press keeps an object that is already selected (and the rest of a selection) and picks one that is not.
         selectNodeAndShowItsPanel(() => (event.button === 2 ? selectForContextMenu(controller, coordinates.x, coordinates.y) : controller.pickAt(coordinates.x, coordinates.y, { mode })));
-        // A right press that did not drag opens the menu of the object under it, or of the scene over empty space. It opens
-        // after this release has been handled, because the release itself closes any open menu.
-        if (event.button === 2) {
-          const { clientX, clientY } = event;
-          setTimeout(() => viewportMenuOpening.openAt(clientX, clientY), 0);
-        }
+        if (event.button === 2) viewportMenuOpening.openAfterRelease(event);
       }
     }
   }
@@ -5330,11 +5318,9 @@ export function createStudio(container, {
   });
   const viewportMenuOpening = createViewportMenuOpening({
     controller, documentReference, viewportElement, canvas, openObjectMenu, selectInPanel: selectNodeAndShowItsPanel,
-    getViewportPointer: () => viewportPointer,
-    isHoldingObject: () => controller.dragging || Boolean(modalTransform),
+    getViewportPointer: () => viewportPointer, isHoldingObject: () => controller.dragging || Boolean(modalTransform),
     isKeyboardBlocked: () => Boolean(meshEditor?.active) || anyDialogIsOpen() || viewingShot(),
-    openScenePopover: (clientX, clientY) => openPopoverAt(viewportMenus.scenePopover, clientX, clientY),
-    onOpen: point => { lastObjectMenuPoint = point; },
+    openScenePopover: (clientX, clientY) => openPopoverAt(viewportMenus.scenePopover, clientX, clientY), onOpen: point => { lastObjectMenuPoint = point; },
   });
   documentReference.addEventListener('contextmenu', onModalContextMenu, true);
   documentReference.addEventListener('click', onModalClick, true);
@@ -5901,10 +5887,7 @@ export function createStudio(container, {
       return;
     }
     if (isEditableTarget(event.target, event.key)) return;
-    if (isContextMenuKey(event) && viewportMenuOpening.openFromKeyboard()) {
-      event.preventDefault();
-      return;
-    }
+    if (viewportMenuOpening.handleKeydown(event)) return;
     // Esc or a key pressed over an open mesh menu belongs to the menu, not to edit mode.
     if (meshMenus.isOpen()) return;
     const editingMesh = Boolean(meshEditor?.active);

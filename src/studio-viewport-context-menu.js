@@ -155,7 +155,19 @@ export function createViewportMenuOpening({ controller, documentReference, viewp
     return true;
   }
 
-  return { openAt, openFromKeyboard };
+  // A right press that did not drag opens the menu of the object under it, or of the scene over empty space. It opens after
+  // this release has been handled, because the release itself closes any open menu.
+  function openAfterRelease({ clientX, clientY }) {
+    setTimeout(() => openAt(clientX, clientY), 0);
+  }
+
+  function handleKeydown(event) {
+    if (!isContextMenuKey(event) || !openFromKeyboard()) return false;
+    event.preventDefault();
+    return true;
+  }
+
+  return { openAt, openFromKeyboard, openAfterRelease, handleKeydown };
 }
 
 /** True for the keys that ask for a context menu from the keyboard: the Menu key and Shift+F10. */
