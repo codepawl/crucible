@@ -1,7 +1,6 @@
 /* The recipe pages: interactive before/after comparison, concise notes, and dark-surface scene code. */
-body.recipes > main { gap: 28px; width: var(--page); margin-inline: auto; padding-block: 24px 64px; }
-body.site.recipes main > h1 { font-size: clamp(30px, 4.2vw, 48px); max-width: 22ch; }
-.recipes .lede { max-width: 60ch; color: var(--muted); font-size: 16px; margin: 0; }
+body.recipes > main { gap: 28px; }
+body.site.recipes .page-hero h1 { max-width: 24ch; }
 
 .recipe-back a { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; color: var(--muted); font-size: 14px; font-weight: 500; text-decoration: none; }
 .recipe-back a:hover { color: var(--text); }

@@ -1,9 +1,6 @@
-/* The tier page: full 6-scene breakdown, smooth in-place bar transitions, and zero layout churn on clicks. */
-body.tiers-page > main { gap: 22px; width: var(--page); margin-inline: auto; padding-block: 24px 64px; align-content: start; }
-.tiers-header { display: grid; gap: 8px; }
-.tiers-page main h1 { font-size: clamp(30px, 4.2vw, 48px); }
-.tiers-lede { max-width: 66ch; color: var(--muted); font-size: 15px; line-height: 1.5; }
-.tiers-conditions { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--muted); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+/* The benchmark page: full 6-scene breakdown, smooth in-place bar transitions, and zero layout churn on clicks. */
+body.tiers-page > main { gap: 22px; }
+.tiers-conditions { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--muted); font-size: 13.5px; font-variant-numeric: tabular-nums; margin-top: 2px; }
 
 .tiers-switch, .tiers-scene-bar { display: flex; flex-wrap: wrap; gap: 8px; }
 .tiers-tab { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 16px; border: var(--edge-width) solid var(--edge); border-radius: var(--round); background: var(--bg); color: var(--text); font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; transition: background-color var(--site-motion-quick) var(--site-ease-out), color var(--site-motion-quick) var(--site-ease-out); }

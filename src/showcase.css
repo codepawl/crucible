@@ -1,8 +1,6 @@
 /* The showcase page: one live scene at a time, picked with quiet text tabs. */
-.showcase-stage { display: grid; gap: 16px; padding-top: 20px; }
+.showcase-stage { display: grid; gap: 16px; }
 .showcase-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 16px 24px; }
-.showcase-head > div:first-child { display: grid; gap: 10px; }
-.showcase-head p { color: var(--muted); font-size: 17px; }
 .showcase-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .showcase-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
 .site .showcase-controls button { min-height: 36px; padding: 6px 14px; background: transparent; color: var(--muted); font-size: 14px; }
