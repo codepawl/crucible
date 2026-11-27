@@ -1,0 +1,1 @@
+- The Studio sun mark stays at a fixed point out from the middle of the scene instead of sliding with the view, and the Move tool drags it to turn the sun (#3575).
