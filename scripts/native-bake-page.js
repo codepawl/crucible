@@ -181,7 +181,8 @@ export function exportNativeSceneTables({ parts, environment, camera, options, k
     throw new RangeError(`exportNativeSceneTables: maximumTriangles must be an integer from 1 to ${NATIVE_CHUNKED_MAXIMUM_TRIANGLES}, got ${JSON.stringify(chunkedMaximumTriangles)}. Pass chunkedTriangleBound(capacity.maxUniqueTriangles).`);
   }
   const nativeLimits = wholeMaterials ? { maximumTriangles, maximumInstances: NATIVE_JOB_MAXIMUM_INSTANCES, maximumLights: NATIVE_JOB_MAXIMUM_LIGHTS, maximumParts: NATIVE_JOB_MAXIMUM_PARTS } : {};
-  let traceScene = buildTraceScene(parts, environment, { instancing: wholeMaterials && instancing === true, instanceNormalMappedParts: wholeMaterials, ...nativeLimits });
+  const eyeOption = camera?.eye ? { eye: camera.eye } : {};
+  let traceScene = buildTraceScene(parts, environment, { instancing: wholeMaterials && instancing === true, instanceNormalMappedParts: wholeMaterials, ...eyeOption, ...nativeLimits });
   // The depth tint under thin water (#2294) is a grid only the "cycles" kernel draws; the legacy kernel draws the water clear.
   if (!wholeMaterials && traceScene.localVolumes) {
     const { localVolumes, ...withoutVolumes } = traceScene;
@@ -201,7 +202,7 @@ export function exportNativeSceneTables({ parts, environment, camera, options, k
       // A scene over the texture pool stays over it flattened: the caller gets that refusal, not a v1 atlas one.
       if (!(error instanceof RangeError) || error.texturePoolFull || error.exportTooLarge) throw error;
       flattenedBecause = error.message;
-      traceScene = flattenRefusedScene(buildTraceScene, parts, environment, nativeLimits, flattenedBecause);
+      traceScene = flattenRefusedScene(buildTraceScene, parts, environment, { ...eyeOption, ...nativeLimits }, flattenedBecause);
       if (gridVolumes) traceScene = withoutLocalVolumes(traceScene);
     }
   }

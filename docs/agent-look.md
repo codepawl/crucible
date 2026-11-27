@@ -429,3 +429,7 @@ The helper normalizes bounded JSON while reusing the engine's lighting, effects,
 Session and transport code remain responsible for revisions, patches, checkpoint ownership, and rendering.
 
 A fitted look is applied with scene_apply; [fit the look to references](https://crucible.codepawl.com/agent-fit-look.md) fits the parameters to reference colours.
+
+## Height relief and path tracer displacement
+
+Materials with `heightMap` and `heightScale > 0` (`0` to `0.5` m) render parallax occlusion in the rasterizer (flat silhouettes) and true geometric displacement in the path tracers (`cpu`, `gpu`, `webgpu` and `native`): triangles are deterministically subdivided within bounded per-part and scene triangle caps, displaced along welded smooth normals by `(texel - 1) * heightScale * fade`, and attenuated smoothly from `0.5 * heightFade` to `heightFade` metres from the camera (default `12` m; see [path tracer](https://github.com/codepawl/crucible/blob/main/docs/path-tracer.md)).
