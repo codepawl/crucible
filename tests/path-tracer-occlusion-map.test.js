@@ -68,14 +68,12 @@ test('occlusionStrength blends between no occlusion and the map', async () => {
   assert.ok(full < half && half < none, `strength 0, 0.5 and 1 darken in steps: ${none}, ${half}, ${full}`);
 });
 
-test('only the CPU and WebGPU tracers drop occlusionMap from their ignored list', () => {
+test('the CPU, WebGPU and native cycles tracers drop occlusionMap from their ignored list', () => {
   const parts = [floor(floorMaterial({ occlusionMap: occlusionImage(0) }))];
   assert.deepEqual(describeIgnoredFeatures(parts, {}, 'cpu').filter(note => note.startsWith('occlusionMap')), []);
   assert.deepEqual(describeIgnoredFeatures(parts, {}, 'webgpu').filter(note => note.startsWith('occlusionMap')), []);
+  assert.deepEqual(describeIgnoredFeatures(parts, {}, 'native', { kernelMaterials: true }).filter(note => note.startsWith('occlusionMap')), []);
   assert.equal(describeIgnoredFeatures(parts, {}, 'gpu').filter(note => note.startsWith('occlusionMap')).length, 1);
-  const native = describeIgnoredFeatures(parts, {}, 'native', { kernelMaterials: true }).filter(note => note.startsWith('occlusionMap'));
-  assert.equal(native.length, 1);
-  assert.match(native[0], /codepawl\/cook#71/);
 });
 
 test('a floor occlusion map does not darken sky light scattered in volumeFog', async () => {

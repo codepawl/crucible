@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
-  chooseNativeKernel, chooseTraceBackend, clampNegativeColor, describeKernelCompile, createNativeTracerLocator, isNativeTimeLimitError, traceFrameNative, yieldToEventLoop,
+  chooseNativeDispatchBudgetMs, chooseNativeKernel, chooseTraceBackend, clampNegativeColor, DEFAULT_NATIVE_DISPATCH_BUDGET_MS, describeKernelCompile, createNativeTracerLocator, isNativeTimeLimitError, traceFrameNative, yieldToEventLoop,
 } from '../scripts/agent-native-trace.mjs';
 
 // These tests use fake engines, so they run with and without Cook installed; a COOK_DISABLE from the suite's absent-mode run
@@ -186,15 +186,24 @@ test('a native frame traces with the cycles kernel unless JS67_NATIVE_KERNEL nam
   assert.equal(chooseNativeKernel({ JS67_NATIVE_KERNEL: 'legacy' }), 'legacy');
   const calls = [];
   const saved = process.env.JS67_NATIVE_KERNEL;
+  const savedBudget = process.env.JS67_NATIVE_DISPATCH_BUDGET_MS;
   delete process.env.JS67_NATIVE_KERNEL;
+  delete process.env.JS67_NATIVE_DISPATCH_BUDGET_MS;
   try {
     const defaulted = await traceFrameNative({ tracer: tracerRecording(calls), exported: emptyExport, width: 4, height: 4, samples: 8, denoise: 'none' });
     assert.equal(calls[0].kernel, 'cycles');
+    assert.equal(calls[0].dispatchBudgetMs, DEFAULT_NATIVE_DISPATCH_BUDGET_MS);
     assert.equal(defaulted.report.kernel, 'cycles');
     await traceFrameNative({ tracer: tracerRecording(calls), exported: emptyExport, width: 4, height: 4, samples: 8, denoise: 'none', kernel: 'legacy' });
     assert.equal(calls[1].kernel, 'legacy');
+    assert.equal(calls[1].dispatchBudgetMs, undefined);
+    await traceFrameNative({ tracer: tracerRecording(calls), exported: emptyExport, width: 4, height: 4, samples: 8, denoise: 'none', dispatchBudgetMs: 4 });
+    assert.equal(calls[2].dispatchBudgetMs, 4);
+    assert.equal(chooseNativeDispatchBudgetMs({ environment: { JS67_NATIVE_DISPATCH_BUDGET_MS: 'off' } }), undefined);
+    assert.equal(chooseNativeDispatchBudgetMs({ environment: { JS67_NATIVE_DISPATCH_BUDGET_MS: '12' } }), 12);
   } finally {
     if (saved !== undefined) process.env.JS67_NATIVE_KERNEL = saved;
+    if (savedBudget !== undefined) process.env.JS67_NATIVE_DISPATCH_BUDGET_MS = savedBudget;
   }
 });
 
