@@ -71,6 +71,9 @@ const MODIFIERS = Object.freeze({
 
 export const MODIFIER_NAMES = Object.freeze(Object.keys(MODIFIERS));
 
+/** The modifiers the Add Modifier menus list, in order: the operation, the title and the icon of its row. */
+export const MODIFIER_CHOICES = Object.freeze(MODIFIER_NAMES.map(operation => Object.freeze({ operation, title: MODIFIERS[operation].title, icon: MODIFIERS[operation].icon })));
+
 // A modifier an agent wrote that this panel has no fields for still shows, switches and moves; its name is its operation.
 function titleOf(node) {
   if (MODIFIERS[node.op]) return MODIFIERS[node.op].title;
@@ -91,6 +94,31 @@ function stackTargetOf(recipe, nodeId) {
   return { nodeId, geometryId: spec.id, stack: spec.type === 'mesh' ? spec.stack ?? [] : [] };
 }
 
+/** Why the node cannot carry modifiers (not a mesh or a shape that becomes one, or nothing selected), or null when it can. */
+export function modifierRefusalOf(controller, nodeId) {
+  return stackTargetOf(controller.exportRecipe(), nodeId).refusal ?? null;
+}
+
+/**
+ * Writes a stack to the node's geometry as one scene operation batch, one undo step. A shape becomes a mesh of its own first,
+ * and a mesh a twin shares is copied, in the same step. Throws what the recipe refuses.
+ */
+function writeModifierStack(controller, nodeId, nextStack, { apply = 0 } = {}) {
+  const own = planOwnMesh(controller.exportRecipe(), nodeId);
+  const stackOperation = { type: 'set-mesh-stack', geometry: own.geometryId, stack: nextStack, ...(apply > 0 ? { apply } : {}) };
+  controller.applyImportOperations([...own.operations, stackOperation], { detail: { kind: 'topology', nodeId } });
+}
+
+/** The Add Modifier operation: appends one modifier with its starting values to the node's stack. Throws a message that says why not. */
+export function addModifier(controller, nodeId, operation) {
+  if (!MODIFIERS[operation]) {
+    throw new RangeError(`Unknown modifier "${String(operation)}". Use one of ${MODIFIER_NAMES.join(', ')}.`);
+  }
+  const target = stackTargetOf(controller.exportRecipe(), nodeId);
+  if (target.refusal) throw new RangeError(target.refusal);
+  writeModifierStack(controller, nodeId, [...target.stack, MODIFIERS[operation].create()]);
+}
+
 /**
  * The Modifiers tab: an Add Modifier menu and one collapsible section per node of the stack of the selected object.
  * `builders` are the control builders of studio.js ({ createElement, createIcon, createIconButton, createVectorRow }).
@@ -106,7 +134,7 @@ export function createModifierPanel({ documentReference, controller, announce, b
     attributes: { 'aria-haspopup': 'menu', 'aria-expanded': 'false' },
   }, createIcon(documentReference, 'modifiers'), createElement(documentReference, 'span', { textContent: ADD_PLACEHOLDER }), createIcon(documentReference, 'expand'));
   const addMenu = createElement(documentReference, 'div', { className: 'crucible-studio-modifier-menu crucible-studio-modifier-add-menu', hidden: true, attributes: { role: 'menu', 'aria-label': ADD_PLACEHOLDER } },
-    ...MODIFIER_NAMES.map(operation => menuItem(MODIFIERS[operation].icon, MODIFIERS[operation].title, { modifier: operation })));
+    ...MODIFIER_CHOICES.map(choice => menuItem(choice.icon, choice.title, { modifier: choice.operation })));
   const emptyMessage = createElement(documentReference, 'p', { className: 'crucible-studio-modifier-empty' });
   const list = createElement(documentReference, 'div', { className: 'crucible-studio-modifier-list' });
   element.append(createElement(documentReference, 'div', { className: 'crucible-studio-modifier-bar' }, addButton, addMenu), emptyMessage, list);
@@ -136,12 +164,8 @@ export function createModifierPanel({ documentReference, controller, announce, b
   // Applies the new stack as one batch. A shape becomes a mesh of its own first, and a mesh a twin shares is copied, in the same step.
   // The recipe checks the values; what it refuses is told to the person and the controls go back to the recipe.
   function writeStack(nextStack, { apply = 0 } = {}) {
-    const recipe = controller.exportRecipe();
-    const nodeId = target.nodeId;
     try {
-      const own = planOwnMesh(recipe, nodeId);
-      const stackOperation = { type: 'set-mesh-stack', geometry: own.geometryId, stack: nextStack, ...(apply > 0 ? { apply } : {}) };
-      controller.applyImportOperations([...own.operations, stackOperation], { detail: { kind: 'topology', nodeId } });
+      writeModifierStack(controller, target.nodeId, nextStack, { apply });
     } catch (error) {
       announce(error.message);
       sync();

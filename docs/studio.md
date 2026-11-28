@@ -235,7 +235,7 @@ While an input method composes text (Japanese, Chinese, Korean), Enter picks the
 | H, Alt+H | Hide the selection, show everything that is hidden |
 | Alt+G, Alt+R, Alt+S | Reset the position, rotation or scale of the selection |
 | Ctrl+A | Open the Apply menu: fold the selection's location, rotation or scale into its geometry |
-| Right click | Menu of the object under the pointer |
+| Right click | Menu of the object under the pointer: Frame, Rename, Duplicate, Add Modifier…, Hide, Parent, resets, Apply…, Set origin…, Delete, each with its key. Over an object outside the selection it selects that object first; over empty space with nothing selected it opens the scene menu (Add object…, Paste, Show all). Arrow keys, Home and End move between rows, Enter runs one, Esc closes. The Menu key or Shift+F10 opens it at the pointer, which also works when the right button is set to select |
 | F or . | Fly to the selection, or to the whole scene when nothing is selected |
 | 1, 3, 7 | Front, right and top view |
 | 5 | Perspective or orthographic |
@@ -318,7 +318,7 @@ What a press does in the viewport; **Settings ▸ Keyboard** changes each of the
 | Forward button click | Redo, in the same way |
 | Wheel | Zoom (see **Zoom direction** in Settings) |
 
-Left click selects, Shift or Ctrl + click adds to or takes from the selection, and a right click without a drag opens the menu of the object under the pointer.
+Left click selects, Shift or Ctrl + click adds to or takes from the selection, and a right click without a drag opens the menu of the object under the pointer (or the scene menu over empty space). **Add Modifier…** in that menu lists the same modifiers as the Modifiers tab and adds one as one undo step.
 
 ### Change a shortcut
 
