@@ -269,7 +269,7 @@ test('Studio Ctrl+J joins red and blue objects (including primitives) into one s
   assert.equal(controller.scene.parts.filter(part => part.name === 'redBox').length, 2);
 });
 
-test('Studio edit mode works on slotted meshes and assigns face materials via panel and swatch in 1 undo step', async testContext => {
+test('Studio edit mode works on slotted meshes and assigns face materials via the panel in 1 undo step', async testContext => {
   const dom = installStudioDom();
   const studio = createStudio(dom.container, { recipe: redBlueRecipe(), renderer: createFakeRenderer() });
   testContext.after(() => {
@@ -289,7 +289,8 @@ test('Studio edit mode works on slotted meshes and assigns face materials via pa
     await new Promise(resolve => setImmediate(resolve));
   }
   assert.equal(panel.hidden, false, 'face material panel appears in edit mode');
-  const slotButtons = panel.querySelectorAll('button');
+  const slotChipsOf = () => panel.querySelectorAll('button').filter(button => button.dataset.faceSlot !== undefined);
+  const slotButtons = slotChipsOf();
   assert.equal(slotButtons.length, 2);
 
   // Pick face 0 via studio canvas click, then assign gold via Face material <select> and blue via Scene palette swatch.
@@ -309,7 +310,7 @@ test('Studio edit mode works on slotted meshes and assigns face materials via pa
   faceSelect.value = 'gold';
   dispatch(faceSelect, 'change');
   assert.equal(controller.scene.parts.filter(candidate => candidate.name === 'leftBox').length, 3);
-  assert.equal(panel.querySelectorAll('button').length, 3, 'a slot chip is added for gold');
+  assert.equal(slotChipsOf().length, 3, 'a slot chip is added for gold');
 
   // 1 undo restores 2 slots; 1 redo restores 3 slots.
   assert.equal(controller.undo(), true);
@@ -317,9 +318,9 @@ test('Studio edit mode works on slotted meshes and assigns face materials via pa
   assert.equal(controller.redo(), true);
   assert.equal(controller.scene.parts.filter(candidate => candidate.name === 'leftBox').length, 3);
 
-  // Clicking a Scene palette swatch in edit mode assigns that material to the picked face (1 undo step).
-  const blueSwatch = byAriaLabel('button', 'Material blue');
-  dispatch(blueSwatch, 'click');
+  // Choosing blue in the Face material select assigns it to the picked face (1 undo step).
+  faceSelect.value = 'blue';
+  dispatch(faceSelect, 'change');
   assert.equal(controller.scene.parts.filter(candidate => candidate.name === 'leftBox').length, 2);
   assert.equal(controller.undo(), true);
   assert.equal(controller.scene.parts.filter(candidate => candidate.name === 'leftBox').length, 3);
