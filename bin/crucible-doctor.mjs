@@ -1,7 +1,7 @@
 // Self-check and safe repair command for Crucible CLI and MCP setup (`crucible doctor`).
 // Must stay standalone from `src/` and `scripts/` because npm tarballs ship only `bin/` and `build/`.
 import { existsSync, readFileSync } from 'node:fs';
-import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { homedir, totalmem } from 'node:os';
@@ -588,16 +588,18 @@ function buildUpdatedArgs(argumentsList, { recommendedMiB, packageRoot, workingD
 }
 
 async function backupAndWriteJson(filePath, updatedObject) {
-  let backupPath = null;
-  if (existsSync(filePath)) {
-    const existingStats = await stat(filePath);
-    if (existingStats.isFile()) {
-      backupPath = `${filePath}.bak`;
-      await copyFile(filePath, backupPath);
-    }
-  }
   await mkdir(dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(updatedObject, null, 2)}\n`, 'utf8');
+  let backupPath = null;
+  try {
+    const existingContent = await readFile(filePath, 'utf8');
+    backupPath = `${filePath}.bak`;
+    await writeFile(backupPath, existingContent, 'utf8');
+  } catch (error) {
+    if (error?.code !== 'ENOENT' && error?.code !== 'EISDIR') throw error;
+  }
+  const temporaryPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(temporaryPath, `${JSON.stringify(updatedObject, null, 2)}\n`, 'utf8');
+  await rename(temporaryPath, filePath);
   return backupPath;
 }
 
@@ -621,7 +623,12 @@ export async function applyDoctorFixes(report, {
       const jobsFolder = join(workingDirectory, '.crucible', 'jobs');
       await mkdir(jobsFolder, { recursive: true });
       actions.push(`Created jobs directory ${jobsFolder}`);
-      const existing = existsSync(repair.configPath) ? await readJsonSafely(repair.configPath) : {};
+      let existing = {};
+      try {
+        existing = await readJsonSafely(repair.configPath);
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error;
+      }
       const nextConfig = {
         ...existing,
         mcpServers: {
