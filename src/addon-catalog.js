@@ -76,6 +76,7 @@ export const ADDON_CATALOG = [
   { name: 'wireframe-pass', area: 'render', summary: 'Polygon edges drawn over the shaded surface, with or without repair colours.' },
   { name: 'coplanar-overlap', area: 'render', summary: 'Stop z-fighting between near-flush triangles.' },
   { name: 'scene-audit', area: 'render', summary: 'Instancing-aware geometry audit for coplanar overlaps, intersections, floating parts and inverted shells.', doc: true },
+  { name: 'dev-scene-hints', area: 'render', summary: 'Opt-in dev health hints for unlit geometry, coplanar faces and floating parts.' },
   { name: 'meshlets', area: 'render', summary: 'Build meshoptimizer meshlets and cull clusters per draw on dense meshes.', doc: true },
   { name: 'reversed-depth', area: 'render', summary: 'Reversed-Z depth for far-away precision.' },
   { name: 'crucible-scene', area: 'render', summary: 'The <crucible-scene> web component for packed scenes.' },

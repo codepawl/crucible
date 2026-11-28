@@ -34,6 +34,8 @@ import { responseFormatField, chosenFormat, conciseReview, conciseJobStatus, con
 import { resolveAddons } from './mcp-addons.mjs';
 import { createCallLogger, CALL_LOG_ENVIRONMENT_VARIABLE } from './mcp-call-log.mjs';
 import { startUpdateCheck, updateNoticeText, describeUpdateCheck } from '../src/mcp-update-check.js';
+import { setupHealthNoticeText } from '../src/mcp-setup-health.js';
+import { SCHEMA_COMPAT_PROFILES, detectSchemaCompatProfile, normalizeToolsList } from './mcp-schema-compat.mjs';
 import { installVolumeGridFiles } from '../src/mcp-volume-grids.js';
 import { setExplosionBakeStore } from '../src/explosion-grids.js';
 import { bakeCacheDirectory, createExplosionBakeCache } from '../src/explosion-bake-cache.js';
@@ -1216,9 +1218,14 @@ function jsonResult(value) {
   return { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value };
 }
 
-export function createAgentMcpServer(runtime, { version = packageMetadata.version, branches = true, relations = true, findings = true, tools: selectedTools, callLogPath = readEnvironmentVariable(CALL_LOG_ENVIRONMENT_VARIABLE), updateAvailable = () => null } = {}) {
+export function createAgentMcpServer(runtime, { version = packageMetadata.version, branches = true, relations = true, findings = true, schemaCompat = 'auto', tools: selectedTools, callLogPath = readEnvironmentVariable(CALL_LOG_ENVIRONMENT_VARIABLE), updateAvailable = () => null, setupHealth = () => runtime.setupHealth?.() ?? null } = {}) {
+  if (!SCHEMA_COMPAT_PROFILES.includes(schemaCompat)) {
+    throw new Error(`--schema-compat must be ${SCHEMA_COMPAT_PROFILES.join(', ')}, got "${schemaCompat}".`);
+  }
   const newerVersion = updateAvailable();
   let updateReported = false;
+  const initialSetupHealth = setupHealth();
+  let setupHealthReported = false;
   const logCall = createCallLogger(callLogPath);
   // Without branches the schemas carry no branch field and the instructions do not mention variants (a benchmark switch).
   const branchField = branches ? { branch: branchName.optional().describe('Fork: store the result as this branch (up to 8), leaving the scene unchanged.') } : {};
@@ -1228,7 +1235,7 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
   const branchInstructions = branches ? ' To try variants, give scene_apply a branch name for each (the scene stays put), compare them in one scene_review with a branch per shot, then keep the best with scene_restore and its branch.' : '';
   installVolumeGridFiles();
   const server = new McpServer({ name: 'crucible-scene', version }, {
-    instructions: 'Start with scene_capabilities. Create a procedural recipe with scene_create, or select a configured GLB digest from scene_asset_catalog and use scene_create_asset. Pass its sessionId to work on several open scenes; without it the last used scene is used. Inspect stable IDs and save a checkpoint before editing. Apply small batches with the current expectedRevision and check committed, revision and renderSucceeded. A committed edit can have a separate renderError; do not retry it with an old revision.'+branchInstructions+' Pass labels: true to scene_look or scene_review to match part names to the image. Use scene_look to judge the actual image, or scene_review with the current expectedRevision to compare independent camera and motion samples in one grid while preserving the source pose. When jobs are configured, scene_render_submit captures an immutable snapshot. Poll scene_render_status, cancel when needed, and retrieve verified local artifact metadata with scene_render_result after completion. Preview rendering and edits pause during a job; source revision and checkpoints survive. Release outputs with scene_render_release. Export the final recipe and dispose the scene when finished. No arbitrary JavaScript, remote URLs or caller-selected output paths are exposed.'+selectedToolsInstructions(selectedTools)+(newerVersion ? updateNoticeText(newerVersion) : ''),
+    instructions: 'Start with scene_capabilities. Create a procedural recipe with scene_create, or select a configured GLB digest from scene_asset_catalog and use scene_create_asset. Pass its sessionId to work on several open scenes; without it the last used scene is used. Inspect stable IDs and save a checkpoint before editing. Apply small batches with the current expectedRevision and check committed, revision and renderSucceeded. A committed edit can have a separate renderError; do not retry it with an old revision.'+branchInstructions+' Pass labels: true to scene_look or scene_review to match part names to the image. Use scene_look to judge the actual image, or scene_review with the current expectedRevision to compare independent camera and motion samples in one grid while preserving the source pose. When jobs are configured, scene_render_submit captures an immutable snapshot. Poll scene_render_status, cancel when needed, and retrieve verified local artifact metadata with scene_render_result after completion. Preview rendering and edits pause during a job; source revision and checkpoints survive. Release outputs with scene_render_release. Export the final recipe and dispose the scene when finished. No arbitrary JavaScript, remote URLs or caller-selected output paths are exposed.'+selectedToolsInstructions(selectedTools)+(newerVersion ? updateNoticeText(newerVersion) : '')+setupHealthNoticeText(initialSetupHealth),
   });
   let closePromise;
   server.server.onclose = () => {
@@ -1272,10 +1279,17 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
   register('scene_capabilities', 'Index of supported recipe features and runtime budgets; pass topic for the detail of one. Read it before authoring. Does not launch a browser.', z.strictObject({ topic: capabilitiesTopic, response_format: responseFormatField }), readOnly, async ({ topic, response_format }) => {
     const answer = answerCapabilities(relations ? await runtime.capabilities() : withoutRelationsAdvice(await runtime.capabilities()), topic, outlineSources);
     const shown = chosenFormat('scene_capabilities', response_format) === 'concise' ? conciseCapabilities(answer) : answer;
-    // Once per server: the first answer carries the update offer, later ones stay unchanged.
+    // Once per server: the first answer carries the update offer and setup warnings, later ones stay unchanged.
     const pendingUpdate = updateReported ? null : updateAvailable();
     updateReported = updateReported || pendingUpdate !== null;
-    return jsonResult(pendingUpdate === null ? shown : { ...shown, updateAvailable: pendingUpdate });
+    const currentSetupHealth = setupHealthReported ? null : setupHealth();
+    const pendingWarnings = currentSetupHealth?.warnings?.length ? currentSetupHealth.warnings : null;
+    setupHealthReported = setupHealthReported || pendingWarnings !== null;
+    return jsonResult({
+      ...shown,
+      ...(pendingUpdate === null ? {} : { updateAvailable: pendingUpdate }),
+      ...(pendingWarnings === null ? {} : { setupWarnings: pendingWarnings }),
+    });
   });
   register('scene_create', 'Create a render scene from a JSON recipe; the result has its sessionId. Several scenes stay open; past the cap the least recently used one is closed.', z.strictObject({ recipe: relations ? recipe : recipeWithoutRelations }), { ...edit, destructiveHint: false }, async argumentsValue => jsonResult(await runtime.create(argumentsValue)));
   register('scene_asset_catalog', 'List content-bound GLB, BVH motion capture, image, HDRI and look IDs from the asset directory and installed packs. pack with recipe or material reads that item. No paths or downloads; scene_capabilities packs.', z.strictObject({ pack: packName.optional(), recipe: packName.optional(), material: packName.optional() }), readOnly, async argumentsValue => jsonResult(await runtime.assetCatalog(argumentsValue)));
@@ -1389,6 +1403,16 @@ export function createAgentMcpServer(runtime, { version = packageMetadata.versio
     const selected = INTERNAL_TOOLS.has(name) ? isToolSelected('scene_ask_user') : isToolSelected(name);
     if (!selected) registeredTool.remove();
   }
+  server.setToolRequestHandlers();
+  const defaultListToolsHandler = server.server._requestHandlers.get('tools/list');
+  server.server.setRequestHandler('tools/list', async (request, extra) => {
+    const listed = await defaultListToolsHandler(request, extra);
+    const activeProfile = schemaCompat === 'auto'
+      ? detectSchemaCompatProfile(server.server.getClientVersion()?.name)
+      : schemaCompat;
+    if (activeProfile === 'off') return listed;
+    return { ...listed, tools: normalizeToolsList(listed.tools, activeProfile) };
+  });
   return server;
 }
 
@@ -1420,6 +1444,11 @@ export async function runMcpCli({ argumentsValue = process.argv.slice(2),
   options.addons = addonSet;
   const selectedTools = parseToolSelection(options.tools);
   delete options.tools;
+  const schemaCompat = options['schema-compat'] ?? 'auto';
+  delete options['schema-compat'];
+  if (!SCHEMA_COMPAT_PROFILES.includes(schemaCompat)) {
+    throw new Error(`--schema-compat must be ${SCHEMA_COMPAT_PROFILES.join(', ')}, got "${schemaCompat}".`);
+  }
   for (const flag of ['branches', 'relations', 'findings']) {
     if (options[flag] !== undefined && !['on', 'off'].includes(options[flag])) {
       throw new Error(`--${flag} must be on or off, got "${options[flag]}".`);
@@ -1450,7 +1479,7 @@ export async function runMcpCli({ argumentsValue = process.argv.slice(2),
   // Test-only: answers for scene_ask_user from a file, set by whoever starts the server (#1956). Read once, here.
   const askUserFixture = loadAskUserFixture();
   if (askUserFixture) console.error(describeAskUserFixture(askUserFixture));
-  const handle = serveStdio(() => createAgentMcpServer(createAgentRuntime({ ...options, previewUrl, askUserFixture }), { version, tools: selectedTools, branches: options.branches !== 'off', relations: options.relations !== 'off', findings: options.findings !== 'off', updateAvailable: updateCheck.current }), {
+  const handle = serveStdio(() => createAgentMcpServer(createAgentRuntime({ ...options, previewUrl, askUserFixture }), { version, tools: selectedTools, branches: options.branches !== 'off', relations: options.relations !== 'off', findings: options.findings !== 'off', schemaCompat, updateAvailable: updateCheck.current }), {
     transport: new StdioServerTransport(process.stdin, process.stdout, { maxBufferSize: 2 * 1024 * 1024 }),
     onerror: error => console.error(`Crucible MCP error: ${error.message}`),
   });

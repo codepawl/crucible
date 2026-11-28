@@ -135,6 +135,7 @@
     "./addons/kinetic-text": "./build/kinetic-text.js",
     "./addons/coplanar-overlap": "./build/coplanar-overlap.js",
     "./addons/scene-audit": "./build/scene-audit.js",
+    "./addons/dev-scene-hints": "./build/dev-scene-hints.js",
     "./addons/meshlets": "./build/meshlets.js",
     "./addons/reversed-depth": "./build/reversed-depth.js",
     "./addons/material-layer-shaders": "./build/material-layer-shaders.js",
