@@ -45,9 +45,8 @@ before you promise a size or a sound track.
    still-looking film scores about 1. Above 2, fix it before showing anyone: blend each denoised frame into the
    reprojected history of the frames before it (first-hit depth and the two cameras). More samples alone did not fix
    it in a room lit through one window: 1024 spp still scored 2.
-6. A path traced still from `backend: "native"` can differ from the raster look: put a `draft` still of the same scene beside it before trusting either. Open reports:
-   an `environment.skyMap` sun may sit near world -z instead of along `sunDirection` (codepawl/cook#65), and a native trace of an unlit night scene may ignore
-   environment lighting and exposure and render bright (#1833). If the two stills disagree on the sun or the exposure, say so and file the issue.
+6. A path traced still from `backend: "native"` can differ from the raster look: put a `draft` still of the same scene beside it before trusting either. Open report: a native trace of an unlit night scene may ignore
+   environment lighting and exposure and render bright (#1833). If the two stills disagree on the exposure, say so and file the issue.
 7. The framebuffer figure is an allocation model, not total VRAM, and Node and browser heap samples do not cover every
    allocation. Report them as estimates.
 

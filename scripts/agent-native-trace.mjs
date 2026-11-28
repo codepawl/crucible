@@ -286,12 +286,28 @@ export function chooseNativeKernel(environment = process.env) {
   return requested === undefined || requested === '' ? 'cycles' : requested;
 }
 
+export const DEFAULT_NATIVE_DISPATCH_BUDGET_MS = 8;
+
 /**
  * Whether a job keeps repeated geometry as instances: on with the "cycles" kernel, off with the legacy kernel and when
  * JS67_NATIVE_INSTANCING=off asks for flattened triangles (to compare the two, or to rule instancing out of a bug).
  */
 export function chooseNativeInstancing(environment = process.env) {
   return chooseNativeKernel(environment) === 'cycles' && environment.JS67_NATIVE_INSTANCING !== 'off';
+}
+
+/**
+ * The GPU dispatch time budget in milliseconds for interactive cycles renders (#1124), so long frames split into tiles
+ * instead of stalling the compositor. Defaults to 8 ms on the cycles kernel; `JS67_NATIVE_DISPATCH_BUDGET_MS=off` disables it.
+ */
+export function chooseNativeDispatchBudgetMs({ dispatchBudgetMs, environment = process.env, kernel = chooseNativeKernel(environment) } = {}) {
+  if (kernel !== 'cycles') return undefined;
+  if (dispatchBudgetMs !== undefined) return dispatchBudgetMs === false || dispatchBudgetMs === null ? undefined : dispatchBudgetMs;
+  const raw = environment.JS67_NATIVE_DISPATCH_BUDGET_MS;
+  if (raw === undefined || raw === '') return DEFAULT_NATIVE_DISPATCH_BUDGET_MS;
+  const trimmed = String(raw).trim().toLowerCase();
+  if (trimmed === 'off' || trimmed === '0' || trimmed === 'false') return undefined;
+  return Number(raw);
 }
 
 /**
@@ -360,9 +376,8 @@ function blendOverTime({ temporal, color, features, kernelParams, route, report 
 }
 
 /**
- * Waits one macrotask. The native addon returns each frame plane as an external ArrayBuffer whose finalizer frees the Rust
- * allocation, and V8 runs those finalizers from the event loop. A frame loop that only awaits promises never lets them
- * run, so each frame's planes pile up (about 13 MB a frame at 480 x 270) until the loop yields (codepawl/cook#34, #1211).
+ * Yields one macrotask after a native frame so older addons' external-buffer finalizers and queued UI work can run (#1211).
+ * Cook >= 0.2.1 with V8-owned TypedArrays (codepawl/cook#34) releases frame planes immediately even without yielding.
  */
 export function yieldToEventLoop() {
   return new Promise(resolve => setImmediate(resolve));
@@ -416,7 +431,7 @@ async function displayBytes({ traced, linear, width, height, nativePost, postTra
   return toneMapToRgba8(scaled, width, height, { viewTransform: look.viewTransform, look: look.look, localToneMapping: look.localToneMapping ?? null });
 }
 
-async function traceOneFrameNative({ tracer, exported, width, height, samples, bounces, seed, denoise, denoiser, maxSeconds, noiseThreshold = 0, kernel = chooseNativeKernel(), sequence, temporal,
+async function traceOneFrameNative({ tracer, exported, width, height, samples, bounces, seed, denoise, denoiser, maxSeconds, noiseThreshold = 0, kernel = chooseNativeKernel(), dispatchBudgetMs, sequence, temporal,
   nativePost = true, viewTransform = 'aces', look = null, exposure = 1, localToneMapping = null }) {
   const started = performance.now();
   const filtersInTrace = denoise === 'atrous' && kernel === 'cycles';
@@ -424,7 +439,10 @@ async function traceOneFrameNative({ tracer, exported, width, height, samples, b
   // The GPU post stage reads the film the session resolved, so it fits only when no JavaScript step edits the film afterwards.
   const jsEditsFilm = !(denoise === 'none' || filtersInTrace) || Boolean(temporal);
   const postRequest = nativePost === false ? {} : jsEditsFilm ? { reason: 'a JavaScript denoiser or temporal blend edits the film after the trace' } : mapLookToCookPost({ viewTransform, look, exposure, localToneMapping });
-  const traceOptions = { width, height, samples, maxSeconds, kernel, noiseThreshold, ...(filtersInTrace ? { denoise: 'atrous' } : {}),
+  const chosenDispatchBudgetMs = chooseNativeDispatchBudgetMs({ dispatchBudgetMs, kernel });
+  const traceOptions = { width, height, samples, maxSeconds, kernel, noiseThreshold,
+    ...(chosenDispatchBudgetMs === undefined ? {} : { dispatchBudgetMs: chosenDispatchBudgetMs }),
+    ...(filtersInTrace ? { denoise: 'atrous' } : {}),
     ...(sequence && kernel === 'cycles' && postRequest.post ? { post: postRequest.post } : {}) };
   const { traced, route, kernelParams } = sequence && kernel === 'cycles'
     ? sequence.trace(tables, traceOptions)

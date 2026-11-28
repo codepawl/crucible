@@ -97,13 +97,13 @@ test('the wavefront kernel refuses an occlusion map before it asks for an adapte
   await assert.rejects(traceOnWebGpu(scene, {}, { kernel: 'wavefront' }, () => {}), /wavefront kernel does not trace occlusion maps/);
 });
 
-test('webgpu drops occlusionMap from its ignored list while gpu and native keep it', () => {
+test('webgpu and native cycles drop occlusionMap from their ignored list while gpu keeps it', () => {
   const parts = [{ name: 'floor', geometry: quad(), material: { occlusionMap: occlusionImage(0) } }];
   const noted = backend => describeIgnoredFeatures(parts, {}, backend).filter(note => note.startsWith('occlusionMap'));
   assert.deepEqual(noted('webgpu'), []);
   assert.deepEqual(noted('cpu'), []);
   assert.equal(noted('gpu').length, 1);
-  assert.equal(describeIgnoredFeatures(parts, {}, 'webgpu', { kernelMaterials: true }).filter(note => note.startsWith('occlusionMap')).length, 1);
+  assert.deepEqual(describeIgnoredFeatures(parts, {}, 'webgpu', { kernelMaterials: true }).filter(note => note.startsWith('occlusionMap')), []);
 });
 
 async function traceFloorBrightness() {

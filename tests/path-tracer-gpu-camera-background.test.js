@@ -66,10 +66,10 @@ test('the WebGPU wavefront carries the camera flag in its path state', () => {
   assert.match(WAVEFRONT_SOURCE, /select\(0u, FLAG_CAMERA, isCameraRay\)/);
 });
 
-test('only the native kernel reports world false as ignored', () => {
+test('the CPU, WebGL, WebGPU and native cycles tracers drop world false from their ignored list', () => {
   const notes = (backend, options) => describeIgnoredFeatures([FLOOR], { map: SKY_MAP, world: false }, backend, options).filter(note => note.includes('world: false'));
   assert.deepEqual(notes('cpu'), []);
   assert.deepEqual(notes('gpu'), []);
   assert.deepEqual(notes('webgpu'), []);
-  assert.equal(notes('cpu', { kernelMaterials: true }).length, 1);
+  assert.deepEqual(notes('native', { kernelMaterials: true }), []);
 });

@@ -1208,7 +1208,6 @@ export function describeIgnoredFeatures(parts, environment, backend = 'cpu', { k
   if (environment?.fillIntensity > 0) notes.add('fillIntensity is ignored: the two fixed fill lights are rasterizer only. Add a point or area light, or raise environmentIntensity, to light the shadow side of a trace.');
   if (environment?.rain && (environment.rain.intensity > 0 || environment.rain.intensityCurve)) notes.add('environment.rain is ignored: only the realtime rasterizer draws rain streaks and splashes, the path tracers render without rain.');
   if (environment?.world === true) notes.add('world: true is ignored: the outdoor haze shading is rasterizer only, and a trace draws the environment map behind the picture and lights with it.');
-  if (environment?.world === false && kernelMaterials) notes.add('world: false draws the flat background colour behind the picture in the CPU, "gpu" (WebGL) and "webgpu" tracers only: the native cycles kernel draws the environment map there, as it lights with it.');
   if (environment?.cameraIntensity !== undefined && !kernelMaterials) notes.add('cameraIntensity is ignored: only the native cycles kernel draws the sky a camera ray sees at its own strength, the other tracers use the map intensity.');
   for (const part of parts) {
     const material = part.material ?? {};
@@ -1218,7 +1217,7 @@ export function describeIgnoredFeatures(parts, environment, backend = 'cpu', { k
     for (const field of IGNORED_MAP_FIELDS) if (material[field]) notes.add(`${field} is ignored.`);
     const heightNote = heightMapIgnoredNote(part);
     if (heightNote) notes.add(heightNote);
-    if (material.occlusionMap && (kernelMaterials || (backend !== 'cpu' && backend !== 'webgpu'))) notes.add(kernelMaterials ? 'occlusionMap is ignored by the native cycles kernel: its material record has no occlusion slot (codepawl/cook#71). Use backend "cpu" or "webgpu" to trace it.' : `occlusionMap is ignored by the ${backend} tracer: only the CPU and WebGPU tracers read it. Use backend "cpu" or "webgpu" to trace it.`);
+    if (material.occlusionMap && !kernelMaterials && backend !== 'cpu' && backend !== 'webgpu') notes.add(`occlusionMap is ignored by the ${backend} tracer: only the CPU, WebGPU and native cycles tracers read it. Use backend "cpu", "webgpu" or native cycles to trace it.`);
     if (material.tag && material.tag !== 'surface' && material.tag !== 'water') notes.add(`${material.tag} materials are traced as plain surfaces.`);
     if (material.alphaMode === 'blend' && hasGraphOpacity(material)) notes.add('A graph opacity output is traced as a cutout at 0.5.');
     else if (material.alphaMode === 'blend' && !kernelMaterials) notes.add('Blended transparency is traced as opaque.');
