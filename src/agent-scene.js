@@ -87,7 +87,8 @@ const NODE_FIELDS = [
   'geometry',
   'material',
   'skin',
-  'relations', 'ports',
+  'relations',
+  'ports',
   'asset',
   'vegetation',
   'clutter',
@@ -1238,9 +1239,7 @@ function normalizeRecipe(input, limits, { alreadyCopied = false } = {}) {
   }, recipe.geometries);
   recipe.nodes = resources(recipe.nodes, limits.maxNodes, 'nodes', nodeFrom, { alreadyNormalized: NORMALIZED_NODES, isShareable: node => NODE_KEYS_NEEDING_OWN_COPY.every(key => node[key] === undefined) });
   addArmatures(recipe, limits);
-  if (recipe.nodes.some(node => node.relations !== undefined || node.ports !== undefined)) {
-    recipe.nodes = agentSceneModule('relations').normalizeRelations(recipe.nodes);
-  }
+  if (recipe.nodes.some(node => node.relations !== undefined || node.ports !== undefined)) recipe.nodes = agentSceneModule('relations').normalizeRelations(recipe.nodes);
   recipe.camera = cameraFrom(recipe.camera);
   const look = {};
   for (const field of ['environment', 'effects', 'shadow']) {
