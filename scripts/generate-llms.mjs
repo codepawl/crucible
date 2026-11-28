@@ -54,6 +54,7 @@ function taskMap() {
     ['Review the result', '`scene_look` for one PNG, `scene_review` for a labeled grid of up to four views', 'agent-review.md'],
     ['Render a still or a video', '`scene_render_submit`, poll `scene_render_status`, read `scene_render_result`, then `scene_render_release`', 'agent-render-jobs.md'],
     ['Export a model', '`scene_export_glb`, or `scene_export_recipe` for the JSON recipe', 'export-glb.md'],
+    ['Scaffold a product showcase viewer', '`crucible init my-showcase` and `@codepawlhq/crucible/addons/showcase`', 'showcase.md'],
     ['Make a playable game', '`scene_apply` with `set-game` (topic `game` in `scene_capabilities`), then `scene_export_web` for a static folder', 'game.md'],
     ['Recover from an error', '`scene_restore` to a `scene_checkpoint`, or `scene_inspect` for the current revision and retry; every error names its next step', 'mcp.md'],
   ];
@@ -84,6 +85,7 @@ Scenes are plain data with stable IDs, so an agent can edit by ID and check each
 - npm package: \`@codepawlhq/crucible\`. The MCP server is its \`crucible-mcp\` binary. Node.js 20.19 or newer and an installed Chrome are required.
 - Claude Code plugin, which adds the server and both skills: \`/plugin marketplace add codepawl/crucible\`, then \`/plugin install crucible@crucible\`.
 - Any other MCP client: \`npm install crucible@npm:@codepawlhq/crucible\`, then run Node on \`node_modules/crucible/bin/crucible-mcp.mjs --backend gpu --memory 192\` over stdio. Use the absolute path.
+- Built-in headless AI CLI: run \`npx crucible auth login\` (250 free credits, no card needed) and \`npx crucible agent "<prompt>"\`; [cli-agent.md](${page('cli-agent.md')}).
 - Setup, flags and client notes: [mcp.md](${page('mcp.md')}).
 - Skills in the package: \`skills/build-crucible-scene\` (build and light) and \`skills/render-crucible-media\` (stills and video).
 
@@ -112,6 +114,7 @@ Models write three.js from memory. The section "If you know three.js" of the [co
 - [Complete plain-text guide](${page('guide.md')}): renderer, parts, materials, cameras, animation, export and troubleshooting.
 - [MCP server](${page('mcp.md')}), [scene recipes](${page('agent-scene.md')}), [look and lighting](${page('agent-look.md')}), [motion](${page('agent-motion.md')}), [review](${page('agent-review.md')}), [render jobs](${page('agent-render-jobs.md')}), [imported assets](${page('agent-asset.md')}).
 - [GLB contract](${page('gltf.md')}): supported assets and conversion limits.
+- [Product showcase viewer](${page('showcase.md')}): \`crucible init\`, Prototype and Studio themes, CAD grid floor and orbit controls.
 - [Release metadata](${page('release.json')}): package name, version, install command and commit.
 - [Changelog data](${page('changelog.json')}): every release and the unreleased changes with issue numbers and breaking flags. Read it before relying on a feature the docs describe.
 `;

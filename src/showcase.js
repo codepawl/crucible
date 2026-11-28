@@ -14,6 +14,7 @@ import { applyWaterReflection, attachWaterReflection } from './water-reflection.
 // (issue #504), and An saw no stutter in a side-by-side. A still camera keeps its picture either way.
 const WATER_REFLECTION_OPTIONS = { updateEvery: 2 };
 import { renderCommunity } from './community-showcase.js';
+import { attachOrbitControls, createOrbitController, orbitFromCamera } from './site-controls.js';
 import { resolveRequestedScene } from './showcase-scene-request.js';
 import { createDownloadMeter, downloadBlob, inWholeWorldOrder, readByteLength, readPartRanks } from './showcase-download.js';
 
@@ -40,7 +41,6 @@ const DEFAULT_MIN_DISTANCE_FACTOR = 0.05;
 const BOUNDS_MARGIN = 0.25;
 const MAX_SAMPLED_VERTICES_PER_PART = 4000;
 const KEY_MOVE_PER_SECOND = 0.6;
-const KEY_TURN_PER_SECOND = 1.6;
 
 const SPINNER_ICON = '<svg class="status-icon spinner" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>';
 const WARNING_ICON = '<svg class="status-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v5M12 7.8v.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
@@ -55,11 +55,17 @@ const resetButton = document.querySelector('#showcase-reset');
 const title = document.querySelector('#showcase-title');
 const blurb = document.querySelector('#showcase-blurb');
 const creditList = document.querySelector('#showcase-credits');
+const orbitController = createOrbitController({
+  minPitch: MIN_PITCH,
+  maxPitch: MAX_PITCH,
+  orbitSpeed: 0.005,
+  panSpeed: 0.0016,
+  zoomSpeed: 0.001,
+  moveSpeed: KEY_MOVE_PER_SECOND,
+});
 const orbit = { yaw: 0, pitch: 0, distance: 1, target: [0, 0, 0] };
 const limits = { minDistance: 0.1, maxDistance: 10, boundsMin: [-1, -1, -1], boundsMax: [1, 1, 1] };
 const homeView = { yaw: 0, pitch: 0, distance: 1, target: [0, 0, 0] };
-const pointers = new Map();
-const pressedKeys = new Set();
 let renderer = null;
 let scene = null;
 let currentId = null;
@@ -67,9 +73,15 @@ let loadingId = null;
 let loadingRequest = 0;
 let loadingAbort = null;
 let scheduledFrame = 0;
-let dragMode = 'orbit';
-let keyFrame = 0;
-let keyTimestamp = 0;
+let lastFrameTimestamp = 0;
+
+function syncOrbit() {
+  const current = orbitController.state();
+  orbit.yaw = current.yaw;
+  orbit.pitch = current.pitch;
+  orbit.distance = current.distance;
+  orbit.target = current.target;
+}
 
 function setLoadingState(id) {
   loadingId = id;
@@ -103,43 +115,6 @@ function showProgress(label, meter) {
   const { received, total } = meter.summary();
   const megabytes = bytes => (bytes / 1e6).toFixed(1);
   showStatus('loading', `${label}…  ${total ? `${megabytes(received)} of ${megabytes(total)} MB` : `${megabytes(received)} MB`}`);
-}
-
-function dot(a, b) {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}
-
-function cross(a, b) {
-  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-}
-
-function normalize(vector) {
-  const length = Math.hypot(...vector) || 1;
-  return vector.map(value => value / length);
-}
-
-function orbitFromCamera(eye, target) {
-  const offset = eye.map((value, axis) => value - target[axis]);
-  const distance = Math.hypot(...offset);
-  orbit.target = [...target];
-  orbit.distance = distance;
-  orbit.yaw = Math.atan2(offset[0], offset[2]);
-  orbit.pitch = Math.asin(offset[1] / distance);
-}
-
-function eyeFromOrbit() {
-  const horizontal = Math.cos(orbit.pitch) * orbit.distance;
-  return [
-    orbit.target[0] + Math.sin(orbit.yaw) * horizontal,
-    orbit.target[1] + Math.sin(orbit.pitch) * orbit.distance,
-    orbit.target[2] + Math.cos(orbit.yaw) * horizontal,
-  ];
-}
-
-function clampOrbit() {
-  orbit.pitch = Math.max(MIN_PITCH, Math.min(MAX_PITCH, orbit.pitch));
-  orbit.distance = Math.max(limits.minDistance, Math.min(limits.maxDistance, orbit.distance));
-  orbit.target = orbit.target.map((value, axis) => Math.max(limits.boundsMin[axis], Math.min(limits.boundsMax[axis], value)));
 }
 
 // The part bounds, sampled so a scene with millions of vertices still opens quickly, plus a margin.
@@ -177,54 +152,23 @@ function applyLimits(description, parts, view = orbit) {
   limits.boundsMax = bounds.max.map((value, axis) => Math.max(value + margin[axis], view.target[axis]));
   limits.minDistance = description.minDistance ?? view.distance * DEFAULT_MIN_DISTANCE_FACTOR;
   limits.maxDistance = description.maxDistance ?? view.distance * DEFAULT_MAX_DISTANCE_FACTOR;
+  orbitController.setLimits(limits);
+  syncOrbit();
 }
 
-function draw() {
+function draw(timestamp = performance.now()) {
   scheduledFrame = 0;
   if (!renderer || !scene) return;
-  clampOrbit();
-  renderer.render({ ...scene.frame, eye: eyeFromOrbit(), target: orbit.target });
+  const deltaSeconds = lastFrameTimestamp ? Math.min(0.1, Math.max(0.001, (timestamp - lastFrameTimestamp) / 1000)) : 0.016;
+  lastFrameTimestamp = timestamp;
+  const pose = orbitController.step(deltaSeconds);
+  syncOrbit();
+  renderer.render({ ...scene.frame, eye: pose.eye, target: pose.target });
+  if (pose.active) requestDraw();
 }
 
 function requestDraw() {
   if (!scheduledFrame) scheduledFrame = requestAnimationFrame(draw);
-}
-
-// Screen-space pan: the target slides along the camera's right and up directions.
-function panByPixels(deltaX, deltaY) {
-  const forward = normalize(orbit.target.map((value, axis) => value - eyeFromOrbit()[axis]));
-  const right = normalize(cross(forward, [0, 1, 0]));
-  const up = cross(right, forward);
-  const scale = orbit.distance * 0.0016;
-  orbit.target = orbit.target.map((value, axis) => value - right[axis] * deltaX * scale + up[axis] * deltaY * scale);
-  requestDraw();
-}
-
-function moveOnGround(forwardAmount, rightAmount) {
-  const forward = [-Math.sin(orbit.yaw), 0, -Math.cos(orbit.yaw)];
-  const right = [Math.cos(orbit.yaw), 0, -Math.sin(orbit.yaw)];
-  orbit.target = orbit.target.map((value, axis) => value + forward[axis] * forwardAmount + right[axis] * rightAmount);
-}
-
-function keyboardStep(timestamp) {
-  keyFrame = 0;
-  if (!pressedKeys.size) return;
-  const seconds = Math.min(0.1, (timestamp - keyTimestamp) / 1000);
-  keyTimestamp = timestamp;
-  const step = orbit.distance * KEY_MOVE_PER_SECOND * seconds;
-  const axis = (positive, negative) => Number(pressedKeys.has(positive)) - Number(pressedKeys.has(negative));
-  moveOnGround(step * (axis('w', 's') + axis('arrowup', 'arrowdown')), step * (axis('d', 'a') + axis('arrowright', 'arrowleft')));
-  orbit.yaw += KEY_TURN_PER_SECOND * seconds * axis('q', 'e');
-  requestDraw();
-  keyFrame = requestAnimationFrame(keyboardStep);
-}
-
-function resetView() {
-  orbit.yaw = homeView.yaw;
-  orbit.pitch = homeView.pitch;
-  orbit.distance = homeView.distance;
-  orbit.target = [...homeView.target];
-  requestDraw();
 }
 
 function renderTabs() {
@@ -362,9 +306,12 @@ async function selectScene(id) {
     });
     const detachReflection = attachWaterReflection(renderer, reflection.surface, WATER_REFLECTION_OPTIONS);
     scene = { frame: { exposure: description.exposure ?? 1, ...(description.frame ?? {}) } };
-    orbitFromCamera(description.eye, description.target);
-    applyLimits(description, asset.parts);
-    Object.assign(homeView, { yaw: orbit.yaw, pitch: orbit.pitch, distance: orbit.distance, target: [...orbit.target] });
+    const initialPose = orbitFromCamera(description.eye, description.target);
+    orbitController.setLimits({ minDistance: 0.0001, maxDistance: 1e6, boundsMin: null, boundsMax: null });
+    orbitController.setHome(initialPose, { apply: true, immediate: true });
+    syncOrbit();
+    applyLimits(description, asset.parts, initialPose);
+    Object.assign(homeView, orbitController.home());
     currentId = id;
     history.replaceState(null, '', `?scene=${id}${location.hash}`);
     title.textContent = description.title;
@@ -389,68 +336,20 @@ async function selectScene(id) {
   }
 }
 
-function pairMetrics() {
-  const [first, second] = [...pointers.values()];
-  return {
-    distance: Math.hypot(first.x - second.x, first.y - second.y) || 1,
-    x: (first.x + second.x) / 2,
-    y: (first.y + second.y) / 2,
-  };
-}
-
-canvas.addEventListener('contextmenu', event => event.preventDefault());
-canvas.addEventListener('pointerdown', event => {
-  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-  dragMode = event.button === 2 || event.button === 1 || event.shiftKey ? 'pan' : 'orbit';
-  canvas.setPointerCapture(event.pointerId);
+attachOrbitControls(canvas, orbitController, {
+  keyTarget: canvas,
+  onChange: () => {
+    syncOrbit();
+    requestDraw();
+  },
 });
-canvas.addEventListener('pointermove', event => {
-  const previous = pointers.get(event.pointerId);
-  if (!previous) return;
-  if (pointers.size === 2) {
-    const before = pairMetrics();
-    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    const after = pairMetrics();
-    orbit.distance *= before.distance / after.distance;
-    panByPixels(after.x - before.x, after.y - before.y);
-    return;
-  }
-  const deltaX = event.clientX - previous.x;
-  const deltaY = event.clientY - previous.y;
-  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-  if (dragMode === 'pan') {
-    panByPixels(deltaX, deltaY);
-    return;
-  }
-  orbit.yaw -= deltaX * 0.005;
-  orbit.pitch += deltaY * 0.004;
+
+resetButton.addEventListener('click', () => {
+  const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  orbitController.reset({ immediate: reducedMotion });
+  syncOrbit();
   requestDraw();
 });
-const endPointer = event => { pointers.delete(event.pointerId); };
-canvas.addEventListener('pointerup', endPointer);
-canvas.addEventListener('pointercancel', endPointer);
-canvas.addEventListener('wheel', event => {
-  event.preventDefault();
-  orbit.distance *= Math.exp(event.deltaY * 0.001);
-  requestDraw();
-}, { passive: false });
-
-canvas.addEventListener('keydown', event => {
-  if (event.ctrlKey || event.metaKey || event.altKey) return;
-  const key = event.key.toLowerCase();
-  if (!'wasdqe'.includes(key) && !key.startsWith('arrow')) return;
-  event.preventDefault();
-  if (pressedKeys.has(key)) return;
-  pressedKeys.add(key);
-  if (!keyFrame) {
-    keyTimestamp = performance.now();
-    keyFrame = requestAnimationFrame(keyboardStep);
-  }
-});
-canvas.addEventListener('keyup', event => { pressedKeys.delete(event.key.toLowerCase()); });
-canvas.addEventListener('blur', () => pressedKeys.clear());
-
-resetButton.addEventListener('click', resetView);
 window.addEventListener('resize', () => {
   renderer?.resize();
   requestDraw();

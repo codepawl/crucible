@@ -1,0 +1,1 @@
+- Core boundary checks (`createSceneGraph`, `createAgentScene`, `scene.apply`, `exportGlb` and camera helpers) reject three.js objects with errors naming the Crucible shape to pass instead (#986)

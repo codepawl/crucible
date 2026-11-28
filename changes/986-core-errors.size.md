@@ -1,0 +1,5 @@
+- entry:core: Adds shared `threeSlipMessage` / `rejectThreeObject` boundary checks in `src/field-error.js`, `src/scene-graph.js`, `src/camera.js`, and `src/export.js` (+879 B gzip) so passing three.js objects directly fails with the Crucible equivalent (#986).
+- entry:core+lazy: Same core three.js slip-error boundary checks (+879 B gzip, #986).
+- scene:agent-scene: Adds `threeSlipMessage` / `rejectThreeObject` boundary checks in `src/field-error.js`, `src/scene-graph.js`, `src/recipe-json.js`, and `src/agent-scene.js` (+911 B gzip; `scene:lit-box` and `scene:gltf-box` stay unchanged, #986).
+- scene:agent-scene+lazy: Same three.js slip-error boundary checks in `scene:agent-scene` (+885 B gzip, #986).
+- goal:agent-scene: Synchronous `createSceneGraph` / `createAgentScene` / `scene.apply` boundary checks for three.js objects add +911 B gzip while keeping `scene:lit-box` and `scene:gltf-box` unchanged (#986).

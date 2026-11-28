@@ -1,4 +1,5 @@
 const svgNamespace = 'http://www.w3.org/2000/svg';
+export { attachOrbitControls, createOrbitController, eyeFromOrbit, orbitFromCamera } from './orbit-controller.js';
 
 function createStrokeIcon(shapes) {
   const svg = document.createElementNS(svgNamespace, 'svg');

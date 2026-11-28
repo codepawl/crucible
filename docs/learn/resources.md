@@ -16,6 +16,7 @@ Path tracer | #cook-path-tracer | Physically based stills traced by Cook with re
 An agent can build scenes through the MCP server, without writing engine code. These files are plain text for agents and for people.
 
 - [MCP server](/mcp.md): install, client setup, the tools and their limits.
+- [Headless AI CLI](/cli-agent.md): sign in and build scenes with `crucible auth` and `crucible agent`.
 - [Scene recipes](/agent-scene.md): the JSON format that the tools accept.
 - [Look](/agent-look.md), [fit look](/agent-fit-look.md), [motion](/agent-motion.md), [character motion](/agent-character-motion.md) and [assets](/agent-asset.md): the parts of a recipe.
 - [Render jobs](/agent-render-jobs.md) and [visual review](/agent-review.md): images, sequences, video and review grids.
@@ -32,6 +33,7 @@ A contract is the exact rule set of one module: inputs, limits, memory and error
 - Files: [glTF import](/gltf.md), [glTF morphs](/gltf-morph.md), [GLB export](/export-glb.md), [floor plan to walls](/floor-plan.md), [three.js bridge](https://github.com/codepawl/crucible/blob/main/docs/three-bridge.md), [Roblox scene import](/roblox-import.md), [data-only packs](/packs.md).
 - Games: [a playable scene from a recipe](/game.md), [game rules](/game-rules.md), [live game loop](/runtime.md), [player and camera rigs](/player.md), [input](/input.md), [audio](/audio.md), [scene queries](/scene-query.md), [live physics](/physics-runtime.md), [animation graph](/animation-graph.md), [streaming](/streaming.md), [culling and levels of detail](https://github.com/codepawl/crucible/blob/main/docs/culling-lod.md), [netcode](/netcode.md).
 - Web delivery and tools: [web bundle](/pack.md), [render engines](/render-engines.md), [Cook in Blender](https://github.com/codepawl/crucible/blob/main/docs/blender-addon.md), [Studio](/studio.md), [addons from other people](/addons.md).
+- Product showcase: [showcase viewer and `crucible init`](/showcase.md).
 
 ## Project
 

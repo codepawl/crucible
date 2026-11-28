@@ -112,6 +112,60 @@ export function gridLayout({ visibleHeight, viewportHeight, target, eye } = DEFA
   return { step, sheets, lines };
 }
 
+// A view that looks straight along X or Z sees the floor edge on, so the grid stands up behind what it looks at, facing
+// the camera, with the floor's axis line across it. A view tilted less than this from level counts as straight.
+const STANDING_GRID_TOLERANCE = 1e-3;
+
+function straightSideView(camera) {
+  const direction = camera.target.map((value, axis) => value - camera.eye[axis]);
+  const distance = Math.hypot(...direction);
+  if (distance === 0 || Math.abs(direction[1]) / distance > STANDING_GRID_TOLERANCE) {
+    return null;
+  }
+  const normalAxis = [0, 2].find(axis => Math.abs(direction[axis]) / distance > 1 - STANDING_GRID_TOLERANCE);
+  if (normalAxis === undefined) {
+    return null;
+  }
+  return { normalAxis, sign: Math.sign(direction[normalAxis]), distance };
+}
+
+/**
+ * The grid for a camera: on the floor, or standing up behind the target when the camera looks straight along X or Z.
+ * A standing grid sits one view distance behind the target, so in perspective it spans twice the height there. Its
+ * entries carry `basis`, the world axis each local axis of a part turns to. `sizeForEye` false sizes floor lines for
+ * the target alone.
+ */
+export function viewportGridLayout(camera, viewportHeight, { sizeForEye = true } = {}) {
+  const visibleHeight = cameraVisibleHeight(camera);
+  const side = straightSideView(camera);
+  if (!side) {
+    return gridLayout({ visibleHeight, viewportHeight, target: camera.target, eye: sizeForEye ? camera.eye : undefined });
+  }
+  const { normalAxis, sign, distance } = side;
+  const acrossAxis = 2 - normalAxis;
+  const planeHeight = camera.projection === 'orthographic' ? visibleHeight : visibleHeight * 2;
+  const floor = gridLayout({ visibleHeight: planeHeight, viewportHeight, target: [camera.target[acrossAxis], 0, camera.target[1]] });
+  const depth = camera.target[normalAxis] + sign * distance;
+  const worldPoint = (across, up, alongNormal) => {
+    const point = [0, up, 0];
+    point[acrossAxis] = across;
+    point[normalAxis] = alongNormal;
+    return point;
+  };
+  const sheets = floor.sheets.map(sheet => (sheet.opacity === 0
+    ? sheet
+    : { ...sheet, basis: [acrossAxis, normalAxis, 1], translation: worldPoint(sheet.translation[0], sheet.translation[2], depth) }));
+  const [floorAxisX, floorAxisZ] = floor.lines;
+  // The axis line lies a pixel in front of the sheets, just above the floor so the floor does not hide it, across the view.
+  const lineAt = worldPoint(floorAxisX.translation[0], floorAxisX.translation[1], depth - sign * (planeHeight / Math.max(1, viewportHeight)));
+  const parked = line => ({ ...line, translation: [0, GRID_PARKED_HEIGHT, 0], scale: [1e-3, 1, 1e-3] });
+  // Each strip stays long along its own axis and turns its width upright.
+  const lines = normalAxis === 2
+    ? [{ ...floorAxisX, basis: [0, 2, 1], translation: lineAt }, parked(floorAxisZ)]
+    : [parked(floorAxisX), { ...floorAxisZ, basis: [1, 0, 2], translation: lineAt, scale: [floorAxisX.scale[2], 1, floorAxisX.scale[0]] }];
+  return { step: floor.step, sheets, lines };
+}
+
 // The picture of one cell: white everywhere, opaque along two edges and clear inside, so the tiled cells draw a grid.
 // With `rowsOnly` only the first row is opaque, which draws the one line of an axis strip.
 function gridCellImage(size, rowsOnly = false) {
@@ -230,9 +284,10 @@ export function placeGridParts(partsByName, layout) {
       part.material.opacity = line.opacity;
     }
     matrix.fill(0);
-    matrix[0] = line.scale[0];
-    matrix[5] = line.scale[1];
-    matrix[10] = line.scale[2];
+    const basis = line.basis ?? [0, 1, 2];
+    for (let localAxis = 0; localAxis < 3; localAxis += 1) {
+      matrix[localAxis * 4 + basis[localAxis]] = line.scale[localAxis];
+    }
     matrix[12] = line.translation[0];
     matrix[13] = line.translation[1];
     matrix[14] = line.translation[2];

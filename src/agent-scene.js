@@ -2,7 +2,8 @@ import { mat4, mat3 } from 'gl-matrix';
 import { roomJoinedBoxNodeIds } from './room-box-joins.js';
 import { box, checkTorusShape, circle, cone, cylinder, grid, icoSphere, sphere, torus } from './geometry.js';
 import { createSceneGraph } from './scene-graph.js';
-import { invalidField, withFieldPrefix } from './field-error.js';
+import { invalidField, rejectThreeObject, withFieldPrefix } from './field-error.js';
+import { assertWithinRecipeBytes, copiedJson } from './recipe-json.js';
 import { createRepeatTracker, partFingerprint, unchangedFindingsLine } from './diagnostic-repeats.js';
 import { applyProjection, validateCameraShift, CAMERA_LENS_FIELDS } from './camera.js';
 import { checkLocalVolumePartNames } from './local-volume-resolve.js';
@@ -189,6 +190,7 @@ function assertRemovedResourcesUnused(candidate, removals) {
 
 
 function knownKeys(value, allowed, label) {
+  rejectThreeObject(value, label);
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw invalidField(label, value, 'an object, such as {}', TypeError);
   }
@@ -221,97 +223,6 @@ function resolveLimits(input) {
   return Object.freeze(result);
 }
 
-// Copy only JSON data. Reject accessors before reading them and bound traversal before serialization.
-function assertWithinRecipeBytes(bytes, maximum) {
-  if (bytes > maximum) {
-    throw new RangeError('JSON exceeds maxRecipeBytes. Reduce the input.');
-  }
-}
-
-function copiedJson(input, maximum) {
-  let bytes = 0;
-  const ancestors = new Set();
-  const encoder = new TextEncoder();
-  // Recipes repeat the same keys and ids thousands of times, so each distinct string is measured once.
-  const stringBytes = new Map();
-  function jsonStringBytes(text) {
-    let size = stringBytes.get(text);
-    if (size === undefined) {
-      size = encoder.encode(JSON.stringify(text)).length;
-      stringBytes.set(text, size);
-    }
-    return size;
-  }
-  function charge(count) {
-    bytes += count;
-    assertWithinRecipeBytes(bytes, maximum);
-  }
-  function copy(value, depth) {
-    if (depth > 64) {
-      throw new RangeError('JSON nesting exceeds 64 levels.');
-    }
-    if (value === null || typeof value === 'boolean') {
-      charge(value === null ? 4 : String(value).length);
-      return value;
-    }
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      charge(String(value).length);
-      return value;
-    }
-    if (typeof value === 'string') {
-      if (value.length > maximum) {
-        throw new RangeError('JSON exceeds maxRecipeBytes.');
-      }
-      charge(jsonStringBytes(value));
-      return value;
-    }
-    if (!value || typeof value !== 'object' || ancestors.has(value)) {
-      throw new TypeError('Recipe must contain finite, acyclic JSON data.');
-    }
-    const array = Array.isArray(value);
-    if (array && value.length > maximum) {
-      throw new RangeError('JSON exceeds maxRecipeBytes.');
-    }
-    if (!array && Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
-      throw new TypeError('Recipe objects must be plain JSON objects.');
-    }
-    ancestors.add(value);
-    charge(2);
-    const result = array ? [] : {};
-    const keys = Reflect.ownKeys(value);
-    let entryCount = 0;
-    for (const key of keys) {
-      if (array && key === 'length') continue;
-      if (typeof key !== 'string' || key === '__proto__') {
-        throw new TypeError('Invalid JSON key.');
-      }
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (!descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
-        throw new TypeError('JSON accessors and hidden fields are unsupported.');
-      }
-      if (array && key !== String(result.length)) {
-        throw new TypeError('JSON arrays must be dense without extra fields.');
-      }
-      // Commas are counted exactly (one between entries) so this running size equals the serialized size
-      // that normalizeRecipe checks after a field edit; both paths then accept and refuse the same recipes.
-      const separatorBytes = entryCount === 0 ? 0 : 1;
-      entryCount += 1;
-      charge(array ? separatorBytes : jsonStringBytes(key) + 1 + separatorBytes);
-      result[key] = copy(descriptor.value, depth + 1);
-    }
-    if (array && result.length !== value.length) {
-      throw new TypeError('JSON arrays must be dense without trailing holes.');
-    }
-    ancestors.delete(value);
-    return result;
-  }
-  const result = copy(input, 0);
-  if (encoder.encode(JSON.stringify(result)).length > maximum) {
-    throw new RangeError('JSON exceeds maxRecipeBytes.');
-  }
-  return result;
-}
-
 function finite(value, label) {
   if (!Number.isFinite(value) || !Number.isFinite(Math.fround(value))) {
     throw invalidField(label, value, 'a finite number that fits Float32, such as 0.5', TypeError);
@@ -320,6 +231,7 @@ function finite(value, label) {
 }
 
 function vector(value, length, label) {
+  rejectThreeObject(value, label);
   if (!Array.isArray(value) || value.length !== length) {
     const example = `[${Array.from({ length }, (_, index) => (index === length - 1 && length === 4 ? 1 : 0)).join(', ')}]`;
     throw invalidField(label, value, `an array of ${length} numbers, such as ${example}`, TypeError);
@@ -352,6 +264,7 @@ function optionalBoolean(value, label, fallback) {
 }
 
 function identifier(value, label = 'id') {
+  rejectThreeObject(value, label);
   if (typeof value !== 'string' || !value.trim() || value.length > 128) {
     throw invalidField(label,value, 'a string of 1 to 128 characters, such as "wall-left"', TypeError);
   }
@@ -377,6 +290,7 @@ function resources(values, maximum, label, validate, { alreadyNormalized = null,
       return value;
     }
     return withFieldPrefix(`${label}[${index}]`, () => {
+      rejectThreeObject(value, label);
       identifier(value?.id);
       if (seen.has(value.id)) {
         throw invalidField('id', value.id, `an ID no other ${label} entry uses; rename one, or remove the other`);
@@ -743,6 +657,7 @@ function meshBaseSplitsBox(base) {
 }
 
 function geometryEstimate(value, scope = PENDING_CUTTER_SCOPE) {
+  rejectThreeObject(value, 'geometry');
   if (!Object.hasOwn(GEOMETRY_FIELDS, value.type)) {
     throw invalidField('type', value.type, `one of ${Object.keys(GEOMETRY_FIELDS).join(', ')}`, TypeError);
   }
@@ -2751,6 +2666,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
       const removals = [];
       const sourceGeometry = geometryId => generateOperationGeometry(candidate, geometryId, limits);
       for (const operation of operations) {
+        rejectThreeObject(operation, 'operation');
         const section = Object.hasOwn(NULLABLE_SECTION_OPERATIONS, operation.type) ? NULLABLE_SECTION_OPERATIONS[operation.type] : null;
         if (section === 'motion' && 'removeTracks' in operation) {
           candidate.motion = agentSceneModule('motionTrackRemoval').removeMotionTracks(operation, candidate.motion);
@@ -2800,6 +2716,7 @@ export function createAgentScene(input, inputLimits = {}, options = {}) {
           const [collection, field] = addition;
           knownKeys(operation, ['type', field], 'operation');
           const record = operation[field];
+          rejectThreeObject(record, field);
           identifier(record?.id);
           if (operation.type === 'add-geometry') {
             geometryEstimate(record);

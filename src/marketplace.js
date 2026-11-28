@@ -1,19 +1,15 @@
 import './site-chrome.js';
 import './site.css';
 import './marketplace.css';
-import { ADDON_AREAS, ADDON_CATALOG, addonImportLine } from './addon-catalog.js';
-import { highlightElement } from './code-highlight.js';
-import { filterBuiltinAddons } from './marketplace-filter.js';
-import { addonPackages, firstPartyPackages, npmManifestPath } from './marketplace-npm.js';
+import { ADDON_CATALOG } from './addon-catalog.js';
+import { addonPackages, npmManifestPath } from './marketplace-npm.js';
+import { copyTextWithFeedback, createCopyIcon } from './site-code.js';
 
 const NPM_SEARCH_URL = 'https://registry.npmjs.org/-/v1/search?text=keywords:crucible-addon&size=50';
 const NPM_MANIFEST_URL = 'https://registry.npmjs.org/';
-const FIRST_PARTY_SEARCH_URL = 'https://registry.npmjs.org/-/v1/search?text=@codepawlhq&size=50';
 const MAXIMUM_RANGE_LOOKUPS = 20;
 const CONCURRENT_RANGE_LOOKUPS = 5;
 const ADDONS_DOC_URL = 'https://github.com/codepawl/crucible/blob/main/docs/addons.md';
-const REPOSITORY_URL = 'https://github.com/codepawl/crucible/blob/main';
-const PACKAGE_PREFIX = '@codepawlhq/crucible/addons/';
 const KIND_LABELS = {
   assets: ['model', 'models'],
   images: ['image', 'images'],
@@ -77,53 +73,14 @@ function countLabel(kind, count) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function copyIcon() {
-  const svg = document.createElementNS(SVG_NAMESPACE, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('class', 'market-copy-icon');
-  svg.setAttribute('aria-hidden', 'true');
-  const rect = document.createElementNS(SVG_NAMESPACE, 'rect');
-  rect.setAttribute('x', '9');
-  rect.setAttribute('y', '9');
-  rect.setAttribute('width', '13');
-  rect.setAttribute('height', '13');
-  rect.setAttribute('rx', '2');
-  const back = document.createElementNS(SVG_NAMESPACE, 'path');
-  back.setAttribute('d', 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1');
-  svg.append(rect, back);
-  return svg;
-}
-
-function checkIcon() {
-  return icon('M20 6 9 17l-5-5', 'market-copy-icon market-check-icon');
-}
-
-async function copyText(button, text, copiedLabel = 'Copied') {
-  const originalChildren = [...button.childNodes];
-  try {
-    await navigator.clipboard.writeText(text);
-    button.replaceChildren(checkIcon(), document.createTextNode(copiedLabel));
-  } catch {
-    button.textContent = 'Copy failed';
-  }
-  setTimeout(() => { button.replaceChildren(...originalChildren); }, 1800);
-}
-
-function copyButton(text, label = 'Copy', className = 'market-copy') {
-  const button = element('button', className);
-  button.type = 'button';
-  button.append(copyIcon(), document.createTextNode(label));
-  button.addEventListener('click', () => copyText(button, text));
-  return button;
-}
-
 function checksumCopyButton(sha256) {
   const button = element('button', 'market-checksum-button');
   button.type = 'button';
+  button.dataset.copyBound = '1';
   button.title = `Copy full SHA-256: ${sha256}`;
   button.setAttribute('aria-label', `Copy SHA-256 checksum starting with ${sha256.slice(0, 8)}`);
-  button.append(copyIcon(), element('span', '', 'SHA-256'), element('code', '', `${sha256.slice(0, 8)}...`));
-  button.addEventListener('click', () => copyText(button, sha256, 'SHA-256 copied'));
+  button.append(createCopyIcon(), element('span', '', 'SHA-256'), element('code', '', `${sha256.slice(0, 8)}...`));
+  button.addEventListener('click', () => void copyTextWithFeedback(button, sha256, 'SHA-256 copied'));
   return button;
 }
 
@@ -260,162 +217,6 @@ async function loadAddons(container) {
   }
 }
 
-function packageCard(entry) {
-  const card = element('article', 'market-card addon-card');
-  const title = npmCardTitle(entry);
-  const body = element('div', 'addon-body');
-  body.append(title);
-  if (entry.description) body.append(element('p', 'market-description', entry.description));
-  const command = `npm install ${entry.name}`;
-  const code = element('code', '', command);
-  highlightElement(code, 'shell');
-  const row = element('div', 'command-row');
-  row.append(code, copyButton(command));
-  body.append(row);
-  card.append(body);
-  return card;
-}
-
-async function loadFirstPartyPackages(container) {
-  showState(container, 'loading', 'Searching npm for packages');
-  try {
-    const response = await fetch(FIRST_PARTY_SEARCH_URL);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const { objects } = await response.json();
-    const packages = firstPartyPackages(objects);
-    setJumpCount('count-packages', packages.length);
-    if (packages.length === 0) {
-      showState(container, 'empty', 'No companion packages are published yet.');
-      return;
-    }
-    container.replaceChildren(...packages.map(packageCard));
-  } catch {
-    showState(container, 'error', 'npm did not answer, so the package list is missing.', link('Open the npm search', 'https://www.npmjs.com/search?q=%40codepawlhq%2Fcrucible-'));
-  }
-}
-
-function builtinCard(addon) {
-  const card = element('article', 'builtin-card');
-  card.dataset.addonName = addon.name;
-  const docUrl = addon.doc ? `${REPOSITORY_URL}/docs/${addon.name}.md` : `${REPOSITORY_URL}/src/${addon.name}.js`;
-
-  const top = element('div', 'builtin-card-head');
-  const heading = element('h4', 'builtin-name');
-  heading.append(link(addon.name, docUrl));
-  const importCopy = copyButton(addonImportLine(addon.name), 'Copy import', 'market-copy-import');
-  importCopy.setAttribute('aria-label', `Copy import statement for ${addon.name}`);
-  top.append(heading, importCopy);
-
-  const specifier = element('code', 'builtin-specifier', `${PACKAGE_PREFIX}${addon.name}`);
-  card.append(top, element('p', 'market-description', addon.summary), specifier);
-  return card;
-}
-
-function builtinGroup(area, cardsByAddon) {
-  const group = element('section', 'builtin-group');
-  group.dataset.area = area.id;
-  const addons = ADDON_CATALOG.filter(addon => addon.area === area.id);
-  const heading = element('h3', 'builtin-area', area.label);
-  const countBadge = element('span', 'market-version', String(addons.length));
-  heading.append(countBadge);
-  const grid = element('div', 'builtin-grid');
-  grid.append(...addons.map(addon => {
-    const card = builtinCard(addon);
-    cardsByAddon.set(addon.name, card);
-    return card;
-  }));
-  group.append(heading, grid);
-  return group;
-}
-
-function areaButton(id, label, count, pressed) {
-  const button = element('button', 'market-area-chip', label);
-  button.type = 'button';
-  button.dataset.area = id;
-  button.setAttribute('aria-pressed', String(pressed));
-  button.append(element('span', 'market-area-count', String(count)));
-  return button;
-}
-
-function loadBuiltinAddons() {
-  const listContainer = document.querySelector('#builtin-list');
-  const areaControls = document.querySelector('#builtin-areas');
-  const filterInput = document.querySelector('#builtin-filter');
-  const countLabelNode = document.querySelector('#builtin-count');
-
-  setJumpCount('count-builtin', ADDON_CATALOG.length);
-
-  const cardsByAddon = new Map();
-  const groups = ADDON_AREAS.map(area => builtinGroup(area, cardsByAddon));
-  listContainer.replaceChildren(...groups);
-
-  const areaButtons = [
-    areaButton('all', 'All', ADDON_CATALOG.length, true),
-    ...ADDON_AREAS.map(area => areaButton(area.id, area.label, ADDON_CATALOG.filter(entry => entry.area === area.id).length, false)),
-  ];
-  areaControls.replaceChildren(...areaButtons);
-
-  let selectedArea = 'all';
-
-  function refresh() {
-    const query = filterInput.value;
-    const filtered = filterBuiltinAddons(ADDON_CATALOG, ADDON_AREAS, { area: selectedArea, query });
-    const visibleNames = new Set(filtered.matching.map(addon => addon.name));
-
-    for (const [name, card] of cardsByAddon) {
-      card.hidden = !visibleNames.has(name);
-    }
-
-    for (const group of groups) {
-      const areaId = group.dataset.area;
-      const areaMatches = filtered.matching.filter(addon => addon.area === areaId).length;
-      group.hidden = areaMatches === 0;
-      const groupBadge = group.querySelector('.market-version');
-      if (groupBadge) groupBadge.textContent = String(areaMatches);
-    }
-
-    for (const button of areaButtons) {
-      const areaId = button.dataset.area;
-      button.setAttribute('aria-pressed', String(areaId === selectedArea));
-      const areaCount = areaId === 'all' ? filtered.queryTotal : (filtered.queryCountsByArea[areaId] ?? 0);
-      const countSpan = button.querySelector('.market-area-count');
-      if (countSpan) countSpan.textContent = String(areaCount);
-    }
-
-    const activeQuery = query.trim();
-    if (selectedArea === 'all' && !activeQuery) {
-      countLabelNode.textContent = `${filtered.totalCount} addons`;
-    } else {
-      countLabelNode.textContent = `${filtered.shownCount} of ${filtered.totalCount} addons`;
-    }
-
-    listContainer.querySelector('.market-state')?.remove();
-    if (filtered.shownCount === 0) {
-      const reason = activeQuery ? `No built-in addon matches "${activeQuery}".` : 'No built-in addons in this area.';
-      const notice = element('p', 'market-state market-state-empty');
-      notice.setAttribute('role', 'status');
-      notice.append(icon(STATE_ICONS.empty), element('span', '', reason));
-      listContainer.append(notice);
-    }
-  }
-
-  areaControls.addEventListener('click', event => {
-    const button = event.target.closest('button[data-area]');
-    if (!button) return;
-    selectedArea = button.dataset.area;
-    refresh();
-  });
-  filterInput.addEventListener('input', refresh);
-  refresh();
-}
-
-document.querySelectorAll('.market-install .command-row code').forEach(codeElement => {
-  highlightElement(codeElement, 'shell');
-});
-document.querySelectorAll('[data-copy]').forEach(button => {
-  button.addEventListener('click', () => copyText(button, button.dataset.copy));
-});
+setJumpCount('count-builtin-link', ADDON_CATALOG.length);
 loadPacks(document.querySelector('#pack-list'));
-loadFirstPartyPackages(document.querySelector('#package-list'));
-loadBuiltinAddons();
 loadAddons(document.querySelector('#addon-list'));

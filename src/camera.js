@@ -1,4 +1,6 @@
 import { mat4, vec3 } from 'gl-matrix';
+import { rejectThreeObject } from './field-error.js';
+export { attachOrbitControls, createOrbitController, eyeFromOrbit, orbitFromCamera } from './orbit-controller.js';
 
 /** Lens fields a camera may carry on top of eye, target, up, fov, near and far; each is absent unless the scene sets it. */
 export const CAMERA_LENS_FIELDS = Object.freeze(['projection', 'orthoScale', 'focalLength', 'sensorWidth', 'shift', 'fStop', 'focusDistance']);
@@ -150,6 +152,7 @@ export function requireNonDegenerateView(view, subject = 'Fit') {
 }
 
 export function fitOrthographicHeight(bounds, view, aspect, padding = 1.15) {
+  rejectThreeObject(view, 'Fit camera');
   if (!Number.isFinite(aspect) || aspect <= 0 || !Number.isFinite(padding) || padding < 1) throw new RangeError('Fit aspect must be positive and padding at least one');
   if (bounds.minimum.length !== 3 || bounds.maximum.length !== 3 || !bounds.minimum.every(Number.isFinite) || !bounds.maximum.every((value, axis) => Number.isFinite(value) && value >= bounds.minimum[axis])) throw new RangeError('Fit bounds must be finite and ordered');
   requireNonDegenerateView(view);
@@ -169,6 +172,7 @@ export function fitOrthographicHeight(bounds, view, aspect, padding = 1.15) {
 
 // Return the eye-to-target distance needed to contain a box without changing the lens.
 export function fitPerspectiveDistance(bounds, view, aspect, padding = 1.15) {
+  rejectThreeObject(view, 'Fit camera');
   if (!Number.isFinite(aspect) || aspect <= 0 || !Number.isFinite(padding) || padding < 1) {
     throw new RangeError('Fit aspect must be positive and padding at least one');
   }
@@ -239,6 +243,8 @@ export function fitPerspectiveDistance(bounds, view, aspect, padding = 1.15) {
  * `applyProjection` setup as `renderer.render(frame)` (`x` left-to-right, `y` top-to-bottom in pixels, `depth` forward distance from the eye).
  */
 export function projectToScreen(frame, point, width, height, { world = false } = {}) {
+  rejectThreeObject(frame, 'Project camera');
+  rejectThreeObject(point, 'Project point');
   requireNonDegenerateView(frame, 'Project');
   if (!point || point.length !== 3 || !Array.from(point).every(value => typeof value === 'number' && Number.isFinite(value))) {
     throw new RangeError('Project point must be three finite numbers.');

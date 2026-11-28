@@ -4,16 +4,16 @@
 
 Left: the three.js scene. Right: the same scene after `fromThreeObject` turned it into Crucible parts. Geometry, colours, metalness, roughness and the checker texture carry over. Light and sky are not part of the tree: you set them on the Crucible side, so they differ by design.
 
-`@codepawlhq/crucible-three-bridge` (folder `packages/three-bridge`, install it with `npm install @codepawlhq/crucible-three-bridge three`) moves meshes between a live three.js object tree and Crucible parts. Use it to try Crucible on a scene you already have, or to hand Crucible parts to code that expects three.js objects. For a GLB you do not need three.js at all: Crucible writes it.
+`@codepawlhq/crucible/addons/three-bridge` (formerly `@codepawlhq/crucible-three-bridge`) moves meshes between a live three.js object tree and Crucible parts. Use it to try Crucible on a scene you already have, or to hand Crucible parts to code that expects three.js objects. For a GLB you do not need three.js at all: Crucible writes it.
 
-The addon is optional and not part of the core archive. It imports neither `three` nor Crucible. `three` is a peer dependency of the addon only, and you pass the namespace in when you export.
+The addon is built into `@codepawlhq/crucible` and imports neither `three` nor Crucible core. `three` is an optional peer dependency (`npm install @codepawlhq/crucible three`), and you pass the namespace in when you export.
 
 ## Import a three.js tree
 
 ```js
 import * as THREE from 'three';
 import { CrucibleRenderer } from '@codepawlhq/crucible';
-import { fromThreeObject } from '@codepawlhq/crucible-three-bridge';
+import { fromThreeObject } from '@codepawlhq/crucible/addons/three-bridge';
 
 const group = new THREE.Group();
 group.add(new THREE.Mesh(new THREE.TorusKnotGeometry(0.7, 0.24), new THREE.MeshStandardMaterial({ color: 0xe0782a, metalness: 0.9, roughness: 0.3 })));
@@ -50,7 +50,7 @@ Three inputs throw an error that names the object and what to change: a mesh wit
 
 ```js
 import * as THREE from 'three';
-import { toThreeObject } from '@codepawlhq/crucible-three-bridge';
+import { toThreeObject } from '@codepawlhq/crucible/addons/three-bridge';
 
 const { object, warnings } = toThreeObject(parts, THREE, { name: 'scene' });
 threeScene.add(object);

@@ -8,7 +8,7 @@
 // The megakernel has a texel entry point (`bakeTexels`) that starts a path at every lightmap texel, for the light bake.
 
 import { LIGHT_TREE_FIRST_HIT_LIGHTS, LIGHT_TREE_MINIMUM_SHARE } from './path-tracer-light-tree.js';
-import { PHASE_FUNCTIONS, SUBSURFACE_FUNCTIONS, VOLUME_FUNCTIONS } from './path-tracer-webgpu-medium.js';
+import { attenuationFunctions, OCCLUSION_FUNCTIONS, PHASE_FUNCTIONS, SUBSURFACE_FUNCTIONS, VOLUME_FUNCTIONS } from './path-tracer-webgpu-medium.js';
 import { buildLocalVolumeFunctions } from './path-tracer-webgpu-local-volumes.js';
 import { INSTANCED_TRACE_RAY, INSTANCE_STATE } from './path-tracer-webgpu-instancing.js';
 
@@ -19,21 +19,6 @@ export const PATH_STATE_VECTORS = 9;
 
 const NEAREST_MATERIAL = 'nearestMaterial';
 const FLAT_NEAREST_MATERIAL = 'i32(triangles[nearestSlot * TRIANGLE_TEXELS].w)';
-
-// The occlusion map of the hit material (glTF semantics: 1 + strength * (map - 1)), read from the table after the material records
-// (path-tracer-gpu-pack.js packOcclusion). tileAndDepth.w is the material count. Spliced in only for a scene with an occlusion map.
-const OCCLUSION_FUNCTIONS = /* wgsl */ `
-var<private> hitOcclusion: f32 = 1.0;
-
-fn occlusionAt(uv: vec2<f32>, secondUv: vec2<f32>) -> f32 {
-  let first = i32(params.tileAndDepth.w) * MATERIAL_TEXELS + hitMaterialIndex * 2;
-  let rectangle = materials[first];
-  if (rectangle.z <= 0.0) { return 1.0; }
-  let settings = materials[first + 1];
-  let texel = sampleAtlas(rectangle, settings.x, select(uv, secondUv, settings.z > 0.5));
-  return 1.0 + settings.y * (texel.r - 1.0);
-}
-`;
 
 // The ray query of a scene with one triangle table and one BVH: the default, and the only one before instancing.
 const FLAT_TRACE_RAY = `fn traceRay(origin: vec3<f32>, direction: vec3<f32>, limit: f32, anyHit: bool) {
@@ -66,7 +51,7 @@ const FLAT_TRACE_RAY = `fn traceRay(origin: vec3<f32>, direction: vec3<f32>, lim
 }`;
 
 // An instanced scene (path-tracer-webgpu-instancing.js) moves the edges and normals of the hit triangle from mesh space to the world.
-const buildCommonSource = ({ hasVolume = false, hasLocalVolumes = false, hasGridVolume = false, hasNoiseOctaves = false, hasEmissionRamp = false, hasMeshVolume = false, hasOcclusionMap = false, instanced = false } = {}) => {
+const buildCommonSource = ({ hasVolume = false, hasLocalVolumes = false, hasGridVolume = false, hasNoiseOctaves = false, hasEmissionRamp = false, hasMeshVolume = false, hasOcclusionMap = false, hasAttenuation = false, instanced = false } = {}) => {
   const worldVector = expression => (instanced ? `surfaceVectorToWorld(${expression})` : expression);
   const worldNormal = expression => (instanced ? `normalToWorld(${expression})` : expression);
   // Only the sky is gathered by a ray the occlusion map has not met yet, so the sky's own shadow ray carries it; the sun and lights stay direct.
@@ -299,7 +284,7 @@ fn mapReadsSecondUvSet(mask: f32, bit: i32) -> bool {
   return (i32(mask) / bit) % 2 == 1;
 }
 
-${hasOcclusionMap ? OCCLUSION_FUNCTIONS : ''}// Fills the hit globals from the triangle in nearestSlot; returns the alpha of the colour map.
+${hasOcclusionMap ? OCCLUSION_FUNCTIONS : ''}${hasAttenuation ? attenuationFunctions(hasOcclusionMap) : ''}// Fills the hit globals from the triangle in nearestSlot; returns the alpha of the colour map.
 fn fillHit(origin: vec3<f32>, direction: vec3<f32>, distance: f32) -> f32 {
   let base = nearestSlot * TRIANGLE_TEXELS;
   let cornerData = triangles[base];
@@ -756,6 +741,18 @@ fn prepareSurface(normal: vec3<f32>, view: vec3<f32>) {
   surfaceDiffuseChance = select(1.0, diffuseLuminance / sum, sum > 0.0);
   surfaceSpecularChance = select(0.0, specularChance / sum, sum > 0.0);
   surfaceCoatChance = select(0.0, coatChance / sum, sum > 0.0);
+}
+
+fn firstHitAlbedo(normal: vec3<f32>, view: vec3<f32>) -> vec3<f32> {
+  let viewCosine = max(dot(normal, view), 1e-4);
+  let ratio = (hitIor - 1.0) / (hitIor + 1.0);
+  let glassFresnel = schlick(ratio * ratio, viewCosine);
+  let glass = vec3<f32>(glassFresnel) + hitColor * (1.0 - glassFresnel);
+  var opaque = vec3<f32>(0.0);
+  if (hitTransmission < 1.0) {
+    opaque = surfaceDiffuse + surfaceSpecularWeight * schlickColor(surfaceSpecularNormal, surfaceViewCosine) + vec3<f32>(surfaceCoatWeight);
+  }
+  return clamp(opaque * (1.0 - hitTransmission) + glass * hitTransmission, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
 fn microfacetTerm(alpha: f32, viewCosine: f32, lightCosine: f32, halfCosine: f32) -> f32 {
@@ -1224,7 +1221,7 @@ fn bakeTexels(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgro
 `;
 
 // `realtime` is the set of WGSL pieces of path-tracer-realtime-webgpu-kernel.js (REALTIME_KERNEL_PIECES); the real-time tracer passes them in, so other bundles do not carry them.
-export const buildMegakernelSource = ({ hasVolume = false, hasLocalVolumes = false, hasGridVolume = false, hasNoiseOctaves = false, hasEmissionRamp = false, hasMeshVolume = false, hasSubsurface = false, hasOcclusionMap = false, texelBake = false, realtime = null, instanced = false } = {}) => buildCommonSource({ hasVolume, hasLocalVolumes, hasGridVolume, hasNoiseOctaves, hasEmissionRamp, hasMeshVolume, hasOcclusionMap, instanced }) + /* wgsl */ `
+export const buildMegakernelSource = ({ hasVolume = false, hasLocalVolumes = false, hasGridVolume = false, hasNoiseOctaves = false, hasEmissionRamp = false, hasMeshVolume = false, hasSubsurface = false, hasOcclusionMap = false, hasAttenuation = false, texelBake = false, realtime = null, instanced = false } = {}) => buildCommonSource({ hasVolume, hasLocalVolumes, hasGridVolume, hasNoiseOctaves, hasEmissionRamp, hasMeshVolume, hasOcclusionMap, hasAttenuation, instanced }) + /* wgsl */ `
 ${realtime ? realtime.declarations + realtime.addLights : `// The first hit lights from every emitter; later hits draw one, and divide by the chance of drawing it.
 fn addLights(depth: i32, normal: vec3<f32>) {
   let emitterCount = params.emittersFlagsSample.x;
@@ -1266,11 +1263,11 @@ fn tracePath(origin: vec3<f32>, startDirection: vec3<f32>, pixel: u32, sampleInd
   pathMinimumPdf = 1e30;
   var afterMirror = true;
   var isCameraRay = cameraRays;
-  var normal = vec3<f32>(0.0, 1.0, 0.0);
+  var normal = vec3<f32>(0.0, 1.0, 0.0);${hasAttenuation ? '\n  var absorbingMaterial: i32 = -1;' : ''}
   let bounces = params.sizeBouncesLights.z;
   let surfaceOffset = params.environmentRotationAndRays.z;
   for (var depth = 0; depth <= bounces; depth++) {
-    let found = intersectScene(position, direction, cameraRays && depth == 0);
+    let found = intersectScene(position, direction, cameraRays && depth == 0);${hasAttenuation ? '\n    if (absorbingMaterial >= 0 && found) { throughput *= exp(-attenuationAt(absorbingMaterial).rgb * hitDistance); }' : ''}
     ${hasVolume ? 'let inFog = scatterInFog(position, select(params.environmentRotationAndRays.w, hitDistance, found));' : 'let inFog = false;'}
     ${hasLocalVolumes ? `crossLocalVolumes(depth, position, select(select(params.environmentRotationAndRays.w, hitDistance, found), distance(position, hitPoint), inFog));` : ''}
     if (!inFog && !found) {
@@ -1288,19 +1285,17 @@ fn tracePath(origin: vec3<f32>, startDirection: vec3<f32>, pixel: u32, sampleInd
       entering = dot(hitNormal, direction) < 0.0;
       normal = select(-hitNormal, hitNormal, entering);
       isGlass = hitTransmission > 0.0 && nextRandom() < hitTransmission;
+      needsLights = !isGlass;
+      if (needsLights || (!featuresRecorded && hitTransmission < 1.0)) { prepareSurface(normal, -direction); }
       ${realtime ? realtime.firstHit : ''}
       if (!featuresRecorded) {
-        featureAlbedo = select(hitColor, vec3<f32>(1.0), isGlass);
+        featureAlbedo = firstHitAlbedo(normal, -direction);
         featureNormal = normal;
         featureDepth = hitDistance;
         featuresRecorded = true;
       }
       addRadiance(depth, throughput * hitEmission);
-      needsLights = !isGlass;
-      if (needsLights) {
-        prepareSurface(normal, -direction);
-        ${hasSubsurface ? 'subsurfaceWeight = splitSubsurface();' : ''}
-      }
+      ${hasSubsurface ? 'if (needsLights) { subsurfaceWeight = splitSubsurface(); }' : ''}
     }
     if (needsLights) { addLights(depth, normal); }
     inMedium = false;
@@ -1325,7 +1320,7 @@ fn tracePath(origin: vec3<f32>, startDirection: vec3<f32>, pixel: u32, sampleInd
       let secondUnit = nextRandom();
       if (!sampleGlass(normal, -direction, entering, hitIor, alpha, selectionUnit, firstUnit, secondUnit)) { break; }
       direction = sampledDirection;
-      if (dot(direction, normal) < 0.0) { throughput *= hitColor; } else { isCameraRay = false; }
+      if (dot(direction, normal) < 0.0) { throughput *= hitColor;${hasAttenuation ? ' absorbingMaterial = select(-1, hitMaterialIndex, entering && attenuationAt(hitMaterialIndex).w > 0.0);' : ''} } else { isCameraRay = false; }
       afterMirror = true;
     } else {
       isCameraRay = false;
@@ -1586,8 +1581,9 @@ fn shadePaths(@builtin(global_invocation_id) id: vec3<u32>) {
   let entering = dot(hitNormal, direction) < 0.0;
   let normal = select(-hitNormal, hitNormal, entering);
   let isGlass = hitTransmission > 0.0 && nextRandom() < hitTransmission;
+  if (!isGlass || (depth == 0 && hitTransmission < 1.0)) { prepareSurface(normal, -direction); }
   if (depth == 0) {
-    storeVector(base + 4u, vec4<f32>(select(hitColor, vec3<f32>(1.0), isGlass), 0.0));
+    storeVector(base + 4u, vec4<f32>(firstHitAlbedo(normal, -direction), 0.0));
     storeVector(base + 5u, vec4<f32>(normal, hitDistance));
   }
   addRadiance(depth, throughput * hitEmission);
@@ -1599,7 +1595,6 @@ fn shadePaths(@builtin(global_invocation_id) id: vec3<u32>) {
       storeShadowRecord(path, slot);
     }
   } else {
-    prepareSurface(normal, -direction);
     let emitterCount = params.emittersFlagsSample.x;
     if (lightsFromEveryEmitter(depth, emitterCount)) {
       selectionProbability = 1.0;

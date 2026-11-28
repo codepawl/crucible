@@ -71,13 +71,6 @@ An id is the name in the `###` heading of its block, not a file name: `drive.mjs
 - Source: `site/recipes.html`, `site/recipe-*.html`, `public/recipes/`, `scripts/recipe-catalog.mjs`, `scripts/make-recipe-pages.mjs`, `src/recipes.js`
 - Drive: `node scripts/drive.mjs shot recipes`
 
-### `tiers`
-- Name: Render tiers (draft, realtime, final: time, card memory and error beside Blender, from the tier matrix)
-- Surface: Site
-- Reach: `/tiers.html`
-- Source: `site/tiers.html`, `src/tiers.js`, `src/tiers-model.js`, `src/tiers.css`, `bench/tiers/results/tier-page-lit-interior.json`, `bench/tiers/make-tier-page-data.mjs`
-- Drive: `node scripts/drive.mjs shot tiers`
-
 ### `recipe-dolly-zoom`
 - Name: Recipe page, dolly zoom
 - Surface: Site
@@ -495,6 +488,27 @@ An id is the name in the `###` heading of its block, not a file name: `drive.mjs
 - Surface: CLI
 - Reach: command `npx crucible-mcp`
 - Source: `bin/crucible-mcp.mjs`
+- Drive: none: not a page
+
+### `crucible-agent`
+- Name: Built-in headless AI agent CLI driving `crucible-mcp` and writing updated scene recipes (docs/cli-agent.md)
+- Surface: CLI
+- Reach: command `npx crucible agent "<prompt>"`
+- Source: `bin/crucible.mjs`, `bin/crucible-agent.mjs`, `bin/crucible-mcp-client.mjs`
+- Drive: none: not a page
+
+### `crucible-auth`
+- Name: OAuth 2.1 + PKCE sign-in, credit status, and session storage for `crucible agent` (docs/cli-agent.md)
+- Surface: CLI
+- Reach: command `npx crucible auth login`, `npx crucible auth status`, `npx crucible auth logout`
+- Source: `bin/crucible.mjs`, `bin/crucible-auth.mjs`, `bin/crucible-auth-store.mjs`
+- Drive: none: not a page
+
+### `crucible-init`
+- Name: Scaffolds an interactive product showcase viewer or addon starter with shared orbit controls (docs/showcase.md)
+- Surface: CLI and addon (`@codepawlhq/crucible/addons/showcase`)
+- Reach: command `npx crucible init [<dir>] [--template showcase|addon]`
+- Source: `bin/crucible.mjs`, `bin/crucible-init.mjs`, `src/showcase-viewer.js`, `src/orbit-controller.js`, `templates/showcase/`
 - Drive: none: not a page
 
 ### `crucible-pack`

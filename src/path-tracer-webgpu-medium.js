@@ -1,6 +1,28 @@
 import { SUBSURFACE_TEXELS } from './path-tracer-gpu-subsurface.js';
 import { SUBSURFACE_WALK_STEPS } from './path-tracer-subsurface.js';
 
+/** Occlusion map reader appended to the material buffer when `hasOcclusionMap` is active. */
+export const OCCLUSION_FUNCTIONS = /* wgsl */ `
+var<private> hitOcclusion: f32 = 1.0;
+
+fn occlusionAt(uv: vec2<f32>, secondUv: vec2<f32>) -> f32 {
+  let first = i32(params.tileAndDepth.w) * MATERIAL_TEXELS + hitMaterialIndex * 2;
+  let rectangle = materials[first];
+  if (rectangle.z <= 0.0) { return 1.0; }
+  let settings = materials[first + 1];
+  let texel = sampleAtlas(rectangle, settings.x, select(uv, secondUv, settings.z > 0.5));
+  return 1.0 + settings.y * (texel.r - 1.0);
+}
+`;
+
+/** Beer-Lambert attenuation reader appended to the material buffer when `hasAttenuation` is active. */
+export function attenuationFunctions(hasOcclusionMap) {
+  return /* wgsl */ `fn attenuationAt(materialIndex: i32) -> vec4<f32> {
+  return materials[i32(params.tileAndDepth.w) * (MATERIAL_TEXELS${hasOcclusionMap ? ' + 2' : ''}) + materialIndex];
+}
+`;
+}
+
 // The two optional parts of the WGSL path tracer (issue #625): homogeneous volume fog and the subsurface random walk.
 // They are the WGSL form of the GLSL pieces in path-tracer-gpu-shader.js (fog) and path-tracer-gpu-subsurface.js, with the
 // same random numbers drawn in the same order, and the kernel splices them in only for a scene that uses them.

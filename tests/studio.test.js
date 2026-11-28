@@ -75,7 +75,7 @@ test('createStudioController validates inputs and enforces tool, tab and node bo
 
   const controller = createStudioController({ scene, viewportWidth: 800, viewportHeight: 600 });
   assert.deepEqual(STUDIO_TOOLS, ['select', 'translate', 'rotate', 'scale']);
-  assert.deepEqual(STUDIO_TABS, ['node', 'modifiers', 'material', 'look', 'camera', 'export']);
+  assert.deepEqual(STUDIO_TABS, ['node', 'looks', 'modifiers', 'material', 'look', 'camera', 'export']);
   assert.throws(() => controller.selectNode('missing-node'), /Unknown node/);
   assert.throws(() => controller.setTool('sculpt'), /Unknown Studio tool/);
   assert.throws(() => controller.setActiveTab('physics'), /Unknown Studio tab/);
@@ -389,6 +389,25 @@ test('Studio undo groups one slider drag into one step and keeps the camera wher
   assert.equal(controller.redo(), true);
   assert.ok(Math.abs(controller.exportRecipe().materials[0].roughness - 0.5) < 1e-6);
   assert.deepEqual([...controller.scene.camera.eye], orbitedEye);
+  controller.dispose();
+});
+
+test('an axis view centres the selection and looks at it straight along the axis', () => {
+  const controller = createStudioController({ scene: createAgentScene(makeStudioRecipe()), viewportWidth: 800, viewportHeight: 600 });
+  controller.selectNode('orb');
+  const bounds = controller.nodeBounds('orb');
+  const centre = bounds.min.map((value, axis) => (value + bounds.max[axis]) / 2);
+  const straightAxes = { front: [0, 1], right: [1, 2], top: null };
+  for (const [view, crossAxes] of Object.entries(straightAxes)) {
+    controller.setCameraViewPreset(view);
+    const { eye, target } = controller.scene.camera;
+    target.forEach((value, axis) => assert.ok(Math.abs(value - centre[axis]) < 1e-3, `${view} view aims at the middle of the orb, not the old target`));
+    for (const axis of crossAxes ?? []) {
+      assert.ok(Math.abs(eye[axis] - target[axis]) < 1e-3, `${view} view looks along its axis with no sideways offset`);
+    }
+    const onScreen = controller.projectWorldPoint(centre);
+    assert.ok(Math.abs(onScreen.x - 400) < 0.5 && Math.abs(onScreen.y - 300) < 0.5, `${view} view puts the orb in the middle of the viewport`);
+  }
   controller.dispose();
 });
 

@@ -36,6 +36,7 @@ export const ADDON_CATALOG = [
   { name: 'replace-textured-parts', area: 'modeling', summary: 'Add and remove textured parts on a live renderer.' },
   { name: 'texture-update', area: 'modeling', summary: 'Push new pixels from a canvas, video or simulation into a texture.' },
   { name: 'texture-set', area: 'modeling', summary: 'Load a scanned material set: color, normal, roughness, height.' },
+  { name: 'three-bridge', area: 'modeling', summary: 'Convert between live three.js object trees and Crucible parts.', doc: true },
 
   { name: 'material-layer-shaders', area: 'look', summary: 'Anisotropy and iridescence material layers.' },
   { name: 'subsurface-shader', area: 'look', summary: 'Subsurface scattering for skin, wax and leaves.' },
@@ -68,6 +69,7 @@ export const ADDON_CATALOG = [
   { name: 'water-reflection', area: 'light', summary: 'Mirror reflection on lakes, rivers and polished floors.' },
 
   { name: 'path-tracer', area: 'render', summary: 'Offline path-traced stills with denoising.', doc: true },
+  { name: 'denoise-oidn', area: 'render', summary: 'Native Intel Open Image Denoise (OIDN) wrapper for path-traced stills.' },
   { name: 'path-tracer-progressive', area: 'render', summary: 'A progressive view of the GPU path tracer.' },
   { name: 'path-tracer-realtime', area: 'render', summary: 'A real-time hybrid view of the GPU path tracer.' },
   { name: 'render-passes', area: 'render', summary: 'Depth, normals, object IDs and other render passes.' },
@@ -76,6 +78,7 @@ export const ADDON_CATALOG = [
   { name: 'meshlets', area: 'render', summary: 'Build meshoptimizer meshlets and cull clusters per draw on dense meshes.', doc: true },
   { name: 'reversed-depth', area: 'render', summary: 'Reversed-Z depth for far-away precision.' },
   { name: 'crucible-scene', area: 'render', summary: 'The <crucible-scene> web component for packed scenes.' },
+  { name: 'showcase', area: 'render', summary: 'Interactive 3D product showcase viewer with Prototype and Studio themes.', doc: true },
 
   { name: 'motion', area: 'motion', summary: 'Motion scenes: one geometry graph and a bound player.' },
   { name: 'morph', area: 'motion', summary: 'Morph targets with a static preflight.' },

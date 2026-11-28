@@ -1,4 +1,5 @@
 import { mat4 } from 'gl-matrix';
+import { rejectThreeObject } from './field-error.js';
 
 const IDENTITY = Object.freeze([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 const ZERO_PIVOT = Object.freeze([0, 0, 0]);
@@ -77,10 +78,12 @@ function materialAlias(node, matrix) {
 export function createSceneGraph(definitions = [], { maxNodes = 4096, maxDepth = 256 } = {}) {
   limit(maxNodes, 'maxNodes');
   limit(maxDepth, 'maxDepth');
+  rejectThreeObject(definitions, 'Scene graph definitions');
   if (!Array.isArray(definitions)) throw new TypeError('Scene graph definitions must be an array.');
   if (definitions.length > maxNodes) throw new RangeError('Scene graph exceeds maxNodes.');
   const namedIndices = new Map();
   const records = definitions.map((definition, index) => {
+    rejectThreeObject(definition, 'Scene graph node');
     if (!definition || typeof definition.name !== 'string' || !definition.name.trim()) throw new TypeError('Scene graph nodes need names.');
     if (namedIndices.has(definition.name)) throw new RangeError(`Duplicate scene graph node name: ${definition.name}`);
     namedIndices.set(definition.name, index);
@@ -88,10 +91,14 @@ export function createSceneGraph(definitions = [], { maxNodes = 4096, maxDepth =
     if (parent !== null && (typeof parent !== 'string' || !parent.trim())) throw new TypeError('Node parent must be a name or null.');
     const geometry = definition.geometry;
     const material = definition.material;
+    rejectThreeObject(geometry, `${definition.name} geometry`);
+    rejectThreeObject(material, `${definition.name} material`);
     if ((geometry != null) !== (material != null)) throw new TypeError('Mesh nodes need both geometry and material.');
     if (geometry != null && (typeof geometry !== 'object' || typeof material !== 'object')) throw new TypeError('Node geometry and material must be objects.');
+    rejectThreeObject(definition.matrix, `${definition.name} matrix`);
     const localMatrix = copiedFloats(definition.matrix ?? IDENTITY, 16, `${definition.name} matrix`);
     validMatrix(localMatrix, definition.name);
+    rejectThreeObject(definition.pivot, `${definition.name} pivot`);
     return {
       name: definition.name,
       parent,
@@ -193,6 +200,7 @@ export function createSceneGraph(definitions = [], { maxNodes = 4096, maxDepth =
       };
       try {
         for (const [name, matrix] of matrices) {
+          rejectThreeObject(matrix, `${name} matrix`);
           const copy = copiedFloats(matrix, 16, `${name} matrix`);
           validMatrix(copy, name);
           records[nodeIndex(name)].localMatrix.set(copy);

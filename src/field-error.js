@@ -43,3 +43,42 @@ export function withFieldPrefix(prefix, check) {
     throw error;
   }
 }
+
+const THREE_SLIP_RULES = [
+  [['isMaterial', 'isMeshStandardMaterial', 'isMeshPhysicalMaterial', 'isMeshBasicMaterial', 'isMeshLambertMaterial', 'isMeshPhongMaterial', 'isShaderMaterial'],
+    'a material { tag: "surface", color: [r, g, b], metallic, roughness } (or emission for unlit); see packages/three-compat or crucible/addons/three-bridge'],
+  [['isBufferGeometry', 'isGeometry'],
+    'box(), sphere(), cylinder(), torus() or { positions, normals, indices }; see packages/three-compat or crucible/addons/three-bridge'],
+  [['isCamera', 'isPerspectiveCamera', 'isOrthographicCamera'],
+    'a camera frame { eye, target, up, fov, near, far } (or projection: "orthographic", orthographicHeight); see packages/three-compat'],
+  [['isLight', 'isDirectionalLight', 'isPointLight', 'isSpotLight', 'isAmbientLight', 'isHemisphereLight', 'isRectAreaLight'],
+    'lights on environment ({ lightDirection, keyIntensity, pointLights, spotLights, areaLights, ambientIntensity }); see packages/three-compat'],
+  [['isScene', 'isGroup', 'isMesh', 'isObject3D'],
+    'parts [{ name, geometry, matrix, material }], createSceneGraph(definitions) or a JSON recipe; see packages/three-compat or fromThreeObject in crucible/addons/three-bridge'],
+  [['isTexture'], 'a texture { image, colorSpace } (or catalog map in a recipe)'],
+  [['isColor'], 'linear [r, g, b] numbers from 0 to 1'],
+  [['isVector3'], 'a [x, y, z] array'],
+  [['isMatrix4'], 'a 16-number column-major matrix (pass matrix.elements)'],
+  [['isEuler'], 'a 16-number matrix or unit quaternion [x, y, z, w]'],
+  [['isQuaternion'], 'a unit quaternion [x, y, z, w]'],
+];
+
+/** Returns an error message naming the Crucible equivalent if `value` carries a three.js `is*` flag, else null. */
+export function threeSlipMessage(value) {
+  if (!value || typeof value !== 'object') return null;
+  for (const [flags, replacement] of THREE_SLIP_RULES) {
+    const matched = flags.find(flag => value[flag] === true);
+    if (!matched) continue;
+    const typeName = value.constructor?.name;
+    const name = typeName && typeName !== 'Object' ? `THREE.${typeName}` : matched.slice(2);
+    return `Got a three.js ${name} object; Crucible takes ${replacement}.`;
+  }
+  return null;
+}
+
+/** Throws a TypeError naming the Crucible equivalent when a three.js object is passed directly to a core API. */
+export function rejectThreeObject(value, context = '') {
+  const detail = threeSlipMessage(value);
+  if (!detail) return;
+  throw new TypeError(context ? `${context}: ${detail}` : detail);
+}

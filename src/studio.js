@@ -42,13 +42,14 @@ import { createShapeSettings } from './studio-shape-settings.js';
 import { MIXED_PROPERTY_LABEL, MIXED_SELECT_VALUE, summarizeNodeSelection, syncObjectAndMaterialPanels } from './studio-multi-edit.js';
 import { createKeyMarkers } from './studio-timeline-keys.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
-import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, describeBounds, describeCamera, describeGridStep, gridLayout, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart } from './studio-viewport-aids.js';
+import { AXIS_COLORS, buildGridParts, createViewWidget, describeBounds, describeCamera, describeGridStep, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart, viewportGridLayout } from './studio-viewport-aids.js';
 import { formatLengthInputValue, lengthFromUnit, parseLengthInput } from './studio-units.js';
 // The grid is textured, and replaceParts takes a textured part only with this module loaded.
 import './replace-textured-parts.js';
 import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft, watchBeforeUnload } from './studio-draft.js';
 import { createBakeMark } from './studio-bake-mark.js';
 import { watchScrollFade } from './studio-scroll-cue.js';
+import { createToolbarTooltip, writeViewChipTitles } from './studio-toolbar-tips.js';
 import { extensionOf, openNameEditor, splitFileName, validateFileStem, validateNodeLabel, validateShotName } from './studio-name-editor.js';
 import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
 import { SNAP_TARGETS } from './studio-snapping.js';
@@ -61,6 +62,7 @@ import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgent
 import { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, primitiveGeometrySpec, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, buildTemplateRecipe } from './studio-templates.js';
 import { createStudioController, hasAnimatedData, linearRgbToHex, quaternionToEulerDegrees, roundValue } from './studio-controller.js';
 import { createPartSyncTracker } from './studio-live-parts.js';
+import './studio-look-gallery.js';
 import { assignSwatchMaterialInEditMode, createFaceMaterialPanel, planJoinOperations } from './studio-material-slots.js';
 import {
   BASE_STUDIO_WORKSPACES,
@@ -189,7 +191,6 @@ function setButtonIcon(button, iconName, label) {
     button.replaceChildren(createIcon(button.ownerDocument, iconName));
   }
   button.setAttribute('aria-label', label);
-  button.title = label;
 }
 
 function createIconButton(documentReference, iconName, label, properties = {}) {
@@ -2172,6 +2173,12 @@ export function createStudio(container, {
     createElement(documentReference, 'div', { className: 'crucible-studio-toolbar-rule', attributes: { role: 'separator', 'aria-orientation': 'horizontal' } }),
     createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Show or hide' } }, gridButton, seeThroughButton, toggleDocksButton),
   );
+  const tooltip = createToolbarTooltip({ root, documentReference }, { toolButtons, meshModeButtons, meshObjectButton, proportionalButton, proportionalMenuButton, meshToolsButton, snapToggleButton, snapTargetButton, addMenuButton, undoButton, redoButton, gridButton, seeThroughButton, toggleDocksButton, duplicateButton, deleteButton, frameButton }, {
+    keyOf: actionId => keyLabel(keymap, actionId),
+    lastKeyOf: actionId => lastKeyLabel(keymap, actionId),
+    toolActions: TOOL_ACTION_BY_TOOL, meshModes: MESH_MODES,
+    snapState: () => ({ enabled: preferences.snapEnabled, targetLabel: snapTargetOf(preferences.snapTarget).label }),
+  });
   wireRovingFocusFallback(toolbarElement, [...toolButtons, snapToggleButton, snapTargetButton, addMenuButton, undoButton, redoButton, gridButton, seeThroughButton, toggleDocksButton], { vertical: true });
 
   // Viewport Top-Right 3D View Widget
@@ -2560,8 +2567,7 @@ export function createStudio(container, {
   const panelContext = {
     documentReference,
     controller,
-    announce,
-    announceError,
+    announce, announceError, createRenderer,
     builders: { createElement, createIcon, createIconButton, createVectorRow },
     inlinePanels: { node: nodePanelBody, material: materialPanelBody, look: lookPanelBody, camera: cameraPanelBody },
     syncLookPanels: () => syncLookPanels(),
@@ -3078,14 +3084,7 @@ export function createStudio(container, {
   function refreshKeyLabels() {
     for (const { element, actionId } of menuKeyViews) setShortcutLabel(element, keyLabel(keymap, actionId));
     for (const { button, iconName, describe } of keyTooltipViews) setButtonIcon(button, iconName, describe());
-    const viewTitles = { front: ['Front view', 'view.front'], right: ['Right view', 'view.right'], top: ['Top view', 'view.top'], isometric: ['Isometric view', null] };
-    for (const button of viewPresetButtons) {
-      const [labelText, actionId] = viewTitles[button.dataset.view];
-      const shortcut = actionId ? keyLabel(keymap, actionId) : '';
-      button.title = shortcut ? `${labelText} (${shortcut})` : labelText;
-    }
-    const projectionShortcut = keyLabel(keymap, 'view.projection');
-    projectionPillButton.title = projectionShortcut ? `Perspective / Orthographic (${projectionShortcut})` : 'Perspective / Orthographic';
+    writeViewChipTitles(viewPresetButtons, projectionPillButton, actionId => keyLabel(keymap, actionId));
     setButtonIcon(playButton, playing ? 'pause' : 'play', playTooltip(playing));
     fillShortcutsGrid();
     syncHintBar();
@@ -3313,7 +3312,7 @@ export function createStudio(container, {
   function syncViewportAids() {
     const camera = controller.viewCamera;
     viewWidget.update(camera);
-    const gridStep = gridLayout({ visibleHeight: cameraVisibleHeight(camera), viewportHeight: controller.viewportHeight, target: camera.target, eye: camera.projection === 'orthographic' ? undefined : camera.eye }).step;
+    const gridStep = viewportGridLayout(camera, controller.viewportHeight, { sizeForEye: camera.projection !== 'orthographic' }).step;
     readoutCamera.textContent = gridVisible ? `${describeCamera(camera)} · Grid ${describeGridStep(gridStep)}` : describeCamera(camera);
     if (controller.activeTab === 'export') syncExportFacts();
     if (selectionReadoutStale) {
@@ -3892,7 +3891,7 @@ export function createStudio(container, {
     gridParts ??= buildGridParts();
     gridPartsByName ??= new Map(gridParts.map(part => [part.name, part]));
     const camera = controller.viewCamera;
-    placeGridParts(gridPartsByName, gridLayout({ visibleHeight: cameraVisibleHeight(camera), viewportHeight: controller.viewportHeight, target: camera.target, eye: camera.eye }));
+    placeGridParts(gridPartsByName, viewportGridLayout(camera, controller.viewportHeight));
     return [...sceneParts, ...gridParts];
   }
 
@@ -5218,7 +5217,7 @@ export function createStudio(container, {
     event.stopPropagation();
     selectSceneObjectAndShowItsPanel(key);
     const object = controller.listSceneObjects().find(candidate => candidate.key === key);
-    if (controller.tool !== 'translate') return;
+    if (controller.tool !== 'translate' || event.target.hasAttribute('data-edge-pointer')) return;
     const dragState = beginSceneObjectDrag(controller, object, localCoordinates(event), event.pointerId, announceError);
     if (!dragState) return;
     pointerState = dragState;
@@ -6203,6 +6202,7 @@ export function createStudio(container, {
       clearTimeout(awaitedProgramTimer);
       agentPresence.dispose();
       agentPanel?.dispose();
+      tooltip.dispose();
       settings.dispose();
       systemSchemeQuery?.removeEventListener?.('change', onSystemSchemeChange);
       if (frameHandle) cancelAnimationFrame(frameHandle);

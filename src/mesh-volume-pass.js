@@ -1,4 +1,4 @@
-import { compileProgram } from './gl-program.js';
+import { backendFor } from './glaze-backend.js';
 import { assertClosedMesh } from './local-volume-parts.js';
 
 // The rasterizer's half of a local volume with shape "mesh" and fit "mesh" (issue 807). Before the post pass, each such part is drawn
@@ -76,35 +76,30 @@ function matrixDeterminant(matrix) {
     + matrix[8] * (matrix[1] * matrix[6] - matrix[2] * matrix[5]);
 }
 
-function uploadGeometry(context, geometry) {
-  const vertexArray = context.createVertexArray();
-  context.bindVertexArray(vertexArray);
-  const positionBuffer = context.createBuffer();
-  context.bindBuffer(context.ARRAY_BUFFER, positionBuffer);
-  context.bufferData(context.ARRAY_BUFFER, geometry.positions instanceof Float32Array ? geometry.positions : new Float32Array(geometry.positions), context.STATIC_DRAW);
-  context.enableVertexAttribArray(0);
-  context.vertexAttribPointer(0, 3, context.FLOAT, false, 0, 0);
+function uploadGeometry(backend, geometry) {
+  const positions = geometry.positions instanceof Float32Array ? geometry.positions : new Float32Array(geometry.positions);
   const shortIndices = geometry.indices instanceof Uint16Array;
-  const indexBuffer = context.createBuffer();
-  context.bindBuffer(context.ELEMENT_ARRAY_BUFFER, indexBuffer);
-  context.bufferData(context.ELEMENT_ARRAY_BUFFER, shortIndices || geometry.indices instanceof Uint32Array ? geometry.indices : new Uint32Array(geometry.indices), context.STATIC_DRAW);
-  context.bindVertexArray(null);
+  const indices = shortIndices || geometry.indices instanceof Uint32Array ? geometry.indices : new Uint32Array(geometry.indices);
+  const positionBuffer = backend.createBuffer();
+  backend.uploadBuffer('array', positionBuffer, positions);
+  const indexBuffer = backend.createBuffer();
+  backend.uploadBuffer('element', indexBuffer, indices);
+  const vertexArray = backend.createVertexArray([{ buffer: positionBuffer, size: 3 }], indexBuffer);
   return {
     vertexArray,
     buffers: [positionBuffer, indexBuffer],
     count: geometry.indices.length,
-    indexType: shortIndices ? context.UNSIGNED_SHORT : context.UNSIGNED_INT,
+    shortIndices,
     insideOut: signedVolume(geometry.positions, geometry.indices) < 0,
   };
 }
 
 const wrappedRenderers = new WeakSet();
 
-function createState(renderer) {
-  const context = renderer.context;
-  if (!context.getExtension('EXT_float_blend')) throw new Error('Local volumes with fit "mesh" need the WebGL extension EXT_float_blend, which this browser does not offer; use fit "bounds"');
-  const program = compileProgram(context, MESH_VERTEX, MESH_FRAGMENT);
-  const uniforms = Object.fromEntries(UNIFORM_NAMES.map(name => [name, context.getUniformLocation(program, name)]));
+function createState(renderer, backend) {
+  if (!backend.extension('EXT_float_blend')) throw new Error('Local volumes with fit "mesh" need the WebGL extension EXT_float_blend, which this browser does not offer; use fit "bounds"');
+  const program = backend.compileProgram(MESH_VERTEX, MESH_FRAGMENT);
+  const uniforms = Object.fromEntries(UNIFORM_NAMES.map(name => [name, backend.uniformLocation(program, name)]));
   const state = { program, uniforms, geometries: new Map(), target: null, disposed: false };
   // The renderer's dispose gains this step here, so the core carries no call for a pass most scenes never create.
   if (!wrappedRenderers.has(renderer)) {
@@ -118,69 +113,59 @@ function createState(renderer) {
   return state;
 }
 
-function allocateTarget(renderer, state, layers) {
-  const context = renderer.context;
+function allocateTarget(renderer, backend, state, layers) {
   const width = renderer.canvas.width;
   const height = renderer.canvas.height * layers;
   if (state.target?.width === width && state.target.height === height) return;
-  const limit = context.getParameter(context.MAX_TEXTURE_SIZE);
+  const limit = backend.maxTextureSize();
   if (width > limit || height > limit) {
     throw new RangeError(`${layers} mesh volumes at ${width}x${renderer.canvas.height} need a ${width}x${height} buffer, past this device's limit of ${limit}; use fewer volumes with fit "mesh", a smaller canvas or fit "bounds"`);
   }
-  releaseTarget(renderer, state);
-  const texture = context.createTexture();
-  context.bindTexture(context.TEXTURE_2D, texture);
-  context.texImage2D(context.TEXTURE_2D, 0, context.RG32F, width, height, 0, context.RG, context.FLOAT, null);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
-  const framebuffer = context.createFramebuffer();
-  context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-  context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
-  if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) {
-    context.deleteFramebuffer(framebuffer);
-    context.deleteTexture(texture);
+  releaseTarget(renderer, backend, state);
+  const target = backend.createFramebufferTarget({ width, height, colorFormat: 'rg32f', clamp: true });
+  if (!target.complete) {
+    backend.deleteFramebuffer(target.framebuffer);
+    backend.deleteTexture(target.colorTexture);
     throw new Error('The mesh volume buffer could not be allocated; use fit "bounds" or a smaller canvas');
   }
-  state.target = { texture, framebuffer, width, height };
+  state.target = { texture: target.colorTexture, framebuffer: target.framebuffer, width, height };
   renderer.renderTargets.record('meshVolumes', { width, height, format: 'RG32F' });
 }
 
-function releaseTarget(renderer, state) {
+function releaseTarget(renderer, backend, state) {
   if (!state.target) return;
-  renderer.context.deleteTexture(state.target.texture);
-  renderer.context.deleteFramebuffer(state.target.framebuffer);
+  backend.deleteTexture(state.target.texture);
+  backend.deleteFramebuffer(state.target.framebuffer);
   state.target = null;
   renderer.renderTargets.release('meshVolumes');
 }
 
-function releaseGeometry(context, gpu) {
-  context.deleteVertexArray(gpu.vertexArray);
-  gpu.buffers.forEach(buffer => context.deleteBuffer(buffer));
+function releaseGeometry(backend, gpu) {
+  backend.deleteVertexArray(gpu.vertexArray);
+  gpu.buffers.forEach(buffer => backend.deleteBuffer(buffer));
 }
 
 // A part whose geometry was replaced or removed no longer draws, so its buffers go.
-function pruneGeometries(context, state, meshParts) {
+function pruneGeometries(backend, state, meshParts) {
   const inUse = new Set(meshParts.map(({ part }) => part.geometry));
   for (const [geometry, gpu] of state.geometries) {
     if (inUse.has(geometry)) continue;
-    releaseGeometry(context, gpu);
+    releaseGeometry(backend, gpu);
     state.geometries.delete(geometry);
   }
 }
 
-function drawPart(context, state, part) {
+function drawPart(backend, state, part) {
   let gpu = state.geometries.get(part.geometry);
   if (!gpu) {
-    gpu = uploadGeometry(context, part.geometry);
+    gpu = uploadGeometry(backend, part.geometry);
     state.geometries.set(part.geometry, gpu);
   }
   const matrix = part.matrix ?? [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-  context.uniformMatrix4fv(state.uniforms.model, false, matrix);
-  context.frontFace(gpu.insideOut !== matrixDeterminant(matrix) < 0 ? context.CW : context.CCW);
-  context.bindVertexArray(gpu.vertexArray);
-  context.drawElements(context.TRIANGLES, gpu.count, gpu.indexType, 0);
+  backend.uniformMatrix4fv(state.uniforms.model, matrix);
+  backend.setFrontFaceClockwise(gpu.insideOut !== matrixDeterminant(matrix) < 0);
+  backend.bindVertexArray(gpu.vertexArray);
+  backend.drawIndexed(gpu.count, gpu.shortIndices);
 }
 
 /**
@@ -189,63 +174,54 @@ function drawPart(context, state, part) {
  * Returns the texture, or null when the frame has no such volume.
  */
 export function drawMeshVolumes(renderer, frame) {
+  const backend = backendFor(renderer);
   const meshParts = renderer.localVolumeBuffers?.meshParts ?? [];
   if (meshParts.length === 0) {
-    if (renderer.meshVolumePass) pruneGeometries(renderer.context, renderer.meshVolumePass, meshParts);
+    if (renderer.meshVolumePass) pruneGeometries(backend, renderer.meshVolumePass, meshParts);
     return null;
   }
-  const context = renderer.context;
-  const state = (renderer.meshVolumePass ??= createState(renderer));
+  const state = (renderer.meshVolumePass ??= createState(renderer, backend));
   for (const { part, label } of meshParts) assertClosedMesh(part, label);
-  pruneGeometries(context, state, meshParts);
-  allocateTarget(renderer, state, meshParts.length);
+  pruneGeometries(backend, state, meshParts);
+  allocateTarget(renderer, backend, state, meshParts.length);
   const { width, height } = renderer.canvas;
-  const blendWasOn = context.isEnabled(context.BLEND);
-  context.bindFramebuffer(context.FRAMEBUFFER, state.target.framebuffer);
-  context.colorMask(true, true, true, true);
-  context.clearBufferfv(context.COLOR, 0, [0, NO_ENTRY, 0, 0]);
-  context.useProgram(state.program);
-  context.disable(context.DEPTH_TEST);
-  context.disable(context.CULL_FACE);
-  context.enable(context.BLEND);
-  context.blendFunc(context.ONE, context.ONE);
-  context.activeTexture(context.TEXTURE1);
-  context.bindTexture(context.TEXTURE_2D, renderer.depthTexture);
-  context.uniform1i(state.uniforms.sceneDepth, 1);
-  context.uniformMatrix4fv(state.uniforms.viewProjection, false, renderer.viewProjection);
-  context.uniformMatrix4fv(state.uniforms.inverseViewProjection, false, renderer.inverseViewProjection);
-  context.uniform3fv(state.uniforms.eye, frame.eye);
-  context.uniform1f(state.uniforms.orthographic, frame.projection === 'orthographic' ? 1 : 0);
-  context.uniform2f(state.uniforms.resolution, width, height);
+  const blendWasOn = backend.isBlendEnabled();
+  backend.bindFramebuffer(state.target.framebuffer);
+  backend.setRenderState({ depthTest: false, cullFace: false, blend: true, blendMode: 'one', colorMask: [true, true, true, true] });
+  backend.clearColorBuffer(0, [0, NO_ENTRY, 0, 0]);
+  backend.useProgram(state.program);
+  backend.bindTextureUnit(1, renderer.depthTexture);
+  backend.uniform1i(state.uniforms.sceneDepth, 1);
+  backend.uniformMatrix4fv(state.uniforms.viewProjection, renderer.viewProjection);
+  backend.uniformMatrix4fv(state.uniforms.inverseViewProjection, renderer.inverseViewProjection);
+  backend.uniform3fv(state.uniforms.eye, frame.eye);
+  backend.uniform1f(state.uniforms.orthographic, frame.projection === 'orthographic' ? 1 : 0);
+  backend.uniform2f(state.uniforms.resolution, width, height);
   meshParts.forEach(({ part }, slice) => {
-    context.viewport(0, slice * height, width, height);
-    context.uniform1f(state.uniforms.layerOffset, slice * height);
-    context.uniform1f(state.uniforms.entryPass, 0);
-    context.blendEquation(context.FUNC_ADD);
-    context.colorMask(true, false, false, false);
-    drawPart(context, state, part);
-    context.uniform1f(state.uniforms.entryPass, 1);
-    context.blendEquation(context.MIN);
-    context.colorMask(false, true, false, false);
-    drawPart(context, state, part);
+    backend.setViewport(width, height, 0, slice * height);
+    backend.uniform1f(state.uniforms.layerOffset, slice * height);
+    backend.uniform1f(state.uniforms.entryPass, 0);
+    backend.setRenderState({ blendEquation: 'add', colorMask: [true, false, false, false] });
+    drawPart(backend, state, part);
+    backend.uniform1f(state.uniforms.entryPass, 1);
+    backend.setRenderState({ blendEquation: 'min', colorMask: [false, true, false, false] });
+    drawPart(backend, state, part);
   });
-  context.colorMask(true, true, true, true);
-  context.frontFace(context.CCW);
-  context.blendEquation(context.FUNC_ADD);
-  if (!blendWasOn) context.disable(context.BLEND);
-  context.bindVertexArray(null);
-  context.bindFramebuffer(context.FRAMEBUFFER, frame.outputFramebuffer ?? null);
-  context.viewport(0, 0, width, height);
+  backend.setFrontFaceClockwise(false);
+  backend.setRenderState({ colorMask: [true, true, true, true], blendEquation: 'add', blend: blendWasOn });
+  backend.bindVertexArray(null);
+  backend.bindFramebuffer(frame.outputFramebuffer ?? null);
+  backend.setViewport(width, height);
   return state.target.texture;
 }
 
 function disposeMeshVolumePass(renderer, state) {
   if (state.disposed) return;
   state.disposed = true;
-  const context = renderer.context;
-  releaseTarget(renderer, state);
-  state.geometries.forEach(gpu => releaseGeometry(context, gpu));
+  const backend = backendFor(renderer);
+  releaseTarget(renderer, backend, state);
+  state.geometries.forEach(gpu => releaseGeometry(backend, gpu));
   state.geometries.clear();
-  context.deleteProgram(state.program);
+  backend.deleteProgram(state.program);
   if (renderer.meshVolumePass === state) renderer.meshVolumePass = null;
 }

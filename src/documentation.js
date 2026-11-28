@@ -5,6 +5,7 @@ import guide from '../docs/guide.md?raw';
 import { highlightCode } from './code-highlight.js';
 import { createLiveExample } from './docs-live.js';
 import { createApiReference } from './docs-api.js';
+import { createBuiltinAddonsBrowser } from './docs-addons.js';
 import { topicAliases, topicSlug, guideTopics, orderTopics } from './documentation-topics.js';
 import { figureMatch } from './documentation-figure.js';
 import { parseDocumentationHash } from './documentation-hash.js';
@@ -128,8 +129,8 @@ async function copyText(button, text, code) {
   }, 2000);
 }
 
-const languages = { js: 'javascript', javascript: 'javascript', html: 'xml', xml: 'xml', sh: 'bash', bash: 'bash' };
-const languageLabels = { javascript: 'JavaScript', xml: 'HTML', bash: 'Shell' };
+const languages = { js: 'javascript', javascript: 'javascript', json: 'json', html: 'xml', xml: 'xml', sh: 'bash', bash: 'bash' };
+const languageLabels = { javascript: 'JavaScript', json: 'JSON', xml: 'HTML', bash: 'Shell' };
 
 function fenceInfo(block) {
   const [language = '', ...flags] = block.match(/^```([^\n]*)/)[1].trim().split(/\s+/);
@@ -248,6 +249,8 @@ function renderFence(block, section) {
     section.append(cardList(info));
   } else if (info.language === 'api') {
     section.append(createApiReference());
+  } else if (info.language === 'addons') {
+    section.append(createBuiltinAddonsBrowser());
   } else if (info.language === 'check') {
     section.append(webglCheck());
   } else {

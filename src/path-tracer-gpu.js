@@ -1,6 +1,6 @@
 import { resolveLightSelection } from './path-tracer-light-tree.js';
 import { buildFragmentSource, VERTEX_SOURCE } from './path-tracer-gpu-shader.js';
-import { gpuTriangleCapacity, packAtlas, packEnvironment, packLightTree, packLights, packMaterials, packNodes, packSubsurface, packTriangles, packVertexAlpha, sceneUsesSubsurface } from './path-tracer-gpu-pack.js';
+import { gpuTriangleCapacity, packAtlas, packAttenuation, packEnvironment, packLightTree, packLights, packMaterials, packNodes, packSubsurface, packTriangles, packVertexAlpha, sceneUsesAttenuation, sceneUsesSubsurface } from './path-tracer-gpu-pack.js';
 import { packInstancedScene } from './path-tracer-gpu-instance-pack.js';
 import { cameraBackgroundWords, isInstancedScene, MAX_GPU_TRACE_TRIANGLES, MAX_TRACE_TRIANGLES, sunDiscScaleOf, uniqueTriangleCount } from './path-tracer-scene.js';
 
@@ -120,6 +120,7 @@ export function uploadScene(gl, program, scene, options = {}) {
   const vertexAlpha = instanced ? null : packVertexAlpha(scene);
   if (vertexAlpha) floatTables.push(['uVertexAlpha', vertexAlpha]);
   if (sceneUsesSubsurface(scene.materials)) floatTables.push(['uSubsurface', packSubsurface(scene.materials)]);
+  if (sceneUsesAttenuation(scene.materials)) floatTables.push(['uAttenuation', packAttenuation(scene.materials)]);
   if (options.lightSelection === 'tree') floatTables.push(['uLightTree', packLightTree(scene.lights)]);
   let unit = 0;
   const bind = (name) => gl.uniform1i(gl.getUniformLocation(program, name), unit++);
@@ -260,9 +261,9 @@ export function gpuKernelCompileCount() {
   return kernelCompileCount;
 }
 
-/** The kernel options a scene decides: instanced copies, and COLOR_0 vertex alpha tables (a flattened scene only). */
+/** The kernel options a scene decides: instanced copies, COLOR_0 vertex alpha tables (a flattened scene only), and Beer-Lambert absorption. */
 export function kernelSceneFlags(scene) {
-  return { instanced: isInstancedScene(scene), vertexAlpha: Boolean(scene.vertexAlpha) };
+  return { instanced: isInstancedScene(scene), vertexAlpha: Boolean(scene.vertexAlpha), hasAttenuation: sceneUsesAttenuation(scene.materials) };
 }
 
 /** The kernel for a scene, compiled once per variant: a scene with a subsurface part gets the random walk, any other scene the plain kernel. */
@@ -274,10 +275,11 @@ export function getKernel(hasSubsurface, texelBake = false, options = {}) {
   const radianceCache = options.radianceCache === true;
   const instanced = options.instanced === true;
   const vertexAlpha = options.vertexAlpha === true;
-  const key = `${hasSubsurface}:${texelBake}:${blueNoise}:${lightImportance}:${radianceCache}:${lightTree}${instanced ? ':instanced' : ''}${vertexAlpha ? ':vertex-alpha' : ''}`;
+  const hasAttenuation = options.hasAttenuation === true;
+  const key = `${hasSubsurface}:${texelBake}:${blueNoise}:${lightImportance}:${radianceCache}:${lightTree}${instanced ? ':instanced' : ''}${vertexAlpha ? ':vertex-alpha' : ''}${hasAttenuation ? ':attenuation' : ''}`;
   if (!programs.has(key)) {
     const started = performance.now();
-    const program = createProgram(gl, { hasSubsurface, texelBake, blueNoise, lightImportance, radianceCache, lightTree, instanced, vertexAlpha });
+    const program = createProgram(gl, { hasSubsurface, texelBake, blueNoise, lightImportance, radianceCache, lightTree, instanced, vertexAlpha, hasAttenuation });
     gl.getProgramParameter(program, gl.LINK_STATUS);
     programs.set(key, { program, compileSeconds: (performance.now() - started) / 1000 });
     if (!texelBake) kernelCompileCount++;

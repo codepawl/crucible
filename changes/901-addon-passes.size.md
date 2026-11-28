@@ -1,0 +1,26 @@
+- entry:core: porting `mesh-blend.js`, `mesh-volume-pass.js`, `user-pass.js` (with `user-pass-inputs.js`) and `gaussian-splats.js` onto `WebGL2GlazeBackend` (#901) adds 1,293 bytes gzip of shared vertex-array, data-texture, framebuffer-capture, render-state, draw and multisample-attachment methods on the backend class so a future backend can replace them; `entry:core` remains well under the +2 KB slice limit
+- entry:core+lazy: same shared backend methods on `WebGL2GlazeBackend` (+1,294 bytes gzip)
+- entry:ground-bounce: transitively imports `glaze-backend.js` via `environment.js`, carrying the new `WebGL2GlazeBackend` methods (+1,297 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:floor-sky-visibility: transitively imports `glaze-backend.js` via `ground-bounce.js` -> `environment.js`, carrying the new `WebGL2GlazeBackend` methods (+1,323 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:hdri: transitively imports `glaze-backend.js` via `environment.js`, carrying the new `WebGL2GlazeBackend` methods (+1,287 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:camera-effects: already imports `glaze-backend.js` and now carries the new `WebGL2GlazeBackend` methods (+1,315 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:water-reflection: transitively imports `glaze-backend.js` via `environment.js`, carrying the new `WebGL2GlazeBackend` methods (+1,285 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:render-passes: already imports `glaze-backend.js` and now carries the new `WebGL2GlazeBackend` methods (+1,314 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:user-pass: already imports `glaze-backend.js` via `post-mask.js` and now carries the new `WebGL2GlazeBackend` methods (+881 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:mesh-blend: `mesh-blend.js` now imports `backendFor` from `glaze-backend.js`, pulling `WebGL2GlazeBackend` and `gl-program.js` into the standalone bundle (+4,511 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- entry:reversed-depth: already imports `glaze-backend.js` and now carries the new `WebGL2GlazeBackend` methods (+1,308 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:splat-shader: already imports `glaze-backend.js` via `splat-renderer.js` and now carries the new `WebGL2GlazeBackend` methods (+1,289 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:fog-shader: imports `mesh-volume-pass.js`, which now pulls `glaze-backend.js` / `WebGL2GlazeBackend` into the standalone bundle (+4,286 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- entry:fog-shader+lazy: transitively imports `glaze-backend.js` and now carries the new `WebGL2GlazeBackend` methods (+966 bytes gzip standalone)
+- entry:cascaded-shadows: already imports `glaze-backend.js` and now carries the new `WebGL2GlazeBackend` methods (+1,302 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- entry:gaussian-splats: `gaussian-splats.js` now imports `backendFor` from `glaze-backend.js`, pulling `WebGL2GlazeBackend` into the standalone bundle (+4,449 bytes gzip; shared when loaded with `CrucibleRenderer`)
+- entry:reflection-probes: transitively imports `glaze-backend.js` via `environment.js`, carrying the new `WebGL2GlazeBackend` methods (+1,292 bytes gzip standalone; shared when loaded with `CrucibleRenderer`)
+- scene:lit-box: carries the new `WebGL2GlazeBackend` methods (+1,332 bytes gzip) for the #901 part 4 backend boundary slice while remaining 49 KB under three.js
+- scene:lit-box+lazy: same shared `WebGL2GlazeBackend` methods (+1,336 bytes gzip)
+- scene:gltf-box: carries the new `WebGL2GlazeBackend` methods (+1,340 bytes gzip) for the #901 part 4 backend boundary slice
+- scene:gltf-box+lazy: same shared `WebGL2GlazeBackend` methods (+1,341 bytes gzip)
+- scene:agent-scene: carries the new `WebGL2GlazeBackend` methods (+1,295 bytes gzip) for the #901 part 4 backend boundary slice
+- scene:agent-scene+lazy: same shared `WebGL2GlazeBackend` methods (+718 bytes gzip)
+- goal:lit-box: carries the #901 part 4 `WebGL2GlazeBackend` methods for `mesh-blend.js`, `mesh-volume-pass.js`, `user-pass.js` and `gaussian-splats.js` (+1,332 bytes gzip, same slice allowance as PR #3619)
+- goal:gltf-box: carries the #901 part 4 `WebGL2GlazeBackend` methods for `mesh-blend.js`, `mesh-volume-pass.js`, `user-pass.js` and `gaussian-splats.js` (+1,340 bytes gzip, same slice allowance as PR #3619)
+- goal:agent-scene: carries the #901 part 4 `WebGL2GlazeBackend` methods for `mesh-blend.js`, `mesh-volume-pass.js`, `user-pass.js` and `gaussian-splats.js` (+1,295 bytes gzip, same slice allowance as PR #3619)

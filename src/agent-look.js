@@ -314,6 +314,15 @@ function volumeFogFrom(input = {}) {
 /** The fields a physical sky fills from its sun and haze that a recipe may still set itself: its own value wins over the sky's. */
 export const SKY_OVERRIDABLE_FIELDS = Object.freeze(['keyColor', 'fogColor', 'fogDensity']);
 
+function derivedSkyHorizonFog(skyTop, skyBottom) {
+  // Matches skyFragment's horizon blend at ray direction y = 0, raised to linear HDR radiance.
+  const heightWeight = Math.pow(0.12, 0.6);
+  return skyBottom.map((channel, index) => {
+    const encoded = Math.max(0, channel + (skyTop[index] - channel) * heightWeight);
+    return Math.min(1, Math.pow(encoded, 2.2));
+  });
+}
+
 function environmentFrom(input = {}) {
   knownKeys(input, ENVIRONMENT_FIELDS, 'environment');
   const world = fallback(input.world, false);
@@ -330,6 +339,11 @@ function environmentFrom(input = {}) {
       withFieldPrefix(`environment.${field}[${index}]`, () => normalizeLight(light)));
   const environmentNumber = (field, defaultValue, minimum = 0, maximum = 100) =>
     numberInRange(fallback(input[field], defaultValue), minimum, maximum, `environment.${field}`);
+  const skyTop = vectorInRange(fallback(input.skyTop, defaults.skyTop), 0, 1, 'environment.skyTop');
+  const skyBottom = vectorInRange(fallback(input.skyBottom, defaults.skyBottom), 0, 1, 'environment.skyBottom');
+  const defaultFogColor = input.fogColor === undefined && input.sky === undefined && (input.skyBottom !== undefined || input.skyTop !== undefined)
+    ? derivedSkyHorizonFog(skyTop, skyBottom)
+    : [0.35, 0.43, 0.43];
   const environment = {
     world,
     setup,
@@ -342,9 +356,9 @@ function environmentFrom(input = {}) {
     ambientIntensity: environmentNumber('ambientIntensity', defaults.ambientIntensity),
     daylight: environmentNumber('daylight', 1),
     pointLights: mapLights('pointLights', MAX_POINT_LIGHTS, pointLightFrom),
-    skyTop: vectorInRange(fallback(input.skyTop, defaults.skyTop), 0, 1, 'environment.skyTop'),
-    skyBottom: vectorInRange(fallback(input.skyBottom, defaults.skyBottom), 0, 1, 'environment.skyBottom'),
-    fogColor: vectorInRange(fallback(input.fogColor, [0.35, 0.43, 0.43]), 0, 1, 'environment.fogColor'),
+    skyTop,
+    skyBottom,
+    fogColor: vectorInRange(fallback(input.fogColor, defaultFogColor), 0, 1, 'environment.fogColor'),
     fogDensity: input.fogDensity === undefined || input.fogDensity === null ? null : numberInRange(input.fogDensity, 0, 10, 'environment.fogDensity'),
     volumeFog: volumeFogFrom(input.volumeFog),
   };

@@ -1,0 +1,1 @@
+- Beer-Lambert absorption (`attenuationColor`, `attenuationDistance`) now tints glass and deep water in the WebGL2 (`gpu`) and WebGPU (`webgpu`) path tracers (#2230)

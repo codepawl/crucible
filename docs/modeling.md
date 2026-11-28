@@ -163,7 +163,7 @@ Three wide cumulus over a sea, each with a flat base and three levels of lobes, 
 
 ![Three cumulus towers over the sea](https://crucible.codepawl.com/recipes/cumulus-towers.webp)
 
-The scene needs a lowered ambient light (`ambientIntensity` 0.3) so the shaded side keeps the dark tone instead of the sky's blue, and a sun in front of the camera so the lit tones face it.
+The scene needs a lowered ambient light (`ambientIntensity` 0.3) so the shaded side keeps the dark tone instead of the sky's blue, a side sun (`sunRotation` 92, `sunElevation` 19) so the silver lining reads on the sun-facing edge, and a low camera below the cloud bases (`eye` at `y = 5` under bases at `y = 10`) so the lifted underside shows.
 
 For a sky with many clouds, keep `resolution` at 48 or lower and repeat a few cloud shapes with a node's `instances` (see [agent-scene.md](agent-scene.md)) instead of building one mesh per cloud. Triangles grow with the square of `resolution`.
 
