@@ -128,7 +128,6 @@ jobs:
           path: |
             coverage/shard-${{ matrix.shard }}.info
             coverage/timings-${{ matrix.shard }}.json
-          retention-days: 1
           if-no-files-found: error
           retention-days: 1
 
@@ -171,7 +170,6 @@ jobs:
         with:
           name: lcov
           path: coverage/lcov.info
-          retention-days: 7
           retention-days: 3
 
   package:
