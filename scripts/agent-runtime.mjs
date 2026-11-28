@@ -58,6 +58,7 @@ import { RENDER_ESTIMATE_NOTE, addKernelCompile, estimateRenderJob, historyWithJ
 import { objectIdMetrics } from './agent-object-id-metrics.mjs';
 import { renderIconsInPage } from './agent-icon-page.mjs';
 import { ICON_CAPABILITIES } from '../src/icon-sheet.js';
+import { assessMcpSetupHealth } from '../src/mcp-setup-health.js';
 import { renderJobMattes, requireMatteTargets } from './job-mattes.mjs';
 import { encodeRenderOutput, encodeMultilayerExr } from './render-output-encoders.mjs';
 import { createFrameEncoder } from './frame-encoder.mjs';
@@ -237,6 +238,23 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
   // Set by submitJob for the one job that may run; runJob takes it. Kept in the job folder, the history never leaves the machine.
   let estimateForNextJob;
   let gpuTracerWarm = false;
+  let softwareWebGlFallback = false;
+  function recordRendererGraphics(graphics) {
+    if (backend === 'gpu' && typeof graphics === 'string' && /swiftshader|llvmpipe|software/i.test(graphics)) {
+      softwareWebGlFallback = true;
+    }
+  }
+  function buildSetupHealth() {
+    return assessMcpSetupHealth({
+      backend,
+      memory,
+      totalMemoryBytes,
+      assetsConfigured: Boolean(assetRoot),
+      jobsConfigured: Boolean(jobRoot),
+      packsConfigured: Boolean(packsRoot),
+      softwareWebGl: softwareWebGlFallback,
+    });
+  }
   async function readRenderHistory() {
     try {
       return parseHistory(await readFile(join(jobRoot, RENDER_HISTORY_FILE), 'utf8'));
@@ -1236,6 +1254,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         metrics.renderSeconds += drawSeconds;
         metrics.captureSeconds += roundTripSeconds - drawSeconds;
         if (backend === 'cpu' && !/swiftshader/i.test(rendered.graphics)) throw new Error('CPU job did not select SwiftShader.');
+        recordRendererGraphics(rendered.graphics);
         metrics.graphics = rendered.graphics;
         metrics.width = width;
         metrics.height = height;
@@ -1406,6 +1425,9 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
   }
 
   return Object.freeze({
+    setupHealth() {
+      return buildSetupHealth();
+    },
     async capabilities() {
       const deviceTiers = async () => {
         nativeTracerLocator ??= createNativeTracerLocator();
@@ -1444,6 +1466,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
           ...(await jobRecords()) },
         export: GLB_EXPORT_NOTES,
         addons: addonCapabilities({ addons: addonSet.addons.filter(addon => !refusedAddons.some(refused => refused.name === addon.name)), skipped: addonSet.skipped, registered: registeredByAddon, refused: refusedAddons }),
+        setupHealth: buildSetupHealth(),
         unsupported: ['remote asset providers', 'arbitrary code execution', 'imported morph track authoring'],
       };
     },
@@ -1588,6 +1611,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
         result.metadata.requestedWidth = width;
         result.metadata.requestedHeight = height;
         result.metadata.backend = backend;
+        recordRendererGraphics(result.metadata.graphics);
         const capped = stepWidth !== width || stepHeight !== height;
         result.metadata.size = { requested: { width, height }, returned: { width: stepWidth, height: stepHeight }, capped, maximumBytes: MAXIMUM_IMAGE_BYTES };
         if (capped) {
@@ -1780,6 +1804,7 @@ export function createAgentRuntime({ kernelWorkers = true, backend = 'gpu', brow
               const rendered = await reviewEvaluate('reviewShot', { sessionId: privateSessionId, shot: settings.shots[index], index,
                 width: settings.width, height: settings.height, columns: settings.columns, labels: settings.labels });
               if (backend === 'cpu' && !/swiftshader/i.test(rendered.graphics)) throw new Error('CPU review did not select SwiftShader.');
+              recordRendererGraphics(rendered.graphics);
               peakNodeBytes = Math.max(peakNodeBytes, process.memoryUsage().rss);
               peakBrowserHeap = Math.max(peakBrowserHeap, await sampleBrowserHeap(session, memoryGuardLimits(memory).browserHeapBytes));
               const sample = { nodeBytes: peakNodeBytes, browserHeapBytes: peakBrowserHeap, nativeAllowanceBytes: nativeMemoryAllowance.bytes, memoryMiB: memory };
