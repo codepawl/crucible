@@ -162,6 +162,15 @@ test('a frame that spent seconds compiling says so apart from the trace time', a
   assert.equal(compiled.report.gpuTraceSeconds, 0.017);
   assert.match(compiled.report.kernelCompileNote, /spent 7\.0 s compiling the kernel variant/);
   assert.match(compiled.report.kernelCompileNote, /Later frames of this job reuse it/);
+  assert.equal('pipelineCache' in compiled.report, false);
+
+  const coldCompiled = await traceFrameNative({ ...frame, tracer: tracerWithCompile({ compileSeconds: 7.04, tracedSeconds: 0.017, pipelineCache: 'cold' }) });
+  assert.equal(coldCompiled.report.pipelineCache, 'cold');
+  assert.match(coldCompiled.report.kernelCompileNote, /on-disk pipeline cache/);
+
+  const warm = await traceFrameNative({ ...frame, tracer: tracerWithCompile({ compileSeconds: 0.04, tracedSeconds: 0.017, pipelineCache: 'warm' }) });
+  assert.equal(warm.report.pipelineCache, 'warm');
+  assert.equal(warm.report.kernelCompileNote, undefined);
 });
 
 test('a frame whose kernel was held or compiled quickly carries no compile note, and an older Cook adds no trace field', async () => {

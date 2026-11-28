@@ -141,15 +141,29 @@ export const NOTEWORTHY_COMPILE_SECONDS = 1;
 export function addKernelCompile(total, frameReport) {
   const seconds = frameReport?.compileSeconds;
   if (!(seconds > 0)) return total;
-  return { seconds: (total?.seconds ?? 0) + seconds, frames: (total?.frames ?? 0) + 1 };
+  const nextCache = total?.pipelineCache === 'cold'
+    ? 'cold'
+    : frameReport.pipelineCache ?? total?.pipelineCache;
+  return {
+    seconds: (total?.seconds ?? 0) + seconds,
+    frames: (total?.frames ?? 0) + 1,
+    ...(nextCache ? { pipelineCache: nextCache } : {}),
+  };
 }
 
 function kernelCompileFrom(metrics) {
   const compile = metrics.kernelCompile;
   if (!(compile?.seconds >= NOTEWORTHY_COMPILE_SECONDS)) return undefined;
   const seconds = round(compile.seconds, 1);
-  const note = `First render of this scene variant: ${seconds.toFixed(1)} s of the job compiled kernels, which is not trace time and is counted in secondsRatio. A later job of the same variant in this server reuses them.`;
-  return { seconds, frames: compile.frames, note };
+  const note = compile.pipelineCache === 'cold'
+    ? `First render of this scene variant: ${seconds.toFixed(1)} s of the job compiled kernels, which is not trace time and is counted in secondsRatio. Later runs reuse them from Cook's on-disk pipeline cache.`
+    : `First render of this scene variant: ${seconds.toFixed(1)} s of the job compiled kernels, which is not trace time and is counted in secondsRatio. A later job of the same variant in this server reuses them.`;
+  return {
+    seconds,
+    frames: compile.frames,
+    ...(compile.pipelineCache ? { pipelineCache: compile.pipelineCache } : {}),
+    note,
+  };
 }
 
 function pathTracerFrameSeconds({ size, settings, backend }) {

@@ -272,16 +272,18 @@ test('estimateRenderJob reports outputMiB and outputByteBudgetProblem catches ov
 });
 
 test('a film whose first frame compiled kernels says so after its last frame, apart from trace time (#1949)', () => {
-  const frames = [{ compileSeconds: 7.04 }, { compileSeconds: 0 }, {}, { compileSeconds: 0.002 }];
+  const frames = [{ compileSeconds: 7.04, pipelineCache: 'cold' }, { compileSeconds: 0 }, {}, { compileSeconds: 0.002, pipelineCache: 'warm' }];
   const kernelCompile = frames.reduce(addKernelCompile, undefined);
   assert.equal(kernelCompile.frames, 2);
+  assert.equal(kernelCompile.pipelineCache, 'cold');
   const settings = settingsFor({ renderer: { type: 'pathTracer', backend: 'native', samples: 16 } });
   const metrics = { elapsedSeconds: 9, pathTracer: frames.at(-1), kernelCompile };
   const estimate = { modelSeconds: 2, modelPeakMemoryMiB: 200, seconds: 2, peakMemoryMiB: 200, basis: 'scene size' };
   const report = renderReport({ estimate, settings, metrics });
   assert.equal(report.kernelCompile.seconds, 7);
+  assert.equal(report.kernelCompile.pipelineCache, 'cold');
   assert.match(report.kernelCompile.note, /^First render of this scene variant: 7\.0 s of the job compiled kernels/);
-  assert.match(report.kernelCompile.note, /counted in secondsRatio/);
+  assert.match(report.kernelCompile.note, /on-disk pipeline cache/);
   const concise = conciseJobResult({ jobId: 'x', sourceRevision: 1, artifacts: [], metrics: { report } });
   assert.equal(concise.metrics.report.kernelCompile, report.kernelCompile.note);
   // The estimate history learns the render without the one-time compile.
