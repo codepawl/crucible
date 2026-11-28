@@ -1,0 +1,1 @@
+- Extracted the shared WebGPU adapter and device module (`src/webgpu-device.js`) from the WebGPU path tracer so Glaze and Cook can share one GPU device (#901)
