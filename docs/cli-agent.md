@@ -58,3 +58,7 @@ npx crucible agent "Add warm rim lighting" --scene mug.json --out mug-lit.json
 The CLI spawns `crucible-mcp` over stdio with the core scene authoring tools.
 After each mutating tool succeeds, the CLI exports the recipe and writes it atomically to `--out`.
 Your scene file stays valid JSON even if a later turn fails or hits `--max-turns`.
+
+## Setup diagnostics (`crucible doctor`)
+
+Run `npx crucible doctor` to audit Node.js, browser availability, MCP client configs, `--assets` / `--jobs` directories, `--memory`, optional packages, and Crucible skills, or `npx crucible doctor --fix` to create missing directories and repair MCP configs safely with a `.bak` backup (see [mcp.md](mcp.md)).
