@@ -5,11 +5,11 @@ import { mat4, mat3 } from 'gl-matrix';
 import { BLEND_FACTORS } from './blend-output.js';
 import { packNormalsWithTangents, validateGeometryTangents } from './tangent-encoding.js';
 import { SPLAT_UNITS, requireSplatSupport, layerTextureSupport, LIGHT_SHADING_FEATURE, WETNESS_FEATURE, HEIGHT_MAP_FEATURE, DETAIL_NORMAL_FEATURE, FRAGMENT_SHADOW_POSITION_FEATURE, FADING_SHADOWS_FEATURE, VERTEX_OPACITY_FEATURE, SHADING_MODES, LIGHT_SHADING_MAXIMUM_SAMPLES, createVertexShader, TANGENT_FEATURE, vertexShader, liquidFragmentSource, createFragmentShader, liquidPassDrawer, createDepthFragmentShader, benchmarkVertexShader, benchmarkFragmentShader, viewTransformShader, createDepthVertexShader } from './shaders.js';
-import { createGlazeBackend } from './glaze-backend.js';
+import { asGlazeBackend, backendFor, createGlazeBackend, isGlazeBackend } from './glaze-backend.js';
 import { postFragment, createPostFragment, GRID_MOTION_STEP, GRID_DETAIL_STEP, NOISE_OCTAVES_STEP, localVolumeKindSteps, POST_STEPS, POST_STEPS_WITH_OPTIONAL_CODE, skyFragment } from './post.js';
 let bloomPyramidPromise = null;
 const loadBloomPyramid = () => (bloomPyramidPromise ??= import('./bloom-pyramid.js'));
-import { fullscreenVertex, compileProgram, ProgramNotReady, isLinkComplete, setPreparing, releaseStartedPrograms } from './gl-program.js';
+import { fullscreenVertex, ProgramNotReady } from './gl-program.js';
 import { ambientOcclusionFragment } from './ambient-occlusion.js';
 import { planRenderSize, estimateTextureBytes, estimateFrameBytes, memoryBudgetError, automaticBudgetCeilingMiB } from './budget.js';
 import { applyProjection } from './camera.js';
@@ -122,14 +122,13 @@ export function additiveBatchesBehindShells(renderer, additiveBatches, shells) {
 
 /** The liquid and foam pass may have switched program, texture unit 0 and the viewport; blend and add draws restore them. */
 function bindAlphaPassState(renderer) {
-  const context = renderer.context;
-  context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
-  context.viewport(0, 0, renderer.canvas.width, renderer.canvas.height);
-  context.enable(context.DEPTH_TEST);
-  context.useProgram(renderer.program);
-  context.activeTexture(context.TEXTURE0);
-  context.bindTexture(context.TEXTURE_2D, renderer.shadowTexture);
-  context.uniform1i(renderer.uniforms.shadowMap, 0);
+  const backend = backendFor(renderer);
+  backend.bindFramebuffer(renderer.multisampleFramebuffer);
+  backend.setViewport(renderer.canvas.width, renderer.canvas.height);
+  backend.setRenderState({ depthTest: true });
+  backend.useProgram(renderer.program);
+  backend.bindTextureUnit(0, renderer.shadowTexture);
+  backend.uniform1i(renderer.uniforms.shadowMap, 0);
 }
 
 /** Draws one group of blended batches in back to front order, interleaving instances only when the group has several batches. */
@@ -163,12 +162,11 @@ function drawBlendedGroup(renderer, group, order) {
 
 /** Draws `count` instances of a blended batch from the sorted copy in translucentOrder, starting at instance `start` of that copy. */
 function drawBlendedRun(renderer, batch, start, count) {
-  const context = renderer.context;
+  const backend = backendFor(renderer);
   const whole = batch.instanceCount;
   // A lone instance is already what its buffer holds.
   if (whole > 1) {
-    context.bindBuffer(context.ARRAY_BUFFER, batch.instanceBuffer);
-    context.bufferSubData(context.ARRAY_BUFFER, 0, renderer.translucentOrder.gathered, start * INSTANCE_STRIDE, count * INSTANCE_STRIDE);
+    backend.updateBuffer(batch.instanceBuffer, renderer.translucentOrder.gathered, start * INSTANCE_STRIDE, count * INSTANCE_STRIDE);
   }
   batch.instanceCount = count;
   try {
@@ -179,12 +177,11 @@ function drawBlendedRun(renderer, batch, start, count) {
 }
 
 function restoreInstanceOrder(renderer, sortable) {
-  const context = renderer.context;
+  const backend = backendFor(renderer);
   const stride = INSTANCE_STRIDE;
   for (const batch of sortable) {
     if (batch.instanceCount < 2) continue;
-    context.bindBuffer(context.ARRAY_BUFFER, batch.instanceBuffer);
-    context.bufferSubData(context.ARRAY_BUFFER, 0, batch.instanceData, 0, batch.instanceCount * stride);
+    backend.updateBuffer(batch.instanceBuffer, batch.instanceData, 0, batch.instanceCount * stride);
   }
 }
 
@@ -295,12 +292,12 @@ const POST_UNIFORMS = [
   'autoExposureScale',
 ];
 
-function uniformLocations(context, program, names) {
-  return Object.fromEntries(names.map(name => [name, context.getUniformLocation(program, name)]));
+function uniformLocations(backend, program, names) {
+  return Object.fromEntries(names.map(name => [name, backend.uniformLocation(program, name)]));
 }
 
-function postUniformLocations(context, program) {
-  return uniformLocations(context, program, POST_UNIFORMS);
+function postUniformLocations(backend, program) {
+  return uniformLocations(backend, program, POST_UNIFORMS);
 }
 
 const LOCAL_LIGHT_BLOCK_FIELDS = [
@@ -324,10 +321,6 @@ function validateGeometryForMaterial(geometry, material, checkFiniteUvs = false)
 
 function batchAlphaState(batch) {
   return [batch.alphaMode, batch.alphaCutoff, batch.opacity, batch.doubleSided, batch.retro, batch.waterGlint, batch.depthTest !== false, batch.throughGlass === true];
-}
-
-function assertShadowFramebufferComplete(context, label) {
-  if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error(`${label} framebuffer is incomplete.`);
 }
 
 function requireNewRenderer(reason, part) {
@@ -914,9 +907,19 @@ export function groupWorld(previous, parts, groundPart, batching, retainedUnchan
   return { batches, state: grouped.state };
 }
 
-// Sampler state and mipmaps of the texture bound to TEXTURE_2D, once its level 0 is uploaded. Needs only the renderer's context and applyAnisotropy.
+// Sampler state and mipmaps of the texture bound to TEXTURE_2D, once its level 0 is uploaded. Needs only the renderer's backend/context and applyAnisotropy.
 // `bakesNormalVariance` marks a normal map: its mip chain is built from the texels with the spread of each level in alpha (src/normal-map-variance.js).
 export function configureTexture(renderer, info, { bakesNormalVariance = false } = {}) {
+  if (isGlazeBackend(renderer.backend)) {
+    const backend = renderer.backend;
+    backend.setTexture2DParameters(info);
+    if (info.mipmaps) {
+      if (info.mipLevels) backend.uploadTexture2DMipLevels(info.mipLevels, info.linear);
+      else if (!bakesNormalVariance || !bakeNormalMapVariance(backend.context, backend.boundTexture2D(), info.width, info.height)) backend.generateMipmap(false);
+      if (filtersSmoothly(info)) renderer.applyAnisotropy(backend.context.TEXTURE_2D);
+    }
+    return;
+  }
   const context = renderer.context;
   context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, info.wrapS);
   context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, info.wrapT);
@@ -924,20 +927,14 @@ export function configureTexture(renderer, info, { bakesNormalVariance = false }
   context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, info.magFilter);
   if (info.mipmaps) {
     if (info.mipLevels) {
-      uploadProvidedMipLevels(context, info);
-    } else {
-      const baked = bakesNormalVariance && bakeNormalMapVariance(context, context.getParameter(context.TEXTURE_BINDING_2D), info.width, info.height);
-      if (!baked) context.generateMipmap(context.TEXTURE_2D);
+      info.mipLevels.forEach((level, index) => {
+        context.texImage2D(context.TEXTURE_2D, index + 1, info.linear ? context.RGBA8 : context.SRGB8_ALPHA8, level.width, level.height, 0, context.RGBA, context.UNSIGNED_BYTE, level.data);
+      });
+    } else if (!bakesNormalVariance || !bakeNormalMapVariance(context, context.getParameter(context.TEXTURE_BINDING_2D), info.width, info.height)) {
+      context.generateMipmap(context.TEXTURE_2D);
     }
     if (filtersSmoothly(info)) renderer.applyAnisotropy(context.TEXTURE_2D);
   }
-}
-
-// A descriptor with its own mip chain (alpha-tested leaf cards, whose coverage a box filter loses) uploads levels 1 and down as given.
-function uploadProvidedMipLevels(context, { mipLevels, linear }) {
-  mipLevels.forEach((level, index) => {
-    context.texImage2D(context.TEXTURE_2D, index + 1, linear ? context.RGBA8 : context.SRGB8_ALPHA8, level.width, level.height, 0, context.RGBA, context.UNSIGNED_BYTE, level.data);
-  });
 }
 
 function validateMipLevels(mipLevels, width, height) {
@@ -1087,11 +1084,6 @@ export function samplesForDensity(parts, canvas, pixelRatio, samples, denseSampl
   return triangles / pixels > DENSE_TRIANGLES_PER_PIXEL ? Math.min(samples, denseSamples) : samples;
 }
 
-function bindTextureUnit(context, unit, texture) {
-  context.activeTexture(context.TEXTURE0 + unit);
-  context.bindTexture(context.TEXTURE_2D, texture);
-}
-
 function sameVector3(first, second) {
   return Boolean(first && second) && first[0] === second[0] && first[1] === second[1] && first[2] === second[2];
 }
@@ -1149,7 +1141,7 @@ export class CrucibleRenderer {
     this.reversedDepthMode = reversedDepth;
     // A frame that must match every later draw of it (a render job, a still) waits for a post program the driver is still building instead of drawing with the all-steps fallback, whose maths differs by a half-float step (#1767).
     this.exactFrames = exactFrames;
-    const reversedDepthWanted = reversedDepth !== false && !benchmark && Boolean(this.context.getExtension?.('EXT_clip_control'));
+    const reversedDepthWanted = reversedDepth !== false && !benchmark && Boolean(this.backend.extension('EXT_clip_control'));
     this.diagnosticsCache = [];
     this.diagnosticsPending = false;
     this.diagnosticsState = [null, null, null];
@@ -1165,7 +1157,7 @@ export class CrucibleRenderer {
     this.look = null;
     this.lookSource = null;
     this.selectViewTransform(viewTransform, look);
-    this.hdr = Boolean(hdr && !benchmark && this.context.getExtension('EXT_color_buffer_float'));
+    this.hdr = Boolean(hdr && !benchmark && this.backend.extension('EXT_color_buffer_float'));
     this.compactColor = compactColor !== false;
     if (volume.density > 0 && !this.hdr) throw new Error('Volume fog requires EXT_color_buffer_float for HDR rendering');
     this.baseSamples = requestedSamples;
@@ -1203,11 +1195,14 @@ export class CrucibleRenderer {
     if (resolveCoplanar && !benchmark) resolveCoplanar(parts);
     this.fitParts = this.groundPart ? [...parts, this.groundPart] : parts;
     const groups = groupParts(this.fitParts, batching);
-    const textureLimit = this.context.getParameter(this.context.MAX_TEXTURE_SIZE);
+    const textureLimit = this.backend.maxTextureSize();
     this.hasSkins = groups.some(group => group[0].skin || group[0].crowd);
     this.hasMorphs = groups.some(group => group[0].morph);
-    if (this.hasSkins && (this.context.getParameter(this.context.MAX_VERTEX_TEXTURE_IMAGE_UNITS) < 2 || this.context.getParameter(this.context.MAX_COMBINED_TEXTURE_IMAGE_UNITS) < 8)) throw new Error('GPU skinning requires two vertex texture units and eight combined texture units.');
-    if (this.hasMorphs && (this.context.getParameter(this.context.MAX_VERTEX_TEXTURE_IMAGE_UNITS) < (this.hasSkins ? 3 : 1) || this.context.getParameter(this.context.MAX_COMBINED_TEXTURE_IMAGE_UNITS) < 9)) throw new Error('GPU morphing requires one additional vertex texture unit and nine combined texture units.');
+    if (this.hasSkins || this.hasMorphs) {
+      const units = this.backend.textureUnitLimits();
+      if (this.hasSkins && (units.vertex < 2 || units.combined < 8)) throw new Error('GPU skinning requires two vertex texture units and eight combined texture units.');
+      if (this.hasMorphs && (units.vertex < (this.hasSkins ? 3 : 1) || units.combined < 9)) throw new Error('GPU morphing requires one additional vertex texture unit and nine combined texture units.');
+    }
     const morphGeometries = new Set();
     for (const group of groups) {
       const part = group[0];
@@ -1279,7 +1274,7 @@ export class CrucibleRenderer {
     if (shadowCascades) this.shaderFeatures.add(shadowCascades.shaderFeature);
     if (shadowBounds?.hard) this.addHardShadowFeature(shadowCascades);
     // The tint map is a half float render target. It is drawn from the sun and read beside the cascades too (#3259).
-    if (this.shaderFeatures.has('tintedShadows') && !this.context.getExtension('EXT_color_buffer_float')) this.shaderFeatures.delete('tintedShadows');
+    if (this.shaderFeatures.has('tintedShadows') && !this.backend.extension('EXT_color_buffer_float')) this.shaderFeatures.delete('tintedShadows');
     this.tintedShadowsActive = this.shaderFeatures.has('tintedShadows');
     // The camera-relative vertex line is part of the first compile, so reversed depth does not compile the main program twice.
     if (reversedDepthWanted) prepareCameraRelativeProgram(this);
@@ -1311,27 +1306,28 @@ export class CrucibleRenderer {
     this.finishMainProgram(pending.main);
     this.depthProgram = this.backend.finishProgram(pending.depth);
     this.readDepthProgramLocations();
+    const backend = backendFor(this);
     if (!benchmark) {
-      this.postProgram = this.backend.finishProgram(pending.post);
-      this.skyProgram = this.backend.finishProgram(pending.sky);
-      this.postUniforms = postUniformLocations(this.context, this.postProgram);
+      this.postProgram = backend.finishProgram(pending.post);
+      this.skyProgram = backend.finishProgram(pending.sky);
+      this.postUniforms = postUniformLocations(backend, this.postProgram);
       this.postVariants = new Map();
-      this.skyUniforms = uniformLocations(this.context, this.skyProgram, ['skyTop', 'skyBottom', 'sunDirection', 'inverseViewProjection', 'eye', 'time', 'daylight', 'hdrEnabled']);
+      this.skyUniforms = uniformLocations(backend, this.skyProgram, ['skyTop', 'skyBottom', 'sunDirection', 'inverseViewProjection', 'eye', 'time', 'daylight', 'hdrEnabled']);
     }
     this.partCount = parts.length;
     this.triangles = parts.reduce((total, part) => total + part.geometry.indices.length / 3, 0);
     this.whiteTexture = this.createTexture(null);
     // Disabled skin samplers still need distinct units from the depth sampler.
     for (const [program, uniforms] of [[this.program, this.uniforms], [this.depthProgram, this.depthSkinUniforms]]) {
-      this.context.useProgram(program);
-      this.context.uniform1i(uniforms.skinInfluences, 6);
-      this.context.uniform1i(uniforms.jointPalette, 7);
+      backend.useProgram(program);
+      backend.uniform1i(uniforms.skinInfluences, 6);
+      backend.uniform1i(uniforms.jointPalette, 7);
     }
     for (const [program, uniforms] of [[this.program, this.uniforms], [this.depthProgram, this.depthMorphUniforms]]) {
-      this.context.useProgram(program);
-      this.context.uniform1i(uniforms.morphTargets, 8);
+      backend.useProgram(program);
+      backend.uniform1i(uniforms.morphTargets, 8);
     }
-    for (const unit of [6, 7, 8]) bindTextureUnit(this.context, unit, this.whiteTexture);
+    for (const unit of [6, 7, 8]) backend.bindTextureUnit(unit, this.whiteTexture);
     if (this.shaderFeatures.has('splat')) requireSplatSupport().initializePlaceholders(this);
     this.initializeEnvironment(environment.map);
     this.createShadowMap();
@@ -1341,37 +1337,36 @@ export class CrucibleRenderer {
 
   // The uniform locations of the shadow (depth) program. Read once at construction and again when the program is rebuilt.
   readDepthProgramLocations() {
-    const context = this.context;
+    const backend = backendFor(this);
     const program = this.depthProgram;
-    this.depthSkinUniforms = uniformLocations(context, program, SKIN_UNIFORMS);
-    this.depthMorphUniforms = uniformLocations(context, program, MORPH_UNIFORMS);
-    this.depthAlphaUniforms = uniformLocations(context, program, DEPTH_ALPHA_UNIFORMS);
-    this.depthUniform = context.getUniformLocation(program, 'lightProjection');
-    this.depthClipLocations = clipPlaneLocations(context, program);
-    this.depthAssemblyUniform = context.getUniformLocation(program, 'assemblyAmount');
-    this.depthWindUniforms = uniformLocations(context, program, ['time', 'wind']);
+    this.depthSkinUniforms = uniformLocations(backend, program, SKIN_UNIFORMS);
+    this.depthMorphUniforms = uniformLocations(backend, program, MORPH_UNIFORMS);
+    this.depthAlphaUniforms = uniformLocations(backend, program, DEPTH_ALPHA_UNIFORMS);
+    this.depthUniform = backend.uniformLocation(program, 'lightProjection');
+    this.depthClipLocations = clipPlaneLocations(backend, program);
+    this.depthAssemblyUniform = backend.uniformLocation(program, 'assemblyAmount');
+    this.depthWindUniforms = uniformLocations(backend, program, ['time', 'wind']);
   }
 
   // Compiles the shadow program again with the clip plane test added, for a clip plane that arrived after construction.
   rebuildDepthProgram() {
-    const context = this.context;
+    const backend = backendFor(this);
     const previousProgram = this.depthProgram;
     this.depthShaderFeatures.add(CLIP_PLANES_FEATURE);
-    const pending = this.backend.startProgram(createDepthVertexShader(this.depthShaderFeatures), createDepthFragmentShader(this.depthShaderFeatures));
-    this.depthProgram = this.backend.finishProgram(pending);
+    const pending = backend.startProgram(createDepthVertexShader(this.depthShaderFeatures), createDepthFragmentShader(this.depthShaderFeatures));
+    this.depthProgram = backend.finishProgram(pending);
     this.readDepthProgramLocations();
-    context.useProgram(this.depthProgram);
-    context.uniform1i(this.depthSkinUniforms.skinInfluences, 6);
-    context.uniform1i(this.depthSkinUniforms.jointPalette, 7);
-    context.uniform1i(this.depthMorphUniforms.morphTargets, 8);
-    context.deleteProgram(previousProgram);
+    backend.useProgram(this.depthProgram);
+    backend.uniform1i(this.depthSkinUniforms.skinInfluences, 6);
+    backend.uniform1i(this.depthSkinUniforms.jointPalette, 7);
+    backend.uniform1i(this.depthMorphUniforms.morphTargets, 8);
+    backend.deleteProgram(previousProgram);
   }
 
   // The size plan and the frame targets: the largest driver calls of construction, so a page that awaits programsReady() takes them in a task of their own.
   allocateInitialTargets() {
     if (this.disposed) return;
     this.resize();
-    if (!this.benchmark && !this.multisampleFramebuffer) this.allocateFrameTargets(this.canvas.width, this.canvas.height);
   }
 
   /** Resolves once every program started by the constructor has linked, polling without blocking the main thread, then finishes construction. Needs deferProgramLink. After dispose() it resolves at once without finishing construction. */
@@ -1381,12 +1376,12 @@ export class CrucibleRenderer {
       await this.initialTargetsPending;
       return;
     }
-    const context = this.context;
-    const parallelCompile = context.getExtension('KHR_parallel_shader_compile');
+    const backend = backendFor(this);
+    const parallelCompile = backend.extension('KHR_parallel_shader_compile');
     const { pending } = this.pendingConstruction;
     const programs = [...Object.values(pending), ...(this.pendingEnvironmentPrograms?.values() ?? [])].map(started => started.program);
     // A renderer disposed during the wait has deleted these programs, which would never report complete.
-    while (!this.disposed && parallelCompile && programs.some(program => !context.getProgramParameter(program, parallelCompile.COMPLETION_STATUS_KHR))) {
+    while (!this.disposed && parallelCompile && programs.some(program => !backend.isProgramLinkComplete(program))) {
       await new Promise(resolve => setTimeout(resolve, 8));
     }
     if (this.pendingConstruction) {
@@ -1415,9 +1410,9 @@ export class CrucibleRenderer {
       if (this.disposed) return false;
       this.ensureBloomTargets();
     }
-    const context = this.context;
+    const backend = backendFor(this);
     const deadline = performance.now() + timeoutMilliseconds;
-    setPreparing(context, true);
+    backend.setPreparing(true);
     try {
       for (;;) {
         // dispose() may have run during any wait below: its programs are deleted and a draw would leak and raise GL errors.
@@ -1427,13 +1422,13 @@ export class CrucibleRenderer {
           return true;
         } catch (error) {
           if (!(error instanceof ProgramNotReady)) throw error;
-          while (!this.disposed && !isLinkComplete(context, error.program) && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 8));
+          while (!this.disposed && !backend.isProgramLinkComplete(error.program) && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 8));
           if (this.disposed) return false;
           if (performance.now() >= deadline) break;
         }
       }
     } finally {
-      setPreparing(context, false);
+      backend.setPreparing(false);
     }
     this.render(frame);
     return false;
@@ -1455,17 +1450,17 @@ export class CrucibleRenderer {
     viewTransformShader.dispose?.(this);
     this.selectViewTransform(viewTransform, lookSource);
     if (this.benchmark) return;
-    const context = this.context;
+    const backend = backendFor(this);
     this.rebuildMainProgram();
-    for (const variant of this.postVariants.values()) context.deleteProgram(variant.pending ? this.backend.finishProgram(variant.pending) : variant.program);
+    for (const variant of this.postVariants.values()) backend.deleteProgram(variant.pending ? backend.finishProgram(variant.pending) : variant.program);
     this.postVariants.clear();
-    context.deleteProgram(this.postProgram);
-    this.postProgram = this.backend.finishProgram(this.backend.startProgram(fullscreenVertex, this.withViewTransform(postFragment, 'post')));
-    this.postUniforms = postUniformLocations(context, this.postProgram);
+    backend.deleteProgram(this.postProgram);
+    this.postProgram = backend.finishProgram(backend.startProgram(fullscreenVertex, this.withViewTransform(postFragment, 'post')));
+    this.postUniforms = postUniformLocations(backend, this.postProgram);
     // The liquid pass builds its program on its next draw, with the new curve (liquid-renderer.js).
-    if (this.liquidProgram) context.deleteProgram(this.liquidProgram);
+    if (this.liquidProgram) backend.deleteProgram(this.liquidProgram);
     this.liquidProgram = null;
-    if (this.environmentBackgroundProgram) context.deleteProgram(this.environmentBackgroundProgram);
+    if (this.environmentBackgroundProgram) backend.deleteProgram(this.environmentBackgroundProgram);
     this.environmentBackgroundProgram = null;
   }
 
@@ -1502,31 +1497,22 @@ export class CrucibleRenderer {
   // Reads the link status first: deleting a program mid-link leaves a GL error that the next draw on this context sees (#74).
   releasePendingMainProgram() {
     if (!this.pendingMainProgram) return;
-    const context = this.context;
-    const { program, shaders } = this.pendingMainProgram.started;
-    context.getProgramParameter(program, context.LINK_STATUS);
-    shaders.forEach((shader) => context.deleteShader(shader));
-    context.deleteProgram(program);
+    backendFor(this).deleteStartedProgram(this.pendingMainProgram.started);
     this.pendingMainProgram = null;
   }
 
   finishMainProgram(pendingProgram) {
-    this.program = this.backend.finishProgram(pendingProgram);
-    this.uniforms = uniformLocations(this.context, this.program, ['materialDielectric', 'materialEmissionFresnel', 'materialSoftEdge', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'lightLinkMask', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'heightMap', 'heightState', 'viewProjection', 'flushBias', 'clipPerMetre', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'shadowBiasPerSlope', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', 'wetnessState', 'wetnessKeepOut[0]', 'wearEnabled', 'wearMetal', 'wearDirt', 'wearShape', 'wearDirtShape', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', 'baseColor', 'surface', 'instanceEmission', 'instanceOpacity', 'boxNormalMatrix', 'shadowBlind', 'compositeMode', 'tintShadowMap', 'tintBlind', ...ALPHA_UNIFORMS, ...LIGHT_UNIFORMS, ...ENVIRONMENT_UNIFORMS]);
-    Object.assign(this.uniforms, clipPlaneLocations(this.context, this.program));
+    const backend = backendFor(this);
+    this.program = this.backend?.finishProgram ? this.backend.finishProgram(pendingProgram) : backend.finishProgram(pendingProgram);
+    this.uniforms = uniformLocations(backend, this.program, ['materialDielectric', 'materialEmissionFresnel', 'materialSoftEdge', 'materialCoat', 'materialSheen', 'materialAnisotropy', 'materialIridescence', 'lightLinkMask', 'boxMapScale', 'boxMapAxis', 'lightMap', 'lightMapScale', 'hasLightMap', 'heightMap', 'heightState', 'viewProjection', 'flushBias', 'clipPerMetre', 'lightProjection', 'eye', 'armorColor', 'armorSurface', 'exposure', 'inspection', 'shadowMap', 'shadowBiasPerSlope', ...MAP_UNIFORMS, ...MAP_FLAGS, ...SKIN_UNIFORMS, ...MORPH_UNIFORMS, 'normalScale', 'occlusionStrength', 'materialMoss', 'wetnessState', 'wetnessKeepOut[0]', 'wearEnabled', 'wearMetal', 'wearDirt', 'wearShape', 'wearDirtShape', ...SPLAT_UNIFORMS, 'hdrEnabled', 'time', 'wind', 'worldMode', 'daylight', 'fogColor', 'lightDirection', 'fogDensity', 'waterRipple', 'rippleTime', 'explosionProgress', 'explosionCenter', 'assemblyAmount', 'renderPassMode', 'renderPassDepthRange', 'renderPassObjectBase', 'baseColor', 'surface', 'instanceEmission', 'instanceOpacity', 'boxNormalMatrix', 'shadowBlind', 'compositeMode', 'tintShadowMap', 'tintBlind', ...ALPHA_UNIFORMS, ...LIGHT_UNIFORMS, ...ENVIRONMENT_UNIFORMS]);
+    Object.assign(this.uniforms, clipPlaneLocations(backend, this.program));
     this.keepSamplerTypesApart();
   }
 
   // A sampler nobody has set reads texture unit 0, which holds the shadow map as a comparison sampler. One unit may not serve
   // two sampler types, so every 2D sampler starts on unit 1 until a draw sets it.
   keepSamplerTypesApart() {
-    const context = this.context;
-    context.useProgram(this.program);
-    const count = context.getProgramParameter(this.program, context.ACTIVE_UNIFORMS);
-    for (let index = 0; index < count; index++) {
-      const uniform = context.getActiveUniform(this.program, index);
-      if (uniform.type === context.SAMPLER_2D) context.uniform1iv(context.getUniformLocation(this.program, uniform.name), new Int32Array(uniform.size).fill(1));
-    }
+    backendFor(this).initializeSampler2DUniforms(this.program, 1);
   }
 
   /** Warnings about the last frame drawn, in the shape of `agent-diagnostics.js`; built lazily when read. */
@@ -1550,17 +1536,18 @@ export class CrucibleRenderer {
     if (!this.samplesExplicit && this.backend.isSoftwareRenderer?.()) return 0;
     const requestedSamples = this.denseSamples == null ? this.baseSamples : samplesForDensity(parts, this.canvas, this.pixelRatio, this.baseSamples, this.denseSamples);
     const shaded = this.shading === 'light' ? Math.min(requestedSamples, LIGHT_SHADING_MAXIMUM_SAMPLES) : requestedSamples;
-    return this.backend.supportedSampleCount(this.hdr ? this.context.RGBA16F : this.context.RGBA8, shaded);
+    return this.backend.supportedSampleCount(this.hdr ? 'rgba16f' : 'rgba8', shaded);
   }
 
   get samples() {
     return Math.max(1, this.multisampleSamples);
   }
 
-  uploadBuffer(target, data, usage = this.context.STATIC_DRAW) {
-    const buffer = this.backend.createBuffer();
+  uploadBuffer(target, data, usage = 'static') {
+    const backend = backendFor(this);
+    const buffer = backend.createBuffer();
     this.buffers.push(buffer);
-    this.backend.uploadBuffer(target, buffer, data, usage);
+    backend.uploadBuffer(target, buffer, data, usage);
     this.geometryBytes += data.byteLength;
     return buffer;
   }
@@ -1568,12 +1555,7 @@ export class CrucibleRenderer {
   // Without anisotropic filtering a mipmapped texture seen at a grazing angle (a floor, a road, an apron) falls to a
   // blurred level long before its detail is gone. Applies to the texture bound to `target`.
   applyAnisotropy(target) {
-    const context = this.context;
-    const extension = context.getExtension('EXT_texture_filter_anisotropic');
-    if (!extension) return;
-    // The limit is fixed for the context, and asking for it is a round trip to the GPU process, so it is asked once.
-    this.supportedAnisotropy ??= Math.min(this.maxAnisotropy, context.getParameter(extension.MAX_TEXTURE_MAX_ANISOTROPY_EXT));
-    context.texParameterf(target, extension.TEXTURE_MAX_ANISOTROPY_EXT, this.supportedAnisotropy);
+    backendFor(this).applyAnisotropy(target, this.maxAnisotropy);
   }
 
   /**
@@ -1592,31 +1574,11 @@ export class CrucibleRenderer {
 
   createTexture(map, isNormalMap = false) {
     if (this.textures.has(map)) return this.textures.get(map);
-    const context = this.context;
-    const texture = context.createTexture();
-    context.bindTexture(context.TEXTURE_2D, texture);
-    const previousFlip = context.getParameter(context.UNPACK_FLIP_Y_WEBGL);
-    const previousColorSpace = context.getParameter(context.UNPACK_COLORSPACE_CONVERSION_WEBGL);
-    try {
-      context.pixelStorei(context.UNPACK_FLIP_Y_WEBGL, map?.flipY ?? false);
-      context.pixelStorei(context.UNPACK_COLORSPACE_CONVERSION_WEBGL, context.NONE);
-      if (map) {
-        const info = textureDescriptorInfo(map, context.getParameter(context.MAX_TEXTURE_SIZE));
-        if (map.image.compressed) map.image.compressed.upload(context);
-        else context.texImage2D(context.TEXTURE_2D, 0, map.colorSpace === 'linear' ? context.RGBA8 : context.SRGB8_ALPHA8, context.RGBA, context.UNSIGNED_BYTE, map.image);
-        configureTexture(this, info, { bakesNormalVariance: isNormalMap && !map.image.compressed && map.colorSpace === 'linear' });
-      } else {
-        context.texImage2D(context.TEXTURE_2D, 0, context.RGBA8, 1, 1, 0, context.RGBA, context.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
-        context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
-        context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
-      }
-    } catch (error) {
-      context.deleteTexture(texture);
-      throw error;
-    } finally {
-      context.pixelStorei(context.UNPACK_FLIP_Y_WEBGL, previousFlip);
-      context.pixelStorei(context.UNPACK_COLORSPACE_CONVERSION_WEBGL, previousColorSpace);
-    }
+    const texture = backendFor(this).createColorTexture2D(
+      map,
+      maximumSize => textureDescriptorInfo(map, maximumSize),
+      info => configureTexture(this, info, { bakesNormalVariance: isNormalMap && !map.image.compressed && map.colorSpace === 'linear' }),
+    );
     this.textures.set(map, texture);
     return texture;
   }
@@ -1644,7 +1606,7 @@ export class CrucibleRenderer {
       if (missing.includes(CLIP_PLANES_FEATURE)) {
         this.rebuildDepthProgram();
         // The liquid pass builds its program again on its next draw, with the plane test.
-        if (this.liquidProgram) this.context.deleteProgram(this.liquidProgram);
+        if (this.liquidProgram) backendFor(this).deleteProgram(this.liquidProgram);
         this.liquidProgram = null;
       }
       this.rebuildMainProgram();
@@ -1657,27 +1619,27 @@ export class CrucibleRenderer {
   }
 
   rebuildMainProgram() {
-    const context = this.context;
+    const backend = backendFor(this);
     const previousProgram = this.program;
     this.buildMainProgram();
-    context.deleteProgram(previousProgram);
-    context.useProgram(this.program);
+    backend.deleteProgram(previousProgram);
+    backend.useProgram(this.program);
     for (const [name, unit] of [['skinInfluences', 6], ['jointPalette', 7], ['morphTargets', 8], ...Object.entries(SPLAT_UNITS), ['environmentSpecular', ENVIRONMENT_SPECULAR_UNIT], ['environmentBrdf', ENVIRONMENT_BRDF_UNIT]]) {
-      context.uniform1i(this.uniforms[name], unit);
+      backend.uniform1i(this.uniforms[name], unit);
     }
-    context.uniform1f(this.uniforms.splatEnabled, 0);
+    backend.uniform1f(this.uniforms.splatEnabled, 0);
     if (this.shaderFeatures.has('splat') && !this.splatPlaceholder) requireSplatSupport().initializePlaceholders(this);
   }
 
   uploadBatch(parts) {
     this.requireShaderFeatures(parts);
-    const context = this.context;
-    const vertexArray = context.createVertexArray();
+    const backend = backendFor(this);
+    const vertexArray = backend.createVertexArray();
     try {
       return this.uploadBatchData(parts, vertexArray);
     } catch (error) {
-      context.bindVertexArray(null);
-      context.deleteVertexArray(vertexArray);
+      backend.bindVertexArray(null);
+      backend.deleteVertexArray(vertexArray);
       throw error;
     }
   }
@@ -1689,9 +1651,10 @@ export class CrucibleRenderer {
       this.wetnessKeepOut = wetnessKeepOutBoxes(this.fitParts ?? []);
       this.wetnessGroundHeight = wetnessGroundHeight(this.fitParts ?? []);
     }
+    const backend = backendFor(this);
     const [wetness, fillLevel] = this.lighting.wetnessState;
-    this.context.uniform4f(this.uniforms.wetnessState, wetness, fillLevel, this.wetnessKeepOut.count, this.wetnessGroundHeight);
-    this.context.uniform4fv(this.uniforms['wetnessKeepOut[0]'], this.wetnessKeepOut.boxes);
+    backend.uniform4f(this.uniforms.wetnessState, wetness, fillLevel, this.wetnessKeepOut.count, this.wetnessGroundHeight);
+    backend.uniform4fv(this.uniforms['wetnessKeepOut[0]'], this.wetnessKeepOut.boxes);
   }
 
   // The parallax uniforms and height texture of a batch, in programs that compiled the parallax code (so the module is loaded). A batch
@@ -1704,39 +1667,36 @@ export class CrucibleRenderer {
 
   /** Sets the surface wear uniforms of a batch; a material without wear turns the term off. */
   bindSurfaceWear(wear) {
-    const { context, uniforms } = this;
-    context.uniform1f(uniforms.wearEnabled, wear ? 1 : 0);
+    const backend = backendFor(this);
+    const uniforms = this.uniforms;
+    backend.uniform1f(uniforms.wearEnabled, wear ? 1 : 0);
     if (!wear) return;
     const values = wearUniformValues(wear);
-    context.uniform4fv(uniforms.wearMetal, values.metal);
-    context.uniform4fv(uniforms.wearDirt, values.dirt);
-    context.uniform4fv(uniforms.wearShape, values.shape);
-    context.uniform2fv(uniforms.wearDirtShape, values.dirtShape);
+    backend.uniform4fv(uniforms.wearMetal, values.metal);
+    backend.uniform4fv(uniforms.wearDirt, values.dirt);
+    backend.uniform4fv(uniforms.wearShape, values.shape);
+    backend.uniform2fv(uniforms.wearDirtShape, values.dirtShape);
   }
 
   /** Binds the geometry's vertex buffers and attributes into the bound vertex array. */
   bindGeometryAttributes(geometry, material) {
-    const context = this.context;
+    const backend = backendFor(this);
     if (geometry.tangents !== undefined) validateGeometryTangents(geometry.tangents, geometry.positions.length / 3);
     let geometryBuffers = this.geometryBuffers.get(geometry);
     if (!geometryBuffers) {
       geometryBuffers = new Map();
       for (const field of ['positions', 'normals', 'uvs', 'colors', 'indices', 'crowdPacked']) {
         if (geometry[field]) {
-          const target = field === 'indices' ? context.ELEMENT_ARRAY_BUFFER : context.ARRAY_BUFFER;
+          const target = field === 'indices' ? 'element' : 'array';
           const values = field === 'uvs' && geometry.lightUvs ? interleaveUvSets(geometry) : field === 'normals' && geometry.tangents ? packNormalsWithTangents(geometry.normals, geometry.tangents) : geometry[field];
           geometryBuffers.set(field, this.uploadBuffer(target, field === 'colors' && vertexAlpha(geometry) ? interleaveColorsWithSkyVisibility(geometry) : values));
         }
       }
-      if (vertexAlpha(geometry) && !geometry.colors) geometryBuffers.set('colors', this.uploadBuffer(context.ARRAY_BUFFER, interleaveColorsWithSkyVisibility(geometry)));
-      if (geometry.lightUvs && !geometry.uvs) geometryBuffers.set('uvs', this.uploadBuffer(context.ARRAY_BUFFER, interleaveUvSets(geometry)));
+      if (vertexAlpha(geometry) && !geometry.colors) geometryBuffers.set('colors', this.uploadBuffer('array', interleaveColorsWithSkyVisibility(geometry)));
+      if (geometry.lightUvs && !geometry.uvs) geometryBuffers.set('uvs', this.uploadBuffer('array', interleaveUvSets(geometry)));
       this.geometryBuffers.set(geometry, geometryBuffers);
     }
-    const bindAttribute = (location, field, size) => {
-      context.bindBuffer(context.ARRAY_BUFFER, geometryBuffers.get(field));
-      context.enableVertexAttribArray(location);
-      context.vertexAttribPointer(location, size, context.FLOAT, false, 0, 0);
-    };
+    const bindAttribute = (location, field, size) => backend.bindVertexAttributes(geometryBuffers.get(field), [{ location, size }]);
     // A geometry with tangents keeps each tangent code in the fourth float of its normal (src/tangent-encoding.js).
     for (const [location, field, size] of [[0, 'positions', 3], [1, 'normals', geometry.tangents ? 4 : 3]]) bindAttribute(location, field, size);
     validateGeometryForMaterial(geometry, material);
@@ -1744,20 +1704,18 @@ export class CrucibleRenderer {
     if (geometry.uvs || geometry.lightUvs) {
       bindAttribute(13, 'uvs', geometry.lightUvs ? 4 : 2);
     } else {
-      context.disableVertexAttribArray(13);
       // (-1, -1) marks "no UVs": grass wind then bends by local height instead of by blade position.
-      context.vertexAttrib2f(13, -1, -1);
+      backend.setConstantAttribute(13, -1, -1);
     }
     if (vertexAlpha(geometry) && vertexAlpha(geometry).length !== geometry.positions.length / 3) throw new Error('Geometry skyVisibility must hold one value for every vertex.');
     if (geometry.colors || vertexAlpha(geometry)) {
       bindAttribute(14, 'colors', vertexAlpha(geometry) ? 4 : 3);
     } else {
-      context.disableVertexAttribArray(14);
-      context.vertexAttrib3f(14, 1, 1, 1);
+      backend.setConstantAttribute(14, 1, 1, 1);
     }
     // A crowd geometry packs four joint ids and weights into the colour attribute; its UVs stay free for maps.
     if (geometry.crowdPacked) bindAttribute(14, 'crowdPacked', 4);
-    context.bindBuffer(context.ELEMENT_ARRAY_BUFFER, geometryBuffers.get('indices'));
+    backend.bindElementBuffer(geometryBuffers.get('indices'));
   }
 
   /** Points the instance attributes of the bound vertex array at the bound array buffer. */
@@ -1794,29 +1752,29 @@ export class CrucibleRenderer {
   /** The vertex array and instance buffer that draw one level of a batch (or of its `shadowLevels`) from the instances selected for it. */
   levelDraw(batch, level, levelSet = batch) {
     if (levelSet.levelDraws[level]) return levelSet.levelDraws[level];
-    const context = this.context;
+    const backend = backendFor(this);
     const ranked = levelSet === batch && level === 0;
     const geometry = (ranked && batch.flushOrder?.geometry) || levelSet.levelGeometries[level];
-    const vertexArray = context.createVertexArray();
-    context.bindVertexArray(vertexArray);
+    const vertexArray = backend.createVertexArray();
+    backend.bindVertexArray(vertexArray);
     this.bindGeometryAttributes(geometry, batch.parts[0].material);
-    if (batch.flushIndexBuffer && ranked) context.bindBuffer(context.ELEMENT_ARRAY_BUFFER, batch.flushIndexBuffer);
-    const instanceBuffer = context.createBuffer();
+    if (batch.flushIndexBuffer && ranked) backend.bindElementBuffer(batch.flushIndexBuffer);
+    const instanceBuffer = backend.createBuffer();
     this.buffers.push(instanceBuffer);
-    context.bindBuffer(context.ARRAY_BUFFER, instanceBuffer);
-    context.bufferData(context.ARRAY_BUFFER, batch.instanceData.byteLength, context.DYNAMIC_DRAW);
+    backend.uploadBuffer('array', instanceBuffer, batch.instanceData.byteLength, 'dynamic');
     this.pointInstanceAttributes();
-    context.bindVertexArray(null);
+    backend.bindVertexArray(null);
     levelSet.levelDraws[level] = { vertexArray, instanceBuffer, indexCount: geometry.indices.length };
     return levelSet.levelDraws[level];
   }
 
   releaseLevelDraws(batch, releasedBuffers) {
+    const backend = backendFor(this);
     for (const levelSet of [batch, batch.shadowLevels]) {
       if (!levelSet) continue;
       for (const draw of levelSet.levelDraws) {
         if (!draw) continue;
-        this.context.deleteVertexArray(draw.vertexArray);
+        backend.deleteVertexArray(draw.vertexArray);
         releasedBuffers?.add(draw.instanceBuffer);
       }
       levelSet.levelDraws = [];
@@ -1870,7 +1828,7 @@ export class CrucibleRenderer {
   }
 
   drawSelectedLevels(batch, selection, levelSet = batch, flushRanges = null) {
-    const context = this.context;
+    const backend = backendFor(this);
     const stride = INSTANCE_STRIDE;
     for (let level = 0; level < selection.counts.length; level++) {
       const count = selection.counts[level];
@@ -1881,12 +1839,11 @@ export class CrucibleRenderer {
         const instance = selection.indices[level][slot];
         this.selectionScratch.set(batch.instanceData.subarray(instance * stride, (instance + 1) * stride), slot * stride);
       }
-      context.bindBuffer(context.ARRAY_BUFFER, draw.instanceBuffer);
-      context.bufferSubData(context.ARRAY_BUFFER, 0, this.selectionScratch, 0, count * stride);
-      context.bindVertexArray(draw.vertexArray);
+      backend.updateBuffer(draw.instanceBuffer, this.selectionScratch, 0, count * stride);
+      backend.bindVertexArray(draw.vertexArray);
       // Only level 0 holds the ranked index order; the simpler levels draw far away, as one range.
       if (flushRanges && level === 0) this.drawFlushRanges(batch, flushRanges, count);
-      else this.backend.drawIndexedInstanced(draw.indexCount, count);
+      else backend.drawIndexedInstanced(draw.indexCount, count);
     }
   }
 
@@ -1901,14 +1858,14 @@ export class CrucibleRenderer {
   }
 
   uploadBatchData(parts, vertexArray) {
-    const context = this.context;
+    const backend = backendFor(this);
     const geometry = parts[0].geometry;
-    context.bindVertexArray(vertexArray);
+    backend.bindVertexArray(vertexArray);
     const flushOrder = flushOrderOf(parts[0]);
     // A cut geometry carries the ranked order as its own indices. Without cuts the ranked order replaces the geometry's
     // index buffer in this vertex array only; the vertex buffers stay shared.
     this.bindGeometryAttributes(flushOrder?.geometry ?? geometry, parts[0].material);
-    const flushIndexBuffer = flushOrder && !flushOrder.geometry ? this.uploadBuffer(context.ELEMENT_ARRAY_BUFFER, flushOrder.indices) : null;
+    const flushIndexBuffer = flushOrder && !flushOrder.geometry ? this.uploadBuffer('element', flushOrder.indices) : null;
     const stride = INSTANCE_STRIDE;
     const instanceData = new Float32Array(parts.length * stride);
     const normalMatrix = mat3.create();
@@ -1916,9 +1873,9 @@ export class CrucibleRenderer {
       mat3.normalFromMat4(normalMatrix, part.matrix);
       packInstance(instanceData, index, part, normalMatrix);
     });
-    const instanceBuffer = this.uploadBuffer(context.ARRAY_BUFFER, instanceData, context.DYNAMIC_DRAW);
+    const instanceBuffer = this.uploadBuffer('array', instanceData, 'dynamic');
     this.pointInstanceAttributes();
-    context.bindVertexArray(null);
+    backend.bindVertexArray(null);
     const map = parts[0].material.map ?? null;
     const mapState = materialMapState(parts[0].material);
     const textures = mapState.slice(0, 5).map((descriptor, index) => this.createTexture(descriptor, index === 1));
@@ -2038,6 +1995,7 @@ export class CrucibleRenderer {
     const stagedLocations = new Map();
     const stagedBatches = [];
     this.partLocations = stagedLocations;
+    const backend = backendFor(this);
     try {
       for (const item of replacements) {
         if (item.batch) {
@@ -2049,21 +2007,21 @@ export class CrucibleRenderer {
           stagedBatches.push(this.uploadBatch(item.group));
         }
       }
-      const error = this.context.getError();
+      const error = backend.error();
       if (error !== 0) {
         throw new Error(`WebGL replacement allocation failed with error ${error}.`);
       }
     } catch (error) {
       for (const batch of stagedBatches) {
         if (!retained.has(batch)) {
-          this.context.deleteVertexArray(batch.vertexArray);
+          backend.deleteVertexArray(batch.vertexArray);
           this.releaseLevelDraws(batch);
         }
       }
       for (const buffer of this.buffers.slice(previousBuffers.length)) {
-        this.context.deleteBuffer(buffer);
+        backend.deleteBuffer(buffer);
       }
-      this.context.bindVertexArray(null);
+      backend.bindVertexArray(null);
       this.buffers = previousBuffers;
       this.geometryBytes = previousGeometryBytes;
       this.geometryBuffers = previousGeometryBuffers;
@@ -2074,7 +2032,7 @@ export class CrucibleRenderer {
     const releasedBuffers = new Set();
     for (const batch of this.batches) {
       if (!retained.has(batch)) {
-        this.context.deleteVertexArray(batch.vertexArray);
+        backend.deleteVertexArray(batch.vertexArray);
         releasedBuffers.add(batch.instanceBuffer);
         if (batch.flushIndexBuffer) releasedBuffers.add(batch.flushIndexBuffer);
         this.releaseLevelDraws(batch, releasedBuffers);
@@ -2086,7 +2044,7 @@ export class CrucibleRenderer {
         this.geometryBuffers.delete(geometry);
       }
     }
-    for (const buffer of releasedBuffers) this.context.deleteBuffer(buffer);
+    for (const buffer of releasedBuffers) backend.deleteBuffer(buffer);
     this.buffers = this.buffers.filter(buffer => !releasedBuffers.has(buffer));
     settleTextures?.(this.batches, stagedBatches);
     this.geometryBytes = [...geometries].reduce((total, geometry) => total + geometryBufferBytes(geometry), 0) + renderParts.length * INSTANCE_STRIDE * 4;
@@ -2103,9 +2061,8 @@ export class CrucibleRenderer {
 
   createSkinTexture(cache, identity, matrices, groupSize) {
     if (cache.has(identity)) return cache.get(identity);
-    const context = this.context;
     const texelCount = matrices ? matrices.length / 4 : identity.positions.length / 3 * 2;
-    const layout = skinSupport().skinTextureLayout(texelCount, context.getParameter(context.MAX_TEXTURE_SIZE), groupSize);
+    const layout = skinSupport().skinTextureLayout(texelCount, backendFor(this).maxTextureSize(), groupSize);
     const data = matrices ? new Float32Array(layout.width * layout.height * 4) : skinSupport().packSkinInfluences(identity, layout);
     if (matrices) data.set(matrices);
     const record = this.createPackedTexture(layout, data);
@@ -2117,7 +2074,7 @@ export class CrucibleRenderer {
   createMorphTexture(geometry, pose) {
     if (this.morphTextures.has(geometry)) return this.morphTextures.get(geometry);
     const info = morphSupport().validateMorphGeometry(geometry, pose);
-    const layout = morphSupport().skinTextureLayout(info.vertexCount * info.targetCount * 2, this.context.getParameter(this.context.MAX_TEXTURE_SIZE), 2);
+    const layout = morphSupport().skinTextureLayout(info.vertexCount * info.targetCount * 2, backendFor(this).maxTextureSize(), 2);
     const record = this.createPackedTexture(layout, morphSupport().packMorphTargets(geometry, layout));
     record.info = info;
     this.morphTextures.set(geometry, record);
@@ -2125,16 +2082,7 @@ export class CrucibleRenderer {
   }
 
   createPackedTexture(layout, data) {
-    const context = this.context;
-    const texture = context.createTexture();
-    context.bindTexture(context.TEXTURE_2D, texture);
-    try {
-      context.texImage2D(context.TEXTURE_2D, 0, context.RGBA32F, layout.width, layout.height, 0, context.RGBA, context.FLOAT, data);
-      this.backend?.setClampedFiltering(context.NEAREST);
-    } catch (error) {
-      context.deleteTexture(texture);
-      throw error;
-    }
+    const texture = backendFor(this).createDataTexture2D({ width: layout.width, height: layout.height, format: 'rgba32f', clamp: true, data });
     return { ...layout, texture, data };
   }
 
@@ -2247,16 +2195,15 @@ export class CrucibleRenderer {
     }
     // updateParts repacks the instances in place and keeps this.batches, so the shadow-miss check keys on this count too.
     this.partsMoveCount = (this.partsMoveCount ?? 0) + 1;
+    const backend = backendFor(this);
     for (const batch of this.updateBatches) {
-      this.context.bindBuffer(this.context.ARRAY_BUFFER, batch.instanceBuffer);
-      this.context.bufferSubData(this.context.ARRAY_BUFFER, 0, batch.instanceData);
+      backend.updateBuffer(batch.instanceBuffer, batch.instanceData);
     }
     for (const record of this.updateSkins) {
       // Each texture record belongs to one pose and keeps its padded upload buffer.
       const pose = record.pose;
       record.data.set(pose.jointMatrices);
-      this.context.bindTexture(this.context.TEXTURE_2D, record.texture);
-      this.context.texSubImage2D(this.context.TEXTURE_2D, 0, 0, 0, record.width, record.height, this.context.RGBA, this.context.FLOAT, record.data);
+      backend.uploadDataTexture2D(record.texture, { width: record.width, height: record.height, format: 'rgba32f', data: record.data });
     }
     for (const batch of this.batches ?? []) {
       if (batch.morph && this.updateMorphs.has(batch.morph)) batch.morphWeights.set(batch.morph.weights);
@@ -2266,9 +2213,7 @@ export class CrucibleRenderer {
   }
 
   attribute(location, size, stride, offset) {
-    this.context.enableVertexAttribArray(location);
-    this.context.vertexAttribPointer(location, size, this.context.FLOAT, false, stride, offset);
-    this.context.vertexAttribDivisor(location, 1);
+    backendFor(this).enableVertexAttribute(location, size, stride, offset, 1);
   }
 
   // A one texel map stays cleared to the far depth, so every point reads as lit. That is exact when nothing casts, and when
@@ -2286,42 +2231,33 @@ export class CrucibleRenderer {
   }
 
   createShadowMap() {
-    const context = this.context;
+    const backend = backendFor(this);
     const mapSize = this.shadowMapSizeWanted();
-    this.shadowTexture ??= context.createTexture();
-    bindTextureUnit(context, 0, this.shadowTexture);
-    if (mapSize !== this.shadowMapSize) {
+    this.shadowTexture ??= backend.createTexture();
+    const sizeChanged = mapSize !== this.shadowMapSize;
+    if (sizeChanged) {
       this.shadowMapSize = mapSize;
-      context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, mapSize, mapSize, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
       this.renderTargets.record('shadowMap', { width: mapSize, height: mapSize, format: 'DEPTH_COMPONENT24' });
     }
     // Compare on fetch (the default function is LEQUAL) with linear filtering gives a 2 x 2 percentage-closer result from one fetch.
-    this.backend?.setClampedFiltering(context.LINEAR);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_COMPARE_MODE, context.COMPARE_REF_TO_TEXTURE);
-    if (!this.shadowFramebuffer) this.shadowFramebuffer = context.createFramebuffer();
-    context.bindFramebuffer(context.FRAMEBUFFER, this.shadowFramebuffer);
-    context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, this.shadowTexture, 0);
-    context.drawBuffers([context.NONE]);
-    context.readBuffer(context.NONE);
+    backend.uploadDepthTexture2D(this.shadowTexture, sizeChanged ? mapSize : null, mapSize, { linear: true, compare: true, unit: 0 });
+    this.shadowFramebuffer ??= backend.createFramebuffer();
     // The status is a round trip to the GPU process. The attachment only changes with the map size, so it is checked once per size,
     // not on each of the several refreshes a second an animated world makes.
-    if (this.shadowFramebufferCheckedSize !== mapSize) {
-      assertShadowFramebufferComplete(context, 'Shadow');
-      this.shadowFramebufferCheckedSize = mapSize;
-    }
+    backend.attachDepthTexture(this.shadowFramebuffer, this.shadowTexture, this.shadowFramebufferCheckedSize !== mapSize ? 'Shadow' : null);
+    this.shadowFramebufferCheckedSize = mapSize;
     const resolvedLight = resolveShadowLight(this.world, this.activeLightDirection, this.shadowBounds, this.fittedShadowView());
     const light = resolvedLight.hard ? registeredFeatureCode.get('hardShadows').snapView(resolvedLight, mapSize) : resolvedLight;
     writeShadowLightMatrix(this.lightProjection, light);
-    context.viewport(0, 0, mapSize, mapSize);
-    context.enable(context.DEPTH_TEST);
-    context.enable(context.CULL_FACE);
-    context.clear(context.DEPTH_BUFFER_BIT);
+    backend.setViewport(mapSize, mapSize);
+    backend.setRenderState({ depthTest: true, cullFace: true });
+    backend.clearDepthBuffer(1);
     this.shadowBiasPerSlope = shadowBiasPerSlope(light, mapSize);
     this.drawShadowCasters(this.lightProjection, mapSize, true);
     // The soft cascade filter widens the tint penumbra with the gap to the caster, in metres, so it needs the view's size and the bias of a tint texel.
     this.tintView = { depthRange: light.far - light.near, uvPerMetre: 1 / (2 * light.extent), biasPerSlope: shadowBiasPerSlope(light, TINT_MAP_SIZE) };
     this.drawTintedShadows();
-    context.bindFramebuffer(context.FRAMEBUFFER, null);
+    backend.bindCanvasTarget();
     this.shadowsDirty = false;
   }
 
@@ -2333,32 +2269,24 @@ export class CrucibleRenderer {
   // The shadow program's opaqueShadow sampler is a comparison sampler, so while a depth map renders it needs a comparison-capable
   // depth texture on its unit that is not the render target: a 2D map left there, or the sun map itself, fails the draw.
   bindPlaceholderOpaqueShadow() {
-    const context = this.context;
-    context.activeTexture(context.TEXTURE0 + OPAQUE_SHADOW_UNIT);
+    const backend = backendFor(this);
     if (!this.placeholderShadowTexture) {
-      this.placeholderShadowTexture = context.createTexture();
-      context.bindTexture(context.TEXTURE_2D, this.placeholderShadowTexture);
-      context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, 1, 1, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_COMPARE_MODE, context.COMPARE_REF_TO_TEXTURE);
+      this.placeholderShadowTexture = backend.createTexture();
+      backend.uploadDepthTexture2D(this.placeholderShadowTexture, 1, 1, { linear: false, compare: true, unit: OPAQUE_SHADOW_UNIT });
+    } else {
+      backend.bindTextureUnit(OPAQUE_SHADOW_UNIT, this.placeholderShadowTexture);
     }
-    context.bindTexture(context.TEXTURE_2D, this.placeholderShadowTexture);
-    context.activeTexture(context.TEXTURE0);
+    backend.activeTextureUnit(0);
   }
 
   allocateTintTarget() {
-    const context = this.context;
-    this.tintTexture = context.createTexture();
-    bindTextureUnit(context, TINT_UNIT, this.tintTexture);
-    context.texImage2D(context.TEXTURE_2D, 0, context.RGBA16F, TINT_MAP_SIZE, TINT_MAP_SIZE, 0, context.RGBA, context.HALF_FLOAT, null);
-    this.backend?.setClampedFiltering(context.LINEAR);
+    const backend = backendFor(this);
+    backend.activeTextureUnit(TINT_UNIT);
+    const target = backend.createFramebufferTarget({ width: TINT_MAP_SIZE, height: TINT_MAP_SIZE, colorFormat: 'rgba16f', linear: true, clamp: true });
+    if (!target.complete) throw new Error('Tinted shadow framebuffer is incomplete.');
+    this.tintTexture = target.colorTexture;
+    this.tintFramebuffer = target.framebuffer;
     this.renderTargets.record('tintShadow', { width: TINT_MAP_SIZE, height: TINT_MAP_SIZE, format: 'RGBA16F' });
-    this.tintFramebuffer = context.createFramebuffer();
-    context.bindFramebuffer(context.FRAMEBUFFER, this.tintFramebuffer);
-    context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, this.tintTexture, 0);
-    context.drawBuffers([context.COLOR_ATTACHMENT0]);
-    assertShadowFramebufferComplete(context, 'Tinted shadow');
   }
 
   /**
@@ -2369,45 +2297,35 @@ export class CrucibleRenderer {
   drawTintedShadows() {
     const tinting = this.batches.filter(batch => !batch.floor && batch.castShadow && this.tintsShadow(batch));
     if (tinting.length === 0) return;
-    const context = this.context;
+    const backend = backendFor(this);
     if (!this.tintFramebuffer) this.allocateTintTarget();
-    context.bindFramebuffer(context.FRAMEBUFFER, this.tintFramebuffer);
-    context.viewport(0, 0, TINT_MAP_SIZE, TINT_MAP_SIZE);
-    bindTextureUnit(context, OPAQUE_SHADOW_UNIT, this.shadowTexture);
-    context.activeTexture(context.TEXTURE0);
-    context.useProgram(this.depthProgram);
+    backend.bindFramebuffer(this.tintFramebuffer);
+    backend.setViewport(TINT_MAP_SIZE, TINT_MAP_SIZE);
+    backend.bindTextureUnit(OPAQUE_SHADOW_UNIT, this.shadowTexture);
+    backend.activeTextureUnit(0);
+    backend.useProgram(this.depthProgram);
     const uniforms = this.depthAlphaUniforms;
-    context.uniform1f(uniforms.tintMapSize, TINT_MAP_SIZE);
-    context.uniform1f(uniforms.tintBias, this.shadowBiasPerSlope * 2);
-    context.uniform1f(uniforms.tintPass, 1);
-    context.disable(context.DEPTH_TEST);
-    context.enable(context.BLEND);
-    context.blendEquationSeparate(context.FUNC_ADD, context.MIN);
-    context.blendFuncSeparate(context.DST_COLOR, context.ZERO, context.ONE, context.ONE);
-    context.clearColor(1, 1, 1, 1);
-    context.clear(context.COLOR_BUFFER_BIT);
-    context.enable(context.POLYGON_OFFSET_FILL);
-    context.polygonOffset(1, 1);
+    backend.uniform1f(uniforms.tintMapSize, TINT_MAP_SIZE);
+    backend.uniform1f(uniforms.tintBias, this.shadowBiasPerSlope * 2);
+    backend.uniform1f(uniforms.tintPass, 1);
+    backend.setRenderState({ depthTest: false, blend: true, blendEquation: 'addMin', blendMode: 'dstColor', polygonOffset: [1, 1] });
+    backend.clearColorAndDepth([1, 1, 1, 1], 1);
     for (const batch of tinting) {
       this.applyAlphaState(batch, false);
-      context.uniform1f(uniforms.tintTransmission, batch.layerState[9]);
-      context.uniform3fv(uniforms.tintFaceTransmittance, glassFaceTransmittance(batch.parts[0].material));
+      backend.uniform1f(uniforms.tintTransmission, batch.layerState[9]);
+      backend.uniform3fv(uniforms.tintFaceTransmittance, glassFaceTransmittance(batch.parts[0].material));
       this.drawBatch(batch, false, this.selectShadowInstances(batch, batch, this.lightProjection, TINT_MAP_SIZE), batch);
     }
-    context.disable(context.POLYGON_OFFSET_FILL);
-    context.enable(context.CULL_FACE);
-    context.disable(context.BLEND);
-    context.blendEquation(context.FUNC_ADD);
-    context.enable(context.DEPTH_TEST);
-    context.uniform1f(uniforms.tintPass, 0);
+    backend.setRenderState({ polygonOffset: false, cullFace: true, blend: false, blendEquation: 'add', depthTest: true });
+    backend.uniform1f(uniforms.tintPass, 0);
   }
 
   bindTintedShadows() {
     if (!this.tintedShadowsActive || !this.tintTexture) return;
-    const context = this.context;
-    bindTextureUnit(context, TINT_UNIT, this.tintTexture);
-    context.uniform1i(this.uniforms.tintShadowMap, TINT_UNIT);
-    context.activeTexture(context.TEXTURE0);
+    const backend = backendFor(this);
+    backend.bindTextureUnit(TINT_UNIT, this.tintTexture);
+    backend.uniform1i(this.uniforms.tintShadowMap, TINT_UNIT);
+    backend.activeTextureUnit(0);
   }
 
   /**
@@ -2478,56 +2396,48 @@ export class CrucibleRenderer {
   }
 
   drawShadowCasters(lightMatrix = this.lightProjection, resolution = null, sunMap = false) {
-    const context = this.context;
-    context.useProgram(this.depthProgram);
-    context.uniformMatrix4fv(this.depthUniform, false, lightMatrix);
-    context.uniform1f(this.depthAssemblyUniform, this.assemblyAmount ?? 0);
-    context.uniform1f(this.depthWindUniforms.time, this.windState.time);
-    context.uniform1f(this.depthWindUniforms.wind, this.windState.strength);
+    const backend = backendFor(this);
+    backend.useProgram(this.depthProgram);
+    backend.uniformMatrix4fv(this.depthUniform, lightMatrix);
+    backend.uniform1f(this.depthAssemblyUniform, this.assemblyAmount ?? 0);
+    backend.uniform1f(this.depthWindUniforms.time, this.windState.time);
+    backend.uniform1f(this.depthWindUniforms.wind, this.windState.strength);
     // The base map sampler must not alias the shadow texture on unit 0 while that texture is the render target.
-    context.uniform1i(this.depthAlphaUniforms.baseMap, 1);
+    backend.uniform1i(this.depthAlphaUniforms.baseMap, 1);
     if (this.tintedShadowsActive) {
-      context.uniform1f(this.depthAlphaUniforms.tintPass, 0);
-      context.uniform1i(this.depthAlphaUniforms.opaqueShadow, OPAQUE_SHADOW_UNIT);
+      backend.uniform1f(this.depthAlphaUniforms.tintPass, 0);
+      backend.uniform1i(this.depthAlphaUniforms.opaqueShadow, OPAQUE_SHADOW_UNIT);
       this.bindPlaceholderOpaqueShadow();
     }
-    context.enable(context.POLYGON_OFFSET_FILL);
-    context.polygonOffset(1, 1);
+    backend.setRenderState({ polygonOffset: [1, 1] });
     // A one texel sun map (the cascades draw the opaque casters) stays cleared: one texel would cut the tint pass against whatever sits at its centre.
     for (const batch of resolution === 1 ? [] : this.batches) {
       if (batch.floor || !batch.castShadow) continue;
       const fades = batch.tintedShadow && Boolean(batch.parts?.some(part => part.opacityScale));
       if (batch.tintedShadow && (sunMap && this.tintedShadowsActive || batch.alphaMode === 'blend' && batch.parts[0].castShadow !== true && !fades)) continue;
-      if (this.depthShaderFeatures?.has(FADING_SHADOWS_FEATURE)) context.uniform1f(this.depthAlphaUniforms.shadowDither, fades ? 1 : 0);
+      if (this.depthShaderFeatures?.has(FADING_SHADOWS_FEATURE)) backend.uniform1f(this.depthAlphaUniforms.shadowDither, fades ? 1 : 0);
       const levelSet = batch.shadowLevels ?? batch;
       const selection = this.selectShadowInstances(batch, levelSet, lightMatrix, resolution);
       if (selection?.visibleCount === 0) continue;
       this.applyAlphaState(batch, false);
       this.drawBatch(batch, false, selection, levelSet);
     }
-    if (this.depthShaderFeatures?.has(FADING_SHADOWS_FEATURE)) context.uniform1f(this.depthAlphaUniforms.shadowDither, 0);
-    context.disable(context.POLYGON_OFFSET_FILL);
-    context.enable(context.CULL_FACE);
+    if (this.depthShaderFeatures?.has(FADING_SHADOWS_FEATURE)) backend.uniform1f(this.depthAlphaUniforms.shadowDither, 0);
+    backend.setRenderState({ polygonOffset: false, cullFace: true });
   }
 
   // The atlas has one row of tiles per four shadow tiles in use. The shader fetches by texel, so the height is free.
   allocateLocalShadowAtlas(tileCount) {
-    const context = this.context;
-    if (this.localShadowTexture) context.deleteTexture(this.localShadowTexture);
-    if (this.localShadowFramebuffer) context.deleteFramebuffer(this.localShadowFramebuffer);
+    const backend = backendFor(this);
+    if (this.localShadowTexture) backend.deleteTexture(this.localShadowTexture);
+    if (this.localShadowFramebuffer) backend.deleteFramebuffer(this.localShadowFramebuffer);
     this.localShadowAtlasHeight = Math.ceil(tileCount / SHADOW_TILES_PER_ROW) * SHADOW_TILE_SIZE;
-    this.localShadowTexture = context.createTexture();
-    bindTextureUnit(context, LOCAL_SHADOW_UNIT, this.localShadowTexture);
-    context.texImage2D(context.TEXTURE_2D, 0, context.DEPTH_COMPONENT24, SHADOW_ATLAS_WIDTH, this.localShadowAtlasHeight, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
+    this.localShadowTexture = backend.createTexture();
+    backend.uploadDepthTexture2D(this.localShadowTexture, SHADOW_ATLAS_WIDTH, this.localShadowAtlasHeight, { linear: false, unit: LOCAL_SHADOW_UNIT });
     this.renderTargets.record('localShadowAtlas', { width: SHADOW_ATLAS_WIDTH, height: this.localShadowAtlasHeight, format: 'DEPTH_COMPONENT24' });
-    this.backend?.setClampedFiltering(context.NEAREST);
-    this.localShadowFramebuffer = context.createFramebuffer();
-    context.bindFramebuffer(context.FRAMEBUFFER, this.localShadowFramebuffer);
-    context.framebufferTexture2D(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, context.TEXTURE_2D, this.localShadowTexture, 0);
-    context.drawBuffers([context.NONE]);
-    context.readBuffer(context.NONE);
-    assertShadowFramebufferComplete(context, 'Local shadow');
-    context.activeTexture(context.TEXTURE0);
+    this.localShadowFramebuffer = backend.createFramebuffer();
+    backend.attachDepthTexture(this.localShadowFramebuffer, this.localShadowTexture, 'Local shadow');
+    backend.activeTextureUnit(0);
   }
 
   // Builds the view of each atlas tile, and draws the atlas again only when a light moved or the casters changed.
@@ -2546,17 +2456,18 @@ export class CrucibleRenderer {
     if (!moved && !casterChanged && this.localShadowTexture) return;
     previous.set(matrices);
     this.localShadowTileCount = casters.length;
-    const context = this.context;
+    const backend = backendFor(this);
     if (!this.localShadowTexture || Math.ceil(casters.length / SHADOW_TILES_PER_ROW) * SHADOW_TILE_SIZE > this.localShadowAtlasHeight) this.allocateLocalShadowAtlas(casters.length);
-    context.bindFramebuffer(context.FRAMEBUFFER, this.localShadowFramebuffer);
-    context.viewport(0, 0, SHADOW_ATLAS_WIDTH, this.localShadowAtlasHeight);
-    context.enable(context.DEPTH_TEST);
-    context.clear(context.DEPTH_BUFFER_BIT);
+    backend.bindFramebuffer(this.localShadowFramebuffer);
+    backend.setViewport(SHADOW_ATLAS_WIDTH, this.localShadowAtlasHeight);
+    backend.setRenderState({ depthTest: true });
+    backend.clearDepthBuffer(1);
     for (let tile = 0; tile < casters.length; tile++) {
-      context.viewport(...tileViewport(tile));
+      const [x, y, width, height] = tileViewport(tile);
+      backend.setViewport(width, height, x, y);
       this.drawShadowCasters(matrices.subarray(tile * 16, tile * 16 + 16));
     }
-    context.bindFramebuffer(context.FRAMEBUFFER, null);
+    backend.bindCanvasTarget();
   }
 
   /** Stores the wind time and strength the shadow pass must use; true when swaying batches need a new shadow map. */
@@ -2575,21 +2486,23 @@ export class CrucibleRenderer {
 
   resize() {
     // A lost context answers every parameter query with null, so there is no size limit to plan against. This class has no restore path: the caller disposes the renderer and builds a new one when the context comes back.
-    if (this.context.isContextLost()) return;
+    const backend = backendFor(this);
+    if (backend.isContextLost()) return;
     // A canvas that grew or shrank changes the triangles per pixel, so denseSamples is judged again; a new count needs new render targets.
     const previousSamples = this.multisampleSamples;
     if (this.denseSamples != null) {
       this.multisampleSamples = this.chooseMultisampleSamples(this.densityParts);
       this.capabilities.samples = this.multisampleSamples;
     }
-    const plan = planRenderSize({ width: Math.max(1, this.canvas.clientWidth), height: Math.max(1, this.canvas.clientHeight), pixelRatio: this.pixelRatio, samples: this.samples, memoryBudgetMiB: this.memoryBudgetMiB, geometryBytes: this.geometryBytes, textureBytes: this.textureBytes, hdr: this.hdr, bloom: !this.benchmark, depth: this.depth, maximumSize: Math.min(this.context.getParameter(this.context.MAX_RENDERBUFFER_SIZE), this.context.getParameter(this.context.MAX_TEXTURE_SIZE)), maximumMemoryBudgetMiB: this.maximumMemoryBudgetMiB });
-    const { width, height } = plan;
-    this.memoryPlan = plan;
-    const sizeChanged = this.canvas.width !== width || this.canvas.height !== height;
-    if (sizeChanged || this.multisampleSamples !== previousSamples) {
-      this.canvas.width = width;
-      this.canvas.height = height;
-      if (!this.benchmark) this.allocateFrameTargets(width, height);
+    this.memoryPlan = planRenderSize({ width: Math.max(1, this.canvas.clientWidth), height: Math.max(1, this.canvas.clientHeight), pixelRatio: this.pixelRatio, samples: this.samples, memoryBudgetMiB: this.memoryBudgetMiB, geometryBytes: this.geometryBytes, textureBytes: this.textureBytes, hdr: this.hdr, bloom: !this.benchmark, depth: this.depth, maximumSize: backend.maxRenderbufferAndTextureSize(), maximumMemoryBudgetMiB: this.maximumMemoryBudgetMiB });
+    const { width, height } = this.memoryPlan;
+    const targetsStale = this.allocatedTargetWidth !== width || this.allocatedTargetHeight !== height || this.multisampleSamples !== previousSamples;
+    if (this.canvas.width !== width) this.canvas.width = width;
+    if (this.canvas.height !== height) this.canvas.height = height;
+    if (!this.benchmark && targetsStale) {
+      this.allocateFrameTargets(width, height);
+      this.allocatedTargetWidth = width;
+      this.allocatedTargetHeight = height;
     }
     mat4.perspective(this.projection, this.world ? Math.PI / 4 : Math.PI / 5.5, width / height, 0.1, this.world ? 600 : 100);
   }
@@ -2620,29 +2533,29 @@ export class CrucibleRenderer {
   }
 
   releaseFrameTargets() {
-    const context = this.context;
-    const backend = this.backend;
     // The fog step may have left one of the textures deleted below on a mipmapped filter; binding it later is INVALID_OPERATION (1282, #2205).
     this.mipmappedTexture = null;
-    for (const framebuffer of [this.multisampleFramebuffer, this.resolveFramebuffer]) if (framebuffer) backend.deleteFramebuffer(framebuffer);
-    for (const renderbuffer of [this.multisampleColor, this.multisampleDepth]) if (renderbuffer) backend.deleteRenderbuffer(renderbuffer);
-    for (const texture of [this.frameTexture, this.depthTexture]) if (texture) backend.deleteTexture(texture);
+    for (const framebuffer of [this.multisampleFramebuffer, this.resolveFramebuffer]) if (framebuffer) this.backend.deleteFramebuffer(framebuffer);
+    for (const renderbuffer of [this.multisampleColor, this.multisampleDepth]) if (renderbuffer) this.backend.deleteRenderbuffer(renderbuffer);
+    for (const texture of [this.frameTexture, this.depthTexture]) if (texture) this.backend.deleteTexture(texture);
     this.refractionChain?.release();
     this.refractionDepth?.release();
     bloomPyramidSupport.releaseTargets?.(this);
     this.bloomTargets = [];
     this.renderTargets.release('multisampleColor', 'multisampleDepth', 'frameColor', 'sceneDepth');
     this.releaseOcclusionTarget();
-    this.passSupport?.releaseTargets(context);
-    for (const stage of this.postStages ?? []) stage.releaseTargets(context);
+    this.passSupport?.releaseTargets(this.context);
+    for (const stage of this.postStages ?? []) stage.releaseTargets(this.context);
     if (this.localVolumeComposite) requireFeatureCode('volumeFog').support.releaseLocalVolumeComposite(this, false);
     this.multisampleFramebuffer = this.resolveFramebuffer = this.multisampleColor = this.multisampleDepth = this.frameTexture = this.depthTexture = null;
+    this.allocatedTargetWidth = 0;
+    this.allocatedTargetHeight = 0;
   }
 
   releaseOcclusionTarget() {
     if (!this.occlusionTarget) return;
-    this.context.deleteTexture(this.occlusionTarget.texture);
-    this.context.deleteFramebuffer(this.occlusionTarget.framebuffer);
+    backendFor(this).deleteTexture(this.occlusionTarget.texture);
+    backendFor(this).deleteFramebuffer(this.occlusionTarget.framebuffer);
     this.renderTargets.release('ambientOcclusion');
     this.occlusionTarget = null;
   }
@@ -2667,64 +2580,53 @@ export class CrucibleRenderer {
 
   // Compiled and allocated on first use, so scenes without occlusion pay nothing.
   ensureOcclusionTarget() {
-    const context = this.context;
+    const backend = backendFor(this);
     if (!this.occlusionProgram) {
-      this.occlusionProgram = compileProgram(context, fullscreenVertex, ambientOcclusionFragment);
-      this.occlusionUniforms = uniformLocations(context, this.occlusionProgram, ['sceneDepth', 'inverseViewProjection', 'radius', 'projectionScale', 'aspect', 'orthographic']);
+      this.occlusionProgram = backend.compileProgram(fullscreenVertex, ambientOcclusionFragment);
+      this.occlusionUniforms = uniformLocations(backend, this.occlusionProgram, ['sceneDepth', 'inverseViewProjection', 'radius', 'projectionScale', 'aspect', 'orthographic']);
     }
     if (this.occlusionTarget) return;
     const width = Math.max(1, Math.ceil(this.canvas.width / 2));
     const height = Math.max(1, Math.ceil(this.canvas.height / 2));
-    const texture = context.createTexture();
-    context.bindTexture(context.TEXTURE_2D, texture);
-    context.texImage2D(context.TEXTURE_2D, 0, context.R8, width, height, 0, context.RED, context.UNSIGNED_BYTE, null);
+    const target = backend.createFramebufferTarget({ width, height, colorFormat: 'r8', linear: true, clamp: true });
     this.renderTargets.record('ambientOcclusion', { width, height, format: 'R8' });
-    this.backend?.setClampedFiltering(context.LINEAR);
-    const framebuffer = context.createFramebuffer();
-    context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-    context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
-    this.occlusionTarget = { texture, framebuffer, width, height };
+    this.occlusionTarget = { texture: target.colorTexture, framebuffer: target.framebuffer, width, height };
   }
 
   drawAmbientOcclusion(frame, effects) {
-    const context = this.context;
+    const backend = backendFor(this);
     this.ensureOcclusionTarget();
     const uniforms = this.occlusionUniforms;
-    context.bindFramebuffer(context.FRAMEBUFFER, this.occlusionTarget.framebuffer);
-    context.viewport(0, 0, this.occlusionTarget.width, this.occlusionTarget.height);
-    context.disable(context.DEPTH_TEST);
-    context.disable(context.CULL_FACE);
-    context.bindVertexArray(null);
-    context.useProgram(this.occlusionProgram);
-    context.activeTexture(context.TEXTURE1);
-    context.bindTexture(context.TEXTURE_2D, this.depthTexture);
-    context.uniform1i(uniforms.sceneDepth, 1);
-    context.uniformMatrix4fv(uniforms.inverseViewProjection, false, mat4.invert([], this.projection));
-    context.uniform1f(uniforms.radius, effects.ambientOcclusionRadius);
-    context.uniform1f(uniforms.projectionScale, 0.5 * this.projection[5]);
-    context.uniform1f(uniforms.aspect, this.canvas.width / this.canvas.height);
-    context.uniform1f(uniforms.orthographic, frame.projection === 'orthographic' ? 1 : 0);
-    context.drawArrays(context.TRIANGLES, 0, 3);
+    backend.beginFullscreenPass(this.occlusionTarget.framebuffer, this.occlusionTarget.width, this.occlusionTarget.height, this.occlusionProgram);
+    backend.bindTextureUnit(1, this.depthTexture);
+    backend.uniform1i(uniforms.sceneDepth, 1);
+    backend.uniformMatrix4fv(uniforms.inverseViewProjection, mat4.invert([], this.projection));
+    backend.uniform1f(uniforms.radius, effects.ambientOcclusionRadius);
+    backend.uniform1f(uniforms.projectionScale, 0.5 * this.projection[5]);
+    backend.uniform1f(uniforms.aspect, this.canvas.width / this.canvas.height);
+    backend.uniform1f(uniforms.orthographic, frame.projection === 'orthographic' ? 1 : 0);
+    backend.drawFullscreenTriangles();
   }
 
   allocateFrameTargets(width, height) {
     this.releaseFrameTargets();
     // 24 bits at least (issue #751): 16 bits is one step per 1.5 cm at 10 m. Reversed depth respecifies this store as 32-bit float.
-    const depthFormat = 'DEPTH_COMPONENT24';
     const multisample = this.backend.createMultisampleTarget({ width, height, samples: this.multisampleSamples, hdr: this.hdr });
     this.multisampleFramebuffer = multisample.framebuffer;
     this.multisampleColor = multisample.colorBuffer;
     this.multisampleDepth = multisample.depthBuffer;
     this.renderTargets.record('multisampleColor', { width, height, format: this.hdr ? 'RGBA16F' : 'RGBA8', samples: this.multisampleSamples });
-    this.renderTargets.record('multisampleDepth', { width, height, format: depthFormat, samples: this.multisampleSamples });
+    this.renderTargets.record('multisampleDepth', { width, height, format: 'DEPTH_COMPONENT24', samples: this.multisampleSamples });
     this.renderTargets.record('frameColor', { width, height, format: this.hdr ? 'RGBA16F' : 'RGBA8' });
     const resolve = this.backend.createResolveTarget({ width, height, hdr: this.hdr, depth: this.depth });
     this.resolveFramebuffer = resolve.framebuffer;
     this.frameTexture = resolve.colorTexture;
     this.depthTexture = resolve.depthTexture;
-    if (this.depth) this.renderTargets.record('sceneDepth', { width, height, format: depthFormat });
+    if (this.depth) this.renderTargets.record('sceneDepth', { width, height, format: 'DEPTH_COMPONENT24' });
     this.bloomWidth = Math.max(1, Math.ceil(width / 2));
     this.bloomHeight = Math.max(1, Math.ceil(height / 2));
+    this.allocatedTargetWidth = width;
+    this.allocatedTargetHeight = height;
     this.backend.bindCanvasTarget();
     this.chooseColorFormat(width, height);
   }
@@ -2752,29 +2654,29 @@ export class CrucibleRenderer {
 
   compileEnvironmentProgram(context, vertexSource, fragmentSource) {
     const pendingProgram = this.pendingEnvironmentPrograms?.get(fragmentSource);
-    if (!pendingProgram) return compileProgram(context, vertexSource, fragmentSource);
+    if (!pendingProgram) return asGlazeBackend(context).compileProgram(vertexSource, fragmentSource);
     this.pendingEnvironmentPrograms.delete(fragmentSource);
-    return this.backend.finishProgram(pendingProgram);
+    return backendFor(this).finishProgram(pendingProgram);
   }
 
   initializeEnvironment(map) {
-    const context = this.context;
-    context.useProgram(this.program);
-    context.uniform1i(this.uniforms.environmentSpecular, ENVIRONMENT_SPECULAR_UNIT);
-    context.uniform1i(this.uniforms.environmentBrdf, ENVIRONMENT_BRDF_UNIT);
+    const backend = backendFor(this);
+    backend.useProgram(this.program);
+    backend.uniform1i(this.uniforms.environmentSpecular, ENVIRONMENT_SPECULAR_UNIT);
+    backend.uniform1i(this.uniforms.environmentBrdf, ENVIRONMENT_BRDF_UNIT);
     if (this.liquidProgram) {
-      context.useProgram(this.liquidProgram);
-      context.uniform1i(this.liquidUniforms.environmentSpecular, ENVIRONMENT_SPECULAR_UNIT);
+      backend.useProgram(this.liquidProgram);
+      backend.uniform1i(this.liquidUniforms.environmentSpecular, ENVIRONMENT_SPECULAR_UNIT);
     }
     this.bindEnvironmentTextures(this.whiteTexture, this.whiteTexture);
     if (!this.benchmark && map && !this.deferEnvironmentPrefilter) this.prepareEnvironment(map);
   }
 
   bindEnvironmentTextures(specularTexture, brdfTexture) {
-    const context = this.context;
-    bindTextureUnit(context, ENVIRONMENT_SPECULAR_UNIT, specularTexture);
-    bindTextureUnit(context, ENVIRONMENT_BRDF_UNIT, brdfTexture);
-    context.activeTexture(context.TEXTURE0);
+    const backend = backendFor(this);
+    backend.bindTextureUnit(ENVIRONMENT_SPECULAR_UNIT, specularTexture);
+    backend.bindTextureUnit(ENVIRONMENT_BRDF_UNIT, brdfTexture);
+    backend.activeTextureUnit(0);
   }
 
   // Prefilters a map the first time it is seen; maps spread from one created map share its data and reuse the GPU textures (an `irradianceSource` map, which only the diffuse light reads, counts as part of the map). Returns true when new textures were built.
@@ -2782,7 +2684,7 @@ export class CrucibleRenderer {
     requireEnvironmentSupport().assertMap(map);
     if (this.environmentResources?.data === map.data && this.environmentResources.irradianceSource === map.irradianceSource) return false;
     requireEnvironmentSupport().estimateBytes(map, this.capabilities.maximumTextureSize);
-    const resources = requireEnvironmentSupport().createResources(this.context, map, { compileProgram: (context, vertexSource, fragmentSource) => this.compileEnvironmentProgram(context, vertexSource, fragmentSource), fullscreenVertex });
+    const resources = requireEnvironmentSupport().createResources(backendFor(this), map, { compileProgram: (context, vertexSource, fragmentSource) => this.compileEnvironmentProgram(context, vertexSource, fragmentSource), fullscreenVertex });
     this.environmentResources?.dispose();
     this.environmentResources = resources;
     this.textureBytes += resources.bytes - this.environmentBytes;
@@ -2798,7 +2700,7 @@ export class CrucibleRenderer {
     requireEnvironmentSupport().assertMap(map);
     if (this.environmentResources?.data === map.data && this.environmentResources.irradianceSource === map.irradianceSource) return false;
     requireEnvironmentSupport().estimateBytes(map, this.capabilities.maximumTextureSize);
-    const resources = await requireEnvironmentSupport().createResourcesInSlices(this.context, map, { compileProgram: (context, vertexSource, fragmentSource) => this.compileEnvironmentProgram(context, vertexSource, fragmentSource), fullscreenVertex }, checkpoint);
+    const resources = await requireEnvironmentSupport().createResourcesInSlices(backendFor(this), map, { compileProgram: (context, vertexSource, fragmentSource) => this.compileEnvironmentProgram(context, vertexSource, fragmentSource), fullscreenVertex }, checkpoint);
     this.environmentResources?.dispose();
     this.environmentResources = resources;
     this.textureBytes += resources.bytes - this.environmentBytes;
@@ -2819,76 +2721,70 @@ export class CrucibleRenderer {
   }
 
   applyEnvironmentUniforms(map, uniforms = this.uniforms) {
-    const context = this.context;
-    context.uniform1f(uniforms.environmentEnabled, map ? 1 : 0);
+    const backend = backendFor(this);
+    backend.uniform1f(uniforms.environmentEnabled, map ? (map.showBackground && !this.transparent ? 2 : 1) : 0);
     if (!map) return;
     this.applyDiffuseUniforms(map, uniforms, true);
-    context.uniform1f(uniforms.environmentIntensity, map.intensity);
-    context.uniform2f(uniforms.environmentRotation, Math.cos(map.rotation), Math.sin(map.rotation));
-    context.uniform1f(uniforms.environmentLevelMax, this.environmentResources.levelCount - 1);
+    backend.uniform1f(uniforms.environmentIntensity, map.intensity);
+    backend.uniform2f(uniforms.environmentRotation, Math.cos(map.rotation), Math.sin(map.rotation));
+    backend.uniform1f(uniforms.environmentLevelMax, this.environmentResources.levelCount - 1);
   }
 
   // The diffuse light of the global map: the fitted coefficients (kept for the light shading preset), the map's rotation and intensity, and the
   // constant bounce a room adds on top of the exact irradiance grid. A reflection probe passes withBounce false, as it never bounced.
   applyDiffuseUniforms(map, uniforms, withBounce) {
-    const context = this.context;
+    const backend = backendFor(this);
     const coefficients = this.environmentResources.irradiance;
     const bounced = withBounce ? map.irradianceWithBounce?.(coefficients) : null;
     // environment.environmentDiffuseScale scales the diffuse light; the specular light and a probe are left alone. environment.ambientColor is
     // not added here: it is a shadow fill the main shader weights by the key light's shadow (keyReach in src/shaders.js).
     const environmentDiffuseScale = withBounce ? this.lighting.environmentDiffuseScale : 1;
     const irradiance = bounced ?? coefficients;
-    if (uniforms['environmentIrradiance[0]']) context.uniform3fv(uniforms['environmentIrradiance[0]'], irradiance);
-    if (uniforms.environmentBounce) context.uniform3f(uniforms.environmentBounce, irradiance[0] - coefficients[0], irradiance[1] - coefficients[1], irradiance[2] - coefficients[2]);
-    if (uniforms.environmentDiffuseFrame) context.uniform3f(uniforms.environmentDiffuseFrame, Math.cos(map.rotation), Math.sin(map.rotation), map.intensity * environmentDiffuseScale);
+    if (uniforms['environmentIrradiance[0]']) backend.uniform3fv(uniforms['environmentIrradiance[0]'], irradiance);
+    if (uniforms.environmentBounce) backend.uniform3f(uniforms.environmentBounce, irradiance[0] - coefficients[0], irradiance[1] - coefficients[1], irradiance[2] - coefficients[2]);
+    if (uniforms.environmentDiffuseFrame) backend.uniform3f(uniforms.environmentDiffuseFrame, Math.cos(map.rotation), Math.sin(map.rotation), map.intensity * environmentDiffuseScale);
   }
 
   drawEnvironmentBackground(map, frame, exposure) {
     if (!map?.showBackground || this.transparent) return false;
-    const context = this.context;
+    const backend = backendFor(this);
     if (!this.environmentBackgroundProgram) {
-      this.environmentBackgroundProgram = compileProgram(context, fullscreenVertex, this.withViewTransform(requireEnvironmentSupport().backgroundFragment, 'background'));
-      this.environmentBackgroundUniforms = uniformLocations(context, this.environmentBackgroundProgram, ['inverseViewProjection', 'eye', 'backgroundLevel', 'exposure', 'hdrEnabled', 'environmentSpecular', 'environmentRotation', 'environmentIntensity', 'environmentLevelMax', 'sunMapDirection', 'sunDiscRadiance', 'sunDiscRadius']);
+      this.environmentBackgroundProgram = backend.compileProgram(fullscreenVertex, this.withViewTransform(requireEnvironmentSupport().backgroundFragment, 'background'));
+      this.environmentBackgroundUniforms = uniformLocations(backend, this.environmentBackgroundProgram, ['inverseViewProjection', 'eye', 'backgroundLevel', 'exposure', 'hdrEnabled', 'environmentSpecular', 'environmentRotation', 'environmentIntensity', 'environmentLevelMax', 'sunMapDirection', 'sunDiscRadiance', 'sunDiscRadius']);
     }
     const uniforms = this.environmentBackgroundUniforms;
     const levelMax = this.environmentResources.levelCount - 1;
-    context.disable(context.DEPTH_TEST);
-    context.disable(context.CULL_FACE);
-    context.bindVertexArray(null);
-    context.useProgram(this.environmentBackgroundProgram);
-    context.uniformMatrix4fv(uniforms.inverseViewProjection, false, this.inverseViewProjection);
-    context.uniform3fv(uniforms.eye, frame.eye);
-    context.uniform1f(uniforms.backgroundLevel, map.backgroundBlur * levelMax);
-    context.uniform1f(uniforms.exposure, exposure);
-    context.uniform1f(uniforms.hdrEnabled, this.hdr ? 1 : 0);
-    context.uniform1i(uniforms.environmentSpecular, ENVIRONMENT_SPECULAR_UNIT);
-    context.uniform2f(uniforms.environmentRotation, Math.cos(map.rotation), Math.sin(map.rotation));
-    context.uniform1f(uniforms.environmentIntensity, map.intensity);
-    context.uniform1f(uniforms.environmentLevelMax, levelMax);
+    backend.prepareFullscreenDraw(this.environmentBackgroundProgram);
+    backend.uniformMatrix4fv(uniforms.inverseViewProjection, this.inverseViewProjection);
+    backend.uniform3fv(uniforms.eye, frame.eye);
+    backend.uniform1f(uniforms.backgroundLevel, map.backgroundBlur * levelMax);
+    backend.uniform1f(uniforms.exposure, exposure);
+    backend.uniform1f(uniforms.hdrEnabled, this.hdr ? 1 : 0);
+    backend.uniform1i(uniforms.environmentSpecular, ENVIRONMENT_SPECULAR_UNIT);
+    backend.uniform2f(uniforms.environmentRotation, Math.cos(map.rotation), Math.sin(map.rotation));
+    backend.uniform1f(uniforms.environmentIntensity, map.intensity);
+    backend.uniform1f(uniforms.environmentLevelMax, levelMax);
     const sunDisc = map.sunDisc;
-    context.uniform3fv(uniforms.sunMapDirection, sunDisc?.direction ?? [0, -1, 0]);
-    context.uniform3fv(uniforms.sunDiscRadiance, sunDisc?.radiance ?? [0, 0, 0]);
-    context.uniform1f(uniforms.sunDiscRadius, frame.environment?.sunAngularRadius ?? this.environment?.sunAngularRadius ?? DEFAULT_SUN_ANGULAR_RADIUS);
-    context.drawArrays(context.TRIANGLES, 0, 3);
+    backend.uniform3fv(uniforms.sunMapDirection, sunDisc?.direction ?? [0, -1, 0]);
+    backend.uniform3fv(uniforms.sunDiscRadiance, sunDisc?.radiance ?? [0, 0, 0]);
+    backend.uniform1f(uniforms.sunDiscRadius, frame.environment?.sunAngularRadius ?? this.environment?.sunAngularRadius ?? DEFAULT_SUN_ANGULAR_RADIUS);
+    backend.drawFullscreenTriangles();
     return true;
   }
 
   drawSky(frame) {
-    const context = this.context;
+    const backend = backendFor(this);
     const environment = { skyTop: [0.20, 0.38, 0.52], skyBottom: [0.62, 0.70, 0.67], lightDirection: [-3, 6, 4], daylight: 1, ...this.environment, ...frame.environment };
-    context.disable(context.DEPTH_TEST);
-    context.disable(context.CULL_FACE);
-    context.bindVertexArray(null);
-    context.useProgram(this.skyProgram);
-    context.uniform3fv(this.skyUniforms.skyTop, environment.skyTop);
-    context.uniform3fv(this.skyUniforms.skyBottom, environment.skyBottom);
-    context.uniform3fv(this.skyUniforms.sunDirection, environment.lightDirection);
-    context.uniformMatrix4fv(this.skyUniforms.inverseViewProjection, false, this.inverseViewProjection);
-    context.uniform3fv(this.skyUniforms.eye, frame.eye);
-    context.uniform1f(this.skyUniforms.time, frame.time ?? 0);
-    context.uniform1f(this.skyUniforms.daylight, environment.daylight);
-    context.uniform1f(this.skyUniforms.hdrEnabled, this.hdr ? 1 : 0);
-    context.drawArrays(context.TRIANGLES, 0, 3);
+    backend.prepareFullscreenDraw(this.skyProgram);
+    backend.uniform3fv(this.skyUniforms.skyTop, environment.skyTop);
+    backend.uniform3fv(this.skyUniforms.skyBottom, environment.skyBottom);
+    backend.uniform3fv(this.skyUniforms.sunDirection, environment.lightDirection);
+    backend.uniformMatrix4fv(this.skyUniforms.inverseViewProjection, this.inverseViewProjection);
+    backend.uniform3fv(this.skyUniforms.eye, frame.eye);
+    backend.uniform1f(this.skyUniforms.time, frame.time ?? 0);
+    backend.uniform1f(this.skyUniforms.daylight, environment.daylight);
+    backend.uniform1f(this.skyUniforms.hdrEnabled, this.hdr ? 1 : 0);
+    backend.drawFullscreenTriangles();
   }
 
   // True when the frame draws local volumes. An empty list costs nothing; anything else is checked here, before a program is bound.
@@ -2932,18 +2828,19 @@ export class CrucibleRenderer {
   // until the driver has finished building the new one, so a step that appears later does not stall a frame.
   selectPostProgram(steps) {
     if (steps.join() === POST_STEPS.join()) return { program: this.postProgram, uniforms: this.postUniforms };
+    const backend = backendFor(this);
     const key = steps.join(',');
     let variant = this.postVariants.get(key);
     if (!variant) {
-      variant = { pending: this.backend.startProgram(fullscreenVertex, this.withViewTransform(createPostFragment(steps), 'post')) };
+      variant = { pending: backend.startProgram(fullscreenVertex, this.withViewTransform(createPostFragment(steps), 'post')) };
       this.postVariants.set(key, variant);
     }
     if (variant.pending) {
-      const parallelCompile = this.context.getExtension('KHR_parallel_shader_compile');
-      const building = !this.exactFrames && parallelCompile && !POST_STEPS_WITH_OPTIONAL_CODE.some(step => steps.includes(step)) && !this.context.getProgramParameter(variant.pending.program, parallelCompile.COMPLETION_STATUS_KHR);
+      const parallelCompile = backend.extension('KHR_parallel_shader_compile');
+      const building = !this.exactFrames && parallelCompile && !POST_STEPS_WITH_OPTIONAL_CODE.some(step => steps.includes(step)) && !backend.isProgramLinkComplete(variant.pending.program);
       if (building) return { program: this.postProgram, uniforms: this.postUniforms };
-      variant.program = this.backend.finishProgram(variant.pending);
-      variant.uniforms = postUniformLocations(this.context, variant.program);
+      variant.program = backend.finishProgram(variant.pending);
+      variant.uniforms = postUniformLocations(backend, variant.program);
       variant.pending = null;
     }
     return variant;
@@ -2963,15 +2860,13 @@ export class CrucibleRenderer {
   // mip chain exists, so on that filter they would sample the previous frame's blurred levels: a ghost after a seek.
   restoreSingleLevelFiltering() {
     if (!this.mipmappedTexture) return;
-    const context = this.context;
-    context.bindTexture(context.TEXTURE_2D, this.mipmappedTexture);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
+    backendFor(this).setTextureMipmaps(this.mipmappedTexture, false, null);
     this.mipmappedTexture = null;
   }
 
   resolveFrame(frame, effects, environment, volume) {
-    const context = this.context;
-    this.backend.resolveMultisample({ source: this.multisampleFramebuffer, destination: this.resolveFramebuffer, width: this.canvas.width, height: this.canvas.height, depth: this.depth });
+    const backend = backendFor(this);
+    backend.resolveMultisample({ source: this.multisampleFramebuffer, destination: this.resolveFramebuffer, width: this.canvas.width, height: this.canvas.height, depth: this.depth });
     this.restoreSingleLevelFiltering();
     let sourceTexture = this.frameTexture;
     for (const stage of this.postStages) sourceTexture = stage.apply(this, frame, effects, sourceTexture) ?? sourceTexture;
@@ -2985,61 +2880,53 @@ export class CrucibleRenderer {
     if (occluded) this.drawAmbientOcclusion(frame, effects);
     this.meterAutoExposure(frame, sourceTexture);
     // A frame that names an outputFramebuffer (src/float-output.js) draws its final pass there, not on the canvas.
-    context.bindFramebuffer(context.FRAMEBUFFER, frame.outputFramebuffer ?? null);
-    context.viewport(0, 0, this.canvas.width, this.canvas.height);
-    context.disable(context.DEPTH_TEST);
-    context.disable(context.CULL_FACE);
-    context.bindVertexArray(null);
-    const fogSky = this.fogSkyVisibility?.(this.sceneParts, volume, context, environment);
+    backend.beginFullscreenPass(frame.outputFramebuffer ?? null, this.canvas.width, this.canvas.height);
+    const fogSky = this.fogSkyVisibility?.(this.sceneParts, volume, this.context, environment);
     const fogSupport = volume.density > 0 ? requireFeatureCode('volumeFog').support : null;
     if (fogSupport) fogSupport.packLights(this);
     else if (this.fogLightBuffers) this.fogLightBuffers.count = 0;
     const post = this.selectPostProgram(this.postStepsOf(frame, effects, volume, occluded, fogSky, localVolumes && !compositedLocalVolumes));
-    context.useProgram(post.program);
+    backend.useProgram(post.program);
     if (this.look) viewTransformShader.bindLook(this, post.program);
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, sourceTexture);
     // The fog's glow reads blurred copies of the frame from its mip chain, so a tap is smooth instead of one speckled pixel.
     if (volume.density > 0 || (localVolumes && !compositedLocalVolumes && this.localVolumeBuffers.blurred)) {
-      context.generateMipmap(context.TEXTURE_2D);
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR_MIPMAP_LINEAR);
+      backend.setTextureMipmaps(sourceTexture, true, 0);
       this.mipmappedTexture = sourceTexture;
     } else if (this.mipmappedTexture === sourceTexture) {
-      context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
+      backend.setTextureMipmaps(sourceTexture, false, 0);
       this.mipmappedTexture = null;
+    } else {
+      backend.bindTextureUnit(0, sourceTexture);
     }
-    context.uniform1i(post.uniforms.frameTexture, 0);
-    context.activeTexture(context.TEXTURE1);
-    context.bindTexture(context.TEXTURE_2D, this.depthTexture ?? this.whiteTexture);
-    context.uniform1i(post.uniforms.sceneDepth, 1);
+    backend.uniform1i(post.uniforms.frameTexture, 0);
+    backend.bindTextureUnit(1, this.depthTexture ?? this.whiteTexture);
+    backend.uniform1i(post.uniforms.sceneDepth, 1);
     fogSupport?.bindUniforms(this, post, volume, environment, frame);
     if (localVolumes && !compositedLocalVolumes) requireFeatureCode('volumeFog').support.bindLocalVolumes(this, post, frame, environment);
-    context.activeTexture(context.TEXTURE2);
-    context.bindTexture(context.TEXTURE_2D, bloomActive && this.bloomTargets.length > 0 ? this.bloomTargets[0].texture : this.whiteTexture);
-    context.uniform1i(post.uniforms.bloomTexture, 2);
-    context.uniform1f(post.uniforms.bloomStrength, bloomActive ? effects.bloom.strength : 0);
-    context.uniform1f(post.uniforms.bloomKeepHue, bloomActive && effects.bloom.keepHue ? 1 : 0);
-    context.activeTexture(context.TEXTURE4);
-    context.bindTexture(context.TEXTURE_2D, occluded ? this.occlusionTarget.texture : this.whiteTexture);
-    context.uniform1i(post.uniforms.occlusionTexture, 4);
-    context.uniform1f(post.uniforms.occlusionStrength, occluded ? effects.ambientOcclusion : 0);
-    if (this.autoExposureScale != null) context.uniform1f(post.uniforms.autoExposureScale, this.autoExposureScale);
-    context.uniform2f(post.uniforms.occlusionTexel, 1 / Math.ceil(this.canvas.width / 2), 1 / Math.ceil(this.canvas.height / 2));
-    context.uniform1f(post.uniforms.transparent, this.transparent ? 1 : 0);
-    context.uniform1f(post.uniforms.hdrEnabled, this.hdr ? 1 : 0);
-    context.uniform3f(post.uniforms.grade, effects.saturation, effects.contrast, effects.temperature);
-    context.uniform1f(post.uniforms.vignette, effects.vignette);
-    context.uniform1f(post.uniforms.grainAmount, effects.grain);
-    context.uniform2f(post.uniforms.resolution, this.canvas.width, this.canvas.height);
-    context.uniform1f(post.uniforms.monochrome, frame.monochrome ?? 0);
-    context.uniform1f(post.uniforms.fade, frame.fade ?? 0);
-    context.uniform1f(post.uniforms.cinematic, frame.cinematic ? 1 : 0);
-    context.uniform1f(post.uniforms.time, frame.time ?? 0);
-    context.uniform1f(post.uniforms.volumeExplosion, frame.volumeExplosion ? 1 : 0);
-    context.uniform1f(post.uniforms.explosionProgress, frame.explosionProgress ?? 1);
-    context.uniformMatrix4fv(post.uniforms.inverseViewProjection, false, this.inverseViewProjection);
-    context.uniform3fv(post.uniforms.eye, frame.eye);
-    context.drawArrays(context.TRIANGLES, 0, 3);
+    backend.bindTextureUnit(2, bloomActive && this.bloomTargets.length > 0 ? this.bloomTargets[0].texture : this.whiteTexture);
+    backend.uniform1i(post.uniforms.bloomTexture, 2);
+    backend.uniform1f(post.uniforms.bloomStrength, bloomActive ? effects.bloom.strength : 0);
+    backend.uniform1f(post.uniforms.bloomKeepHue, bloomActive && effects.bloom.keepHue ? 1 : 0);
+    backend.bindTextureUnit(4, occluded ? this.occlusionTarget.texture : this.whiteTexture);
+    backend.uniform1i(post.uniforms.occlusionTexture, 4);
+    backend.uniform1f(post.uniforms.occlusionStrength, occluded ? effects.ambientOcclusion : 0);
+    if (this.autoExposureScale != null) backend.uniform1f(post.uniforms.autoExposureScale, this.autoExposureScale);
+    backend.uniform2f(post.uniforms.occlusionTexel, 1 / Math.ceil(this.canvas.width / 2), 1 / Math.ceil(this.canvas.height / 2));
+    backend.uniform1f(post.uniforms.transparent, this.transparent ? 1 : 0);
+    backend.uniform1f(post.uniforms.hdrEnabled, this.hdr ? 1 : 0);
+    backend.uniform3f(post.uniforms.grade, effects.saturation, effects.contrast, effects.temperature);
+    backend.uniform1f(post.uniforms.vignette, effects.vignette);
+    backend.uniform1f(post.uniforms.grainAmount, effects.grain);
+    backend.uniform2f(post.uniforms.resolution, this.canvas.width, this.canvas.height);
+    backend.uniform1f(post.uniforms.monochrome, frame.monochrome ?? 0);
+    backend.uniform1f(post.uniforms.fade, frame.fade ?? 0);
+    backend.uniform1f(post.uniforms.cinematic, frame.cinematic ? 1 : 0);
+    backend.uniform1f(post.uniforms.time, frame.time ?? 0);
+    backend.uniform1f(post.uniforms.volumeExplosion, frame.volumeExplosion ? 1 : 0);
+    backend.uniform1f(post.uniforms.explosionProgress, frame.explosionProgress ?? 1);
+    backend.uniformMatrix4fv(post.uniforms.inverseViewProjection, this.inverseViewProjection);
+    backend.uniform3fv(post.uniforms.eye, frame.eye);
+    backend.drawFullscreenTriangles();
   }
 
   drawTranslucent(frame, environment, assemblyAmount, environmentMap) {
@@ -3054,7 +2941,7 @@ export class CrucibleRenderer {
 
   // Allocated on the first frame that asks for bloom, so scenes without it pay nothing.
   ensureBloomTargets() {
-    bloomPyramidSupport.ensureTargets?.(this, compileProgram, fullscreenVertex);
+    bloomPyramidSupport.ensureTargets?.(this, (context, vertexSource, fragmentSource) => asGlazeBackend(context).compileProgram(vertexSource, fragmentSource), fullscreenVertex);
   }
 
   drawBloom(bloom, sourceTexture = this.frameTexture) {
@@ -3065,42 +2952,31 @@ export class CrucibleRenderer {
 
   /** Culling, cutout and opacity state for one batch, in the color pass (textured) or the shadow depth pass. */
   applyAlphaState(batch, textured) {
-    const context = this.context;
+    const backend = backendFor(this);
     if (this.shaderFeatures?.has(CLIP_PLANES_FEATURE) && !this.benchmark) bindClipPlanes(this, batch, textured ? this.uniforms : this.depthClipLocations);
     // The shadow depth pass (not textured) draws both faces. A single-sided terrain edge, leaf card or open shell seen from
     // behind would otherwise write no depth, and the sun would pass through it.
-    if (batch.doubleSided || !textured) {
-      context.disable(context.CULL_FACE);
-    } else {
-      context.enable(context.CULL_FACE);
-    }
+    backend.setRenderState({ cullFace: !(batch.doubleSided || !textured) });
     const masked = batch.alphaMode === 'mask';
     if (!textured) {
       const uniforms = this.depthAlphaUniforms;
-      context.uniform1f(uniforms.alphaMasked, masked ? 1 : 0);
-      context.uniform1f(uniforms.alphaCutoff, batch.alphaCutoff);
-      context.uniform1f(uniforms.materialOpacity, batch.opacity);
-      context.uniform1f(uniforms.hasBaseMap, batch.mapState[0] ? 1 + (batch.mapState[0].uvChannel ?? 0) : 0);
+      backend.uniform1f(uniforms.alphaMasked, masked ? 1 : 0);
+      backend.uniform1f(uniforms.alphaCutoff, batch.alphaCutoff);
+      backend.uniform1f(uniforms.materialOpacity, batch.opacity);
+      backend.uniform1f(uniforms.hasBaseMap, batch.mapState[0] ? 1 + (batch.mapState[0].uvChannel ?? 0) : 0);
       layerTextureSupport.bindDepth?.(this, batch);
-      if (masked || batch.tintedShadow) {
-        context.activeTexture(context.TEXTURE0 + 1);
-        context.bindTexture(context.TEXTURE_2D, batch.textures[0]);
-      }
+      if (masked || batch.tintedShadow) backend.bindTextureUnit(1, batch.textures[0]);
       return;
     }
     this.applyDepthRank((batch.depthLayer ?? 0) * RANKS_PER_LAYER);
     const useCoverage = masked && this.samples > 1 && !this.benchmark && !this.renderingPass;
-    if (useCoverage) {
-      context.enable(context.SAMPLE_ALPHA_TO_COVERAGE);
-    } else {
-      context.disable(context.SAMPLE_ALPHA_TO_COVERAGE);
-    }
+    backend.setRenderState({ sampleAlphaToCoverage: useCoverage });
     const uniforms = this.uniforms;
-    context.uniform1f(uniforms.alphaMode, ALPHA_MODES[batch.alphaMode]);
-    context.uniform1f(uniforms.alphaCutoff, batch.alphaCutoff);
-    context.uniform1f(uniforms.materialOpacity, batch.opacity);
-    context.uniform1f(uniforms.alphaToCoverage, useCoverage ? 1 : 0);
-    context.uniform1f(uniforms.doubleSided, batch.doubleSided ? 1 : 0);
+    backend.uniform1f(uniforms.alphaMode, ALPHA_MODES[batch.alphaMode]);
+    backend.uniform1f(uniforms.alphaCutoff, batch.alphaCutoff);
+    backend.uniform1f(uniforms.materialOpacity, batch.opacity);
+    backend.uniform1f(uniforms.alphaToCoverage, useCoverage ? 1 : 0);
+    backend.uniform1f(uniforms.doubleSided, batch.doubleSided ? 1 : 0);
   }
 
   /**
@@ -3110,14 +2986,9 @@ export class CrucibleRenderer {
    * grazing face. `towardEye` is the sign of nearer depth values: -1 for standard depth, 1 for reversed depth.
    */
   applyDepthRank(rank, towardEye = -1) {
-    const context = this.context;
-    context.uniform3f(this.uniforms.flushBias, rank * FLUSH_STEP, rank * FLUSH_RELATIVE_STEP, towardEye < 0 && rank ? -rank * FLUSH_CLIP_STEP : 0);
-    if (rank) {
-      context.enable(context.POLYGON_OFFSET_FILL);
-      context.polygonOffset(towardEye * rank * FLUSH_SLOPE_STEP, 0);
-    } else {
-      context.disable(context.POLYGON_OFFSET_FILL);
-    }
+    const backend = backendFor(this);
+    backend.uniform3f(this.uniforms.flushBias, rank * FLUSH_STEP, rank * FLUSH_RELATIVE_STEP, towardEye < 0 && rank ? -rank * FLUSH_CLIP_STEP : 0);
+    backend.setRenderState({ polygonOffset: rank ? [towardEye * rank * FLUSH_SLOPE_STEP, 0] : false });
   }
 
   /** Tells the main program how clip space moves per metre along the view direction, for the depth ranks. */
@@ -3127,7 +2998,7 @@ export class CrucibleRenderer {
     for (let row = 0; row < 4; row++) {
       clipPerMetreScratch[row] = viewProjection[row] * forward[0] + viewProjection[4 + row] * forward[1] + viewProjection[8 + row] * forward[2];
     }
-    this.context.uniform4fv(this.uniforms.clipPerMetre, clipPerMetreScratch);
+    backendFor(this).uniform4fv(this.uniforms.clipPerMetre, clipPerMetreScratch);
   }
 
   /** Draws additive batches that lie behind every shell into the opaque scene the shell reads; drawBlendBatches skips them. */
@@ -3137,17 +3008,14 @@ export class CrucibleRenderer {
     const behind = additiveBatchesBehindShells(this, additive, shells);
     if (behind.length === 0) return;
     this.additiveBehindShells = new Set(behind);
-    const context = this.context;
+    const backend = backendFor(this);
     bindAlphaPassState(this);
-    context.enable(context.BLEND);
-    context.blendFuncSeparate(context.SRC_ALPHA, context.ONE, context.ZERO, context.ONE);
-    context.depthMask(false);
+    backend.setRenderState({ blend: true, blendMode: 'srcAlphaOne', depthWrite: false });
     for (const batch of behind) this.drawAlphaBatch(batch, true);
-    context.depthMask(true);
+    backend.setRenderState({ depthWrite: true });
     this.applyDepthRank(0);
-    context.disable(context.BLEND);
-    context.enable(context.CULL_FACE);
-    context.bindVertexArray(null);
+    backend.setRenderState({ blend: false, cullFace: true });
+    backend.bindVertexArray(null);
   }
 
   /** Draws blended batches back to front as one set; see drawBlendedBatchesInOrder. */
@@ -3157,7 +3025,7 @@ export class CrucibleRenderer {
 
   /** Alpha-blended batches draw after opaque and masked geometry, farthest first, without writing depth. Additive batches draw last. */
   drawBlendBatches(frame) {
-    const context = this.context;
+    const backend = backendFor(this);
     const blendBatches = this.batches.filter(batch => batch.alphaMode === 'blend' && batchPass(batch) === 'opaque');
     // Light adds in any order, so additive batches need no sort.
     const addBatches = this.batches.filter(batch => batch.alphaMode === 'add' && batchPass(batch) === 'opaque' && !this.additiveBehindShells?.has(batch));
@@ -3173,34 +3041,31 @@ export class CrucibleRenderer {
     for (const batch of depthOrdered) {
       if (blendBatchDrawsCutoutFirst(batch)) this.drawAlphaBatch({ ...batch, alphaMode: 'mask', alphaCutoff: 0.999 }, true);
     }
-    context.enable(context.BLEND);
+    const premultipliedBlend = [BLEND_FACTORS.sourceColor, BLEND_FACTORS.destinationColor, BLEND_FACTORS.sourceAlpha, BLEND_FACTORS.destinationAlpha];
     // The program writes a blended part premultiplied, so its specular is not faded by alpha (blend-output.js).
-    context.blendFuncSeparate(context[BLEND_FACTORS.sourceColor], context[BLEND_FACTORS.destinationColor], context[BLEND_FACTORS.sourceAlpha], context[BLEND_FACTORS.destinationAlpha]);
-    context.depthMask(false);
+    backend.setRenderState({ blend: true, blendMode: premultipliedBlend, depthWrite: false });
     drawBlendedBatchesInOrder(this, depthOrdered);
     if (depthAddBatches.length > 0) {
       // Source colour times opacity is added to the frame; the destination alpha is kept.
-      context.blendFuncSeparate(context.SRC_ALPHA, context.ONE, context.ZERO, context.ONE);
+      backend.setRenderState({ blendMode: 'srcAlphaOne' });
       for (const batch of depthAddBatches) this.drawAlphaBatch(batch, true);
     }
     if (overlayOrdered.length > 0 || overlayAddBatches.length > 0) {
-      context.disable(context.DEPTH_TEST);
+      backend.setRenderState({ depthTest: false });
       if (overlayOrdered.length > 0) {
-        context.blendFuncSeparate(context[BLEND_FACTORS.sourceColor], context[BLEND_FACTORS.destinationColor], context[BLEND_FACTORS.sourceAlpha], context[BLEND_FACTORS.destinationAlpha]);
+        backend.setRenderState({ blendMode: premultipliedBlend });
         drawBlendedBatchesInOrder(this, overlayOrdered);
       }
       if (overlayAddBatches.length > 0) {
-        context.blendFuncSeparate(context.SRC_ALPHA, context.ONE, context.ZERO, context.ONE);
+        backend.setRenderState({ blendMode: 'srcAlphaOne' });
         for (const batch of overlayAddBatches) this.drawAlphaBatch(batch, true);
       }
-      context.enable(context.DEPTH_TEST);
+      backend.setRenderState({ depthTest: true });
     }
-    context.depthMask(true);
+    backend.setRenderState({ depthWrite: true });
     this.applyDepthRank(0);
-    context.disable(context.BLEND);
-    context.disable(context.SAMPLE_ALPHA_TO_COVERAGE);
-    context.enable(context.CULL_FACE);
-    context.bindVertexArray(null);
+    backend.setRenderState({ blend: false, sampleAlphaToCoverage: false, cullFace: true });
+    backend.bindVertexArray(null);
   }
 
   drawAlphaBatch(batch, textured, culled = false) {
@@ -3212,12 +3077,12 @@ export class CrucibleRenderer {
 
   // When every batch holds one instance, its flat values (colour, surface, emission, box normal matrix) are uniforms, not varyings.
   setSingleInstanceUniforms(data) {
-    const context = this.context;
-    context.uniform3f(this.uniforms.baseColor, data[25], data[26], data[27]);
-    context.uniform4f(this.uniforms.surface, data[28], data[29], data[30], data[31]);
-    context.uniform4f(this.uniforms.instanceEmission, data[38], data[39], data[40], 0);
-    context.uniform1f(this.uniforms.instanceOpacity, data[OPACITY_OFFSET]);
-    if (this.shaderFeatures.has('boxMapScale')) context.uniformMatrix3fv(this.uniforms.boxNormalMatrix, false, data.subarray(16, 25));
+    const backend = backendFor(this);
+    backend.uniform3f(this.uniforms.baseColor, data[25], data[26], data[27]);
+    backend.uniform4f(this.uniforms.surface, data[28], data[29], data[30], data[31]);
+    backend.uniform4f(this.uniforms.instanceEmission, data[38], data[39], data[40], 0);
+    backend.uniform1f(this.uniforms.instanceOpacity, data[OPACITY_OFFSET]);
+    if (this.shaderFeatures.has('boxMapScale')) backend.uniformMatrix3fv(this.uniforms.boxNormalMatrix, data.subarray(16, 25));
   }
 
   // A batch whose material has `windScale` feels a share of the frame wind (ground-cover grass); the batch after it gets the frame wind back.
@@ -3226,87 +3091,88 @@ export class CrucibleRenderer {
     const scale = batch.parts?.[0]?.material.windScale;
     if (scale === undefined && !this.windScaledBatch) return;
     this.windScaledBatch = scale !== undefined;
-    this.context.uniform1f(this.uniforms.wind, this.frameWind * (scale ?? 1));
+    backendFor(this).uniform1f(this.uniforms.wind, this.frameWind * (scale ?? 1));
   }
 
   drawBatch(batch, textured = false, selection = null, levelSet = batch) {
+    const backend = backendFor(this);
     if (this.hasMorphs) {
       const uniforms = textured ? this.uniforms : this.depthMorphUniforms;
-      this.context.uniform1f(uniforms.morphEnabled, batch.morph ? 1 : 0);
+      backend.uniform1f(uniforms.morphEnabled, batch.morph ? 1 : 0);
       if (batch.morph) {
-        this.context.uniform1i(uniforms.morphVertexCount, batch.morphTexture.info.vertexCount);
+        backend.uniform1i(uniforms.morphVertexCount, batch.morphTexture.info.vertexCount);
         const targetCount = batch.morphWeights.length;
         const selected = targetCount > MORPH_SLOT_COUNT;
         const slotCount = selected ? morphSupport().selectMorphSlots(batch.morphWeights, MORPH_SLOT_TARGETS, MORPH_SLOT_WEIGHTS) : targetCount;
-        this.context.uniform1i(uniforms.morphTargetCount, slotCount);
-        this.context.uniform1fv(uniforms['morphWeights[0]'], selected ? MORPH_SLOT_WEIGHTS : batch.morphWeights);
-        this.context.uniform1fv(uniforms['morphSlotTargets[0]'], selected ? MORPH_SLOT_TARGETS : IDENTITY_MORPH_SLOTS);
-        bindTextureUnit(this.context, 8, batch.morphTexture.texture);
+        backend.uniform1i(uniforms.morphTargetCount, slotCount);
+        backend.uniform1fv(uniforms['morphWeights[0]'], selected ? MORPH_SLOT_WEIGHTS : batch.morphWeights);
+        backend.uniform1fv(uniforms['morphSlotTargets[0]'], selected ? MORPH_SLOT_TARGETS : IDENTITY_MORPH_SLOTS);
+        backend.bindTextureUnit(8, batch.morphTexture.texture);
       }
     }
     if (this.hasSkins) {
       const uniforms = textured ? this.uniforms : this.depthSkinUniforms;
-      this.context.uniform1f(uniforms.crowdEnabled, batch.crowd ? 1 : 0);
-      this.context.uniform1f(uniforms.skinEnabled, batch.skin ? 1 : 0);
+      backend.uniform1f(uniforms.crowdEnabled, batch.crowd ? 1 : 0);
+      backend.uniform1f(uniforms.skinEnabled, batch.skin ? 1 : 0);
       if (batch.crowd) {
-        bindTextureUnit(this.context, 7, batch.crowdTexture.texture);
-        this.context.uniform1i(uniforms.jointPalette, 7);
+        backend.bindTextureUnit(7, batch.crowdTexture.texture);
+        backend.uniform1i(uniforms.jointPalette, 7);
       } else if (batch.skin) {
-        bindTextureUnit(this.context, 6, batch.influenceTexture.texture);
-        this.context.uniform1i(uniforms.skinInfluences, 6);
-        bindTextureUnit(this.context, 7, batch.skinTexture.texture);
-        this.context.uniform1i(uniforms.jointPalette, 7);
+        backend.bindTextureUnit(6, batch.influenceTexture.texture);
+        backend.uniform1i(uniforms.skinInfluences, 6);
+        backend.bindTextureUnit(7, batch.skinTexture.texture);
+        backend.uniform1i(uniforms.jointPalette, 7);
       }
     }
     if (textured && !this.benchmark) {
-      this.context.uniform1f(this.uniforms.shadowBlind, batch.receivesShadow === false ? 1 : 0);
-      this.context.uniform1f(this.uniforms.tintBlind, batch.tintBlind ? 1 : 0);
-      this.context.uniform1f(this.uniforms.compositeMode, batch.compositeMode ?? 0);
+      backend.uniform1f(this.uniforms.shadowBlind, batch.receivesShadow === false || this.shadowsHidden ? 1 : 0);
+      backend.uniform1f(this.uniforms.tintBlind, batch.tintBlind ? 1 : 0);
+      backend.uniform1f(this.uniforms.compositeMode, batch.compositeMode ?? 0);
       for (let index = 0; index < MATERIAL_MAPS.length; index++) {
-        bindTextureUnit(this.context, index + 1, batch.textures[index]);
-        this.context.uniform1i(this.uniforms[MAP_UNIFORMS[index]], index + 1);
-        this.context.uniform1f(this.uniforms[MAP_FLAGS[index]], batch.mapState[index] ? 1 + (batch.mapState[index].uvChannel ?? 0) : 0);
+        backend.bindTextureUnit(index + 1, batch.textures[index]);
+        backend.uniform1i(this.uniforms[MAP_UNIFORMS[index]], index + 1);
+        backend.uniform1f(this.uniforms[MAP_FLAGS[index]], batch.mapState[index] ? 1 + (batch.mapState[index].uvChannel ?? 0) : 0);
       }
-      this.context.uniform2f(this.uniforms.normalScale, batch.mapState[5], batch.mapState[6]);
-      this.context.uniform1f(this.uniforms.occlusionStrength, batch.mapState[7]);
-      this.context.uniform4f(this.uniforms.materialMoss, batch.mapState[8], batch.mapState[9], batch.mapState[10], batch.mapState[11]);
+      backend.uniform2f(this.uniforms.normalScale, batch.mapState[5], batch.mapState[6]);
+      backend.uniform1f(this.uniforms.occlusionStrength, batch.mapState[7]);
+      backend.uniform4f(this.uniforms.materialMoss, batch.mapState[8], batch.mapState[9], batch.mapState[10], batch.mapState[11]);
       this.bindSurfaceWear(batch.wear);
       const layers = batch.layerState;
-      this.context.uniform4f(this.uniforms.materialDielectric, layers[0], layers[1], layers[2], layers[DIELECTRIC_GRAZING_STATE_INDEX]);
-      this.context.uniform2f(this.uniforms.materialCoat, layers[3], layers[4]);
-      this.context.uniform4f(this.uniforms.materialSheen, layers[5], layers[6], layers[7], layers[8]);
-      this.context.uniform2f(this.uniforms.materialAnisotropy, layers[16], layers[17]);
-      this.context.uniform3f(this.uniforms.materialIridescence, layers[18], layers[19], layers[20]);
-      this.context.uniform1i(this.uniforms.lightLinkMask, layers[21]);
-      this.context.uniform1f(this.uniforms.materialToon, layers[22]);
-      this.context.uniform1f(this.uniforms.materialEmissionFresnel, layers[24]);
-      this.context.uniform1f(this.uniforms.materialSoftEdge, layers[28]);
-      this.context.uniform1f(this.uniforms.boxMapScale, batch.mapState[12]);
-      this.context.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
+      backend.uniform4f(this.uniforms.materialDielectric, layers[0], layers[1], layers[2], layers[DIELECTRIC_GRAZING_STATE_INDEX]);
+      backend.uniform2f(this.uniforms.materialCoat, layers[3], layers[4]);
+      backend.uniform4f(this.uniforms.materialSheen, layers[5], layers[6], layers[7], layers[8]);
+      backend.uniform2f(this.uniforms.materialAnisotropy, layers[16], layers[17]);
+      backend.uniform3f(this.uniforms.materialIridescence, layers[18], layers[19], layers[20]);
+      backend.uniform1i(this.uniforms.lightLinkMask, layers[21]);
+      backend.uniform1f(this.uniforms.materialToon, layers[22]);
+      backend.uniform1f(this.uniforms.materialEmissionFresnel, layers[24]);
+      backend.uniform1f(this.uniforms.materialSoftEdge, layers[28]);
+      backend.uniform1f(this.uniforms.boxMapScale, batch.mapState[12]);
+      backend.uniform1i(this.uniforms.boxMapAxis, batch.mapState[13]);
       if (this.shaderFeatures?.has('splat')) requireSplatSupport().bind(this, batch.splat);
       layerTextureSupport.bind?.(this, batch.mapState, layers, batch);
       this.bindHeightParallax(batch);
       this.bindBatchWind(batch);
-      this.context.uniform1f(this.uniforms.hasLightMap, batch.lightMapTexture ? 1 : 0);
+      backend.uniform1f(this.uniforms.hasLightMap, batch.lightMapTexture ? 1 : 0);
       if (batch.lightMapTexture) {
-        bindTextureUnit(this.context, LIGHT_MAP_UNIT, batch.lightMapTexture);
-        this.context.uniform1i(this.uniforms.lightMap, LIGHT_MAP_UNIT);
-        this.context.uniform1f(this.uniforms.lightMapScale, batch.mapState[15]);
+        backend.bindTextureUnit(LIGHT_MAP_UNIT, batch.lightMapTexture);
+        backend.uniform1i(this.uniforms.lightMap, LIGHT_MAP_UNIT);
+        backend.uniform1f(this.uniforms.lightMapScale, batch.mapState[15]);
       }
     }
     if (textured && !this.benchmark && this.shaderFeatures?.has('instanced') === false)this.setSingleInstanceUniforms(batch.instanceData);
     // A reflecting matrix reverses screen winding: clockwise triangles are the front faces of a mirrored batch.
-    if (batch.mirrored) this.backend.setFrontFaceClockwise(true);
+    if (batch.mirrored) backend.setFrontFaceClockwise(true);
     // The shadow pass (not textured) draws the whole index buffer; its order does not matter there.
     const flushRanges = textured && !this.benchmark ? batch.flushOrder?.ranges ?? null : null;
     if (selection && !selection.isEverything) {
       this.drawSelectedLevels(batch, selection, levelSet, levelSet === batch ? flushRanges : null);
     } else {
-      this.context.bindVertexArray(batch.vertexArray);
+      backend.bindVertexArray(batch.vertexArray);
       if (flushRanges) this.drawFlushRanges(batch, flushRanges, batch.instanceCount);
-      else this.backend.drawIndexedInstanced(batch.indexCount, batch.instanceCount);
+      else backend.drawIndexedInstanced(batch.indexCount, batch.instanceCount);
     }
-    if (batch.mirrored) this.backend.setFrontFaceClockwise(false);
+    if (batch.mirrored) backend.setFrontFaceClockwise(false);
   }
 
   // A render pass draws raw material data instead of the lit image; the addon validates frame.pass and returns the shader mode.
@@ -3395,7 +3261,7 @@ export class CrucibleRenderer {
     this.diagnosticsState[2] = this.coplanarDiagnostics ? this.coplanarDiagnostics(this.batches) : null;
     this.diagnosticsPending = true;
     const start = performance.now();
-    const context = this.context;
+    const backend = backendFor(this);
     this.beginGpuTiming();
     const assemblyAmount = Math.max(0, Math.min(1, frame.assemblyAmount ?? 0));
     // Swaying foliage moves every frame, so its shadow map is redrawn whenever time or wind changes.
@@ -3428,65 +3294,60 @@ export class CrucibleRenderer {
     // The water reflection addon draws the scene a second time into its own smaller target (frame.reflectionTarget).
     const mirrorTarget = frame.reflectionTarget;
     const directCanvas = !mirrorTarget && !passMode && this.canDrawDirectly(frame, effects, environment, volume);
-    context.bindFramebuffer(context.FRAMEBUFFER, mirrorTarget ? mirrorTarget.framebuffer : passMode ? this.passSupport.framebuffer : this.benchmark || directCanvas ? null : this.multisampleFramebuffer);
-    context.viewport(0, 0, mirrorTarget?.width ?? this.canvas.width, mirrorTarget?.height ?? this.canvas.height);
-    if (passMode) {
-      context.clearColor(...this.passSupport.background(frame.pass));
-    } else {
-      context.clearColor(...clearColourFor(this.background, this.transparent));
-    }
+    backend.bindFramebuffer(mirrorTarget ? mirrorTarget.framebuffer : passMode ? this.passSupport.framebuffer : this.benchmark || directCanvas ? null : this.multisampleFramebuffer);
+    backend.setViewport(mirrorTarget?.width ?? this.canvas.width, mirrorTarget?.height ?? this.canvas.height);
+    const clearColor = passMode ? this.passSupport.background(frame.pass) : clearColourFor(this.background, this.transparent);
     // The environment background covers every pixel, so the colour clear before it would be overwritten.
     const backgroundCoversFrame = !passMode && Boolean(environmentMap?.showBackground) && !this.transparent;
-    context.clear(backgroundCoversFrame ? context.DEPTH_BUFFER_BIT : context.COLOR_BUFFER_BIT | context.DEPTH_BUFFER_BIT);
+    backend.clearColorAndDepth(clearColor, 1, backgroundCoversFrame);
     const environmentBackgroundDrawn = !passMode && this.drawEnvironmentBackground(environmentMap, frame, exposure);
     if (this.world && !this.benchmark && !passMode && !environmentBackgroundDrawn) this.drawSky(frame);
-    context.enable(context.DEPTH_TEST);
-    context.enable(context.CULL_FACE);
+    backend.setRenderState({ depthTest: true, cullFace: true });
     const uniforms = this.uniforms;
     const lighting = this.lighting;
-    context.useProgram(this.program);
-    context.uniformMatrix4fv(uniforms.viewProjection, false, this.viewProjection);
+    backend.useProgram(this.program);
+    backend.uniformMatrix4fv(uniforms.viewProjection, this.viewProjection);
     this.setFlushProjection(this.viewProjection);
-    context.uniformMatrix4fv(uniforms.lightProjection, false, this.lightProjection);
-    context.uniform1f(uniforms.shadowBiasPerSlope, this.shadowBiasPerSlope);
-    context.uniform3fv(uniforms.eye, eye);
+    backend.uniformMatrix4fv(uniforms.lightProjection, this.lightProjection);
+    backend.uniform1f(uniforms.shadowBiasPerSlope, this.shadowBiasPerSlope);
+    backend.uniform3fv(uniforms.eye, eye);
     this.shadowCascades?.bindUniforms(this);
-    context.uniform3fv(uniforms.armorColor, armorColor);
-    context.uniform2fv(uniforms.armorSurface, armorSurface);
-    context.uniform1f(uniforms.exposure, exposure);
-    context.uniform1f(uniforms.inspection, inspection ? 1 : 0);
-    context.uniform1f(uniforms.hdrEnabled, this.hdr ? 1 : 0);
-    context.uniform1i(uniforms.pointLightCount, frame.reflectionTarget ? 0 : lighting.pointCount);
+    backend.uniform3fv(uniforms.armorColor, armorColor);
+    backend.uniform2fv(uniforms.armorSurface, armorSurface);
+    backend.uniform1f(uniforms.exposure, exposure);
+    backend.uniform1f(uniforms.inspection, inspection ? 1 : 0);
+    backend.uniform1f(uniforms.hdrEnabled, this.hdr ? 1 : 0);
+    backend.uniform1i(uniforms.pointLightCount, frame.reflectionTarget ? 0 : lighting.pointCount);
     this.applyLocalLightUniforms(Boolean(frame.reflectionTarget));
     lighting.bind?.(this);
-    context.uniform3fv(uniforms.keyColor, lighting.keyColor);
-    context.uniform1f(uniforms.fillIntensity, lighting.fillIntensity);
-    context.uniform1f(uniforms.ambientIntensity, lighting.ambientIntensity);
-    context.uniform3fv(uniforms.ambientColor, lighting.ambientColor);
-    context.uniform3fv(uniforms.ambientGroundDelta, lighting.ambientGroundDelta);
-    context.uniform1f(uniforms.ambientMix, lighting.ambientMix);
-    context.uniform1f(uniforms.specularAntiAliasing, lighting.specularAntiAliasing);
+    backend.uniform3fv(uniforms.keyColor, lighting.keyColor);
+    backend.uniform1f(uniforms.fillIntensity, lighting.fillIntensity);
+    backend.uniform1f(uniforms.ambientIntensity, lighting.ambientIntensity);
+    backend.uniform3fv(uniforms.ambientColor, lighting.ambientColor);
+    backend.uniform3fv(uniforms.ambientGroundDelta, lighting.ambientGroundDelta);
+    backend.uniform1f(uniforms.ambientMix, lighting.ambientMix);
+    backend.uniform1f(uniforms.specularAntiAliasing, lighting.specularAntiAliasing);
     if (lighting.wetness > 0) this.bindWetness();
-    context.uniform1f(uniforms.time, frame.time ?? 0);
+    backend.uniform1f(uniforms.time, frame.time ?? 0);
     this.frameWind = frame.wind ?? 0.3;
     this.windScaledBatch = false;
-    context.uniform1f(uniforms.wind, this.frameWind);
-    context.uniform1f(uniforms.worldMode, this.world ? 1 : 0);
-    context.uniform1f(uniforms.daylight, environment.daylight);
-    context.uniform3fv(uniforms.lightDirection, environment.lightDirection);
-    context.uniform3fv(uniforms.fogColor, environment.fogColor);
-    context.uniform1f(uniforms.fogDensity, environment.fogDensity);
-    context.uniform3fv(uniforms.waterRipple, frame.waterRipple ?? [10000, 0, 10000]);
-    context.uniform1f(uniforms.rippleTime, frame.rippleTime ?? -1000);
-    context.uniform1f(uniforms.explosionProgress, frame.explosionProgress ?? 1);
-    context.uniform3fv(uniforms.explosionCenter, environment.explosionCenter);
-    context.uniform1f(uniforms.assemblyAmount, assemblyAmount);
-    bindTextureUnit(context, 0, this.shadowTexture);
-    context.uniform1i(uniforms.shadowMap, 0);
+    backend.uniform1f(uniforms.wind, this.frameWind);
+    backend.uniform1f(uniforms.worldMode, this.world ? 1 : 0);
+    backend.uniform1f(uniforms.daylight, environment.daylight);
+    backend.uniform3fv(uniforms.lightDirection, environment.lightDirection);
+    backend.uniform3fv(uniforms.fogColor, environment.fogColor);
+    backend.uniform1f(uniforms.fogDensity, environment.fogDensity);
+    backend.uniform3fv(uniforms.waterRipple, frame.waterRipple ?? [10000, 0, 10000]);
+    backend.uniform1f(uniforms.rippleTime, frame.rippleTime ?? -1000);
+    backend.uniform1f(uniforms.explosionProgress, frame.explosionProgress ?? 1);
+    backend.uniform3fv(uniforms.explosionCenter, environment.explosionCenter);
+    backend.uniform1f(uniforms.assemblyAmount, assemblyAmount);
+    backend.bindTextureUnit(0, this.shadowTexture);
+    backend.uniform1i(uniforms.shadowMap, 0);
     this.bindTintedShadows();
     this.applyEnvironmentUniforms(environmentMap);
-    context.uniform1f(this.uniforms.renderPassMode, passMode);
-    context.uniform1f(this.uniforms.renderPassDepthRange, frame.passDepthRange ?? 100);
+    backend.uniform1f(this.uniforms.renderPassMode, passMode);
+    backend.uniform1f(this.uniforms.renderPassDepthRange, frame.passDepthRange ?? 100);
     if (passMode > 5) this.passSupport.bindFrame(frame, environment, volume);
     let objectBase = 0;
     const idPass = passMode === OBJECT_ID_PASS_MODE || passMode === CRYPTOMATTE_PASS_MODE;
@@ -3500,16 +3361,15 @@ export class CrucibleRenderer {
       // A batch that takes object IDs keeps its numbers even when this pass does not draw it, so IDs agree across passes.
       if (drawn || this.takesObjectIds(batch)) objectBase += batch.instanceCount;
       if (!drawn || (mirrorTarget && batch.mapState[20])) continue;
-      context.uniform1f(this.uniforms.renderPassObjectBase, firstObject);
+      backend.uniform1f(this.uniforms.renderPassObjectBase, firstObject);
       const drawnBatch = idPass ? this.idPassBatch(batch) : batch;
       // Object IDs are the instance ordinal, which culling and level selection renumber, so that pass draws every instance.
       if (passMode > 5) this.passSupport.drawBatch(drawnBatch, passMode, frame, firstObject);
       else this.drawAlphaBatch(drawnBatch, true, passMode !== OBJECT_ID_PASS_MODE);
     }
     this.applyDepthRank(0);
-    context.disable(context.SAMPLE_ALPHA_TO_COVERAGE);
-    context.enable(context.CULL_FACE);
-    context.bindVertexArray(null);
+    backend.setRenderState({ sampleAlphaToCoverage: false, cullFace: true });
+    backend.bindVertexArray(null);
     if (mirrorTarget) {
       this.renderingPass = false;
       this.endGpuTiming();
@@ -3540,11 +3400,11 @@ export class CrucibleRenderer {
 
   // The water mirror draws without local lights: it is blurred and rippled, and the sun, sky and fog colour carry the picture.
   applyLocalLightUniforms(withoutLights = false) {
-    const context = this.context;
+    const backend = backendFor(this);
     const lighting = this.lighting;
     const uniforms = this.uniforms;
-    context.uniform1i(uniforms.spotLightCount, withoutLights ? 0 : lighting.spotCount);
-    context.uniform1i(uniforms.areaLightCount, withoutLights ? 0 : lighting.areaCount);
+    backend.uniform1i(uniforms.spotLightCount, withoutLights ? 0 : lighting.spotCount);
+    backend.uniform1i(uniforms.areaLightCount, withoutLights ? 0 : lighting.areaCount);
     const block = uniformBlockOf(this, LIGHT_DATA_BLOCK);
     for (const [field, source] of LOCAL_LIGHT_BLOCK_FIELDS) block.write(field, lighting[source]);
     const drawsLocalShadows = lighting.shadowCasters.length > 0 && this.localShadowTexture;
@@ -3554,22 +3414,16 @@ export class CrucibleRenderer {
     }
     block.upload(this.program);
     if (!drawsLocalShadows) return;
-    context.activeTexture(context.TEXTURE0 + LOCAL_SHADOW_UNIT);
-    context.bindTexture(context.TEXTURE_2D, this.localShadowTexture);
-    context.uniform1i(uniforms.localShadowAtlas, LOCAL_SHADOW_UNIT);
-    context.activeTexture(context.TEXTURE0);
+    backend.bindTextureUnit(LOCAL_SHADOW_UNIT, this.localShadowTexture);
+    backend.uniform1i(uniforms.localShadowAtlas, LOCAL_SHADOW_UNIT);
+    backend.activeTextureUnit(0);
   }
 
   // Programs and shaders that deferProgramLink started and finishConstruction has not yet taken over.
   releasePendingConstruction() {
-    const context = this.context;
+    const backend = backendFor(this);
     const started = [...Object.values(this.pendingConstruction?.pending ?? {}), ...(this.pendingEnvironmentPrograms?.values() ?? [])];
-    for (const { program, shaders } of started) {
-      // Reading the link status waits for a link still in flight; deleting a program mid-link leaves a GL error that the next renderer on this context sees (#74).
-      context.getProgramParameter(program, context.LINK_STATUS);
-      shaders.forEach((shader) => context.deleteShader(shader));
-      context.deleteProgram(program);
-    }
+    for (const entry of started) backend.deleteStartedProgram(entry);
     this.pendingConstruction = null;
     this.pendingEnvironmentPrograms = null;
     this.releasePendingMainProgram();
@@ -3577,25 +3431,26 @@ export class CrucibleRenderer {
 
   dispose() {
     const context = this.context;
+    const backend = backendFor(this);
     this.disposed = true;
     disposeUniformBlocks(this);
     this.releasePendingConstruction();
-    releaseStartedPrograms(context);
+    backend.releaseStartedPrograms();
     this.fogFieldTexture?.dispose();
     this.releaseFrameTargets();
     this.shadowCascades?.dispose(context, this.renderTargets);
     viewTransformShader.dispose?.(this);
-    for (const texture of [this.localShadowTexture, this.placeholderShadowTexture, this.tintTexture, this.shadowTexture, ...this.textures.values()]) if (texture) context.deleteTexture(texture);
-    for (const framebuffer of [this.localShadowFramebuffer, this.tintFramebuffer, this.shadowFramebuffer]) if (framebuffer) context.deleteFramebuffer(framebuffer);
+    for (const texture of [this.localShadowTexture, this.placeholderShadowTexture, this.tintTexture, this.shadowTexture, ...this.textures.values()]) if (texture) backend.deleteTexture(texture);
+    for (const framebuffer of [this.localShadowFramebuffer, this.tintFramebuffer, this.shadowFramebuffer]) if (framebuffer) backend.deleteFramebuffer(framebuffer);
     this.batches.forEach((batch) => {
-      context.deleteVertexArray(batch.vertexArray);
+      backend.deleteVertexArray(batch.vertexArray);
       this.releaseLevelDraws(batch);
     });
-    this.buffers.forEach((buffer) => context.deleteBuffer(buffer));
+    this.buffers.forEach((buffer) => backend.deleteBuffer(buffer));
     this.geometryBuffers?.clear();
     // A program still linking must finish first: deleting it mid-link leaves a GL error that the next renderer on this context sees.
-    for (const variant of this.postVariants?.values() ?? []) context.deleteProgram(variant.pending ? this.backend.finishProgram(variant.pending) : variant.program);
-    for (const program of [this.program, this.liquidProgram, this.depthProgram, this.postProgram, this.skyProgram, this.bloomProgram, this.occlusionProgram, this.environmentBackgroundProgram]) if (program) context.deleteProgram(program);
+    for (const variant of this.postVariants?.values() ?? []) backend.deleteProgram(variant.pending ? backend.finishProgram(variant.pending) : variant.program);
+    for (const program of [this.program, this.liquidProgram, this.depthProgram, this.postProgram, this.skyProgram, this.bloomProgram, this.occlusionProgram, this.environmentBackgroundProgram]) if (program) backend.deleteProgram(program);
     this.passSupport?.dispose(context);
     for (const stage of this.postStages ?? []) stage.dispose(context);
     if (this.localVolumeComposite) requireFeatureCode('volumeFog').support.releaseLocalVolumeComposite(this, true);
@@ -3603,7 +3458,7 @@ export class CrucibleRenderer {
     if (this.splatPlaceholder) requireSplatSupport().dispose(this);
     this.textures.clear();
     for (const cache of [this.skinTextures, this.influenceTextures, this.morphTextures]) {
-      for (const record of cache?.values() ?? []) context.deleteTexture(record.texture);
+      for (const record of cache?.values() ?? []) backend.deleteTexture(record.texture);
       cache?.clear();
     }
     for (const collection of [this.geometryBuffers, this.partLocations, this.updatePartIdentities, this.updateSkins, this.updateMorphs, this.updateBatches]) collection?.clear();

@@ -5,7 +5,7 @@ import { createCamera, normalizePathTracerOptions, toneMapToRgba8 } from './path
 import {
   averageBuffers, createBandState, createTargets, drawOneSample, getContext, gpuTriangleLimit, getKernel, releaseResources, setSceneUniforms, uploadScene, withBlueNoiseTile,
 } from './path-tracer-gpu.js';
-import { sceneUsesSubsurface } from './path-tracer-gpu-pack.js';
+import { sceneUsesAttenuation, sceneUsesSubsurface } from './path-tracer-gpu-pack.js';
 import { requireFiniteInRange } from './modeling-limits.js';
 
 // A progressive view of the GPU path tracer (issue #623). `step()` draws one sample for every pixel and adds it to the
@@ -60,7 +60,7 @@ export async function createProgressiveTracer(scene, rawOptions = {}, { resoluti
     releaseResources(gl);
     traceScene = nextTraceScene;
     sceneOptions = { ...options, lightSelection: resolveLightSelection(options.lightSelection, traceScene.lights) };
-    const kernel = getKernel(sceneUsesSubsurface(traceScene.materials), false, { ...sceneOptions, vertexAlpha: Boolean(traceScene.vertexAlpha) });
+    const kernel = getKernel(sceneUsesSubsurface(traceScene.materials), false, { ...sceneOptions, vertexAlpha: Boolean(traceScene.vertexAlpha), hasAttenuation: sceneUsesAttenuation(traceScene.materials) });
     program = kernel.program;
     compileSeconds = kernel.compileSeconds;
     gl.useProgram(program);

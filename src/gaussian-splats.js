@@ -1,5 +1,5 @@
 import { mat4 } from 'gl-matrix';
-import { compileProgram } from './gl-program.js';
+import { backendFor } from './glaze-backend.js';
 import { createSplatSorter } from './gaussian-splat-sort.js';
 import { runInChunks } from './gaussian-splat-chunks.js';
 import { GAUSSIAN_SPLAT_HARD_COUNT_LIMIT, GAUSSIAN_SPLAT_LIMITS, parseGaussianSplatPly, parseGaussianSplatPlyAsync } from './gaussian-splat-ply.js';
@@ -347,43 +347,31 @@ export async function createGaussianSplatsAsync(data, rawOptions) {
   return buildSplats(data, matrix, packed, capacity, look);
 }
 
-function uploadWordTexture(context, unit, rows, words) {
-  const texture = context.createTexture();
-  context.activeTexture(context.TEXTURE0 + unit);
-  context.bindTexture(context.TEXTURE_2D, texture);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
-  context.texImage2D(context.TEXTURE_2D, 0, context.RGBA32UI, DATA_TEXTURE_WIDTH, rows, 0, context.RGBA_INTEGER, context.UNSIGNED_INT, words);
-  return texture;
+function uploadWordTexture(backend, unit, rows, words) {
+  return backend.createDataTexture2D({ width: DATA_TEXTURE_WIDTH, height: rows, format: 'rgba32ui', linear: false, clamp: false, data: words, unit });
 }
 
 // The band texture is twice as tall as the splat texture at degree 3, so a GPU with a small texture limit could refuse it
 // for a file whose splats fit. Then the splats draw with one colour from every direction, as they did before bands were read,
 // and `statistics.harmonicsSkipped` says why.
-function uploadHarmonics(context, harmonics, statistics) {
+function uploadHarmonics(backend, harmonics, statistics) {
   if (!harmonics) return null;
-  const largestRows = context.getParameter(context.MAX_TEXTURE_SIZE);
+  const largestRows = backend.maxTextureSize();
   if (typeof largestRows === 'number' && harmonics.rows > largestRows) {
     statistics.harmonicsSkipped = `The spherical harmonic texture needs ${harmonics.rows} rows, over this GPU's limit of ${largestRows}; the splats draw with one colour from every direction. Parse the file with a lower sphericalHarmonicDegree, or with fewer splats, to keep the bands`;
     return null;
   }
-  const texture = uploadWordTexture(context, HARMONIC_TEXTURE_UNIT, harmonics.rows, harmonics.words);
+  const texture = uploadWordTexture(backend, HARMONIC_TEXTURE_UNIT, harmonics.rows, harmonics.words);
   return { texture, rows: harmonics.rows, degree: harmonics.degree, texelsPerSplat: harmonics.texelsPerSplat };
 }
 
-function createGpuResources(context, splats) {
+function createGpuResources(backend, splats) {
   const { words, rows } = splats.packed;
-  const harmonics = uploadHarmonics(context, splats.packed.harmonics, splats.statistics);
-  const texture = uploadWordTexture(context, DATA_TEXTURE_UNIT, rows, words);
-  const orderBuffer = context.createBuffer();
-  context.bindBuffer(context.ARRAY_BUFFER, orderBuffer);
-  context.bufferData(context.ARRAY_BUFFER, splats.capacity * 4, context.DYNAMIC_DRAW);
-  const vertexArray = context.createVertexArray();
-  context.bindVertexArray(vertexArray);
-  context.enableVertexAttribArray(0);
-  context.vertexAttribIPointer(0, 1, context.UNSIGNED_INT, 0, 0);
-  context.vertexAttribDivisor(0, 1);
-  context.bindVertexArray(null);
+  const harmonics = uploadHarmonics(backend, splats.packed.harmonics, splats.statistics);
+  const texture = uploadWordTexture(backend, DATA_TEXTURE_UNIT, rows, words);
+  const orderBuffer = backend.createBuffer();
+  backend.uploadBuffer('array', orderBuffer, splats.capacity * 4, 'dynamic');
+  const vertexArray = backend.createVertexArray([{ buffer: orderBuffer, size: 1, integer: true, divisor: 1 }]);
   const harmonicBytes = harmonics ? splats.packed.harmonics.words.byteLength : 0;
   splats.statistics.gpuBytes = words.byteLength + splats.capacity * 4 + harmonicBytes;
   splats.packed = null;
@@ -391,41 +379,31 @@ function createGpuResources(context, splats) {
 }
 
 // Reads the packed data textures back so detached splats can attach to another renderer without keeping a CPU copy.
-function readPackedBack(context, entry) {
-  if (context.isContextLost?.()) return null;
-  const words = readTextureWords(context, entry.texture, entry.rows);
-  const harmonics = entry.harmonics && { words: readTextureWords(context, entry.harmonics.texture, entry.harmonics.rows), rows: entry.harmonics.rows, degree: entry.harmonics.degree, texelsPerSplat: entry.harmonics.texelsPerSplat };
+function readPackedBack(backend, entry) {
+  if (backend.isContextLost()) return null;
+  const words = readTextureWords(backend, entry.texture, entry.rows);
+  const harmonics = entry.harmonics && { words: readTextureWords(backend, entry.harmonics.texture, entry.harmonics.rows), rows: entry.harmonics.rows, degree: entry.harmonics.degree, texelsPerSplat: entry.harmonics.texelsPerSplat };
   return { words, rows: entry.rows, harmonics };
 }
 
-function readTextureWords(context, texture, rows) {
+function readTextureWords(backend, texture, rows) {
   const words = new Uint32Array(rows * DATA_TEXTURE_WIDTH * WORDS_PER_TEXEL);
-  const previousFramebuffer = context.getParameter(context.READ_FRAMEBUFFER_BINDING);
-  const previousPackBuffer = context.getParameter(context.PIXEL_PACK_BUFFER_BINDING);
-  const framebuffer = context.createFramebuffer();
-  context.bindBuffer(context.PIXEL_PACK_BUFFER, null);
-  context.bindFramebuffer(context.READ_FRAMEBUFFER, framebuffer);
-  context.framebufferTexture2D(context.READ_FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
-  context.readPixels(0, 0, DATA_TEXTURE_WIDTH, rows, context.RGBA_INTEGER, context.UNSIGNED_INT, words);
-  context.bindFramebuffer(context.READ_FRAMEBUFFER, previousFramebuffer);
-  context.bindBuffer(context.PIXEL_PACK_BUFFER, previousPackBuffer);
-  context.deleteFramebuffer(framebuffer);
+  backend.readIntegerTexture2D(texture, DATA_TEXTURE_WIDTH, rows, words);
   return words;
 }
 
 const attachments = new WeakMap();
 
-function createProgramInfo(context, fragmentSource, extraUniformNames = [], vertexSource = VERTEX_SOURCE) {
-  const program = compileProgram(context, vertexSource, fragmentSource);
-  const uniforms = Object.fromEntries([...UNIFORM_NAMES, ...extraUniformNames].map(name => [name, context.getUniformLocation(program, name)]));
+function createProgramInfo(backend, fragmentSource, extraUniformNames = [], vertexSource = VERTEX_SOURCE) {
+  const program = backend.compileProgram(vertexSource, fragmentSource);
+  const uniforms = Object.fromEntries([...UNIFORM_NAMES, ...extraUniformNames].map(name => [name, backend.uniformLocation(program, name)]));
   return { program, uniforms };
 }
 
-function createAttachment(renderer) {
-  const context = renderer.context;
-  const attachment = { blended: createProgramInfo(context, FRAGMENT_SOURCE), opaque: null, depth: null, palettePrograms: new Map(), outline: null, entries: new Set(), modelView: mat4.create(), inverseModelView: mat4.create(), emptyHarmonics: null, original: null, disposeOriginal: null };
+function createAttachment(renderer, backend) {
+  const attachment = { backend, blended: createProgramInfo(backend, FRAGMENT_SOURCE), opaque: null, depth: null, palettePrograms: new Map(), outline: null, entries: new Set(), modelView: mat4.create(), inverseModelView: mat4.create(), emptyHarmonics: null, original: null, disposeOriginal: null };
   // Splats without bands still need an unsigned integer texture on the harmonic unit for the shader's sampler.
-  attachment.emptyHarmonics = uploadWordTexture(context, HARMONIC_TEXTURE_UNIT, 1, new Uint32Array(DATA_TEXTURE_WIDTH * WORDS_PER_TEXEL));
+  attachment.emptyHarmonics = uploadWordTexture(backend, HARMONIC_TEXTURE_UNIT, 1, new Uint32Array(DATA_TEXTURE_WIDTH * WORDS_PER_TEXEL));
   attachment.original = renderer.drawBlendBatches;
   attachment.disposeOriginal = renderer.dispose;
   renderer.drawBlendBatches = function drawBlendBatchesAndSplats(frame) {
@@ -439,111 +417,100 @@ function createAttachment(renderer) {
   return attachment;
 }
 
-function releaseEntry(context, entry) {
-  context.deleteTexture(entry.texture);
-  if (entry.harmonics) context.deleteTexture(entry.harmonics.texture);
-  context.deleteBuffer(entry.orderBuffer);
-  context.deleteVertexArray(entry.vertexArray);
+function releaseEntry(backend, entry) {
+  backend.deleteTexture(entry.texture);
+  if (entry.harmonics) backend.deleteTexture(entry.harmonics.texture);
+  backend.deleteBuffer(entry.orderBuffer);
+  backend.deleteVertexArray(entry.vertexArray);
 }
 
 function releaseAttachment(renderer, attachment) {
-  for (const entry of attachment.entries) releaseEntry(renderer.context, entry);
+  const { backend } = attachment;
+  for (const entry of attachment.entries) releaseEntry(backend, entry);
   attachment.entries.clear();
-  renderer.context.deleteTexture(attachment.emptyHarmonics);
-  renderer.context.deleteProgram(attachment.blended.program);
-  if (attachment.opaque) renderer.context.deleteProgram(attachment.opaque.program);
-  if (attachment.depth) renderer.context.deleteProgram(attachment.depth.program);
-  if (attachment.outline) renderer.context.deleteProgram(attachment.outline.program);
-  for (const programInfo of attachment.palettePrograms.values()) renderer.context.deleteProgram(programInfo.program);
+  backend.deleteTexture(attachment.emptyHarmonics);
+  backend.deleteProgram(attachment.blended.program);
+  if (attachment.opaque) backend.deleteProgram(attachment.opaque.program);
+  if (attachment.depth) backend.deleteProgram(attachment.depth.program);
+  if (attachment.outline) backend.deleteProgram(attachment.outline.program);
+  for (const programInfo of attachment.palettePrograms.values()) backend.deleteProgram(programInfo.program);
   renderer.drawBlendBatches = attachment.original;
   renderer.dispose = attachment.disposeOriginal;
   attachments.delete(renderer);
 }
 
-function prepareFrameState(renderer) {
-  const context = renderer.context;
-  context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
-  context.viewport(0, 0, renderer.canvas.width, renderer.canvas.height);
-  context.enable(context.DEPTH_TEST);
-  context.disable(context.CULL_FACE);
+function prepareFrameState(renderer, backend) {
+  backend.bindFramebuffer(renderer.multisampleFramebuffer);
+  backend.setViewport(renderer.canvas.width, renderer.canvas.height);
+  backend.setRenderState({ depthTest: true, cullFace: false });
 }
 
-function useProgram(renderer, programInfo, frame) {
-  const context = renderer.context;
+function useProgram(renderer, backend, programInfo, frame) {
   const width = renderer.canvas.width;
   const height = renderer.canvas.height;
-  context.useProgram(programInfo.program);
+  backend.useProgram(programInfo.program);
   const { uniforms } = programInfo;
-  context.uniformMatrix4fv(uniforms.projection, false, renderer.rasterProjection ?? renderer.projection);
-  context.uniform2f(uniforms.focal, renderer.projection[0] * width * 0.5, renderer.projection[5] * height * 0.5);
-  context.uniform2f(uniforms.viewport, width, height);
-  context.uniform1f(uniforms.hdrEnabled, renderer.hdr ? 1 : 0);
-  context.uniform1f(uniforms.exposure, frame.exposure ?? 1);
-  context.uniform1i(uniforms.splatData, DATA_TEXTURE_UNIT);
-  context.uniform1i(uniforms.harmonicData, HARMONIC_TEXTURE_UNIT);
+  backend.uniformMatrix4fv(uniforms.projection, renderer.rasterProjection ?? renderer.projection);
+  backend.uniform2f(uniforms.focal, renderer.projection[0] * width * 0.5, renderer.projection[5] * height * 0.5);
+  backend.uniform2f(uniforms.viewport, width, height);
+  backend.uniform1f(uniforms.hdrEnabled, renderer.hdr ? 1 : 0);
+  backend.uniform1f(uniforms.exposure, frame.exposure ?? 1);
+  backend.uniform1i(uniforms.splatData, DATA_TEXTURE_UNIT);
+  backend.uniform1i(uniforms.harmonicData, HARMONIC_TEXTURE_UNIT);
 }
 
 function prepareBlendedState(renderer, attachment, frame) {
-  const context = renderer.context;
-  context.depthMask(false);
-  context.enable(context.BLEND);
-  context.blendFuncSeparate(context.ONE, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE_MINUS_SRC_ALPHA);
-  useProgram(renderer, attachment.blended, frame);
+  const { backend } = attachment;
+  backend.setRenderState({ depthWrite: false, blend: true, blendMode: 'premultiplied' });
+  useProgram(renderer, backend, attachment.blended, frame);
 }
 
 function prepareOpaqueState(renderer, attachment, frame) {
-  const context = renderer.context;
-  attachment.opaque ??= createProgramInfo(context, OPAQUE_FRAGMENT_SOURCE);
-  context.depthMask(true);
-  context.disable(context.BLEND);
-  useProgram(renderer, attachment.opaque, frame);
+  const { backend } = attachment;
+  attachment.opaque ??= createProgramInfo(backend, OPAQUE_FRAGMENT_SOURCE);
+  backend.setRenderState({ depthWrite: true, blend: false });
+  useProgram(renderer, backend, attachment.opaque, frame);
 }
 
 function drawBlendedDepth(renderer, attachment, blendedEntries, frame) {
-  const context = renderer.context;
-  attachment.depth ??= createProgramInfo(context, DEPTH_FRAGMENT_SOURCE);
-  context.depthMask(true);
-  context.colorMask(false, false, false, false);
-  context.disable(context.BLEND);
-  useProgram(renderer, attachment.depth, frame);
-  context.uniform1f(attachment.depth.uniforms.alphaCut, SPLAT_DEPTH_ALPHA_THRESHOLD);
+  const { backend } = attachment;
+  attachment.depth ??= createProgramInfo(backend, DEPTH_FRAGMENT_SOURCE);
+  backend.setRenderState({ depthWrite: true, colorMask: [false, false, false, false], blend: false });
+  useProgram(renderer, backend, attachment.depth, frame);
+  backend.uniform1f(attachment.depth.uniforms.alphaCut, SPLAT_DEPTH_ALPHA_THRESHOLD);
   for (const entry of blendedEntries) drawEntry(renderer, attachment, entry, attachment.depth);
-  context.colorMask(true, true, true, true);
+  backend.setRenderState({ colorMask: [true, true, true, true] });
 }
 
-function paletteProgramFor(renderer, attachment, palette) {
+function paletteProgramFor(attachment, palette) {
   const key = `${palette.count}:${palette.dither}`;
   if (!attachment.palettePrograms.has(key)) {
-    attachment.palettePrograms.set(key, createProgramInfo(renderer.context, buildPaletteFragmentSource(palette.count, palette.dither), ['paletteColors']));
+    attachment.palettePrograms.set(key, createProgramInfo(attachment.backend, buildPaletteFragmentSource(palette.count, palette.dither), ['paletteColors']));
   }
   return attachment.palettePrograms.get(key);
 }
 
 function drawOutlines(renderer, attachment, outlineEntries, frame) {
-  const context = renderer.context;
-  attachment.outline ??= createProgramInfo(context, OUTLINE_FRAGMENT_SOURCE, ['outlineWidth', 'outlineColor'], buildOutlineVertexSource(VERTEX_SOURCE));
-  context.depthMask(false);
-  context.disable(context.BLEND);
+  const { backend } = attachment;
+  attachment.outline ??= createProgramInfo(backend, OUTLINE_FRAGMENT_SOURCE, ['outlineWidth', 'outlineColor'], buildOutlineVertexSource(VERTEX_SOURCE));
+  backend.setRenderState({ depthWrite: false, blend: false });
   for (const entry of outlineEntries) {
     const { color, width } = entry.splats.outline;
-    useProgram(renderer, attachment.outline, frame);
-    context.uniform1f(attachment.outline.uniforms.outlineWidth, width);
-    context.uniform3fv(attachment.outline.uniforms.outlineColor, color);
+    useProgram(renderer, backend, attachment.outline, frame);
+    backend.uniform1f(attachment.outline.uniforms.outlineWidth, width);
+    backend.uniform3fv(attachment.outline.uniforms.outlineColor, color);
     drawEntry(renderer, attachment, entry, attachment.outline);
   }
 }
 
-function restoreState(renderer) {
-  const context = renderer.context;
-  context.depthMask(true);
-  context.disable(context.BLEND);
-  context.enable(context.CULL_FACE);
-  context.bindVertexArray(null);
-  context.activeTexture(context.TEXTURE0);
+function restoreState(backend) {
+  backend.setRenderState({ depthWrite: true, blend: false, cullFace: true });
+  backend.bindVertexArray(null);
+  backend.activeTextureUnit(0);
 }
 
 function drawEntry(renderer, attachment, entry, programInfo) {
-  const context = renderer.context;
+  const { backend } = attachment;
   const { splats } = entry;
   mat4.multiply(attachment.modelView, renderer.view, splats.matrix);
   const start = performance.now();
@@ -551,42 +518,39 @@ function drawEntry(renderer, attachment, entry, programInfo) {
   // The sorter keeps its last order, so splats attached again after a detach upload it once to their new buffer.
   if (changed || !entry.orderUploaded) {
     entry.orderUploaded = true;
-    context.bindBuffer(context.ARRAY_BUFFER, entry.orderBuffer);
-    context.bufferSubData(context.ARRAY_BUFFER, 0, order, 0, visibleCount);
+    backend.updateBuffer(entry.orderBuffer, order, 0, visibleCount);
     splats.statistics.sortMilliseconds = performance.now() - start;
   }
   splats.statistics.visibleCount = visibleCount;
   if (visibleCount === 0) return;
-  context.uniformMatrix4fv(programInfo.uniforms.modelView, false, attachment.modelView);
-  if (splats.alphaCut !== null) context.uniform1f(programInfo.uniforms.alphaCut, splats.alphaCut);
-  if (splats.palette && programInfo.uniforms.paletteColors !== undefined) context.uniform3fv(programInfo.uniforms.paletteColors, splats.palette.colors);
-  bindHarmonics(context, attachment, entry, programInfo);
-  context.activeTexture(context.TEXTURE0 + DATA_TEXTURE_UNIT);
-  context.bindTexture(context.TEXTURE_2D, entry.texture);
-  context.bindVertexArray(entry.vertexArray);
-  context.bindBuffer(context.ARRAY_BUFFER, entry.orderBuffer);
-  context.drawArraysInstanced(context.TRIANGLE_STRIP, 0, 4, visibleCount);
+  backend.uniformMatrix4fv(programInfo.uniforms.modelView, attachment.modelView);
+  if (splats.alphaCut !== null) backend.uniform1f(programInfo.uniforms.alphaCut, splats.alphaCut);
+  if (splats.palette && programInfo.uniforms.paletteColors !== undefined) backend.uniform3fv(programInfo.uniforms.paletteColors, splats.palette.colors);
+  bindHarmonics(backend, attachment, entry, programInfo);
+  backend.bindTextureUnit(DATA_TEXTURE_UNIT, entry.texture);
+  backend.bindVertexArray(entry.vertexArray);
+  backend.drawInstancedStrip(4, visibleCount);
 }
 
 // The bands are evaluated in the splats' own space, so the eye is moved there: the inverse model-view's translation.
-function bindHarmonics(context, attachment, entry, programInfo) {
+function bindHarmonics(backend, attachment, entry, programInfo) {
   const { uniforms } = programInfo;
-  context.activeTexture(context.TEXTURE0 + HARMONIC_TEXTURE_UNIT);
   if (!entry.harmonics) {
-    context.bindTexture(context.TEXTURE_2D, attachment.emptyHarmonics);
-    context.uniform1i(uniforms.harmonicDegree, 0);
+    backend.bindTextureUnit(HARMONIC_TEXTURE_UNIT, attachment.emptyHarmonics);
+    backend.uniform1i(uniforms.harmonicDegree, 0);
     return;
   }
-  context.bindTexture(context.TEXTURE_2D, entry.harmonics.texture);
-  context.uniform1i(uniforms.harmonicDegree, entry.harmonics.degree);
-  context.uniform1i(uniforms.harmonicTexels, entry.harmonics.texelsPerSplat);
+  backend.bindTextureUnit(HARMONIC_TEXTURE_UNIT, entry.harmonics.texture);
+  backend.uniform1i(uniforms.harmonicDegree, entry.harmonics.degree);
+  backend.uniform1i(uniforms.harmonicTexels, entry.harmonics.texelsPerSplat);
   mat4.invert(attachment.inverseModelView, attachment.modelView);
-  context.uniform3f(uniforms.eyeModel, attachment.inverseModelView[12], attachment.inverseModelView[13], attachment.inverseModelView[14]);
+  backend.uniform3f(uniforms.eyeModel, attachment.inverseModelView[12], attachment.inverseModelView[13], attachment.inverseModelView[14]);
 }
 
 function drawEntries(renderer, attachment, frame) {
   if (attachment.entries.size === 0) return;
-  prepareFrameState(renderer);
+  const { backend } = attachment;
+  prepareFrameState(renderer, backend);
   const entries = [...attachment.entries];
   const opaqueEntries = entries.filter(entry => entry.splats.alphaCut !== null && !entry.splats.palette);
   const paletteEntries = entries.filter(entry => entry.splats.palette);
@@ -599,8 +563,8 @@ function drawEntries(renderer, attachment, frame) {
   }
   for (const entry of paletteEntries) {
     prepareOpaqueState(renderer, attachment, frame);
-    const programInfo = paletteProgramFor(renderer, attachment, entry.splats.palette);
-    useProgram(renderer, programInfo, frame);
+    const programInfo = paletteProgramFor(attachment, entry.splats.palette);
+    useProgram(renderer, backend, programInfo, frame);
     drawEntry(renderer, attachment, entry, programInfo);
   }
   if (blendedEntries.length > 0) {
@@ -609,7 +573,7 @@ function drawEntries(renderer, attachment, frame) {
     for (const { entry } of farToNear) drawEntry(renderer, attachment, entry, attachment.blended);
     drawBlendedDepth(renderer, attachment, blendedEntries, frame);
   }
-  restoreState(renderer);
+  restoreState(backend);
 }
 
 function distanceToEye(splats, eye) {
@@ -631,15 +595,16 @@ function distanceToEye(splats, eye) {
 export function attachGaussianSplats(renderer, splats) {
   if (!splats?.packed) throw new Error('These splats are already attached to a renderer; call the function attachGaussianSplats returned to detach them, then attach again, or create them again');
   if (typeof renderer?.drawBlendBatches !== 'function') throw new TypeError('attachGaussianSplats needs a CrucibleRenderer');
-  const attachment = attachments.get(renderer) ?? createAttachment(renderer);
+  const backend = backendFor(renderer);
+  const attachment = attachments.get(renderer) ?? createAttachment(renderer, backend);
   attachments.set(renderer, attachment);
-  const entry = { splats, ...createGpuResources(renderer.context, splats) };
+  const entry = { splats, ...createGpuResources(attachment.backend, splats) };
   attachment.entries.add(entry);
   function detachGaussianSplats() {
     if (!attachment.entries.delete(entry)) return;
-    splats.packed = readPackedBack(renderer.context, entry);
+    splats.packed = readPackedBack(attachment.backend, entry);
     splats.statistics.gpuBytes = 0;
-    releaseEntry(renderer.context, entry);
+    releaseEntry(attachment.backend, entry);
     if (attachment.entries.size === 0 && attachments.get(renderer) === attachment) releaseAttachment(renderer, attachment);
   }
   detachGaussianSplats.update = change => updateAttachedSplats(renderer, attachment, entry, change);
@@ -647,9 +612,9 @@ export function attachGaussianSplats(renderer, splats) {
 }
 
 // Keeps a CPU copy of the data texture for the first update, read back once, so a range can be rewritten and its rows re-uploaded.
-function ensureWordMirror(context, entry) {
-  if (context.isContextLost?.()) throw new Error('The WebGL context is lost, so these splats cannot be updated. Create them again after the context is restored');
-  entry.mirror ??= readTextureWords(context, entry.texture, entry.rows);
+function ensureWordMirror(backend, entry) {
+  if (backend.isContextLost()) throw new Error('The WebGL context is lost, so these splats cannot be updated. Create them again after the context is restored');
+  entry.mirror ??= readTextureWords(backend, entry.texture, entry.rows);
   return entry.mirror;
 }
 
@@ -676,13 +641,18 @@ function boundsOfCentres(centres, count) {
   return { minimum, maximum };
 }
 
-function uploadRows(context, entry, { firstRow, endRow }) {
+function uploadRows(backend, entry, { firstRow, endRow }) {
   if (endRow <= firstRow) return;
   const rowWords = DATA_TEXTURE_WIDTH * WORDS_PER_TEXEL;
-  context.activeTexture(context.TEXTURE0 + DATA_TEXTURE_UNIT);
-  context.bindTexture(context.TEXTURE_2D, entry.texture);
-  context.texSubImage2D(context.TEXTURE_2D, 0, 0, firstRow, DATA_TEXTURE_WIDTH, endRow - firstRow, context.RGBA_INTEGER, context.UNSIGNED_INT, entry.mirror.subarray(firstRow * rowWords, endRow * rowWords));
-  context.activeTexture(context.TEXTURE0);
+  backend.uploadDataTexture2D(entry.texture, {
+    y: firstRow,
+    width: DATA_TEXTURE_WIDTH,
+    height: endRow - firstRow,
+    format: 'rgba32ui',
+    data: entry.mirror.subarray(firstRow * rowWords, endRow * rowWords),
+    unit: DATA_TEXTURE_UNIT,
+  });
+  backend.activeTextureUnit(0);
 }
 
 function updateAttachedSplats(renderer, attachment, entry, change) {
@@ -690,15 +660,14 @@ function updateAttachedSplats(renderer, attachment, entry, change) {
   if (!attachment.entries.has(entry)) throw new Error('These splats are detached, so they cannot be updated. Attach them again, or call update on the function the latest attachGaussianSplats returned');
   const update = resolveSplatUpdate(change, splats);
   if (update.bounds) checkSplatBounds(update.bounds, 'update');
-  const context = renderer.context;
-  const mirror = ensureWordMirror(context, entry);
+  const mirror = ensureWordMirror(attachment.backend, entry);
   const movesCentres = update.positions !== null || update.count !== splats.count;
   if (update.positions) {
     ensureOwnCentres(splats);
     splats.centres.set(update.positions.subarray(0, update.length * 3), update.start * 3);
   }
   const rows = writeSplatUpdate(mirror, update);
-  uploadRows(context, entry, rows);
+  uploadRows(attachment.backend, entry, rows);
   splats.count = update.count;
   splats.statistics.count = update.count;
   if (update.bounds) splats.bounds = update.bounds;

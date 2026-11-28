@@ -3,7 +3,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-export const CHROME_PAGES = ['index', 'docs', 'changelog', 'recipes', 'recipe-dolly-zoom', 'recipe-hdri-lighting', 'recipe-view-transform', 'recipe-cumulus-towers', 'marketplace', 'showcase', 'tiers', 'film', 'motion', 'nature', 'object', 'view2d', 'assets'];
+export const CHROME_PAGES = ['index', 'docs', 'changelog', 'recipes', 'recipe-dolly-zoom', 'recipe-hdri-lighting', 'recipe-view-transform', 'recipe-cumulus-towers', 'marketplace', 'showcase', 'film', 'motion', 'nature', 'object', 'view2d', 'assets'];
 
 // Full-screen viewer pages have no scroll area to end in, so they carry the top bar and no footer. Modeling scrolls and keeps its footer.
 export const FOOTERLESS_PAGES = new Set(['film', 'motion', 'nature', 'object', 'view2d', 'assets']);
@@ -54,7 +54,6 @@ const FOOTER_PAGE_LINKS = [
   { href: '/recipes.html', label: 'Recipes' },
   { href: '/showcase.html', label: 'Showcase' },
   { href: '/marketplace.html', label: 'Marketplace' },
-  { href: '/tiers.html', label: 'Tiers' },
   { href: '/changelog.html', label: 'Changelog' },
 ];
 

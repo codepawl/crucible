@@ -6,7 +6,7 @@
     <link rel="preload" href="/fonts/plus-jakarta-sans-latin-3.woff2" as="font" type="font/woff2" crossorigin /><link rel="preload" href="/fonts/inter-latin-6.woff2" as="font" type="font/woff2" crossorigin />
     <meta name="description" content="Crucible: cook crisp 3D with your AI. The Glaze rasterizer on WebGL2, the Cook path tracer on CPU and WebGL2 (Vulkan with the optional Cook package), GLB, PNG and MP4 export, and 26 MCP tools. Install with npm i @codepawlhq/crucible." />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="crucible" />
+    <meta property="og:site_name" content="Crucible" />
     <meta property="og:title" content="Crucible: Cook crisp 3D with your AI" />
     <meta property="og:description" content="A WebGL2 rasterizer, a path tracer on CPU and WebGL2 (Vulkan with an optional package), and an MCP server in one npm package." />
     <meta property="og:url" content="https://crucible.codepawl.com/" />
@@ -15,9 +15,65 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="The Crucible mark over a container port rendered by Crucible" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@anxuanng" />
     <link rel="canonical" href="https://crucible.codepawl.com/" />
     <title>Crucible: Cook crisp 3D with your AI</title>
     <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml" /><link rel="icon" href="/favicon.ico?v=2" sizes="48x48" /><link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://codepawl.com/#organization",
+            "name": "CodePawl",
+            "url": "https://codepawl.com/",
+            "logo": "https://codepawl.com/assets/brand/codepawl-logo.png",
+            "sameAs": [
+              "https://github.com/codepawl",
+              "https://x.com/anxuanng",
+              "https://x.com/codepawl",
+              "https://www.youtube.com/@codepawlhq",
+              "https://huggingface.co/codepawl",
+              "https://www.threads.com/@codepawl"
+            ]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://crucible.codepawl.com/#website",
+            "url": "https://crucible.codepawl.com/",
+            "name": "Crucible",
+            "alternateName": "67js",
+            "publisher": { "@id": "https://codepawl.com/#organization" }
+          },
+          {
+            "@type": ["SoftwareApplication", "SoftwareSourceCode"],
+            "@id": "https://crucible.codepawl.com/#software",
+            "name": "Crucible",
+            "alternateName": ["@codepawlhq/crucible", "67js"],
+            "url": "https://crucible.codepawl.com/",
+            "description": "Real-time WebGL2 3D engine, CPU/WebGL2/Vulkan path tracer, and 26-tool MCP server that AI agents drive.",
+            "applicationCategory": "DeveloperApplication",
+            "operatingSystem": "Cross-platform",
+            "programmingLanguage": "JavaScript",
+            "codeRepository": "https://github.com/codepawl/crucible",
+            "license": "https://opensource.org/licenses/MIT",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "author": { "@id": "https://codepawl.com/#organization" },
+            "publisher": { "@id": "https://codepawl.com/#organization" },
+            "sameAs": [
+              "https://github.com/codepawl/crucible",
+              "https://www.npmjs.com/package/@codepawlhq/crucible",
+              "https://codepawl.com/"
+            ]
+          }
+        ]
+      }
+    </script>
     <script defer src="/analytics.js" data-cf-site="d25c310f7f5c46049586a2ddc0e57b03"></script>
   </head>
   <body class="landing themed" id="page">
@@ -53,7 +109,6 @@
   <symbol id="ic-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></symbol>
   <symbol id="ic-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-14.07 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2M20 12h2m-14.07 7.07 1.41-1.41m11.32-11.32 1.41-1.41"/></symbol>
   <symbol id="ic-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
-  <symbol id="ic-zap" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></symbol>
   <symbol id="ic-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
   <symbol id="ic-sparkles" viewBox="0 0 24 24"><path d="m12 3-1.8 4.8L5.5 9.5l4.7 1.7L12 16l1.8-4.8 4.7-1.7-4.7-1.7L12 3Z"/><path d="M19 15v4M17 17h4M5 16v3M3.5 17.5h3"/></symbol>
   <symbol id="ic-award" viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9l4-6Z"/><path d="M2 9h20"/></symbol>
@@ -206,51 +261,6 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
     </div>
   </section>
 
-  <section class="section" id="tiers" aria-labelledby="tiers-title">
-    <div class="inner">
-      <div class="tier-head">
-        <div>
-          <h2 id="tiers-title">Quality tiers, measured</h2>
-          <p class="lede">Pick a tier by how long a frame may take.</p>
-        </div>
-        <a class="tier-more" href="/tiers.html">Full breakdown</a>
-      </div>
-      <!-- tier-cards:start (written by bench/tiers/make-home-tiers.mjs) -->
-      <ol class="tier-table">
-        <li class="tier-row tier-row-head" aria-hidden="true"><span>Tier</span><span>Crucible</span><span>Blender reference</span></li>
-        <li class="tier-row" data-tier="draft" data-glaze-ms="0.54-1.04" data-eevee-ms="56-59" data-flip-glaze="0.045-0.188" data-flip-eevee="0.041-0.562">
-          <div class="tier-name"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-zap"/></svg><div><strong>draft</strong><span>Quick edits</span></div></div>
-          <div class="tier-metric">
-            <div class="tier-value"><b>0.54 to 1.04 ms</b><span>per frame, Glaze</span></div>
-            <span class="tier-bar" role="img" aria-label="Crucible Glaze 0.54 to 1.04 ms per frame versus EEVEE 1 sample 56 to 59 ms per render call"><i style="--share: 1.8%"></i></span>
-          </div>
-          <div class="tier-ref"><b>56 to 59 ms</b><span>EEVEE 1 sample</span></div>
-        </li>
-        <li class="tier-row" data-tier="realtime" data-glaze-ms="0.77-0.98" data-eevee-ms="288-363" data-flip-glaze="0.03-0.197" data-flip-eevee="0.042-0.562">
-          <div class="tier-name"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-gauge"/></svg><div><strong>realtime</strong><span>Interactive scenes</span></div></div>
-          <div class="tier-metric">
-            <div class="tier-value"><b>0.77 to 0.98 ms</b><span>per frame, Glaze</span></div>
-            <span class="tier-bar" role="img" aria-label="Crucible Glaze 0.77 to 0.98 ms per frame versus EEVEE 64 samples 288 to 363 ms per render call"><i style="--share: 0.3%"></i></span>
-          </div>
-          <div class="tier-ref"><b>288 to 363 ms</b><span>EEVEE 64 samples</span></div>
-        </li>
-        <li class="tier-row" data-tier="final" data-cook-ms="1.73-4.24" data-cycles-ms="6.81-26.41" data-noise-time-x="1.05-4.02">
-          <div class="tier-name"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-award"/></svg><div><strong>final</strong><span>Path-traced stills</span></div></div>
-          <div class="tier-metric">
-            <div class="tier-value"><b>1.73 to 4.24 ms</b><span>per sample, Cook</span></div>
-            <span class="tier-bar" role="img" aria-label="Cook native 1.73 to 4.24 ms per sample versus Cycles OptiX 6.81 to 26.41 ms per sample"><i style="--share: 16.1%"></i></span>
-          </div>
-          <div class="tier-ref"><b>6.81 to 26.41 ms</b><span>Cycles OptiX</span></div>
-        </li>
-      </ol>
-      <div class="tier-notes">
-        <p class="fine">Six scenes at 960x540 on RTX 3060 (2026-11-11). Bars compare Crucible to the slowest scene of each reference.</p>
-        <p class="fine">Error vs Cycles 4096 samples (FLIP, lower is closer): draft 0.045 to 0.188 (EEVEE 0.041 to 0.562), realtime 0.03 to 0.197 (EEVEE 0.042 to 0.562). Cook native takes 1.05 to 4.02x Cycles time for equal noise on three of six scenes (not reached on metal, glass, outdoor-hdri) and uses optional @codepawlhq/cook. EEVEE times are one whole render call (scene sync, ray tracing off, no GI). <a href="/tiers.html">Full tier breakdown</a>, <a href="https://github.com/codepawl/crucible/blob/main/bench/tiers/results/matrix-960.table.md">raw matrix</a>.</p>
-      </div>
-      <!-- tier-cards:end -->
-    </div>
-  </section>
-
   <section class="section" aria-label="Documentation, help and sponsors">
     <div class="inner trio">
       <div class="stack" id="documentation">
@@ -293,7 +303,6 @@ renderer.render({ eye: [58, 31, 84], target: [-8, 3, -18] });</pre><button class
       <a href="/recipes.html">Recipes</a>
       <a href="/showcase.html">Showcase</a>
       <a href="/marketplace.html">Marketplace</a>
-      <a href="/tiers.html">Tiers</a>
       <a href="/changelog.html">Changelog</a>
     </nav>
     <nav aria-label="Project links">

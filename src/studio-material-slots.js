@@ -1,4 +1,5 @@
 // Studio helpers for joining objects with different materials into one slotted mesh and assigning face materials in edit mode.
+import { createEmptySelectState } from './studio-empty-select.js';
 import { MIXED_SELECT_VALUE, syncSelectMixedOption } from './studio-multi-edit.js';
 
 const NO_FACES_TEXT = 'Pick faces';
@@ -55,15 +56,6 @@ export function selectedFaceSlotsState(recipe, nodeId, mesh, faces) {
   };
 }
 
-/** Handles clicking a Scene palette swatch while Studio is in edit mode, assigning that material to the selected faces. */
-export function assignSwatchMaterialInEditMode({ meshEditor, materialId, onAssigned }) {
-  const outcome = meshEditor.assignMaterial(materialId);
-  if (outcome?.ok) {
-    onAssigned?.();
-  }
-  return outcome;
-}
-
 /** Runs `assign-face-material` in 1 undo step for Studio edit mode and announces the result. */
 export function applyEditModeFaceMaterial({ controller, nodeId, faces, target, refresh, announce, refuse }) {
   const assignment = typeof target === 'number' ? { slot: target } : { material: target };
@@ -86,7 +78,7 @@ export function buildSeeThroughParts(parts, opacity) {
 }
 
 /** Builds the Face material row shown in Studio's Material panel while mesh edit mode is active. */
-export function createFaceMaterialPanel({ documentReference, createElement, controller, getMeshEditor, announceError, onAssigned }) {
+export function createFaceMaterialPanel({ documentReference, createElement, createIcon, controller, getMeshEditor, announceError, onAssigned }) {
   const statusOutput = createElement(documentReference, 'output', { textContent: NO_FACES_TEXT });
   const head = createElement(
     documentReference,
@@ -97,12 +89,22 @@ export function createFaceMaterialPanel({ documentReference, createElement, cont
   );
   const materialSelect = createElement(documentReference, 'select', { attributes: { 'aria-label': 'Face material' } });
   const slotChips = createElement(documentReference, 'div', { className: 'crucible-studio-chips', hidden: true });
+  const emptyState = createEmptySelectState({
+    documentReference,
+    createElement,
+    createIcon,
+    select: materialSelect,
+    message: 'No materials yet',
+    actionLabel: 'New material',
+    onAction: () => controller.createMaterial({ assignToNodeIds: [] }),
+  });
   const element = createElement(
     documentReference,
     'div',
     { className: 'crucible-studio-field', hidden: true, dataset: { faceMaterialPanel: 'true' } },
     head,
     materialSelect,
+    emptyState.element,
     slotChips,
   );
 
@@ -183,6 +185,7 @@ export function createFaceMaterialPanel({ documentReference, createElement, cont
     const recipe = controller.exportRecipe();
     const hasSelection = summary.faces.length > 0;
     syncOptions(recipe, hasSelection);
+    emptyState.sync(recipe.materials.length === 0);
     materialSelect.disabled = !hasSelection || recipe.materials.length === 0;
     const faceLabel = summary.faces.length === 1 ? '1 face' : `${summary.faces.length} faces`;
     if (!hasSelection) {

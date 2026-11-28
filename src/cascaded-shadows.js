@@ -1,4 +1,5 @@
 import { mat4, vec3 } from 'gl-matrix';
+import { asGlazeBackend, backendFor, resolveGlazeBackend } from './glaze-backend.js';
 import { DETAIL_NORMAL_UNIT, HEIGHT_MAP_UNIT, registerShaderFeatureCode } from './shader-registry.js';
 import { resolveShadowLight } from './shadow-light.js';
 import { farthestDepthOfBounds } from './near-plane-fit.js';
@@ -300,24 +301,27 @@ export class CascadedShadows {
     this.forward = new Float32Array(4);
     this.texture = null;
     this.framebuffer = null;
+    this.backend = null;
     this.drawCount = 0;
     this.locations = null;
     this.locationProgram = null;
   }
 
-  allocate(context) {
-    if (this.texture) context.deleteTexture(this.texture);
-    if (this.framebuffer) context.deleteFramebuffer(this.framebuffer);
+  allocate(contextOrBackend) {
+    const backend = asGlazeBackend(contextOrBackend);
+    this.backend = backend;
+    if (this.texture) backend.deleteTexture(this.texture);
+    if (this.framebuffer) backend.deleteFramebuffer(this.framebuffer);
     this.allocatedLayers = this.layerCount;
-    this.texture = context.createTexture();
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D_ARRAY, this.texture);
-    context.texImage3D(context.TEXTURE_2D_ARRAY, 0, context.DEPTH_COMPONENT24, this.resolution, this.resolution, this.layerCount, 0, context.DEPTH_COMPONENT, context.UNSIGNED_INT, null);
-    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_MIN_FILTER, context.NEAREST);
-    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_MAG_FILTER, context.NEAREST);
-    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-    context.texParameteri(context.TEXTURE_2D_ARRAY, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
-    this.framebuffer = context.createFramebuffer();
+    backend.activeTextureUnit(0);
+    this.texture = backend.createTextureArray({
+      width: this.resolution,
+      height: this.resolution,
+      layers: this.layerCount,
+      format: 'depth24',
+      wrap: 'clamp',
+    });
+    this.framebuffer = backend.createFramebuffer();
     // A new array holds no depth yet, so every slice draws on its first update.
     this.drawCount = 0;
     this.drawnMatrices.fill(0);
@@ -385,22 +389,17 @@ export class CascadedShadows {
 
   /** Redraws the slice maps when the camera, the light or a caster moved. Call once a frame after the camera is set. */
   update(renderer, casterChanged) {
-    const context = renderer.context;
+    const backend = backendFor(renderer);
     let moved = this.fitToCamera(renderer);
     // The far slice appears once the camera sees past maximumDistance, and then the array is one layer taller.
     if (!this.texture || this.allocatedLayers !== this.layerCount) {
-      this.allocate(context);
+      this.allocate(backend);
       renderer.renderTargets.record('cascadedShadowMaps', { width: this.resolution, height: this.resolution, layers: this.layerCount, format: 'DEPTH_COMPONENT24' });
       moved = true;
     }
     if (!moved && !casterChanged && this.drawCount > 0) return;
     this.drawCount++;
-    context.bindFramebuffer(context.FRAMEBUFFER, this.framebuffer);
-    context.drawBuffers([context.NONE]);
-    context.readBuffer(context.NONE);
-    context.viewport(0, 0, this.resolution, this.resolution);
-    context.enable(context.DEPTH_TEST);
-    context.enable(context.CULL_FACE);
+    backend.beginDepthOnlyPass(this.framebuffer, this.resolution, this.resolution);
     for (let layer = 0; layer < this.layerCount; layer++) {
       const layerMatrix = this.matrices.subarray(layer * 16, layer * 16 + 16);
       const drawnMatrix = this.drawnMatrices.subarray(layer * 16, layer * 16 + 16);
@@ -408,39 +407,38 @@ export class CascadedShadows {
       // Far slices have large texels and snap to them, so most of them hold still while the camera orbits.
       if (!casterChanged && this.drawCount > 1 && drawnMatrix.every((value, index) => value === layerMatrix[index])) continue;
       drawnMatrix.set(layerMatrix);
-      context.framebufferTextureLayer(context.FRAMEBUFFER, context.DEPTH_ATTACHMENT, this.texture, 0, layer);
-      context.clear(context.DEPTH_BUFFER_BIT);
+      backend.bindDepthTextureLayer(this.texture, layer, true);
       renderer.drawShadowCasters(layerMatrix, this.resolution, true);
     }
-    context.bindFramebuffer(context.FRAMEBUFFER, null);
+    backend.bindCanvasTarget();
   }
 
   /** Uploads the slice matrices and binds the depth array to unit 0, which the main pass reads. */
   bindUniforms(renderer) {
-    const context = renderer.context;
+    const backend = backendFor(renderer);
     if (this.locationProgram !== renderer.program) {
       const names = ['cascadeShadowMap', 'cascadeMatrices[0]', 'cascadeSplits', 'cascadeTexels', 'cascadeRanges', 'cascadeFrame', 'sunSoftness', 'cascadeTintView'];
-      this.locations = Object.fromEntries(names.map(name => [name, context.getUniformLocation(renderer.program, name)]));
+      this.locations = Object.fromEntries(names.map(name => [name, backend.uniformLocation(renderer.program, name)]));
       this.locationProgram = renderer.program;
-      for (const [name, unit] of Object.entries(MAIN_SAMPLER_UNITS)) context.uniform1i(context.getUniformLocation(renderer.program, name), unit);
+      for (const [name, unit] of Object.entries(MAIN_SAMPLER_UNITS)) backend.uniform1i(backend.uniformLocation(renderer.program, name), unit);
     }
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D_ARRAY, this.texture);
-    context.uniform1i(this.locations.cascadeShadowMap, 0);
-    context.uniformMatrix4fv(this.locations['cascadeMatrices[0]'], false, this.matrices);
-    context.uniform4fv(this.locations.cascadeSplits, this.splits);
-    context.uniform4fv(this.locations.cascadeTexels, this.texels);
-    context.uniform4fv(this.locations.cascadeRanges, this.ranges);
-    context.uniform4fv(this.locations.cascadeFrame, this.forward);
+    backend.bindTextureUnit(0, this.texture, true);
+    backend.uniform1i(this.locations.cascadeShadowMap, 0);
+    backend.uniformMatrix4fv(this.locations['cascadeMatrices[0]'], this.matrices);
+    backend.uniform4fv(this.locations.cascadeSplits, this.splits);
+    backend.uniform4fv(this.locations.cascadeTexels, this.texels);
+    backend.uniform4fv(this.locations.cascadeRanges, this.ranges);
+    backend.uniform4fv(this.locations.cascadeFrame, this.forward);
     const sunAngularRadius = renderer.environment?.sunAngularRadius;
-    context.uniform1f(this.locations.sunSoftness, sunAngularRadius > 0 ? Math.tan(sunAngularRadius) : 0);
-    context.uniform3f(this.locations.cascadeTintView, renderer.tintView?.depthRange ?? 1, renderer.tintView?.uvPerMetre ?? 1, renderer.tintView?.biasPerSlope ?? 0);
+    backend.uniform1f(this.locations.sunSoftness, sunAngularRadius > 0 ? Math.tan(sunAngularRadius) : 0);
+    backend.uniform3f(this.locations.cascadeTintView, renderer.tintView?.depthRange ?? 1, renderer.tintView?.uvPerMetre ?? 1, renderer.tintView?.biasPerSlope ?? 0);
   }
 
-  dispose(context, renderTargets = null) {
+  dispose(contextOrBackend, renderTargets = null) {
     renderTargets?.release('cascadedShadowMaps');
-    if (this.texture) context.deleteTexture(this.texture);
-    if (this.framebuffer) context.deleteFramebuffer(this.framebuffer);
+    const backend = resolveGlazeBackend(contextOrBackend, this.backend);
+    if (this.texture) backend.deleteTexture(this.texture);
+    if (this.framebuffer) backend.deleteFramebuffer(this.framebuffer);
     this.texture = null;
     this.framebuffer = null;
   }

@@ -17,6 +17,7 @@ import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shad
 import { STUDIO_CSS } from './studio-styles.js';
 import { AGENT_CHAT_CSS, createAgentPanel } from './studio-agent-chat.js';
 import { createApplyMenus } from './studio-apply-menu.js';
+import { createViewportContextMenus, createViewportMenuOpening, openPopoverNearPointer, selectForContextMenu } from './studio-viewport-context-menu.js';
 import { createMeshMenus } from './studio-mesh-menus.js';
 import { resolveMouseMap } from './studio-mouse-map.js';
 import { createMouseInput, createViewportTargetFilter, isEditableTarget } from './studio-mouse-input.js';
@@ -40,7 +41,7 @@ import './studio-features.js';
 import { hasStudioTab, registeredStudioMenuEntries, registeredStudioStyles, registeredStudioTabIds, registeredStudioTabs, registeredStudioWorkspaces, registerStudioTab } from './studio-registry.js';
 import { createShapeSettings } from './studio-shape-settings.js';
 import { MIXED_PROPERTY_LABEL, MIXED_SELECT_VALUE, summarizeNodeSelection, syncObjectAndMaterialPanels } from './studio-multi-edit.js';
-import { createKeyMarkers } from './studio-timeline-keys.js';
+import { createTimelinePanel } from './studio-timeline-panel.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
 import { AXIS_COLORS, buildGridParts, createViewWidget, describeBounds, describeCamera, describeGridStep, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart, viewportGridLayout } from './studio-viewport-aids.js';
 import { formatLengthInputValue, lengthFromUnit, parseLengthInput } from './studio-units.js';
@@ -56,12 +57,16 @@ import { SNAP_TARGETS } from './studio-snapping.js';
 import { createOutlinerParentDrag } from './studio-parenting.js';
 import { editIconName } from './studio-edit-names.js';
 import { createPostPassNotice, createPostPassPlanner, installPostPasses, sceneHasPostPasses } from './studio-post-passes.js';
+import { applyViewportLook } from './studio-workspace-viewport.js';
 import { CONTEXT_LOST_MESSAGE, createPausedPictureNotice, describeFrameFailure, frameFailureReason, watchContextLoss } from './studio-context-loss.js';
 import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgentEdit, diffRecipeNodes } from './studio-agent-presence.js';
 import { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, primitiveGeometrySpec, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, buildTemplateRecipe } from './studio-templates.js';
 import { createStudioController, hasAnimatedData, linearRgbToHex, quaternionToEulerDegrees, roundValue } from './studio-controller.js';
 import { createPartSyncTracker } from './studio-live-parts.js';
-import { assignSwatchMaterialInEditMode, createFaceMaterialPanel, planJoinOperations } from './studio-material-slots.js';
+import './studio-look-gallery.js';
+import { createFaceMaterialPanel, planJoinOperations } from './studio-material-slots.js';
+import { createMaterialSwatches } from './studio-material-swatches.js';
+import { createEmptySelectState } from './studio-empty-select.js';
 import {
   BASE_STUDIO_WORKSPACES,
   createWorkspaceTabBar,
@@ -1515,11 +1520,18 @@ export function createStudio(container, {
     getMeshEditor: () => meshEditor,
     openPopoverAtMenuPoint: popover => openPopoverAt(popover, ...(lastObjectMenuPoint ?? [0, 0])),
   });
+  const viewportMenus = createViewportContextMenus({
+    createMenuPopover, createMenuItem, controller, announce: message => announce(message), announceError: message => announceError(message),
+    openPopoverAtMenuPoint: popover => openPopoverAt(popover, ...(lastObjectMenuPoint ?? [0, 0])),
+    getAddPopover: () => addPopover, onPaste: () => pasteCopy(), onShowAll: () => showAllHidden(),
+  });
   const objectPopover = buildRegisteredMenuPopover('crucible-studio-pop-object', 'object', [
     { order: 10, label: 'Frame', actionId: 'view.frame', icon: 'frame', onChoose: () => flyToSelection() },
     { order: 20, label: 'Rename', actionId: 'edit.rename', icon: 'text', onChoose: () => renameActiveObjectFromMenu() },
     { order: 30, label: 'Duplicate', actionId: 'edit.duplicate', icon: 'duplicateObject', onChoose: () => duplicateSelection() },
+    { order: 35, element: viewportMenus.addModifierRow },
     { order: 40, label: 'Hide', actionId: 'edit.hide', icon: 'eyeOff', onChoose: () => hideSelection() },
+    { order: 45, label: 'Parent', actionId: 'edit.parent', icon: 'node', onChoose: () => parentSelection() },
     { order: 50, label: 'Reset position', actionId: 'edit.resetPosition', icon: 'translate', onChoose: () => resetSelectionTransform('translation') },
     { order: 60, label: 'Reset rotation', actionId: 'edit.resetRotation', icon: 'rotate', onChoose: () => resetSelectionTransform('rotation') },
     { order: 70, label: 'Reset scale', actionId: 'edit.resetScale', icon: 'scale', onChoose: () => resetSelectionTransform('scale') },
@@ -1527,22 +1539,9 @@ export function createStudio(container, {
     { order: 90, element: applyMenus.originRow },
     { order: 100, label: 'Delete', actionId: 'edit.delete', icon: 'remove', onChoose: () => deleteButton.click() },
   ]);
+  viewportMenus.watchObjectMenu(objectPopover);
   let lastObjectMenuPoint = null;
-  function openPopoverAt(popover, clientX, clientY) {
-    const windowWidth = documentReference.defaultView?.innerWidth ?? 1280;
-    const windowHeight = documentReference.defaultView?.innerHeight ?? 800;
-    popover.togglePopover?.(false);
-    popover.style.left = `${Math.round(Math.max(8, Math.min(clientX, windowWidth - 256)))}px`;
-    popover.style.right = 'auto';
-    // In the lower half the menu hangs from the pointer and grows upward, so it stays on screen at any height.
-    const opensUpward = clientY > windowHeight / 2;
-    popover.style.top = opensUpward ? 'auto' : `${Math.round(clientY)}px`;
-    popover.style.bottom = opensUpward ? `${Math.round(Math.max(8, windowHeight - clientY))}px` : 'auto';
-    const opening = popoverOpeningStyle({ opensUpward });
-    popover.style.setProperty('--studio-popover-origin', opening.origin);
-    popover.style.setProperty('--studio-popover-shift', opening.shift);
-    popover.showPopover?.();
-  }
+  const openPopoverAt = (popover, clientX, clientY) => openPopoverNearPointer(documentReference, popover, clientX, clientY);
   const meshMenus = createMeshMenus({
     createMenuPopover,
     createMenuItem,
@@ -1771,7 +1770,7 @@ export function createStudio(container, {
     startMenuGroup(importAndExportRows[0]),
     ...importAndExportRows.slice(1),
   );
-  for (const popoverElement of [newPopover, addPopover, editPopover, objectPopover, ...meshMenus.popovers, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover, snapPopover]) {
+  for (const popoverElement of [newPopover, addPopover, editPopover, objectPopover, ...viewportMenus.popovers, ...meshMenus.popovers, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover, snapPopover]) {
     popoverElement.addEventListener('click', event => {
       const clickedButton = event.target.closest?.('button');
       if (clickedButton && !clickedButton.dataset.keepsMenu) popoverElement.hidePopover?.();
@@ -1822,6 +1821,7 @@ export function createStudio(container, {
     aiSyncPopover,
     editPopover,
     objectPopover,
+    ...viewportMenus.popovers,
     ...meshMenus.popovers,
     applyMenus.applyPopover,
     applyMenus.originPopover,
@@ -1905,13 +1905,7 @@ export function createStudio(container, {
     isEditingName: () => Boolean(activeNameEditor),
   });
   watchScrollFade(outlinerTree);
-  const swatchContainer = createElement(documentReference, 'div', { className: 'crucible-studio-swatches crucible-studio-scroll' });
-  const newMaterialQuickButton = createIconButton(documentReference, 'add', 'New material', { className: 'crucible-studio-swatch-add' });
-  newMaterialQuickButton.addEventListener('click', () => {
-    const created = controller.createMaterial({ assignToNodeIds: selectedTargets() });
-    selectInspectorTab('material');
-    announceSuccess(`Created ${created.id}`);
-  });
+  const materialSwatches = createMaterialSwatches({ documentReference, createElement, createIcon, createIconButton, controller, selectedTargets, announce: message => announceSuccess(message) });
 
   const sceneMinimizeButton = createIconButton(documentReference, 'minimize', 'Minimize Scene', { attributes: { 'aria-expanded': 'true' } });
   sceneMinimizeButton.addEventListener('click', () => setPreference('sceneMinimized', !preferences.sceneMinimized));
@@ -1937,7 +1931,6 @@ export function createStudio(container, {
     ),
     filterRow,
     outlinerTree,
-    createElement(documentReference, 'div', { className: 'crucible-studio-palette-section' }, swatchContainer, newMaterialQuickButton),
   );
   outlinerSearch.addEventListener('input', () => syncUi());
   // The filter box stays out of the way until its button is pressed; closing it clears the filter, so a closed box
@@ -2443,17 +2436,24 @@ export function createStudio(container, {
   const emissionField = createSliderField(documentReference, 'Emission', { min: 0, max: 12, step: 0.1, value: 0 }, value => applyMaterialsPatch({ emission: value }));
   const colorField = createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'div', { className: 'crucible-studio-field-head' }, createElement(documentReference, 'span', { textContent: 'Color' }), colorMixedTag), colorInput);
   const emissiveField = createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'div', { className: 'crucible-studio-field-head' }, createElement(documentReference, 'span', { textContent: 'Glow color' }), emissiveMixedTag), emissiveColorInput);
-  const faceMaterialPanel = createFaceMaterialPanel({ documentReference, createElement, controller, getMeshEditor: () => meshEditor, announceError, onAssigned: () => updateMeshSelectionView() });
+  const faceMaterialPanel = createFaceMaterialPanel({ documentReference, createElement, createIcon, controller, getMeshEditor: () => meshEditor, announceError, onAssigned: () => updateMeshSelectionView() });
   const materialEmptyPrompt = createElement(documentReference, 'p', {
     className: 'crucible-studio-panel-empty',
-    textContent: 'Select an object with a material, or pick a swatch in Scene.',
+    textContent: 'Select an object with a material.',
     hidden: true,
+  });
+  const materialEmptyState = createEmptySelectState({
+    documentReference,
+    createElement,
+    createIcon,
+    message: 'No materials yet',
+    actionLabel: 'New material',
+    onAction: () => announceSuccess(`Created ${controller.createMaterial({ assignToNodeIds: selectedTargets() }).id}`),
   });
   const materialControls = createElement(
     documentReference,
     'div',
     { className: 'crucible-studio-panel-controls' },
-    faceMaterialPanel.element,
     createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'span', { className: 'crucible-studio-field-head', textContent: 'Material' }), materialSelect),
     createElement(documentReference, 'div', { className: 'crucible-studio-field' }, createElement(documentReference, 'span', { className: 'crucible-studio-field-head', textContent: 'Presets' }), createElement(documentReference, 'div', { className: 'crucible-studio-chips' }, ...materialPresetChips)),
     colorField,
@@ -2470,6 +2470,9 @@ export function createStudio(container, {
     documentReference,
     'div',
     { className: 'crucible-studio-panel-body' },
+    materialSwatches.element,
+    faceMaterialPanel.element,
+    materialEmptyState.element,
     materialEmptyPrompt,
     materialControls,
   );
@@ -2565,8 +2568,7 @@ export function createStudio(container, {
   const panelContext = {
     documentReference,
     controller,
-    announce,
-    announceError,
+    announce, announceError, createRenderer,
     builders: { createElement, createIcon, createIconButton, createVectorRow },
     inlinePanels: { node: nodePanelBody, material: materialPanelBody, look: lookPanelBody, camera: cameraPanelBody },
     syncLookPanels: () => syncLookPanels(),
@@ -2855,20 +2857,20 @@ export function createStudio(container, {
       controller.setMotionTime(seconds);
     }
   });
-  const keyMarkers = createKeyMarkers({
-    documentReference,
-    controller,
-    keysElement,
-    trackElement,
-    announce,
+  const timelinePanel = createTimelinePanel({
+    documentReference, createElement, createIcon, controller, announce, keysElement, trackElement,
+    createIconButton: (iconName, label, properties) => createIconButton(documentReference, iconName, label, properties),
     isDeleteKey: event => findKeymapAction(keymap, event, 'normal')?.actionId === 'edit.delete',
     fallbackFocus: keyframeButton,
+    propertyRows: { translation: positionRow, rotation: rotationRow, scale: scaleRow },
   });
 
   const bottomElement = createElement(
     documentReference,
     'footer',
     { className: 'crucible-studio-bottombar crucible-studio-island', attributes: { 'aria-label': 'Timeline' } },
+    timelinePanel.rowsElement,
+    timelinePanel.editorElement,
     createElement(documentReference, 'div', { className: 'crucible-studio-scrub' }, playButton, keyframeButton, autoKeyButton, trackElement, timeOutput),
     quickBookmarksRow,
   );
@@ -4005,8 +4007,7 @@ export function createStudio(container, {
 
   function drawSceneFrame() {
     const activeRenderer = syncPartsWithoutStall(ensureRenderer());
-    const environment = controller.scene.environment;
-    const effects = controller.scene.effects;
+    const { environment, effects, passScene } = applyViewportLook(activeRenderer, controller.scene, root.dataset.workspace, drawingTheShot());
     const shadow = fitAgentShadow(controller.scene.shadow, controller.scene.parts);
     const shadowKey = JSON.stringify([environment.lightDirection, shadow]);
     if (renderedShadowKey !== shadowKey) {
@@ -4021,7 +4022,7 @@ export function createStudio(container, {
     activeRenderer.environment = frameEnvironment;
     // A still is the scene's own shot, so it keeps the animated camera even while the viewport looks around freely.
     const frameCamera = drawingTheShot() ? controller.scene.camera : controller.viewCamera;
-    renderWithPostPasses(activeRenderer, {
+    renderWithPostPasses(activeRenderer, passScene, {
       ...frameCamera,
       ...(drawingTheShot() ? {} : viewportClipPlanes(frameCamera)),
       environment: frameEnvironment,
@@ -4033,9 +4034,9 @@ export function createStudio(container, {
   }
 
   // A pass that fails to compile is refused and the frame is drawn again without it, so one bad pass never pauses the picture.
-  function renderWithPostPasses(activeRenderer, frame) {
+  function renderWithPostPasses(activeRenderer, passScene, frame) {
     while (true) {
-      const plan = postPassPlanner.resolve(activeRenderer, controller.scene);
+      const plan = postPassPlanner.resolve(activeRenderer, passScene);
       let drawingObjectIds = false;
       try {
         if (plan.needsObjectIds) {
@@ -4201,8 +4202,6 @@ export function createStudio(container, {
 
   // UI Synchronization
   let lastTreeKey = '';
-  let lastSwatchesKey = '';
-  let lastPressedMaterialId;
   let lastBookmarksKey = '';
   let lastParentOptionsKey = '';
 
@@ -4535,78 +4534,6 @@ export function createStudio(container, {
     }
   }
 
-  // The swatches are rebuilt only when a material was added, removed or recoloured; moving the pressed state to another
-  // swatch touches two buttons. The strip scrolls to the pressed swatch at the end of the sync, only when it moved.
-  let swatchScrollWanted = false;
-
-  function renderPaletteSwatches(recipe, boundMaterialId) {
-    const swatchesKey = recipe.materials.map(material => `${material.id}:${linearRgbToHex(material.color)}`).join('|');
-    if (swatchesKey !== lastSwatchesKey) {
-      lastSwatchesKey = swatchesKey;
-      swatchScrollWanted = true;
-      swatchContainer.replaceChildren(...recipe.materials.map(material => {
-        const hex = linearRgbToHex(material.color);
-        const swatch = createElement(documentReference, 'button', {
-          type: 'button',
-          className: 'crucible-studio-swatch-btn',
-          title: material.id,
-          attributes: { 'aria-pressed': 'false', 'aria-label': `Material ${material.id}` },
-        });
-        swatch.style.background = hex;
-        swatch.addEventListener('click', () => {
-          if (meshEditor?.active) {
-            assignSwatchMaterialInEditMode({ meshEditor, materialId: material.id, onAssigned: () => updateMeshSelectionView() });
-            selectInspectorTab('material');
-            return;
-          }
-          const targets = selectedTargets();
-          if (targets.length > 0) {
-            try {
-              if (targets.length === 1) controller.assignNodeMaterial(targets[0], material.id);
-              else controller.assignNodesMaterial(targets, material.id);
-            } catch {
-              // group node has no geometry; still open material tab
-            }
-          }
-          selectInspectorTab('material');
-        });
-        return swatch;
-      }));
-      lastPressedMaterialId = undefined;
-    }
-    if (boundMaterialId === lastPressedMaterialId) {
-      return;
-    }
-    lastPressedMaterialId = boundMaterialId;
-    swatchScrollWanted = true;
-    recipe.materials.forEach((material, index) => {
-      const pressed = material.id === boundMaterialId ? 'true' : 'false';
-      const swatch = swatchContainer.children[index];
-      if (swatch.getAttribute('aria-pressed') !== pressed) {
-        swatch.setAttribute('aria-pressed', pressed);
-      }
-    });
-  }
-
-  // The strip is one row that scrolls sideways; the swatch of the selected node stays inside it.
-  function scrollPressedSwatchIntoView() {
-    if (!swatchScrollWanted) {
-      return;
-    }
-    swatchScrollWanted = false;
-    const pressedSwatch = [...swatchContainer.children].find(swatch => swatch.getAttribute('aria-pressed') === 'true');
-    if (!pressedSwatch || !Number.isFinite(pressedSwatch.offsetLeft)) {
-      return;
-    }
-    const swatchStart = pressedSwatch.offsetLeft;
-    const swatchEnd = swatchStart + pressedSwatch.offsetWidth;
-    if (swatchStart < swatchContainer.scrollLeft) {
-      swatchContainer.scrollLeft = swatchStart - 4;
-    } else if (swatchEnd > swatchContainer.scrollLeft + swatchContainer.clientWidth) {
-      swatchContainer.scrollLeft = swatchEnd - swatchContainer.clientWidth + 4;
-    }
-  }
-
   // The Scene list shows whole rows only: when it scrolls, its rows grow by a pixel or two until a whole number of them fills it.
   // The natural row height comes from one measurement that holds until something that sets it changes: the list's own height
   // (read live), the kind of the first row (a camera row or a node row), the fonts, the window size, or the first row's own
@@ -4781,10 +4708,10 @@ export function createStudio(container, {
       setRowLockedByTrack,
       syncTreeInspector,
       shapeSettings,
-      renderPaletteSwatches,
+      renderPaletteSwatches: materialSwatches.sync,
       controls: {
         nodeEmptyPrompt, nodeControls, nodeLabelInput, nodeParentSelect, visibleToggle, castShadowToggle, receiveShadowToggle,
-        positionRow, rotationRow, scaleRow, materialEmptyPrompt, materialControls, materialSelect, colorInput, colorMixedTag, colorField,
+        positionRow, rotationRow, scaleRow, materialEmptyPrompt, materialEmptyState, materialControls, materialSelect, colorInput, colorMixedTag, colorField,
         emissiveColorInput, emissiveMixedTag, emissiveField, roughnessField, metallicField,
         clearcoatField, clearcoatRoughnessField, doubleSidedToggle, opacityField, emissionField,
       },
@@ -4840,11 +4767,11 @@ export function createStudio(container, {
     setButtonIcon(playButton, playing ? 'pause' : 'play', playTooltip(playing));
     timeOutput.textContent = `${controller.motionTime.toFixed(1)} / ${duration.toFixed(1)} s`;
     autoKeyButton.setAttribute('aria-pressed', controller.autoKey ? 'true' : 'false');
-    keyMarkers.sync(Math.max(0.1, duration));
+    timelinePanel.sync(Math.max(0.1, duration));
     syncPropertyPanels();
     syncHintBar();
     syncFileBanner();
-    scrollPressedSwatchIntoView();
+    materialSwatches.scrollPressedIntoView();
   }
 
   // Only the panel in view is redrawn: orbiting the viewport notifies a change many times a second.
@@ -5308,13 +5235,8 @@ export function createStudio(container, {
       } else {
         // Shift or Ctrl (Command) with a left click adds the object under the pointer to the selection, or takes it out.
         const mode = (event.button ?? 0) === 0 && (event.shiftKey || event.ctrlKey || event.metaKey) ? 'toggle' : 'replace';
-        selectNodeAndShowItsPanel(() => controller.pickAt(coordinates.x, coordinates.y, { mode }));
-        // A right press that did not drag picked what is under it: an object there gets its menu. It opens after
-        // this release has been handled, because the release itself closes any open menu.
-        if (event.button === 2 && controller.selectedNodeId) {
-          const { clientX, clientY } = event;
-          setTimeout(() => openObjectMenu(clientX, clientY), 0);
-        }
+        selectNodeAndShowItsPanel(() => (event.button === 2 ? selectForContextMenu(controller, coordinates.x, coordinates.y) : controller.pickAt(coordinates.x, coordinates.y, { mode })));
+        if (event.button === 2) viewportMenuOpening.openAfterRelease(event);
       }
     }
   }
@@ -5323,6 +5245,12 @@ export function createStudio(container, {
   });
   viewportElement.addEventListener('pointerleave', () => {
     viewportPointer = null;
+  });
+  const viewportMenuOpening = createViewportMenuOpening({
+    controller, documentReference, viewportElement, canvas, openObjectMenu, selectInPanel: selectNodeAndShowItsPanel,
+    getViewportPointer: () => viewportPointer, isHoldingObject: () => controller.dragging || Boolean(modalTransform),
+    isKeyboardBlocked: () => Boolean(meshEditor?.active) || anyDialogIsOpen() || viewingShot(),
+    openScenePopover: (clientX, clientY) => openPopoverAt(viewportMenus.scenePopover, clientX, clientY), onOpen: point => { lastObjectMenuPoint = point; },
   });
   documentReference.addEventListener('contextmenu', onModalContextMenu, true);
   documentReference.addEventListener('click', onModalClick, true);
@@ -5889,6 +5817,7 @@ export function createStudio(container, {
       return;
     }
     if (isEditableTarget(event.target, event.key)) return;
+    if (viewportMenuOpening.handleKeydown(event)) return;
     // Esc or a key pressed over an open mesh menu belongs to the menu, not to edit mode.
     if (meshMenus.isOpen()) return;
     const editingMesh = Boolean(meshEditor?.active);

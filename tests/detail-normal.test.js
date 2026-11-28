@@ -99,7 +99,7 @@ test('shaders without detailNormalMap emit byte-for-byte identical GLSL even aft
   const reliefHash = createHash('sha256')
     .update(createFragmentShader(['baseMap', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap', 'heightMap']))
     .digest('hex');
-  assert.equal(reliefHash, '19fe50817918bd2b44fcb2df48b2443a5fb863ea5bb1d3f12390f872858887c8');
+  assert.equal(reliefHash, 'a2f0b344128aedf32036533821f64a11302a947c334e245ad8bfe5bd4728d985');
 });
 
 test('DETAIL_NORMAL_UNIT sits cleanly past HEIGHT_MAP_UNIT and PUDDLE_MASK_UNIT without collisions', () => {

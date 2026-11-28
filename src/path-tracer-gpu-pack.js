@@ -281,6 +281,36 @@ export function packOcclusion(materials, atlas) {
   return table;
 }
 
+/** Vectors per material of the attenuation table: (extinction r, g, b, active flag). */
+export const ATTENUATION_TEXELS = 1;
+
+/** True when a transmissive material has a finite positive attenuation distance, which needs Beer-Lambert absorption. */
+export function sceneUsesAttenuation(materials) {
+  return materials.some(material => Number.isFinite(material.attenuationDistance) && material.attenuationDistance > 0);
+}
+
+// Maximum per-channel extinction when attenuationColor has a zero channel, avoiding log(0) and pow(0, 0).
+const ZERO_COLOR_EXTINCTION = 1e6;
+
+/**
+ * Beer-Lambert extinction per metre for each material (`-ln(attenuationColor) / attenuationDistance`), plus 1 in the fourth
+ * channel when active. Materials without a finite attenuation distance keep 0 in the fourth channel and do not absorb.
+ */
+export function packAttenuation(materials) {
+  const table = createTable(materials.length * ATTENUATION_TEXELS);
+  const { data } = table;
+  materials.forEach((material, index) => {
+    if (!Number.isFinite(material.attenuationDistance) || !(material.attenuationDistance > 0)) return;
+    const color = material.attenuationColor ?? [1, 1, 1];
+    const base = index * ATTENUATION_TEXELS * 4;
+    for (let channel = 0; channel < 3; channel++) {
+      data[base + channel] = color[channel] >= 1 ? 0 : color[channel] <= 0 ? ZERO_COLOR_EXTINCTION : -Math.log(color[channel]) / material.attenuationDistance;
+    }
+    data[base + 3] = 1;
+  });
+  return table;
+}
+
 /** True when a part has a subsurface weight above 0, which is when the kernel needs the random walk. */
 export function sceneUsesSubsurface(materials) {
   return materials.some(material => material.subsurface);

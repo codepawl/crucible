@@ -770,6 +770,7 @@ export function syncObjectAndMaterialPanels({
     rotationRow,
     scaleRow,
     materialEmptyPrompt,
+    materialEmptyState,
     materialControls,
     materialSelect,
     colorInput,
@@ -848,13 +849,10 @@ export function syncObjectAndMaterialPanels({
   renderPaletteSwatches(recipe, materialSummary && !materialSummary.assignedMixed ? (activeMaterial?.id ?? null) : null);
   const hasMaterial = Boolean(activeMaterial);
   if (materialEmptyPrompt && materialControls) {
-    materialEmptyPrompt.hidden = hasMaterial;
+    const sceneHasNoMaterials = recipe.materials.length === 0;
+    materialEmptyState?.sync(sceneHasNoMaterials);
+    materialEmptyPrompt.hidden = hasMaterial || sceneHasNoMaterials;
     materialControls.hidden = !hasMaterial;
-    if (!hasMaterial) {
-      materialEmptyPrompt.textContent = recipe.materials.length === 0
-        ? 'Add a material with + in Scene, then select an object to paint.'
-        : 'Select an object with a material, or pick a swatch in Scene.';
-    }
   }
   materialSelect.disabled = !hasMaterial;
   colorInput.disabled = !hasMaterial;

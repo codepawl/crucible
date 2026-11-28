@@ -1,0 +1,1 @@
+- Accept `toonRim` and `toonBase` in the MCP material schemas and refresh the `cumulus-towers` recipe lighting, camera, and still (#2039)

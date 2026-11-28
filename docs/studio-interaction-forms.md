@@ -92,7 +92,7 @@ Pick the form by how a person reaches the feature:
 | --- | --- | --- | --- |
 | Scene list | panel | `src/studio.js:1806`, `src/studio.js:3522`, `src/studio.js:3529` | A tree by parent, an eye per row, a search filter and a right click menu. It shows what exists and picks it. |
 | Properties | panel | `src/studio.js:2091`, `src/studio-properties.js` | Object, Material, Look and Camera tabs hold the values of the selection. |
-| Materials | panel | `src/studio.js:1810`, `src/studio.js:2367` | A swatch dock beside the Scene list and a Material tab: a material is a value of an object, so it is picked and edited with the other values. |
+| Materials | panel | `src/studio.js:1810`, `src/studio.js:2367` | A Material tab that starts with a row of colour swatches (a click opens a colour picker): a material is a value of an object, so it is picked and edited with the other values. |
 | Auto keying | toggle | `src/studio.js:2450`, `src/studio-controller.js:2816` | A state that every edit obeys: while it is on, each change writes a keyframe. |
 | Insert keyframe | operator | `src/studio-keymap.js:49` | One action on the selection, on I and K. |
 | Timeline | panel | `src/studio.js:2452`, `src/studio-keymap.js:50` | A scrub bar in the bottom panel shows time. Play is a key, Space. |

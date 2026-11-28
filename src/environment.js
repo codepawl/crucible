@@ -3,6 +3,7 @@
 // `rotation` turns the environment about +Y in radians.
 
 import { registerShaderFeatureCode } from './shader-registry.js';
+import { asGlazeBackend } from './glaze-backend.js';
 import {
   ENVIRONMENT_BRDF_SIZE,
   ENVIRONMENT_IRRADIANCE_HEIGHT,
@@ -437,86 +438,65 @@ void main() {
   outputColor = vec4(hdrEnabled > 0.5 ? min(radiance * exposure, vec3(65504.0)) : pow(toneMap(radiance * exposure), vec3(1.0 / 2.2)), 1.0);
 }`;
 
-function createHalfFloatTexture(context, internalFormat, levelCount, width, height, { wrapHorizontally }) {
-  const texture = context.createTexture();
-  context.bindTexture(context.TEXTURE_2D, texture);
-  context.texStorage2D(context.TEXTURE_2D, levelCount, internalFormat, width, height);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, levelCount > 1 ? context.LINEAR_MIPMAP_LINEAR : context.LINEAR);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, wrapHorizontally ? context.REPEAT : context.CLAMP_TO_EDGE);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
-  return texture;
-}
-
-function drawIntoLevel(context, framebuffer, texture, level, width, height) {
-  context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-  context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, level);
-  if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) throw new Error('Environment prefilter framebuffer is incomplete.');
-  context.viewport(0, 0, width, height);
-  context.drawArrays(context.TRIANGLES, 0, 3);
-}
-
 // Prefilters once at load: GGX-convolved equirect mip chain (level = roughness), split-sum BRDF lookup and L2 spherical harmonics.
-export function createEnvironmentResources(context, map, programs) {
-  return runToEnd(environmentResourceSteps(context, map, programs));
+export function createEnvironmentResources(contextOrBackend, map, programs) {
+  return runToEnd(environmentResourceSteps(contextOrBackend, map, programs));
 }
 
 /** The same resources, built a step at a time (upload, mipmaps, each roughness level, the lookup table, the irradiance) so a caller can draw frames between steps. */
-export function createEnvironmentResourcesInSlices(context, map, programs, checkpoint) {
-  return runInSlices(environmentResourceSteps(context, map, programs), checkpoint);
+export function createEnvironmentResourcesInSlices(contextOrBackend, map, programs, checkpoint) {
+  return runInSlices(environmentResourceSteps(contextOrBackend, map, programs), checkpoint);
 }
 
-function* environmentResourceSteps(context, map, { compileProgram, fullscreenVertex }) {
+function* environmentResourceSteps(contextOrBackend, map, { compileProgram, fullscreenVertex }) {
   assertEnvironmentMap(map);
-  if (!context.getExtension('EXT_color_buffer_float')) throw new Error('Environment maps require EXT_color_buffer_float.');
+  const backend = asGlazeBackend(contextOrBackend);
+  if (!backend.extension('EXT_color_buffer_float')) throw new Error('Environment maps require EXT_color_buffer_float.');
   const started = performance.now();
   const layout = environmentSpecularLayout(map);
   const sourceLevelCount = Math.floor(Math.log2(Math.max(map.width, map.height))) + 1;
-  const sourceTexture = createHalfFloatTexture(context, context.RGBA16F, sourceLevelCount, map.width, map.height, { wrapHorizontally: true });
+  const sourceTexture = backend.createHalfFloatStorageTexture({ width: map.width, height: map.height, levels: sourceLevelCount, repeatHorizontal: true });
   const uploadRows = Math.min(UPLOAD_ROWS_PER_STEP, rowsPerStep(map.width));
   for (let firstRow = 0; firstRow < map.height; firstRow += uploadRows) {
     const rowCount = Math.min(uploadRows, map.height - firstRow);
-    context.texSubImage2D(context.TEXTURE_2D, 0, 0, firstRow, map.width, rowCount, context.RGBA, context.FLOAT, paddedHalfFloatRows(map, firstRow, rowCount));
+    backend.uploadFloatTexture2D(null, 0, firstRow, map.width, rowCount, paddedHalfFloatRows(map, firstRow, rowCount));
     yield;
   }
-  context.generateMipmap(context.TEXTURE_2D);
+  backend.generateMipmap(false);
   yield;
-  const specularTexture = createHalfFloatTexture(context, context.RGBA16F, layout.levelCount, layout.width, layout.height, { wrapHorizontally: true });
-  const brdfTexture = createHalfFloatTexture(context, context.RGBA16F, 1, ENVIRONMENT_LOOKUP_WIDTH, ENVIRONMENT_LOOKUP_HEIGHT, { wrapHorizontally: false });
-  const framebuffer = context.createFramebuffer();
-  const prefilterProgram = compileProgram(context, fullscreenVertex, environmentPrefilterFragment);
-  const brdfProgram = compileProgram(context, fullscreenVertex, environmentBrdfFragment);
-  context.disable(context.DEPTH_TEST);
-  context.disable(context.CULL_FACE);
-  context.disable(context.BLEND);
-  context.disable(context.SCISSOR_TEST);
-  context.bindVertexArray(null);
-  context.useProgram(prefilterProgram);
-  context.activeTexture(context.TEXTURE0);
-  context.bindTexture(context.TEXTURE_2D, sourceTexture);
-  context.uniform1i(context.getUniformLocation(prefilterProgram, 'sourceMap'), 0);
-  context.uniform2f(context.getUniformLocation(prefilterProgram, 'sourceSize'), map.width, map.height);
-  const roughnessUniform = context.getUniformLocation(prefilterProgram, 'roughness');
-  const levelOffsetUniform = context.getUniformLocation(prefilterProgram, 'sourceLevelOffset');
+  const specularTexture = backend.createHalfFloatStorageTexture({ width: layout.width, height: layout.height, levels: layout.levelCount, repeatHorizontal: true });
+  const brdfTexture = backend.createHalfFloatStorageTexture({ width: ENVIRONMENT_LOOKUP_WIDTH, height: ENVIRONMENT_LOOKUP_HEIGHT, levels: 1, repeatHorizontal: false });
+  const framebuffer = backend.createFramebuffer();
+  const buildProgram = compileProgram
+    ? (vertexSource, fragmentSource) => compileProgram(backend.name === 'webgl2' ? backend.context : backend, vertexSource, fragmentSource)
+    : (vertexSource, fragmentSource) => backend.compileProgram(vertexSource, fragmentSource);
+  const prefilterProgram = buildProgram(fullscreenVertex, environmentPrefilterFragment);
+  const brdfProgram = buildProgram(fullscreenVertex, environmentBrdfFragment);
+  backend.setFullscreenState();
+  backend.useProgram(prefilterProgram);
+  backend.bindTextureUnit(0, sourceTexture);
+  backend.uniform1i(backend.uniformLocation(prefilterProgram, 'sourceMap'), 0);
+  backend.uniform2f(backend.uniformLocation(prefilterProgram, 'sourceSize'), map.width, map.height);
+  const roughnessUniform = backend.uniformLocation(prefilterProgram, 'roughness');
+  const levelOffsetUniform = backend.uniformLocation(prefilterProgram, 'sourceLevelOffset');
   for (let level = 0; level < layout.levelCount; level++) {
-    context.uniform1f(roughnessUniform, level / Math.max(1, layout.levelCount - 1));
-    context.uniform1f(levelOffsetUniform, Math.max(0, Math.log2(map.width / layout.levels[level].width)));
-    drawIntoLevel(context, framebuffer, specularTexture, level, layout.levels[level].width, layout.levels[level].height);
+    backend.uniform1f(roughnessUniform, level / Math.max(1, layout.levelCount - 1));
+    backend.uniform1f(levelOffsetUniform, Math.max(0, Math.log2(map.width / layout.levels[level].width)));
+    backend.drawIntoTextureLevel(framebuffer, specularTexture, level, layout.levels[level].width, layout.levels[level].height, 'Environment prefilter framebuffer is incomplete.');
     yield;
   }
-  context.useProgram(brdfProgram);
-  drawIntoLevel(context, framebuffer, brdfTexture, 0, ENVIRONMENT_BRDF_SIZE, ENVIRONMENT_BRDF_SIZE);
-  context.bindFramebuffer(context.FRAMEBUFFER, null);
-  context.deleteFramebuffer(framebuffer);
-  context.deleteProgram(prefilterProgram);
-  context.deleteProgram(brdfProgram);
-  context.deleteTexture(sourceTexture);
-  context.finish();
+  backend.useProgram(brdfProgram);
+  backend.drawIntoTextureLevel(framebuffer, brdfTexture, 0, ENVIRONMENT_BRDF_SIZE, ENVIRONMENT_BRDF_SIZE, 'Environment prefilter framebuffer is incomplete.');
+  backend.bindCanvasTarget();
+  backend.deleteFramebuffer(framebuffer);
+  backend.deleteProgram(prefilterProgram);
+  backend.deleteProgram(brdfProgram);
+  backend.deleteTexture(sourceTexture);
+  backend.finish();
   yield;
   const irradiance = yield* irradianceSteps(map.irradianceSource ?? map);
   const irradianceGrid = yield* irradianceGridSteps(map.irradianceSource ?? map);
-  context.bindTexture(context.TEXTURE_2D, brdfTexture);
-  context.texSubImage2D(context.TEXTURE_2D, 0, 0, ENVIRONMENT_BRDF_SIZE, ENVIRONMENT_IRRADIANCE_WIDTH + 2, ENVIRONMENT_IRRADIANCE_HEIGHT, context.RGBA, context.FLOAT, paddedIrradianceRows(irradianceGrid));
+  backend.uploadFloatTexture2D(brdfTexture, 0, ENVIRONMENT_BRDF_SIZE, ENVIRONMENT_IRRADIANCE_WIDTH + 2, ENVIRONMENT_IRRADIANCE_HEIGHT, paddedIrradianceRows(irradianceGrid));
   return {
     data: map.data,
     irradianceSource: map.irradianceSource,
@@ -528,8 +508,8 @@ function* environmentResourceSteps(context, map, { compileProgram, fullscreenVer
     irradianceGrid,
     prefilterMilliseconds: performance.now() - started,
     dispose() {
-      context.deleteTexture(specularTexture);
-      context.deleteTexture(brdfTexture);
+      backend.deleteTexture(specularTexture);
+      backend.deleteTexture(brdfTexture);
     },
   };
 }

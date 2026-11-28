@@ -120,6 +120,9 @@ test('mounting Studio builds the three zones, the styles and the first frame', t
   assert.equal(ui.studio.renderer, ui.renderer);
   assert.equal(ui.studio.scene, ui.controller.scene);
   assert.ok(ui.renderer.calls.includes('render'));
+  assert.equal(ui.renderer.frames.at(-1).exposure, undefined, 'Build draws without the scene exposure');
+  ui.studio.setWorkspace('look');
+  ui.studio.renderNow();
   assert.equal(ui.renderer.frames.at(-1).exposure, ui.controller.scene.effects.exposure);
   assert.equal(ui.controller.viewportWidth, 800);
   assert.equal(ui.controller.viewportHeight, 600);
@@ -214,15 +217,15 @@ test('arrow keys move focus along the toolbar and the tab list when the browser 
   const ignored = dispatch(ui.dom.document.activeElement, 'keydown', { key: 'a' });
   assert.equal(ignored.defaultPrevented, false);
 
-  // Arrow keys walk only the tabs of the open workspace: Look holds Material and Look.
+  // Arrow keys walk only the tabs of the open workspace: Look holds Looks, Material and Look.
   ui.tab('material').click();
   ui.tab('material').focus();
   dispatch(ui.tab('material'), 'keydown', { key: 'ArrowRight' });
   assert.ok(ui.dom.document.activeElement === ui.tab('look'));
   assert.equal(ui.controller.activeTab, 'look');
   dispatch(ui.tab('look'), 'keydown', { key: 'ArrowRight' });
-  assert.equal(ui.controller.activeTab, 'material', 'the walk wraps inside the workspace and skips the hidden tabs');
-  dispatch(ui.tab('material'), 'keydown', { key: 'ArrowLeft' });
+  assert.equal(ui.controller.activeTab, 'looks', 'the walk wraps inside the workspace and skips the hidden tabs');
+  dispatch(ui.tab('looks'), 'keydown', { key: 'ArrowLeft' });
   assert.equal(ui.controller.activeTab, 'look');
 
   ui.dom.document.activeElement = null;
@@ -528,22 +531,19 @@ test('popover buttons open each menu, close it again on a click inside and stay 
   assert.equal(syncPopover.style.top, '500px');
 });
 
-test('a material swatch assigns its material and opens the Material tab', testContext => {
+test('the material swatches live in the Material tab and show the material of the selection', testContext => {
   const ui = mountStudio(testContext);
   const swatches = ui.root.querySelectorAll('.crucible-studio-swatch-btn');
   assert.deepEqual(swatches.map(swatch => swatch.title), ['stone', 'paint']);
   assert.equal(swatches[0].getAttribute('aria-pressed'), 'true');
   assert.equal(swatches[1].getAttribute('aria-pressed'), 'false');
-  swatches[1].click();
-  assert.equal(ui.controller.activeTab, 'material');
+  const materialBody = ui.root.querySelector('.crucible-studio-palette-section').parentNode;
+  assert.ok(materialBody.querySelectorAll('select').includes(ui.label('Assigned material')), 'the swatches share a panel with the Material dropdown');
+  assert.equal(ui.root.querySelector('.crucible-studio-outliner').querySelector('.crucible-studio-swatches'), null, 'the Scene panel holds no swatches');
+  ui.label('Assigned material').value = 'paint';
+  dispatch(ui.label('Assigned material'), 'change');
   assert.equal(ui.node('ground').material, 'paint');
-  assert.equal(ui.label('Assigned material').value, 'paint');
   assert.equal(ui.root.querySelectorAll('.crucible-studio-swatch-btn')[1].getAttribute('aria-pressed'), 'true');
-
-  ui.controller.selectNode(null);
-  ui.root.querySelectorAll('.crucible-studio-swatch-btn')[0].click();
-  assert.equal(ui.controller.activeTab, 'material');
-  assert.equal(ui.node('ground').material, 'paint');
 });
 
 test('Material tab edits colours and sliders as single undo steps', testContext => {
@@ -636,9 +636,8 @@ test('material presets, the material list and new materials work from the Materi
   dispatch(materialSelect, 'change');
   assert.equal(ui.node('orb').material, 'stone');
 
-  ui.tab('node').click();
-  ui.label('New material').click();
-  assert.equal(ui.controller.activeTab, 'material');
+  ui.label('Add a colour').click();
+  ui.button('Add colour').click();
   assert.match(ui.status(), /^Created /);
   assert.equal(ui.studio.exportRecipe().materials.length, 3);
   assert.equal(ui.node('orb').material, ui.studio.exportRecipe().materials[2].id);
@@ -2219,6 +2218,8 @@ test('drawing pauses while the Studio is off screen or the tab is hidden, and re
 test('the viewport follows its element size, and the renderer is kept in step with the scene', testContext => {
   const ui = mountStudio(testContext);
   ui.viewport.box = { left: 0, top: 0, width: 640, height: 360, right: 640, bottom: 360 };
+  // The frame carries the scene's own effects only in the workspaces that draw its look; Build draws them off (#3594).
+  ui.studio.setWorkspace('look');
   ui.studio.renderNow();
   assert.equal(ui.controller.viewportWidth, 640);
   assert.equal(ui.controller.viewportHeight, 360);
@@ -2692,9 +2693,9 @@ test('workspaces run Build, Look, Animate, Export and each shows only the panels
   assert.equal(ui.root.dataset.workspace, 'look');
   assert.equal(workspaceTab('build').getAttribute('aria-selected'), 'false');
   assert.equal(workspaceTab('build').hasAttribute('aria-pressed'), false);
-  assert.deepEqual(shownTabs(), ['material', 'look']);
+  assert.deepEqual(shownTabs(), ['looks', 'material', 'look']);
   assert.equal(tabList.hasAttribute('hidden'), false);
-  assert.equal(ui.controller.activeTab, 'material');
+  assert.equal(ui.controller.activeTab, 'looks');
   ui.tab('look').click();
   assert.equal(ui.root.dataset.workspace, 'look');
   assert.equal(ui.controller.activeTab, 'look');
@@ -2703,7 +2704,7 @@ test('workspaces run Build, Look, Animate, Export and each shows only the panels
   assert.deepEqual(shownTabs(), ['node', 'camera'], 'Animate keeps the object panel one tab away, for the object being keyed');
   assert.equal(ui.controller.activeTab, 'camera', 'a workspace opens on its first panel');
   workspaceTab('look').click();
-  assert.equal(ui.controller.activeTab, 'material');
+  assert.equal(ui.controller.activeTab, 'looks');
   assert.equal(JSON.stringify(ui.studio.exportRecipe()), recipeBefore, 'a workspace is not part of the scene');
   assert.equal(ui.controller.canUndo, false);
 
@@ -3669,7 +3670,7 @@ test('a right click on an object opens its menu; H hides, Alt+H shows all and Al
   const menu = ui.root.querySelector('#crucible-studio-pop-object');
   const heroNode = () => ui.controller.exportRecipe().nodes.find(node => node.id === 'hero');
   const press = (key, modifiers = {}) => dispatch(ui.dom.document, 'keydown', { key, ...modifiers });
-  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Rename', 'Duplicate', 'Hide', 'Reset position', 'Reset rotation', 'Reset scale', 'Apply…', 'Set origin…', 'Delete']);
+  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Rename', 'Duplicate', 'Add Modifier…', 'Hide', 'Parent', 'Reset position', 'Reset rotation', 'Reset scale', 'Apply…', 'Set origin…', 'Delete']);
 
   // In the Scene list the row is selected first, then the menu opens on it.
   const heroRow = ui.rows().find(row => row.textContent.includes(heroNode().label ?? 'hero'));

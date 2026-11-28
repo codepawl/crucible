@@ -1,4 +1,5 @@
 import { validateMorphGeometry, validateMorphPose } from './morph.js';
+import { rejectThreeObject } from './field-error.js';
 import { gltfExtensionsFromLayers, LAYER_TEXTURE_SLOTS } from './gltf-layers.js';
 import { validateSkinGeometry } from './skinning.js';
 import { boxProjectedGeometry, columnLengths } from './export-box-uv.js';
@@ -299,11 +300,19 @@ function usesSecondUvSet(material) {
  * written as a glTF camera) and `lights` (`{ pointLights, spotLights }` as the scene environment holds them, written with KHR_lights_punctual).
  */
 export function exportGlb(parts, options = {}) {
+  rejectThreeObject(parts, 'GLB export parts');
   if (!Array.isArray(parts) || parts.length === 0) throw new TypeError('GLB export requires a nonempty parts array.');
   validateOptions(options);
+  rejectThreeObject(options.camera, 'GLB export camera');
+  rejectThreeObject(options.lights, 'GLB export lights');
   const validatedGeometries = new Set();
   const morphMetadata = new Map();
   for (const part of parts) {
+    rejectThreeObject(part, 'GLB export part');
+    const partLabel = part?.name ? `GLB part ${part.name}` : 'GLB part';
+    rejectThreeObject(part?.geometry, `${partLabel} geometry`);
+    rejectThreeObject(part?.material, `${partLabel} material`);
+    rejectThreeObject(part?.matrix, `${partLabel} matrix`);
     if (!validatedGeometries.has(part?.geometry)) {
       validateGeometry(part?.geometry, part?.name);
       validatedGeometries.add(part.geometry);

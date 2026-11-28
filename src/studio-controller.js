@@ -41,6 +41,7 @@ import {
 } from './studio-multi-edit.js';
 import { formatLength, STUDIO_LENGTH_UNITS } from './studio-units.js';
 import { motionIsEmpty } from './studio-motion-content.js';
+import { KEYFRAME_TIME_TOLERANCE, POSE_PROPERTIES, createPropertyKeyActions, upsertNodeKeyframeTrack } from './studio-property-keys.js';
 import { createOrbitPivot } from './studio-orbit-pivot.js';
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
@@ -158,7 +159,7 @@ export function quaternionToEulerDegrees(quaternion) {
   ];
 }
 
-function eulerDegreesToQuaternion(angles) {
+export function eulerDegreesToQuaternion(angles) {
   const result = quat.create();
   quat.fromEuler(result, angles[0], angles[1], angles[2]);
   quat.normalize(result, result);
@@ -453,36 +454,7 @@ function planeNormalForAxis(axis, camera, basis = WORLD_BASIS) {
   return [look[0], look[1], look[2]];
 }
 
-function upsertNodeKeyframeTrack(tracks, nodeId, property, time, value) {
-  const nextTracks = tracks.slice();
-  const existingIndex = nextTracks.findIndex(track => track.kind === 'node' && track.id === nodeId && track.property === property);
-  const roundedTime = roundValue(time, 1000);
-  const entry = { time: roundedTime, value: roundVector(value) };
-  if (existingIndex < 0) {
-    nextTracks.push({
-      kind: 'node',
-      id: nodeId,
-      property,
-      keyframes: [entry],
-    });
-    return nextTracks;
-  }
-  const existing = nextTracks[existingIndex];
-  const nextKeyframes = existing.keyframes.slice();
-  const matchIndex = keyframeIndexAt(nextKeyframes, roundedTime);
-  if (matchIndex >= 0) {
-    nextKeyframes[matchIndex] = entry;
-  } else {
-    nextKeyframes.push(entry);
-    nextKeyframes.sort((first, second) => first.time - second.time);
-  }
-  nextTracks[existingIndex] = { ...existing, keyframes: nextKeyframes };
-  return nextTracks;
-}
-
-const KEYFRAME_TIME_TOLERANCE = 0.005;
 const MAX_MOTION_SECONDS = 3600;
-const POSE_PROPERTIES = Object.freeze(['translation', 'rotation', 'scale']);
 const REST_POSE = Object.freeze({ translation: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] });
 
 function keyframeIndexAt(keyframes, time) {
@@ -3041,6 +3013,16 @@ export function createStudioController({
     return commitNodeTracks(recipe, moveNodeKeysInTracks(tracks, nodeId, sourceTime, targetTime), duration, nodeId);
   }
 
+  const propertyKeyActions = createPropertyKeyActions({
+    recipe: () => currentScene.exportRecipe(),
+    requireNode,
+    commitNodeTracks,
+    validatedKeyTime,
+    motionTime: () => motionTime,
+    nodePose,
+    selectedNodeId: () => selectedNodeId,
+  });
+
   /** Deletes every key of the node at `time` as one undo step; a track left empty is removed. */
   function deleteNodeKeyframe(nodeId, time) {
     const recipe = currentScene.exportRecipe();
@@ -3217,6 +3199,7 @@ export function createStudioController({
     moveNodeKeyframe,
     deleteNodeKeyframe,
     nodeKeyframeTimes,
+    ...propertyKeyActions,
     animatedNodeProperties,
     nodePose,
     get autoKey() { return autoKey; },

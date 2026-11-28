@@ -1,0 +1,1 @@
+- `CrucibleRenderer` (`src/renderer.js`) and `src/clip-planes.js` now route their shadow, sky, environment background, ambient occlusion, post, blend, texture, buffer and uniform calls through `GlazeBackend`; `entry:core` shrinks by 29 bytes gzip and rendered frames are unchanged (Part of #901).

@@ -187,7 +187,7 @@ const VERTEX_ALPHA_FUNCTION = `float vertexAlphaAtNearestHit() {
   return (1.0 - nearestU - nearestV) * corners.x + nearestU * corners.y + nearestV * corners.z;
 }`;
 
-const buildSource = (hasSubsurface, texelBake, blueNoise, lightImportance, radianceCache, lightTree, instanced, vertexAlpha) => `#version 300 es
+const buildSource = (hasSubsurface, texelBake, blueNoise, lightImportance, radianceCache, lightTree, instanced, vertexAlpha, hasAttenuation) => `#version 300 es
 precision highp float;
 precision highp int;
 precision highp sampler2D;
@@ -254,6 +254,7 @@ uniform vec3 uVolumeAlbedo;
 uniform vec3 uVolumeShape;
 ${texelBake ? TEXEL_UNIFORM : ''}
 ${hasSubsurface ? SUBSURFACE_UNIFORM : ''}
+${hasAttenuation ? 'uniform sampler2D uAttenuation;' : ''}
 layout(location = 0) out vec4 outRadiance;
 layout(location = 1) out vec4 outAlbedo;
 layout(location = 2) out vec4 outNormal;
@@ -1255,9 +1256,9 @@ void tracePath(vec3 origin, vec3 startDirection, uint pixel, uint sampleIndex, b
   float previousPdf = 0.0;
   bool afterMirror = true;
   bool isCameraRay = cameraRays;
-  vec3 normal = vec3(0.0, 1.0, 0.0);
+  vec3 normal = vec3(0.0, 1.0, 0.0);${hasAttenuation ? '\n  int absorbingMaterial = -1;' : ''}
   for (int depth = 0; depth <= uBounces; depth++) {
-    bool found = intersectScene(position, direction, cameraRays && depth == 0);
+    bool found = intersectScene(position, direction, cameraRays && depth == 0);${hasAttenuation ? '\n    if (absorbingMaterial >= 0 && found) { throughput *= exp(-fetchData(uAttenuation, absorbingMaterial).rgb * hitDistance); }' : ''}
     bool inFog = uHasVolume && scatterInFog(position, found ? hitDistance : uFarDistance);
     if (!inFog && !found) {
       if (depth == 0) firstLegEscaped = 1.0;
@@ -1311,7 +1312,7 @@ ${radianceCache ? CACHE_TERMINAL : ''}
       vec3 glassDirection;
       if (!sampleGlass(normal, -direction, entering, hitIor, alpha, selectionUnit, firstUnit, secondUnit, glassDirection)) break;
       direction = glassDirection;
-      if (dot(direction, normal) < 0.0) throughput *= hitColor;
+      if (dot(direction, normal) < 0.0) { throughput *= hitColor;${hasAttenuation ? ' absorbingMaterial = entering && fetchData(uAttenuation, hitMaterialIndex).w > 0.0 ? hitMaterialIndex : -1;' : ''} }
       else isCameraRay = false;
       afterMirror = true;
     } else {
@@ -1360,8 +1361,8 @@ ${radianceCache ? CACHE_OUTPUT : ''}
  * The kernel; `hasSubsurface` compiles in the random walk, which only scenes with a subsurface part need. `texelBake`
  * starts every path at a lightmap texel instead of the camera (see light-bake-gpu.js).
  */
-export function buildFragmentSource({ hasSubsurface = false, texelBake = false, blueNoise = false, lightImportance = false, radianceCache = false, lightTree = false, instanced = false, vertexAlpha = false } = {}) {
-  return buildSource(hasSubsurface, texelBake, blueNoise, lightImportance, radianceCache, lightTree, instanced, vertexAlpha);
+export function buildFragmentSource({ hasSubsurface = false, texelBake = false, blueNoise = false, lightImportance = false, radianceCache = false, lightTree = false, instanced = false, vertexAlpha = false, hasAttenuation = false } = {}) {
+  return buildSource(hasSubsurface, texelBake, blueNoise, lightImportance, radianceCache, lightTree, instanced, vertexAlpha, hasAttenuation);
 }
 
 export const FRAGMENT_SOURCE = buildFragmentSource();

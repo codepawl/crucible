@@ -889,7 +889,7 @@ void mossMasks(vec3 normal, float amount, out float sharpMask, out float softMas
       waterFoam = max(waterFoam, veinLine * veinFade * waterFoamVeins.x);
     }
     float grazing = pow(1.0 - max(dot(normal, viewDirection), 0.0), 4.0);
-    color = mix(color, vec3(0.0137, 0.147, 0.195), grazing * 0.85);
+    color = mix(color, color * exp(-waterAbsorption * 2.0), grazing * 0.8);
     color = mix(color, mix(vec3(0.92, 0.95, 0.97) * (0.68 + 0.32 * (fineLace * 0.5 + midLace * 0.5)), waterContactColor, waterContactShare), waterFoam);
     roughness = mix(0.16, 0.8, waterFoam);
     if (waterRampHead.x > 0.5) {
@@ -962,8 +962,8 @@ void mossMasks(vec3 normal, float amount, out float sharpMask, out float softMas
     float reflectivity = (0.02 + 0.98 * pow(1.0 - cosine, 5.0)) * (1.0 - waterFoam);
     vec3 mirrorDirection = reflect(-viewDirection, normal);
     mirrorDirection.y = max(mirrorDirection.y, 0.02);
-    vec3 skyColor = ENVIRONMENT_ENABLED ? surroundingsColor(mirrorDirection, 0.05) : mix(vec3(0.12, 0.24, 0.28), vec3(0.40, 0.63, 0.78), clamp(mirrorDirection.y, 0.0, 1.0)) * daylight;
-    radiance = mix(radiance * 0.6 + color * ambientIntensity * daylight * 1.7, skyColor * ambientIntensity, clamp(reflectivity, 0.0, 1.0));
+    vec3 skyColor = ENVIRONMENT_ENABLED ? surroundingsColor(mirrorDirection, 0.05) : mix(fogColor, vec3(0.40, 0.63, 0.78) * daylight, smoothstep(0.0, 0.65, mirrorDirection.y));
+    radiance = mix(radiance * 0.08 * cosine + color * exp(-waterAbsorption * 1.2) * (0.28 + 0.38 * waterBody.y) * ambientIntensity * daylight, skyColor * ambientIntensity, clamp(reflectivity, 0.0, 1.0));
     // A ramp owns the colour: no sky reflection, so the tones stay flat; foam and the sun glint still add on top.
     if (waterRampOwns > 0.5) radiance = waterRampRadiance * (1.0 - waterFoam);
     // Sun glint: a narrow lobe around the mirror direction, the width of open water slopes, bright enough to bloom.
