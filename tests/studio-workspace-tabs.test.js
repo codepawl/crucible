@@ -73,7 +73,7 @@ test('workspace tabs stay ordered Build, Look, Animate, Export with distinct ico
   assert.deepEqual(icons, ['node', 'material', 'play', 'export']);
   assert.deepEqual(workspaces.map(workspace => [workspace.id, workspace.tabs]), [
     ['build', ['node', 'modifiers']],
-    ['look', ['material', 'look']],
+    ['look', ['looks', 'material', 'look']],
     ['animate', ['camera', 'node']],
     ['export', ['export']],
   ]);
@@ -104,7 +104,7 @@ test('each workspace shows only its fixed set of panels and left-rail tools', te
 
   ui.workspaceTab('look').click();
   assert.equal(ui.studio.activeWorkspace, 'look');
-  assert.deepEqual(visiblePanels(), ['material', 'look']);
+  assert.deepEqual(visiblePanels(), ['looks', 'material', 'look']);
   assert.deepEqual(visibleTools(), ['select', 'translate']);
   assert.equal(snapVisible(), true);
   assert.equal(addVisible(), true);

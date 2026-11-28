@@ -61,6 +61,7 @@ import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgent
 import { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, primitiveGeometrySpec, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, buildTemplateRecipe } from './studio-templates.js';
 import { createStudioController, hasAnimatedData, linearRgbToHex, quaternionToEulerDegrees, roundValue } from './studio-controller.js';
 import { createPartSyncTracker } from './studio-live-parts.js';
+import './studio-look-gallery.js';
 import { assignSwatchMaterialInEditMode, createFaceMaterialPanel, planJoinOperations } from './studio-material-slots.js';
 import {
   BASE_STUDIO_WORKSPACES,
@@ -2565,8 +2566,7 @@ export function createStudio(container, {
   const panelContext = {
     documentReference,
     controller,
-    announce,
-    announceError,
+    announce, announceError, createRenderer,
     builders: { createElement, createIcon, createIconButton, createVectorRow },
     inlinePanels: { node: nodePanelBody, material: materialPanelBody, look: lookPanelBody, camera: cameraPanelBody },
     syncLookPanels: () => syncLookPanels(),

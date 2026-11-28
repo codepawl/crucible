@@ -44,7 +44,7 @@ function assertSortedUnique(items, label) {
 }
 
 test('studio-registry validates inputs and keeps built-in tabs and workspaces ordered', () => {
-  assert.deepEqual(STUDIO_TABS, ['node', 'modifiers', 'material', 'look', 'camera', 'export']);
+  assert.deepEqual(STUDIO_TABS, ['node', 'looks', 'modifiers', 'material', 'look', 'camera', 'export']);
   assert.deepEqual(registeredStudioTabIds(), STUDIO_TABS);
   assert.equal(hasStudioTab('modifiers'), true);
   assert.equal(hasStudioTab('export'), true);
@@ -57,7 +57,7 @@ test('studio-registry validates inputs and keeps built-in tabs and workspaces or
   ]);
   assert.deepEqual(workspaces.map(workspace => [workspace.id, workspace.tabs]), [
     ['build', ['node', 'modifiers']],
-    ['look', ['material', 'look']],
+    ['look', ['looks', 'material', 'look']],
     ['animate', ['camera', 'node']],
     ['export', ['export']],
   ]);
