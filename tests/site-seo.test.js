@@ -22,9 +22,11 @@ test('the home page publishes Schema.org JSON-LD and canonical Open Graph metada
   const software = graph.find((node) => node['@id'] === 'https://crucible.codepawl.com/#software');
   assert.ok(software, 'Crucible SoftwareApplication/SoftwareSourceCode node is missing');
   assert.equal(software.name, 'Crucible');
+  assert.equal(software.description, 'Cook crisp 3D with your AI. Stop prompting 3D blind. Shape live worlds with your AI.');
   assert.equal(software.codeRepository, 'https://github.com/codepawl/crucible');
   assert.equal(software.publisher?.['@id'], 'https://codepawl.com/#organization');
   assert.ok(software.sameAs?.includes('https://www.npmjs.com/package/@codepawlhq/crucible'));
+  assert.match(homePage, /<p>Stop prompting 3D blind\. Shape live worlds with your AI<\/p>/);
 });
 
 test('sitemap.xml includes the home URL and a lastmod timestamp on every entry', () => {
