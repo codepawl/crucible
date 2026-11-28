@@ -88,6 +88,7 @@ const NODE_FIELDS = [
   'material',
   'skin',
   'relations',
+  'ports',
   'asset',
   'vegetation',
   'clutter',
@@ -1238,8 +1239,10 @@ function normalizeRecipe(input, limits, { alreadyCopied = false } = {}) {
   }, recipe.geometries);
   recipe.nodes = resources(recipe.nodes, limits.maxNodes, 'nodes', nodeFrom, { alreadyNormalized: NORMALIZED_NODES, isShareable: node => NODE_KEYS_NEEDING_OWN_COPY.every(key => node[key] === undefined) });
   addArmatures(recipe, limits);
-  if (recipe.nodes.some(node => node.relations !== undefined)) {
-    recipe.nodes = agentSceneModule('relations').normalizeRelations(recipe.nodes);
+  if (recipe.nodes.some(node => node.relations !== undefined || node.ports !== undefined)) {
+    const relationsModule = agentSceneModule('relations');
+    recipe.nodes = relationsModule.normalizeNodePorts(recipe.nodes);
+    recipe.nodes = relationsModule.normalizeRelations(recipe.nodes);
   }
   recipe.camera = cameraFrom(recipe.camera);
   const look = {};
@@ -1684,7 +1687,7 @@ function authoredRecipe(recipe) {
 // Node fields whose module generates part nodes at each edit; the last two scatter over a terrain from the camera eye.
 const GROWN_PART_FIELDS = ['vegetation', 'clutter', 'grass'];
 const growsParts = node => GROWN_PART_FIELDS.some(field => node[field]);
-const NODE_KEYS_NEEDING_OWN_COPY = ['assetPart', 'asset', 'vegetation', 'clutter', 'grass', 'relations', 'skin', 'instances', 'armature'];
+const NODE_KEYS_NEEDING_OWN_COPY = ['assetPart', 'asset', 'vegetation', 'clutter', 'grass', 'relations', 'ports', 'skin', 'instances', 'armature'];
 
 /**
  * A copy of the staged recipe for a batch of plain field edits that clones only what the batch can change: the touched

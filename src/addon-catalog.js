@@ -75,6 +75,7 @@ export const ADDON_CATALOG = [
   { name: 'render-passes', area: 'render', summary: 'Depth, normals, object IDs and other render passes.' },
   { name: 'wireframe-pass', area: 'render', summary: 'Polygon edges drawn over the shaded surface, with or without repair colours.' },
   { name: 'coplanar-overlap', area: 'render', summary: 'Stop z-fighting between near-flush triangles.' },
+  { name: 'scene-audit', area: 'render', summary: 'Instancing-aware geometry audit for coplanar overlaps, intersections, floating parts and inverted shells.', doc: true },
   { name: 'meshlets', area: 'render', summary: 'Build meshoptimizer meshlets and cull clusters per draw on dense meshes.', doc: true },
   { name: 'reversed-depth', area: 'render', summary: 'Reversed-Z depth for far-away precision.' },
   { name: 'crucible-scene', area: 'render', summary: 'The <crucible-scene> web component for packed scenes.' },

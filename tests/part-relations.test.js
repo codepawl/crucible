@@ -199,11 +199,11 @@ test('hostile relation input is rejected without leaking or hanging', () => {
 });
 
 test('relation nodes are bounded', () => {
-  const nodes = [{ id: 'anchor' }];
-  for (let index = 0; index < 257; index++) {
-    nodes.push({ id: `part${index}`, scale: [0.1, 0.1, 0.1], relations: [{ kind: 'attach', to: 'anchor', side: '+x' }] });
+  const nodes = [{ id: 'anchor', geometry: 'cube', parent: null, translation: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] }];
+  for (let index = 0; index < 4097; index++) {
+    nodes.push({ id: `part${index}`, geometry: 'cube', parent: null, translation: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [0.1, 0.1, 0.1], relations: [{ kind: 'attach', to: 'anchor', side: '+x' }] });
   }
-  rejects(nodes, /expected relations on at most 256 nodes; group repeated parts/);
+  assert.throws(() => normalizeRelations(nodes), /relations on at most 4096 nodes; group repeated parts/);
 });
 
 test('a long chain of relations solves with work in proportion to its length', () => {

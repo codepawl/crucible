@@ -67,6 +67,7 @@
     "docs/studio.md",
     "docs/showcase.md",
     "docs/verification.md",
+    "docs/scene-audit.md",
     "templates/showcase",
     "templates/addon-starter"
   ],
@@ -133,6 +134,7 @@
     "./addons/mesh-blend": "./build/mesh-blend.js",
     "./addons/kinetic-text": "./build/kinetic-text.js",
     "./addons/coplanar-overlap": "./build/coplanar-overlap.js",
+    "./addons/scene-audit": "./build/scene-audit.js",
     "./addons/meshlets": "./build/meshlets.js",
     "./addons/reversed-depth": "./build/reversed-depth.js",
     "./addons/material-layer-shaders": "./build/material-layer-shaders.js",

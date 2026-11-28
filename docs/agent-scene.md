@@ -502,12 +502,11 @@ every part that sits against it.
 | `align` | `axis`, `at`, `offset` | Puts its `min`, `center` or `max` on that axis at the target's. |
 | `centered` | `axes` (default all three) | Centres on those axes. |
 | `level` | `at` (`bottom`, `center`, `top`), `y` | Names no target and takes no `to`. Puts that face of the part at world height `y`, so a seat "with its upper surface at 0.5 m" is `{ "kind": "level", "at": "top", "y": 0.5 }` and the half-thickness is not summed by hand. Only Y is decided. |
+| `connect` | `to`, `fromPort`, `toPort`, `offset`, `roll` | Orients `node.rotation` and translates `node.translation` so `node.ports[fromPort]` mates face-to-face (`normal` opposite) with `to.ports[toPort]`. Works on mesh or group nodes with declared `ports`. |
 
-`level` reads the world bounds of the part, so a part turned by `rotation` rests on its rotated extent, and it is a relation like the others: it is stored, solved again after every edit (a thicker slab grows downward and keeps its top at `y`), and the exported recipe holds the solved translation. Recipes without it export unchanged. Every other relation takes `to` (a mesh node ID) and an optional `region`, a mesh tag: only the faces of the target that carry
-that tag count as its bounds, so a part can sit on the tagged top of a tank and not on its tallest point. A relation
-decides only its own axes and replaces the node's `translation` on them; the other axes keep the authored value.
+`level` reads the world bounds of the part, so a part turned by `rotation` rests on its rotated extent, and it is a relation like the others: it is stored, solved again after every edit (a thicker slab grows downward and keeps its top at `y`), and the exported recipe holds the solved translation. Recipes without it export unchanged. Bounds relations (`attach`, `gap`, `flush`, `align`, `centered`) take `to` (a mesh node ID) and an optional `region`, a mesh tag: only the faces of the target that carry that tag count as its bounds, so a part can sit on the tagged top of a tank and not on its tallest point. `connect` takes `to` (any mesh or group node ID declaring `ports`), `fromPort`, `toPort`, optional `offset` (metres along the target normal), and optional `roll` (degrees around the mating axis); ports declare `{ position, normal, up?, radius?, category? }`. A relation decides only its own axes and replaces the node's `translation` on them (and `rotation` for `connect`); the other axes keep the authored value.
 
-Limits: at most 8 relations per node and 256 nodes with relations. Targets and nodes must be mesh nodes. Two relations
+Limits: at most 8 relations per node, 32 ports per node, and 4096 nodes with relations. Two relations
 on one node cannot decide the same axis. Relations form a graph over parts and parents; a loop (a part waiting on its own
 child included) is rejected with the loop spelled out. Solving is deterministic: the same recipe gives the same
 translations, whatever the order of the nodes. A relation that cannot be satisfied, such as an unknown tag, rejects the

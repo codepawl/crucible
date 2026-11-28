@@ -98,6 +98,7 @@ export default defineConfig({
         'line-art': 'src/line-art.js',
         'mesh-blend': 'src/mesh-blend.js',
         'coplanar-overlap': 'src/coplanar-overlap.js',
+        'scene-audit': 'src/scene-audit.js',
         meshlets: 'src/meshlets.js',
         'reversed-depth': 'src/reversed-depth.js',
         'material-layer-shaders': 'src/material-layer-shaders.js',

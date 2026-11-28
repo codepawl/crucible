@@ -74,7 +74,9 @@ const skinSpec = z.strictObject({
   maxInfluences: z.number().int().min(1).max(4).optional().describe('Bones that move one vertex. Defaults to 4.'),
   maxDistance: positive.optional().describe('Metres from the nearest bone beyond which a vertex counts as unweighted in scene_inspect rig. Defaults to a quarter of the rig size.'),
 }).describe('Bind this mesh node to an armature with automatic weights: each vertex follows its nearest bones, by distance to the bone segments. Needs the armature at rest where the mesh is.');
-const relationList = z.array(z.record(z.string(), z.unknown())).max(8).describe('Relations against other mesh nodes; fields in scene_capabilities relations. [] removes them.').meta({ id: 'Relations' });
+const relationList = z.array(z.record(z.string(), z.unknown())).max(8).describe('Relations against other nodes; fields in scene_capabilities relations. [] removes them.').meta({ id: 'Relations' });
+// Left open here and checked by normalizeNodePorts; fields and limits live in scene_capabilities relations.
+const nodePortsMap = z.unknown();
 const placedAsset = z.record(z.string(), z.unknown()).describe('Catalog GLB placed at this group node: {id or name,materials,clip,drive}; see scene_capabilities placedAssets.').meta({ id: 'PlacedAsset' });
 const placedVegetation = z.record(z.string(), z.unknown()).describe('Trees at this group node: {species} for one, or {mix, scatter:{ground,...}} over a terrain node; see scene_capabilities vegetation.').meta({ id: 'PlacedVegetation' });
 const placedClutter = z.unknown();
@@ -83,6 +85,7 @@ const placedGrass = z.unknown();
 const rayVisibility = z.unknown();
 const nodeFields = {
   relations: relationList.optional(),
+  ports: nodePortsMap.optional(),
   asset: placedAsset.optional(),
   vegetation: placedVegetation.optional(),
   clutter: placedClutter.optional(),
@@ -1031,8 +1034,8 @@ const otherOperations = [
 ];
 const operation = z.discriminatedUnion('type', [...nodeOperations(nodeFields, nodeRecord), ...otherOperations]);
 // The same schemas without the relations field, for the benchmark switch --relations off.
-const { relations: _relationsField, ...nodeFieldsWithoutRelations } = nodeFields;
-const nodeRecordWithoutRelations = nodeRecord.omit({ relations: true });
+const { relations: _relationsField, ports: _portsField, ...nodeFieldsWithoutRelations } = nodeFields;
+const nodeRecordWithoutRelations = nodeRecord.omit({ relations: true, ports: true });
 const recipeWithoutRelations = recipe.extend({ nodes: z.array(nodeRecordWithoutRelations).max(4096) });
 function withoutRelationsAdvice(capabilities) {
   const { relations: _relationsAdvice, ...scene } = capabilities.scene;
