@@ -3,34 +3,19 @@ import { ensureLightReachStyles } from './studio-light-reach-styles.js';
 import { sceneSphereOf } from './studio-sun-mark.js';
 import {
   areaGroundFootprint,
-  areaLightReach,
+  areaReachHandles,
   pointGroundFootprint,
-  pointLightReach,
+  pointReachHandles,
   spotGroundFootprint,
-  spotLightReach,
-  sphereSilhouette,
+  spotReachHandles,
   sunReach,
 } from './studio-light-reach.js';
 
-// Draws how far and how wide the selected light shines over the viewport. The look is still being chosen, so the
-// drawing comes in three styles behind one switch (`?lightReach=wire|volume|footprint`, and `?sunArrow=parallel|single`
-// for the sun); the geometry in studio-light-reach.js is the same for all of them.
-export const LIGHT_REACH_STYLES = Object.freeze(['wire', 'volume', 'footprint']);
-export const SUN_ARROW_FORMS = Object.freeze(['parallel', 'single']);
+// Draws each light's lit ground footprint (in full with drag handles when selected, faint otherwise) and the selected
+// sun's ground ring with a single direction arrow over the Studio viewport.
 const LIGHT_FIELDS = Object.freeze({ point: 'pointLights', spot: 'spotLights', area: 'areaLights' });
-
-/** The style choices a page address asks for; anything else falls back to the first choice. */
-export function readLightReachOptions(search = globalThis.location?.search ?? '') {
-  const parameters = new URLSearchParams(search);
-  const pick = (name, choices) => (choices.includes(parameters.get(name)) ? parameters.get(name) : choices[0]);
-  return { style: pick('lightReach', LIGHT_REACH_STYLES), sunArrow: pick('sunArrow', SUN_ARROW_FORMS) };
-}
-
-let pageOptions = null;
-function currentOptions() {
-  pageOptions ??= readLightReachOptions();
-  return pageOptions;
-}
+const HANDLE_DOT_RADIUS = 4;
+const HANDLE_HIT_RADIUS = 10;
 
 /** The runs of screen points a world polyline draws as, cut wherever a point is behind the camera. */
 export function projectPolylineRuns(project, polyline) {
@@ -57,34 +42,12 @@ function pathDataOfRuns(runs) {
   return runs.map(run => run.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ')).join(' ');
 }
 
-/** The convex outline of a set of screen points (monotone chain). */
-export function convexHull(points) {
-  const sorted = [...points].sort((first, second) => first.x - second.x || first.y - second.y);
-  if (sorted.length < 3) {
-    return sorted;
-  }
-  const turn = (origin, first, second) => (first.x - origin.x) * (second.y - origin.y) - (first.y - origin.y) * (second.x - origin.x);
-  const chain = ordered => {
-    const hull = [];
-    for (const point of ordered) {
-      while (hull.length >= 2 && turn(hull.at(-2), hull.at(-1), point) <= 0) {
-        hull.pop();
-      }
-      hull.push(point);
-    }
-    hull.pop();
-    return hull;
-  };
-  return [...chain(sorted), ...chain([...sorted].reverse())];
-}
-
-function fillPathData(project, fill) {
-  const projected = fill.points.map(project);
+function fillPathData(project, points) {
+  const projected = points.map(project);
   if (projected.some(point => !point.visible)) {
     return null;
   }
-  const outline = fill.hull ? convexHull(projected) : projected;
-  return outline.length < 3 ? null : `${pathDataOfRuns([outline])} Z`;
+  return projected.length < 3 ? null : `${pathDataOfRuns([projected])} Z`;
 }
 
 function appendPath(documentReference, layer, className, pathData, attributes = {}) {
@@ -93,95 +56,116 @@ function appendPath(documentReference, layer, className, pathData, attributes = 
   }
 }
 
-function lightDrawing(kind, light, context) {
-  if (kind === 'point') {
-    const reach = pointLightReach(light, context.sceneRadius);
-    const silhouette = sphereSilhouette(reach.center, reach.rangeRadius, context.eye);
-    const source = sphereSilhouette(reach.center, reach.sourceRadius, context.eye);
-    return {
-      lines: [{ role: 'main', polylines: [...reach.axisCircles, silhouette].filter(Boolean) }, { role: 'source', polylines: [source].filter(Boolean) }],
-      fills: silhouette ? [{ points: silhouette }] : [],
-      ground: pointGroundFootprint(light, context.sceneRadius),
-      footprintBody: [],
-    };
-  }
-  if (kind === 'spot') {
-    const reach = spotLightReach(light, context.sceneRadius);
-    return {
-      lines: [{ role: 'main', polylines: [reach.rim, ...reach.edgeLines] }, { role: 'soft', polylines: [reach.innerRim] }],
-      fills: [{ points: [reach.apex, ...reach.rim], hull: true }],
-      ground: spotGroundFootprint(light, context.sceneRadius),
-      footprintBody: [],
-    };
-  }
-  const reach = areaLightReach(light, context.eye);
-  const bodyLines = [{ role: 'main', polylines: [reach.rectangle, ...reach.normalArrow] }];
-  return {
-    lines: bodyLines,
-    fills: [{ points: reach.rectangle }],
-    ground: areaGroundFootprint(light, context.sceneRadius),
-    footprintBody: bodyLines,
-  };
-}
-
-function appendLines(documentReference, layer, project, lineGroups, extraClass = '') {
+function appendLines(documentReference, layer, project, lineGroups) {
   for (const group of lineGroups) {
     const runs = group.polylines.flatMap(polyline => projectPolylineRuns(project, polyline));
-    appendPath(documentReference, layer, `crucible-studio-light-reach-line${extraClass}`, pathDataOfRuns(runs), { 'data-role': group.role });
+    appendPath(documentReference, layer, 'crucible-studio-light-reach-line', pathDataOfRuns(runs), { 'data-role': group.role });
   }
 }
 
-function appendGroundPatch(documentReference, layer, project, drawing, light, { filled, withLink }) {
-  const { outline, center } = drawing.ground;
+function appendHandle(documentReference, layer, project, worldPoint, key, handleKind, label) {
+  if (!worldPoint) {
+    return;
+  }
+  const screenPoint = project(worldPoint);
+  if (!screenPoint.visible) {
+    return;
+  }
+  const cx = screenPoint.x.toFixed(1);
+  const cy = screenPoint.y.toFixed(1);
+  const handleAttributes = { 'data-reach-object': key, 'data-light-reach-handle': handleKind };
+  layer.push(createSvgElement(documentReference, 'circle', {
+    class: 'crucible-studio-light-reach-handle-dot',
+    cx,
+    cy,
+    r: HANDLE_DOT_RADIUS,
+    ...handleAttributes,
+  }));
+  const hitCircle = createSvgElement(documentReference, 'circle', {
+    class: 'crucible-studio-light-reach-hit',
+    cx,
+    cy,
+    r: HANDLE_HIT_RADIUS,
+    'aria-label': label,
+    ...handleAttributes,
+  });
+  const title = createSvgElement(documentReference, 'title');
+  title.textContent = label;
+  hitCircle.append(title);
+  layer.push(hitCircle);
+}
+
+function appendGroundOutline(documentReference, layer, project, outline, filled) {
   if (outline.length === 0) {
     return;
   }
   if (filled) {
-    appendPath(documentReference, layer, 'crucible-studio-light-reach-fill', fillPathData(project, { points: outline }));
+    appendPath(documentReference, layer, 'crucible-studio-light-reach-fill', fillPathData(project, outline));
   }
   appendLines(documentReference, layer, project, [{ role: filled ? 'main' : 'faint', polylines: [outline] }]);
-  if (withLink) {
-    appendLines(documentReference, layer, project, [{ role: 'link', polylines: [[light.position, center]] }]);
-    const end = project(center);
-    if (end.visible) {
-      layer.push(createSvgElement(documentReference, 'circle', { class: 'crucible-studio-light-reach-dot', cx: end.x.toFixed(1), cy: end.y.toFixed(1), r: 3.5 }));
-    }
-  }
 }
 
-function drawSelectedLight(documentReference, layer, project, kind, light, context) {
-  const drawing = lightDrawing(kind, light, context);
-  if (context.options.style === 'footprint') {
-    appendGroundPatch(documentReference, layer, project, drawing, light, { filled: true, withLink: true });
-    appendLines(documentReference, layer, project, drawing.footprintBody);
-    return;
+function drawSelectedPointLight(documentReference, layer, project, key, light, context) {
+  const { ground, rangeHandle } = pointReachHandles(light, context.sceneRadius, context.eye);
+  appendGroundOutline(documentReference, layer, project, ground.outline, true);
+  if (ground.center) {
+    appendLines(documentReference, layer, project, [{ role: 'link', polylines: [[light.position, ground.center]] }]);
   }
-  if (context.options.style === 'volume') {
-    for (const fill of drawing.fills) {
-      appendPath(documentReference, layer, 'crucible-studio-light-reach-fill', fillPathData(project, fill));
-    }
+  appendHandle(documentReference, layer, project, rangeHandle, key, 'range', 'Drag to adjust light range');
+}
+
+function drawSelectedSpotLight(documentReference, layer, project, key, light, context) {
+  const { ground, aimHandle, angleHandle, rangeHandle } = spotReachHandles(light, context.sceneRadius, context.eye);
+  appendGroundOutline(documentReference, layer, project, ground.outline, true);
+  if (aimHandle) {
+    appendLines(documentReference, layer, project, [{ role: 'link', polylines: [[light.position, aimHandle]] }]);
   }
-  appendLines(documentReference, layer, project, drawing.lines);
+  appendHandle(documentReference, layer, project, aimHandle, key, 'aim', 'Drag to aim spot light');
+  appendHandle(documentReference, layer, project, angleHandle, key, 'angle', 'Drag to adjust spot cone angle');
+  appendHandle(documentReference, layer, project, rangeHandle, key, 'range', 'Drag to adjust spot range');
+}
+
+function drawSelectedAreaLight(documentReference, layer, project, key, light, context) {
+  const { body, ground, aimHandle, widthHandle, heightHandle } = areaReachHandles(light, context.sceneRadius, context.eye);
+  appendGroundOutline(documentReference, layer, project, ground.outline, true);
+  if (ground.center) {
+    appendLines(documentReference, layer, project, [{ role: 'link', polylines: [[light.position, ground.center]] }]);
+  }
+  appendLines(documentReference, layer, project, [{ role: 'main', polylines: [body.rectangle, ...body.normalArrow] }]);
+  appendHandle(documentReference, layer, project, aimHandle, key, 'aim', 'Drag to aim area light');
+  appendHandle(documentReference, layer, project, widthHandle, key, 'area-width', 'Drag to adjust area width');
+  appendHandle(documentReference, layer, project, heightHandle, key, 'area-height', 'Drag to adjust area height');
+}
+
+function drawUnselectedFootprint(documentReference, layer, project, kind, light, sceneRadius) {
+  const footprint = kind === 'point'
+    ? pointGroundFootprint(light, sceneRadius)
+    : kind === 'spot'
+      ? spotGroundFootprint(light, sceneRadius)
+      : areaGroundFootprint(light, sceneRadius);
+  appendGroundOutline(documentReference, layer, project, footprint.outline, false);
 }
 
 function drawSun(documentReference, layer, project, sunObject, context) {
   const reach = sunReach(context.bounds, sunObject.direction, context.eye);
-  const indicator = context.options.sunArrow === 'single' ? reach.singleArrow : reach.parallelArrows.flat();
-  appendLines(documentReference, layer, project, [{ role: 'sun', polylines: [reach.ring, ...indicator] }]);
+  appendLines(documentReference, layer, project, [{ role: 'sun', polylines: [reach.ring, ...reach.singleArrow] }]);
+  const arrowRuns = reach.singleArrow.flatMap(polyline => projectPolylineRuns(project, polyline));
+  appendPath(documentReference, layer, 'crucible-studio-light-reach-hit', pathDataOfRuns(arrowRuns), {
+    'data-reach-object': 'sun',
+    'data-light-reach-handle': 'sun-direction',
+    'aria-label': 'Drag to turn sun',
+  });
+  appendHandle(documentReference, layer, project, reach.singleArrowTip, 'sun', 'sun-direction', 'Drag to turn sun');
 }
 
 /**
- * The reach of the selected light or sun, drawn under the marks. Unselected lights draw nothing, except in the
- * footprint style where each shows a faint outline of its lit patch on the ground.
+ * The reach of every light and the selected sun over the viewport. Selected lights draw a filled ground footprint and
+ * drag handles; unselected lights draw a faint ground outline; a selected sun draws its scene ring and single arrow.
  */
-export function renderLightReach(documentReference, gizmoSvg, controller, sceneObjects, options = currentOptions()) {
+export function renderLightReach(documentReference, gizmoSvg, controller, sceneObjects) {
   const selectedKey = controller.selectedObjectKey;
-  const footprintForAll = options.style === 'footprint';
-  if (!footprintForAll && !selectedKey) {
-    return;
-  }
   const bounds = controller.sceneBounds();
-  const context = { options, bounds, sceneRadius: sceneSphereOf(bounds).radius, eye: controller.viewCamera.eye };
+  const context = { bounds, sceneRadius: sceneSphereOf(bounds).radius, eye: controller.viewCamera.eye };
   const project = controller.worldPointProjector();
   const environment = controller.scene.environment ?? {};
   const layer = [];
@@ -195,17 +179,23 @@ export function renderLightReach(documentReference, gizmoSvg, controller, sceneO
     if (!light) {
       continue;
     }
-    if (selected) {
-      drawSelectedLight(documentReference, layer, project, object.kind, light, context);
-    } else if (footprintForAll) {
-      appendGroundPatch(documentReference, layer, project, lightDrawing(object.kind, light, context), light, { filled: false, withLink: false });
+    if (!selected) {
+      drawUnselectedFootprint(documentReference, layer, project, object.kind, light, context.sceneRadius);
+      continue;
+    }
+    if (object.kind === 'point') {
+      drawSelectedPointLight(documentReference, layer, project, object.key, light, context);
+    } else if (object.kind === 'spot') {
+      drawSelectedSpotLight(documentReference, layer, project, object.key, light, context);
+    } else {
+      drawSelectedAreaLight(documentReference, layer, project, object.key, light, context);
     }
   }
   if (layer.length === 0) {
     return;
   }
   ensureLightReachStyles(documentReference);
-  const group = createSvgElement(documentReference, 'g', { class: 'crucible-studio-light-reach', 'data-style': options.style });
+  const group = createSvgElement(documentReference, 'g', { class: 'crucible-studio-light-reach', 'data-style': 'footprint' });
   group.append(...layer);
   gizmoSvg.append(group);
 }

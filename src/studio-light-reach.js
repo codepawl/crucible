@@ -1,12 +1,10 @@
 import { sceneSphereOf, sunMarkPosition } from './studio-sun-mark.js';
 
-// How far and how wide each light shines, as world-space polylines made from its properties alone.
+// How far and how wide each light shines on the ground, plus the handle positions and drag math to edit it there.
 //
 // Recipe meaning, as the renderer reads it (src/lighting.js):
 // - spot `angle` is the HALF angle of the outer cone in radians (0.01 up to just under a quarter turn);
-// - spot `penumbra` is the share of the cone's cosine span the fade covers: the cone is full strength inside the angle
-//   whose cosine is cos(angle) + (1 - cos(angle)) * penumbra, so 0 is a hard edge and 1 fades from the axis;
-// - point and spot `range` is the distance where the light is cut off, in scene units; 0 or missing means unlimited.
+// - point and spot `range` is the distance where the light is cut off, in scene units; 0 or missing means unlimited;
 // - area lights are a width x height rectangle facing `direction`, with `up` fixing which way the height runs.
 
 /** Radius of the ring and of the reach drawn for a light with no range, as a multiple of the scene radius. */
@@ -15,16 +13,26 @@ export const CIRCLE_SEGMENT_COUNT = 64;
 export const GROUND_FOOTPRINT_SAMPLE_COUNT = 180;
 // The sun's ring clears the objects by this share of the scene's horizontal radius.
 export const SUN_RING_CLEARANCE = 1.1;
-export const SUN_PARALLEL_ARROW_AZIMUTH_OFFSETS = Object.freeze([-35, 0, 35].map(degrees => (degrees * Math.PI) / 180));
-const SUN_PARALLEL_ARROW_LENGTH_SHARE = 0.5;
+export const MIN_LIGHT_RANGE = 0.25;
+export const MAX_LIGHT_RANGE = 200;
+export const MIN_SPOT_HALF_ANGLE = 0.05;
+export const MAX_SPOT_HALF_ANGLE = Math.PI / 2 - 0.05;
+export const MIN_AREA_SIZE = 0.1;
+export const MAX_AREA_SIZE = 100;
+
 // The single arrow covers this share of the way from the sun mark to the scene centre, so it stops well short of the objects.
 const SUN_SINGLE_ARROW_TRAVEL_SHARE = 0.55;
 const ARROW_HEAD_SHARE = 0.22;
 const AREA_NORMAL_ARROW_SHARE = 0.5;
-const SPOT_EDGE_LINE_COUNT = 4;
 const GROUND_HEIGHT = 0;
 const TINY_LENGTH = 1e-9;
 const CORNER_BISECTION_STEPS = 40;
+const MIN_AIM_DISTANCE = 1e-4;
+const GROUND_RANGE_MARGIN = 0.05;
+
+function clampNumber(value, minimum, maximum) {
+  return Math.max(minimum, Math.min(maximum, value));
+}
 
 function subtract(first, second) {
   return first.map((component, axis) => component - second[axis]);
@@ -59,6 +67,37 @@ function pointAlong(origin, direction, distance) {
   return add(origin, scale(direction, distance));
 }
 
+function horizontalSideDirection(axis, eye, center) {
+  const horizontalLength = Math.hypot(axis[0], axis[2]);
+  if (horizontalLength > 1e-6) {
+    const forward = [axis[0] / horizontalLength, 0, axis[2] / horizontalLength];
+    return { forward, side: [-forward[2], 0, forward[0]] };
+  }
+  if (eye && center) {
+    const awayX = center[0] - eye[0];
+    const awayZ = center[2] - eye[2];
+    const awayLength = Math.hypot(awayX, awayZ);
+    if (awayLength > 1e-6) {
+      const side = [-awayZ / awayLength, 0, awayX / awayLength];
+      return { forward: [awayX / awayLength, 0, awayZ / awayLength], side };
+    }
+  }
+  return { forward: [0, 0, 1], side: [1, 0, 0] };
+}
+
+function extremePointAlong(points, origin, direction) {
+  let bestPoint = points[0];
+  let bestProjection = -Infinity;
+  for (const point of points) {
+    const projection = dot(subtract(point, origin), direction);
+    if (projection > bestProjection) {
+      bestProjection = projection;
+      bestPoint = point;
+    }
+  }
+  return bestPoint;
+}
+
 /** Two unit vectors that span the plane perpendicular to a unit direction. */
 export function planeAxesOf(direction) {
   const reference = Math.abs(direction[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
@@ -81,20 +120,6 @@ export function effectiveRange(range, sceneRadius) {
   return range > 0 ? range : sceneRadius * UNLIMITED_RANGE_SCENE_RADIUS_FACTOR;
 }
 
-/** The outline of a ball as seen from the eye: a circle facing the eye, or null when the eye is inside the ball. */
-export function sphereSilhouette(center, radius, eye) {
-  const toEye = subtract(eye, center);
-  const distance = Math.hypot(...toEye);
-  if (distance <= radius) {
-    return null;
-  }
-  const facing = scale(toEye, 1 / distance);
-  const silhouetteRadius = radius * Math.sqrt(1 - (radius * radius) / (distance * distance));
-  const silhouetteCenter = pointAlong(center, facing, (radius * radius) / distance);
-  const [firstAxis, secondAxis] = planeAxesOf(facing);
-  return circlePolyline(silhouetteCenter, firstAxis, secondAxis, silhouetteRadius);
-}
-
 /**
  * An arrow from one point to another as polylines: the shaft and one open head. With the eye given the head opens
  * across the view, so it reads as a clean arrowhead; without it the head opens to an arbitrary side.
@@ -111,55 +136,6 @@ export function arrowPolylines(from, to, eye = null) {
   const headLength = length * ARROW_HEAD_SHARE;
   const base = pointAlong(to, direction, -headLength);
   return [[from, to], [pointAlong(base, side, headLength * 0.5), to, pointAlong(base, side, -headLength * 0.5)]];
-}
-
-/** A point light: its range as three axis-plane circles, the radius of the source, and the range for a facing circle. */
-export function pointLightReach(light, sceneRadius) {
-  const center = [...light.position];
-  const rangeRadius = effectiveRange(light.range ?? 0, sceneRadius);
-  const axes = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
-  return {
-    center,
-    rangeRadius,
-    sourceRadius: light.radius ?? 0.05,
-    axisCircles: [[0, 1], [1, 2], [2, 0]].map(([first, second]) => circlePolyline(center, axes[first], axes[second], rangeRadius)),
-  };
-}
-
-/** A spot light: the cone out to its range, the rim at the far end, four edge lines and the rim where the fade begins. */
-export function spotLightReach(light, sceneRadius) {
-  const apex = [...light.position];
-  const axis = normalize(light.direction);
-  const halfAngle = light.angle ?? Math.PI / 4;
-  const length = effectiveRange(light.range ?? 0, sceneRadius);
-  const [firstAxis, secondAxis] = planeAxesOf(axis);
-  const rimAt = angle => ({
-    center: pointAlong(apex, axis, length * Math.cos(angle)),
-    radius: length * Math.sin(angle),
-  });
-  const outer = rimAt(halfAngle);
-  const cosineOuter = Math.cos(halfAngle);
-  const innerHalfAngle = Math.acos(Math.min(1, cosineOuter + (1 - cosineOuter) * (light.penumbra ?? 0.15)));
-  const inner = rimAt(innerHalfAngle);
-  const edgeLines = [];
-  for (let edge = 0; edge < SPOT_EDGE_LINE_COUNT; edge += 1) {
-    const turn = (edge / SPOT_EDGE_LINE_COUNT) * Math.PI * 2;
-    const sideways = add(scale(firstAxis, Math.cos(turn)), scale(secondAxis, Math.sin(turn)));
-    edgeLines.push([apex, add(outer.center, scale(sideways, outer.radius))]);
-  }
-  return {
-    apex,
-    axis,
-    halfAngle,
-    innerHalfAngle,
-    length,
-    rimCenter: outer.center,
-    rimRadius: outer.radius,
-    innerRimRadius: inner.radius,
-    rim: circlePolyline(outer.center, firstAxis, secondAxis, outer.radius),
-    innerRim: circlePolyline(inner.center, firstAxis, secondAxis, inner.radius),
-    edgeLines,
-  };
 }
 
 /** The right and height axes of an area light's rectangle, from its facing and up. */
@@ -187,19 +163,20 @@ export function areaLightReach(light, eye = null) {
     add(subtract(center, halfRight), halfHeight),
   ];
   const arrowLength = Math.max(light.width, light.height) * AREA_NORMAL_ARROW_SHARE;
+  const normalTip = pointAlong(center, normal, arrowLength);
   return {
     center,
     normal,
     corners,
     rectangle: [...corners, corners[0]],
-    normalArrow: arrowPolylines(center, pointAlong(center, normal, arrowLength), eye),
+    normalArrow: arrowPolylines(center, normalTip, eye),
+    normalTip,
   };
 }
 
 /**
- * The sun's whole-scene ring and its two direction indicators; `direction` is the unit vector toward the sun.
- * The ring lies flat on the ground under the scene, so it reads the same from any view. The parallel arrows land with
- * their heads on the ring at the sun's azimuth and either side of it, their tails up along the direction toward the sun.
+ * The sun's whole-scene ring and its single direction arrow; `direction` is the unit vector toward the sun.
+ * The ring lies flat on the ground under the scene, so it reads the same from any view.
  */
 export function sunReach(bounds, direction, eye = null) {
   const scene = sceneSphereOf(bounds);
@@ -208,21 +185,14 @@ export function sunReach(bounds, direction, eye = null) {
     ? (Math.hypot(bounds.max[0] - bounds.min[0], bounds.max[2] - bounds.min[2]) / 2) * SUN_RING_CLEARANCE
     : scene.radius;
   const ringCenter = [scene.center[0], groundY, scene.center[2]];
-  const sunAzimuth = Math.atan2(direction[2], direction[0]);
-  const arrowLength = ringRadius * SUN_PARALLEL_ARROW_LENGTH_SHARE;
-  const parallelArrows = SUN_PARALLEL_ARROW_AZIMUTH_OFFSETS.map(offset => {
-    const azimuth = sunAzimuth + offset;
-    const head = add(ringCenter, [Math.cos(azimuth) * ringRadius, 0, Math.sin(azimuth) * ringRadius]);
-    return arrowPolylines(pointAlong(head, direction, arrowLength), head, eye);
-  });
   const mark = sunMarkPosition(bounds, direction);
   const singleArrowTip = add(mark, scale(subtract(scene.center, mark), SUN_SINGLE_ARROW_TRAVEL_SHARE));
   return {
     center: ringCenter,
     radius: ringRadius,
     ring: circlePolyline(ringCenter, [1, 0, 0], [0, 0, 1], ringRadius),
-    parallelArrows,
     singleArrow: arrowPolylines(mark, singleArrowTip, eye),
+    singleArrowTip,
   };
 }
 
@@ -239,7 +209,7 @@ export function pointGroundFootprint(light, sceneRadius) {
 }
 
 function groundPointAt(apex, direction, reach) {
-  if (direction[1] >= -1e-9) {
+  if (direction[1] >= -TINY_LENGTH) {
     return null;
   }
   const distance = (apex[1] - GROUND_HEIGHT) / -direction[1];
@@ -323,4 +293,116 @@ export function areaGroundFootprint(light, sceneRadius) {
   }
   const center = scale(hits.reduce((sum, hit) => add(sum, hit), [0, 0, 0]), 1 / hits.length);
   return { outline: [...hits, hits[0]], center };
+}
+
+/** The ground footprint and edge handle for a point light's range. */
+export function pointReachHandles(light, sceneRadius, eye = null) {
+  const ground = pointGroundFootprint(light, sceneRadius);
+  const reach = effectiveRange(light.range ?? 0, sceneRadius);
+  if (ground.outline.length > 0) {
+    const height = light.position[1] - GROUND_HEIGHT;
+    const groundRadius = Math.sqrt(reach * reach - height * height);
+    let handleDirection = [0, 0, 1];
+    if (eye) {
+      const towardEye = [eye[0] - ground.center[0], 0, eye[2] - ground.center[2]];
+      const towardLength = Math.hypot(towardEye[0], towardEye[2]);
+      if (towardLength > 1e-6) {
+        handleDirection = [towardEye[0] / towardLength, 0, towardEye[2] / towardLength];
+      }
+    }
+    return { ground, rangeHandle: add(ground.center, scale(handleDirection, groundRadius)), planeY: GROUND_HEIGHT };
+  }
+  return {
+    ground,
+    rangeHandle: [light.position[0] + reach, light.position[1], light.position[2]],
+    planeY: light.position[1],
+  };
+}
+
+/** The ground footprint and drag handles (aim, cone angle, range) for a spot light. */
+export function spotReachHandles(light, sceneRadius, eye = null) {
+  const ground = spotGroundFootprint(light, sceneRadius);
+  const axis = normalize(light.direction);
+  const reach = effectiveRange(light.range ?? 0, sceneRadius);
+  const aimHit = groundPointAt(light.position, axis, reach);
+  const aimHandle = aimHit ?? ground.center ?? pointAlong(light.position, axis, reach * 0.5);
+  const aimOnGround = Boolean(aimHit || ground.center);
+  if (ground.outline.length === 0) {
+    return { ground, aimHandle, aimOnGround, angleHandle: null, rangeHandle: pointAlong(light.position, axis, reach) };
+  }
+  const anchor = aimHit ?? ground.center;
+  const { forward, side } = horizontalSideDirection(axis, eye, anchor);
+  return {
+    ground,
+    aimHandle,
+    aimOnGround: true,
+    angleHandle: extremePointAlong(ground.outline, anchor, side),
+    rangeHandle: extremePointAlong(ground.outline, anchor, forward),
+  };
+}
+
+/** The rectangle, ground footprint and drag handles (aim, width, height) for an area light. */
+export function areaReachHandles(light, sceneRadius, eye = null) {
+  const body = areaLightReach(light, eye);
+  const ground = areaGroundFootprint(light, sceneRadius);
+  const frame = areaLightFrame(light);
+  const aimOnGround = ground.outline.length > 0;
+  return {
+    body,
+    ground,
+    frame,
+    aimHandle: aimOnGround ? ground.center : body.normalTip,
+    aimOnGround,
+    widthHandle: pointAlong(body.center, frame.right, light.width / 2),
+    heightHandle: pointAlong(body.center, frame.height, light.height / 2),
+  };
+}
+
+/** New point-light range patch from dragging its range handle to a world point. */
+export function pointRangeFromHit(lightPosition, hitPoint) {
+  const verticalOffset = Math.abs(lightPosition[1] - hitPoint[1]);
+  const minimumRange = verticalOffset > TINY_LENGTH ? Math.max(MIN_LIGHT_RANGE, verticalOffset + GROUND_RANGE_MARGIN) : MIN_LIGHT_RANGE;
+  const rawRange = Math.hypot(...subtract(hitPoint, lightPosition));
+  return { range: clampNumber(rawRange, minimumRange, MAX_LIGHT_RANGE) };
+}
+
+/** New light facing direction patch from dragging an aim handle to a world point. */
+export function aimDirectionFromHit(lightPosition, hitPoint) {
+  const offset = subtract(hitPoint, lightPosition);
+  const distance = Math.hypot(...offset);
+  if (distance < MIN_AIM_DISTANCE) {
+    return null;
+  }
+  return { direction: scale(offset, 1 / distance) };
+}
+
+/** New spot-light half-angle patch from dragging its angle handle to a world point. */
+export function spotAngleFromHit(light, hitPoint) {
+  const offset = subtract(hitPoint, light.position);
+  const distance = Math.hypot(...offset);
+  if (distance < MIN_AIM_DISTANCE) {
+    return null;
+  }
+  const cosine = clampNumber(dot(scale(offset, 1 / distance), normalize(light.direction)), -1, 1);
+  return { angle: clampNumber(Math.acos(cosine), MIN_SPOT_HALF_ANGLE, MAX_SPOT_HALF_ANGLE) };
+}
+
+/** New spot-light range patch from dragging its range handle to a world point. */
+export function spotRangeFromHit(lightPosition, hitPoint) {
+  const verticalOffset = Math.abs(lightPosition[1] - hitPoint[1]);
+  const minimumRange = verticalOffset > TINY_LENGTH ? Math.max(MIN_LIGHT_RANGE, verticalOffset + GROUND_RANGE_MARGIN) : MIN_LIGHT_RANGE;
+  const rawRange = Math.hypot(...subtract(hitPoint, lightPosition));
+  return { range: clampNumber(rawRange, minimumRange, MAX_LIGHT_RANGE) };
+}
+
+/** New area-light width patch from dragging its width handle to a point in the light plane. */
+export function areaWidthFromHit(lightPosition, rightAxis, hitPoint) {
+  const halfWidth = Math.abs(dot(subtract(hitPoint, lightPosition), rightAxis));
+  return { width: clampNumber(halfWidth * 2, MIN_AREA_SIZE, MAX_AREA_SIZE) };
+}
+
+/** New area-light height patch from dragging its height handle to a point in the light plane. */
+export function areaHeightFromHit(lightPosition, heightAxis, hitPoint) {
+  const halfHeight = Math.abs(dot(subtract(hitPoint, lightPosition), heightAxis));
+  return { height: clampNumber(halfHeight * 2, MIN_AREA_SIZE, MAX_AREA_SIZE) };
 }

@@ -23,7 +23,7 @@ import { resolveMouseMap } from './studio-mouse-map.js';
 import { createMouseInput, createViewportTargetFilter, isEditableTarget } from './studio-mouse-input.js';
 import { findKeymapAction, findMouseNavigation, formatShortcutKeys, KEYMAP_PRESETS, keyLabel, lastKeyLabel, resolveKeymapPreset, shortcutRowsFor } from './studio-keymap.js';
 import { balanceSheetColumns, openStudioGuide, sheetColumnCount, shortcutSheetGroups, watchScrollFades } from './studio-help.js';
-import { SCENE_OBJECT_ICONS, beginSceneObjectDrag, dragSceneObject, renderSceneObjectMarks } from './studio-scene-marks.js';
+import { SCENE_OBJECT_ICONS, dragSceneObject, handleSceneObjectPointerDown, renderSceneObjectMarks } from './studio-scene-marks.js';
 import { createSvgElement } from './studio-svg.js';
 import { createStudioCatalog, NO_STORE_MESSAGE } from './studio-catalog.js';
 import { createStudioSetup } from './studio-setup.js';
@@ -5136,16 +5136,9 @@ export function createStudio(container, {
     }
   });
 
-  // A press on a light or the sun selects it; with the move tool a light then follows the pointer in the plane through it that faces the view.
+  // A press on a light, the sun or a reach handle selects it and starts its drag when allowed.
   gizmoSvg.addEventListener('pointerdown', event => {
-    const key = event.target?.getAttribute?.('data-scene-object');
-    if (!key || (event.button ?? 0) !== 0 || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    event.stopPropagation();
-    selectSceneObjectAndShowItsPanel(key);
-    const object = controller.listSceneObjects().find(candidate => candidate.key === key);
-    if (controller.tool !== 'translate' || event.target.hasAttribute('data-edge-pointer')) return;
-    const dragState = beginSceneObjectDrag(controller, object, localCoordinates(event), event.pointerId, announceError);
+    const dragState = handleSceneObjectPointerDown(controller, event, localCoordinates(event), selectSceneObjectAndShowItsPanel, announceError);
     if (!dragState) return;
     pointerState = dragState;
     viewportElement.setPointerCapture?.(event.pointerId);

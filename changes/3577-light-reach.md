@@ -1,1 +1,1 @@
-- Studio shows how far and how wide the selected light shines (a wire, volume or footprint drawing chosen with `?lightReach=`), and a selected sun shows a ground ring with direction arrows (#3577)
+- Studio shows each light's ground footprint (and a selected sun's ground ring and direction arrow) in the viewport and lets you drag their handles to edit them (#3577)

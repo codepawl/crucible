@@ -9,13 +9,33 @@ import {
   EDGE_POINTER_UNDERSTROKE_EXTRA,
   edgePointerPlacement, screenPointOfWorldPoint } from './studio-edge-pointer.js';
 import { renderLightReach } from './studio-light-reach-view.js';
+import {
+  aimDirectionFromHit,
+  areaHeightFromHit,
+  areaReachHandles,
+  areaWidthFromHit,
+  pointRangeFromHit,
+  pointReachHandles,
+  spotAngleFromHit,
+  spotRangeFromHit,
+  spotReachHandles,
+} from './studio-light-reach.js';
 import { markIsOnFarSide, sunAnglesUnderRay, sunMarkPosition, sunMarkSphereOf, sunRayEnd } from './studio-sun-mark.js';
+import { sceneSphereOf } from './studio-sun-mark.js';
 
 // The marks over the viewport for the lights and the sun, and the drags that move them.
 export const SCENE_OBJECT_ICONS = Object.freeze({ camera: 'camera', sun: 'sun', point: 'pointLight', spot: 'spotLight', area: 'areaLight' });
 const SCENE_OBJECT_MARK_RADIUS = 13;
 // The disc of a mark is translucent, so the sun ray starts this far past its edge instead of showing through the glyph.
 export const SUN_RAY_GAP_FROM_MARK = 5;
+const REACH_LIGHT_FIELDS = Object.freeze({ point: 'pointLights', spot: 'spotLights', area: 'areaLights' });
+const REACH_HANDLE_PROPERTY = Object.freeze({
+  aim: 'direction',
+  range: 'range',
+  angle: 'angle',
+  'area-width': 'width',
+  'area-height': 'height',
+});
 
 /** Where a ray meets the plane through a point with a normal, or null when it runs parallel or the plane lies behind it. */
 export function intersectPlane(ray, planePoint, planeNormal) {
@@ -201,12 +221,16 @@ function beginSunDrag(controller, sunObject, pointerId, announceError) {
   return { mode: 'light', key: 'sun', sunSphere, farSide, pointerId };
 }
 
-// A light follows the pointer in the plane through it that faces the view.
-function beginLightDrag(controller, object, coordinates, pointerId) {
+function viewPlaneNormalOf(controller) {
   const camera = controller.viewCamera;
   const normal = camera.target.map((component, axis) => component - camera.eye[axis]);
   const normalLength = Math.hypot(...normal);
-  const planeNormal = normal.map(component => component / normalLength);
+  return normalLength > 1e-6 ? normal.map(component => component / normalLength) : [0, 0, -1];
+}
+
+// A light follows the pointer in the plane through it that faces the view.
+function beginLightDrag(controller, object, coordinates, pointerId) {
+  const planeNormal = viewPlaneNormalOf(controller);
   const grabbed = intersectPlane(controller.screenRay(coordinates.x, coordinates.y), object.position, planeNormal);
   if (!grabbed) {
     return null;
@@ -221,6 +245,92 @@ function beginLightDrag(controller, object, coordinates, pointerId) {
   };
 }
 
+function liveLightOf(controller, key) {
+  const [kind, indexText] = key.split(':');
+  const field = REACH_LIGHT_FIELDS[kind];
+  return field ? controller.scene.environment?.[field]?.[Number(indexText)] ?? null : null;
+}
+
+/**
+ * Starts a drag on a light-reach handle (`aim`, `range`, `angle`, `area-width`, `area-height`, `sun-direction`), or
+ * returns null and reports why when an animated property locks that field.
+ */
+export function beginLightReachDrag(controller, object, handleKind, coordinates, pointerId, announceError) {
+  if (!object || !(handleKind in REACH_HANDLE_PROPERTY) && handleKind !== 'sun-direction') {
+    return null;
+  }
+  if (object.key === 'sun' && handleKind === 'sun-direction') {
+    const sunDrag = beginSunDrag(controller, object, pointerId, announceError);
+    return sunDrag ? { ...sunDrag, reachHandle: 'sun-direction' } : null;
+  }
+  const propertyName = REACH_HANDLE_PROPERTY[handleKind];
+  if (controller.describeSceneObject(object.key).drivenProperties.has(propertyName)) {
+    announceError(`The ${object.key} light ${propertyName} is animated by a motion track or driver, so an edit would not show. Remove that motion or edit its keyframes.`);
+    return null;
+  }
+  const light = liveLightOf(controller, object.key);
+  if (!light) {
+    return null;
+  }
+  const sceneRadius = sceneSphereOf(controller.sceneBounds()).radius;
+  const eye = controller.viewCamera.eye;
+  const viewNormal = viewPlaneNormalOf(controller);
+  let planePoint = [0, 0, 0];
+  let planeNormal = [0, 1, 0];
+  let areaFrame = null;
+  if (object.kind === 'point') {
+    const handles = pointReachHandles(light, sceneRadius, eye);
+    planePoint = handles.rangeHandle;
+  } else if (object.kind === 'spot') {
+    const handles = spotReachHandles(light, sceneRadius, eye);
+    planePoint = handles.aimOnGround ? [0, 0, 0] : handles.aimHandle;
+    planeNormal = handles.aimOnGround ? [0, 1, 0] : viewNormal;
+  } else if (object.kind === 'area') {
+    const handles = areaReachHandles(light, sceneRadius, eye);
+    if (handleKind === 'aim') {
+      planePoint = handles.aimOnGround ? [0, 0, 0] : handles.aimHandle;
+      planeNormal = handles.aimOnGround ? [0, 1, 0] : viewNormal;
+    } else {
+      planePoint = light.position;
+      planeNormal = intersectPlane(controller.screenRay(coordinates.x, coordinates.y), light.position, handles.frame.normal)
+        ? handles.frame.normal
+        : viewNormal;
+      areaFrame = handles.frame;
+    }
+  }
+  return {
+    mode: 'light',
+    key: object.key,
+    kind: object.kind,
+    reachHandle: handleKind,
+    planePoint,
+    planeNormal,
+    areaFrame,
+    pointerId,
+  };
+}
+
+function patchForReachHit(dragState, light, hitPoint) {
+  if (dragState.reachHandle === 'aim') {
+    return aimDirectionFromHit(light.position, hitPoint);
+  }
+  if (dragState.reachHandle === 'range') {
+    return dragState.kind === 'point'
+      ? pointRangeFromHit(light.position, hitPoint)
+      : spotRangeFromHit(light.position, hitPoint);
+  }
+  if (dragState.reachHandle === 'angle') {
+    return spotAngleFromHit(light, hitPoint);
+  }
+  if (dragState.reachHandle === 'area-width' && dragState.areaFrame) {
+    return areaWidthFromHit(light.position, dragState.areaFrame.right, hitPoint);
+  }
+  if (dragState.reachHandle === 'area-height' && dragState.areaFrame) {
+    return areaHeightFromHit(light.position, dragState.areaFrame.height, hitPoint);
+  }
+  return null;
+}
+
 /**
  * The pointer state a press on a scene object starts, or null when nothing drags: the camera does not, a light drags
  * in a plane and the sun over a sphere. A drag that is refused tells why through announceError.
@@ -233,13 +343,69 @@ export function beginSceneObjectDrag(controller, object, coordinates, pointerId,
   return movable ? beginLightDrag(controller, object, coordinates, pointerId) : null;
 }
 
+/** Handles a left-button press on a scene object mark or light-reach handle, selecting it and starting a drag if allowed. */
+export function handleSceneObjectPointerDown(controller, event, coordinates, selectSceneObject, announceError) {
+  const reachHandle = event.target?.getAttribute?.('data-light-reach-handle');
+  const key = reachHandle
+    ? event.target?.getAttribute?.('data-reach-object')
+    : event.target?.getAttribute?.('data-scene-object');
+  if (!key || (event.button ?? 0) !== 0 || event.shiftKey || event.altKey) {
+    return null;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  selectSceneObject(key);
+  const object = controller.listSceneObjects().find(candidate => candidate.key === key);
+  if (reachHandle && object) {
+    return beginLightReachDrag(controller, object, reachHandle, coordinates, event.pointerId, announceError);
+  }
+  if (controller.tool !== 'translate' || event.target.hasAttribute('data-edge-pointer')) {
+    return null;
+  }
+  return beginSceneObjectDrag(controller, object, coordinates, event.pointerId, announceError);
+}
+
 function dragSun(controller, dragState, coordinates) {
   controller.beginUndoGroup();
   controller.setSunAngles(sunAnglesUnderRay(controller.screenRay(coordinates.x, coordinates.y), dragState.sunSphere, { farSide: dragState.farSide }));
 }
 
-/** Follows the pointer with the scene object a drag began on; the whole drag is one undo step. */
+/** Follows the pointer while dragging a light-reach handle; the whole drag is one undo step. */
+export function dragLightReach(controller, dragState, coordinates, announceError) {
+  if (dragState.sunSphere) {
+    dragSun(controller, dragState, coordinates);
+    return;
+  }
+  if (!dragState.planeNormal) {
+    return;
+  }
+  const hitPoint = intersectPlane(controller.screenRay(coordinates.x, coordinates.y), dragState.planePoint, dragState.planeNormal);
+  if (!hitPoint) {
+    return;
+  }
+  const light = liveLightOf(controller, dragState.key);
+  if (!light) {
+    return;
+  }
+  const patch = patchForReachHit(dragState, light, hitPoint);
+  if (!patch) {
+    return;
+  }
+  controller.beginUndoGroup();
+  try {
+    controller.updateSceneLight(dragState.key, patch);
+  } catch (error) {
+    dragState.planeNormal = null;
+    announceError(error.message);
+  }
+}
+
+/** Follows the pointer with the scene object or light-reach handle a drag began on; the whole drag is one undo step. */
 export function dragSceneObject(controller, dragState, coordinates, announceError) {
+  if (dragState.reachHandle) {
+    dragLightReach(controller, dragState, coordinates, announceError);
+    return;
+  }
   if (dragState.sunSphere) {
     dragSun(controller, dragState, coordinates);
     return;
