@@ -388,8 +388,11 @@ export function yieldToEventLoop() {
  * The sentence for a frame that spent seconds compiling its kernel, or undefined when it did not. Cook compiles one kernel per
  * scene variant (a scene with no emitter is a different variant from a lit one), and the first trace of a variant pays for it.
  */
-export function describeKernelCompile({ compileSeconds }) {
+export function describeKernelCompile({ compileSeconds, pipelineCache }) {
   if (!(compileSeconds >= NOTEWORTHY_COMPILE_SECONDS)) return undefined;
+  if (pipelineCache === 'cold') {
+    return `This frame spent ${compileSeconds.toFixed(1)} s compiling the kernel variant its scene needs, which is not trace time. Later frames and future runs reuse it from the on-disk pipeline cache.`;
+  }
   return `This frame spent ${compileSeconds.toFixed(1)} s compiling the kernel variant its scene needs, which is not trace time. Later frames of this job reuse it.`;
 }
 
@@ -454,11 +457,12 @@ async function traceOneFrameNative({ tracer, exported, width, height, samples, b
   normalizeNormals(features.normal);
   const averageSamples = traced.averageSamples ?? samples;
   const estimatedNoise = estimateRelativeNoise({ color: features.color, variance: features.variance, averageSamples });
-  const kernelCompileNote = describeKernelCompile({ compileSeconds: traced.compileSeconds });
+  const kernelCompileNote = describeKernelCompile({ compileSeconds: traced.compileSeconds, pipelineCache: traced.pipelineCache });
   const report = { width, height, samples, bounces, seed, denoised: false, denoiser: 'none', threads: 1, backend: 'native',
     gpu: traced.adapter, nativeBackend: traced.backend, nativeFeatures: traced.features, setupSeconds: traced.setupSeconds, compileSeconds: traced.compileSeconds,
     uploadSeconds: traced.uploadSeconds, accelerationBuildSeconds: traced.accelerationBuildSeconds,
     ...(traced.tracedSeconds === undefined ? {} : { gpuTraceSeconds: traced.tracedSeconds }),
+    ...(traced.pipelineCache === undefined ? {} : { pipelineCache: traced.pipelineCache }),
     ...(kernelCompileNote ? { kernelCompileNote } : {}),
     kernel, averageSamples, noiseThreshold, ...(estimatedNoise === null ? {} : { estimatedNoise }), triangles: exported.triangles, inputBytes: tableBytes(tables), ...(exported.instances === undefined ? {} : { instances: exported.instances }),
     ...(exported.instancing === undefined ? {} : { instancing: exported.instancing, instancingReason: exported.instancingReason }),
@@ -524,7 +528,8 @@ export function traceTexelsNative({ tracer, request, maxSeconds }) {
   const texels = { count: request.texelCount, points: floatsFromBase64(request.points), normals: floatsFromBase64(request.normals) };
   const traced = tracer.traceNativeTexels(decodeTables(request), texels, { samples: request.samples, maxSeconds });
   return { radiance: floatsToBase64(traced.radiance), escaped: floatsToBase64(traced.escaped), adapter: traced.adapter,
-    compileSeconds: traced.compileSeconds, tracedSeconds: traced.tracedSeconds };
+    compileSeconds: traced.compileSeconds, tracedSeconds: traced.tracedSeconds,
+    ...(traced.pipelineCache === undefined ? {} : { pipelineCache: traced.pipelineCache }) };
 }
 
 /** True for the error the native tracer raises when a trace passes its `maxSeconds`: a clean failure, not a broken adapter. */
