@@ -90,6 +90,29 @@ export const frameControlScript = `
   addEventListener('load', enhanceRanges);
 `;
 
+export { attachOrbitControls as attachFrameOrbitControls, createOrbitController as createFrameOrbitController } from './orbit-controller.js';
+
+export const ORBIT_CONTROL_BINDINGS = Object.freeze({
+  orbit: 'Left-drag',
+  pan: 'Right-drag / Middle-drag / Shift-drag',
+  zoom: 'Wheel',
+  move: 'WASD / Arrows / Q / E',
+  reset: 'R / Double-click',
+});
+
+export const frameOrbitControlScript = `
+  const applyStyle = () => {
+    document.querySelectorAll('canvas').forEach(canvasElement => {
+      canvasElement.style.touchAction = 'none';
+      if (!canvasElement.hasAttribute('tabindex')) canvasElement.tabIndex = 0;
+    });
+  };
+  new MutationObserver(records => {
+    if (records.some(record => record.addedNodes.length > 0)) applyStyle();
+  }).observe(document.documentElement, { childList: true, subtree: true });
+  addEventListener('load', applyStyle);
+`;
+
 const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
 export function escapeHtml(value) {

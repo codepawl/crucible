@@ -141,6 +141,7 @@ It gets PNG previews back, compares up to four views in a [review grid](docs/age
 The server accepts no arbitrary code and no remote asset URLs. The [MCP reference](docs/mcp.md) lists its tools.
 
 Two skills teach an agent to drive the MCP tools: [build-crucible-scene](skills/build-crucible-scene/SKILL.md) for scenes and materials, and [render-crucible-media](skills/render-crucible-media/SKILL.md) for image and video export.
+For a built-in headless AI CLI (`crucible auth login` for 250 free credits, no card needed, then `crucible agent`), see [cli-agent](docs/cli-agent.md).
 For a plain-text guide, give the agent [llms.txt](https://crucible.codepawl.com/llms.txt).
 
 [viz3d](https://github.com/codepawl/viz3d) uses Crucible. It is a skill that turns places, systems and events into 3D apps and films, and it renders its films and stills in Crucible.
@@ -184,6 +185,7 @@ Each addon is a separate import, so a page loads only what it uses.
 | Modeling | `crucible/addons/mesh`, `crucible/addons/modeling`, `crucible/addons/sculpt` | [Mesh editing](docs/mesh.md), [modeling](docs/modeling.md) and [sculpt brushes](https://crucible.codepawl.com/sculpt.md) |
 | Offline light | `crucible/addons/path-tracer`, `crucible/addons/light-bake` | [Path-traced stills](https://crucible.codepawl.com/path-tracer.md) and [baked lightmaps](https://crucible.codepawl.com/light-bake.md) |
 | Post passes | `crucible/addons/user-pass` | [Your own full-screen GLSL passes](docs/user-passes.md): dither, pixel downscale, quantise |
+| Showcase | `crucible/addons/showcase` | [Interactive product showcase viewer](docs/showcase.md) and `crucible init` starter with Prototype/Studio themes and shared orbit controls |
 | Agents | `crucible/addons/agent-scene`, `crucible/addons/agent-asset` | [Scene sessions](docs/agent-scene.md) with revisions and checkpoints |
 
 The [documentation page](https://crucible.codepawl.com/docs.html) lists every guide.

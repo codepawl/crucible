@@ -41,6 +41,7 @@ import {
 } from './studio-multi-edit.js';
 import { formatLength, STUDIO_LENGTH_UNITS } from './studio-units.js';
 import { motionIsEmpty } from './studio-motion-content.js';
+import { KEYFRAME_TIME_TOLERANCE, POSE_PROPERTIES, createPropertyKeyActions, upsertNodeKeyframeTrack } from './studio-property-keys.js';
 import { createOrbitPivot } from './studio-orbit-pivot.js';
 
 const AXIS_NAMES = Object.freeze(['x', 'y', 'z']);
@@ -158,7 +159,7 @@ export function quaternionToEulerDegrees(quaternion) {
   ];
 }
 
-function eulerDegreesToQuaternion(angles) {
+export function eulerDegreesToQuaternion(angles) {
   const result = quat.create();
   quat.fromEuler(result, angles[0], angles[1], angles[2]);
   quat.normalize(result, result);
@@ -453,36 +454,7 @@ function planeNormalForAxis(axis, camera, basis = WORLD_BASIS) {
   return [look[0], look[1], look[2]];
 }
 
-function upsertNodeKeyframeTrack(tracks, nodeId, property, time, value) {
-  const nextTracks = tracks.slice();
-  const existingIndex = nextTracks.findIndex(track => track.kind === 'node' && track.id === nodeId && track.property === property);
-  const roundedTime = roundValue(time, 1000);
-  const entry = { time: roundedTime, value: roundVector(value) };
-  if (existingIndex < 0) {
-    nextTracks.push({
-      kind: 'node',
-      id: nodeId,
-      property,
-      keyframes: [entry],
-    });
-    return nextTracks;
-  }
-  const existing = nextTracks[existingIndex];
-  const nextKeyframes = existing.keyframes.slice();
-  const matchIndex = keyframeIndexAt(nextKeyframes, roundedTime);
-  if (matchIndex >= 0) {
-    nextKeyframes[matchIndex] = entry;
-  } else {
-    nextKeyframes.push(entry);
-    nextKeyframes.sort((first, second) => first.time - second.time);
-  }
-  nextTracks[existingIndex] = { ...existing, keyframes: nextKeyframes };
-  return nextTracks;
-}
-
-const KEYFRAME_TIME_TOLERANCE = 0.005;
 const MAX_MOTION_SECONDS = 3600;
-const POSE_PROPERTIES = Object.freeze(['translation', 'rotation', 'scale']);
 const REST_POSE = Object.freeze({ translation: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] });
 
 function keyframeIndexAt(keyframes, time) {
@@ -2793,8 +2765,8 @@ export function createStudioController({
     if (!STUDIO_VIEW_PRESETS.includes(presetName)) {
       throw new RangeError(`Unknown camera view "${String(presetName)}". Use ${STUDIO_VIEW_PRESETS.join(', ')}.`);
     }
-    const camera = viewCamera();
-    const distance = Math.max(MINIMUM_DISTANCE, vec3.distance(camera.eye, camera.target));
+    // A view along an axis centres the selection (or the scene) first, so the axis passes through what you look at. It
+    // keeps the distance unless the object would not fit, so a turn from afar stays afar.
     const unitDirections = {
       front: [0, 0, 1],
       back: [0, 0, -1],
@@ -2803,13 +2775,8 @@ export function createStudioController({
       top: [0.002, 1, 0.002],
       isometric: [1, 0.72, 1],
     };
-    const unit = vec3.normalize(vec3.create(), unitDirections[presetName]);
-    const eye = roundVector([
-      camera.target[0] + unit[0] * distance,
-      camera.target[1] + unit[1] * distance,
-      camera.target[2] + unit[2] * distance,
-    ]);
-    return moveView({ eye, up: [0, 1, 0] }, { recordUndo: true });
+    const pose = frameSelectionPose(unitDirections[presetName], { keepDistance: true });
+    return moveView({ ...pose, up: [0, 1, 0] }, { recordUndo: true });
   }
 
   function toggleCameraProjection() {
@@ -2842,16 +2809,16 @@ export function createStudioController({
   }
 
   /**
-   * The camera that frames the selection (or the whole scene when nothing is selected): it keeps the direction it looks
-   * from and stands back just far enough for the object to fit the view. Returns a set-camera patch and changes nothing.
+   * The camera that frames the selection (or the whole scene when nothing is selected): it looks from `lookFrom` when given,
+   * else keeps the direction it looks from, and stands back just far enough for the object to fit. Returns a set-camera patch.
    */
-  function frameSelectionPose() {
+  function frameSelectionPose(lookFrom = null, { keepDistance = false } = {}) {
     const camera = viewCamera();
     const bounds = framedBounds();
     const target = bounds ? bounds.min.map((value, axis) => (value + bounds.max[axis]) / 2) : selectedPivotWorld() ?? [...camera.target];
     const radius = bounds ? Math.max(FRAME_MINIMUM_RADIUS, vec3.distance(bounds.min, bounds.max) / 2) : FRAME_MINIMUM_RADIUS;
     const offset = vec3.subtract(vec3.create(), camera.eye, camera.target);
-    const direction = vec3.normalize(vec3.create(), offset);
+    const direction = vec3.normalize(vec3.create(), lookFrom ?? offset);
     if (vec3.length(direction) < 1e-6) {
       vec3.set(direction, 0.5, 0.4, 0.8);
       vec3.normalize(direction, direction);
@@ -2867,7 +2834,7 @@ export function createStudioController({
       const halfAngle = Math.atan(Math.tan((cameraFieldOfView(camera, aspect) * Math.PI) / 360) * narrowSide);
       distance = (radius * FRAME_MARGIN) / Math.sin(halfAngle);
     }
-    distance = Math.max(MINIMUM_DISTANCE, Math.min(MAXIMUM_DISTANCE, distance));
+    distance = Math.max(MINIMUM_DISTANCE, Math.min(MAXIMUM_DISTANCE, keepDistance ? Math.max(distance, vec3.length(offset)) : distance));
     pose.target = roundVector(target);
     pose.eye = roundVector([target[0] + direction[0] * distance, target[1] + direction[1] * distance, target[2] + direction[2] * distance]);
     return pose;
@@ -3046,6 +3013,16 @@ export function createStudioController({
     return commitNodeTracks(recipe, moveNodeKeysInTracks(tracks, nodeId, sourceTime, targetTime), duration, nodeId);
   }
 
+  const propertyKeyActions = createPropertyKeyActions({
+    recipe: () => currentScene.exportRecipe(),
+    requireNode,
+    commitNodeTracks,
+    validatedKeyTime,
+    motionTime: () => motionTime,
+    nodePose,
+    selectedNodeId: () => selectedNodeId,
+  });
+
   /** Deletes every key of the node at `time` as one undo step; a track left empty is removed. */
   function deleteNodeKeyframe(nodeId, time) {
     const recipe = currentScene.exportRecipe();
@@ -3222,6 +3199,7 @@ export function createStudioController({
     moveNodeKeyframe,
     deleteNodeKeyframe,
     nodeKeyframeTimes,
+    ...propertyKeyActions,
     animatedNodeProperties,
     nodePose,
     get autoKey() { return autoKey; },

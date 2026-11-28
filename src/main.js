@@ -2,6 +2,7 @@ import './site-chrome.js';
 import './style.css';
 import { CrucibleRenderer, groundPart, studioFloorHeight } from './renderer.js';
 import { createAdaptiveResolution, createGpuTimer } from './adaptive-quality.js';
+import { attachOrbitControls, createOrbitController } from './site-controls.js';
 import { loadSampleModel } from './model.js';
 import { downloadGlb } from './export.js';
 import { assemblyBounds, assemblyOffset, distanceToFill } from './assembly.js';
@@ -16,6 +17,23 @@ let selectedPixelRatio = isExport ? 1 : 1.5;
 const parts = await loadSampleModel(new URL('sample-model.glb', document.baseURI));
 // Close enough that the four objectives and their labels read at the default zoom.
 const DEFAULT_DISTANCE = 9.2;
+const ORBIT_SPEED = 0.007;
+const orbitController = createOrbitController({
+  yaw: 0.48,
+  pitch: 0.18,
+  distance: DEFAULT_DISTANCE,
+  target: [0, 1.8, 0],
+  minPitch: -0.15,
+  maxPitch: 1.1,
+  minDistance: 3.5,
+  maxDistance: 11,
+  boundsMin: [-4, 0.2, -4],
+  boundsMax: [4, 6, 4],
+  orbitSpeed: ORBIT_SPEED,
+  panSpeed: 0.0016,
+  zoomSpeed: 0.001,
+  moveSpeed: 0.6,
+});
 const state = { azimuth: 0.48, elevation: 0.18, distance: DEFAULT_DISTANCE, exposure: 1.3, inspection: false, rotating: false, assembly: Math.max(0, Math.min(1, Number(new URLSearchParams(location.search).get('explosion')) || 0)), layer: 'all' };
 state.look = 'studio';
 state.targetHeight = 1.8;
@@ -34,7 +52,15 @@ let lastTime = 0;
 let frameCount = 0;
 let cpuTotal = 0;
 let noticeTimer;
-let dragging = null;
+let userInteracting = false;
+
+function syncMainOrbit() {
+  const current = orbitController.state();
+  state.azimuth = current.yaw;
+  state.elevation = current.pitch;
+  state.distance = current.distance;
+  state.targetHeight = current.target[1];
+}
 
 function notify(message, failure = false) {
   const notice = document.querySelector('#notice');
@@ -68,16 +94,17 @@ const VERTICAL_FIELD_OF_VIEW = Math.PI / 5.5;
 function camera() {
   const mobile = canvas.clientWidth <= 700;
   if (renderer) renderer.projection[8] = mobile || state.exporting ? 0 : -CENTER_SHIFT_PIXELS / canvas.clientWidth;
-  const assembledDistance = state.distance * (mobile ? 1.05 : 1);
-  const explodedDistance = distanceToFill(EXPLODED_SIZE, { verticalFov: VERTICAL_FIELD_OF_VIEW, aspect: canvas.clientWidth / canvas.clientHeight, fill: EXPLODED_FILL }) * (state.distance / DEFAULT_DISTANCE);
+  const current = orbitController.state();
+  const assembledDistance = current.distance * (mobile ? 1.05 : 1);
+  const explodedDistance = distanceToFill(EXPLODED_SIZE, { verticalFov: VERTICAL_FIELD_OF_VIEW, aspect: canvas.clientWidth / canvas.clientHeight, fill: EXPLODED_FILL }) * (current.distance / DEFAULT_DISTANCE);
   const distance = assembledDistance + (explodedDistance - assembledDistance) * state.assembly;
-  const assembledHeight = mobile ? 1.8 : state.targetHeight;
-  const target = [0, assembledHeight + (EXPLODED_CENTER_HEIGHT - assembledHeight) * state.assembly, 0];
+  const assembledHeight = mobile ? 1.8 : current.target[1];
+  const target = [current.target[0], assembledHeight + (EXPLODED_CENTER_HEIGHT - assembledHeight) * state.assembly, current.target[2]];
   // Looking down a little in the exploded view shows the flat mirror parts as discs instead of edge-on slivers.
-  const elevation = state.elevation + state.assembly * 0.4;
+  const elevation = current.pitch + state.assembly * 0.4;
   return {
     target,
-    eye: [Math.sin(state.azimuth) * Math.cos(elevation) * distance, target[1] + Math.sin(elevation) * distance, Math.cos(state.azimuth) * Math.cos(elevation) * distance],
+    eye: [target[0] + Math.sin(current.yaw) * Math.cos(elevation) * distance, target[1] + Math.sin(elevation) * distance, target[2] + Math.cos(current.yaw) * Math.cos(elevation) * distance],
     exposure: state.exposure,
     inspection: state.inspection,
     assemblyAmount: state.assembly,
@@ -89,15 +116,21 @@ function camera() {
 function draw(time) {
   scheduledFrame = 0;
   if (!renderer || document.hidden) return;
+  const deltaSeconds = Math.max(0, Math.min(0.05, (time - lastTime) / 1000));
   if (state.touring) {
     const progress = Math.min(1, (time - tourOrigin) / 8000);
     state.assembly = Math.sin(progress * Math.PI) ** 2;
     syncAssembly();
     if (progress === 1) stopTour();
   } else if (!state.exporting && state.assembly !== state.assemblyTarget) {
-    state.assembly = approachValue(state.assembly, state.assemblyTarget, Math.max(0, Math.min(0.05, (time - lastTime) / 1000)));
+    state.assembly = approachValue(state.assembly, state.assemblyTarget, deltaSeconds);
   }
-  if (state.rotating && !dragging) state.azimuth += Math.min((time - lastTime) / 1000, 0.05) * 0.16;
+  const pose = orbitController.step(deltaSeconds || 0.016);
+  if (pose.active) syncMainOrbit();
+  if (state.rotating && !userInteracting) {
+    orbitController.orbitBy(-(deltaSeconds * 0.16) / ORBIT_SPEED, 0);
+    syncMainOrbit();
+  }
   lastTime = time;
   renderer.render(camera());
   cpuTotal += renderer.cpuMilliseconds;
@@ -105,7 +138,7 @@ function draw(time) {
   frameCount++;
   document.querySelector('#cpu').textContent = `${(cpuTotal / frameCount).toFixed(2)} ms CPU`;
   if (frameCount > 60) { cpuTotal = renderer.cpuMilliseconds; frameCount = 1; }
-  if (state.rotating || state.touring || state.assembly !== state.assemblyTarget) invalidate();
+  if (state.rotating || state.touring || state.assembly !== state.assemblyTarget || pose.active) invalidate();
 }
 
 function adaptResolution() {
@@ -160,7 +193,9 @@ document.querySelector('#assembly-tour').addEventListener('click', () => {
   if (state.touring) { stopTour(); return; }
   if (reducedMotion.matches) { state.assembly = state.assembly > 0.5 ? 0 : 1; syncAssembly(); invalidate(); return; }
   // A complete-model composition keeps all moving components in the frame.
-  Object.assign(state, { distance: DEFAULT_DISTANCE, targetHeight: 1.8, touring: true });
+  orbitController.setPreset({ yaw: 0.48, pitch: 0.18, distance: DEFAULT_DISTANCE, target: [0, 1.8, 0] }, { immediate: true });
+  syncMainOrbit();
+  state.touring = true;
   tourOrigin = performance.now();
   document.querySelector('#assembly-tour').textContent = 'Pause assembly';
   invalidate();
@@ -169,7 +204,9 @@ document.querySelectorAll('[data-view]').forEach(button => button.addEventListen
   stopTour();
   const views = { hero: [0.48, 0.18, DEFAULT_DISTANCE, 1.8, 0], eyepiece: [0.12, 0.12, 4.2, 3.0, 0], parts: [0.7, 0.34, 6.8, 1.8, 0.65] };
   const [azimuth, elevation, distance, targetHeight, assembly] = views[button.dataset.view];
-  Object.assign(state, { azimuth, elevation, distance, targetHeight, assembly, assemblyTarget:assembly });
+  orbitController.setPreset({ yaw: azimuth, pitch: elevation, distance, target: [0, targetHeight, 0] }, { immediate: true });
+  syncMainOrbit();
+  Object.assign(state, { assembly, assemblyTarget: assembly });
   document.querySelectorAll('[data-view]').forEach(control => control.setAttribute('aria-pressed', String(control === button)));
   syncAssembly(); invalidate();
 }));
@@ -200,40 +237,34 @@ document.querySelectorAll('[data-layer]').forEach((button) => button.addEventLis
   try { initialize(); } catch (error) { notify(error.message, true); }
 }));
 
-canvas.addEventListener('pointerdown', (event) => {
-  if (event.button !== 0) return;
-  dragging = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
-  canvas.setPointerCapture(event.pointerId);
+canvas.addEventListener('pointerdown', () => { userInteracting = true; });
+for (const eventName of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(eventName, () => { userInteracting = false; });
+attachOrbitControls(canvas, orbitController, {
+  keyTarget: canvas,
+  reducedMotion: reducedMotion.matches,
+  onChange: () => {
+    syncMainOrbit();
+    invalidate();
+  },
 });
-canvas.addEventListener('pointermove', (event) => {
-  if (!dragging || event.pointerId !== dragging.pointerId) return;
-  state.azimuth -= (event.clientX - dragging.x) * 0.007;
-  state.elevation = Math.max(-0.15, Math.min(1.1, state.elevation + (event.clientY - dragging.y) * 0.007));
-  dragging.x = event.clientX;
-  dragging.y = event.clientY;
-  invalidate();
-});
-for (const eventName of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(eventName, () => { dragging = null; });
-canvas.addEventListener('wheel', (event) => {
-  event.preventDefault();
-  state.distance = Math.max(3.5, Math.min(11, state.distance + event.deltaY * 0.008));
-  invalidate();
-}, { passive: false });
 canvas.addEventListener('keydown', (event) => {
-  const changes = { ArrowLeft: [-0.1, 0, 0], ArrowRight: [0.1, 0, 0], ArrowUp: [0, 0.08, 0], ArrowDown: [0, -0.08, 0], '+': [0, 0, -0.3], '=': [0, 0, -0.3], '-': [0, 0, 0.3] };
-  if (changes[event.key]) {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.key === '+' || event.key === '=') {
     event.preventDefault();
-    const [azimuth, elevation, distance] = changes[event.key];
-    state.azimuth += azimuth;
-    state.elevation = Math.max(-0.15, Math.min(1.1, state.elevation + elevation));
-    state.distance = Math.max(3.5, Math.min(11, state.distance + distance));
+    orbitController.zoomBy(-330);
+    syncMainOrbit();
+    invalidate();
+  } else if (event.key === '-') {
+    event.preventDefault();
+    orbitController.zoomBy(320);
+    syncMainOrbit();
     invalidate();
   }
-  if (event.key.toLowerCase() === 'r') document.querySelector('#reset').click();
 });
 document.querySelector('#reset').addEventListener('click', () => {
   stopTour();
-  Object.assign(state, { azimuth: 0.48, elevation: 0.18, distance: DEFAULT_DISTANCE, targetHeight: 1.8 });
+  orbitController.reset({ immediate: reducedMotion.matches });
+  syncMainOrbit();
   invalidate();
 });
 document.querySelector('#exposure').addEventListener('input', (event) => {

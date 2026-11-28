@@ -18,6 +18,7 @@ export const ALWAYS_RUN_PATHS = new Set([
   'package-lock.json',
   '.github/workflows/cook-addon.yml',
   'bin/crucible-mcp.mjs',
+  'bin/crucible-oidn-fetch.mjs',
   'scripts/addon-job-paths.mjs',
   'scripts/agent-memory-guard.mjs',
   'scripts/build-mcp.mjs',

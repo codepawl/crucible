@@ -11,6 +11,7 @@
 // so the renderer needs `depth: true`. Cost: the extra attachment and a fullscreen pass that exits early outside blend parts.
 
 import { registerShaderFeatureCode, shaderTransforms } from './shader-registry.js';
+import { backendFor } from './glaze-backend.js';
 
 export const MESH_BLEND_LIMITS = Object.freeze({ radius: Object.freeze([0.005, 2]) });
 export const MESH_BLEND_TAPS = Object.freeze({ count: 24, angleStep: 2.39996323 });
@@ -180,43 +181,14 @@ void main() {
   outputColor.rgb = mix(source.rgb, colorSum / otherWeight, amount);
 }`;
 
-function compileShader(context, kind, source) {
-  const shader = context.createShader(kind);
-  context.shaderSource(shader, source);
-  context.compileShader(shader);
-  if (!context.getShaderParameter(shader, context.COMPILE_STATUS)) {
-    throw new Error(`Mesh blend shader compilation failed: ${context.getShaderInfoLog(shader)}`);
-  }
-  return shader;
-}
-
-function compileProgram(context, vertexSource, fragmentSource) {
-  const program = context.createProgram();
-  context.attachShader(program, compileShader(context, context.VERTEX_SHADER, vertexSource));
-  context.attachShader(program, compileShader(context, context.FRAGMENT_SHADER, fragmentSource));
-  context.linkProgram(program);
-  if (!context.getProgramParameter(program, context.LINK_STATUS)) {
-    throw new Error(`Mesh blend shader linking failed: ${context.getProgramInfoLog(program)}`);
-  }
-  return program;
-}
-
-function createColorTarget(context, width, height, floatColor, filter) {
-  const texture = context.createTexture();
-  context.bindTexture(context.TEXTURE_2D, texture);
-  context.texImage2D(context.TEXTURE_2D, 0, floatColor ? context.RGBA16F : context.RGBA8, width, height, 0, context.RGBA,
-    floatColor ? context.HALF_FLOAT : context.UNSIGNED_BYTE, null);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, filter);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, filter);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
-  const framebuffer = context.createFramebuffer();
-  context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-  context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
-  if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) {
+function createColorTarget(backend, width, height, floatColor, linear) {
+  const target = backend.createFramebufferTarget({ width, height, hdr: Boolean(floatColor), linear, clamp: true });
+  if (!target.complete) {
+    backend.deleteFramebuffer(target.framebuffer);
+    backend.deleteTexture(target.colorTexture);
     throw new Error('Mesh blend framebuffer allocation failed. Choose a lower quality preset.');
   }
-  return { texture, framebuffer };
+  return { texture: target.colorTexture, framebuffer: target.framebuffer };
 }
 
 function sameTable(first, second) {
@@ -237,19 +209,14 @@ registerShaderFeatureCode('meshBlend', Object.freeze({
 // With two outputs the colour output needs its own location too, so a source that declares the ID output gets it spelled out.
 shaderTransforms.push(source => (source.includes('partIdentifier') ? source.replace('\nout vec4 outputColor;', '\nlayout(location = 0) out vec4 outputColor;') : source));
 
-function createPartTarget(context, width, height) {
-  const texture = context.createTexture();
-  context.bindTexture(context.TEXTURE_2D, texture);
-  context.texImage2D(context.TEXTURE_2D, 0, context.RGBA8, width, height, 0, context.RGBA, context.UNSIGNED_BYTE, null);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
-  const framebuffer = context.createFramebuffer();
-  context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-  context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
-  if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) {
+function createPartTarget(backend, width, height) {
+  const target = backend.createFramebufferTarget({ width, height, hdr: false, linear: false, clamp: false });
+  if (!target.complete) {
+    backend.deleteFramebuffer(target.framebuffer);
+    backend.deleteTexture(target.colorTexture);
     throw new Error('Mesh blend framebuffer allocation failed. Choose a lower quality preset.');
   }
-  return { texture, framebuffer };
+  return { texture: target.colorTexture, framebuffer: target.framebuffer };
 }
 
 /**
@@ -259,6 +226,7 @@ function createPartTarget(context, width, height) {
  */
 export function installMeshBlend(renderer) {
   if (renderer.meshBlend) return renderer;
+  const backend = backendFor(renderer);
   const state = { active: false, table: null };
   let program = null;
   let uniforms = null;
@@ -273,24 +241,23 @@ export function installMeshBlend(renderer) {
   }
 
   function uploadTable(table) {
-    const { context } = renderer;
     if (sameTable(state.table, table)) return;
     state.table = table;
     const rows = Math.ceil(table.length / TABLE_WIDTH);
     const padded = new Float32Array(rows * TABLE_WIDTH);
     padded.set(table);
-    radiusTexture ??= context.createTexture();
-    context.bindTexture(context.TEXTURE_2D, radiusTexture);
-    context.texImage2D(context.TEXTURE_2D, 0, context.R32F, TABLE_WIDTH, rows, 0, context.RED, context.FLOAT, padded);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.NEAREST);
-    context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.NEAREST);
+    if (radiusTexture) {
+      backend.uploadDataTexture2D(radiusTexture, { width: TABLE_WIDTH, height: rows, format: 'r32f', data: padded, reallocate: true });
+    } else {
+      radiusTexture = backend.createDataTexture2D({ width: TABLE_WIDTH, height: rows, format: 'r32f', linear: false, clamp: false, data: padded });
+    }
   }
 
-  function releasePartAttachment(context) {
-    if (partRenderbuffer) context.deleteRenderbuffer(partRenderbuffer);
+  function releasePartAttachment() {
+    if (partRenderbuffer) backend.deleteRenderbuffer(partRenderbuffer);
     if (partTarget) {
-      context.deleteTexture(partTarget.texture);
-      context.deleteFramebuffer(partTarget.framebuffer);
+      backend.deleteTexture(partTarget.texture);
+      backend.deleteFramebuffer(partTarget.framebuffer);
     }
     partRenderbuffer = null;
     partTarget = null;
@@ -299,17 +266,11 @@ export function installMeshBlend(renderer) {
 
   // The multisample framebuffer is made again on every resize, so the attachment follows it.
   function attachPartBuffer() {
-    const { context, canvas } = renderer;
+    const { canvas } = renderer;
     if (attachedFramebuffer === renderer.multisampleFramebuffer) return;
-    releasePartAttachment(context);
-    partRenderbuffer = context.createRenderbuffer();
-    context.bindRenderbuffer(context.RENDERBUFFER, partRenderbuffer);
-    context.renderbufferStorageMultisample(context.RENDERBUFFER, renderer.multisampleSamples, context.RGBA8, canvas.width, canvas.height);
-    context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
-    context.framebufferRenderbuffer(context.FRAMEBUFFER, context.COLOR_ATTACHMENT1, context.RENDERBUFFER, partRenderbuffer);
-    context.drawBuffers([context.COLOR_ATTACHMENT0, context.NONE]);
-    context.bindFramebuffer(context.FRAMEBUFFER, null);
-    partTarget = createPartTarget(context, canvas.width, canvas.height);
+    releasePartAttachment();
+    partRenderbuffer = backend.createMultisampleColorAttachment(renderer.multisampleFramebuffer, 1, renderer.multisampleSamples, canvas.width, canvas.height);
+    partTarget = createPartTarget(backend, canvas.width, canvas.height);
     renderer.renderTargets.record('partId', { width: canvas.width, height: canvas.height, format: 'RGBA8', samples: renderer.multisampleSamples });
     renderer.renderTargets.record('partIdResolved', { width: canvas.width, height: canvas.height, format: 'RGBA8' });
     attachedFramebuffer = renderer.multisampleFramebuffer;
@@ -318,67 +279,53 @@ export function installMeshBlend(renderer) {
   // The sky never writes the ID attachment and the frame's clear may leave it out, so it is cleared here: the background then
   // reads as no part.
   function clearParts() {
-    const { context } = renderer;
-    context.bindFramebuffer(context.FRAMEBUFFER, renderer.multisampleFramebuffer);
-    context.drawBuffers([context.NONE, context.COLOR_ATTACHMENT1]);
-    context.clearBufferfv(context.COLOR, 1, [0, 0, 0, 0]);
-    context.drawBuffers([context.COLOR_ATTACHMENT0, context.NONE]);
+    backend.clearColorAttachment(renderer.multisampleFramebuffer, 1, [0, 0, 0, 0]);
   }
 
   // The resolve averages the samples of an edge pixel; the checksum byte in the shader finds those pixels.
   function resolveParts() {
-    const { context, canvas } = renderer;
-    context.bindFramebuffer(context.READ_FRAMEBUFFER, renderer.multisampleFramebuffer);
-    context.readBuffer(context.COLOR_ATTACHMENT1);
-    context.bindFramebuffer(context.DRAW_FRAMEBUFFER, partTarget.framebuffer);
-    context.blitFramebuffer(0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height, context.COLOR_BUFFER_BIT, context.NEAREST);
-    context.readBuffer(context.COLOR_ATTACHMENT0);
+    const { canvas } = renderer;
+    backend.resolveColorAttachment(renderer.multisampleFramebuffer, partTarget.framebuffer, 1, canvas.width, canvas.height);
   }
 
   function apply(rendererInUse, frame, effects, sourceTexture) {
     if (!state.active) return null;
     if (!renderer.depthTexture) throw new Error('Mesh blend requires depth:true on the renderer.');
-    const { context, canvas } = renderer;
+    const { canvas } = renderer;
     resolveParts();
     if (!program) {
-      program = compileProgram(context, fullscreenVertex, blendFragment);
+      program = backend.compileProgram(fullscreenVertex, blendFragment);
       uniforms = Object.fromEntries(['sourceTexture', 'sceneDepth', 'partTexture', 'radiusTexture', 'inverseViewProjection', 'eye', 'pixelsPerMetre', 'orthographic']
-        .map(name => [name, context.getUniformLocation(program, name)]));
+        .map(name => [name, backend.uniformLocation(program, name)]));
     }
-    outputTarget ??= createColorTarget(context, canvas.width, canvas.height, renderer.hdr, context.LINEAR);
-    context.bindFramebuffer(context.FRAMEBUFFER, outputTarget.framebuffer);
-    context.viewport(0, 0, canvas.width, canvas.height);
-    context.disable(context.DEPTH_TEST);
-    context.disable(context.CULL_FACE);
-    context.bindVertexArray(null);
-    context.useProgram(program);
+    outputTarget ??= createColorTarget(backend, canvas.width, canvas.height, renderer.hdr, true);
+    backend.beginFullscreenPass(outputTarget.framebuffer, canvas.width, canvas.height, program);
     [[sourceTexture, 'sourceTexture'], [renderer.depthTexture, 'sceneDepth'], [partTarget.texture, 'partTexture'], [radiusTexture, 'radiusTexture']].forEach(([texture, name], unit) => {
-      context.activeTexture(context.TEXTURE0 + unit);
-      context.bindTexture(context.TEXTURE_2D, texture);
-      context.uniform1i(uniforms[name], unit);
+      backend.bindTextureUnit(unit, texture);
+      backend.uniform1i(uniforms[name], unit);
     });
-    context.uniformMatrix4fv(uniforms.inverseViewProjection, false, renderer.inverseViewProjection);
-    context.uniform3fv(uniforms.eye, frame.eye);
-    context.uniform1f(uniforms.pixelsPerMetre, renderer.projection[5] * canvas.height / 2);
-    context.uniform1f(uniforms.orthographic, renderer.projection[15] === 1 ? 1 : 0);
-    context.drawArrays(context.TRIANGLES, 0, 3);
+    backend.uniformMatrix4fv(uniforms.inverseViewProjection, renderer.inverseViewProjection);
+    backend.uniform3fv(uniforms.eye, frame.eye);
+    backend.uniform1f(uniforms.pixelsPerMetre, renderer.projection[5] * canvas.height / 2);
+    backend.uniform1f(uniforms.orthographic, renderer.projection[15] === 1 ? 1 : 0);
+    backend.drawFullscreenTriangles();
     return outputTarget.texture;
   }
 
-  function releaseTargets(context) {
+  function releaseTargets() {
     if (outputTarget) {
-      context.deleteTexture(outputTarget.texture);
-      context.deleteFramebuffer(outputTarget.framebuffer);
+      backend.deleteTexture(outputTarget.texture);
+      backend.deleteFramebuffer(outputTarget.framebuffer);
     }
     outputTarget = null;
-    releasePartAttachment(context);
+    releasePartAttachment();
     renderer.renderTargets.release('partId', 'partIdResolved');
   }
 
-  function dispose(context) {
-    releaseTargets(context);
-    if (program) context.deleteProgram(program);
-    if (radiusTexture) context.deleteTexture(radiusTexture);
+  function dispose() {
+    releaseTargets();
+    if (program) backend.deleteProgram(program);
+    if (radiusTexture) backend.deleteTexture(radiusTexture);
     program = null;
     radiusTexture = null;
     state.table = null;
@@ -409,14 +356,7 @@ export function installMeshBlend(renderer) {
 
   // A draw into an enabled draw buffer its program has no output for is an error, and only the main program writes the ID, so
   // the ID attachment is enabled while that program draws into the multisample framebuffer and off for the sky, liquid and others.
-  const { context } = renderer;
-  const useProgram = context.useProgram.bind(context);
-  context.useProgram = program => {
-    useProgram(program);
-    if (state.active && context.getParameter(context.DRAW_FRAMEBUFFER_BINDING) === renderer.multisampleFramebuffer) {
-      context.drawBuffers([context.COLOR_ATTACHMENT0, program === renderer.program ? context.COLOR_ATTACHMENT1 : context.NONE]);
-    }
-  };
+  backend.watchProgramAttachment(1, () => (state.active ? renderer.multisampleFramebuffer : null), programUsed => programUsed === renderer.program);
 
   renderer.postStages.push({ name: 'Mesh blend', apply, releaseTargets, dispose });
   const drawFrame = renderer.render.bind(renderer);

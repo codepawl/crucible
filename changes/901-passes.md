@@ -1,0 +1,1 @@
+- Cascaded shadows (`cascaded-shadows.js`), environment prefiltering (`environment.js`), post steps (`post-steps.js`, `camera-effects.js`, `post-mask.js`) and splat terrain textures (`splat-renderer.js`) now route their WebGL2 calls through `GlazeBackend` while keeping raw-context fallback for standalone callers; frames are unchanged (#901).

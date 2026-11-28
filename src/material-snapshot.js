@@ -6,7 +6,7 @@
 export const SNAPSHOT_VALUE_FIELDS = Object.freeze(['map', 'normalMap', 'metallicRoughnessMap', 'occlusionMap', 'emissiveMap', 'tag', 'alphaMode', 'alphaCutoff', 'opacity', 'doubleSided', 'depthTest', 'throughGlass', 'occlusionStrength', 'moss', 'boxMapScale', 'boxMapAxis', 'lightMapScale', 'layerMaps', 'heightMap', 'heightScale', 'heightFade', 'heightSteps', 'lightMask', 'clearcoat', 'clearcoatRoughness', 'transmission', 'thickness', 'ior', 'dispersion', 'sheenRoughness', 'specular', 'anisotropy', 'anisotropyRotation', 'iridescence', 'iridescenceIor', 'iridescenceThickness', 'attenuationDistance', 'toon', 'toonColors', 'toonEdge', 'emissionFresnel', 'softEdge']);
 
 /** Fields holding an array or descriptor, which can change in place. A material that sets one is never snapshotted. */
-export const SNAPSHOT_REFERENCE_FIELDS = Object.freeze(['normalScale', 'detailNormalMap', 'detailNormalScale', 'detailUvScale', 'detailRoughnessStrength', 'mossColor', 'lightMap', 'attenuationColor', 'sheenColor', 'specularColor', 'subsurface', 'wear', 'surfaceCover', 'emissionMask', 'retro', 'waterGlint']);
+export const SNAPSHOT_REFERENCE_FIELDS = Object.freeze(['normalScale', 'detailNormalMap', 'detailNormalScale', 'detailUvScale', 'detailRoughnessStrength', 'mossColor', 'lightMap', 'attenuationColor', 'sheenColor', 'specularColor', 'subsurface', 'wear', 'surfaceCover', 'emissionMask', 'retro', 'waterGlint', 'toonRim', 'toonBase']);
 
 function hasNoReferenceFields(material) {
   return material.normalScale === undefined &&
@@ -24,7 +24,9 @@ function hasNoReferenceFields(material) {
     material.surfaceCover === undefined &&
     material.emissionMask === undefined &&
     material.retro === undefined &&
-    material.waterGlint === undefined;
+    material.waterGlint === undefined &&
+    material.toonRim === undefined &&
+    material.toonBase === undefined;
 }
 
 export class MaterialSnapshot {

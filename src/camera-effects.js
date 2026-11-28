@@ -1,6 +1,7 @@
 import { mat4 } from 'gl-matrix';
 import { applyProjection, requireNonDegenerateView, requirePositiveFinite } from './camera.js';
-import { compileProgram, fullscreenVertex } from './gl-program.js';
+import { fullscreenVertex } from './gl-program.js';
+import { backendFor, resolveGlazeBackend } from './glaze-backend.js';
 
 // Depth of field and camera motion blur as optional full-frame stages. The core renderer carries no shader text for
 // them: installCameraEffects adds the stages, and each one compiles and allocates only when a frame turns it on.
@@ -91,24 +92,16 @@ void main() {
 
 /** A colour target of the canvas size divided by `divisor` (rounded up), for a stage that works at a lower resolution. */
 export function createTarget(renderer, divisor = 1) {
-  const context = renderer.context;
+  const backend = backendFor(renderer);
   const width = Math.ceil(renderer.canvas.width / divisor);
   const height = Math.ceil(renderer.canvas.height / divisor);
-  const texture = context.createTexture();
-  context.bindTexture(context.TEXTURE_2D, texture);
-  context.texImage2D(context.TEXTURE_2D, 0, renderer.hdr ? context.RGBA16F : context.RGBA8, width, height, 0, context.RGBA,
-    renderer.hdr ? context.HALF_FLOAT : context.UNSIGNED_BYTE, null);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MIN_FILTER, context.LINEAR);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_MAG_FILTER, context.LINEAR);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_S, context.CLAMP_TO_EDGE);
-  context.texParameteri(context.TEXTURE_2D, context.TEXTURE_WRAP_T, context.CLAMP_TO_EDGE);
-  const framebuffer = context.createFramebuffer();
-  context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
-  context.framebufferTexture2D(context.FRAMEBUFFER, context.COLOR_ATTACHMENT0, context.TEXTURE_2D, texture, 0);
-  if (context.checkFramebufferStatus(context.FRAMEBUFFER) !== context.FRAMEBUFFER_COMPLETE) {
+  const target = backend.createFramebufferTarget({ width, height, hdr: Boolean(renderer.hdr), linear: true, clamp: true });
+  if (!target.complete) {
+    backend.deleteFramebuffer(target.framebuffer);
+    backend.deleteTexture(target.colorTexture);
     throw new Error('Camera effect framebuffer allocation failed. Choose a lower quality preset.');
   }
-  return { texture, framebuffer };
+  return { texture: target.colorTexture, framebuffer: target.framebuffer };
 }
 
 /**
@@ -119,46 +112,42 @@ export function createStage({ name, fragment, uniformNames, isActive, setUniform
   let program = null;
   let uniforms = null;
   let target = null;
+  let activeBackend = null;
 
-  function releaseTargets(context) {
+  function releaseTargets(contextOrBackend) {
     if (!target) return;
-    context.deleteTexture(target.texture);
-    context.deleteFramebuffer(target.framebuffer);
+    const backend = resolveGlazeBackend(contextOrBackend, activeBackend);
+    backend.deleteTexture(target.texture);
+    backend.deleteFramebuffer(target.framebuffer);
     target = null;
   }
 
   function apply(renderer, frame, effects, sourceTexture) {
     if (!isActive(effects, frame)) return null;
     if (!renderer.depthTexture) throw new Error(`${name} requires depth:true on the renderer.`);
-    const context = renderer.context;
+    const backend = activeBackend = backendFor(renderer);
     if (!program) {
-      program = compileProgram(context, fullscreenVertex, fragment);
+      program = backend.compileProgram(fullscreenVertex, fragment);
       const names = ['sourceTexture', 'sceneDepth', 'inverseViewProjection', 'resolution', ...uniformNames];
-      uniforms = Object.fromEntries(names.map(uniformName => [uniformName, context.getUniformLocation(program, uniformName)]));
+      uniforms = Object.fromEntries(names.map(uniformName => [uniformName, backend.uniformLocation(program, uniformName)]));
     }
     target ??= createTarget(renderer);
-    context.bindFramebuffer(context.FRAMEBUFFER, target.framebuffer);
-    context.viewport(0, 0, renderer.canvas.width, renderer.canvas.height);
-    context.disable(context.DEPTH_TEST);
-    context.disable(context.CULL_FACE);
-    context.bindVertexArray(null);
-    context.useProgram(program);
-    context.activeTexture(context.TEXTURE0);
-    context.bindTexture(context.TEXTURE_2D, sourceTexture);
-    context.uniform1i(uniforms.sourceTexture, 0);
-    context.activeTexture(context.TEXTURE1);
-    context.bindTexture(context.TEXTURE_2D, renderer.depthTexture);
-    context.uniform1i(uniforms.sceneDepth, 1);
-    context.uniformMatrix4fv(uniforms.inverseViewProjection, false, renderer.inverseViewProjection);
-    context.uniform2f(uniforms.resolution, renderer.canvas.width, renderer.canvas.height);
-    setUniforms(context, uniforms, renderer, frame, effects);
-    context.drawArrays(context.TRIANGLES, 0, 3);
+    backend.beginFullscreenPass(target.framebuffer, renderer.canvas.width, renderer.canvas.height, program);
+    backend.bindTextureUnit(0, sourceTexture);
+    backend.uniform1i(uniforms.sourceTexture, 0);
+    backend.bindTextureUnit(1, renderer.depthTexture);
+    backend.uniform1i(uniforms.sceneDepth, 1);
+    backend.uniformMatrix4fv(uniforms.inverseViewProjection, renderer.inverseViewProjection);
+    backend.uniform2f(uniforms.resolution, renderer.canvas.width, renderer.canvas.height);
+    setUniforms(renderer.context, uniforms, renderer, frame, effects);
+    backend.drawFullscreenTriangles();
     return target.texture;
   }
 
-  function dispose(context) {
-    releaseTargets(context);
-    if (program) context.deleteProgram(program);
+  function dispose(contextOrBackend) {
+    const backend = resolveGlazeBackend(contextOrBackend, activeBackend);
+    releaseTargets(backend);
+    if (program) backend.deleteProgram(program);
     program = null;
   }
 

@@ -63,3 +63,15 @@ test('the cumulus towers recipe ships with the still that the clouds guide shows
   assert.ok(existsSync(new URL('../public/recipes/cumulus-towers.webp', import.meta.url)));
   assert.ok(readFileSync(new URL('../docs/modeling.md', import.meta.url), 'utf8').includes('https://crucible.codepawl.com/recipes/cumulus-towers.json'));
 });
+
+test('the cumulus towers recipe places a low camera below the cloud bases under a side sun', () => {
+  const recipe = JSON.parse(recipeText);
+  const towers = recipe.nodes.filter(node => node.id.startsWith('tower-'));
+  for (const tower of towers) {
+    assert.ok(recipe.camera.eye[1] < tower.translation[1], `${tower.id} sits above the camera eye so the lifted underside is visible`);
+  }
+  const { sunElevation, sunRotation } = recipe.environment.sky;
+  assert.ok(sunElevation > 0 && sunElevation <= 30, 'low side sun keeps directional contrast and sky glow clear');
+  const sideLit = (sunRotation >= 45 && sunRotation <= 120) || (sunRotation >= 240 && sunRotation <= 315);
+  assert.ok(sideLit, `sunRotation ${sunRotation} puts the sun to the side so the silver lining reads as sun-side`);
+});

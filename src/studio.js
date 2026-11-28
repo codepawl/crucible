@@ -17,6 +17,7 @@ import { PACK_SHADER_MODULES, PACK_UNSUPPORTED_MODULES } from './scene-pack-shad
 import { STUDIO_CSS } from './studio-styles.js';
 import { AGENT_CHAT_CSS, createAgentPanel } from './studio-agent-chat.js';
 import { createApplyMenus } from './studio-apply-menu.js';
+import { createViewportContextMenus, createViewportMenuOpening, openPopoverNearPointer, selectForContextMenu } from './studio-viewport-context-menu.js';
 import { createMeshMenus } from './studio-mesh-menus.js';
 import { resolveMouseMap } from './studio-mouse-map.js';
 import { createMouseInput, createViewportTargetFilter, isEditableTarget } from './studio-mouse-input.js';
@@ -40,15 +41,16 @@ import './studio-features.js';
 import { hasStudioTab, registeredStudioMenuEntries, registeredStudioStyles, registeredStudioTabIds, registeredStudioTabs, registeredStudioWorkspaces, registerStudioTab } from './studio-registry.js';
 import { createShapeSettings } from './studio-shape-settings.js';
 import { MIXED_PROPERTY_LABEL, MIXED_SELECT_VALUE, summarizeNodeSelection, syncObjectAndMaterialPanels } from './studio-multi-edit.js';
-import { createKeyMarkers } from './studio-timeline-keys.js';
+import { createTimelinePanel } from './studio-timeline-panel.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
-import { AXIS_COLORS, buildGridParts, cameraVisibleHeight, createViewWidget, describeBounds, describeCamera, describeGridStep, gridLayout, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart } from './studio-viewport-aids.js';
+import { AXIS_COLORS, buildGridParts, createViewWidget, describeBounds, describeCamera, describeGridStep, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart, viewportGridLayout } from './studio-viewport-aids.js';
 import { formatLengthInputValue, lengthFromUnit, parseLengthInput } from './studio-units.js';
 // The grid is textured, and replaceParts takes a textured part only with this module loaded.
 import './replace-textured-parts.js';
 import { clearStudioDraft, createDraftNotice, DRAFT_SAVE_DELAY_MILLISECONDS, draftDiffersFrom, loadStudioDraft, saveStudioDraft, watchBeforeUnload } from './studio-draft.js';
 import { createBakeMark } from './studio-bake-mark.js';
 import { watchScrollFade } from './studio-scroll-cue.js';
+import { createToolbarTooltip, writeViewChipTitles } from './studio-toolbar-tips.js';
 import { extensionOf, openNameEditor, splitFileName, validateFileStem, validateNodeLabel, validateShotName } from './studio-name-editor.js';
 import { isModifierKey, longestTransitionMilliseconds, popoverOpeningStyle } from './studio-popover-motion.js';
 import { SNAP_TARGETS } from './studio-snapping.js';
@@ -60,6 +62,7 @@ import { assertAgentName, createAgentPresence, DEFAULT_AGENT_NAME, describeAgent
 import { STUDIO_LENS_PRESETS, STUDIO_MATERIAL_PRESETS, STUDIO_PRIMITIVE_GROUPS, STUDIO_PRIMITIVES, primitiveGeometrySpec, STUDIO_TEMPLATES, STUDIO_TOOLS, STUDIO_VIEW_PRESETS, buildTemplateRecipe } from './studio-templates.js';
 import { createStudioController, hasAnimatedData, linearRgbToHex, quaternionToEulerDegrees, roundValue } from './studio-controller.js';
 import { createPartSyncTracker } from './studio-live-parts.js';
+import './studio-look-gallery.js';
 import { createFaceMaterialPanel, planJoinOperations } from './studio-material-slots.js';
 import { createMaterialSwatches } from './studio-material-swatches.js';
 import { createEmptySelectState } from './studio-empty-select.js';
@@ -190,7 +193,6 @@ function setButtonIcon(button, iconName, label) {
     button.replaceChildren(createIcon(button.ownerDocument, iconName));
   }
   button.setAttribute('aria-label', label);
-  button.title = label;
 }
 
 function createIconButton(documentReference, iconName, label, properties = {}) {
@@ -1517,11 +1519,18 @@ export function createStudio(container, {
     getMeshEditor: () => meshEditor,
     openPopoverAtMenuPoint: popover => openPopoverAt(popover, ...(lastObjectMenuPoint ?? [0, 0])),
   });
+  const viewportMenus = createViewportContextMenus({
+    createMenuPopover, createMenuItem, controller, announce: message => announce(message), announceError: message => announceError(message),
+    openPopoverAtMenuPoint: popover => openPopoverAt(popover, ...(lastObjectMenuPoint ?? [0, 0])),
+    getAddPopover: () => addPopover, onPaste: () => pasteCopy(), onShowAll: () => showAllHidden(),
+  });
   const objectPopover = buildRegisteredMenuPopover('crucible-studio-pop-object', 'object', [
     { order: 10, label: 'Frame', actionId: 'view.frame', icon: 'frame', onChoose: () => flyToSelection() },
     { order: 20, label: 'Rename', actionId: 'edit.rename', icon: 'text', onChoose: () => renameActiveObjectFromMenu() },
     { order: 30, label: 'Duplicate', actionId: 'edit.duplicate', icon: 'duplicateObject', onChoose: () => duplicateSelection() },
+    { order: 35, element: viewportMenus.addModifierRow },
     { order: 40, label: 'Hide', actionId: 'edit.hide', icon: 'eyeOff', onChoose: () => hideSelection() },
+    { order: 45, label: 'Parent', actionId: 'edit.parent', icon: 'node', onChoose: () => parentSelection() },
     { order: 50, label: 'Reset position', actionId: 'edit.resetPosition', icon: 'translate', onChoose: () => resetSelectionTransform('translation') },
     { order: 60, label: 'Reset rotation', actionId: 'edit.resetRotation', icon: 'rotate', onChoose: () => resetSelectionTransform('rotation') },
     { order: 70, label: 'Reset scale', actionId: 'edit.resetScale', icon: 'scale', onChoose: () => resetSelectionTransform('scale') },
@@ -1529,22 +1538,9 @@ export function createStudio(container, {
     { order: 90, element: applyMenus.originRow },
     { order: 100, label: 'Delete', actionId: 'edit.delete', icon: 'remove', onChoose: () => deleteButton.click() },
   ]);
+  viewportMenus.watchObjectMenu(objectPopover);
   let lastObjectMenuPoint = null;
-  function openPopoverAt(popover, clientX, clientY) {
-    const windowWidth = documentReference.defaultView?.innerWidth ?? 1280;
-    const windowHeight = documentReference.defaultView?.innerHeight ?? 800;
-    popover.togglePopover?.(false);
-    popover.style.left = `${Math.round(Math.max(8, Math.min(clientX, windowWidth - 256)))}px`;
-    popover.style.right = 'auto';
-    // In the lower half the menu hangs from the pointer and grows upward, so it stays on screen at any height.
-    const opensUpward = clientY > windowHeight / 2;
-    popover.style.top = opensUpward ? 'auto' : `${Math.round(clientY)}px`;
-    popover.style.bottom = opensUpward ? `${Math.round(Math.max(8, windowHeight - clientY))}px` : 'auto';
-    const opening = popoverOpeningStyle({ opensUpward });
-    popover.style.setProperty('--studio-popover-origin', opening.origin);
-    popover.style.setProperty('--studio-popover-shift', opening.shift);
-    popover.showPopover?.();
-  }
+  const openPopoverAt = (popover, clientX, clientY) => openPopoverNearPointer(documentReference, popover, clientX, clientY);
   const meshMenus = createMeshMenus({
     createMenuPopover,
     createMenuItem,
@@ -1773,7 +1769,7 @@ export function createStudio(container, {
     startMenuGroup(importAndExportRows[0]),
     ...importAndExportRows.slice(1),
   );
-  for (const popoverElement of [newPopover, addPopover, editPopover, objectPopover, ...meshMenus.popovers, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover, snapPopover]) {
+  for (const popoverElement of [newPopover, addPopover, editPopover, objectPopover, ...viewportMenus.popovers, ...meshMenus.popovers, applyMenus.applyPopover, applyMenus.originPopover, viewPopover, helpPopover, snapPopover]) {
     popoverElement.addEventListener('click', event => {
       const clickedButton = event.target.closest?.('button');
       if (clickedButton && !clickedButton.dataset.keepsMenu) popoverElement.hidePopover?.();
@@ -1824,6 +1820,7 @@ export function createStudio(container, {
     aiSyncPopover,
     editPopover,
     objectPopover,
+    ...viewportMenus.popovers,
     ...meshMenus.popovers,
     applyMenus.applyPopover,
     applyMenus.originPopover,
@@ -2166,6 +2163,12 @@ export function createStudio(container, {
     createElement(documentReference, 'div', { className: 'crucible-studio-toolbar-rule', attributes: { role: 'separator', 'aria-orientation': 'horizontal' } }),
     createElement(documentReference, 'div', { className: 'crucible-studio-group', attributes: { role: 'group', 'aria-label': 'Show or hide' } }, gridButton, seeThroughButton, toggleDocksButton),
   );
+  const tooltip = createToolbarTooltip({ root, documentReference }, { toolButtons, meshModeButtons, meshObjectButton, proportionalButton, proportionalMenuButton, meshToolsButton, snapToggleButton, snapTargetButton, addMenuButton, undoButton, redoButton, gridButton, seeThroughButton, toggleDocksButton, duplicateButton, deleteButton, frameButton }, {
+    keyOf: actionId => keyLabel(keymap, actionId),
+    lastKeyOf: actionId => lastKeyLabel(keymap, actionId),
+    toolActions: TOOL_ACTION_BY_TOOL, meshModes: MESH_MODES,
+    snapState: () => ({ enabled: preferences.snapEnabled, targetLabel: snapTargetOf(preferences.snapTarget).label }),
+  });
   wireRovingFocusFallback(toolbarElement, [...toolButtons, snapToggleButton, snapTargetButton, addMenuButton, undoButton, redoButton, gridButton, seeThroughButton, toggleDocksButton], { vertical: true });
 
   // Viewport Top-Right 3D View Widget
@@ -2564,8 +2567,7 @@ export function createStudio(container, {
   const panelContext = {
     documentReference,
     controller,
-    announce,
-    announceError,
+    announce, announceError, createRenderer,
     builders: { createElement, createIcon, createIconButton, createVectorRow },
     inlinePanels: { node: nodePanelBody, material: materialPanelBody, look: lookPanelBody, camera: cameraPanelBody },
     syncLookPanels: () => syncLookPanels(),
@@ -2854,20 +2856,20 @@ export function createStudio(container, {
       controller.setMotionTime(seconds);
     }
   });
-  const keyMarkers = createKeyMarkers({
-    documentReference,
-    controller,
-    keysElement,
-    trackElement,
-    announce,
+  const timelinePanel = createTimelinePanel({
+    documentReference, createElement, createIcon, controller, announce, keysElement, trackElement,
+    createIconButton: (iconName, label, properties) => createIconButton(documentReference, iconName, label, properties),
     isDeleteKey: event => findKeymapAction(keymap, event, 'normal')?.actionId === 'edit.delete',
     fallbackFocus: keyframeButton,
+    propertyRows: { translation: positionRow, rotation: rotationRow, scale: scaleRow },
   });
 
   const bottomElement = createElement(
     documentReference,
     'footer',
     { className: 'crucible-studio-bottombar crucible-studio-island', attributes: { 'aria-label': 'Timeline' } },
+    timelinePanel.rowsElement,
+    timelinePanel.editorElement,
     createElement(documentReference, 'div', { className: 'crucible-studio-scrub' }, playButton, keyframeButton, autoKeyButton, trackElement, timeOutput),
     quickBookmarksRow,
   );
@@ -3082,14 +3084,7 @@ export function createStudio(container, {
   function refreshKeyLabels() {
     for (const { element, actionId } of menuKeyViews) setShortcutLabel(element, keyLabel(keymap, actionId));
     for (const { button, iconName, describe } of keyTooltipViews) setButtonIcon(button, iconName, describe());
-    const viewTitles = { front: ['Front view', 'view.front'], right: ['Right view', 'view.right'], top: ['Top view', 'view.top'], isometric: ['Isometric view', null] };
-    for (const button of viewPresetButtons) {
-      const [labelText, actionId] = viewTitles[button.dataset.view];
-      const shortcut = actionId ? keyLabel(keymap, actionId) : '';
-      button.title = shortcut ? `${labelText} (${shortcut})` : labelText;
-    }
-    const projectionShortcut = keyLabel(keymap, 'view.projection');
-    projectionPillButton.title = projectionShortcut ? `Perspective / Orthographic (${projectionShortcut})` : 'Perspective / Orthographic';
+    writeViewChipTitles(viewPresetButtons, projectionPillButton, actionId => keyLabel(keymap, actionId));
     setButtonIcon(playButton, playing ? 'pause' : 'play', playTooltip(playing));
     fillShortcutsGrid();
     syncHintBar();
@@ -3317,7 +3312,7 @@ export function createStudio(container, {
   function syncViewportAids() {
     const camera = controller.viewCamera;
     viewWidget.update(camera);
-    const gridStep = gridLayout({ visibleHeight: cameraVisibleHeight(camera), viewportHeight: controller.viewportHeight, target: camera.target, eye: camera.projection === 'orthographic' ? undefined : camera.eye }).step;
+    const gridStep = viewportGridLayout(camera, controller.viewportHeight, { sizeForEye: camera.projection !== 'orthographic' }).step;
     readoutCamera.textContent = gridVisible ? `${describeCamera(camera)} · Grid ${describeGridStep(gridStep)}` : describeCamera(camera);
     if (controller.activeTab === 'export') syncExportFacts();
     if (selectionReadoutStale) {
@@ -3896,7 +3891,7 @@ export function createStudio(container, {
     gridParts ??= buildGridParts();
     gridPartsByName ??= new Map(gridParts.map(part => [part.name, part]));
     const camera = controller.viewCamera;
-    placeGridParts(gridPartsByName, gridLayout({ visibleHeight: cameraVisibleHeight(camera), viewportHeight: controller.viewportHeight, target: camera.target, eye: camera.eye }));
+    placeGridParts(gridPartsByName, viewportGridLayout(camera, controller.viewportHeight));
     return [...sceneParts, ...gridParts];
   }
 
@@ -4772,7 +4767,7 @@ export function createStudio(container, {
     setButtonIcon(playButton, playing ? 'pause' : 'play', playTooltip(playing));
     timeOutput.textContent = `${controller.motionTime.toFixed(1)} / ${duration.toFixed(1)} s`;
     autoKeyButton.setAttribute('aria-pressed', controller.autoKey ? 'true' : 'false');
-    keyMarkers.sync(Math.max(0.1, duration));
+    timelinePanel.sync(Math.max(0.1, duration));
     syncPropertyPanels();
     syncHintBar();
     syncFileBanner();
@@ -5149,7 +5144,7 @@ export function createStudio(container, {
     event.stopPropagation();
     selectSceneObjectAndShowItsPanel(key);
     const object = controller.listSceneObjects().find(candidate => candidate.key === key);
-    if (controller.tool !== 'translate') return;
+    if (controller.tool !== 'translate' || event.target.hasAttribute('data-edge-pointer')) return;
     const dragState = beginSceneObjectDrag(controller, object, localCoordinates(event), event.pointerId, announceError);
     if (!dragState) return;
     pointerState = dragState;
@@ -5240,13 +5235,8 @@ export function createStudio(container, {
       } else {
         // Shift or Ctrl (Command) with a left click adds the object under the pointer to the selection, or takes it out.
         const mode = (event.button ?? 0) === 0 && (event.shiftKey || event.ctrlKey || event.metaKey) ? 'toggle' : 'replace';
-        selectNodeAndShowItsPanel(() => controller.pickAt(coordinates.x, coordinates.y, { mode }));
-        // A right press that did not drag picked what is under it: an object there gets its menu. It opens after
-        // this release has been handled, because the release itself closes any open menu.
-        if (event.button === 2 && controller.selectedNodeId) {
-          const { clientX, clientY } = event;
-          setTimeout(() => openObjectMenu(clientX, clientY), 0);
-        }
+        selectNodeAndShowItsPanel(() => (event.button === 2 ? selectForContextMenu(controller, coordinates.x, coordinates.y) : controller.pickAt(coordinates.x, coordinates.y, { mode })));
+        if (event.button === 2) viewportMenuOpening.openAfterRelease(event);
       }
     }
   }
@@ -5255,6 +5245,12 @@ export function createStudio(container, {
   });
   viewportElement.addEventListener('pointerleave', () => {
     viewportPointer = null;
+  });
+  const viewportMenuOpening = createViewportMenuOpening({
+    controller, documentReference, viewportElement, canvas, openObjectMenu, selectInPanel: selectNodeAndShowItsPanel,
+    getViewportPointer: () => viewportPointer, isHoldingObject: () => controller.dragging || Boolean(modalTransform),
+    isKeyboardBlocked: () => Boolean(meshEditor?.active) || anyDialogIsOpen() || viewingShot(),
+    openScenePopover: (clientX, clientY) => openPopoverAt(viewportMenus.scenePopover, clientX, clientY), onOpen: point => { lastObjectMenuPoint = point; },
   });
   documentReference.addEventListener('contextmenu', onModalContextMenu, true);
   documentReference.addEventListener('click', onModalClick, true);
@@ -5821,6 +5817,7 @@ export function createStudio(container, {
       return;
     }
     if (isEditableTarget(event.target, event.key)) return;
+    if (viewportMenuOpening.handleKeydown(event)) return;
     // Esc or a key pressed over an open mesh menu belongs to the menu, not to edit mode.
     if (meshMenus.isOpen()) return;
     const editingMesh = Boolean(meshEditor?.active);
@@ -6134,6 +6131,7 @@ export function createStudio(container, {
       clearTimeout(awaitedProgramTimer);
       agentPresence.dispose();
       agentPanel?.dispose();
+      tooltip.dispose();
       settings.dispose();
       systemSchemeQuery?.removeEventListener?.('change', onSystemSchemeChange);
       if (frameHandle) cancelAnimationFrame(frameHandle);

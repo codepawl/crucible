@@ -3,6 +3,7 @@ import './view2d.css';
 import './asset-viewer.css';
 import { mat4, vec3 } from 'gl-matrix';
 import { CrucibleRenderer, cameraView, fitOrthographicHeight } from './index.js';
+import { attachOrbitControls, createOrbitController } from './site-controls.js';
 import { loadGltf } from './gltf.js';
 import { loadHdri } from './hdri.js';
 import { sceneFileLighting, sunShadowBounds } from './dense-lods.js';
@@ -41,6 +42,16 @@ const FLOOR_COLOR = [0.34, 0.22, 0.13];
 const FRAME_MARGIN = 1.08;
 // Distance, in picture heights, at which the lens shows that height of the table; measured on the desk at pitch 1.15.
 const FOCUS_DISTANCE_FACTOR = 0.86;
+const orbitController = createOrbitController({
+  minPitch: -1.4,
+  maxPitch: 1.4,
+  minDistance: 0.01,
+  maxDistance: 1000,
+  orbitSpeed: 0.008,
+  panSpeed: 0.0016,
+  zoomSpeed: 0.001,
+  moveSpeed: 0.6,
+});
 const state = { view: 'perspective', yaw: DEFAULT_SETTING.yaw, pitch: DEFAULT_SETTING.pitch, zoom: 1, time: 0, clip: 0, playing: false };
 let setting = DEFAULT_SETTING;
 let asset;
@@ -48,9 +59,17 @@ let renderer;
 let bounds;
 let scheduledFrame = 0;
 let lastTime = 0;
-let pointer;
 let loadingRequest = 0;
+let homePerspectiveDistance = 1;
+let focusOrigin = [0, 0, 0];
 const skyRequests = new Map();
+
+function syncOrbitState() {
+  const current = orbitController.state();
+  state.yaw = current.yaw;
+  state.pitch = current.pitch;
+  state.zoom = Math.max(0.1, Math.min(10, current.distance / homePerspectiveDistance));
+}
 
 // Each sky is fetched once; a page that cannot fetch it still shows the asset, lit by the default sky.
 function loadSky({ skyUrl, skyRotation, skyIntensity }) {
@@ -116,7 +135,11 @@ function frame() {
   const aspect = canvas.width / canvas.height;
   // A narrow canvas (a phone) fits a tighter box, so the subject keeps most of the width instead of a third.
   const framed = (aspect < 1 && setting.portraitFocus) || setting.focus || bounds;
-  const target = framed.minimum.map((value, axis) => (value + framed.maximum[axis]) / 2);
+  const baseTarget = framed.minimum.map((value, axis) => (value + framed.maximum[axis]) / 2);
+  const offset = orbitController.state().target;
+  const target = state.view === 'perspective'
+    ? baseTarget.map((value, axis) => value + (offset[axis] - focusOrigin[axis]))
+    : baseTarget;
   const extent = Math.max(...bounds.maximum.map((value, axis) => value - bounds.minimum[axis]), 0.01);
   const focusExtent = Math.max(...framed.maximum.map((value, axis) => value - framed.minimum[axis]), 0.01);
   const view = cameraView(state.view, { target, distance: focusExtent * 2.5 });
@@ -144,15 +167,18 @@ function renderAt(time = state.time) {
 function tick(timestamp) {
   scheduledFrame = 0;
   if (document.hidden) return;
-  if (state.playing && duration()) state.time = (state.time + Math.min((timestamp - lastTime) / 1000, 0.05)) % duration();
+  const deltaSeconds = Math.min((timestamp - lastTime) / 1000, 0.05);
+  if (state.playing && duration()) state.time = (state.time + deltaSeconds) % duration();
   lastTime = timestamp;
+  const pose = orbitController.step(deltaSeconds || 0.016);
+  if (pose.active) syncOrbitState();
   try {
     renderAt();
   } catch (error) {
     pause();
     notice(error.message, true);
   }
-  if (state.playing) invalidate();
+  if (state.playing || pose.active) invalidate();
 }
 
 function invalidate() {
@@ -192,8 +218,26 @@ async function showAsset(loaded, title, nextSetting = DEFAULT_SETTING) {
   asset = loaded;
   bounds = nextBounds;
   setting = nextSetting;
-  state.yaw = nextSetting.yaw;
-  state.pitch = nextSetting.pitch;
+  const aspect = canvas.width / Math.max(1, canvas.height);
+  const initialFramed = (aspect < 1 && nextSetting.portraitFocus) || nextSetting.focus || nextBounds;
+  focusOrigin = initialFramed.minimum.map((value, axis) => (value + initialFramed.maximum[axis]) / 2);
+  const focusExtent = Math.max(...initialFramed.maximum.map((value, axis) => value - initialFramed.minimum[axis]), 0.01);
+  const perspectiveView = cameraView('perspective', { target: focusOrigin, distance: focusExtent * 2.5 });
+  const fitted = nextSetting.focus ? focusHeight(initialFramed, aspect) : fitOrthographicHeight(initialFramed, perspectiveView, aspect, FRAME_MARGIN);
+  homePerspectiveDistance = Math.max(focusExtent * 0.01, fitted) * (nextSetting.focus ? FOCUS_DISTANCE_FACTOR : 1.7);
+  orbitController.setLimits({
+    minDistance: homePerspectiveDistance * 0.1,
+    maxDistance: homePerspectiveDistance * 10,
+    boundsMin: focusOrigin.map(value => value - extent * 4),
+    boundsMax: focusOrigin.map(value => value + extent * 4),
+  });
+  orbitController.setHome({
+    yaw: nextSetting.yaw,
+    pitch: nextSetting.pitch,
+    distance: homePerspectiveDistance,
+    target: focusOrigin,
+  }, { apply: true, immediate: true });
+  syncOrbitState();
   document.querySelector('#exposure').value = String(nextSetting.exposure);
   state.zoom = 1;
   state.time = 0;
@@ -230,7 +274,11 @@ async function openFile(file) {
 
 document.querySelector('#open').addEventListener('click', () => document.querySelector('#file').click());
 document.querySelector('#file').addEventListener('change', event => openFile(event.target.files[0]));
-document.querySelector('#fit').addEventListener('click', () => { state.zoom = 1; invalidate(); });
+document.querySelector('#fit').addEventListener('click', () => {
+  orbitController.reset({ immediate: true });
+  syncOrbitState();
+  invalidate();
+});
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => {
   state.view = button.dataset.view;
   document.querySelectorAll('[data-view]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
@@ -240,17 +288,21 @@ for (const id of ['exposure', 'bloom']) document.querySelector(`#${id}`).addEven
 document.querySelector('#clip').addEventListener('change', event => { state.clip = Number(event.target.value); state.time = 0; syncAnimation(); invalidate(); });
 document.querySelector('#time').addEventListener('input', event => { pause(); state.time = Number(event.target.value); invalidate(); });
 document.querySelector('#play').addEventListener('click', () => { state.playing = !state.playing; document.querySelector('#play').textContent = state.playing ? 'Ⅱ Pause' : '▶ Play'; lastTime = performance.now(); invalidate(); });
-canvas.addEventListener('pointerdown', event => { pointer = { x: event.clientX, y: event.clientY }; canvas.setPointerCapture(event.pointerId); });
-canvas.addEventListener('pointermove', event => {
-  if (!pointer || state.view !== 'perspective') return;
-  state.yaw -= (event.clientX - pointer.x) * 0.008;
-  state.pitch = Math.max(-1.4, Math.min(1.4, state.pitch + (event.clientY - pointer.y) * 0.008));
-  pointer = { x: event.clientX, y: event.clientY };
-  invalidate();
+attachOrbitControls(canvas, orbitController, {
+  keyTarget: canvas,
+  shouldHandlePointer: event => event.type === 'wheel' || state.view === 'perspective',
+  onChange: () => {
+    syncOrbitState();
+    invalidate();
+  },
 });
-canvas.addEventListener('pointerup', () => { pointer = null; });
-canvas.addEventListener('wheel', event => { event.preventDefault(); state.zoom = Math.max(0.1, Math.min(10, state.zoom * Math.exp(event.deltaY * 0.001))); invalidate(); }, { passive: false });
-canvas.addEventListener('keydown', event => { if (event.key.toLowerCase() === 'f') { state.zoom = 1; invalidate(); } });
+canvas.addEventListener('keydown', event => {
+  if (event.key.toLowerCase() === 'f') {
+    orbitController.reset({ immediate: true });
+    syncOrbitState();
+    invalidate();
+  }
+});
 document.querySelector('.stage').addEventListener('dragover', event => event.preventDefault());
 document.querySelector('.stage').addEventListener('drop', event => { event.preventDefault(); openFile(event.dataTransfer.files[0]); });
 document.addEventListener('visibilitychange', () => { lastTime = performance.now(); if (!document.hidden) invalidate(); });

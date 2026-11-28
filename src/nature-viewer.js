@@ -4,6 +4,7 @@ import { vec4 } from 'gl-matrix';
 import { CrucibleRenderer } from './renderer.js';
 import { createNatureWorld } from './nature.js';
 import { installMeshBlend } from './mesh-blend.js';
+import { attachOrbitControls, createOrbitController } from './site-controls.js';
 import { createFlagAnimation } from './nature-flag.js';
 import { readQueryNumber } from './query-number.js';
 
@@ -11,6 +12,16 @@ const renderParameters = new URLSearchParams(location.search);
 const canvas = document.querySelector('#viewport');
 const motionButton = document.querySelector('#motion');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const orbitController = createOrbitController({
+  minPitch: 0.03,
+  maxPitch: 1.25,
+  minDistance: 6,
+  maxDistance: 110,
+  orbitSpeed: 0.005,
+  panSpeed: 0.0016,
+  zoomSpeed: 0.001,
+  moveSpeed: 0.6,
+});
 const state = {
   detail: 'balanced', daylight: 1, wind: 0.35, paused: reducedMotion.matches,
   time: 0, azimuth: 0, elevation: 0, distance: 1, target: [0, 0, 0],
@@ -21,8 +32,15 @@ let renderer;
 let flagAnimation = null;
 let scheduledFrame = 0;
 let lastFrameTime = 0;
-let dragging;
 let noticeTimer;
+
+function syncNatureOrbit() {
+  const current = orbitController.state();
+  state.azimuth = current.yaw;
+  state.elevation = current.pitch;
+  state.distance = current.distance;
+  state.target = current.target;
+}
 
 function notify(message, failure = false) {
   const notice = document.querySelector('#notice');
@@ -35,11 +53,17 @@ function notify(message, failure = false) {
 
 function setViewpoint(index) {
   const viewpoint = world.points[index];
-  state.target = [...viewpoint.target];
   const offset = viewpoint.eye.map((value, axis) => value - viewpoint.target[axis]);
-  state.distance = Math.hypot(...offset);
-  state.azimuth = Math.atan2(offset[0], offset[2]);
-  state.elevation = Math.asin(offset[1] / state.distance);
+  const distance = Math.hypot(...offset);
+  const azimuth = Math.atan2(offset[0], offset[2]);
+  const elevation = Math.asin(offset[1] / distance);
+  orbitController.setHome({
+    yaw: azimuth,
+    pitch: elevation,
+    distance,
+    target: [...viewpoint.target],
+  }, { apply: true, immediate: true });
+  syncNatureOrbit();
   document.querySelector('#viewpoint').value = String(index);
 }
 
@@ -81,10 +105,13 @@ function stopAnimation() {
 function draw(timestamp) {
   scheduledFrame = 0;
   if (!renderer || document.hidden) return;
-  if (!state.paused && lastFrameTime) state.time += Math.min((timestamp - lastFrameTime) / 1000, 0.1);
+  const deltaSeconds = lastFrameTime ? Math.min((timestamp - lastFrameTime) / 1000, 0.1) : 0.016;
+  if (!state.paused && lastFrameTime) state.time += deltaSeconds;
   lastFrameTime = timestamp;
+  const pose = orbitController.step(deltaSeconds);
+  if (pose.active) syncNatureOrbit();
   renderFrame();
-  if (!state.paused) invalidate();
+  if (!state.paused || pose.active) invalidate();
 }
 
 function invalidate() {
@@ -211,53 +238,34 @@ document.querySelector('#detail').addEventListener('change', event => {
   }
 });
 
-canvas.addEventListener('pointerdown', event => {
-  if (event.button !== 0) return;
-  dragging = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, moved: false };
-  canvas.setPointerCapture(event.pointerId);
-});
-canvas.addEventListener('pointermove', event => {
-  if (!dragging || dragging.pointerId !== event.pointerId) return;
-  if (Math.hypot(event.clientX - dragging.startX, event.clientY - dragging.startY) > 4) dragging.moved = true;
-  state.azimuth -= (event.clientX - dragging.x) * 0.005;
-  state.elevation = Math.max(0.03, Math.min(1.25, state.elevation + (event.clientY - dragging.y) * 0.004));
-  dragging.x = event.clientX;
-  dragging.y = event.clientY;
-  invalidate();
-});
-canvas.addEventListener('pointerup', event => {
-  if (dragging && !dragging.moved) {
+attachOrbitControls(canvas, orbitController, {
+  keyTarget: canvas,
+  onTap: event => {
     const position = waterHit(event.clientX, event.clientY);
     if (position) {
       state.waterRipple = position;
       state.rippleTime = state.time;
       invalidate();
     }
-  }
-  dragging = null;
+  },
+  onChange: () => {
+    syncNatureOrbit();
+    invalidate();
+  },
 });
-for (const eventName of ['pointercancel', 'lostpointercapture']) canvas.addEventListener(eventName, () => { dragging = null; });
-canvas.addEventListener('wheel', event => {
-  event.preventDefault();
-  state.distance = Math.max(6, Math.min(110, state.distance * Math.exp(event.deltaY * 0.001)));
-  invalidate();
-}, { passive: false });
 canvas.addEventListener('keydown', event => {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
   const actions = {
-    ArrowLeft: () => { state.azimuth -= 0.08; },
-    ArrowRight: () => { state.azimuth += 0.08; },
-    ArrowUp: () => { state.elevation = Math.min(1.25, state.elevation + 0.05); },
-    ArrowDown: () => { state.elevation = Math.max(0.03, state.elevation - 0.05); },
-    '+': () => { state.distance = Math.max(6, state.distance * 0.9); },
-    '=': () => { state.distance = Math.max(6, state.distance * 0.9); },
-    '-': () => { state.distance = Math.min(110, state.distance * 1.1); },
-    r: () => { setViewpoint(0); },
+    '+': () => orbitController.zoomBy(-105),
+    '=': () => orbitController.zoomBy(-105),
+    '-': () => orbitController.zoomBy(95),
     ' ': () => { motionButton.click(); },
   };
   const action = actions[event.key];
   if (action) {
     event.preventDefault();
     action();
+    syncNatureOrbit();
     invalidate();
   }
 });

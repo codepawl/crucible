@@ -1076,9 +1076,14 @@ ${featureCode("afterEmission")}${featureCode("worldAfterEmission")}${featureCode
     float fog = 1.0 - exp(-length(worldPosition.xz) * 0.05);
     radiance = mix(radiance, vec3(0.018, 0.022, 0.026), fog);
   }
-${featureCode("worldFinal")}  float fog = 1.0 - exp(-length(worldPosition - eye) * fogDensity);
+${featureCode("worldFinal")}  vec3 fogDirection = normalize(worldPosition - eye);
+  float fog = 1.0 - exp(-length(worldPosition - eye) * fogDensity);
+  vec3 fogScatter = fogColor + keyColor * 0.05 * pow(max(dot(fogDirection, normalize(lightDirection)), 0.0), 6.0) * daylight;
+  vec3 fogTarget = (ENVIRONMENT_ENABLED && environmentEnabled > 1.5)
+    ? mix(fogScatter, surroundingsColor(vec3(fogDirection.x, max(fogDirection.y, 0.01), fogDirection.z), 0.25) * ambientIntensity, 0.75 * fog)
+    : fogScatter;
   // Additive light fades to black through fog; mixing it toward the fog colour would add a glow of fog.
-  radiance = alphaMode > 2.5 ? radiance * (1.0 - fog * worldMode) : mix(radiance, fogColor, fog * worldMode);
+  radiance = alphaMode > 2.5 ? radiance * (1.0 - fog * worldMode) : mix(radiance, fogTarget, fog * worldMode);
   if (inspection > 0.5) radiance = normal * 0.5 + 0.5;
   vec3 displayedColor = displayRadiance(radiance);
   vec3 displayedDiffuse = USES_ALPHA_MODE ? displayRadiance(max(radiance - blendSpecular, vec3(0.0))) : displayedColor;

@@ -224,6 +224,15 @@ const materialFields = {
   text: z.record(z.string(), z.unknown()).optional().describe('Text drawn as the colour map; scene_capabilities textPanel.'),
   retro: z.record(z.string(), z.unknown()).nullable().optional().describe('PS1 look, raster only: vertexSnap [w, h] and affineUV; scene_capabilities materialRetro.'),
   waterGlint: z.record(z.string(), z.unknown()).nullable().optional().describe('Water tag only, raster only: stylized highlights, edge { threshold } and sparkle { density, size, shape dot or star }; scene_capabilities materialWaterGlint.'),
+  toonRim: z.strictObject({
+    color: z.array(z.number().min(0).max(TOON_COLOR_MAXIMUM)).length(3).optional().describe('Linear RGB [0-4], default [1, 1, 1].'),
+    strength: z.number().min(0).max(4).optional().describe('0 to 4, default 1.'),
+    power: z.number().min(0.5).max(12).optional().describe('Fresnel falloff 0.5 to 12, default 3.'),
+  }).nullable().optional().describe('Sun-side silver lining rim on toon materials (needs toon > 0); raster only.'),
+  toonBase: z.strictObject({
+    color: z.array(z.number().min(0).max(TOON_COLOR_MAXIMUM)).length(3).optional().describe('Linear RGB [0-4], default [0.65, 0.82, 1].'),
+    strength: z.number().min(0).max(2).optional().describe('0 to 2, default 0.5.'),
+  }).nullable().optional().describe('Lifted underside glow on toon materials (needs toon > 0); raster only.'),
   pattern: listed('pattern', materialPattern, 'Procedural texture; box mapping needs no UVs. type is a preset or graph (give graph); also mapping, colors, size, count, bump, seed, axis, resolution; see scene_capabilities pattern.', coreOf(materialPattern.shape, ['type'])).optional(),
   map: z.strictObject({ sequence: z.strictObject({
     frames: z.array(z.string().regex(/^[a-f0-9]{64}$/i)).min(2).max(TEXTURE_SEQUENCE_LIMITS.maxFrames).optional(),
@@ -258,7 +267,7 @@ const materialFields = {
 };
 const materialTag = z.enum(['surface', 'unlit', 'liquid', 'foam', 'foliage', 'grass', 'water']).optional().describe('Surface kind; liquid, foam, foliage, grass and water change how it renders: see scene_capabilities materialTags and water.');
 const materialCore = coreOf(materialFields, ['color', 'metallic', 'roughness', 'emission', 'opacity']);
-const materialMore = 'More fields: tag, alphaMode, alphaCutoff, doubleSided, depthTest, emissiveColor, map, pattern, subsurface, snippet, wear, surfaceCover, retro, waterPreset, absorption, turbidity, caustics, foamEdge, foamWidth, foamVeins, contactFoam, waterRamp and the layers clearcoat, clearcoatRoughness, transmission, thickness, ior, dispersion, attenuationColor, attenuationDistance, sheenColor, sheenRoughness, specular, specularColor, anisotropy, anisotropyRotation, iridescence, iridescenceIor, iridescenceThickness, toon, toonColors, toonEdge; see scene_capabilities materialFields.';
+const materialMore = 'More fields: tag, alphaMode, alphaCutoff, doubleSided, depthTest, emissiveColor, map, pattern, subsurface, snippet, wear, surfaceCover, retro, waterPreset, absorption, turbidity, caustics, foamEdge, foamWidth, foamVeins, contactFoam, waterRamp and the layers clearcoat, clearcoatRoughness, transmission, thickness, ior, dispersion, attenuationColor, attenuationDistance, sheenColor, sheenRoughness, specular, specularColor, anisotropy, anisotropyRotation, iridescence, iridescenceIor, iridescenceThickness, toon, toonColors, toonEdge, toonRim, toonBase; see scene_capabilities materialFields.';
 const materialListed = (strictSchema, description, extraCore) => listed('materialFields', strictSchema, `${description} ${materialMore}`, { ...extraCore, ...materialCore });
 const liquidOptics = z.strictObject({
   thickness: z.number().min(0).max(100).optional().describe('Metres of liquid where it faces the camera.'),

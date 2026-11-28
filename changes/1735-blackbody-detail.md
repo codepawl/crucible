@@ -1,0 +1,1 @@
+- Interpolate grid emission temperature before evaluating blackbody radiance in `src/fog-shader.js`, and enable `detail` smoke upres (`0.75`) for baked `add-explosion` grids (#1735).

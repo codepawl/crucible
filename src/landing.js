@@ -3,6 +3,7 @@ import './brand-fonts.css';
 import './site-chrome.css';
 import './landing.css';
 import { highlightElement } from './code-highlight.js';
+import { observeCodeBlocks } from './site-code.js';
 import { beatIndexAt, prefersStillStory } from './landing-story.js';
 
 const PACKAGE_COMMANDS = { npm: 'npm install', pnpm: 'pnpm add', yarn: 'yarn add', bun: 'bun add' };
@@ -97,8 +98,7 @@ async function copyText(button) {
   setTimeout(() => button.classList.remove('copied'), 1400);
 }
 for (const button of document.querySelectorAll('.copy')) button.addEventListener('click', () => copyText(button));
-document.querySelectorAll('.command code').forEach((element) => highlightElement(element, 'shell'));
-document.querySelectorAll('#code .code-block').forEach((element) => highlightElement(element, 'javascript'));
+observeCodeBlocks(page);
 
 // ---- Photos: each starts as a 1-bit ordered dither of its own pixels and develops into the full render when it scrolls in ----
 

@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { sitePages } from './scripts/vite-site-pages.mjs';
 import { generatedFiles } from './scripts/vite-generated-files.mjs';
+import { createWatchIgnore } from './scripts/vite-watch-ignore.mjs';
+import { fileURLToPath } from 'node:url';
 
 const headers = {
   'Cross-Origin-Opener-Policy': 'same-origin',
@@ -57,7 +59,7 @@ function docLearnIndex() {
 
 export default defineConfig({
   plugins: [serveLocalFolders(), docLearnIndex(), sitePages(), generatedFiles()],
-  server: { headers, watch: { ignored: ['**/.claude/**'] } },
+  server: { headers, watch: { ignored: [createWatchIgnore(path.dirname(fileURLToPath(import.meta.url)))] } },
   // Scan only the project's own pages. Agent worktrees under .claude hold hundreds of copies of them and made the first page load take 13 s.
   // The browser denoiser page imports `denoiser`, which is installed by hand (bench/reference/denoise-browser.mjs). Scanning it
   // failed the whole scan, so gl-matrix was found at runtime and Vite reloaded pages in the middle of tests (issue #314).
@@ -87,7 +89,6 @@ export default defineConfig({
         docs: 'site/docs.html',
         changelog: 'site/changelog.html',
         showcase: 'site/showcase.html',
-        tiers: 'site/tiers.html',
         marketplace: 'site/marketplace.html',
       },
     },

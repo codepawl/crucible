@@ -214,15 +214,15 @@ test('arrow keys move focus along the toolbar and the tab list when the browser 
   const ignored = dispatch(ui.dom.document.activeElement, 'keydown', { key: 'a' });
   assert.equal(ignored.defaultPrevented, false);
 
-  // Arrow keys walk only the tabs of the open workspace: Look holds Material and Look.
+  // Arrow keys walk only the tabs of the open workspace: Look holds Looks, Material and Look.
   ui.tab('material').click();
   ui.tab('material').focus();
   dispatch(ui.tab('material'), 'keydown', { key: 'ArrowRight' });
   assert.ok(ui.dom.document.activeElement === ui.tab('look'));
   assert.equal(ui.controller.activeTab, 'look');
   dispatch(ui.tab('look'), 'keydown', { key: 'ArrowRight' });
-  assert.equal(ui.controller.activeTab, 'material', 'the walk wraps inside the workspace and skips the hidden tabs');
-  dispatch(ui.tab('material'), 'keydown', { key: 'ArrowLeft' });
+  assert.equal(ui.controller.activeTab, 'looks', 'the walk wraps inside the workspace and skips the hidden tabs');
+  dispatch(ui.tab('looks'), 'keydown', { key: 'ArrowLeft' });
   assert.equal(ui.controller.activeTab, 'look');
 
   ui.dom.document.activeElement = null;
@@ -2688,9 +2688,9 @@ test('workspaces run Build, Look, Animate, Export and each shows only the panels
   assert.equal(ui.root.dataset.workspace, 'look');
   assert.equal(workspaceTab('build').getAttribute('aria-selected'), 'false');
   assert.equal(workspaceTab('build').hasAttribute('aria-pressed'), false);
-  assert.deepEqual(shownTabs(), ['material', 'look']);
+  assert.deepEqual(shownTabs(), ['looks', 'material', 'look']);
   assert.equal(tabList.hasAttribute('hidden'), false);
-  assert.equal(ui.controller.activeTab, 'material');
+  assert.equal(ui.controller.activeTab, 'looks');
   ui.tab('look').click();
   assert.equal(ui.root.dataset.workspace, 'look');
   assert.equal(ui.controller.activeTab, 'look');
@@ -2699,7 +2699,7 @@ test('workspaces run Build, Look, Animate, Export and each shows only the panels
   assert.deepEqual(shownTabs(), ['node', 'camera'], 'Animate keeps the object panel one tab away, for the object being keyed');
   assert.equal(ui.controller.activeTab, 'camera', 'a workspace opens on its first panel');
   workspaceTab('look').click();
-  assert.equal(ui.controller.activeTab, 'material');
+  assert.equal(ui.controller.activeTab, 'looks');
   assert.equal(JSON.stringify(ui.studio.exportRecipe()), recipeBefore, 'a workspace is not part of the scene');
   assert.equal(ui.controller.canUndo, false);
 
@@ -3665,7 +3665,7 @@ test('a right click on an object opens its menu; H hides, Alt+H shows all and Al
   const menu = ui.root.querySelector('#crucible-studio-pop-object');
   const heroNode = () => ui.controller.exportRecipe().nodes.find(node => node.id === 'hero');
   const press = (key, modifiers = {}) => dispatch(ui.dom.document, 'keydown', { key, ...modifiers });
-  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Rename', 'Duplicate', 'Hide', 'Reset position', 'Reset rotation', 'Reset scale', 'Apply…', 'Set origin…', 'Delete']);
+  assert.deepEqual(menu.querySelectorAll('button').map(button => button.textContent), ['Frame', 'Rename', 'Duplicate', 'Add Modifier…', 'Hide', 'Parent', 'Reset position', 'Reset rotation', 'Reset scale', 'Apply…', 'Set origin…', 'Delete']);
 
   // In the Scene list the row is selected first, then the menu opens on it.
   const heroRow = ui.rows().find(row => row.textContent.includes(heroNode().label ?? 'hero'));
@@ -3944,7 +3944,11 @@ test('a light has a mark in the viewport that selects it and drags it in the pla
   assert.ok(markOf('sun'), 'the sun has a mark');
   assert.equal(markOf('camera'), undefined, 'the camera you look through is not drawn');
   assert.ok(markOf('point:0'));
-  assert.ok(ui.gizmo.querySelector('.crucible-studio-scene-mark-ray'), 'the sun points along its light');
+  const sunRay = ui.gizmo.querySelector('.crucible-studio-scene-mark-ray');
+  assert.ok(sunRay, 'the sun points along its light');
+  const sunMarkCentre = markOf('sun').parentNode.getAttribute('transform').match(/translate\(([-\d.]+) ([-\d.]+)\)/).slice(1).map(Number);
+  const rayStartDistance = Math.hypot(Number(sunRay.getAttribute('x1')) - sunMarkCentre[0], Number(sunRay.getAttribute('y1')) - sunMarkCentre[1]);
+  assert.ok(rayStartDistance > 13, `the sun ray starts outside the mark disc, not under its glyph (${rayStartDistance.toFixed(1)} px from the centre)`);
 
   const lightPosition = ui.controller.listSceneObjects().find(object => object.key === 'point:0').position;
   const grab = ui.controller.projectWorldPoint(lightPosition);
@@ -4011,7 +4015,7 @@ function mountStudioSeeingTheSunMark(testContext, options) {
 }
 
 function sunMarkCircle(ui) {
-  return ui.gizmo.descendants().find(element => element.getAttribute('data-scene-object') === 'sun' && element.tagName.toLowerCase() === 'circle');
+  return ui.gizmo.descendants().find(element => element.getAttribute('data-scene-object') === 'sun' && element.getAttribute('data-edge-pointer') !== 'true' && element.tagName.toLowerCase() === 'circle');
 }
 
 test('the sun mark stays at one world point through an orbit, a pan and a zoom, and is drawn where that point projects', testContext => {
@@ -4107,6 +4111,65 @@ test('a sun that a track turns refuses the drag and says why', testContext => {
   dispatch(driven.canvas, 'pointerup', driven.clientPoint(drivenGrab));
   assert.deepEqual(driven.studio.exportRecipe().environment.lightDirection, drivenStart);
   assert.match(driven.status(), /sun direction is animated/);
+});
+
+function sunEdgePointerDisc(ui) {
+  return ui.gizmo.descendants().find(element => element.getAttribute('data-edge-pointer') === 'true' && element.tagName.toLowerCase() === 'circle');
+}
+
+// Close to the scene's middle the eye sits inside the sphere the mark stands on, so the mark lies behind it.
+function pullEyeInsideTheMarkSphere(ui) {
+  ui.controller.orbitCamera({ zoomScale: 0.1 });
+  ui.studio.renderNow();
+}
+
+test('the sun has an edge pointer only while its mark is out of view', testContext => {
+  const ui = mountStudioSeeingTheSunMark(testContext);
+  assert.ok(!sunEdgePointerDisc(ui), 'no pointer while the mark is in view');
+  ui.controller.orbitCamera({ deltaAzimuth: 1.5 });
+  ui.studio.renderNow();
+  const projected = ui.controller.projectWorldPoint(sunMarkWorldPoint(ui));
+  assert.ok(projected.visible, 'the mark is in front of the eye');
+  assert.ok(projected.x < 0 || projected.x > ui.controller.viewportWidth || projected.y < 0 || projected.y > ui.controller.viewportHeight, 'the orbit took the mark off the screen');
+  assert.ok(!sunMarkCircle(ui), 'the mark itself is not drawn');
+  const pointer = sunEdgePointerDisc(ui);
+  assert.ok(pointer, 'the pointer stands in for the mark');
+  assert.equal(pointer.getAttribute('data-scene-object'), 'sun');
+  assert.match(pointer.parentNode.querySelector('title').textContent, /^Sun \(out of view\)$/);
+  const [, x, y] = pointer.parentNode.getAttribute('transform').match(/translate\(([-\d.]+) ([-\d.]+)\)/).map(Number);
+  assert.ok(x >= 0 && x <= ui.controller.viewportWidth && y >= 0 && y <= ui.controller.viewportHeight, 'inside the viewport');
+  ui.controller.orbitCamera({ deltaAzimuth: -1.5 });
+  ui.studio.renderNow();
+  assert.ok(!sunEdgePointerDisc(ui), 'the pointer goes when the mark comes back');
+  assert.ok(sunMarkCircle(ui));
+});
+
+test('the sun has an edge pointer while the sun lies behind the camera', testContext => {
+  const ui = mountStudioSeeingTheSunMark(testContext);
+  pullEyeInsideTheMarkSphere(ui);
+  const camera = ui.controller.viewCamera;
+  const toMark = sunMarkWorldPoint(ui).map((component, axis) => component - camera.eye[axis]);
+  const forward = camera.target.map((component, axis) => component - camera.eye[axis]);
+  assert.ok(toMark.reduce((sum, component, axis) => sum + component * forward[axis], 0) < 0, 'the mark is behind the eye');
+  assert.ok(sunEdgePointerDisc(ui), 'the pointer still shows');
+  assert.ok(!sunMarkCircle(ui), 'the mark itself is not drawn');
+});
+
+test('pressing the sun edge pointer selects the sun and, with the move tool, starts no drag', testContext => {
+  const ui = mountStudioSeeingTheSunMark(testContext);
+  pullEyeInsideTheMarkSphere(ui);
+  const startDirection = [...ui.studio.exportRecipe().environment.lightDirection];
+  assert.equal(ui.controller.tool, 'translate');
+  const pointer = sunEdgePointerDisc(ui);
+  const down = dispatch(pointer, 'pointerdown', { clientX: 400, clientY: 300, pointerId: 21 });
+  assert.equal(down.defaultPrevented, true);
+  assert.equal(ui.controller.selectedObjectKey, 'sun');
+  dispatch(ui.canvas, 'pointermove', { clientX: 300, clientY: 340 });
+  dispatch(ui.canvas, 'pointermove', { clientX: 200, clientY: 380 });
+  dispatch(ui.canvas, 'pointerup', { clientX: 200, clientY: 380 });
+  assert.deepEqual(ui.studio.exportRecipe().environment.lightDirection, startDirection, 'the sun did not turn');
+  ui.studio.renderNow();
+  assert.equal(sunEdgePointerDisc(ui).parentNode.getAttribute('data-selected'), 'true', 'the pointer wears the selected style');
 });
 
 test('the camera is drawn once the view looks away from it', testContext => {

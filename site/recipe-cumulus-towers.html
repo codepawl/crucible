@@ -36,8 +36,10 @@
 </header>
 <!-- /site-chrome:header -->
     <main id="content">
-      <p class="recipe-back"><a href="/recipes.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>Recipes</a></p>
-      <h1>Cumulus towers: procedural cloud lobes over ocean waves</h1>
+      <header class="page-hero">
+        <p class="recipe-back"><a href="/recipes.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>Recipes</a></p>
+        <h1>Cumulus towers: procedural cloud lobes over ocean waves</h1>
+      </header>
       <figure class="recipe-still"><img src="/recipes/cumulus-towers.webp" width="960" height="540" alt="Cumulus towers: procedural cloud lobes over ocean waves: Cumulus towers" /></figure>
       <div class="recipe-why"><p>Each cloud is a declarative cloud geometry with three nested levels of soft lobes and a flat base, seeded separately so the three towers read as distinct shapes.</p><p>A six-step toon ramp shifts shadows cool blue-grey and highlights warm cream under a physical sky.</p></div>
       <section class="recipe-code" aria-labelledby="scene-code-title">
@@ -196,12 +198,18 @@
       &quot;id&quot;: &quot;water&quot;,
       &quot;tag&quot;: &quot;water&quot;,
       &quot;color&quot;: [
-        0.0033,
-        0.042,
-        0.069
+        0.001,
+        0.014,
+        0.032
       ],
       &quot;metallic&quot;: 0,
-      &quot;roughness&quot;: 0.14
+      &quot;roughness&quot;: 0.18,
+      &quot;absorption&quot;: [
+        0.7,
+        0.16,
+        0.04
+      ],
+      &quot;turbidity&quot;: 0.04
     },
     {
       &quot;id&quot;: &quot;cumulus&quot;,
@@ -247,20 +255,20 @@
       ],
       &quot;toonRim&quot;: {
         &quot;color&quot;: [
-          1,
-          0.98,
-          0.94
+          1.58,
+          1.5,
+          1.36
         ],
-        &quot;strength&quot;: 2.2,
-        &quot;power&quot;: 4.5
+        &quot;strength&quot;: 3.8,
+        &quot;power&quot;: 3.6
       },
       &quot;toonBase&quot;: {
         &quot;color&quot;: [
-          0.58,
-          0.72,
-          0.88
+          0.82,
+          0.96,
+          1.12
         ],
-        &quot;strength&quot;: 0.45
+        &quot;strength&quot;: 0.82
       }
     }
   ],
@@ -304,31 +312,31 @@
   &quot;camera&quot;: {
     &quot;eye&quot;: [
       0,
-      14,
-      70
+      5,
+      72
     ],
     &quot;target&quot;: [
       0,
-      38,
+      32,
       -40
     ],
     &quot;fov&quot;: 50
   },
   &quot;effects&quot;: {
-    &quot;exposure&quot;: 0.9
+    &quot;exposure&quot;: 0.85
   },
   &quot;environment&quot;: {
     &quot;sky&quot;: {
       &quot;type&quot;: &quot;physical&quot;,
-      &quot;sunElevation&quot;: 28,
-      &quot;sunRotation&quot;: 145,
+      &quot;sunElevation&quot;: 19,
+      &quot;sunRotation&quot;: 92,
       &quot;turbidity&quot;: 2,
       &quot;aerialPerspective&quot;: 0.3
     },
     &quot;world&quot;: true,
     &quot;ground&quot;: false,
     &quot;ambientIntensity&quot;: 0.3,
-    &quot;keyIntensity&quot;: 2.2
+    &quot;keyIntensity&quot;: 2.3
   }
 }</code></pre>
       </section>
@@ -344,7 +352,6 @@
       <a href="/recipes.html">Recipes</a>
       <a href="/showcase.html">Showcase</a>
       <a href="/marketplace.html">Marketplace</a>
-      <a href="/tiers.html">Tiers</a>
       <a href="/changelog.html">Changelog</a>
     </nav>
     <nav aria-label="Project links">

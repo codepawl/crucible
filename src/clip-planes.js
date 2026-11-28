@@ -1,5 +1,6 @@
 // Clip planes: world-space planes that cut away the part of a model on their far side, in the colour pass and in the shadow
 // pass, so a section stays lit and shadowed as the cut part. docs/clip-planes.md has the guide.
+import { asGlazeBackend, backendFor } from './glaze-backend.js';
 import { registerShaderFeatureCode } from './shader-registry.js';
 
 export const CLIP_PLANES_FEATURE = 'clipPlanes';
@@ -76,8 +77,9 @@ export function packClipPlanes(planes, target, label = 'clipPlanes') {
 const partPlaneValues = new Float32Array(MAX_CLIP_PLANES * FLOATS_PER_PLANE);
 
 /** The uniform locations of the clip planes in `program`. The same names serve the colour and the shadow program. */
-export function clipPlaneLocations(context, program) {
-  return Object.fromEntries(CLIP_UNIFORM_NAMES.map((name) => [name, context.getUniformLocation(program, name)]));
+export function clipPlaneLocations(contextOrBackend, program) {
+  const backend = asGlazeBackend(contextOrBackend);
+  return Object.fromEntries(CLIP_UNIFORM_NAMES.map((name) => [name, backend.uniformLocation(program, name)]));
 }
 
 /** Sets the planes of `batch` on the program in use: the planes of its first part when it has any, else the renderer's. */
@@ -89,8 +91,9 @@ export function bindClipPlanes(renderer, batch, locations) {
     count = packClipPlanes(own, partPlaneValues, `Part "${batch.parts[0].name}" clipPlanes`);
     values = partPlaneValues;
   }
-  renderer.context.uniform4fv(locations['clipPlanes[0]'], values);
-  renderer.context.uniform1i(locations.clipPlaneCount, count);
+  const backend = backendFor(renderer);
+  backend.uniform4fv(locations['clipPlanes[0]'], values);
+  backend.uniform1i(locations.clipPlaneCount, count);
 }
 
 /**

@@ -4,7 +4,7 @@ Each row says what ran. The tier names are working names from the render roadmap
 
 Depends on #921 (`bench/cycles-parity`, [`docs/cycles-parity.md`](../../docs/cycles-parity.md)): the Cycles script, the native trace script, `compare.py` and `measure-gpu-run.py` are reused. The Cook against Cycles numbers on one scene are in that document; this suite repeats them with the other Cook backends beside them.
 
-The `quality` setting that picks a tier is now in the MCP render tools; `measure-quality.mjs` measures the four tiers through it and the table is in [`docs/mcp.md`](../../docs/mcp.md) under "Render quality".
+The `quality` setting that picks a tier is now in the MCP render tools; `measure-quality.mjs` measures the four tiers through it and the table is in [`docs/mcp.md`](../../docs/mcp.md) under "Render quality". This suite is internal to the repository for regression checks.
 
 ## Result (six scenes, 960 by 540, idle card, 2026-11-11)
 
@@ -24,10 +24,6 @@ How the equal-error statements are made: an error that is limited by noise falls
 Firefly clamp (#936): the committed matrix ran Cook native with `fireflyClamp` 1e9 and Cook webgpu with 1000 (the cap of the JS API), so the linear relMSE of the two is not comparable on scenes with fireflies. On `metal` at 256 samples native at 1e9 measured 2.02 and at 1000 measured 0.02107, webgpu at 1000 measured 0.02106: the same kernel code and the same pixels, 10 pixels carry 97 percent of the 1e9 error. Cycles (clamps off) has the same shape: 10 pixels carry 98 percent of its 0.0298. `run-all.mjs` now passes one `--firefly-clamp` (default 1000) to every Cook backend and records it in each cell. Read linear relMSE on firefly scenes with that clamp in mind; display relMSE and FLIP are not affected. Rerun the matrix to refresh the committed figures.
 
 The table below this section, and the equal-error section after it, are the earlier single-scene result, measured on a shared card. Where they disagree with the matrix, the matrix is right; their equal-error figures extrapolated as 1/N without the check above.
-
-### The tier page
-
-`/tiers.html` shows one scene (lit-interior) tier by tier, Crucible beside Blender. Its figures come from the matrix and from nothing else: `node bench/tiers/make-tier-page-data.mjs` writes [`results/tier-page-lit-interior.json`](results/tier-page-lit-interior.json) (median and range of the usable runs, card memory, FLIP against Cycles at 4,096 samples, and the conditions of the matrix). `tests/tier-page-data.test.js` fails when the committed file differs from what the script writes. `realtime-high` is shown as planned. Rerun the script after a new matrix and commit the file.
 
 ## Result (lit-interior, shared card, 2026-11-11)
 
@@ -112,7 +108,3 @@ So draft is 1.7 times cheaper in queued frame time, and the 8 bit target and the
 - The other five scenes (`spot-area`, `light-linking`, `metal`, `glass`, `outdoor-hdri`) have no committed runs; `run-all.mjs` exports, references and measures them (the full matrix has not been run yet).
 - Lit-interior at 1920 by 1080 for the real-time rows, and the settle runs at that size.
 - three.js 0.187 against Glaze on `bench/runtime`'s scenes: not run here; `bench/runtime/README.md` has its own results.
-
-## The home page cards
-
-The tier cards on the home page (`site/index.html`, between the `tier-cards` markers) are written from `results/matrix-960.json`, never typed. After a new matrix run, regenerate them with `node bench/tiers/make-home-tiers.mjs --write`; `tests/home-tier-cards.test.js` fails when the page and the matrix differ.

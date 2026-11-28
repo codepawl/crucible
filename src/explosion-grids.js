@@ -29,10 +29,13 @@ const MAX_CACHED_BAKES = 4;
 const BAKE_SECONDS_LIMIT = 90;
 // A bake with velocity (for the motion blur of the fireball) says so in its name: `explosion-dry-7-velocity_0000.67vg`.
 const NAME_PATTERN = /^explosion-(dry|oily)-(\d{1,10})(-velocity)?_(\d{4})\.67vg$/;
+/** Noise upres strength baked into explosion smoke density so 32-cubed grids break into finer puffs across Glaze, Cook, and Cycles (#1735). */
+export const EXPLOSION_GRID_DETAIL = 0.75;
+
 // Oily fuel burns sootier: more smoke at the core and more smoke from every burned unit of fuel.
 const FUEL_OPTIONS = Object.freeze({
-  dry: Object.freeze({ turbulence: 1, vorticity: 40 }),
-  oily: Object.freeze({ burstSmoke: 1.6, smokeYield: 1.1, turbulence: 1, vorticity: 40 }),
+  dry: Object.freeze({ turbulence: 1, vorticity: 40, detail: EXPLOSION_GRID_DETAIL }),
+  oily: Object.freeze({ burstSmoke: 1.6, smokeYield: 1.1, turbulence: 1, vorticity: 40, detail: EXPLOSION_GRID_DETAIL }),
 });
 
 const bakes = new Map();
