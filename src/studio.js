@@ -41,7 +41,7 @@ import './studio-features.js';
 import { hasStudioTab, registeredStudioMenuEntries, registeredStudioStyles, registeredStudioTabIds, registeredStudioTabs, registeredStudioWorkspaces, registerStudioTab } from './studio-registry.js';
 import { createShapeSettings } from './studio-shape-settings.js';
 import { MIXED_PROPERTY_LABEL, MIXED_SELECT_VALUE, summarizeNodeSelection, syncObjectAndMaterialPanels } from './studio-multi-edit.js';
-import { createKeyMarkers } from './studio-timeline-keys.js';
+import { createTimelinePanel } from './studio-timeline-panel.js';
 import { cameraFocalLengthMillimetres, choiceDisplayLabel } from './studio-properties.js';
 import { AXIS_COLORS, buildGridParts, createViewWidget, describeBounds, describeCamera, describeGridStep, placeGridParts, studioDrawsFloor, viewportClipPlanes, viewportFloorPart, viewportGridLayout } from './studio-viewport-aids.js';
 import { formatLengthInputValue, lengthFromUnit, parseLengthInput } from './studio-units.js';
@@ -2851,20 +2851,20 @@ export function createStudio(container, {
       controller.setMotionTime(seconds);
     }
   });
-  const keyMarkers = createKeyMarkers({
-    documentReference,
-    controller,
-    keysElement,
-    trackElement,
-    announce,
+  const timelinePanel = createTimelinePanel({
+    documentReference, createElement, createIcon, controller, announce, keysElement, trackElement,
+    createIconButton: (iconName, label, properties) => createIconButton(documentReference, iconName, label, properties),
     isDeleteKey: event => findKeymapAction(keymap, event, 'normal')?.actionId === 'edit.delete',
     fallbackFocus: keyframeButton,
+    propertyRows: { translation: positionRow, rotation: rotationRow, scale: scaleRow },
   });
 
   const bottomElement = createElement(
     documentReference,
     'footer',
     { className: 'crucible-studio-bottombar crucible-studio-island', attributes: { 'aria-label': 'Timeline' } },
+    timelinePanel.rowsElement,
+    timelinePanel.editorElement,
     createElement(documentReference, 'div', { className: 'crucible-studio-scrub' }, playButton, keyframeButton, autoKeyButton, trackElement, timeOutput),
     quickBookmarksRow,
   );
@@ -4836,7 +4836,7 @@ export function createStudio(container, {
     setButtonIcon(playButton, playing ? 'pause' : 'play', playTooltip(playing));
     timeOutput.textContent = `${controller.motionTime.toFixed(1)} / ${duration.toFixed(1)} s`;
     autoKeyButton.setAttribute('aria-pressed', controller.autoKey ? 'true' : 'false');
-    keyMarkers.sync(Math.max(0.1, duration));
+    timelinePanel.sync(Math.max(0.1, duration));
     syncPropertyPanels();
     syncHintBar();
     syncFileBanner();
