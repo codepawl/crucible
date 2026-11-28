@@ -376,7 +376,7 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
   // Authored rigs: armatures expand into bone nodes, and a node `skin` binds a mesh with automatic weights (four influences).
   // Node relations place a mesh node against other mesh nodes (world bounds), solved again after every edit.
   relations: Object.freeze({
-    maxPerNode: 8, maxNodes: 256, sides: Object.freeze(['+x', '-x', '+y', '-y', '+z', '-z']),
+    maxPerNode: 8, maxNodes: 4096, maxPortsPerNode: 32, sides: Object.freeze(['+x', '-x', '+y', '-y', '+z', '-z']),
     kinds: Object.freeze({
       attach: 'to, side, offset: touch the target face on side and centre on the other axes; offset is distance, negative sinks in',
       gap: 'to, side, offset: as attach on that axis only',
@@ -384,8 +384,10 @@ export const AGENT_SCENE_CAPABILITIES = Object.freeze({
       align: 'to, axis, at (min, center, max), offset: anchor on one axis',
       centered: 'to, axes (default x, y, z): centre on those axes',
       level: 'at (bottom, center, top), y: no to; that face of the part sits at world height y',
+      connect: 'to, fromPort, toPort, offset, roll: orient and snap directional node ports face-to-face',
     }),
-    notes: 'Region (mesh tag): target faces only. One relation per axis, no loops, mesh nodes only. A relation sets translation on its axes. set-node with relations [] removes them.',
+    ports: 'node.ports map { name: { position, normal, up?, radius?, category? } } (max 32 per node)',
+    notes: 'Region (mesh tag): target faces only. One relation per axis, no loops. Bounds relations require mesh nodes; connect works on mesh or group nodes with declared ports. set-node with relations [] removes them.',
   }),
   rigging: Object.freeze({ presets: Object.freeze(['humanoid', 'quadruped']), maxArmatures: 16, maxBones: 128, maxInfluences: 4, weights: 'bone-distance' }),
   motionConstraints: Object.freeze(['copy_location', 'copy_rotation', 'copy_scale', 'limit_location', 'limit_rotation', 'track_to', 'child_of', 'floor', 'copy_transforms', 'limit_distance', 'limit_scale', 'stretch_to', 'locked_track', 'transformation', 'action', 'maintain_volume', 'damped_track', 'pivot', 'follow_path', 'clamp_to', 'shrinkwrap', 'armature']),

@@ -128,7 +128,7 @@ const MODULE_MARKERS = {
   materialPresets: ['"preset":'],
   // Only a graph on a placed asset needs it: the placement's "pattern" comes after its "asset":{ in the JSON.
   assetGraph: [/"asset":{[^]*"pattern"/],
-  relations: ['"relations":'],
+  relations: ['"relations":', '"ports":'],
   timeline: ['"timeline":{'],
   layerShaders: ['"anisotropy"', '"iridescence"', '"fresnel"', '"preset":"glass"', '"emissionMask"', '"softEdge"'],
   emissionMask: ['"emissionMask"'],
