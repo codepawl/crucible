@@ -1,3 +1,4 @@
+import { acquireWebGpuDevice, isWebGpuAvailable, sharedWebGpuDevice } from './webgpu-device.js';
 import { buildMegakernelSource, PATH_STATE_VECTORS, WAVEFRONT_SOURCE, WAVEFRONT_WORKGROUP_SIZE, WORKGROUP_SIZE } from './path-tracer-webgpu-kernel.js';
 import { resolveLightSelection } from './path-tracer-light-tree.js';
 import { ATTENUATION_TEXELS, gpuTriangleCapacity, OCCLUSION_TEXELS, packAtlas, packAttenuation, packEnvironment, packLightTree, packLights, packMaterials, packNodes, packOcclusion, packSubsurface, packTriangles, sceneUsesAttenuation, sceneUsesOcclusionMap, sceneUsesSubsurface } from './path-tracer-gpu-pack.js';
@@ -38,10 +39,11 @@ const WAVEFRONT_ENTRY_POINTS = ['generatePaths', 'resetBins', 'extendPaths', 'sc
 
 /** True when this page has WebGPU. Whether an adapter exists is only known after requesting one. */
 export function isWebGpuTracerAvailable() {
-  return typeof navigator !== 'undefined' && Boolean(navigator.gpu);
+  return isWebGpuAvailable();
 }
 
 let session = null;
+let sessionPromise = null;
 let kernelCompileCount = 0;
 
 /** How many path tracing kernels this page has compiled so far: a job of many frames compiles each kernel once. */
@@ -50,39 +52,41 @@ export function webGpuKernelCompileCount() {
 }
 
 async function createSession() {
-  if (!isWebGpuTracerAvailable()) {
-    throw new Error('The WebGPU path tracer needs navigator.gpu, which this page does not have. Use backend "gpu" (WebGL2) or "cpu".');
-  }
-  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-  if (!adapter) throw new Error('The WebGPU path tracer found no WebGPU adapter. Use backend "gpu" (WebGL2) or "cpu".');
-  if (adapter.limits.maxStorageBuffersPerShaderStage < STORAGE_BUFFER_COUNT) {
-    throw new Error(`The WebGPU path tracer needs ${STORAGE_BUFFER_COUNT} storage buffers per shader stage and this adapter allows ${adapter.limits.maxStorageBuffersPerShaderStage}. Use backend "gpu".`);
-  }
-  const device = await adapter.requestDevice({
-    requiredLimits: {
-      maxStorageBuffersPerShaderStage: STORAGE_BUFFER_COUNT,
-      maxStorageBufferBindingSize: Math.min(adapter.limits.maxStorageBufferBindingSize, MAXIMUM_BUFFER_BYTES),
-      maxBufferSize: Math.min(adapter.limits.maxBufferSize, MAXIMUM_BUFFER_BYTES),
-    },
+  const { device, gpu } = await acquireWebGpuDevice({
+    purpose: 'The WebGPU path tracer',
+    fallbackHint: 'Use backend "gpu" (WebGL2) or "cpu".',
+    minStorageBuffers: STORAGE_BUFFER_COUNT,
+    maxBufferBytes: MAXIMUM_BUFFER_BYTES,
   });
   const entries = [{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: PARAMETER_BYTES } }];
   for (let binding = 1; binding < STORAGE_BUFFER_COUNT + 1; binding++) {
     entries.push({ binding, visibility: GPUShaderStage.COMPUTE, buffer: { type: binding <= 7 ? 'read-only-storage' : 'storage' } });
   }
   const bindGroupLayout = device.createBindGroupLayout({ entries });
-  const info = adapter.info ?? {};
-  return {
+  const created = {
     device, bindGroupLayout, pipelineLayout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
-    gpu: `${info.vendor ?? 'webgpu'} ${info.architecture ?? ''}`.trim(), kernels: new Map(),
+    gpu, kernels: new Map(),
   };
+  session = created;
+  return created;
 }
 
 async function getSession() {
-  session ??= createSession().catch((error) => {
+  const currentShared = sharedWebGpuDevice();
+  if (session && currentShared && session.device !== currentShared.device) {
     session = null;
+    sessionPromise = null;
+  }
+  if (session && !currentShared) {
+    session = null;
+    sessionPromise = null;
+  }
+  sessionPromise ??= createSession().catch((error) => {
+    session = null;
+    sessionPromise = null;
     throw error;
   });
-  return session;
+  return sessionPromise;
 }
 
 /** The WGSL and entry points of a kernel variant; a variant is one of the two kernels, with the optional parts a scene needs. */
