@@ -83,6 +83,8 @@ function mountPassStudio(testContext, recipe, renderer = createPassRenderer(), s
   });
   const root = dom.container.firstElementChild;
   root.querySelector('.crucible-studio-viewport').box = { left: 40, top: 30, width: 800, height: 600, right: 840, bottom: 630 };
+  // Build draws plainly (#3594), so the tests of the full look open Look.
+  studio.setWorkspace('look');
   studio.renderNow();
   return {
     dom,
@@ -102,6 +104,22 @@ test('the passes of the recipe are set on the renderer, with the antialias mode'
   assert.equal(ui.notice().hidden, true);
   assert.equal(ui.paused().hidden, true);
   assert.ok(ui.renderer.frames.length > 0);
+});
+
+test('Build draws no pass, no shadows and no effects, and Look draws them again without touching the recipe (#3594)', testContext => {
+  const ui = mountPassStudio(testContext, passRecipe(TWO_PASSES, { effects: { bloom: { strength: 1 } } }));
+  assert.equal(ui.renderer.shadowsHidden, false);
+  ui.studio.setWorkspace('build');
+  ui.studio.renderNow();
+  assert.deepEqual(ui.renderer.userPasses.passes, []);
+  assert.equal(ui.renderer.shadowsHidden, true);
+  assert.equal(ui.renderer.frames.at(-1).effects.bloom.strength, 0);
+  assert.equal(ui.notice().hidden, true);
+  ui.studio.setWorkspace('look');
+  ui.studio.renderNow();
+  assert.deepEqual(ui.renderer.userPasses.passes.map(pass => pass.name), ['foam', 'grain']);
+  assert.equal(ui.renderer.shadowsHidden, false);
+  assert.equal(ui.renderer.frames.at(-1).effects.bloom.strength, 1);
 });
 
 const OBJECT_PASS = { name: 'edge', fragment: FOAM_FRAGMENT.replace('strength', '1.0'), objects: ['hero'] };

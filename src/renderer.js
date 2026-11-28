@@ -3125,7 +3125,7 @@ export class CrucibleRenderer {
       }
     }
     if (textured && !this.benchmark) {
-      backend.uniform1f(this.uniforms.shadowBlind, batch.receivesShadow === false ? 1 : 0);
+      backend.uniform1f(this.uniforms.shadowBlind, batch.receivesShadow === false || this.shadowsHidden ? 1 : 0);
       backend.uniform1f(this.uniforms.tintBlind, batch.tintBlind ? 1 : 0);
       backend.uniform1f(this.uniforms.compositeMode, batch.compositeMode ?? 0);
       for (let index = 0; index < MATERIAL_MAPS.length; index++) {
